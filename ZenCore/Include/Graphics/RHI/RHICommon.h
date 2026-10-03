@@ -581,10 +581,14 @@ struct RHIGfxPipelineColorBlendState
         BitField<RHIColorComponent> colorWriteMask;
     };
 
+    // Release builds check this too: a further attachment would write past the arrays.
+    static constexpr const char* kTooManyAttachments =
+        "A color blend state holds at most MAX_NUM_COLOR_ATTACHMENTS attachments";
+
     // adds 1 default color attachment state
     RHIGfxPipelineColorBlendState& AddAttachment()
     {
-        ASSERT(attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS);
+        VERIFY_EXPR_MSG(attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS, kTooManyAttachments);
 
         attachmentsMask.Set(attachmentIdx);
 
@@ -600,7 +604,8 @@ struct RHIGfxPipelineColorBlendState
     // adds multiple color attachment states
     RHIGfxPipelineColorBlendState& AddAttachments(uint32_t count)
     {
-        ASSERT(attachmentIdx + count <= MAX_NUM_COLOR_ATTACHMENTS);
+        // Compared without the sum so a huge count cannot wrap past the check.
+        VERIFY_EXPR_MSG(count <= MAX_NUM_COLOR_ATTACHMENTS - attachmentIdx, kTooManyAttachments);
 
         for (uint32_t i = 0; i < count; i++)
         {
@@ -619,7 +624,7 @@ struct RHIGfxPipelineColorBlendState
     // adds user-defined attachment state
     RHIGfxPipelineColorBlendState& AddAttachment(Attachment attachment)
     {
-        ASSERT(attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS);
+        VERIFY_EXPR_MSG(attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS, kTooManyAttachments);
 
         attachmentsMask.Set(attachmentIdx);
 

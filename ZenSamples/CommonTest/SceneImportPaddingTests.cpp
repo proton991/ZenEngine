@@ -1,9 +1,9 @@
+#include "Utils/Errors.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <stdexcept>
 #include <draco/compression/encode.h>
 #include <draco/mesh/triangle_soup_mesh_builder.h>
 #include "AssetLib/FastGLTFLoader.h"
@@ -25,7 +25,7 @@ public:
 
         if (!std::filesystem::create_directory(m_directory))
         {
-            throw std::runtime_error("Could not create glTF padding fixture directory");
+            VERIFY_EXPR_MSG(false, "Could not create glTF padding fixture directory");
         }
     }
 
@@ -46,7 +46,7 @@ public:
 
         if (!output)
         {
-            throw std::runtime_error("Could not write glTF padding fixture");
+            VERIFY_EXPR_MSG(false, "Could not write glTF padding fixture");
         }
 
         const std::string result = file.string();
@@ -79,7 +79,7 @@ std::string PaddedTriangleJson(size_t byteLength, bool embeddedBuffer)
 
     if (result.size() + suffix.size() > byteLength)
     {
-        throw std::runtime_error("glTF padding fixture length is too small");
+        VERIFY_EXPR_MSG(false, "glTF padding fixture length is too small");
     }
 
     result.append(byteLength - result.size() - suffix.size(), 'x');
@@ -176,7 +176,7 @@ void ExpectTriangleImport(const std::string& file, size_t jsonLength)
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(file, &scene));
+    ASSERT_TRUE(loader.LoadFromFile(file, &scene)) << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -256,7 +256,7 @@ TEST(SceneImportNumbers, DecimalAndExponentIntegersPreserveTheAuthoredDocument)
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("numbers.gltf", json), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write("numbers.gltf", json), &scene)) << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -280,7 +280,8 @@ TEST(SceneImportNumbers, GlbIntegerNormalizationPreservesTheEmbeddedBinaryOffset
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("numbers.glb", TriangleGlbFromJson(json, true)), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write("numbers.glb", TriangleGlbFromJson(json, true)), &scene))
+        << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -307,7 +308,7 @@ TEST(SceneImportNumbers, InvalidAndFractionalIntegerTokensAreNotRoundedIntoValid
 
         asset::FastGLTFLoader loader;
 
-        EXPECT_THROW(loader.LoadFromFile(fixture.Write("invalid.gltf", json), &scene), std::exception);
+        EXPECT_FALSE(loader.LoadFromFile(fixture.Write("invalid.gltf", json), &scene));
     }
 }
 
@@ -323,7 +324,7 @@ TEST(SceneImportNumbers, ZeroWithAnOversizedExponentIsExactlyZero)
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("zero.gltf", json), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write("zero.gltf", json), &scene)) << loader.GetError();
 
     EXPECT_EQ(loader.GetVertices().size(), 3u);
 
@@ -360,7 +361,7 @@ TEST(SceneImportNumbers, ManuallyImportedExtensionIntegersUseTheSameNormalizatio
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("extension.gltf", json), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write("extension.gltf", json), &scene)) << loader.GetError();
 
     const zen::HeapVector<sg::Material*> materials = scene.GetComponents<sg::Material>();
 
@@ -399,7 +400,7 @@ TEST(SceneImportExtensions, RequiredExtensionRewriteOnlyReplacesTheRootProperty)
         const std::string file =
             binary ? fixture.Write("nested.glb", TriangleGlbFromJson(json, true)) : fixture.Write("nested.gltf", json);
 
-        ASSERT_NO_THROW(loader.LoadFromFile(file, &scene));
+        ASSERT_TRUE(loader.LoadFromFile(file, &scene)) << loader.GetError();
 
         EXPECT_EQ(loader.GetVertices().size(), 3u);
 
@@ -442,7 +443,7 @@ TEST(SceneImportExtensions, FileUrisComposeWithRequiredExtensionsAndNumberNormal
         const std::string file =
             binary ? fixture.Write("uri.glb", TriangleGlbFromJson(json, false)) : fixture.Write("uri.gltf", json);
 
-        ASSERT_NO_THROW(loader.LoadFromFile(file, &scene));
+        ASSERT_TRUE(loader.LoadFromFile(file, &scene)) << loader.GetError();
 
         EXPECT_EQ(loader.GetVertices().size(), 3u);
 
@@ -496,7 +497,7 @@ TEST(SceneImportExtensions, DracoReferencesAreCheckedBeforeDecodingAndPreserveTh
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("valid-draco.gltf", json), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write("valid-draco.gltf", json), &scene)) << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -512,7 +513,7 @@ TEST(SceneImportExtensions, DracoReferencesAreCheckedBeforeDecodingAndPreserveTh
 
         ReplaceJsonToken(invalid, tokens[0], tokens[1]);
 
-        EXPECT_THROW(loader.LoadFromFile(fixture.Write("invalid-draco.gltf", invalid), &scene), std::exception);
+        EXPECT_FALSE(loader.LoadFromFile(fixture.Write("invalid-draco.gltf", invalid), &scene));
 
         EXPECT_EQ(loader.GetVertices().size(), 3u);
 

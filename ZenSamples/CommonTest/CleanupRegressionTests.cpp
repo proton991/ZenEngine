@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Platform/FileSystem.h"
 #include "SceneGraph/Scene.h"
 #include "Templates/HeapVector.h"
@@ -374,7 +375,7 @@ TEST(FastGLTFLoaderRegression, TextureBatchesTransferOwnershipAndResolveImageFor
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     const zen::HeapVector<sg::Texture*> textures = scene.GetComponents<sg::Texture>();
 
@@ -404,7 +405,7 @@ TEST(FastGLTFLoaderRegression, KeepsTransformsForNonRenderableAncestors)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     const HeapVector<sg::Transform*> transforms = scene.GetComponents<sg::Transform>();
 
@@ -450,10 +451,10 @@ TEST(ThreadPoolRegression, ResizeToZeroJoinsWorkersAndCanRestart)
 
     EXPECT_EQ(pool.GetSize(), 0u);
 
-    EXPECT_THROW(pool.Push(AddValues, 1, 2), std::runtime_error);
+    EXPECT_DEATH(pool.Push(AddValues, 1, 2), "verification failed");
 }
 
-TEST(ThreadPoolRegression, GracefulStopDrainsTasksAndPropagatesExceptions)
+TEST(ThreadPoolRegression, GracefulStopDrainsTasksAndReturnsFailureStatus)
 {
     ThreadPool<void, uint32_t> pool(2);
 
@@ -464,13 +465,13 @@ TEST(ThreadPoolRegression, GracefulStopDrainsTasksAndPropagatesExceptions)
         pool.Push([&count](uint32_t) { ++count; });
     }
 
-    std::future<void> failed = pool.Push([](uint32_t) { throw std::runtime_error("task failed"); });
+    std::future<bool> failed = pool.Push([](uint32_t) { return false; });
 
     pool.Stop(true);
 
     EXPECT_EQ(count.load(), 20u);
 
-    EXPECT_THROW(failed.get(), std::runtime_error);
+    EXPECT_FALSE(failed.get());
 }
 
 TEST(FastGLTFLoaderRegression, MissingTexturesPreserveMaterialFactorsIncludingEmission)
@@ -481,7 +482,7 @@ TEST(FastGLTFLoaderRegression, MissingTexturesPreserveMaterialFactorsIncludingEm
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     const sg::Scene::DefaultTextures defaults = scene.GetDefaultTextures();
 
@@ -521,7 +522,7 @@ TEST(FastGLTFLoaderRegression, PreservesNormalMapScaleUVSetAndMirroredTangents)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -555,7 +556,7 @@ TEST(FastGLTFLoaderRegression, PreservesRGBAndRGBAColorsAcrossComponentTypesAndS
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     // RGB and RGBA, each with float/normalized byte/normalized short, tightly packed
     // (with glTF's four-byte vertex alignment) and padded with an accessor offset.
@@ -593,7 +594,7 @@ TEST(FastGLTFLoaderRegression, DecodesInterleavedNormalizedAndSparseVertexAttrib
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 9u);
 
@@ -650,7 +651,7 @@ TEST(FastGLTFLoaderRegression, SplitsSharedVerticesForFlatNormalsAndIgnoresAutho
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     ASSERT_EQ(loader.GetVertices().size(), 9u);
 
@@ -686,7 +687,7 @@ TEST(FastGLTFLoaderRegression, InitializesAndIndexesDefaultMaterialWithAndWithou
 
         asset::FastGLTFLoader loader;
 
-        loader.LoadFromFile(path.string(), &scene);
+        ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
         const zen::HeapVector<sg::Material*> materials = scene.GetComponents<sg::Material>();
 
@@ -729,7 +730,7 @@ TEST(FastGLTFLoaderRegression, SeparatesLinearAndColorUsesOfSharedImagesAndTextu
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
     const zen::HeapVector<sg::Texture*> textures   = scene.GetComponents<sg::Texture>();
 

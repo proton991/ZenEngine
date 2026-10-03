@@ -498,15 +498,9 @@ struct RHICommandWithBindlessEpoch : public RHICommand
     {
         IRHICommandContext* context = cmdList.GetContext();
         context->RHISetRecordedBindlessEpoch(m_bindlessEpoch);
-        try
-        {
-            ExecuteCommand(cmdList);
-        }
-        catch (...)
-        {
-            context->RHISetRecordedBindlessEpoch(0);
-            throw;
-        }
+
+        ExecuteCommand(cmdList);
+
         context->RHISetRecordedBindlessEpoch(0);
     }
 

@@ -1,3 +1,6 @@
+#if defined(ZEN_WIN32)
+#    include <Windows.h>
+#endif
 #include "SceneRendererDemo.h"
 #include "SceneRendererWindowTest.h"
 #include "Graphics/RHI/RHIOptions.h"
@@ -163,16 +166,21 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
 
     UniquePtr<rc::RenderScene> renderScene;
 
-    try
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    scene                                             = MakeUnique<sg::Scene>();
+
+    asset::FastGLTFLoader loader;
+
+    // A failed import keeps the active scene; the loader has already logged the cause.
+    if (!loader.LoadFromFile(path, scene.Get()))
     {
-        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-
-        scene                                             = MakeUnique<sg::Scene>();
-
-        asset::FastGLTFLoader loader;
-
-        loader.LoadFromFile(path, scene.Get());
-
+#if defined(ZEN_RUNTIME_UI)
+        m_modelState.error = loader.GetError();
+#endif
+    }
+    else
+    {
         // A fresh camera prevents an authored orthographic/infinite projection from
         // carrying over when the next model relies on automatic framing.
         camera = sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
@@ -237,14 +245,6 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
                 LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), seconds);
             }
         }
-    }
-    catch (const std::exception& error)
-    {
-        LOGE("Could not load model '{}': {}", path, error.what());
-
-#if defined(ZEN_RUNTIME_UI)
-        m_modelState.error = error.what();
-#endif
     }
 
     if (renderScene)
@@ -1216,6 +1216,13 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 } // namespace
 
 #if !defined(ZEN_SCENE_MODEL_TEST)
+#    if defined(ZEN_WIN32)
+static void ShowFatalErrorDialog(const char* message) noexcept
+{
+    MessageBoxA(nullptr, message, "ZenEngine could not continue", MB_OK | MB_ICONERROR | MB_TASKMODAL);
+}
+#    endif
+
 int main(int argc, char** pArgv)
 {
     using namespace zen;
@@ -1226,6 +1233,13 @@ int main(int argc, char** pArgv)
 
     if (ParseDemoOptions(argc, pArgv, options))
     {
+#    if defined(ZEN_WIN32)
+        if (!options.smokeTest && options.frames == 0)
+        {
+            SetVerificationReporter(&ShowFatalErrorDialog);
+        }
+#    endif
+
         RHIOptions::GetInstance().SetRayTracingEnabled(!options.disableRT);
 
         RHIOptions::GetInstance().SetValidationEnabled(!options.disableValidation);
@@ -1326,6 +1340,20 @@ int main(int argc, char** pArgv)
         {
             result = pDemo->CaptureVoxelGBuffer(options.voxelCapturePath) ? 0 : 1;
         }
+
+#    if defined(ZEN_WIN32)
+        const RHIError terminalError = GetRHIThread().GetFailure();
+
+        if (terminalError.IsFailure() && !options.smokeTest && options.frames == 0)
+        {
+            const std::string message =
+                fmt::format("Rendering stopped: {} (error {}, native {}).",
+                            terminalError.operation != nullptr ? terminalError.operation : "RHI failure",
+                            static_cast<uint32_t>(terminalError.code), terminalError.nativeCode);
+
+            ShowFatalErrorDialog(message.c_str());
+        }
+#    endif
 
         result = pDemo->Destroy(result == 0) ? result : 1;
 

@@ -193,6 +193,7 @@ set(ZEN_CORE_SOURCES
 
     Source/Systems/SceneEditor.cpp
 
+    Source/Graphics/RHI/DynamicRHI.cpp
     Source/Graphics/RHI/RHICommandList.cpp
     Source/Graphics/RHI/RHIResource.cpp
     Source/Graphics/RHI/RHICommandListExecutor.cpp

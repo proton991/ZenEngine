@@ -596,7 +596,6 @@ void DefaultAllocator::DefaultFreeImpl(void* pMem)
 //     void* ptr = DefaultAllocator::Alloc(size);
 //     if (!ptr)
 //     {
-//         throw std::bad_alloc();
 //     }
 //     return ptr;
 // }
@@ -606,7 +605,6 @@ void DefaultAllocator::DefaultFreeImpl(void* pMem)
 //     void* ptr = DefaultAllocator::Alloc(size, static_cast<size_t>(align));
 //     if (!ptr)
 //     {
-//         throw std::bad_alloc();
 //     }
 //     return ptr;
 // }

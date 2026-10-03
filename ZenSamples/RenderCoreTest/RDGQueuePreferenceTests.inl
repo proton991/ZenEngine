@@ -17,6 +17,13 @@ protected:
         CreateTestShaderProgram(device, "intent");
         CaptureVersionGraph(device);
     }
+
+    void TearDown() override
+    {
+        viewport.ReleaseForTeardown();
+
+        RenderCoreTest::TearDown();
+    }
 };
 
 TEST_P(RDGQueuePreferenceTest, DescriptorCopiesCompiledDataAndMetricsPreserveHints)

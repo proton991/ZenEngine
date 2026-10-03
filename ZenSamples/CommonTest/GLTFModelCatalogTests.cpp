@@ -1,8 +1,8 @@
+#include "Utils/Errors.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <stdexcept>
 #include "AssetLib/GLTFModelCatalog.h"
 
 using namespace zen;
@@ -29,7 +29,7 @@ public:
 
         if (!std::filesystem::create_directory(m_root))
         {
-            throw std::runtime_error("Could not create glTF catalog fixture directory");
+            VERIFY_EXPR_MSG(false, "Could not create glTF catalog fixture directory");
         }
     }
 
@@ -52,7 +52,7 @@ public:
 
         if (!file)
         {
-            throw std::runtime_error("Could not write glTF catalog fixture file");
+            VERIFY_EXPR_MSG(false, "Could not write glTF catalog fixture file");
         }
     }
 

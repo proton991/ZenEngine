@@ -24,7 +24,9 @@ VkSurfaceKHR VulkanWindowsPlatform::CreateSurface(VkInstance instance, void* dat
 
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR_AND_THROW("glfwCreateWindowSurface failed: {}", int32_t(result));
+        LOGE("glfwCreateWindowSurface failed: {}", int32_t(result));
+
+        surface = VK_NULL_HANDLE;
     }
 
     return surface;

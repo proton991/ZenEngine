@@ -13,6 +13,7 @@
 #include <utility>
 #include <atomic>
 #include "Utils/Errors.h"
+#include "RHIError.h"
 
 namespace zen
 {
@@ -64,9 +65,15 @@ public:
 
     RHIThread& operator=(const RHIThread&) = delete;
 
+    // Start reopens admission.
     void Start(RHIExecutionMode mode, size_t capacity = 64);
 
+    // A finalizer retires the backend: admission closes when it starts, in both modes, and
+    // stays closed until Start or OpenAdmission. Releases from the finalizer still run.
     void Stop(std::function<void()> finalizer = {});
+
+    // Called when a backend starts without an executor, after an earlier backend was retired.
+    void OpenAdmission();
 
     bool Dispatch(std::function<void()> task, std::function<void()> cancelled = {});
 
@@ -75,6 +82,20 @@ public:
 
     // Optional maintenance work can retry later instead of waiting for queue capacity.
     bool TryDispatch(std::function<void()> task);
+
+    RHIJobAdmissionResult DispatchChecked(std::function<void()> task,
+                                          std::function<void()> cancelled = {},
+                                          bool waitForSpace               = true);
+
+    // Stop normal work and wake producers; ordered cleanup remains admitted.
+    void Fail(RHIError error);
+
+    RHIError GetFailure() const;
+
+    bool HasDeviceLoss() const
+    {
+        return m_deviceLost.load(std::memory_order_acquire);
+    }
 
     void Flush();
 
@@ -98,20 +119,80 @@ public:
                                  : InvokeQueued(std::forward<Function>(function), std::forward<Args>(args)...);
     }
 
+    // Normal jobs have a checked cancellation path. Invoke is reserved for ordered
+    // backend operations/cleanup whose callers already enforce the terminal gate.
+    template <typename Function, typename... Args>
+    RHIResult<std::invoke_result_t<Function, Args...>> InvokeChecked(Function&& function, Args&&... args)
+    {
+        using Value                                                 = std::invoke_result_t<Function, Args...>;
+        using Result                                                = RHIResult<Value>;
+        SharedPtr<std::promise<Result>, MultiThreadCounter> promise = MakeShared<std::promise<Result>, MultiThreadCounter>();
+
+        std::future<Result> future                                  = promise->get_future();
+
+        RefCountPtr<RHIThreadEvent> completion                      = MakeRefCountPtr<RHIThreadEvent>();
+
+        const RHIJobAdmissionResult admission                       = DispatchChecked(
+            [promise, completion,
+             work = std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...)]() mutable noexcept {
+                if constexpr (std::is_void_v<Value>)
+                {
+                    work();
+
+                    promise->set_value(Result{});
+                }
+                else
+                {
+                    promise->set_value(Result(work()));
+                }
+
+                completion->Signal();
+            },
+            [this, promise, completion] {
+                RHIError error = GetFailure();
+
+                if (!error.IsFailure())
+                {
+                    error = MakeRHIError(RHIErrorCode::eCancelled, "RHI invocation admission closed", __FILE__, __LINE__);
+                }
+
+                promise->set_value(Result(error));
+
+                completion->Signal();
+            });
+
+        if (admission)
+        {
+            completion->Wait();
+        }
+
+        return future.get();
+    }
+
 private:
     template <typename Function, typename... Args>
     std::invoke_result_t<Function, Args...> InvokeQueued(Function&& function, Args&&... args)
     {
-        using Result = std::invoke_result_t<Function, Args...>;
-        SharedPtr<std::packaged_task<Result()>, MultiThreadCounter> task =
-            MakeShared<std::packaged_task<Result()>, MultiThreadCounter>(
-                std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...));
-        std::future<Result>         result     = task->get_future();
-        RefCountPtr<RHIThreadEvent> completion = MakeRefCountPtr<RHIThreadEvent>();
-        const bool                  accepted   = DispatchCleanup([task, completion] {
-            (*task)();
-            completion->Signal();
-        });
+        using Result                                                   = std::invoke_result_t<Function, Args...>;
+        SharedPtr<std::promise<Result>, MultiThreadCounter> promise    = MakeShared<std::promise<Result>, MultiThreadCounter>();
+        std::future<Result>                                 result     = promise->get_future();
+        RefCountPtr<RHIThreadEvent>                         completion = MakeRefCountPtr<RHIThreadEvent>();
+        const bool                                          accepted   = DispatchCleanup(
+            [promise, completion,
+             work = std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...)]() mutable noexcept {
+                if constexpr (std::is_void_v<Result>)
+                {
+                    work();
+
+                    promise->set_value();
+                }
+                else
+                {
+                    promise->set_value(work());
+                }
+
+                completion->Signal();
+            });
         VERIFY_EXPR_MSG(accepted, "Synchronous RHI invocation after cleanup admission closed");
         completion->Wait();
         return result.get();
@@ -126,14 +207,18 @@ private:
         bool                  cleanup{false};
     };
 
-    bool Enqueue(Task task, bool waitForSpace);
+    RHIJobAdmissionResult Enqueue(Task task, bool waitForSpace);
+
+    RHIJobAdmissionResult Push(const Task& task, bool waitForSpace);
+
+    void ExecuteFinalizer(std::function<void()> finalizer);
 
     void ExecuteTask(Task& task) noexcept;
 
     static void Fence();
 
     std::thread                    m_worker;
-    std::mutex                     m_mutex;
+    mutable std::mutex             m_mutex;
     std::condition_variable        m_available;
     RHIThreadEvent                 m_space{true};
     Queue<Task>                    m_tasks;
@@ -142,7 +227,9 @@ private:
     std::atomic<bool>              m_stopping{false};
     std::atomic<bool>              m_threaded{false};
     std::atomic<bool>              m_taskFailed{false};
-    bool                           m_cleanupClosed{false};
+    std::atomic<bool>              m_deviceLost{false};
+    RHIError                       m_failure{};
+    std::atomic<bool>              m_cleanupClosed{false};
     static thread_local RHIThread* s_current;
 };
 

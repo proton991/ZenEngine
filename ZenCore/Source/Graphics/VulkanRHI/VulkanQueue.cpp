@@ -28,6 +28,9 @@ VulkanQueue::VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex, uint32_t q
     if (m_pDevice->SupportsTimelineSemaphore())
     {
         m_pTimelineSemaphore = ZEN_NEW() VulkanSemaphore(m_pDevice, VK_SEMAPHORE_TYPE_TIMELINE, 0);
+
+        VERIFY_EXPR_MSG_F(!m_pTimelineSemaphore->GetError().IsFailure(),
+                          "Required queue timeline semaphore creation failed: {}", m_pTimelineSemaphore->GetError().nativeCode);
     }
 }
 
@@ -239,7 +242,7 @@ bool VulkanQueue::CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload, con
 
 static RHISubmissionResult SubmissionFailure(VkResult result, bool submittedPrefix)
 {
-    ReportVulkanDeviceLoss(result, "vkQueueSubmit");
+    GVulkanRHI->SetSubmissionError(MakeVulkanError(result, "vkQueueSubmit", __FILE__, __LINE__));
 
     LOGE("Vulkan queue submission failed: {} (submitted prefix: {})", int32_t(result), submittedPrefix);
 
@@ -736,7 +739,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
             {
                 LOGE("Vulkan queue {} completion query/wait failed: {}", m_familyIndex, int32_t(result));
 
-                GVulkanRHI->BlockSubmissions();
+                GVulkanRHI->BlockSubmissions(MakeVulkanError(result, "queue completion", __FILE__, __LINE__));
 
                 ReportVulkanDeviceLoss(result, "queue completion");
             }

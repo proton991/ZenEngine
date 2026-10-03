@@ -1,6 +1,6 @@
 # RHI production readiness: R22 verification
 
-Status: Implemented, 2026-10-03. Part of [RHIProductionTODO.md](RHIProductionTODO.md#r22-fixed-bindless-heap-capacity). Based on `ee20bf99` plus this change; not committed.
+Status: Implemented, 2026-10-03, in commit `8b59a3d0`. Part of [RHIProductionTODO.md](RHIProductionTODO.md#r22-fixed-bindless-heap-capacity). Based on `ee20bf99`.
 
 ## Result
 
@@ -53,6 +53,30 @@ Additional Release checks under the same environment:
 - `--mode=3 --async-compute=1 --smoke-test --frames=44 --fixed-step --vsync=0 --bindless-textures=4096 --bindless-samplers=256`, with `--rhi-thread=1` and `--rhi-thread=0`: both exit 0 and log `Bindless heaps: 4096 2D textures, 64 cube textures, 256 samplers`, with no validation messages.
 - `--bindless-textures=0` exits 1 and prints the usage line, which lists both new flags.
 - Default-heap captures (`--mode=1/2/3 --frames=8 --fixed-step --vsync=0 --capture=...`) are byte-identical to captures from a Release build of `ee20bf99` taken the same way, both before and after switching the scene rejection from an exception to an abort. SHA-256 for modes 1, 2 and 3: `2f9890cd…`, `08b5aa62…`, `8d81caff…`. They differ from the older R5 baseline hashes because `ee20bf99` changed automatic camera framing, not because of this change.
+
+## Follow-up verification, 2026-10-03
+
+The implementation and all four done-when conditions were rechecked after commit `8b59a3d0`. No further R22 code changes were needed.
+
+| Focused check | Result |
+| --- | --- |
+| Debug `VulkanRHIIntegrationTest`: the four R22 tests listed above | 4 passed; no validation or synchronization-validation messages |
+| Release `VulkanRHIIntegrationTest`: the same four tests | 4 passed; no validation or synchronization-validation messages |
+| Release `RenderCoreTest`: `RenderCoreBindlessCapacityTest.*` | 2 passed |
+| Debug `RenderCoreTest` rebuild | Initially blocked by existing uncommitted changes: `DynamicRHI`'s constructor and destructor moved to `RHIFactory.cpp`, which this target does not link. Resolved by the build fix below. |
+
+The Debug integration target was up to date with the working tree. Release checks used the existing binaries from the original R22 verification, without rebuilding the unrelated working-tree changes. GPU runs used the same overlay exclusion and validation environment as the original verification. Commands, logs and results are in `build/rhi-production/r22-recheck-20261003/`. This focused rerun does not replace the original full-suite and smoke results above.
+
+### Debug build fix, 2026-10-03
+
+Moved the unchanged `DynamicRHI` constructor and destructor into `DynamicRHI.cpp`, compiled by both `ZenCore` and `RenderCoreTest`. The test target keeps its fake backend factory and does not link the Vulkan factory.
+
+- The full `x64-windows-msvc-debug` build passes, including `RenderCoreTest` and `scene_renderer_demo`.
+- `RenderCoreBindlessCapacityTest.*`, `RHIThreadTest.*` and `*RHILateRelease*`: 13 passed, including both R22 unit tests.
+- The four R22 GPU integration tests pass again with validation and synchronization validation enabled, with no validation errors.
+- The initial full Debug `RenderCoreTest` run exited with code 3 during `RenderCoreEnvironmentTest.EnvironmentReplacementRetainsAndRetiresAllOutputs`: `Resource released after RHI cleanup admission closed`. R23 subsequently fixed the fixture cleanup order while preserving the ownership check. Its final Debug and Release runs each pass all 554 RenderCore tests; see [R23 verification](RHIProductionR23Verification.md).
+
+Logs and results: `build/rhi-production/dynamic-rhi-link-fix-20261003/`.
 
 ## Limits
 

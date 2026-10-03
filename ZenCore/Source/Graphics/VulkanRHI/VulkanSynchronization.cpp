@@ -18,6 +18,10 @@ VulkanFence::VulkanFence(VulkanFenceManager* pOwner, bool createSignaled) :
 
     if (result != VK_SUCCESS)
     {
+        m_fence = VK_NULL_HANDLE;
+
+        ReportVulkanDeviceLoss(result, "vkCreateFence");
+
         LOGE("vkCreateFence failed: {}", GetResultString(result));
     }
 }
@@ -140,7 +144,8 @@ void VulkanFenceManager::ResetFence(VulkanFence* pFence)
 {
     if (pFence->m_state != VulkanFence::State::eInitial)
     {
-        VKCHECK(vkResetFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence));
+        VERIFY_EXPR_MSG_F((vkResetFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence)) == VK_SUCCESS,
+                          "Vulkan operation failed: vkResetFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence)");
 
         pFence->m_state = VulkanFence::State::eInitial;
     }
@@ -177,14 +182,13 @@ VulkanSemaphore::VulkanSemaphore(VulkanDevice* pDevice, VkSemaphoreType semaphor
 
     const VkResult result = vkCreateSemaphore(m_pDevice->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore);
 
-    if (result != VK_SUCCESS)
-    {
-        if (result == VK_ERROR_DEVICE_LOST && GVulkanRHI && GVulkanRHI->GetDevice() == m_pDevice)
-        {
-            GVulkanRHI->BlockSubmissions();
-        }
+    m_error               = MakeVulkanError(result, "vkCreateSemaphore", __FILE__, __LINE__);
 
-        LOG_ERROR_AND_THROW("vkCreateSemaphore failed: {}", int32_t(result));
+    if (m_error.IsFailure())
+    {
+        m_semaphore = VK_NULL_HANDLE;
+
+        LOGE("vkCreateSemaphore failed: {}", int32_t(result));
     }
 }
 
@@ -277,11 +281,20 @@ VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
     {
         VulkanSemaphore* pNewSem = ZEN_NEW() VulkanSemaphore(m_pDevice);
 
-        m_usedSemaphores.push_back(pNewSem);
+        m_error                  = pNewSem->GetError();
+
+        if (!m_error.IsFailure())
+        {
+            m_usedSemaphores.push_back(pNewSem);
 #if defined(ZEN_DEBUG)
-        m_allocatedSemaphoreCount++;
+            m_allocatedSemaphoreCount++;
 #endif
-        result = pNewSem;
+            result = pNewSem;
+        }
+        else
+        {
+            ZEN_DELETE(pNewSem);
+        }
     }
 
     return result;
@@ -295,7 +308,7 @@ void VulkanSemaphoreManager::DestroySemaphore(VulkanSemaphore*& sem)
 
         if (it == m_usedSemaphores.end())
         {
-            LOG_ERROR_AND_THROW("Cannot destroy a semaphore not owned by this manager");
+            VERIFY_EXPR_MSG_F(false, "Cannot destroy a semaphore not owned by this manager");
         }
 
         m_usedSemaphores.erase(it);

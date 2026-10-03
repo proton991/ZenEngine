@@ -16,7 +16,7 @@ TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
 
     RHIShaderGroupInfo info{};
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     ASSERT_EQ(info.SRDTable.size(), 2u);
 
@@ -78,7 +78,7 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
 
     RHIShaderGroupInfo info{};
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     const uint32_t bindingCounts[] = {2, 1, 0, 6, 1};
 
@@ -115,7 +115,7 @@ TEST(ShaderReflectionTests, SparseDescriptorSetsPreserveTheirShaderSetNumbers)
 
     RHIShaderGroupInfo info{};
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     ASSERT_EQ(info.SRDTable.size(), 4u);
 
@@ -148,7 +148,7 @@ RHIShaderGroupInfo ReflectStage(RHIShaderStage stage, const char* path)
 
     RHIShaderGroupInfo info{};
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     return info;
 }
@@ -319,7 +319,7 @@ TEST(ShaderReflectionTests, SharedSpecializationIdsMergeStagesAndKeepNewConstant
 
     RHIShaderGroupInfo info{};
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     ASSERT_EQ(info.specializationConstants.size(), 3u);
 
@@ -361,7 +361,7 @@ TEST(ShaderReflectionTests, StorageQualifiersAndMemberAccessAreReflectedFromSPIR
 
     RHIShaderGroupInfo info;
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     ExpectAccess(info, "ReadBlock", true, false);
 
@@ -422,7 +422,7 @@ TEST(ShaderReflectionTests, SharedBindingAccessIsUnionedInEitherStageMergeOrder)
 
         RHIShaderGroupInfo info;
 
-        RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+        EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
         ASSERT_EQ(info.SRDTable.size(), 1u);
 
@@ -469,7 +469,7 @@ TEST(ShaderReflectionTests, SharedBindingAccessIsUnionedInEitherStageMergeOrder)
 
     RHIShaderGroupInfo info;
 
-    RHIShaderUtil::ReflectShaderGroupInfo(both, info);
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(both, info));
 
     ExpectAccess(info, "SharedBuffer", true, true);
 }
@@ -663,5 +663,68 @@ TEST(ShaderReflectionTests, VoxelVolumeWorkgroupsExposeSpecializationAndSafeDefa
         EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_Y_ID]);
 
         EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_Z_ID]);
+    }
+}
+
+TEST(ShaderReflectionTests, CorruptInputDoesNotPublishPartialReflection)
+{
+    RHIShaderGroupSPIRVPtr spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+
+    spirv->SetStageSPIRV(RHIShaderStage::eCompute, HeapVector<uint8_t>{0, 1, 2, 3});
+
+    RHIShaderGroupInfo info;
+
+    info.vertexBindingStride = 123;
+
+    EXPECT_FALSE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+
+    EXPECT_EQ(info.vertexBindingStride, 123u);
+}
+
+TEST(ShaderReflectionTests, UnsupportedMetadataFailsBeforePublication)
+{
+    RHIShaderGroupInfo info;
+
+    SpvReflectShaderModule module{};
+
+    module.push_constant_block_count = 2;
+
+    EXPECT_FALSE(ParseSpvPushConstants(RHIShaderStage::eCompute, &module, info));
+
+    SpvReflectTypeDescription type{};
+
+    type.op                          = SpvOpTypeFloat;
+
+    type.traits.numeric.scalar.width = 64;
+
+    double value                     = 1.0;
+
+    SpvReflectSpecializationConstant constant{};
+
+    constant.type_description   = &type;
+
+    constant.default_value      = &value;
+
+    constant.default_value_size = sizeof(value);
+
+    module.spec_constant_count  = 1;
+
+    module.spec_constants       = &constant;
+
+    EXPECT_FALSE(ParseSpvSpecializationConstant(RHIShaderStage::eCompute, &module, info));
+
+    EXPECT_TRUE(info.specializationConstants.empty());
+
+    for (SpvReflectDescriptorType unsupported :
+         {SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
+          SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR})
+    {
+        SpvReflectDescriptorBinding binding{};
+
+        binding.descriptor_type = unsupported;
+
+        RHIShaderResourceDescriptor descriptor{};
+
+        EXPECT_FALSE(ParseSpvReflectDescriptorBinding(binding, descriptor));
     }
 }

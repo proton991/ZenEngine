@@ -1,6 +1,10 @@
 #pragma once
+#include <atomic>
+#include <filesystem>
 #include <vector>
 #include <map>
+#include <mutex>
+#include <string>
 #include <fastgltf/core.hpp>
 #include <fastgltf/types.hpp>
 #include <fastgltf/tools.hpp>
@@ -18,12 +22,41 @@ class Mesh;
 
 namespace zen::asset
 {
+// The first content error of one import. Texture-decoding workers report through it too,
+// and each import stage skips its work once an error is recorded.
+class GltfImportErrors
+{
+public:
+    // Later failures keep the first message.
+    void Fail(std::string message);
+
+    bool Failed() const;
+
+    std::string Message() const;
+
+    void Reset();
+
+private:
+    mutable std::mutex m_mutex;
+    std::string        m_message;
+    std::atomic<bool>  m_failed{false};
+};
+
 class FastGLTFLoader
 {
 public:
     FastGLTFLoader();
 
-    void LoadFromFile(const std::string& path, sg::Scene* pScene);
+    // Invalid or unsupported content returns false and leaves *pScene and the loaded geometry
+    // unchanged; GetError then describes the first problem. A null scene is a caller error and
+    // stops the process.
+    [[nodiscard]] bool LoadFromFile(const std::string& path, sg::Scene* pScene);
+
+    // Empty after a successful import.
+    std::string GetError() const
+    {
+        return m_errors.Message();
+    }
 
     const std::vector<Vertex>& GetVertices() const
     {
@@ -36,6 +69,10 @@ public:
     }
 
 private:
+    void ImportFile(const std::filesystem::path& filePath, bool binary, sg::Scene* pScene);
+
+    void ImportAsset(sg::Scene* pScene);
+
     void LoadGltfSamplers(sg::Scene* pScene);
 
     void LoadGltfTextures(sg::Scene* pScene);
@@ -71,7 +108,7 @@ private:
                        HeapVector<Vertex>&        vertices,
                        HeapVector<uint32_t>&      indices,
                        HeapVector<uint32_t>&      sourceVertices,
-                       bool&                      flatNormals) const;
+                       bool&                      flatNormals);
 
     void CloneDeformedMesh(uint32_t meshIndex, sg::Node& node, sg::Scene* pScene);
 
@@ -95,5 +132,7 @@ private:
     // vertices and indices
     std::vector<Vertex>   m_vertices;
     std::vector<uint32_t> m_indices;
+
+    GltfImportErrors m_errors;
 };
 } // namespace zen::asset

@@ -1,7 +1,6 @@
 #include "Graphics/RHI/RHIThread.h"
 #include "Utils/Errors.h"
 #include <algorithm>
-#include <stdexcept>
 #if defined(ZEN_WIN32)
 #    include <Windows.h>
 #endif
@@ -46,7 +45,7 @@ void WaitForRHIObject(HANDLE handle)
         }
         else
         {
-            LOG_ERROR_AND_THROW("RHI object wait failed: {}", GetLastError());
+            VERIFY_EXPR_MSG_F(false, "RHI object wait failed: {}", GetLastError());
         }
     }
 }
@@ -60,7 +59,7 @@ RHIThreadEvent::RHIThreadEvent(bool signaled)
 
     if (m_handle == nullptr)
     {
-        LOG_ERROR_AND_THROW("Cannot create RHI event: {}", GetLastError());
+        VERIFY_EXPR_MSG_F(false, "Cannot create RHI event: {}", GetLastError());
     }
 #else
     m_signaled = signaled;
@@ -138,6 +137,10 @@ void RHIThread::Start(RHIExecutionMode mode, size_t capacity)
 
     m_cleanupClosed = false;
 
+    m_failure       = {};
+
+    m_deviceLost.store(false, std::memory_order_release);
+
     m_taskFailed.store(false, std::memory_order_release);
 
     m_space.Signal();
@@ -152,10 +155,11 @@ void RHIThread::Start(RHIExecutionMode mode, size_t capacity)
 
 void RHIThread::Stop(std::function<void()> finalizer)
 {
+    const bool retiresBackend = static_cast<bool>(finalizer);
+
     if (m_worker.joinable())
     {
         VERIFY_EXPR(s_current != this);
-
         {
             std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -171,127 +175,201 @@ void RHIThread::Stop(std::function<void()> finalizer)
         WaitForRHIObject(m_worker.native_handle());
 #endif
         m_worker.join();
+
+        // The worker closed admission before its finalizer. Without one no backend was
+        // retired, so later work runs inline as it did before Start.
+        m_cleanupClosed.store(retiresBackend, std::memory_order_release);
     }
-    else if (finalizer)
+    else if (retiresBackend)
     {
-        Task task{std::move(finalizer), {}, true};
+        // Inline mode closes admission at the same boundary as the worker.
+        m_cleanupClosed.store(true, std::memory_order_release);
 
-        ExecuteTask(task);
+        ExecuteFinalizer(std::move(finalizer));
     }
 
-    // Standalone inline backends remain supported after an executor lifetime.
-    // Its finalizer must destroy every native resource before returning.
+    // A standalone inline backend can follow an executor once it reopens admission.
+    // The finalizer must destroy every native resource before returning.
     m_threaded.store(false, std::memory_order_release);
+}
+
+void RHIThread::OpenAdmission()
+{
+    // A running worker keeps admission open until its own Stop.
+    if (!m_worker.joinable())
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        m_failure = {};
+
+        m_taskFailed.store(false, std::memory_order_release);
+
+        m_deviceLost.store(false, std::memory_order_release);
+
+        m_cleanupClosed.store(false, std::memory_order_release);
+    }
+}
+
+void RHIThread::ExecuteFinalizer(std::function<void()> finalizer)
+{
+    // Releases from the finalizer are RHI-thread work, as they are on the worker.
+    RHIThread* previous = s_current;
+
+    s_current           = this;
+
+    Task task{std::move(finalizer), {}, true};
+
+    ExecuteTask(task);
+
+    s_current = previous;
 }
 
 bool RHIThread::Dispatch(std::function<void()> task, std::function<void()> cancelled)
 {
-    return Enqueue({std::move(task), std::move(cancelled), false}, true);
+    return static_cast<bool>(DispatchChecked(std::move(task), std::move(cancelled)));
 }
 
 bool RHIThread::DispatchCleanup(std::function<void()> task)
 {
-    return Enqueue({std::move(task), {}, true}, true);
+    return static_cast<bool>(Enqueue({std::move(task), {}, true}, true));
 }
 
 bool RHIThread::TryDispatch(std::function<void()> task)
 {
-    return Enqueue({std::move(task), {}, false}, false);
+    return static_cast<bool>(DispatchChecked(std::move(task), {}, false));
 }
 
-bool RHIThread::Enqueue(Task task, bool waitForSpace)
+RHIJobAdmissionResult RHIThread::DispatchChecked(std::function<void()> task, std::function<void()> cancelled, bool waitForSpace)
 {
-    bool accepted = false;
+    return Enqueue({std::move(task), std::move(cancelled), false}, waitForSpace);
+}
 
-    if (!m_threaded.load(std::memory_order_acquire) || s_current == this)
+void RHIThread::Fail(RHIError error)
+{
+    VERIFY_EXPR(error.IsFailure());
     {
-        ExecuteTask(task);
+        std::lock_guard<std::mutex> lock(m_mutex);
 
-        accepted = true;
+        if (!m_failure.IsFailure())
+        {
+            m_failure = error;
+        }
+
+        m_taskFailed.store(true, std::memory_order_release);
+
+        if (error.code == RHIErrorCode::eDeviceLost)
+        {
+            m_deviceLost.store(true, std::memory_order_release);
+        }
+
+        m_space.Signal();
+    }
+
+    m_available.notify_all();
+}
+
+RHIError RHIThread::GetFailure() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    return m_failure;
+}
+
+RHIJobAdmissionResult RHIThread::Enqueue(Task task, bool waitForSpace)
+{
+    RHIJobAdmissionResult result;
+
+    if (s_current == this || !m_threaded.load(std::memory_order_acquire))
+    {
+        if (!task.cleanup && HasTaskFailure())
+        {
+            result = {RHIJobAdmission::eFailed, GetFailure()};
+        }
+        else if (s_current == this || !m_cleanupClosed.load(std::memory_order_acquire))
+        {
+            result.admission = RHIJobAdmission::eAccepted;
+
+            ExecuteTask(task);
+        }
     }
     else
     {
-        std::unique_lock<std::mutex> lock(m_mutex);
+        result = Push(task, waitForSpace);
+    }
 
-        while (waitForSpace && !task.cleanup && !m_stopping && m_tasks.Size() >= m_capacity)
+    if (!result)
+    {
+        if (!result.error.IsFailure())
         {
-            lock.unlock();
-
-            m_space.Wait();
-
-            lock.lock();
+            result.error = MakeRHIError(RHIErrorCode::eCancelled, "RHI job admission", __FILE__, __LINE__);
         }
 
-        // Cleanup bypasses capacity so final releases cannot deadlock a draining worker.
-        accepted = task.cleanup ? !m_cleanupClosed : !m_stopping && m_tasks.Size() < m_capacity;
-
-        if (accepted)
+        if (task.cancelled)
         {
-            m_tasks.Push(task);
-
-            if (m_tasks.Size() >= m_capacity)
-            {
-                m_space.Reset();
-            }
-        }
-
-        lock.unlock();
-
-        if (accepted)
-        {
-            m_available.notify_one();
-        }
-        else if (task.cancelled)
-        {
-            // Admission rejection completes the caller's event without a queued job.
             Task cancellation{std::move(task.cancelled), {}, true};
 
             ExecuteTask(cancellation);
         }
     }
 
-    return accepted;
+    return result;
+}
+
+RHIJobAdmissionResult RHIThread::Push(const Task& task, bool waitForSpace)
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+
+    while (waitForSpace && !task.cleanup && !m_stopping && !m_taskFailed && m_tasks.Size() >= m_capacity)
+    {
+        lock.unlock();
+
+        m_space.Wait();
+
+        lock.lock();
+    }
+
+    RHIJobAdmissionResult result;
+
+    if (!task.cleanup && m_taskFailed)
+    {
+        result = {RHIJobAdmission::eFailed, m_failure};
+    }
+    else if (task.cleanup ? !m_cleanupClosed : !m_stopping)
+    {
+        result.admission =
+            task.cleanup || m_tasks.Size() < m_capacity ? RHIJobAdmission::eAccepted : RHIJobAdmission::eQueueFull;
+    }
+
+    // Cleanup bypasses capacity so final releases cannot deadlock a draining worker.
+    if (result)
+    {
+        m_tasks.Push(task);
+
+        if (m_tasks.Size() >= m_capacity && !m_taskFailed)
+        {
+            m_space.Reset();
+        }
+    }
+
+    lock.unlock();
+
+    if (result)
+    {
+        m_available.notify_one();
+    }
+
+    return result;
 }
 
 void RHIThread::ExecuteTask(Task& task) noexcept
 {
-    bool cancelling = false;
-
-    try
+    if (task.cleanup || !HasTaskFailure())
     {
-        if (task.cleanup || !m_taskFailed.load(std::memory_order_acquire))
-        {
-            task.execute();
-        }
-        else if (task.cancelled)
-        {
-            cancelling = true;
-
-            task.cancelled();
-        }
+        task.execute();
     }
-    catch (...)
+    else if (task.cancelled)
     {
-        m_taskFailed.store(true, std::memory_order_release);
-
-        std::fprintf(stderr, "ZenEngine: exception contained at RHI task boundary\n");
-
-        if (task.cleanup || cancelling)
-        {
-            VerificationFailure("RHI cleanup or cancellation", __FILE__, __LINE__);
-        }
-
-        if (task.cancelled)
-        {
-            try
-            {
-                task.cancelled();
-            }
-            catch (...)
-            {
-                VerificationFailure("RHI task cancellation", __FILE__, __LINE__);
-            }
-        }
+        task.cancelled();
     }
 }
 
@@ -314,7 +392,8 @@ bool RHIThread::IsThreaded() const
 
 bool RHIThread::IsCurrentThread() const
 {
-    return !m_threaded.load(std::memory_order_acquire) || s_current == this;
+    return s_current == this
+        || (!m_threaded.load(std::memory_order_acquire) && !m_cleanupClosed.load(std::memory_order_acquire));
 }
 
 void RHIThread::CheckOwnership() const
@@ -333,7 +412,6 @@ void RHIThread::Run()
     while (!finished)
     {
         Task task;
-
         {
             std::unique_lock<std::mutex> lock(m_mutex);
 

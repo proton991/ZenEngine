@@ -5,6 +5,7 @@
 #include "Utils/Helpers.h"
 #include "Utils/Errors.h"
 #include "Templates/HashMap.h"
+#include "RHIError.h"
 #include "RHIThread.h"
 
 namespace zen
@@ -64,8 +65,9 @@ public:
         if (newValue == 0)
         {
             std::atomic_thread_fence(std::memory_order_acquire);
+            // A rejected release never reaches the destroyed backend; non-strict checks leak the object.
             const bool accepted = GetRHIThread().DispatchCleanup([this] { Destroy(); });
-            VERIFY_EXPR_MSG(accepted, "Resource released after RHI cleanup admission closed");
+            VerifyTeardownOwnership(accepted, "Resource released after RHI cleanup admission closed", __FILE__, __LINE__);
         }
 
         return newValue;
@@ -214,11 +216,30 @@ class RHITexture;
 class RHIViewport : public RHIResource
 {
 public:
-    virtual ~RHIViewport()                                              = default;
+    virtual ~RHIViewport()                                   = default;
 
-    virtual void PrepareForPresent(RHICommandList* pCmdList)            = 0;
+    virtual void PrepareForPresent(RHICommandList* pCmdList) = 0;
 
-    virtual bool Present()                                              = 0;
+    virtual bool Present()                                   = 0;
+
+    virtual RHIStatus PrepareForPresentChecked(RHICommandList* commands)
+    {
+        PrepareForPresent(commands);
+
+        return {};
+    }
+
+    virtual RHIPresentResult PresentChecked()
+    {
+        const bool presented = Present();
+
+        return {NeedsRecreation() ? RHISurfaceOutcome::eRecreate
+                : presented       ? RHISurfaceOutcome::eReady
+                                  : RHISurfaceOutcome::eIncomplete,
+                presented ? RHIPresentAcceptance::eEnqueued : RHIPresentAcceptance::eNotAttempted,
+                {},
+                presented};
+    }
 
     virtual uint32_t GetWidth() const                                   = 0;
 
@@ -563,6 +584,9 @@ class RHIShader;
 
 struct RHIShaderCreateInfo
 {
+    // Specialization reuses owned bytecode/reflection from an already validated shader.
+    RHIShaderGroupSPIRVPtr                          spirv;
+    std::optional<RHIShaderGroupInfo>               reflection;
     std::string                                     spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits>                stageFlags;
     HashMap<uint32_t, RHIShaderSpecializationValue> specializationConstants;
@@ -582,6 +606,10 @@ public:
         info.stageFlags              = m_shaderStageFlags;
         info.specializationConstants = m_specializationConstants;
         info.name                    = m_name;
+
+        info.spirv                   = m_shaderGroupSPIRV;
+
+        info.reflection              = m_reflection;
 
         return info;
     }
@@ -623,7 +651,8 @@ public:
 protected:
     explicit RHIShader(const RHIShaderCreateInfo& createInfo) :
         RHIResource(RHIResourceType::eShader),
-        m_shaderGroupSPIRV(MakeRefCountPtr<RHIShaderGroupSPIRV>()),
+        m_shaderGroupSPIRV(createInfo.spirv ? createInfo.spirv : MakeRefCountPtr<RHIShaderGroupSPIRV>()),
+        m_reflection(createInfo.reflection),
         m_shaderStageFlags(createInfo.stageFlags),
         m_specializationConstants(createInfo.specializationConstants),
         m_SRDCount(ToUnderlying(RHIShaderResourceType::eMax)),
@@ -631,10 +660,14 @@ protected:
     {
         std::ranges::copy(createInfo.spirvFileName, std::begin(m_spirvFileName));
 
-        m_shaderGroupSPIRV->SetStageFlags(m_shaderStageFlags);
+        if (!createInfo.spirv)
+        {
+            m_shaderGroupSPIRV->SetStageFlags(m_shaderStageFlags);
+        }
     }
 
     RHIShaderGroupSPIRVPtr                                           m_shaderGroupSPIRV{};
+    std::optional<RHIShaderGroupInfo>                                m_reflection;
     std::string                                                      m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits>                                 m_shaderStageFlags;
     HashMap<uint32_t, RHIShaderSpecializationValue>                  m_specializationConstants;
@@ -667,7 +700,7 @@ struct RHIRenderingLayout
     {
         if (int64_t(offsetX) + width > INT32_MAX || int64_t(offsetY) + height > INT32_MAX)
         {
-            LOG_ERROR_AND_THROW("Render area exceeds the RHI coordinate range");
+            VERIFY_EXPR_MSG_F(false, "Render area exceeds the RHI coordinate range");
         }
         renderArea.minX = offsetX;
         renderArea.maxX = static_cast<int32_t>(int64_t(offsetX) + width);
@@ -684,7 +717,7 @@ struct RHIRenderingLayout
     {
         if (numColorRenderTargets >= MAX_NUM_COLOR_ATTACHMENTS)
         {
-            LOG_ERROR_AND_THROW("Too many color attachments");
+            VERIFY_EXPR_MSG_F(false, "Too many color attachments");
         }
         RHIRenderTarget colorRT;
         colorRT.format     = format;
@@ -715,7 +748,7 @@ struct RHIRenderingLayout
     {
         if (pView == nullptr)
         {
-            LOG_ERROR_AND_THROW("Color attachment view is null");
+            VERIFY_EXPR_MSG_F(false, "Color attachment view is null");
         }
         const uint32_t previousLayers  = numLayers;
         const bool     firstAttachment = GetTotalNumRenderTargets() == 0;
@@ -751,7 +784,7 @@ struct RHIRenderingLayout
     {
         if (pView == nullptr)
         {
-            LOG_ERROR_AND_THROW("Depth/stencil attachment view is null");
+            VERIFY_EXPR_MSG_F(false, "Depth/stencil attachment view is null");
         }
         if (!hasDepthStencilRT)
         {

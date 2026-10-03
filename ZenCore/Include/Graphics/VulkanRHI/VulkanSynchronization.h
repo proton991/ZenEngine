@@ -88,6 +88,11 @@ public:
 
     virtual ~VulkanSemaphore();
 
+    const RHIError& GetError() const
+    {
+        return m_error;
+    }
+
     VkSemaphore GetVkHandle() const
     {
         return m_semaphore;
@@ -126,6 +131,7 @@ private:
     const VulkanQueue* m_pSignalQueue{nullptr};
     uint64_t           m_signalSubmissionSerial{0};
     uint64_t           m_signalGeneration{0};
+    RHIError           m_error{};
 };
 
 class VulkanSemaphoreManager
@@ -137,6 +143,11 @@ public:
 
     VulkanSemaphore* GetOrCreateSemaphore();
 
+    const RHIError& GetLastError() const
+    {
+        return m_error;
+    }
+
     void ReleaseSemaphore(VulkanSemaphore*& sem);
 
     // The caller must prove all semaphore operations have completed. Unlike recycling,
@@ -147,6 +158,7 @@ private:
     VulkanDevice*                m_pDevice{nullptr};
     HeapVector<VulkanSemaphore*> m_usedSemaphores;
     std::queue<VulkanSemaphore*> m_freeSemaphores;
+    RHIError                     m_error{};
 #if defined(ZEN_DEBUG)
     uint32_t m_allocatedSemaphoreCount{0};
 #endif

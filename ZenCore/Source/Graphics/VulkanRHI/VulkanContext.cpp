@@ -398,7 +398,8 @@ static HeapVector<VulkanLayer> GetSupportedLayers()
 
     uint32_t count = 0;
 
-    VKCHECK(vkEnumerateInstanceLayerProperties(&count, nullptr));
+    VERIFY_EXPR_MSG_F((vkEnumerateInstanceLayerProperties(&count, nullptr)) == VK_SUCCESS,
+                      "Vulkan operation failed: vkEnumerateInstanceLayerProperties(&count, nullptr)");
 
     if (count > 0)
     {
@@ -406,7 +407,8 @@ static HeapVector<VulkanLayer> GetSupportedLayers()
 
         layerProperties.resize(count);
 
-        VKCHECK(vkEnumerateInstanceLayerProperties(&count, layerProperties.data()));
+        VERIFY_EXPR_MSG_F((vkEnumerateInstanceLayerProperties(&count, layerProperties.data())) == VK_SUCCESS,
+                          "Vulkan operation failed: vkEnumerateInstanceLayerProperties(&count, layerProperties.data())");
 
         for (uint32_t i = 0; i < count; i++)
         {
@@ -580,7 +582,7 @@ void VulkanRHI::CreateInstance()
 
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR_AND_THROW("vkCreateInstance failed: {}", int32_t(result));
+        VERIFY_EXPR_MSG_F(false, "vkCreateInstance failed: {}", int32_t(result));
     }
 
     volkLoadInstance(m_instance);
@@ -592,7 +594,7 @@ void VulkanRHI::CreateInstance()
 
         if (messengerResult != VK_SUCCESS)
         {
-            LOG_ERROR_AND_THROW("vkCreateDebugUtilsMessengerEXT failed: {}", int32_t(messengerResult));
+            VERIFY_EXPR_MSG_F(false, "vkCreateDebugUtilsMessengerEXT failed: {}", int32_t(messengerResult));
         }
     }
 
@@ -609,7 +611,7 @@ void VulkanRHI::SelectGPU()
 
     if (result != VK_SUCCESS || gpuCount == 0)
     {
-        LOG_ERROR_AND_THROW("No Vulkan physical devices are available (result {})", int32_t(result));
+        VERIFY_EXPR_MSG_F(false, "No Vulkan physical devices are available (result {})", int32_t(result));
     }
 
     HeapVector<VkPhysicalDevice> physicalDevices;
@@ -620,7 +622,7 @@ void VulkanRHI::SelectGPU()
 
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR_AND_THROW("vkEnumeratePhysicalDevices failed: {}", int32_t(result));
+        VERIFY_EXPR_MSG_F(false, "vkEnumeratePhysicalDevices failed: {}", int32_t(result));
     }
 
     uint32_t selectedIndex   = 0;
@@ -628,6 +630,8 @@ void VulkanRHI::SelectGPU()
     bool foundValidCandidate = false;
 
     VulkanPhysicalDeviceCandidateInfo selectedCandidateInfo{};
+
+    std::string rejectionReasons;
 
     for (uint32_t i = 0; i < physicalDevices.size(); i++)
     {
@@ -639,6 +643,8 @@ void VulkanRHI::SelectGPU()
         if (!candidateInfo.isValid)
         {
             LOGW("Rejecting GPU '{}': {}", candidateInfo.properties.deviceName, candidateInfo.unsupportedReason);
+
+            rejectionReasons += fmt::format("{}: {}\n", candidateInfo.properties.deviceName, candidateInfo.unsupportedReason);
 
             continue;
         }
@@ -668,8 +674,9 @@ void VulkanRHI::SelectGPU()
 
     if (!foundValidCandidate)
     {
-        LOG_ERROR_AND_THROW(
-            "No Vulkan device satisfies the required Vulkan 1.2, dynamic rendering and descriptor indexing profile; see rejection reasons above.");
+        VERIFY_EXPR_MSG_F(
+            false, "No Vulkan device satisfies the required Vulkan 1.2, dynamic rendering and descriptor indexing profile.\n{}",
+            rejectionReasons);
     }
 
     LOGI("Selected Vulkan GPU: {} ({}, score={}, localMemory={} MiB)", selectedCandidateInfo.properties.deviceName,
@@ -687,7 +694,7 @@ VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
 
     if (volkInitialize() != VK_SUCCESS)
     {
-        LOG_ERROR_AND_THROW("Failed to initialize volk!");
+        VERIFY_EXPR_MSG_F(false, "Failed to initialize volk!");
     }
 
     m_resourceAllocator.Init();
@@ -695,6 +702,14 @@ VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
     GVkMemAllocator = ZEN_NEW() VulkanMemoryAllocator();
 
     GVulkanRHI      = this;
+}
+
+VulkanRHI::~VulkanRHI()
+{
+    if (GVulkanRHI == this)
+    {
+        GVulkanRHI = nullptr;
+    }
 }
 
 VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
@@ -728,115 +743,105 @@ IRHICommandContext* VulkanRHI::GetTransferCommandContext()
 
 void VulkanRHI::Init()
 {
-    try
+    m_pResourceFactory = ZEN_NEW() VulkanResourceFactory();
+
+    CreateInstance();
+
+    SelectGPU();
+
+    m_pDevice->Init();
+
+    const VkPhysicalDeviceProperties properties = m_pDevice->GetPhysicalDeviceProperties();
+
+    const VkPhysicalDeviceLimits& limits        = properties.limits;
+
+    std::copy_n(properties.deviceName, m_gpuInfo.deviceName.size(), m_gpuInfo.deviceName.begin());
+
+    m_gpuInfo.vendorID         = properties.vendorID;
+
+    m_gpuInfo.deviceID         = properties.deviceID;
+
+    m_gpuInfo.apiVersion       = properties.apiVersion;
+
+    m_gpuInfo.driverVersionRaw = properties.driverVersion;
+
+    VkPhysicalDeviceMemoryProperties memory{};
+
+    vkGetPhysicalDeviceMemoryProperties(m_pDevice->GetPhysicalDeviceHandle(), &memory);
+
+    for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
     {
-        m_pResourceFactory = ZEN_NEW() VulkanResourceFactory();
-
-        CreateInstance();
-
-        SelectGPU();
-
-        m_pDevice->Init();
-
-        const VkPhysicalDeviceProperties properties = m_pDevice->GetPhysicalDeviceProperties();
-
-        const VkPhysicalDeviceLimits& limits        = properties.limits;
-
-        std::copy_n(properties.deviceName, m_gpuInfo.deviceName.size(), m_gpuInfo.deviceName.begin());
-
-        m_gpuInfo.vendorID         = properties.vendorID;
-
-        m_gpuInfo.deviceID         = properties.deviceID;
-
-        m_gpuInfo.apiVersion       = properties.apiVersion;
-
-        m_gpuInfo.driverVersionRaw = properties.driverVersion;
-
-        VkPhysicalDeviceMemoryProperties memory{};
-
-        vkGetPhysicalDeviceMemoryProperties(m_pDevice->GetPhysicalDeviceHandle(), &memory);
-
-        for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
+        if ((memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
         {
-            if ((memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
-            {
-                m_gpuInfo.deviceLocalMemoryBytes = std::max(m_gpuInfo.deviceLocalMemoryBytes, memory.memoryHeaps[heap].size);
-            }
+            m_gpuInfo.deviceLocalMemoryBytes = std::max(m_gpuInfo.deviceLocalMemoryBytes, memory.memoryHeaps[heap].size);
         }
-
-        m_gpuInfo.supportGeometryShader   = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
-
-        m_gpuInfo.supportIndependentBlend = m_pDevice->GetPhysicalDeviceFeatures().independentBlend != VK_FALSE;
-
-        m_gpuInfo.supportVertexPipelineStoresAndAtomics =
-            m_pDevice->GetPhysicalDeviceFeatures().vertexPipelineStoresAndAtomics != VK_FALSE;
-
-        m_gpuInfo.supportSamplerAnisotropy = m_pDevice->GetPhysicalDeviceFeatures().samplerAnisotropy != VK_FALSE;
-
-        m_gpuInfo.supportFillModeNonSolid  = m_pDevice->GetPhysicalDeviceFeatures().fillModeNonSolid != VK_FALSE;
-
-        m_gpuInfo.supportDepthClamp        = m_pDevice->GetPhysicalDeviceFeatures().depthClamp != VK_FALSE;
-
-        m_gpuInfo.supportDepthBiasClamp    = m_pDevice->GetPhysicalDeviceFeatures().depthBiasClamp != VK_FALSE;
-
-        m_gpuInfo.supportWideLines         = m_pDevice->GetPhysicalDeviceFeatures().wideLines != VK_FALSE;
-
-        m_gpuInfo.supportSampleRateShading = m_pDevice->GetPhysicalDeviceFeatures().sampleRateShading != VK_FALSE;
-
-        m_gpuInfo.supportAlphaToOne        = m_pDevice->GetPhysicalDeviceFeatures().alphaToOne != VK_FALSE;
-
-        m_gpuInfo.supportDepthBounds       = m_pDevice->GetPhysicalDeviceFeatures().depthBounds != VK_FALSE;
-
-        m_gpuInfo.supportLogicOp           = m_pDevice->GetPhysicalDeviceFeatures().logicOp != VK_FALSE;
-
-        m_gpuInfo.supportMultiDrawIndirect = m_pDevice->GetPhysicalDeviceFeatures().multiDrawIndirect != VK_FALSE;
-
-        m_gpuInfo.supportDrawIndirectFirstInstance =
-            m_pDevice->GetPhysicalDeviceFeatures().drawIndirectFirstInstance != VK_FALSE;
-
-        m_gpuInfo.supportTessellationShader       = m_pDevice->GetPhysicalDeviceFeatures().tessellationShader != VK_FALSE;
-
-        m_gpuInfo.supportFragmentStoresAndAtomics = m_pDevice->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics;
-
-        m_gpuInfo.uniformBufferAlignment          = limits.minUniformBufferOffsetAlignment;
-
-        m_gpuInfo.storageBufferAlignment          = limits.minStorageBufferOffsetAlignment;
-
-        m_gpuInfo.maxComputeWorkGroupInvocations  = limits.maxComputeWorkGroupInvocations;
-
-        m_gpuInfo.maxStorageBufferRange           = limits.maxStorageBufferRange;
-
-        m_gpuInfo.maxColorAttachments             = limits.maxColorAttachments;
-
-        for (uint32_t axis = 0; axis < 3; ++axis)
-        {
-            m_gpuInfo.maxComputeWorkGroupSize[axis]  = limits.maxComputeWorkGroupSize[axis];
-
-            m_gpuInfo.maxComputeWorkGroupCount[axis] = limits.maxComputeWorkGroupCount[axis];
-        }
-
-        GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(), m_pDevice->GetVkHandle(),
-                              m_pDevice->GetExtensionFlags().hasBufferDeviceAddress != 0,
-                              m_pDevice->GetExtensionFlags().hasMemoryBudget != 0);
-
-        m_pDescriptorPoolManager2        = ZEN_NEW() VulkanDescriptorPoolManager2(m_pDevice);
-
-        m_pBindlessDescriptorPoolManager = ZEN_NEW() VulkanBindlessDescriptorPoolManager();
-
-        m_pBindlessDescriptorPoolManager->Init();
-
-        m_gpuInfo.bindlessHeapCapacities = m_pBindlessDescriptorPoolManager->GetCapacities();
-
-        m_pUniformBufferAllocator        = ZEN_NEW() VulkanUniformBufferAllocator();
-
-        m_pUniformBufferAllocator->Init(RHIFrameState::kMaxFramesInFlight, 4 * 1024 * 1024, 8);
     }
-    catch (...)
+
+    m_gpuInfo.supportGeometryShader   = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
+
+    m_gpuInfo.supportIndependentBlend = m_pDevice->GetPhysicalDeviceFeatures().independentBlend != VK_FALSE;
+
+    m_gpuInfo.supportVertexPipelineStoresAndAtomics =
+        m_pDevice->GetPhysicalDeviceFeatures().vertexPipelineStoresAndAtomics != VK_FALSE;
+
+    m_gpuInfo.supportSamplerAnisotropy         = m_pDevice->GetPhysicalDeviceFeatures().samplerAnisotropy != VK_FALSE;
+
+    m_gpuInfo.supportFillModeNonSolid          = m_pDevice->GetPhysicalDeviceFeatures().fillModeNonSolid != VK_FALSE;
+
+    m_gpuInfo.supportDepthClamp                = m_pDevice->GetPhysicalDeviceFeatures().depthClamp != VK_FALSE;
+
+    m_gpuInfo.supportDepthBiasClamp            = m_pDevice->GetPhysicalDeviceFeatures().depthBiasClamp != VK_FALSE;
+
+    m_gpuInfo.supportWideLines                 = m_pDevice->GetPhysicalDeviceFeatures().wideLines != VK_FALSE;
+
+    m_gpuInfo.supportSampleRateShading         = m_pDevice->GetPhysicalDeviceFeatures().sampleRateShading != VK_FALSE;
+
+    m_gpuInfo.supportAlphaToOne                = m_pDevice->GetPhysicalDeviceFeatures().alphaToOne != VK_FALSE;
+
+    m_gpuInfo.supportDepthBounds               = m_pDevice->GetPhysicalDeviceFeatures().depthBounds != VK_FALSE;
+
+    m_gpuInfo.supportLogicOp                   = m_pDevice->GetPhysicalDeviceFeatures().logicOp != VK_FALSE;
+
+    m_gpuInfo.supportMultiDrawIndirect         = m_pDevice->GetPhysicalDeviceFeatures().multiDrawIndirect != VK_FALSE;
+
+    m_gpuInfo.supportDrawIndirectFirstInstance = m_pDevice->GetPhysicalDeviceFeatures().drawIndirectFirstInstance != VK_FALSE;
+
+    m_gpuInfo.supportTessellationShader        = m_pDevice->GetPhysicalDeviceFeatures().tessellationShader != VK_FALSE;
+
+    m_gpuInfo.supportFragmentStoresAndAtomics  = m_pDevice->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics;
+
+    m_gpuInfo.uniformBufferAlignment           = limits.minUniformBufferOffsetAlignment;
+
+    m_gpuInfo.storageBufferAlignment           = limits.minStorageBufferOffsetAlignment;
+
+    m_gpuInfo.maxComputeWorkGroupInvocations   = limits.maxComputeWorkGroupInvocations;
+
+    m_gpuInfo.maxStorageBufferRange            = limits.maxStorageBufferRange;
+
+    m_gpuInfo.maxColorAttachments              = limits.maxColorAttachments;
+
+    for (uint32_t axis = 0; axis < 3; ++axis)
     {
-        Destroy();
+        m_gpuInfo.maxComputeWorkGroupSize[axis]  = limits.maxComputeWorkGroupSize[axis];
 
-        throw;
+        m_gpuInfo.maxComputeWorkGroupCount[axis] = limits.maxComputeWorkGroupCount[axis];
     }
+
+    GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(), m_pDevice->GetVkHandle(),
+                          m_pDevice->GetExtensionFlags().hasBufferDeviceAddress != 0,
+                          m_pDevice->GetExtensionFlags().hasMemoryBudget != 0);
+
+    m_pDescriptorPoolManager2        = ZEN_NEW() VulkanDescriptorPoolManager2(m_pDevice);
+
+    m_pBindlessDescriptorPoolManager = ZEN_NEW() VulkanBindlessDescriptorPoolManager();
+
+    m_pBindlessDescriptorPoolManager->Init();
+
+    m_gpuInfo.bindlessHeapCapacities = m_pBindlessDescriptorPoolManager->GetCapacities();
+
+    m_pUniformBufferAllocator        = ZEN_NEW() VulkanUniformBufferAllocator();
+
+    m_pUniformBufferAllocator->Init(RHIFrameState::kMaxFramesInFlight, 4 * 1024 * 1024, 8);
 }
 
 RHIBindlessHandle VulkanRHI::RegisterBindlessResource(RHIResource* pResource, uint32_t slotIndex)

@@ -20,7 +20,7 @@ TEST(UIShaderReflectionTest, PackedVertexColorHasFourByteStrideAndLocalFontBindi
 
     RHIShaderGroupInfo info;
 
-    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+    ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
 
     ASSERT_EQ(info.vertexInputAttributes.size(), 3u);
 

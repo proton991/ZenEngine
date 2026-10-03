@@ -1052,9 +1052,9 @@ TEST_F(VulkanAttachmentIntegrationTest, LayoutResetAndAttachmentCapacityPreserve
         layout.AddColorRenderTarget(View(texture, 1, 1, 2), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
     }
 
-    EXPECT_THROW(
+    EXPECT_DEATH(
         layout.AddColorRenderTarget(texture->GetDefaultView(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore),
-        std::runtime_error);
+        "verification failed");
 
     EXPECT_EQ(layout.numColorRenderTargets, MAX_NUM_COLOR_ATTACHMENTS);
 
@@ -1066,6 +1066,6 @@ TEST_F(VulkanAttachmentIntegrationTest, LayoutResetAndAttachmentCapacityPreserve
 
     EXPECT_EQ(layout.colorRenderTargets[0].pTextureView, nullptr);
 
-    EXPECT_THROW(layout.SetRenderArea(1, 0, UINT32_MAX, 1), std::runtime_error);
+    EXPECT_DEATH(layout.SetRenderArea(1, 0, UINT32_MAX, 1), "verification failed");
 }
 } // namespace

@@ -3,25 +3,28 @@
 
 TEST(VulkanVerificationTest, SuccessAndExpectedStatusesRemainNonfatal)
 {
-    int evaluations = 0;
-
-    VKCHECK((++evaluations, VK_SUCCESS));
-
-    VKCHECK(VK_NOT_READY);
-
-    VKCHECK(VK_TIMEOUT);
-
-    VKCHECK(VK_SUBOPTIMAL_KHR);
-
-    EXPECT_EQ(evaluations, 1);
+    for (VkResult result : {VK_SUCCESS, VK_NOT_READY, VK_TIMEOUT, VK_SUBOPTIMAL_KHR})
+    {
+        EXPECT_FALSE(zen::MakeVulkanError(result, "expected status", __FILE__, __LINE__).IsFailure());
+    }
 }
 
-TEST(VulkanVerificationDeathTest, NativeFailureStopsExecution)
+TEST(VulkanVerificationTest, NativeFailurePreservesCauseAndLocation)
 {
-    EXPECT_DEATH(VKCHECK(VK_ERROR_OUT_OF_DEVICE_MEMORY), "VK_ERROR_OUT_OF_DEVICE_MEMORY");
+    const zen::RHIError error = zen::MakeVulkanError(VK_ERROR_OUT_OF_DEVICE_MEMORY, "test allocation", __FILE__, 42);
+
+    EXPECT_EQ(error.code, zen::RHIErrorCode::eOutOfDeviceMemory);
+
+    EXPECT_EQ(error.nativeCode, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+
+    EXPECT_STREQ(error.operation, "test allocation");
+
+    EXPECT_STREQ(error.source, __FILE__);
+
+    EXPECT_EQ(error.line, 42u);
 }
 
-TEST(VulkanVerificationDeathTest, DeviceLossStopsExecution)
+TEST(VulkanVerificationTest, DeviceLossHasADistinctCode)
 {
-    EXPECT_DEATH(VKCHECK(VK_ERROR_DEVICE_LOST), "VK_ERROR_DEVICE_LOST");
+    EXPECT_EQ(zen::MakeVulkanError(VK_ERROR_DEVICE_LOST, "test device loss").code, zen::RHIErrorCode::eDeviceLost);
 }

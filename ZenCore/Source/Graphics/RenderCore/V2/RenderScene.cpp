@@ -25,108 +25,99 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     VERIFY_EXPR_MSG_F(capacityError.empty(), "{}", capacityError);
 
-    try
+    sys::SceneEditor::CenterAndNormalizeScene(m_pScene);
+
+    m_sceneUnitScale = m_pScene->GetAssetData().unitScale;
+
+    m_vertices       = HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
+
+    m_bindVertices   = m_pScene->GetAssetData().bindVertices.empty() ? m_vertices : m_pScene->GetAssetData().bindVertices;
+
+    if (!sg::ApplySceneDeformations(*m_pScene, MakeVecView(m_bindVertices), m_vertices))
     {
-        sys::SceneEditor::CenterAndNormalizeScene(m_pScene);
+        VERIFY_EXPR_MSG_F(false, "Invalid glTF deformation payload");
+    }
 
-        m_sceneUnitScale = m_pScene->GetAssetData().unitScale;
+    for (const SceneLight& light : BuildSceneLights(*m_pScene))
+    {
+        m_importedLightIds.push_back(m_lights.Add(light));
+    }
 
-        m_vertices       = HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
+    m_indices            = HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
 
-        m_bindVertices   = m_pScene->GetAssetData().bindVertices.empty() ? m_vertices : m_pScene->GetAssetData().bindVertices;
+    const bool animated  = !m_pScene->GetAssetData().animations.empty();
 
-        if (!sg::ApplySceneDeformations(*m_pScene, MakeVecView(m_bindVertices), m_vertices))
+    m_instanceClasses    = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), animated ? GI_DYNAMIC : GI_STATIC);
+
+    m_instanceEnabled    = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
+
+    m_authoredVisibility = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
+
+    for (const sg::Node* node : m_pScene->GetRenderableNodes())
+    {
+        m_authoredVisibility[node->GetRenderableIndex()] = node->IsVisible() ? 1 : 0;
+    }
+
+    m_animation     = animated ? 0 : -1;
+
+    size_t uvStride = 2;
+
+    for (const HeapVector<Vec2>& sets : m_pScene->GetAssetData().vertexTexCoords)
+    {
+        uvStride = std::max(uvStride, sets.size());
+    }
+
+    m_uvCoordinates      = HeapVector<Vec4>(1 + m_vertices.size() * uvStride, Vec4(0));
+
+    m_uvCoordinates[0].x = static_cast<float>(uvStride);
+
+    for (size_t vertex = 0; vertex < m_vertices.size(); ++vertex)
+    {
+        m_uvCoordinates[1 + vertex * uvStride] = Vec4(m_vertices[vertex].uv0, 0, 0);
+
+        m_uvCoordinates[2 + vertex * uvStride] = Vec4(m_vertices[vertex].uv1, 0, 0);
+
+        if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
         {
-            LOG_ERROR_AND_THROW("Invalid glTF deformation payload");
-        }
+            const HeapVector<Vec2>& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
 
-        for (const SceneLight& light : BuildSceneLights(*m_pScene))
-        {
-            m_importedLightIds.push_back(m_lights.Add(light));
-        }
-
-        m_indices            = HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
-
-        const bool animated  = !m_pScene->GetAssetData().animations.empty();
-
-        m_instanceClasses    = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), animated ? GI_DYNAMIC : GI_STATIC);
-
-        m_instanceEnabled    = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
-
-        m_authoredVisibility = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
-
-        for (const sg::Node* node : m_pScene->GetRenderableNodes())
-        {
-            m_authoredVisibility[node->GetRenderableIndex()] = node->IsVisible() ? 1 : 0;
-        }
-
-        m_animation     = animated ? 0 : -1;
-
-        size_t uvStride = 2;
-
-        for (const HeapVector<Vec2>& sets : m_pScene->GetAssetData().vertexTexCoords)
-        {
-            uvStride = std::max(uvStride, sets.size());
-        }
-
-        m_uvCoordinates      = HeapVector<Vec4>(1 + m_vertices.size() * uvStride, Vec4(0));
-
-        m_uvCoordinates[0].x = static_cast<float>(uvStride);
-
-        for (size_t vertex = 0; vertex < m_vertices.size(); ++vertex)
-        {
-            m_uvCoordinates[1 + vertex * uvStride] = Vec4(m_vertices[vertex].uv0, 0, 0);
-
-            m_uvCoordinates[2 + vertex * uvStride] = Vec4(m_vertices[vertex].uv1, 0, 0);
-
-            if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
+            for (size_t set = 0; set < sets.size(); ++set)
             {
-                const HeapVector<Vec2>& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
-
-                for (size_t set = 0; set < sets.size(); ++set)
-                {
-                    m_uvCoordinates[1 + vertex * uvStride + set] = Vec4(sets[set], 0, 0);
-                }
+                m_uvCoordinates[1 + vertex * uvStride + set] = Vec4(sets[set], 0, 0);
             }
         }
-
-        m_pUVBuffer = m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(sizeof(Vec4) * m_uvCoordinates.size()),
-                                                           reinterpret_cast<const uint8_t*>(m_uvCoordinates.data()),
-                                                           "scene_uv_coordinates");
-
-        m_nodesData.reserve(m_pScene->GetRenderableCount());
-
-        for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
-        {
-            m_nodesData.emplace_back(pNode->GetData());
-        }
-
-        m_voxelBounds = m_pScene->GetAABB();
-
-        sg::AABB bounds;
-
-        m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds);
-
-        const asset::Vertex emptyVertex{};
-
-        const uint32_t emptyIndex = 0;
-
-        m_pVertexBuffer           = m_pRenderDevice->CreateVertexBuffer(
-            std::max(sceneData.numVertices, 1u) * sizeof(asset::Vertex),
-            reinterpret_cast<const uint8_t*>(m_vertices.empty() ? &emptyVertex : m_vertices.data()));
-
-        m_pIndexBuffer = m_pRenderDevice->CreateIndexBuffer(
-            std::max(sceneData.numIndices, 1u) * sizeof(uint32_t),
-            reinterpret_cast<const uint8_t*>(m_indices.empty() ? &emptyIndex : m_indices.data()));
-
-        m_numIndices = sceneData.numIndices;
     }
-    catch (...)
+
+    m_pUVBuffer =
+        m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(sizeof(Vec4) * m_uvCoordinates.size()),
+                                             reinterpret_cast<const uint8_t*>(m_uvCoordinates.data()), "scene_uv_coordinates");
+
+    m_nodesData.reserve(m_pScene->GetRenderableCount());
+
+    for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
     {
-        Destroy();
-
-        throw;
+        m_nodesData.emplace_back(pNode->GetData());
     }
+
+    m_voxelBounds = m_pScene->GetAABB();
+
+    sg::AABB bounds;
+
+    m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds);
+
+    const asset::Vertex emptyVertex{};
+
+    const uint32_t emptyIndex = 0;
+
+    m_pVertexBuffer           = m_pRenderDevice->CreateVertexBuffer(
+        std::max(sceneData.numVertices, 1u) * sizeof(asset::Vertex),
+        reinterpret_cast<const uint8_t*>(m_vertices.empty() ? &emptyVertex : m_vertices.data()));
+
+    m_pIndexBuffer = m_pRenderDevice->CreateIndexBuffer(
+        std::max(sceneData.numIndices, 1u) * sizeof(uint32_t),
+        reinterpret_cast<const uint8_t*>(m_indices.empty() ? &emptyIndex : m_indices.data()));
+
+    m_numIndices = sceneData.numIndices;
 }
 
 void RenderScene::Init()

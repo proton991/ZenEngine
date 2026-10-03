@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <stdexcept>
 #if defined(_WIN32)
 #    include <Windows.h>
 #    if defined(_MSC_VER)
@@ -42,11 +41,14 @@ void ConfigureDiagnostics()
 #endif
 }
 
+// verify_gltf_corpus.py reads exit code 1 as a failed import and any other failure code as a crash.
 void Require(bool condition, const char* message)
 {
     if (!condition)
     {
-        throw std::runtime_error(message);
+        std::cerr << "ZEN_GLTF_IMPORT_ERROR " << message << '\n';
+
+        std::exit(1);
     }
 }
 
@@ -490,24 +492,28 @@ int main(int argc, char** argv)
     }
     else
     {
-        try
-        {
-            sg::Scene scene;
+        sg::Scene scene;
 
-            asset::FastGLTFLoader loader;
+        asset::FastGLTFLoader loader;
 
-            std::cerr << "ZEN_GLTF_IMPORT_STAGE load\n";
+        std::cerr << "ZEN_GLTF_IMPORT_STAGE load\n";
 
 #if defined(_WIN32)
-            const std::u8string utf8 = std::filesystem::path(argv[1]).u8string();
+        const std::u8string utf8 = std::filesystem::path(argv[1]).u8string();
 
-            const std::string path(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+        const std::string path(reinterpret_cast<const char*>(utf8.data()), utf8.size());
 #else
-            const std::string path(argv[1]);
+        const std::string path(argv[1]);
 #endif
 
-            loader.LoadFromFile(path, &scene);
+        if (!loader.LoadFromFile(path, &scene))
+        {
+            std::cerr << "ZEN_GLTF_IMPORT_ERROR " << loader.GetError() << '\n';
 
+            result = 1;
+        }
+        else
+        {
             PrintResult(loader, scene, 0, "ZEN_GLTF_IMPORT_STATE ");
 
             std::cerr << "ZEN_GLTF_IMPORT_STAGE structure\n";
@@ -519,12 +525,6 @@ int main(int argc, char** argv)
             const uint32_t samples  = CheckAnimations(loader, scene);
 
             PrintResult(loader, scene, samples, "ZEN_GLTF_IMPORT_RESULT ", variants);
-        }
-        catch (const std::exception& error)
-        {
-            std::cerr << "ZEN_GLTF_IMPORT_ERROR " << error.what() << '\n';
-
-            result = 1;
         }
     }
 

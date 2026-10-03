@@ -12,6 +12,13 @@ protected:
         CreateTestShaderProgram(device, "intent");
     }
 
+    void TearDown() override
+    {
+        viewport.ReleaseForTeardown();
+
+        RenderCoreTest::TearDown();
+    }
+
     bool ReadOnGraphics(TestBuffer* buffer)
     {
         RenderGraph graph("upload_consumer");

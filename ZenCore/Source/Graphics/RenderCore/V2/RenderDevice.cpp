@@ -454,8 +454,10 @@ void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& re
 
         m_submissionHistory.Clear();
 
-        LOGE("RHI submission failed: {}; recreate the device before continuing",
-             result.error.empty() ? "Scheduled producer history could not be confirmed" : result.error);
+        if (!result.cause.IsFailure())
+        {
+            LOGE("RHI submission history could not be confirmed; rendering stopped");
+        }
     }
 }
 
@@ -1209,36 +1211,16 @@ RHIBuffer* RenderDevice::CreateInitializedBuffer(const RHIBufferCreateInfo& info
 
     if (buffer != nullptr)
     {
-        bool registered = false;
+        m_buffers.push_back(buffer);
 
-        try
+        const bool initialized =
+            padData ? InitializeBufferData(buffer, dataSize, data) : UpdateBufferInternal(buffer, 0, dataSize, data);
+
+        if (!initialized)
         {
-            m_buffers.push_back(buffer);
+            DestroyBuffer(buffer);
 
-            registered = true;
-
-            const bool initialized =
-                padData ? InitializeBufferData(buffer, dataSize, data) : UpdateBufferInternal(buffer, 0, dataSize, data);
-
-            if (!initialized)
-            {
-                DestroyBuffer(buffer);
-
-                buffer = nullptr;
-            }
-        }
-        catch (...)
-        {
-            if (registered)
-            {
-                DestroyBuffer(buffer);
-            }
-            else
-            {
-                GDynamicRHI->DestroyBuffer(buffer);
-            }
-
-            throw;
+            buffer = nullptr;
         }
     }
 

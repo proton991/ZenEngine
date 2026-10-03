@@ -247,7 +247,6 @@ TEST(VulkanProductionFailureTest, ShaderStagesLayoutsAndSamplerRejectNativeFailu
     RHIShaderCreateInfo shaderInfo{};
 
     AddProductionStage(shaderInfo, RHIShaderStage::eCompute, "descriptor_uniform.comp.spv");
-
     {
         test::ScopedVulkanCall<PFN_vkCreateShaderModule> fail(
             vkCreateShaderModule, [](VkDevice, const VkShaderModuleCreateInfo*, const VkAllocationCallbacks*, VkShaderModule*) {
@@ -291,7 +290,6 @@ TEST(VulkanProductionFailureTest, ShaderStagesLayoutsAndSamplerRejectNativeFailu
 TEST(VulkanProductionFailureTest, DescriptorPoolAndFenceFailureDoNotPublishOwners)
 {
     test::VulkanSession session;
-
     {
         test::ScopedVulkanCall<PFN_vkCreateDescriptorPool> fail(
             vkCreateDescriptorPool, [](VkDevice, const VkDescriptorPoolCreateInfo*, const VkAllocationCallbacks*,
@@ -314,7 +312,6 @@ TEST(VulkanProductionFailureTest, DescriptorPoolAndFenceFailureDoNotPublishOwner
 TEST(VulkanProductionFailureTest, FailedCommandPoolReturnsNoContextAndAllowsRetry)
 {
     test::VulkanSession session;
-
     {
         test::ScopedVulkanCall<PFN_vkCreateCommandPool> fail(
             vkCreateCommandPool, [](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool*) {
@@ -451,6 +448,25 @@ TEST(VulkanProductionFailureTest, ShutdownRejectsOutstandingResourcesAndCommandC
         "All RHI resources must be released before backend teardown");
 }
 
+TEST(VulkanProductionFailureTest, BackendDestructionClearsGlobalPointers)
+{
+    VulkanRHI* rhi = ZEN_NEW() VulkanRHI();
+
+    GDynamicRHI    = rhi;
+
+    rhi->Init();
+
+    EXPECT_EQ(GVulkanRHI, rhi);
+
+    rhi->Destroy();
+
+    ZEN_DELETE(rhi);
+
+    EXPECT_EQ(GVulkanRHI, nullptr);
+
+    EXPECT_EQ(GDynamicRHI, nullptr);
+}
+
 #if defined(NDEBUG)
 // Debug VMA asserts on leaked allocations, so only Release can observe teardown continuing.
 // The deliberate leak would also be reported by validation at device destruction.
@@ -580,7 +596,6 @@ TEST(VulkanProductionFailureTest, FailedCommandRecordingNeverReachesSubmissionAn
         const PFN_vkEndCommandBuffer end            = vkEndCommandBuffer;
 
         RecordingFailureProbe::submissions          = 0;
-
         {
             test::ScopedVulkanCall<PFN_vkAllocateCommandBuffers> failAllocate(
                 vkAllocateCommandBuffers,
@@ -679,7 +694,6 @@ TEST(VulkanProductionFailureTest, FailedUniformOrDescriptorPreparationSuppresses
         RecordingFailureProbe::dispatches  = 0;
 
         RecordingFailureProbe::submissions = 0;
-
         {
             test::ScopedVulkanCall<PFN_vkAllocateDescriptorSets> fail(
                 vkAllocateDescriptorSets,
@@ -710,5 +724,65 @@ TEST(VulkanProductionFailureTest, FailedUniformOrDescriptorPreparationSuppresses
     session.rhi.DestroyPipeline(pipeline);
 
     session.rhi.DestroyShader(shader);
+}
+
+TEST(VulkanProductionFailureDeathTest, DeviceSelectionReportsAnUnsupportedProfile)
+{
+    EXPECT_DEATH(
+        {
+            RHIOptions::GetInstance().SetBindlessHeapCapacities({UINT32_MAX, UINT32_MAX, UINT32_MAX});
+
+            VulkanRHI rhi;
+
+            rhi.Init();
+        },
+        "No Vulkan device satisfies");
+}
+
+TEST(VulkanProductionFailureTest, InvalidShaderDoesNotPublishAndSpecializationUsesOwnedBytecode)
+{
+    test::VulkanSession session;
+
+    RHIShaderCreateInfo invalid;
+
+    invalid.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+
+    invalid.spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+
+    invalid.spirv->SetStageSPIRV(RHIShaderStage::eCompute, HeapVector<uint8_t>{0, 1, 2, 3});
+
+    EXPECT_EQ(session.rhi.CreateShader(invalid), nullptr);
+
+    RHIShaderCreateInfo baseInfo;
+
+    AddProductionStage(baseInfo, RHIShaderStage::eCompute, "pipeline_specialization.comp.spv");
+
+    RHIShader* base = session.rhi.CreateShader(baseInfo);
+
+    ASSERT_NE(base, nullptr);
+
+    RHIShaderCreateInfo specialized                                   = base->GetCreateInfo();
+
+    specialized.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] = "missing-specialization-source.spv";
+
+    RHIShader* shader                                                 = session.rhi.CreateShader(specialized);
+
+    ASSERT_NE(shader, nullptr);
+
+    session.rhi.DestroyShader(shader);
+
+    ASSERT_TRUE(specialized.reflection.has_value());
+
+    specialized.reflection->SRDTable.resize(2);
+
+    RHIShaderResourceDescriptor invalidDescriptor;
+
+    invalidDescriptor.type = RHIShaderResourceType::eMax;
+
+    specialized.reflection->SRDTable[1].push_back(invalidDescriptor);
+
+    EXPECT_EQ(session.rhi.CreateShader(specialized), nullptr);
+
+    session.rhi.DestroyShader(base);
 }
 } // namespace

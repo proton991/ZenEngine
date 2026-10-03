@@ -445,6 +445,13 @@ protected:
         InitializeDevice(&viewport, 2, std::get<0>(GetParam()), AsyncComputeMode::eAuto, queues);
         CreateTestShaderProgram(device, "intent");
     }
+
+    void TearDown() override
+    {
+        viewport.ReleaseForTeardown();
+
+        RenderCoreTest::TearDown();
+    }
 };
 
 TEST_P(RDGGroupQueueTest, AcceptedUploadUsesLocalBarrierForAliasAndWaitForDistinctQueue)

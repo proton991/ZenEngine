@@ -31,18 +31,7 @@ void TextureManager::OwnTexture(RHITexture*& texture)
 {
     if (texture != nullptr)
     {
-        try
-        {
-            m_ownedTextures.try_emplace(texture->GetStableId(), texture);
-        }
-        catch (...)
-        {
-            m_pRenderDevice->DestroyTexture(texture);
-
-            texture = nullptr;
-
-            throw;
-        }
+        m_ownedTextures.try_emplace(texture->GetStableId(), texture);
     }
 }
 
@@ -76,43 +65,13 @@ bool TextureManager::ReleaseSceneTexture(RHITexture* texture)
 
 void TextureManager::OwnEnvironmentTextures(EnvTexture* environment)
 {
-    try
-    {
-        OwnTexture(environment->pSkybox);
+    OwnTexture(environment->pSkybox);
 
-        OwnTexture(environment->pIrradiance);
+    OwnTexture(environment->pIrradiance);
 
-        OwnTexture(environment->pPrefiltered);
+    OwnTexture(environment->pPrefiltered);
 
-        OwnTexture(environment->pLutBRDF);
-    }
-    catch (...)
-    {
-        // Preprocessing publishes outputs before registration. If ownership allocation fails,
-        // retire any later outputs too, while keeping registered handles available to Destroy.
-        RHITexture** slots[] = {&environment->pSkybox, &environment->pIrradiance, &environment->pPrefiltered,
-                                &environment->pLutBRDF};
-
-        for (RHITexture** slot : slots)
-        {
-            RHITexture* texture = *slot;
-
-            if (texture != nullptr && !m_ownedTextures.contains(texture->GetStableId()))
-            {
-                m_pRenderDevice->DestroyTexture(texture);
-
-                for (RHITexture** alias : slots)
-                {
-                    if (*alias == texture)
-                    {
-                        *alias = nullptr;
-                    }
-                }
-            }
-        }
-
-        throw;
-    }
+    OwnTexture(environment->pLutBRDF);
 }
 
 void TextureManager::ReleaseSceneEnvironment(EnvTexture* environment)
@@ -249,16 +208,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
             {
                 OwnTexture(pTexture);
 
-                try
-                {
-                    outTextures.push_back(pTexture);
-                }
-                catch (...)
-                {
-                    ReleaseSceneTexture(pTexture);
-
-                    throw;
-                }
+                outTextures.push_back(pTexture);
 
                 if (pSgTexture->mipBytes.empty())
                 {
@@ -403,16 +353,7 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
 
                 SkyboxRenderer* pSkyboxRenderer = m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer();
 
-                try
-                {
-                    pSkyboxRenderer->PreprocessEnvTexture(pOutTexture);
-                }
-                catch (...)
-                {
-                    OwnEnvironmentTextures(pOutTexture);
-
-                    throw;
-                }
+                pSkyboxRenderer->PreprocessEnvTexture(pOutTexture);
 
                 OwnEnvironmentTextures(pOutTexture);
             }
@@ -593,16 +534,7 @@ void TextureManager::LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* en
 
     environment->pIrradianceSampler  = m_pRenderDevice->CreateSampler(sampler);
 
-    try
-    {
-        m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer()->PreprocessEnvTexture(environment);
-    }
-    catch (...)
-    {
-        OwnEnvironmentTextures(environment);
-
-        throw;
-    }
+    m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer()->PreprocessEnvTexture(environment);
 
     OwnEnvironmentTextures(environment);
 }

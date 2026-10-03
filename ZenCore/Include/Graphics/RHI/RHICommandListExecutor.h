@@ -85,12 +85,15 @@ struct RHISubmissionGroup
 
 struct RHISubmissionGroupResult
 {
+    RHIError                cause{};
     RHISubmissionResult     submission{RHISubmissionResult::eRejected};
     RHISubmissionDependency accepted;
 };
 
 struct RHIBatchResult
 {
+    RHIError                             cause{};
+    RHIPresentResult                     presentation{};
     RHISubmissionResult                  submission{RHISubmissionResult::eRejected};
     RHICompletionSet                     requiredSerials;
     HeapVector<RHISubmissionGroupResult> groups;
@@ -206,6 +209,13 @@ public:
     void FlushRHIThread();
 
     bool AreSubmissionsBlocked() const override;
+
+    RHIError GetTerminalError() const override;
+
+    bool HasDeviceLoss() const override
+    {
+        return GetRHIThread().HasDeviceLoss();
+    }
 
     RHIThreadMetrics GetThreadMetrics() const;
 
@@ -342,6 +352,8 @@ private:
 
     void PublishSubmissionStatus();
 
+    void PublishTerminalError(RHIError error);
+
     void RefreshGPUProgress();
 
     void ExecutePollGPUProgress();
@@ -358,6 +370,9 @@ private:
     RHIExecutionMode                                                     m_mode;
     std::thread::id                                                      m_renderThread;
     std::atomic<bool>                                                    m_blocked{false};
+    mutable std::mutex                                                   m_errorMutex;
+    RHIError                                                             m_terminalError{};
+    RHIError                                                             m_executionError{};
     std::atomic<bool>                                                    m_progressPollPending{false};
     bool                                                                 m_destroyed{false};
     RHIGPUInfo                                                           m_gpuInfo;

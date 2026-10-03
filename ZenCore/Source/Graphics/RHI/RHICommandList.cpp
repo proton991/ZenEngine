@@ -75,9 +75,10 @@ void RHIResourceReferences::Swap(RHIResourceReferences& other)
 
 void IRHICommandContext::OnFinalRelease()
 {
+    // A rejected release never reaches the destroyed backend; non-strict checks leak the context.
     const bool accepted = GetRHIThread().DispatchCleanup([this] { ZEN_DELETE(this); });
 
-    VERIFY_EXPR_MSG(accepted, "Context released after RHI cleanup admission closed");
+    VerifyTeardownOwnership(accepted, "Context released after RHI cleanup admission closed", __FILE__, __LINE__);
 }
 
 void RHICommandListDeleter::operator()(RHICommandList* commands) const

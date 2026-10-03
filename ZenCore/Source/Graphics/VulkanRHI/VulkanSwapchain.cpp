@@ -14,62 +14,92 @@ namespace zen
 {
 namespace
 {
-void CheckWSIResult(VkResult result, const char* operation)
+bool CheckWSIResult(VkResult result, const char* operation, RHIError& error)
 {
-    ReportVulkanDeviceLoss(result, operation);
+    const bool success = result == VK_SUCCESS;
 
-    if (result != VK_SUCCESS)
+    if (!success && !error.IsFailure())
     {
-        if (result == VK_ERROR_DEVICE_LOST)
+        error = MakeVulkanError(result, operation, __FILE__, __LINE__);
+
+        if (!error.IsFailure())
         {
-            GVulkanRHI->BlockSubmissions();
+            error = {RHIErrorCode::eBackendFailure, int64_t(result), operation, __FILE__, __LINE__};
         }
 
-        LOG_ERROR_AND_THROW("{} failed: {}", operation, int32_t(result));
+        LOGE("{} failed: {}", operation, int32_t(result));
     }
+
+    return success;
 }
 
-template <typename T, typename Query> HeapVector<T> EnumerateWSI(Query query, const char* operation)
+// A bounded enumeration tolerates changing surface counts without an endless retry.
+template <typename T, typename Query> HeapVector<T> EnumerateWSI(Query query, const char* operation, RHIError& error)
 {
     HeapVector<T> values;
 
-    VkResult result;
+    VkResult result = VK_INCOMPLETE;
 
-    do
+    for (uint32_t attempt = 0; attempt < 4 && result == VK_INCOMPLETE && !error.IsFailure(); ++attempt)
     {
         uint32_t count = 0;
 
-        CheckWSIResult(query(&count, nullptr), operation);
-
-        if (count == 0)
+        if (CheckWSIResult(query(&count, nullptr), operation, error) && count != 0)
         {
-            LOG_ERROR_AND_THROW("{} returned no entries", operation);
+            values.resize(count);
+
+            result = query(&count, values.data());
+
+            if (result == VK_SUCCESS)
+            {
+                values.resize(count);
+            }
+            else if (result != VK_INCOMPLETE)
+            {
+                CheckWSIResult(result, operation, error);
+            }
         }
-
-        values.resize(count);
-
-        result = query(&count, values.data());
-
-        if (result != VK_SUCCESS && result != VK_INCOMPLETE)
+        else
         {
-            CheckWSIResult(result, operation);
+            result = VK_ERROR_INITIALIZATION_FAILED;
         }
+    }
 
-        values.resize(count);
-    } while (result == VK_INCOMPLETE);
+    if (result != VK_SUCCESS)
+    {
+        CheckWSIResult(result, operation, error);
 
-    CheckWSIResult(result, operation);
+        values.clear();
+    }
 
     return values;
 }
 
-VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface)
+RHISurfaceOutcome SurfaceOutcome(VkResult result)
+{
+    RHISurfaceOutcome outcome = RHISurfaceOutcome::eFailed;
+
+    switch (result)
+    {
+        case VK_SUCCESS: outcome = RHISurfaceOutcome::eReady; break;
+        case VK_TIMEOUT:
+        case VK_NOT_READY: outcome = RHISurfaceOutcome::eIncomplete; break;
+        case VK_SUBOPTIMAL_KHR:
+        case VK_ERROR_OUT_OF_DATE_KHR: outcome = RHISurfaceOutcome::eRecreate; break;
+        case VK_ERROR_SURFACE_LOST_KHR: outcome = RHISurfaceOutcome::eSurfaceLost; break;
+        default: break;
+    }
+
+    return outcome;
+}
+
+VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface, RHIError& error)
 {
     const HeapVector<VkSurfaceFormatKHR> formats = EnumerateWSI<VkSurfaceFormatKHR>(
         [=](uint32_t* count, VkSurfaceFormatKHR* values) {
             return vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, count, values);
         },
-        "vkGetPhysicalDeviceSurfaceFormatsKHR");
+        "vkGetPhysicalDeviceSurfaceFormatsKHR", error);
 
     VkSurfaceFormatKHR selected{};
 
@@ -100,19 +130,23 @@ VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surfac
 
     if (!found)
     {
-        LOG_ERROR_AND_THROW("Surface has no supported RGBA8 presentation format");
+        CheckWSIResult(VK_ERROR_FORMAT_NOT_SUPPORTED, "Surface RGBA8 presentation format", error);
     }
 
     return selected;
 }
 
-VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, bool vsync, RHIPresentMode request)
+VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu,
+                                   VkSurfaceKHR     surface,
+                                   bool             vsync,
+                                   RHIPresentMode   request,
+                                   RHIError&        error)
 {
     const HeapVector<VkPresentModeKHR> modes = EnumerateWSI<VkPresentModeKHR>(
         [=](uint32_t* count, VkPresentModeKHR* values) {
             return vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, count, values);
         },
-        "vkGetPhysicalDeviceSurfacePresentModesKHR");
+        "vkGetPhysicalDeviceSurfacePresentModesKHR", error);
 
     // Every request ends with FIFO, the only mode the specification guarantees.
     VkPresentModeKHR priority[] = {VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_KHR};
@@ -152,7 +186,7 @@ VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, b
 
     if (!found)
     {
-        LOG_ERROR_AND_THROW("Surface has no supported presentation mode");
+        CheckWSIResult(VK_ERROR_INITIALIZATION_FAILED, "Surface presentation mode", error);
     }
 
     if (request != RHIPresentMode::eDefault && selected != priority[0])
@@ -164,7 +198,9 @@ VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, b
 }
 } // namespace
 
-static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request, VkCompositeAlphaFlagsKHR supported)
+static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
+                                                        VkCompositeAlphaFlagsKHR    supported,
+                                                        RHIError&                   error)
 {
     VkCompositeAlphaFlagBitsKHR selected = request;
 
@@ -191,7 +227,7 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
 
         if (selected == VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR)
         {
-            LOG_ERROR_AND_THROW("No compatible composite alpha found.");
+            CheckWSIResult(VK_ERROR_INITIALIZATION_FAILED, "Surface composite alpha", error);
         }
     }
 
@@ -240,25 +276,33 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
         *pRecreateInfo      = {};
     }
 
-    try
+    do
     {
-        ASSERT(m_surface != VK_NULL_HANDLE);
+        VERIFY_EXPR_MSG(m_surface != VK_NULL_HANDLE, "Swapchain requires a native surface");
 
         VkBool32 canPresent = VK_FALSE;
 
-        CheckWSIResult(
-            vkGetPhysicalDeviceSurfaceSupportKHR(gpu, m_pDevice->GetGfxQueue()->GetFamilyIndex(), m_surface, &canPresent),
-            "vkGetPhysicalDeviceSurfaceSupportKHR");
+        if (!CheckWSIResult(
+                vkGetPhysicalDeviceSurfaceSupportKHR(gpu, m_pDevice->GetGfxQueue()->GetFamilyIndex(), m_surface, &canPresent),
+                "vkGetPhysicalDeviceSurfaceSupportKHR", m_error))
+        {
+            break;
+        }
 
         if (!canPresent)
         {
-            LOG_ERROR_AND_THROW("The selected graphics queue cannot present to this surface");
+            CheckWSIResult(VK_ERROR_FEATURE_NOT_PRESENT, "Graphics queue presentation support", m_error);
+
+            break;
         }
 
         VkSurfaceCapabilitiesKHR capabilities{};
 
-        CheckWSIResult(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, m_surface, &capabilities),
-                       "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+        if (!CheckWSIResult(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, m_surface, &capabilities),
+                            "vkGetPhysicalDeviceSurfaceCapabilitiesKHR", m_error))
+        {
+            break;
+        }
 
         VkExtent2D extent = capabilities.currentExtent;
 
@@ -293,16 +337,18 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
 
             if (!(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
             {
-                LOG_ERROR_AND_THROW("Surface does not support the transfer-destination presentation path");
+                CheckWSIResult(VK_ERROR_FEATURE_NOT_PRESENT, "Surface transfer-destination support", m_error);
+
+                break;
             }
 
-            const VkSurfaceFormatKHR format = ChooseSurfaceFormat(gpu, m_surface);
+            const VkSurfaceFormatKHR format = ChooseSurfaceFormat(gpu, m_surface, m_error);
 
             m_format                        = format.format;
 
             m_colorSpace                    = format.colorSpace;
 
-            m_presentMode = ChoosePresentMode(gpu, m_surface, enableVSync, RHIOptions::GetInstance().PresentMode());
+            m_presentMode = ChoosePresentMode(gpu, m_surface, enableVSync, RHIOptions::GetInstance().PresentMode(), m_error);
 
             VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
 
@@ -327,15 +373,26 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
             info.imageUsage =
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 
-            info.presentMode    = m_presentMode;
+            info.presentMode = m_presentMode;
 
-            info.compositeAlpha = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, capabilities.supportedCompositeAlpha);
+            info.compositeAlpha =
+                ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, capabilities.supportedCompositeAlpha, m_error);
 
-            info.clipped        = VK_TRUE;
+            info.clipped      = VK_TRUE;
 
-            info.oldSwapchain   = oldSwapchain;
+            info.oldSwapchain = oldSwapchain;
 
-            CheckWSIResult(vkCreateSwapchainKHR(device, &info, nullptr, &m_swapchain), "vkCreateSwapchainKHR");
+            if (m_error.IsFailure())
+            {
+                break;
+            }
+
+            if (!CheckWSIResult(vkCreateSwapchainKHR(device, &info, nullptr, &m_swapchain), "vkCreateSwapchainKHR", m_error))
+            {
+                m_swapchain = VK_NULL_HANDLE;
+
+                break;
+            }
 
             DestroyOldSwapchain(oldSwapchain);
 
@@ -343,7 +400,12 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
                 [=, this](uint32_t* count, VkImage* images) {
                     return vkGetSwapchainImagesKHR(device, m_swapchain, count, images);
                 },
-                "vkGetSwapchainImagesKHR");
+                "vkGetSwapchainImagesKHR", m_error);
+
+            if (m_error.IsFailure())
+            {
+                break;
+            }
 
             m_numImages = static_cast<uint32_t>(m_swapchainImages.size());
 
@@ -359,57 +421,87 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
 
                 acquire.semaphore    = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
 
+                if (acquire.semaphore == nullptr)
+                {
+                    m_error = m_pDevice->GetSemaphoreManager()->GetLastError();
+
+                    break;
+                }
+
                 acquire.semaphore->SetDebugName(NameID(fmt::format("ImageAcquired-{}", i)));
 
-                CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &acquire.fence), "vkCreateFence(acquire)");
+                if (!CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &acquire.fence), "vkCreateFence(acquire)",
+                                    m_error))
+                {
+                    acquire.fence = VK_NULL_HANDLE;
+
+                    break;
+                }
 
                 PresentSync& present = m_presentSync[i];
 
                 present.semaphore    = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
 
+                if (present.semaphore == nullptr)
+                {
+                    m_error = m_pDevice->GetSemaphoreManager()->GetLastError();
+
+                    break;
+                }
+
                 present.semaphore->SetDebugName(NameID(fmt::format("RenderComplete-{}", i)));
 
                 if (m_hasPresentFences)
                 {
-                    CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &present.fence), "vkCreateFence(present)");
+                    if (!CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &present.fence), "vkCreateFence(present)",
+                                        m_error))
+                    {
+                        present.fence = VK_NULL_HANDLE;
+
+                        break;
+                    }
                 }
             }
 
-            LOGI("Swapchain: {} images, {}x{}, format {}, present mode {}", m_numImages, extent.width, extent.height,
-                 VkToString(format), VkToString(m_presentMode));
+            if (!m_error.IsFailure())
+            {
+                LOGI("Swapchain: {} images, {}x{}, format {}, present mode {}", m_numImages, extent.width, extent.height,
+                     VkToString(format), VkToString(m_presentMode));
+            }
         }
-    }
-    catch (...)
+
+    } while (false);
+
+    if (m_error.IsFailure())
     {
         DestroyOldSwapchain(oldSwapchain);
 
         Destroy(nullptr);
-
-        throw;
     }
 }
 
-int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
+int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** outSemaphore)
 {
-    int32_t acquiredIndex = -1;
+    return AcquireNextImageChecked(outSemaphore).imageIndex;
+}
 
-    *ppOutSemaphore       = nullptr;
+RHIAcquireResult VulkanSwapchain::AcquireNextImageChecked(VulkanSemaphore** outSemaphore)
+{
+    VERIFY_EXPR_MSG(m_imageIndex < 0, "Swapchain already has an acquired image");
 
-    if (m_imageIndex >= 0)
-    {
-        LOG_ERROR_AND_THROW("Swapchain already has an acquired image");
-    }
+    VERIFY_EXPR(outSemaphore != nullptr);
+
+    *outSemaphore   = nullptr;
+
+    m_acquireResult = {};
+
+    m_lastResult    = VK_NOT_READY;
 
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
-        LOG_ERROR_AND_THROW("Cannot acquire while Vulkan submissions are blocked");
+        m_acquireResult = {RHISurfaceOutcome::eFailed, -1, GVulkanRHI->GetTerminalError()};
     }
-
-    if (m_numImages == 0)
-    {
-        m_lastResult = VK_NOT_READY;
-    }
-    else
+    else if (m_numImages != 0)
     {
         const int32_t nextSemaphore = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
 
@@ -422,80 +514,72 @@ int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
 
         CompleteAcquire(acquire, true);
 
-        if (GVulkanRHI->AreSubmissionsBlocked())
+        const bool completed = !acquire.pending && !GVulkanRHI->AreSubmissionsBlocked()
+                            && (acquire.submissionSerial == 0
+                                || m_pDevice->GetGfxQueue()->WaitForCompletion(acquire.submissionSerial, UINT64_MAX));
+
+        if (completed)
         {
-            LOG_ERROR_AND_THROW("Acquire fence completion reported device loss");
-        }
+            acquire.submissionSerial = 0;
 
-        uint64_t& serial = acquire.submissionSerial;
+            uint32_t index           = UINT32_MAX;
 
-        if (serial != 0 && !m_pDevice->GetGfxQueue()->WaitForCompletion(serial, UINT64_MAX))
-        {
-            GVulkanRHI->BlockSubmissions();
+            m_lastResult             = vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swapchain, 1000000000ull,
+                                                             acquire.semaphore->GetVkHandle(), acquire.fence, &index);
 
-            LOG_ERROR_AND_THROW("Acquire semaphore submission {} did not complete", serial);
-        }
+            m_acquireResult.outcome  = SurfaceOutcome(m_lastResult);
 
-        serial         = 0;
-
-        uint32_t index = UINT32_MAX;
-
-        // Finite timeout supports surfaces for which forward progress is not guaranteed.
-        m_lastResult = vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swapchain, 1000000000ull,
-                                             acquire.semaphore->GetVkHandle(), acquire.fence, &index);
-
-        if (m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR)
-        {
-            acquire.pending = true;
-
-            if (index >= m_numImages)
+            if (m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR)
             {
-                GVulkanRHI->BlockSubmissions();
+                VERIFY_EXPR_MSG_F(index < m_numImages, "Acquired image {} exceeds swapchain image count {}", index,
+                                  m_numImages);
 
-                LOG_ERROR_AND_THROW("Acquired image {} exceeds swapchain image count {}", index, m_numImages);
-            }
+                acquire.pending               = true;
 
-            m_acquiredSuboptimal          = m_lastResult == VK_SUBOPTIMAL_KHR;
+                m_acquiredSuboptimal          = m_lastResult == VK_SUBOPTIMAL_KHR;
 
-            m_semaphoreIndex              = nextSemaphore;
+                m_semaphoreIndex              = nextSemaphore;
 
-            m_imageIndex                  = static_cast<int32_t>(index);
+                m_imageIndex                  = static_cast<int32_t>(index);
 
-            acquire.imageIndex            = index;
+                acquire.imageIndex            = index;
 
-            acquire.previousPresentSerial = m_presentSync[index].pending ? m_presentSync[index].serial : 0;
+                acquire.previousPresentSerial = m_presentSync[index].pending ? m_presentSync[index].serial : 0;
 
-            // A presentation fence must finish before it is reused, independently of
-            // graphics submission completion or acquisition of a different image.
-            if (m_hasPresentFences)
-            {
-                WaitForPresent(m_presentSync[index]);
-
-                if (GVulkanRHI->AreSubmissionsBlocked())
+                if (m_hasPresentFences)
                 {
-                    LOG_ERROR_AND_THROW("Presentation fence completion reported device loss");
+                    WaitForPresent(m_presentSync[index]);
+                }
+
+                if (!GVulkanRHI->AreSubmissionsBlocked())
+                {
+                    *outSemaphore              = acquire.semaphore;
+
+                    m_acquireResult.imageIndex = m_imageIndex;
                 }
             }
+            else if (m_acquireResult.outcome == RHISurfaceOutcome::eFailed)
+            {
+                m_acquireResult.error = MakeVulkanError(m_lastResult, "vkAcquireNextImageKHR", __FILE__, __LINE__);
 
-            *ppOutSemaphore = acquire.semaphore;
-
-            acquiredIndex   = m_imageIndex;
+                // The frame owner decides whether a rejected acquisition is terminal.
+            }
         }
-        else if (m_lastResult != VK_ERROR_OUT_OF_DATE_KHR && m_lastResult != VK_ERROR_SURFACE_LOST_KHR
-                 && m_lastResult != VK_TIMEOUT && m_lastResult != VK_NOT_READY)
+
+        if (GVulkanRHI->AreSubmissionsBlocked())
         {
-            CheckWSIResult(m_lastResult, "vkAcquireNextImageKHR");
+            m_acquireResult = {RHISurfaceOutcome::eFailed, -1, GVulkanRHI->GetTerminalError()};
         }
     }
 
-    return acquiredIndex;
+    return m_acquireResult;
 }
 
 void VulkanSwapchain::MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial)
 {
     if (m_imageIndex < 0 || submissionSerial == 0)
     {
-        LOG_ERROR_AND_THROW("Cannot mark an acquire semaphore without an accepted submission");
+        VERIFY_EXPR_MSG_F(false, "Cannot mark an acquire semaphore without an accepted submission");
     }
 
     m_acquireSync[m_semaphoreIndex].submissionSerial = submissionSerial;
@@ -505,7 +589,7 @@ bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
 {
     if (m_imageIndex < 0 || GVulkanRHI->AreSubmissionsBlocked())
     {
-        LOG_ERROR_AND_THROW("Cannot present without an acquired image and a usable device");
+        VERIFY_EXPR_MSG_F(false, "Cannot present without an acquired image and a usable device");
     }
 
     const uint32_t index = static_cast<uint32_t>(m_imageIndex);
@@ -563,11 +647,19 @@ bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
 
     m_acquiredSuboptimal = false;
 
-    if (m_lastResult != VK_SUCCESS && !NeedsRecreation())
-    {
-        GVulkanRHI->BlockSubmissions();
+    m_presentResult      = {SurfaceOutcome(m_lastResult),
+                       sync.pending ? RHIPresentAcceptance::eEnqueued
+                            : (m_lastResult == VK_ERROR_OUT_OF_HOST_MEMORY || m_lastResult == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+                                ? RHIPresentAcceptance::eRejected
+                                : RHIPresentAcceptance::eUncertain,
+                            {},
+                            m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR};
 
-        CheckWSIResult(m_lastResult, "vkQueuePresentKHR");
+    if (m_presentResult.outcome == RHISurfaceOutcome::eFailed)
+    {
+        m_presentResult.error = MakeVulkanError(m_lastResult, "vkQueuePresentKHR", __FILE__, __LINE__);
+
+        GVulkanRHI->BlockSubmissions(m_presentResult.error);
     }
 
     return m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR;
@@ -599,15 +691,15 @@ void VulkanSwapchain::CompleteAcquire(AcquireSync& sync, bool wait)
 
         if (result == VK_ERROR_DEVICE_LOST)
         {
-            GVulkanRHI->BlockSubmissions();
+            GVulkanRHI->BlockSubmissions(MakeVulkanError(result, "Swapchain completion", __FILE__, __LINE__));
 
             sync.pending = false;
 
             ReportVulkanDeviceLoss(result, "acquire fence");
         }
-        else if (result != VK_NOT_READY)
+        else if (result != VK_NOT_READY && result != VK_TIMEOUT)
         {
-            CheckWSIResult(result, "Acquire fence completion");
+            VERIFY_EXPR_MSG_F(result == VK_SUCCESS, "Acquire fence completion failed: {}", int32_t(result));
 
             if (sync.previousPresentSerial != 0)
             {
@@ -624,7 +716,7 @@ void VulkanSwapchain::CompleteAcquire(AcquireSync& sync, bool wait)
                 }
             }
 
-            CheckWSIResult(vkResetFences(device, 1, &sync.fence), "vkResetFences(acquire)");
+            VERIFY_EXPR_MSG(vkResetFences(device, 1, &sync.fence) == VK_SUCCESS, "vkResetFences(acquire) failed");
 
             sync.pending               = false;
 
@@ -643,7 +735,7 @@ void VulkanSwapchain::WaitForPresent(PresentSync& sync)
 
         if (result == VK_ERROR_DEVICE_LOST)
         {
-            GVulkanRHI->BlockSubmissions();
+            GVulkanRHI->BlockSubmissions(MakeVulkanError(result, "Swapchain completion", __FILE__, __LINE__));
 
             sync.pending = false;
 
@@ -651,9 +743,9 @@ void VulkanSwapchain::WaitForPresent(PresentSync& sync)
         }
         else
         {
-            CheckWSIResult(result, "Presentation fence completion");
+            VERIFY_EXPR_MSG_F(result == VK_SUCCESS, "Presentation fence completion failed: {}", int32_t(result));
 
-            CheckWSIResult(vkResetFences(device, 1, &sync.fence), "vkResetFences(present)");
+            VERIFY_EXPR_MSG(vkResetFences(device, 1, &sync.fence) == VK_SUCCESS, "vkResetFences(present) failed");
 
             sync.pending = false;
         }
@@ -675,11 +767,11 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
 
             if (result != VK_ERROR_DEVICE_LOST)
             {
-                CheckWSIResult(result, "Swapchain graphics completion");
+                VERIFY_EXPR_MSG_F(result == VK_SUCCESS, "Swapchain graphics completion failed: {}", int32_t(result));
             }
             else
             {
-                GVulkanRHI->BlockSubmissions();
+                GVulkanRHI->BlockSubmissions(MakeVulkanError(result, "Swapchain completion", __FILE__, __LINE__));
             }
         }
     }
@@ -700,11 +792,11 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
 
         if (result != VK_ERROR_DEVICE_LOST)
         {
-            CheckWSIResult(result, "Swapchain terminal idle wait");
+            VERIFY_EXPR_MSG_F(result == VK_SUCCESS, "Swapchain terminal idle wait failed: {}", int32_t(result));
         }
         else
         {
-            GVulkanRHI->BlockSubmissions();
+            GVulkanRHI->BlockSubmissions(MakeVulkanError(result, "Swapchain completion", __FILE__, __LINE__));
         }
     }
 

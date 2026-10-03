@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include "AssetLib/FastGLTFLoader.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Camera.h"
@@ -32,7 +34,7 @@ TEST(SceneImport, ImportsOnlyActiveLightInstancesAndCameraNodesInGLTFAndGLB)
 
         asset::FastGLTFLoader loader;
 
-        loader.LoadFromFile(SceneFixture(file), &scene);
+        ASSERT_TRUE(loader.LoadFromFile(SceneFixture(file), &scene)) << loader.GetError();
 
         const zen::HeapVector<sg::Light*> lights = scene.GetComponents<sg::Light>();
 
@@ -78,7 +80,7 @@ TEST(SceneImport, NormalizationKeepsMeshesLightsAndCamerasTogether)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
 
     sys::SceneEditor::CenterAndNormalizeScene(&scene);
 
@@ -163,7 +165,7 @@ TEST(SceneImport, UnlimitedSpotRangeAndNinetyDegreeConeAreAccepted)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("spot_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("spot_scene.gltf"), &scene)) << loader.GetError();
 
     const HeapVector<rc::SceneLight> lights = rc::BuildSceneLights(scene);
 
@@ -196,7 +198,7 @@ TEST(SceneImport, RetainsRichMaterialBindingsTransformsAndColorSpaces)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
 
     const sg::Material& material = *scene.GetComponents<sg::Material>().front();
 
@@ -266,11 +268,10 @@ TEST(SceneImport, RetainsRichMaterialBindingsTransformsAndColorSpaces)
 TEST(SceneImport, SceneOwnsSkinAnimationAndMorphPayloadAfterLoaderDestruction)
 {
     sg::Scene scene;
-
     {
         asset::FastGLTFLoader loader;
 
-        loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
+        ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
     }
 
     const sg::SceneAssetData& data = scene.GetAssetData();
@@ -308,7 +309,7 @@ TEST(SceneImport, PerspectiveAndOrthographicCamerasPublishAuthoredMatrices)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
 
     const zen::HeapVector<sg::SceneCamera*> cameras = scene.GetComponents<sg::SceneCamera>();
 
@@ -345,9 +346,9 @@ TEST(SceneImport, ReloadReplacesNodesComponentsAndPayloadAndRejectsOtherFormats)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
 
-    loader.LoadFromFile(SceneFixture("normal_material.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("normal_material.gltf"), &scene)) << loader.GetError();
 
     EXPECT_TRUE(scene.GetComponents<sg::Light>().empty());
 
@@ -363,9 +364,11 @@ TEST(SceneImport, ReloadReplacesNodesComponentsAndPayloadAndRejectsOtherFormats)
 
     EXPECT_EQ(rc::BuildSceneLights(scene).size(), 6u);
 
-    EXPECT_THROW(loader.LoadFromFile("scene.obj", &scene), std::runtime_error);
+    EXPECT_FALSE(loader.LoadFromFile("scene.obj", &scene));
 
-    EXPECT_THROW(loader.LoadFromFile("missing.gltf", &scene), std::runtime_error);
+    EXPECT_NE(loader.GetError().find("Unsupported scene format"), std::string::npos) << loader.GetError();
+
+    EXPECT_FALSE(loader.LoadFromFile("missing.gltf", &scene));
 }
 
 TEST(SceneImport, TriangleStripsConvertToTriangleLists)
@@ -374,7 +377,7 @@ TEST(SceneImport, TriangleStripsConvertToTriangleLists)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("strip_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("strip_scene.gltf"), &scene)) << loader.GetError();
 
     EXPECT_EQ(loader.GetIndices(), std::vector<uint32_t>({0, 1, 2}));
 }
@@ -387,7 +390,7 @@ TEST(SceneImport, QuantizedPositionsAndAssetsWithoutSceneAreSupported)
 
         asset::FastGLTFLoader loader;
 
-        loader.LoadFromFile(SceneFixture(fixture), &scene);
+        ASSERT_TRUE(loader.LoadFromFile(SceneFixture(fixture), &scene)) << loader.GetError();
 
         ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -405,7 +408,7 @@ TEST(SceneImport, ZeroIntensityAndInstancedLightsStillSuppressFallback)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("zero_light_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("zero_light_scene.gltf"), &scene)) << loader.GetError();
 
     const HeapVector<rc::SceneLight> lights = rc::BuildSceneLights(scene);
 
@@ -416,13 +419,55 @@ TEST(SceneImport, ZeroIntensityAndInstancedLightsStillSuppressFallback)
     EXPECT_NE(lights[0].position, lights[1].position);
 }
 
+TEST(SceneImport, UndecodableTextureFailsTheImportAndTheLoaderRecovers)
+{
+    std::ifstream source(SceneFixture("complete_scene.gltf"), std::ios::binary);
+
+    std::string json((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
+
+    const std::string prefix = "data:image/png;base64,";
+
+    const size_t begin       = json.find(prefix);
+
+    ASSERT_NE(begin, std::string::npos);
+
+    // Three zero bytes match no supported image format.
+    json.replace(begin + prefix.size(), json.find('"', begin) - begin - prefix.size(), "AAAA");
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "zen_undecodable_texture.gltf";
+
+    std::ofstream(path, std::ios::binary) << json;
+
+    sg::Scene scene;
+
+    asset::FastGLTFLoader loader;
+
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
+
+    const sg::Node* previous = scene.GetRenderableNodes().front();
+
+    // Textures decode on worker threads; their failure must reach the caller.
+    EXPECT_FALSE(loader.LoadFromFile(path.string(), &scene));
+
+    EXPECT_NE(loader.GetError().find("Failed to decode glTF texture"), std::string::npos) << loader.GetError();
+
+    EXPECT_EQ(scene.GetRenderableNodes().front(), previous);
+
+    // The next import starts without the earlier error.
+    EXPECT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
+
+    EXPECT_TRUE(loader.GetError().empty());
+
+    std::filesystem::remove(path);
+}
+
 TEST(SceneImport, FailedImportsDoNotPublishPartialScenesOrTraverseCycles)
 {
     sg::Scene scene;
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene)) << loader.GetError();
 
     const sg::Node* previous                  = scene.GetRenderableNodes().front();
 
@@ -430,17 +475,17 @@ TEST(SceneImport, FailedImportsDoNotPublishPartialScenesOrTraverseCycles)
 
     const sg::Texture* defaultTexture         = scene.GetDefaultTextures().pBaseColor;
 
-    EXPECT_THROW(loader.LoadFromFile(SceneFixture("cyclic_scene.gltf"), &scene), std::runtime_error);
+    EXPECT_FALSE(loader.LoadFromFile(SceneFixture("cyclic_scene.gltf"), &scene));
 
     EXPECT_EQ(scene.GetRenderableNodes().front(), previous);
 
-    EXPECT_THROW(loader.LoadFromFile(SceneFixture("unsupported_uv_scene.gltf"), &scene), std::runtime_error);
+    EXPECT_FALSE(loader.LoadFromFile(SceneFixture("unsupported_uv_scene.gltf"), &scene));
 
     EXPECT_EQ(scene.GetRenderableNodes().front(), previous);
 
     for (const char* fixture : {"invalid_texture_scene.gltf", "invalid_morph_scene.gltf"})
     {
-        EXPECT_THROW(loader.LoadFromFile(SceneFixture(fixture), &scene), std::runtime_error);
+        EXPECT_FALSE(loader.LoadFromFile(SceneFixture(fixture), &scene));
 
         EXPECT_EQ(scene.GetRenderableNodes().front(), previous);
     }

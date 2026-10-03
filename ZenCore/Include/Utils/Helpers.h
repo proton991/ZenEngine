@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
-#include <stdexcept>
+#include "Utils/Errors.h"
+#include <limits>
+#include <cmath>
 
 namespace zen::util
 {
@@ -32,10 +34,10 @@ template <class T> inline uint32_t ToU32(T value)
 {
     static_assert(std::is_arithmetic<T>::value, "T must be numeric");
 
-    if (static_cast<uintmax_t>(value) > static_cast<uintmax_t>(std::numeric_limits<uint32_t>::max()))
-    {
-        throw std::runtime_error("to_u32() failed, value is too big to be converted to uint32_t");
-    }
+    const long double numeric = static_cast<long double>(value);
+
+    VERIFY_EXPR_MSG(std::isfinite(numeric) && numeric >= 0 && numeric <= std::numeric_limits<uint32_t>::max(),
+                    "ToU32 value is outside the uint32_t range");
 
     return static_cast<uint32_t>(value);
 }

@@ -19,7 +19,7 @@ DynamicRHI* DynamicRHI::Create(RHIAPIType type)
     }
     else
     {
-        LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
+        VERIFY_EXPR_MSG_F(false, "Dynamic RHI creation failed: unsupported graphics API {}", static_cast<uint32_t>(type));
     }
 
     pRHI->Init();
@@ -39,7 +39,7 @@ RHIDebug* RHIDebug::Create()
     }
     else
     {
-        LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
+        LOGE("RHI debug creation requires a supported, initialized backend");
 
         result = nullptr;
     }

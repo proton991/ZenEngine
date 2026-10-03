@@ -155,7 +155,8 @@ void VulkanMemoryAllocator::Init(VkInstance       instance,
 
     allocatorCI.pDeviceMemoryCallbacks = &memoryCallbacks;
 
-    VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
+    VERIFY_EXPR_MSG_F((vmaCreateAllocator(&allocatorCI, &m_vmaAllocator)) == VK_SUCCESS,
+                      "Vulkan operation failed: vmaCreateAllocator(&allocatorCI, &m_vmaAllocator)");
 }
 
 void VulkanMemoryAllocator::BeginFrame(uint32_t frame)
@@ -232,6 +233,8 @@ bool VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
 
     if (!ready)
     {
+        ReportVulkanDeviceLoss(result, "vmaCreateImage");
+
         LOGE("Image allocation failed: {}", GetResultString(result));
 
         *pImage      = VK_NULL_HANDLE;
@@ -293,6 +296,8 @@ bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
 
     if (!ready)
     {
+        ReportVulkanDeviceLoss(result, "vmaCreateBuffer");
+
         LOGE("Buffer allocation or persistent mapping failed: {}", GetResultString(result));
 
         if (*pBuffer != VK_NULL_HANDLE || pAllocation->handle != VK_NULL_HANDLE)
@@ -317,6 +322,8 @@ uint8_t* VulkanMemoryAllocator::MapBuffer(const VulkanMemoryAllocation& memAlloc
 
     if (result != VK_SUCCESS)
     {
+        ReportVulkanDeviceLoss(result, "vmaMapMemory");
+
         LOGE("Buffer mapping failed: {}", GetResultString(result));
 
         pDataPtr = nullptr;

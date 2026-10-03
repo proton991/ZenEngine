@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstddef>
 #include "Memory/Memory.h"
-#include <exception>
 #include <initializer_list>
 #include <utility>
 

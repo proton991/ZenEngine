@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 // Included by RenderCoreTests.cpp to exercise the same fake backend as RDG tests.
 #if defined(ZEN_WIN32)
 #    include <Windows.h>
@@ -129,6 +130,7 @@ protected:
     void TearDown() override
     {
         gate.Open();
+        viewport.ReleaseForTeardown();
         RenderCoreTest::TearDown();
     }
 
@@ -234,6 +236,8 @@ TEST(RHICommandListTest, PoolAllocatorReusesOverflowBlocksAfterReset)
 
 TEST(RHICommandListTest, DetachedStorageReusesAllArenaBlocksWithoutAllocating)
 {
+    TestRHI backend;
+
     uint32_t          destructions = 0;
     RHICommandList    commands;
     RHICommandListPtr reusable;
@@ -296,6 +300,7 @@ TEST_F(RHIExecutorTest, RecyclesPresentContextsAndReleasesProducerContextOnRhi)
     const std::thread::id worker = GetRHIThread().Invoke([] { return std::this_thread::get_id(); });
     EXPECT_EQ(rhi->graphics.proxyDestructions, 1u);
     EXPECT_EQ(rhi->graphics.lastProxyDestroyThread, worker);
+    viewport.ReleaseForTeardown();
     executor->Destroy();
     EXPECT_EQ(rhi->graphics.proxyDestructions, 2u);
     EXPECT_EQ(rhi->graphics.lastProxyDestroyThread, worker);
@@ -320,11 +325,12 @@ TEST_F(RHIExecutorTest, DelayedGpuCompletionRetainsListsAndBoundsTheRetiredCache
     EXPECT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
                                             result.requiredSerials.Get(RHICommandContextType::eGraphics)));
     EXPECT_EQ(rhi->contextCreations - rhi->graphics.proxyDestructions, RHIFrameState::kMaxFramesInFlight);
+    viewport.ReleaseForTeardown();
     executor->Destroy();
     EXPECT_EQ(rhi->graphics.proxyDestructions, rhi->contextCreations);
 }
 
-TEST(RHIThreadTest, FifoNestedInvokeExceptionsAndDrain)
+TEST(RHIThreadTest, FifoNestedInvokeAndDrain)
 {
     RHIThread thread;
     thread.Start(RHIExecutionMode::eThreaded, 2);
@@ -336,7 +342,11 @@ TEST(RHIThreadTest, FifoNestedInvokeExceptionsAndDrain)
     const std::thread::id worker = thread.Invoke([] { return std::this_thread::get_id(); });
     EXPECT_NE(worker, std::this_thread::get_id());
     EXPECT_EQ(thread.Invoke([&thread] { return thread.Invoke([] { return 17; }); }), 17);
-    EXPECT_THROW(thread.Invoke([] { throw std::runtime_error("test RHI exception"); }), std::runtime_error);
+    RHIResult<int> checked = thread.InvokeChecked([] { return 23; });
+
+    ASSERT_TRUE(checked);
+
+    EXPECT_EQ(checked.GetValue(), 23);
     thread.Stop();
     ASSERT_EQ(order.size(), 32u);
     for (uint32_t i = 0; i < 32; ++i)
@@ -1124,6 +1134,7 @@ TEST_F(ThreadedRenderCoreTest, ProgressQueryFailureBlocksRetirementWithoutAPendi
     device->CollectCompletedResources();
     GetRHIThread().Flush();
     EXPECT_FALSE(destroyed.contains(id));
+    viewport.ReleaseForTeardown();
     device->Destroy();
     EXPECT_TRUE(destroyed.contains(id));
 }
@@ -1155,7 +1166,240 @@ TEST_F(ThreadedRenderCoreTest, BackendFailureRetainsBatchAndDeferredOwnersUntilS
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     EXPECT_FALSE(destroyed.contains(batchId));
     EXPECT_FALSE(destroyed.contains(deferredId));
+    commands.reset();
+    viewport.ReleaseForTeardown();
     device->Destroy();
     EXPECT_TRUE(destroyed.contains(batchId));
     EXPECT_TRUE(destroyed.contains(deferredId));
 }
+
+namespace
+{
+// Counts Destroy calls; it owns no backend object.
+class LateReleaseResource : public RHIResource
+{
+public:
+    LateReleaseResource() : RHIResource(RHIResourceType::eSampler) {}
+
+    uint32_t destroyCalls{0};
+
+protected:
+    void Init() override {}
+
+    void Destroy() override
+    {
+        ++destroyCalls;
+    }
+};
+
+class LateReleaseContext : public TestContext
+{
+public:
+    explicit LateReleaseContext(uint32_t& destructions) :
+        TestContext(RHICommandContextType::eGraphics), m_destructions(destructions)
+    {}
+
+    ~LateReleaseContext() override
+    {
+        ++m_destructions;
+    }
+
+private:
+    uint32_t& m_destructions;
+};
+
+// Starts and destroys an executor over a fake backend, which retires that backend.
+void RetireExecutor(RHIExecutionMode mode)
+{
+    RHICommandListExecutor* executor = ZEN_NEW() RHICommandListExecutor(ZEN_NEW() TestRHI(), mode);
+
+    GDynamicRHI                      = executor;
+
+    executor->Destroy();
+
+    ZEN_DELETE(executor);
+}
+
+class RHILateReleaseTest : public testing::TestWithParam<RHIExecutionMode>
+{
+protected:
+    void SetUp() override
+    {
+        m_strict         = RHIOptions::GetInstance().StrictTeardownChecks();
+
+        m_previousLogger = spdlog::default_logger();
+
+        // spdlog's logger and sink APIs require std::shared_ptr.
+        spdlog::set_default_logger(
+            std::make_shared<spdlog::logger>("late_release_test", std::make_shared<spdlog::sinks::ostream_sink_mt>(m_log)));
+    }
+
+    void TearDown() override
+    {
+        RHIOptions::GetInstance().SetStrictTeardownChecks(m_strict);
+
+        spdlog::set_default_logger(m_previousLogger);
+    }
+
+    bool m_strict{true};
+
+    std::ostringstream              m_log;
+    std::shared_ptr<spdlog::logger> m_previousLogger;
+};
+
+using RHILateReleaseDeathTest = RHILateReleaseTest;
+} // namespace
+
+TEST_P(RHILateReleaseTest, NonStrictReleaseAfterExecutorDestructionIsLoggedAndLeaked)
+{
+    RHIOptions::GetInstance().SetStrictTeardownChecks(false);
+
+    LateReleaseResource* late = ZEN_NEW() LateReleaseResource();
+
+    RetireExecutor(GetParam());
+
+    EXPECT_EQ(GDynamicRHI, nullptr);
+
+    // Admission rejects the release before Destroy, so nothing reaches the retired backend.
+    EXPECT_EQ(late->ReleaseReference(), 0u);
+
+    EXPECT_EQ(late->destroyCalls, 0u);
+
+    EXPECT_NE(m_log.str().find("Resource released after RHI cleanup admission closed"), std::string::npos);
+
+    // A new standalone backend reopens admission, and releases run inline again.
+    TestRHI              backend;
+    LateReleaseResource* current = ZEN_NEW() LateReleaseResource();
+
+    EXPECT_EQ(current->ReleaseReference(), 0u);
+
+    EXPECT_EQ(current->destroyCalls, 1u);
+
+    ZEN_DELETE(current);
+
+    ZEN_DELETE(late);
+}
+
+TEST_P(RHILateReleaseTest, NonStrictContextReleaseIsLoggedWithoutRunningItsDestructor)
+{
+    RHIOptions::GetInstance().SetStrictTeardownChecks(false);
+
+    uint32_t destructions    = 0;
+
+    LateReleaseContext* late = ZEN_NEW() LateReleaseContext(destructions);
+
+    late->AddRef();
+
+    RetireExecutor(GetParam());
+
+    EXPECT_EQ(late->Release(), 0u);
+
+    EXPECT_EQ(destructions, 0u);
+
+    EXPECT_NE(m_log.str().find("Context released after RHI cleanup admission closed"), std::string::npos);
+
+    // This fake context owns no backend state; reclaim the deliberate test leak.
+    ZEN_DELETE(late);
+
+    EXPECT_EQ(destructions, 1u);
+}
+
+TEST_P(RHILateReleaseTest, FinalizerClosesExternalAdmissionUntilRestart)
+{
+    RHIThread thread;
+
+    thread.Start(GetParam());
+
+    uint32_t cleanupCalls = 0;
+
+    thread.Stop([&thread, &cleanupCalls] {
+        EXPECT_TRUE(thread.IsCurrentThread());
+
+        EXPECT_TRUE(thread.DispatchCleanup([&cleanupCalls] { ++cleanupCalls; }));
+
+        thread.Invoke([&cleanupCalls] { ++cleanupCalls; });
+
+        std::thread external([&thread] { EXPECT_FALSE(thread.DispatchCleanup([] {})); });
+
+        external.join();
+    });
+
+    EXPECT_EQ(cleanupCalls, 2u);
+
+    thread.Stop();
+
+    EXPECT_FALSE(thread.IsCurrentThread());
+
+    EXPECT_FALSE(thread.DispatchCleanup([] {}));
+
+    EXPECT_FALSE(thread.TryDispatch([] {}));
+
+    uint32_t cancellations = 0;
+
+    EXPECT_FALSE(
+        thread.Dispatch([] { ADD_FAILURE() << "Closed admission executed a task"; }, [&cancellations] { ++cancellations; }));
+
+    EXPECT_EQ(cancellations, 1u);
+
+    thread.Start(GetParam());
+
+    EXPECT_EQ(thread.Invoke([] { return 42; }), 42);
+
+    thread.Stop();
+
+    // Stopping a worker without retiring a backend preserves standalone inline use.
+    EXPECT_TRUE(thread.DispatchCleanup([] {}));
+}
+
+TEST_P(RHILateReleaseDeathTest, StrictReleaseAfterExecutorDestructionStops)
+{
+    // Only the death-test child creates the executor.
+    EXPECT_DEATH(
+        {
+            RHIOptions::GetInstance().SetStrictTeardownChecks(true);
+
+            LateReleaseResource* late = ZEN_NEW() LateReleaseResource();
+
+            RetireExecutor(GetParam());
+
+            late->ReleaseReference();
+        },
+        "Resource released after RHI cleanup admission closed");
+}
+
+TEST_P(RHILateReleaseDeathTest, StrictContextReleaseAfterExecutorDestructionStops)
+{
+    EXPECT_DEATH(
+        {
+            RHIOptions::GetInstance().SetStrictTeardownChecks(true);
+
+            uint32_t            destructions = 0;
+            LateReleaseContext* late         = ZEN_NEW() LateReleaseContext(destructions);
+
+            late->AddRef();
+
+            RetireExecutor(GetParam());
+
+            late->Release();
+        },
+        "Context released after RHI cleanup admission closed");
+}
+
+TEST_P(RHILateReleaseDeathTest, SynchronousInvocationAfterExecutorDestructionStops)
+{
+    EXPECT_DEATH(
+        {
+            RetireExecutor(GetParam());
+
+            GetRHIThread().Invoke([] {});
+        },
+        "Synchronous RHI invocation after cleanup admission closed");
+}
+
+INSTANTIATE_TEST_SUITE_P(ExecutionModes,
+                         RHILateReleaseTest,
+                         testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
+
+INSTANTIATE_TEST_SUITE_P(ExecutionModes,
+                         RHILateReleaseDeathTest,
+                         testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));

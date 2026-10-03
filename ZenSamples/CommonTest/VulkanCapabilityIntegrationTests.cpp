@@ -762,7 +762,7 @@ TEST_F(VulkanCapabilityIntegrationTest, OptionalPipelineCacheFailureKeepsDeviceU
 
     VulkanDevice device(session->rhi.GetPhysicalDevice());
 
-    EXPECT_NO_THROW(device.Init());
+    device.Init();
 
     EXPECT_EQ(PipelineCacheFailureDriver::calls, 1u);
 
@@ -816,7 +816,7 @@ TEST_F(VulkanCapabilityIntegrationTest, MissingRequiredFeatureRejectsBeforeCreat
 
         VulkanDevice device(session->rhi.GetPhysicalDevice());
 
-        EXPECT_THROW(device.Init(), std::runtime_error);
+        EXPECT_DEATH(device.Init(), "verification failed");
 
         device.Destroy();
     }
@@ -1176,7 +1176,7 @@ TEST_F(VulkanCapabilityIntegrationTest, AbsentMaintenanceNamesKeepDeviceUsable)
 
     VulkanDevice device(session->rhi.GetPhysicalDevice());
 
-    EXPECT_NO_THROW(device.Init());
+    device.Init();
 
     EXPECT_FALSE(device.GetExtensionFlags().hasSwapchainMaintenance1);
 
@@ -1242,7 +1242,7 @@ TEST_F(VulkanCapabilityIntegrationTest, MissingCalibratedTimestampsKeepsDeviceUs
 
     VulkanDevice device(session->rhi.GetPhysicalDevice());
 
-    EXPECT_NO_THROW(device.Init());
+    device.Init();
 
     EXPECT_FALSE(device.GetExtensionFlags().hasCalibratedTimestamps);
 

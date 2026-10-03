@@ -64,6 +64,7 @@ add_executable(RenderCoreTest
     RenderCoreTest/VoxelResourcePlanningTests.cpp
     RenderCoreTest/VoxelGISettingsTests.cpp
     ../ZenCore/Source/Memory/Memory.cpp
+    ../ZenCore/Source/Graphics/RHI/DynamicRHI.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandList.cpp
     ../ZenCore/Source/Graphics/RHI/RHIResource.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandListExecutor.cpp
@@ -101,7 +102,7 @@ set_source_files_properties(RenderCoreTest/RenderCoreTests.cpp PROPERTIES
 add_dependencies(RenderCoreTest SpvShaders)
 add_executable(LRUCacheTest LRUCacheTest/LRUCacheTests.cpp)
 target_include_directories(LRUCacheTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Include)
-target_link_libraries(LRUCacheTest PRIVATE gtest_main)
+target_link_libraries(LRUCacheTest PRIVATE gtest_main spdlog::spdlog)
 add_executable(InputControllerTest CommonTest/InputControllerTests.cpp)
 target_link_libraries(InputControllerTest PRIVATE ZenCore gtest_main)
 add_executable(ConfigLoaderTest CommonTest/ConfigLoaderTests.cpp)
@@ -164,6 +165,11 @@ endif ()
 # Applications
 
 if (BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if (Python3_Interpreter_FOUND)
+        add_test(NAME NoEngineExceptions COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/check_no_exceptions.py)
+        set_tests_properties(NoEngineExceptions PROPERTIES LABELS "unit;policy" TIMEOUT 30)
+    endif ()
     foreach(TEST_TARGET CommonTest SmartPtrTest FlatHashMapTest LRUCacheTest
             InputControllerTest ConfigLoaderTest VulkanRHITest RenderCoreTest)
         add_test(NAME ${TEST_TARGET} COMMAND ${TEST_TARGET})

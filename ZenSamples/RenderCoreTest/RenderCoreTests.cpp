@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
@@ -191,8 +192,18 @@ public:
 
     ~TestViewport() override
     {
-        // This fixture lives on the stack; finish its final release before it leaves scope.
-        GetRHIThread().Invoke([this] { ReleaseReference(); });
+        ReleaseForTeardown();
+    }
+
+    void ReleaseForTeardown()
+    {
+        // Stack storage can outlive the backend, but its owning reference cannot.
+        if (!m_released)
+        {
+            GetRHIThread().Invoke([this] { ReleaseReference(); });
+
+            m_released = true;
+        }
     }
 
     RHITexture* color{};
@@ -281,6 +292,8 @@ private:
     void Init() override {}
 
     void Destroy() override {}
+
+    bool m_released{false};
 };
 
 class TestShader : public RHIShader
@@ -356,7 +369,7 @@ public:
 
             RHIShaderGroupInfo reflected{};
 
-            RHIShaderUtil::ReflectShaderGroupInfo(spirv, reflected);
+            VERIFY_EXPR(RHIShaderUtil::ReflectShaderGroupInfo(spirv, reflected));
 
             m_SRDTable = std::move(reflected.SRDTable);
 
@@ -932,7 +945,6 @@ public:
     RHITexture*                                             lastCreatedTexture{nullptr};
     uint32_t                                                bufferCreations{0};
     uint32_t                                                failBufferCreationAt{0};
-    uint32_t                                                throwBufferCreationAt{0};
     RHIBufferCreateInfo                                     lastBufferInfo;
     uint64_t                                                lastBufferId{0};
     std::thread::id                                         lastBufferCreationThread;
@@ -945,14 +957,21 @@ public:
     std::function<void()>                                   beforeSubmission;
     std::vector<RHICommandList*>                            pendingCommandLists;
     uint32_t                                                failTextureCreationAt{0};
-    uint32_t                                                throwTextureCreationAt{0};
     uint32_t                                                failPipelineCreationAt{0};
     const RHIRenderingLayout*                               lastPipelineLayout{nullptr};
     std::vector<RHIPipeline*>                               createdPipelines;
 
     void Init() override {}
 
-    void Destroy() override {}
+    void Destroy() override
+    {
+        // Recorded layouts retain attachment references; release them inside the finalizer.
+        graphics.renderingLayouts.clear();
+
+        compute.renderingLayouts.clear();
+
+        transfer.renderingLayouts.clear();
+    }
 
     void BeginFrame() override
     {
@@ -1106,11 +1125,6 @@ public:
 
         lastTextureCreationThread = std::this_thread::get_id();
 
-        if (textureCreations == throwTextureCreationAt)
-        {
-            throw std::runtime_error("test texture allocation failure");
-        }
-
         if (textureCreations != failTextureCreationAt)
         {
             result             = ZEN_NEW() TestTexture(info);
@@ -1149,11 +1163,6 @@ public:
         ++bufferCreations;
 
         lastBufferCreationThread = std::this_thread::get_id();
-
-        if (bufferCreations == throwBufferCreationAt)
-        {
-            throw std::runtime_error("test buffer allocation failure");
-        }
 
         if (bufferCreations != failBufferCreationAt)
         {
@@ -1308,7 +1317,7 @@ public:
 
         if (failProgressQuery)
         {
-            throw std::runtime_error("test GPU progress query failure");
+            submissionsBlocked = true;
         }
 
         return completed[Index(type)];
@@ -1674,6 +1683,13 @@ protected:
     void SetUp() override
     {
         InitializeDevice(&viewport);
+    }
+
+    void TearDown() override
+    {
+        viewport.ReleaseForTeardown();
+
+        RenderCoreTest::TearDown();
     }
 };
 
@@ -2409,7 +2425,6 @@ TEST_F(RenderCoreTest, TextureExtractionRetainsOneOwnerAndNeverReturnsToTransien
     device->CollectCompletedResources();
 
     EXPECT_EQ(output.Get()->GetRefCount(), 1u);
-
     {
         RenderGraph reader("extracted_import");
 
@@ -2678,7 +2693,6 @@ TEST_F(RenderCoreTest, DiscardedContentsPersistAcrossGraphsAndCallbackFailureRol
     CreateTestShaderProgram(device, "intent");
 
     RHITexture* texture = Texture();
-
     {
         RenderGraph discard("discard");
 
@@ -5376,7 +5390,6 @@ TEST_F(RenderCoreTest, GraphRecordsTransfersAndSurvivesRebuildAndRepeatedExecuti
     RenderGraph graph("copy");
 
     graph.Begin();
-
     {
         RDGTransferPassCmdRecorder first  = graph.AddTransferPass("first");
 
@@ -5592,7 +5605,6 @@ TEST_F(RenderCoreTest, ConflictingTransferLayoutsRejectTheEntireGraph)
     RenderGraph graph("conflicting_layouts");
 
     graph.Begin();
-
     {
         RDGTransferPassCmdRecorder pass = graph.AddTransferPass("bad_chain");
 
@@ -6727,33 +6739,27 @@ TEST_F(RenderCoreTest, FrameAndPresentationShareOneSubmissionAndRejectTogether)
 
     RenderGraph* graph = device->GetCurrentFrameRDG();
 
-    // The presentation copy joins the frame's submission, so a rejection accepts neither.
+    RecordPresentationGraph(graph, source, target);
+
+    const uint32_t before = rhi->submissionAttempts;
+
+    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+
+    EXPECT_EQ(rhi->submissionAttempts, before + 1);
+
+    EXPECT_EQ(viewport.presents, 1u);
+
+    EXPECT_EQ(rhi->submitted[0], 1u);
+
+    device->NextFrame();
+
     RecordPresentationGraph(graph, source, target);
 
     rhi->failSubmissionAt = rhi->submissionAttempts + 1;
 
-    uint32_t attempts     = rhi->submissionAttempts;
-
     EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
 
-    EXPECT_EQ(rhi->submissionAttempts, attempts + 1);
-
-    EXPECT_EQ(viewport.preparePresents, 1u);
-
-    EXPECT_EQ(viewport.presents, 0u);
-
-    EXPECT_EQ(rhi->submitted[0], 0u);
-
-    EXPECT_FALSE(device->AreSubmissionsBlocked());
-
-    // Rejection is retryable: the next frame is one accepted submission and presents.
-    RecordPresentationGraph(graph, source, target);
-
-    attempts = rhi->submissionAttempts;
-
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
-
-    EXPECT_EQ(rhi->submissionAttempts, attempts + 1);
+    EXPECT_EQ(rhi->submissionAttempts, before + 2);
 
     EXPECT_EQ(viewport.preparePresents, 2u);
 
@@ -6761,30 +6767,21 @@ TEST_F(RenderCoreTest, FrameAndPresentationShareOneSubmissionAndRejectTogether)
 
     EXPECT_EQ(rhi->submitted[0], 1u);
 
-    EXPECT_EQ(RDGSubmissionTestAccess::Tracker(*device).GetContents(target).status, RDGContentStatus::eDefined);
-
-    device->NextFrame();
-
-    viewport.presentResult = false;
-
-    RecordPresentationGraph(graph, source, target);
+    EXPECT_TRUE(device->AreSubmissionsBlocked());
 
     EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
 
-    EXPECT_EQ(viewport.presents, 2u);
-
-    // Frame batches retain their viewport until retirement; this one lives on the stack.
-    rhi->completed = rhi->submitted;
-
-    device->CollectCompletedResources();
-
-    device->FlushRHIThread();
+    EXPECT_EQ(rhi->submissionAttempts, before + 2);
 
     device->DestroyBuffer(source);
 
     device->DestroyBuffer(target);
 
     device->DestroyTexture(viewport.color);
+
+    viewport.ReleaseForTeardown();
+
+    device->Destroy();
 }
 
 TEST_F(RenderCoreTest, BufferImageCopiesSelectQueuesUsingMipGranularity)
@@ -8166,7 +8163,6 @@ TEST_F(RenderCoreTest, PipelineCacheHashesStateAndDefersEviction)
 TEST_F(RenderCoreTest, RecordedShaderParametersOwnTheirBytes)
 {
     RHICommandList* commands = RHICommandList::Create(rhi->GetCommandContext(RHICommandContextType::eGraphics));
-
     {
         RHIBatchedShaderParameters parameters;
 
@@ -9074,7 +9070,6 @@ TEST_F(RenderCoreTest, GPUProfilingRecordsRealGraphReplayAndUnsupportedBackend)
     TestBuffer* source      = Buffer();
 
     TestBuffer* destination = Buffer();
-
     {
         RenderGraph graph("profile_replay");
 
@@ -10258,7 +10253,6 @@ TEST_F(RenderCoreTest, InterleavedAccessRecordingPreservesPassSlicesThroughRepla
         std::vector<NameID> names;
 
         AddEmptyReader(graph, names);
-
         {
             std::vector<std::unique_ptr<RDGTransferPassCmdRecorder>> recorders;
 
@@ -12574,7 +12568,6 @@ TEST_F(RenderCoreTest, ImportedExtractionsSurviveOriginalGraphAndOwnerRelease)
     RDGExtractedBuffer bufferOwner;
 
     RDGExtractedTexture textureOwner;
-
     {
         RenderGraph producer("extraction_producer");
 

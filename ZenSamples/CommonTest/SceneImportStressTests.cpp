@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cmath>
@@ -29,7 +30,7 @@ public:
 
         if (!file)
         {
-            throw std::runtime_error("Cannot write the temporary glTF stress fixture");
+            VERIFY_EXPR_MSG(false, "Cannot write the temporary glTF stress fixture");
         }
     }
 
@@ -71,7 +72,7 @@ TEST(SceneImportStress, EmptySceneHasFiniteBoundsAndCanNormalizeAndDeform)
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(file.GetPath(), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(file.GetPath(), &scene)) << loader.GetError();
 
     EXPECT_TRUE(scene.GetNodes().empty());
 
@@ -131,7 +132,7 @@ TEST(SceneImportStress, ImportsHierarchyDeeperThanTenThousandWithoutRecursiveSta
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(file.GetPath(), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(file.GetPath(), &scene)) << loader.GetError();
 
     ASSERT_EQ(scene.GetNodes().size(), nodeCount);
 
@@ -167,7 +168,7 @@ TEST(SceneImportStress, ZeroScaleAndSingularMatrixKeepNormalTransformsFinite)
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(file.GetPath(), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(file.GetPath(), &scene)) << loader.GetError();
 
     ASSERT_EQ(scene.GetNodes().size(), 2u);
 

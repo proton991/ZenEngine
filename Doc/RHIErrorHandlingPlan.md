@@ -1,6 +1,6 @@
 # Unified RHI error handling implementation plan
 
-Status: proposed, 2026-09-20. Based on revision `b28c1f0d3925d1ceedc8c58901421bc3d13c81a4`. This document defines future work; it does not implement the changes or certify production readiness.
+Status: implementation updated 2026-10-03. The original gap inventory below describes revision `b28c1f0d3925d1ceedc8c58901421bc3d13c81a4`. R1–R6 supplied the recording/resource containment; the remaining exception removal, structured executor causes, checked waits/progress/WSI/admission, and R17 option B are implemented in the current worktree. See [verification and remaining acceptance limits](RHIErrorHandlingVerification.md). This does not certify the unrelated production/hardware items.
 
 Unify failure reporting across RHI with a backend-neutral error record, checked results at operation boundaries, and a latched failure inside command recording. Preserve separate information about what failed, whether GPU work was accepted, and whether the renderer can continue. The first delivery must prevent execution with invalid resources or command buffers and terminate failed frame processing predictably.
 
@@ -159,7 +159,7 @@ Replace execution-only queue entries with owned work items containing a job clas
 
 Synchronize lifecycle checks, admission, and the claim to execute/cancel a queued item under the queue's synchronization model. Only an unstarted job may be cancelled; an executing job completes through its own checked path. Run actions and release payloads outside the queue mutex, on RHI when backend-owned references require it. Reentrant `Invoke` on RHI and inline execution obey the same lifecycle checks and execute permitted work directly without waiting on their own queue.
 
-`Dispatch` returns checked admission. `Invoke` returns immediately on rejected admission instead of waiting on its completion event. An accepted item must run or cancel; a blocking producer awakened by terminal failure or shutdown must recheck admission. Wake queue-capacity and work waiters on lifecycle transitions even if capacity is still full. Nonblocking maintenance may coalesce or skip a queue-full request, but must distinguish that from terminal rejection.
+`DispatchChecked` returns checked admission; legacy `Dispatch` is its boolean adapter. `InvokeChecked` returns immediately on rejected admission instead of waiting on its completion event. `Invoke` is reserved for ordered backend/cleanup operations under the caller's terminal gate. An accepted item must run or cancel; a blocking producer awakened by terminal failure or shutdown must recheck admission. Wake queue-capacity and work waiters on lifecycle transitions even if capacity is still full. Nonblocking maintenance may coalesce or skip a queue-full request, but must distinguish that from terminal rejection.
 
 | Operation class | Running | Blocked by terminal failure | Shutting down | Destroyed |
 | --- | --- | --- | --- | --- |
@@ -177,12 +177,12 @@ Keep the worker alive while accepted jobs, cancellation payloads, and resource/c
 When terminal failure is observed:
 
 1. Close normal-job admission, wake blocked producers, and claim unstarted normal jobs for cancellation before native execution; retain permitted cleanup access.
-2. Complete each affected promise/event through the common completion helper, with cancellation linked to the original terminal cause. Synchronous `Invoke` callers must also unblock with a checked outcome.
+2. Complete each affected promise/event through the common completion helper, with cancellation linked to the original terminal cause. Synchronous normal-job `InvokeChecked` callers must also unblock with a checked outcome.
 3. Retain accepted/uncertain GPU owners, discard definitely unsubmitted work, and invalidate speculative renderer history.
 4. Publish one primary diagnostic containing operation, native code, frame/batch, queue, and relevant serials. Cleanup failures remain secondary diagnostics.
 5. Let the application report failure and close cleanly through CPU/platform facilities; do not require the failed renderer to draw an error dialog.
 
-Convert RHI-owned `throw` paths to explicit statuses or deliberate invariant handling. Existing catches around foreign/library exceptions may remain as a last-resort containment boundary during migration, but must not be the normal GPU-error path. Disabling exceptions throughout the engine or redesigning every CPU allocator is outside scope.
+Convert RHI-owned `throw` paths to explicit statuses or deliberate invariant handling. No `try`, `catch`, or `throw` is permitted in engine-owned C++, including tests and utility code. Optional failures use checked status/null contracts; fatal invariants emit a diagnostic and abort in all configurations. Third-party source and its compiler exception settings are unchanged; redesigning every CPU allocator is outside scope.
 
 Progress polling must publish failure even when no frame ticket is pending. Replace ambiguous wait booleans with completed/timeout/error outcomes and make `WaitDeviceIdle` checked. Do not report a failed query as serial zero, a completed wait, or permission to recycle resources. Last known valid progress may remain readable alongside the failure status.
 
@@ -206,7 +206,7 @@ Implementation touchpoints beyond the table in section 1 include [RHICommandList
 
 Register new sources/tests in [ZenCore/CMakeLists.txt](../ZenCore/CMakeLists.txt) and [ZenSamples/CMakeLists.txt](../ZenSamples/CMakeLists.txt). Some RenderCore test targets compile RHI sources directly, so adding a new implementation file to ZenCore alone is insufficient.
 
-Apply repository C++ conventions throughout: one return at the end of each function, explicit types except iterators, short necessary lambdas, project containers such as `HeapVector`, shared helpers for repeated logic, no exception-based error handling, and the project `.clang-format`.
+Apply repository C++ conventions throughout: one return at the end of each function, explicit types, including iterators, short necessary lambdas, project containers such as `HeapVector`, shared helpers for repeated logic, no exception-based error handling, and the project `.clang-format`.
 
 ## 8. Validation and acceptance
 
@@ -226,7 +226,7 @@ Use scoped native-call fault injection and the fake RHI backend for deterministi
 
 Extend the existing `VulkanRHITest`, `RenderCoreTest`, and `VulkanRHIIntegrationTest` suites. Place deterministic executor tests with [RenderCoreTests.cpp](../ZenSamples/RenderCoreTest/RenderCoreTests.cpp) and [RHIThreadingTests.inl](../ZenSamples/RenderCoreTest/RHIThreadingTests.inl); reuse [ScopedVulkanCall.h](../ZenSamples/CommonTest/ScopedVulkanCall.h) for native fault injection where suitable. Preserve coverage when replacing `EXPECT_THROW` assertions with status assertions.
 
-Run affected suites in Debug and RelWithDebInfo (`NDEBUG`) and exercise both timeline and fence submission paths. Retain real-GPU happy-path rendering/readback, upload, descriptor, swapchain, and synchronization-validation coverage. Record environment, modes, counts, failures, and any skipped capability-dependent cases in a companion verification document when implementation is complete.
+Run affected suites in Debug and Release or RelWithDebInfo (`NDEBUG`) and exercise both timeline and fence submission paths. Retain real-GPU happy-path rendering/readback, upload, descriptor, swapchain, and synchronization-validation coverage. Record environment, modes, counts, failures, and any skipped capability-dependent cases in a companion verification document when implementation is complete.
 
 The change is ready for production evaluation when:
 

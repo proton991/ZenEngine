@@ -9,7 +9,10 @@ RenderObject::RenderObject(RenderDevice* pRenderDevice, const std::string& model
 
     UniquePtr<asset::FastGLTFLoader> gltfLoader = MakeUnique<asset::FastGLTFLoader>();
 
-    gltfLoader->LoadFromFile(modelPath, m_scene.Get());
+    const bool loaded                           = gltfLoader->LoadFromFile(modelPath, m_scene.Get());
+
+    // Render objects load engine assets; the renderer cannot continue without them.
+    VERIFY_EXPR_MSG_F(loaded, "Cannot load required model '{}': {}", modelPath, gltfLoader->GetError());
 
     const std::vector<asset::Vertex>& vertices = gltfLoader->GetVertices();
 

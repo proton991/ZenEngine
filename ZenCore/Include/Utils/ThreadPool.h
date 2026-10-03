@@ -165,7 +165,7 @@ private:
         LockAuto                lock(&m_mutex);
         if (m_stop || m_finished)
         {
-            throw std::runtime_error("Cannot enqueue work after the thread pool has stopped");
+            VERIFY_EXPR_MSG(false, "Cannot enqueue work after the thread pool has stopped");
         }
         m_q.Push(task);
         pending.Release();

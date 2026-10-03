@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 TEST_F(RenderCoreTest, BufferHelpersRejectAllocationFailuresAndRetry)
 {
     const uint8_t data[16]{};
@@ -74,7 +75,7 @@ TEST(RHIIndexOffsetTest, CommandsAndGraphDescriptorsPreserveOffsetsBeyondFourGiB
     EXPECT_EQ(pass.geometryBuffer.indexBufferOffset, offset);
 }
 
-TEST(RHIThreadProductionTest, TaskExceptionsCancelNormalWorkAndPreserveCleanup)
+TEST(RHIThreadProductionTest, TaskFailureCancelsNormalWorkAndPreservesCleanup)
 {
     for (RHIExecutionMode mode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
     {
@@ -83,12 +84,14 @@ TEST(RHIThreadProductionTest, TaskExceptionsCancelNormalWorkAndPreserveCleanup)
         uint32_t cancellations = 0;
         uint32_t cleanups      = 0;
         uint32_t normal        = 0;
-        thread.Dispatch([] { throw std::runtime_error("injected task failure"); }, [&cancellations] { ++cancellations; });
+        thread.Dispatch([&thread] {
+            thread.Fail(MakeRHIError(RHIErrorCode::eBackendFailure, "injected task failure", __FILE__, __LINE__));
+        });
         thread.Dispatch([&normal] { ++normal; }, [&cancellations] { ++cancellations; });
         EXPECT_TRUE(thread.DispatchCleanup([&cleanups] { ++cleanups; }));
         thread.Stop([&cleanups] { ++cleanups; });
         EXPECT_TRUE(thread.HasTaskFailure());
-        EXPECT_EQ(cancellations, 2u);
+        EXPECT_EQ(cancellations, 1u);
         EXPECT_EQ(cleanups, 2u);
         EXPECT_EQ(normal, 0u);
     }
@@ -132,7 +135,10 @@ TEST(RHIThreadProductionTest, FailedWorkerCompletesQueuedFrameTiming)
         RHICommandListExecutor executor(ZEN_NEW() TestRHI(), mode);
         RHIGPUFrameTimingPtr   timing = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
-        GetRHIThread().Dispatch([] { throw std::runtime_error("injected timing task failure"); });
+        GetRHIThread().Dispatch([] {
+            GetRHIThread().Fail(
+                MakeRHIError(RHIErrorCode::eBackendFailure, "injected timing task failure", __FILE__, __LINE__));
+        });
         executor.BeginGPUFrameTiming(timing);
         executor.EndGPUFrameTiming(timing, true);
         executor.FlushRHIThread();
@@ -154,7 +160,9 @@ TEST_F(RHIExecutorTest, CancelledQueuedBatchCompletesItsTicketAfterTaskFailure)
     });
     entered.Wait();
 
-    GetRHIThread().Dispatch([] { throw std::runtime_error("injected batch task failure"); });
+    GetRHIThread().Dispatch([] {
+        GetRHIThread().Fail(MakeRHIError(RHIErrorCode::eBackendFailure, "injected batch task failure", __FILE__, __LINE__));
+    });
     const RHISubmissionTicket ticket = executor->SubmitFrame(*commands, nullptr);
     release.Signal();
 
@@ -165,7 +173,7 @@ TEST_F(RHIExecutorTest, CancelledQueuedBatchCompletesItsTicketAfterTaskFailure)
     EXPECT_EQ(rhi->submissionAttempts, 0u);
 }
 
-TEST_F(RHIExecutorTest, MissingPresentationListRejectsTheFrameWithoutBlocking)
+TEST_F(RHIExecutorTest, MissingPresentationListStopsRequiredFrame)
 {
     TestViewport viewport;
 
@@ -186,19 +194,169 @@ TEST_F(RHIExecutorTest, MissingPresentationListRejectsTheFrameWithoutBlocking)
 
     EXPECT_EQ(viewport.preparePresents, 0u);
 
-    EXPECT_FALSE(executor->AreSubmissionsBlocked());
+    EXPECT_TRUE(executor->AreSubmissionsBlocked());
 
-    // Nothing reached the GPU, so the rebuilt frame submits and presents.
-    rhi->failContextCreation = false;
+    EXPECT_TRUE(result.cause.IsFailure());
 
-    TestOwnedSchedule retry(*executor, queues);
-
-    retry.lists[0]->Draw(3, 1, 0, 0);
-
-    EXPECT_EQ(executor->SubmitGroups(retry.groups, retry.state, &viewport).submission, RHISubmissionResult::eSuccess);
-
-    EXPECT_EQ(viewport.presents, 1u);
+    EXPECT_EQ(viewport.presents, 0u);
 
     // Retained batches reference the stack viewport; release them before it leaves scope.
+    rejected.lists.clear();
+
+    viewport.ReleaseForTeardown();
+
     executor->Destroy();
+}
+
+TEST(RHIThreadProductionTest, FullQueueFailureWakesProducersAndPreservesTheFirstCause)
+{
+    RHIThread thread;
+
+    thread.Start(RHIExecutionMode::eThreaded, 1);
+
+    RHIThreadEvent entered;
+
+    RHIThreadEvent release;
+
+    ASSERT_TRUE(thread.Dispatch([&entered, &release] {
+        entered.Signal();
+
+        release.Wait();
+    }));
+
+    entered.Wait();
+
+    uint32_t cancelled = 0;
+
+    uint32_t executed  = 0;
+
+    EXPECT_TRUE(thread.Dispatch([&executed] { ++executed; }, [&cancelled] { ++cancelled; }));
+
+    EXPECT_EQ(thread.DispatchChecked([] {}, {}, false).admission, RHIJobAdmission::eQueueFull);
+
+    RHIJobAdmissionResult producerResult;
+
+    RHIThreadEvent producerStarted;
+
+    std::thread producer([&thread, &producerResult, &producerStarted] {
+        producerStarted.Signal();
+
+        producerResult = thread.DispatchChecked([] {});
+    });
+
+    producerStarted.Wait();
+
+    thread.Fail({RHIErrorCode::eOutOfDeviceMemory, -2, "first failure", __FILE__, 7, 91});
+
+    thread.Fail({RHIErrorCode::eDeviceLost, -4, "later device loss", __FILE__, 8});
+
+    producer.join();
+
+    EXPECT_EQ(producerResult.admission, RHIJobAdmission::eFailed);
+
+    EXPECT_EQ(producerResult.error.resourceId, 91u);
+
+    EXPECT_TRUE(thread.HasDeviceLoss());
+
+    EXPECT_STREQ(thread.GetFailure().operation, "first failure");
+
+    release.Signal();
+
+    thread.Flush();
+
+    EXPECT_EQ(cancelled, 1u);
+
+    EXPECT_EQ(executed, 0u);
+
+    thread.Stop();
+}
+
+TEST(RHIThreadProductionTest, CheckedInvocationReturnsMoveOnlyValuesAndCancellationWithoutWaiting)
+{
+    for (RHIExecutionMode mode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
+    {
+        RHIThread thread;
+
+        thread.Start(mode);
+
+        RHIResult<UniquePtr<int>> value = thread.InvokeChecked([] { return MakeUnique<int>(17); });
+
+        ASSERT_TRUE(value);
+
+        EXPECT_EQ(*value.GetValue(), 17);
+
+        EXPECT_TRUE(thread.InvokeChecked([] {}));
+
+        thread.Fail({RHIErrorCode::eBackendFailure, -99, "invoke cancellation", __FILE__, 12});
+
+        uint32_t calls           = 0;
+
+        RHIResult<int> cancelled = thread.InvokeChecked([&calls] {
+            ++calls;
+            return 42;
+        });
+
+        EXPECT_FALSE(cancelled);
+
+        EXPECT_EQ(cancelled.GetError().nativeCode, -99);
+
+        EXPECT_EQ(calls, 0u);
+
+        EXPECT_TRUE(thread.DispatchCleanup([&calls] { ++calls; }));
+
+        thread.Stop([] {});
+
+        EXPECT_EQ(calls, 1u);
+
+        EXPECT_EQ(thread.DispatchChecked([] {}).admission, RHIJobAdmission::eFailed);
+    }
+}
+
+class FailingFinalizeRHI : public TestRHI
+{
+public:
+    RHIStatus FinalizeCommandLists(VectorView<RHICommandList*>, HeapVector<RHIPlatformCommandList*>&) override
+    {
+        return {{RHIErrorCode::eOutOfDeviceMemory, -2, "injected vkEndCommandBuffer", __FILE__, 73, 19}};
+    }
+};
+
+TEST(RHIThreadProductionTest, FrameTicketPreservesFinalizationCauseAndBlocksNewResources)
+{
+    for (RHIExecutionMode mode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
+    {
+        RHICommandListExecutor executor(ZEN_NEW() FailingFinalizeRHI(), mode);
+
+        RHICommandListPtr commands(RHICommandList::Create(executor.GetCommandContext(RHICommandContextType::eGraphics)));
+
+        commands->Draw(3, 1, 0, 0);
+
+        const RHISubmissionTicket ticket = executor.SubmitFrame(*commands, nullptr);
+
+        ASSERT_TRUE(ticket.IsValid());
+
+        const RHIBatchResult& result = ticket.Wait();
+
+        EXPECT_EQ(result.submission, RHISubmissionResult::eRejected);
+
+        EXPECT_EQ(result.cause.nativeCode, -2);
+
+        EXPECT_EQ(result.cause.line, 73u);
+
+        EXPECT_EQ(result.cause.resourceId, 19u);
+
+        EXPECT_STREQ(executor.GetTerminalError().operation, "injected vkEndCommandBuffer");
+
+        const RHIProgressResult progress = executor.QueryProgressChecked();
+
+        EXPECT_EQ(progress.error.nativeCode, -2);
+
+        EXPECT_EQ(executor.WaitForCompletionChecked(RHICommandContextType::eGraphics, 1, 0).outcome, RHIWaitOutcome::eFailed);
+
+        EXPECT_EQ(executor.CreateBuffer({}), nullptr);
+
+        commands.reset();
+
+        executor.Destroy();
+    }
 }

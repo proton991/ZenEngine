@@ -2261,6 +2261,8 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
 {
     GetRHIThread().CheckOwnership();
 
+    SetSubmissionError({});
+
     HeapVector<VulkanQueue*> queues;
 
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)
@@ -2298,7 +2300,9 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
 
     if (result == RHISubmissionResult::eFatal)
     {
-        BlockSubmissions();
+        BlockSubmissions(GetLastSubmissionError().IsFailure()
+                             ? GetLastSubmissionError()
+                             : MakeRHIError(RHIErrorCode::eBackendFailure, "Vulkan submission", __FILE__, __LINE__));
     }
 
     // Workload objects stay alive until every context has read the actual accepted serials.

@@ -60,21 +60,21 @@ bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage, const VkPhys
 
 RHIShader* VulkanResourceFactory::CreateShader(const RHIShaderCreateInfo& createInfo)
 {
-    RHIShader* pShader = VulkanShader::CreateObject(createInfo);
+    RHIShader* pShader = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanShader::CreateObject(createInfo);
 
     return pShader;
 }
 
 RHIPipeline* VulkanResourceFactory::CreatePipeline(const RHIComputePipelineCreateInfo& createInfo)
 {
-    RHIPipeline* pComputePipeline = VulkanPipeline::CreateObject(createInfo);
+    RHIPipeline* pComputePipeline = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanPipeline::CreateObject(createInfo);
 
     return pComputePipeline;
 }
 
 RHIPipeline* VulkanResourceFactory::CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)
 {
-    RHIPipeline* pGfxPipeline = VulkanPipeline::CreateObject(createInfo);
+    RHIPipeline* pGfxPipeline = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanPipeline::CreateObject(createInfo);
 
     return pGfxPipeline;
 }
@@ -110,7 +110,7 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 
     new (pShader) VulkanShader(createInfo);
 
-    bool created = pShader->LoadSpirvFiles();
+    bool created = createInfo.spirv != nullptr || pShader->LoadSpirvFiles();
 
     if (created)
     {
@@ -159,94 +159,127 @@ void VulkanShader::Init()
 {
     RHIShaderGroupInfo sgInfo{};
 
-    RHIShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, sgInfo);
+    bool reflected = m_reflection.has_value();
 
-    sgInfo.name = m_name;
-
-    m_SRDTable  = sgInfo.SRDTable;
-
-    if (m_SRDTable.size() <= kGlobalBindlessHeapIndex)
+    if (reflected)
     {
-        m_SRDTable.resize(kGlobalBindlessHeapIndex + 1);
-    }
-
-    for (SmallVector<RHIShaderResourceDescriptor> const& setSRDs : m_SRDTable)
-    {
-        for (const RHIShaderResourceDescriptor& srd : setSRDs)
-        {
-            ++m_SRDCount[ToUnderlying(srd.type)];
-
-            m_namedSRDLut[srd.name] = &srd;
-        }
-    }
-
-    if (!m_specializationConstants.empty())
-    {
-        // set specialization constants
-        for (RHIShaderSpecializationConstant& spc : sgInfo.specializationConstants)
-        {
-            if (!m_specializationConstants.contains(spc.constantId))
-            {
-                continue;
-            }
-
-            spc.bits = m_specializationConstants.at(spc.constantId).bits;
-        }
-    }
-
-    // Create specialization info from tracked state. This is shared by all shaders.
-    const HeapVector<RHIShaderSpecializationConstant>& specConstants = sgInfo.specializationConstants;
-
-    if (!specConstants.empty())
-    {
-        m_spcMapEntries.resize(specConstants.size());
-
-        m_specializationData.resize(specConstants.size());
-
-        for (uint32_t i = 0; i < specConstants.size(); i++)
-        {
-            VkSpecializationMapEntry& entry = m_spcMapEntries[i];
-
-            // Vulkan scalar specialization values occupy four bytes, including VkBool32.
-            entry.constantID        = specConstants[i].constantId;
-
-            entry.offset            = i * sizeof(uint32_t);
-
-            entry.size              = sizeof(uint32_t);
-
-            m_specializationData[i] = specConstants[i].type == RHIShaderSpecializationConstantType::eBool
-                                        ? (specConstants[i].bits != 0 ? VK_TRUE : VK_FALSE)
-                                        : specConstants[i].bits;
-        }
-    }
-
-    m_specializationInfo.mapEntryCount = static_cast<uint32_t>(m_spcMapEntries.size());
-
-    m_specializationInfo.pMapEntries   = m_spcMapEntries.empty() ? nullptr : m_spcMapEntries.data();
-
-    m_specializationInfo.dataSize      = m_specializationData.size() * sizeof(uint32_t);
-
-    m_specializationInfo.pData         = m_specializationData.empty() ? nullptr : m_specializationData.data();
-
-    // Reject an over-limit layout before creating native objects. Drivers need not reject
-    // one; only the validation layer reports it.
-    const VulkanUniformBufferUsage uniformUsage = CountUniformBufferDescriptors(m_SRDTable);
-
-    const VkPhysicalDeviceLimits limits         = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
-
-    m_fitsDeviceLimits                          = UniformBuffersFitLimits(uniformUsage, limits);
-
-    if (m_fitsDeviceLimits)
-    {
-        InitNativeObjects(sgInfo);
+        sgInfo = *m_reflection;
     }
     else
     {
-        LOGE("Shader '{}' exceeds device uniform-buffer limits: {} dynamic descriptors per "
-             "layout (limit {}), {} in one stage (limit {})",
-             m_name.CStr(), uniformUsage.dynamicCount,
-             std::min(limits.maxDescriptorSetUniformBuffersDynamic, limits.maxDescriptorSetUniformBuffers),
-             uniformUsage.maxPerStageCount, limits.maxPerStageDescriptorUniformBuffers);
+        reflected = RHIShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, sgInfo);
+
+        if (reflected)
+        {
+            m_reflection = sgInfo;
+        }
+    }
+
+    if (reflected)
+    {
+        for (const SmallVector<RHIShaderResourceDescriptor>& descriptors : sgInfo.SRDTable)
+        {
+            for (const RHIShaderResourceDescriptor& descriptor : descriptors)
+            {
+                reflected = reflected && ToUnderlying(descriptor.type) < ToUnderlying(RHIShaderResourceType::eMax);
+            }
+        }
+
+        if (!reflected)
+        {
+            LOGE("Shader '{}' contains an unsupported cached descriptor type", m_name.CStr());
+        }
+    }
+
+    if (reflected)
+    {
+        sgInfo.name = m_name;
+
+        m_SRDTable  = sgInfo.SRDTable;
+
+        if (m_SRDTable.size() <= kGlobalBindlessHeapIndex)
+        {
+            m_SRDTable.resize(kGlobalBindlessHeapIndex + 1);
+        }
+
+        for (SmallVector<RHIShaderResourceDescriptor> const& setSRDs : m_SRDTable)
+        {
+            for (const RHIShaderResourceDescriptor& srd : setSRDs)
+            {
+                ++m_SRDCount[ToUnderlying(srd.type)];
+
+                m_namedSRDLut[srd.name] = &srd;
+            }
+        }
+
+        if (!m_specializationConstants.empty())
+        {
+            // set specialization constants
+            for (RHIShaderSpecializationConstant& spc : sgInfo.specializationConstants)
+            {
+                if (!m_specializationConstants.contains(spc.constantId))
+                {
+                    continue;
+                }
+
+                spc.bits = m_specializationConstants.at(spc.constantId).bits;
+            }
+        }
+
+        // Create specialization info from tracked state. This is shared by all shaders.
+        const HeapVector<RHIShaderSpecializationConstant>& specConstants = sgInfo.specializationConstants;
+
+        if (!specConstants.empty())
+        {
+            m_spcMapEntries.resize(specConstants.size());
+
+            m_specializationData.resize(specConstants.size());
+
+            for (uint32_t i = 0; i < specConstants.size(); i++)
+            {
+                VkSpecializationMapEntry& entry = m_spcMapEntries[i];
+
+                // Vulkan scalar specialization values occupy four bytes, including VkBool32.
+                entry.constantID        = specConstants[i].constantId;
+
+                entry.offset            = i * sizeof(uint32_t);
+
+                entry.size              = sizeof(uint32_t);
+
+                m_specializationData[i] = specConstants[i].type == RHIShaderSpecializationConstantType::eBool
+                                            ? (specConstants[i].bits != 0 ? VK_TRUE : VK_FALSE)
+                                            : specConstants[i].bits;
+            }
+        }
+
+        m_specializationInfo.mapEntryCount = static_cast<uint32_t>(m_spcMapEntries.size());
+
+        m_specializationInfo.pMapEntries   = m_spcMapEntries.empty() ? nullptr : m_spcMapEntries.data();
+
+        m_specializationInfo.dataSize      = m_specializationData.size() * sizeof(uint32_t);
+
+        m_specializationInfo.pData         = m_specializationData.empty() ? nullptr : m_specializationData.data();
+
+        // Reject an over-limit layout before creating native objects. Drivers need not reject
+        // one; only the validation layer reports it.
+        const VulkanUniformBufferUsage uniformUsage = CountUniformBufferDescriptors(m_SRDTable);
+
+        const VkPhysicalDeviceLimits limits         = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+
+        m_fitsDeviceLimits                          = UniformBuffersFitLimits(uniformUsage, limits);
+
+        if (m_fitsDeviceLimits)
+        {
+            InitNativeObjects(sgInfo);
+        }
+        else
+        {
+            LOGE("Shader '{}' exceeds device uniform-buffer limits: {} dynamic descriptors per "
+                 "layout (limit {}), {} in one stage (limit {})",
+                 m_name.CStr(), uniformUsage.dynamicCount,
+                 std::min(limits.maxDescriptorSetUniformBuffersDynamic, limits.maxDescriptorSetUniformBuffers),
+                 uniformUsage.maxPerStageCount, limits.maxPerStageDescriptorUniformBuffers);
+        }
     }
 }
 
@@ -280,6 +313,8 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
 
             if (!ready)
             {
+                ReportVulkanDeviceLoss(result, "vkCreateShaderModule");
+
                 LOGE("vkCreateShaderModule failed: {}", GetResultString(result));
 
                 break;
@@ -405,6 +440,8 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
 
         if (!ready)
         {
+            ReportVulkanDeviceLoss(result, "vkCreateDescriptorSetLayout");
+
             LOGE("vkCreateDescriptorSetLayout failed: {}", GetResultString(result));
 
             break;
@@ -508,6 +545,8 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
 
         if (!ready)
         {
+            ReportVulkanDeviceLoss(result, "vkCreatePipelineLayout");
+
             LOGE("vkCreatePipelineLayout failed: {}", GetResultString(result));
 
             if (m_pipelineLayout != VK_NULL_HANDLE)
@@ -969,6 +1008,8 @@ void VulkanPipeline::InitGraphics(const RHIRenderingLayout& layout)
 
     if (!m_initialized)
     {
+        ReportVulkanDeviceLoss(result, "vkCreateGraphicsPipelines");
+
         LOGE("vkCreateGraphicsPipelines failed: {}", GetResultString(result));
     }
 
@@ -994,6 +1035,8 @@ void VulkanPipeline::InitCompute()
 
     if (!m_initialized)
     {
+        ReportVulkanDeviceLoss(result, "vkCreateComputePipelines");
+
         LOGE("vkCreateComputePipelines failed: {}", GetResultString(result));
     }
 

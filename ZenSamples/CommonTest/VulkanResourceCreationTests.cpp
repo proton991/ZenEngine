@@ -419,3 +419,41 @@ TEST(RHIHeaderTests, StageNamesCountsAndDefaults)
 
     EXPECT_EQ(RHIBufferTransition{}.newAccessMode, RHIAccessMode::eNone);
 }
+
+TEST(RHIHeaderDeathTest, ColorBlendStateStopsBeyondTheAttachmentLimit)
+{
+    using namespace zen;
+
+    const char* message = "A color blend state holds at most MAX_NUM_COLOR_ATTACHMENTS attachments";
+
+    EXPECT_DEATH(
+        {
+            RHIGfxPipelineColorBlendState blend;
+
+            blend.AddAttachments(MAX_NUM_COLOR_ATTACHMENTS);
+
+            blend.AddAttachment();
+        },
+        message);
+
+    EXPECT_DEATH(
+        {
+            RHIGfxPipelineColorBlendState blend;
+
+            blend.AddAttachments(MAX_NUM_COLOR_ATTACHMENTS);
+
+            blend.AddAttachment(RHIGfxPipelineColorBlendState::Attachment{});
+        },
+        message);
+
+    // A count that would wrap the index sum still stops.
+    EXPECT_DEATH(
+        {
+            RHIGfxPipelineColorBlendState blend;
+
+            blend.AddAttachment();
+
+            blend.AddAttachments(UINT32_MAX);
+        },
+        message);
+}

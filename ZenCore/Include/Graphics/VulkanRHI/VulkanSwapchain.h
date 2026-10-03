@@ -1,6 +1,7 @@
 #pragma once
 #include "Templates/HeapVector.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
+#include "Graphics/RHI/RHIError.h"
 
 namespace zen
 {
@@ -84,6 +85,23 @@ public:
 
     int32_t AcquireNextImage(VulkanSemaphore** pOutSemaphore);
 
+    RHIAcquireResult AcquireNextImageChecked(VulkanSemaphore** pOutSemaphore);
+
+    RHIStatus GetStatus() const
+    {
+        return {m_error};
+    }
+
+    const RHIAcquireResult& GetAcquireResult() const
+    {
+        return m_acquireResult;
+    }
+
+    const RHIPresentResult& GetPresentResult() const
+    {
+        return m_presentResult;
+    }
+
     bool Present(VulkanSemaphore* pRenderingCompleteSemaphore);
 
     void MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial);
@@ -140,5 +158,8 @@ private:
     bool                               m_hasPresentFences{false};
     VkResult                           m_lastResult{VK_SUCCESS};
     bool                               m_acquiredSuboptimal{false};
+    RHIError                           m_error{};
+    RHIAcquireResult                   m_acquireResult{};
+    RHIPresentResult                   m_presentResult{};
 };
 } // namespace zen

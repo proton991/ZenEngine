@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdexcept>
 #include <string>
 #include <iostream>
 #include <cstdint>
@@ -9,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <utility>
+#include <atomic>
 
 #include <spdlog/spdlog.h>
 
@@ -20,6 +20,15 @@
 
 namespace zen
 {
+using VerificationReporter = void (*)(const char*) noexcept;
+
+inline std::atomic<VerificationReporter> g_verificationReporter{nullptr};
+
+// Applications can install a CPU/platform diagnostic, independent of the renderer.
+inline void SetVerificationReporter(VerificationReporter reporter) noexcept
+{
+    g_verificationReporter.store(reporter, std::memory_order_release);
+}
 
 // Verification is a release-active invariant check. Keep its fatal path independent
 // of logger configuration and diagnostic formatting, including during teardown.
@@ -37,6 +46,13 @@ namespace zen
 
     std::fflush(stderr);
 
+    const VerificationReporter reporter = g_verificationReporter.load(std::memory_order_acquire);
+
+    if (reporter != nullptr)
+    {
+        reporter(message != nullptr ? message : expression);
+    }
+
     std::abort();
 }
 
@@ -48,30 +64,21 @@ template <typename... Args> [[noreturn]] inline void VerificationFailureFormatte
 {
     char message[1024]{};
 
-    try
-    {
-        const fmt::format_to_n_result<char*> formatted =
-            fmt::format_to_n(message, sizeof(message) - 1, format, std::forward<Args>(args)...);
+    // Emit a fallback before formatting: even a foreign formatter terminating cannot
+    // hide the original invariant. This fatal boundary never unwinds engine code.
+    std::fprintf(stderr, "ZenEngine: verification failed: %s (%s:%d)\n", expression, file, line);
 
-        message[std::min(formatted.size, sizeof(message) - 1)] = '\0';
-    }
-    catch (...)
-    {
-        // A failed diagnostic must still stop execution at the original invariant.
-        VerificationFailure(expression, file, line, "Failed to format verification message");
-    }
+    std::fflush(stderr);
+
+    const fmt::format_to_n_result<char*> formatted =
+        fmt::format_to_n(message, sizeof(message) - 1, format, std::forward<Args>(args)...);
+
+    message[std::min(formatted.size, sizeof(message) - 1)] = '\0';
 
     VerificationFailure(expression, file, line, message);
 }
 
-template <bool> void ThrowIf(std::string&&) {}
-
-template <> inline void ThrowIf<true>(std::string&& msg)
-{
-    throw std::runtime_error(msg);
-}
-
-template <bool bThrowException, typename... ArgsType>
+template <typename... ArgsType>
 void LogError(bool isCritical, const char* pFunction, const char* pFullFilePath, int line, const ArgsType&... args)
 {
     std::string fileName(pFullFilePath);
@@ -92,7 +99,6 @@ void LogError(bool isCritical, const char* pFunction, const char* pFullFilePath,
         message = fmt::format("ZenEngine: error in {} ({}, {}): {}", pFunction, fileName, line, args...);
         spdlog::error(message);
     }
-    ThrowIf<bThrowException>(std::move(message));
 }
 
 } // namespace zen
@@ -126,16 +132,16 @@ void LogError(bool isCritical, const char* pFunction, const char* pFullFilePath,
         }                                                                           \
     } while (0)
 
-#define LOG_ERROR(...)                                                                       \
-    do                                                                                       \
-    {                                                                                        \
-        LogError<false>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
+#define LOG_ERROR(...)                                                                     \
+    do                                                                                     \
+    {                                                                                      \
+        zen::LogError(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
-#define LOG_FATAL_ERROR(...)                                                                \
-    do                                                                                      \
-    {                                                                                       \
-        LogError<false>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
+#define LOG_FATAL_ERROR(...)                                                              \
+    do                                                                                    \
+    {                                                                                     \
+        zen::LogError(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 #define LOG_ERROR_ONCE(...)             \
@@ -149,28 +155,10 @@ void LogError(bool isCritical, const char* pFunction, const char* pFullFilePath,
         }                               \
     } while (false)
 
-#define LOG_ERROR_AND_THROW(...)                                                            \
-    do                                                                                      \
-    {                                                                                       \
-        LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
-    } while (false)
-
-#define LOG_FATAL_ERROR_AND_THROW(...)                                                     \
-    do                                                                                     \
-    {                                                                                      \
-        LogError<true>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
-    } while (false)
-
-#define CHECK_VK_ERROR(err, ...)                                                               \
-    {                                                                                          \
-        if (err != VK_SUCCESS)                                                                 \
-            LogError<false>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, __VA_ARGS__); \
-    }
-
-#define CHECK_VK_ERROR_AND_THROW(err, ...)                                                    \
-    {                                                                                         \
-        if (err != VK_SUCCESS)                                                                \
-            LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, __VA_ARGS__); \
+#define CHECK_VK_ERROR(err, ...)                                                             \
+    {                                                                                        \
+        if (err != VK_SUCCESS)                                                               \
+            zen::LogError(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, __VA_ARGS__); \
     }
 
 #define ASSERT_SIZEOF(Struct, Size, ...) \

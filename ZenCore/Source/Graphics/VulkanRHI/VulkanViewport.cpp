@@ -47,19 +47,11 @@ RHIViewport* VulkanRHI::CreateViewport(void* pWindow, uint32_t width, uint32_t h
 
     RHIViewport* viewport = nullptr;
 
-    try
-    {
-        surface.info.surface = CreateViewportSurface(pWindow, width, height);
+    surface.info.surface  = AreSubmissionsBlocked() ? VK_NULL_HANDLE : CreateViewportSurface(pWindow, width, height);
 
+    if (surface.info.surface != VK_NULL_HANDLE)
+    {
         viewport = GetRHIThread().Invoke(&VulkanViewport::CreateObject, pWindow, width, height, enableVSync, &surface.info);
-    }
-    catch (const std::exception& error)
-    {
-        LOGE("Viewport creation failed: {}", error.what());
-    }
-    catch (...)
-    {
-        LOGE("Viewport creation failed");
     }
 
     return viewport;
@@ -82,18 +74,9 @@ VulkanViewport* VulkanViewport::CreateObject(void*                        pWindo
 
     new (pViewport) VulkanViewport(pWindow, width, height, enableVSync);
 
-    try
-    {
-        pViewport->Init();
+    pViewport->Init();
 
-        if (!pViewport->CreateSwapchain(surfaceInfo))
-        {
-            pViewport->ReleaseReference();
-
-            pViewport = nullptr;
-        }
-    }
-    catch (...)
+    if (!pViewport->CreateSwapchain(surfaceInfo))
     {
         pViewport->ReleaseReference();
 
@@ -137,6 +120,8 @@ bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
     {
         m_pSwapchain             = ZEN_NEW() VulkanSwapchain(m_width, m_height, m_enableVSync, pRecreateInfo);
 
+        ready                    = static_cast<bool>(m_pSwapchain->GetStatus());
+
         const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
 
         const uint32_t numImages = m_pSwapchain->GetNumSwapchainImages();
@@ -145,7 +130,7 @@ bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
         {
             m_suspended = true;
         }
-        else
+        else if (ready)
         {
             const VkExtent2D extent = m_pSwapchain->GetExtent();
 
@@ -365,7 +350,6 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                                                     uint32_t        windowHeight)
 {
     const VkImageLayout prevLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
     {
         VulkanPipelineBarrier barrier;
 
@@ -488,12 +472,7 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 {
     GetRHIThread().CheckOwnership();
 
-    if (GVulkanRHI->AreSubmissionsBlocked())
-    {
-        LOG_ERROR_AND_THROW("Cannot prepare presentation while Vulkan submissions are blocked");
-    }
-
-    if (TryAcquireNextImage())
+    if (!GVulkanRHI->AreSubmissionsBlocked() && TryAcquireNextImage())
     {
         m_presentAcquiredFailed                      = false;
 
@@ -528,18 +507,23 @@ bool VulkanViewport::Present()
 {
     GetRHIThread().CheckOwnership();
 
-    bool result = false;
+    bool result     = false;
+
+    m_presentResult = {};
 
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
-        LOG_ERROR_AND_THROW("Cannot present while Vulkan submissions are blocked");
+        m_presentResult = {RHISurfaceOutcome::eFailed, RHIPresentAcceptance::eNotAttempted, GVulkanRHI->GetTerminalError()};
     }
-
-    if (!m_suspended && m_pSwapchain != nullptr)
+    else if (!m_suspended && m_pSwapchain != nullptr)
     {
         if (m_presentAcquiredFailed)
         {
             m_presentAcquiredFailed = false;
+
+            m_presentResult.outcome = m_pSwapchain->GetAcquireResult().outcome;
+
+            m_presentResult.error   = m_pSwapchain->GetAcquireResult().error;
         }
         else if (m_acquiredImageIndex >= 0)
         {
@@ -553,6 +537,8 @@ bool VulkanViewport::Present()
                 m_pSwapchain->MarkAcquireSemaphoreSubmitted(serial);
 
                 result                    = m_pSwapchain->Present(semaphore);
+
+                m_presentResult           = m_pSwapchain->GetPresentResult();
 
                 m_acquiredImageIndex      = -1;
 
@@ -571,6 +557,27 @@ bool VulkanViewport::Present()
     }
 
     return result;
+}
+
+RHIStatus VulkanViewport::PrepareForPresentChecked(RHICommandList* commands)
+{
+    PrepareForPresent(commands);
+
+    RHIError error = GVulkanRHI->GetTerminalError();
+
+    if (!error.IsFailure() && m_pSwapchain != nullptr)
+    {
+        error = m_pSwapchain->GetAcquireResult().error;
+    }
+
+    return {error};
+}
+
+RHIPresentResult VulkanViewport::PresentChecked()
+{
+    Present();
+
+    return m_presentResult;
 }
 
 bool VulkanViewport::NeedsRecreation() const

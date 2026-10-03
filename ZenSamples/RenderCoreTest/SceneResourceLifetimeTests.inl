@@ -144,13 +144,15 @@ TEST_F(RenderCoreTest, PartialSceneTextureAllocationPublishesCleanupHandles)
 
     HeapVector<RHITexture*> outputs;
 
-    const size_t before         = rhi->createdTextureIds.size();
+    const size_t before        = rhi->createdTextureIds.size();
 
-    rhi->throwTextureCreationAt = rhi->textureCreations + 2;
+    rhi->failTextureCreationAt = rhi->textureCreations + 2;
 
-    EXPECT_THROW(device->LoadSceneTextures(&source, outputs), std::runtime_error);
+    device->LoadSceneTextures(&source, outputs);
 
-    ASSERT_EQ(outputs.size(), 1u);
+    ASSERT_EQ(outputs.size(), 2u);
+
+    EXPECT_EQ(outputs[1], nullptr);
 
     ASSERT_EQ(rhi->createdTextureIds.size(), before + 1);
 
@@ -169,18 +171,17 @@ TEST_F(RenderCoreTest, InitialBufferUploadAllocationFailureRetiresUnpublishedDes
 
     for (uint32_t kind = 0; kind < 3; ++kind)
     {
-        // Destination creation succeeds; allocating staging for its initial upload throws.
-        rhi->throwBufferCreationAt = rhi->bufferCreations + 2;
+        // Destination creation succeeds; allocating staging for its initial upload returns null.
+        rhi->failBufferCreationAt = rhi->bufferCreations + 2;
 
         switch (kind)
         {
-            case 0: EXPECT_THROW(device->CreateVertexBuffer(payload.size(), payload.data()), std::runtime_error); break;
+            case 0: EXPECT_EQ(device->CreateVertexBuffer(payload.size(), payload.data()), nullptr); break;
 
-            case 1: EXPECT_THROW(device->CreateIndexBuffer(payload.size(), payload.data()), std::runtime_error); break;
+            case 1: EXPECT_EQ(device->CreateIndexBuffer(payload.size(), payload.data()), nullptr); break;
 
             case 2:
-                EXPECT_THROW(device->CreateStorageBuffer(payload.size(), payload.data(), "failed_scene_upload"),
-                             std::runtime_error);
+                EXPECT_EQ(device->CreateStorageBuffer(payload.size(), payload.data(), "failed_scene_upload"), nullptr);
                 break;
 
             default: break;
@@ -202,11 +203,11 @@ TEST_F(RenderCoreEnvironmentTest, PartialEnvironmentAllocationRetiresPublishedCu
 
     EnvTexture environment;
 
-    const size_t before         = rhi->createdTextureIds.size();
+    const size_t before        = rhi->createdTextureIds.size();
 
-    rhi->throwTextureCreationAt = rhi->textureCreations + 3;
+    rhi->failTextureCreationAt = rhi->textureCreations + 3;
 
-    EXPECT_THROW(device->LoadSceneEnvironment(&source, &environment), std::runtime_error);
+    device->LoadSceneEnvironment(&source, &environment);
 
     ASSERT_NE(environment.pSkybox, nullptr);
 

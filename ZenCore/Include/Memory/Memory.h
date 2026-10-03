@@ -153,7 +153,6 @@ private:
 //     void* pMemory = DefaultAllocator::Alloc(sizeof(T));
 //     if (!pMemory)
 //     {
-//         throw std::bad_alloc();
 //     }
 //     return new (pMemory) T(std::forward<Args>(args)...);
 // }

@@ -465,13 +465,16 @@ HeapVector<VkExtensionProperties> VulkanInstanceExtension::GetSupportedInstanceE
 
     uint32_t count         = 0;
 
-    VKCHECK(vkEnumerateInstanceExtensionProperties(pLayerName, &count, nullptr));
+    VERIFY_EXPR_MSG_F((vkEnumerateInstanceExtensionProperties(pLayerName, &count, nullptr)) == VK_SUCCESS,
+                      "Vulkan operation failed: vkEnumerateInstanceExtensionProperties(pLayerName, &count, nullptr)");
 
     if (count > 0)
     {
         extensions.resize(count);
 
-        VKCHECK(vkEnumerateInstanceExtensionProperties(pLayerName, &count, extensions.data()));
+        VERIFY_EXPR_MSG_F(
+            (vkEnumerateInstanceExtensionProperties(pLayerName, &count, extensions.data())) == VK_SUCCESS,
+            "Vulkan operation failed: vkEnumerateInstanceExtensionProperties(pLayerName, &count, extensions.data())");
     }
 
     std::sort(extensions.begin(), extensions.end(), ExtensionNameLess);
@@ -556,7 +559,7 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
              || name == NameID("VK_EXT_metal_surface"))
             && !extension->IsEnabledAndSupported())
         {
-            LOG_ERROR_AND_THROW("Required instance extension is missing: {}", name.CStr());
+            VERIFY_EXPR_MSG_F(false, "Required instance extension is missing: {}", name.CStr());
         }
     }
 
@@ -572,13 +575,16 @@ HeapVector<VkExtensionProperties> VulkanDeviceExtension::GetSupportedExtensions(
 
     uint32_t count = 0;
 
-    VKCHECK(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, nullptr));
+    VERIFY_EXPR_MSG_F((vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, nullptr)) == VK_SUCCESS,
+                      "Vulkan operation failed: vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, nullptr)");
 
     if (count > 0)
     {
         extensions.resize(count);
 
-        VKCHECK(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, extensions.data()));
+        VERIFY_EXPR_MSG_F(
+            (vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, extensions.data())) == VK_SUCCESS,
+            "Vulkan operation failed: vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, extensions.data())");
     }
 
     std::sort(extensions.begin(), extensions.end(), ExtensionNameLess);

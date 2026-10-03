@@ -51,7 +51,8 @@ class VulkanRHI : public DynamicRHI
 public:
     VulkanRHI();
 
-    ~VulkanRHI() override {}
+    // Clears GVulkanRHI when it still points to this backend.
+    ~VulkanRHI() override;
 
     IRHICommandContext* GetCommandContext(RHICommandContextType contextType) override;
 
@@ -147,9 +148,37 @@ public:
 
     RHISubmissionResult FlushAllGPUCommands() final;
 
-    void BlockSubmissions()
+    void BlockSubmissions(
+        RHIError error = MakeRHIError(RHIErrorCode::eBackendFailure, "Vulkan submissions blocked", __FILE__, __LINE__))
     {
+        m_deviceLost |= error.code == RHIErrorCode::eDeviceLost;
+
+        if (!m_terminalError.IsFailure())
+        {
+            m_terminalError = error;
+        }
+
         m_submissionBlocked = true;
+    }
+
+    RHIError GetTerminalError() const override
+    {
+        return m_terminalError;
+    }
+
+    bool HasDeviceLoss() const override
+    {
+        return m_deviceLost;
+    }
+
+    RHIError GetLastSubmissionError() const override
+    {
+        return m_submissionError.IsFailure() ? m_submissionError : m_terminalError;
+    }
+
+    void SetSubmissionError(RHIError error)
+    {
+        m_submissionError = error;
     }
 
     bool AreSubmissionsBlocked() const final
@@ -257,6 +286,9 @@ private:
 
     HeapVector<VulkanPlatformCommandList*> m_pendingPlatformCmdLists;
     bool                                   m_submissionBlocked{false};
+    RHIError                               m_terminalError{};
+    RHIError                               m_submissionError{};
+    bool                                   m_deviceLost{false};
     RHIGPUFrameTimingPtr                   m_gpuFrameTiming;
     uint32_t                               m_pendingNativeRecordings{0};
     VulkanLifetimeTracker                  m_lifetimeTracker;

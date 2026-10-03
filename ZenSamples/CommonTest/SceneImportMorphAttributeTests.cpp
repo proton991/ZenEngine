@@ -1,9 +1,9 @@
+#include "Utils/Errors.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <stdexcept>
 #include "AssetLib/FastGLTFLoader.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/SceneAnimation.h"
@@ -24,7 +24,7 @@ public:
 
         if (!std::filesystem::create_directory(m_directory))
         {
-            throw std::runtime_error("Could not create glTF morph attribute fixture directory");
+            VERIFY_EXPR_MSG(false, "Could not create glTF morph attribute fixture directory");
         }
     }
 
@@ -176,7 +176,7 @@ public:
 
         if (!binary || !output)
         {
-            throw std::runtime_error("Could not write glTF morph attribute fixture");
+            VERIFY_EXPR_MSG(false, "Could not write glTF morph attribute fixture");
         }
 
         const std::string result = file.string();
@@ -236,7 +236,7 @@ void ExpectMorphAttributeImport(bool colorHasAlpha)
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write(colorHasAlpha), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write(colorHasAlpha), &scene)) << loader.GetError();
 
     const sg::SceneAssetData& data = scene.GetAssetData();
 
@@ -336,7 +336,7 @@ TEST(SceneImportMorphAttributes, InstancedMorphsFollowSourceAnimationWithoutAuth
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write(true, true), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write(true, true), &scene)) << loader.GetError();
 
     const sg::SceneAssetData& data = scene.GetAssetData();
 
@@ -402,7 +402,7 @@ TEST(SceneImportMorphAttributes, SkinnedInstancesSeparateAndFollowSourceWeightAn
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write(true, true, true), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write(true, true, true), &scene)) << loader.GetError();
 
     const sg::SceneAssetData& data = scene.GetAssetData();
 
@@ -472,7 +472,7 @@ TEST(SceneImportMorphAttributes, CustomScalarTargetRetainsDecodedValuesAndItsTar
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write(false, false, false, true), &scene));
+    ASSERT_TRUE(loader.LoadFromFile(fixture.Write(false, false, false, true), &scene)) << loader.GetError();
 
     const sg::VertexAttributeAsset* base   = nullptr;
 

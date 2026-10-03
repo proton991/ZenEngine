@@ -39,6 +39,7 @@ protected:
 
     void TearDown() override
     {
+        viewport.ReleaseForTeardown();
         executor->Destroy();
         ZEN_DELETE(executor);
         GDynamicRHI = nullptr;

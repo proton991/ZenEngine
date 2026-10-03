@@ -392,7 +392,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, ZeroExtentDefersSwapchainUntilRestore)
     EXPECT_NE(oldSwapchain, VK_NULL_HANDLE);
 }
 
-TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewportWithoutThrowing)
+TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewport)
 {
     CreateViewport();
 
@@ -404,11 +404,12 @@ TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewportWithoutThrowin
 
     const uint32_t height = viewport->GetHeight();
 
-    GetRHIThread().Invoke(&VulkanRHI::BlockSubmissions, backend);
+    GetRHIThread().Invoke(&VulkanRHI::BlockSubmissions, backend,
+                          MakeRHIError(RHIErrorCode::eBackendFailure, "injected window test failure", __FILE__, __LINE__));
 
-    EXPECT_NO_THROW(viewport->Resize(112, 96));
+    viewport->Resize(112, 96);
 
-    EXPECT_NO_THROW(viewport->Resize(0, 0));
+    viewport->Resize(0, 0);
 
     EXPECT_EQ(viewport->GetColorBackBuffer(), color);
 
@@ -458,7 +459,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, PresentationCopySharesTheLastGraphicsSub
     EXPECT_EQ(submitCalls, timeline ? 1u : 2u);
 }
 
-TEST_P(RHIWindowSurfaceIntegrationTest, RejectedCombinedGroupKeepsAcquisitionForRetry)
+TEST_P(RHIWindowSurfaceIntegrationTest, RejectedRequiredFrameStopsWithoutAnotherAcquisition)
 {
     CreateViewport();
 
@@ -488,31 +489,21 @@ TEST_P(RHIWindowSurfaceIntegrationTest, RejectedCombinedGroupKeepsAcquisitionFor
 
     EXPECT_FALSE(rejected.presented);
 
-    EXPECT_FALSE(executor->AreSubmissionsBlocked());
+    EXPECT_TRUE(executor->AreSubmissionsBlocked());
 
     EXPECT_EQ(presentCalls, 0u);
 
     EXPECT_EQ(acquireCalls, 1u);
 
-    commands                     = RecordFrame();
+    EXPECT_TRUE(rejected.cause.IsFailure());
 
-    group.commands               = commands.get();
+    EXPECT_EQ(executor->GetCommandContext(graphics), nullptr);
 
-    const RHIBatchResult retried = executor->SubmitGroups(MakeVecView(&group, 1), {}, viewport);
+    EXPECT_FALSE(executor->SubmitFrame(*commands, viewport).IsValid());
 
-    EXPECT_EQ(retried.submission, RHISubmissionResult::eSuccess);
-
-    EXPECT_TRUE(retried.presented);
-
-    EXPECT_EQ(presentCalls, 1u);
+    EXPECT_EQ(submitCalls, 1u);
 
     EXPECT_EQ(acquireCalls, 1u);
-
-    ASSERT_EQ(retried.groups.size(), 1u);
-
-    EXPECT_EQ(retried.groups[0].accepted.serial, before + 1);
-
-    EXPECT_EQ(retried.requiredSerials.Get(graphics), before + 2);
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPrefix)
@@ -576,7 +567,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
     // Failed batches retain resources until teardown, even after accepted work has completed.
     EXPECT_GT(color->GetRefCount(), references);
 
-    commands = RecordFrame();
+    EXPECT_EQ(executor->GetCommandContext(graphics), nullptr);
 
     EXPECT_FALSE(executor->SubmitFrame(*commands, viewport).IsValid());
 

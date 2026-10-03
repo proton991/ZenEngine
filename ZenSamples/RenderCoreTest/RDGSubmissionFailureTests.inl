@@ -23,6 +23,8 @@ TEST_P(RHIScheduledSubmissionTest, PresentationRejectionAfterComputeIsFatalAndRe
     executor->WaitDeviceIdle();
     EXPECT_FALSE(destroyed.contains(id));
     EXPECT_FALSE(executor->SubmitFrame(schedule.groups, nullptr).IsValid());
+    schedule.lists.clear();
+    viewport.ReleaseForTeardown();
     executor->Destroy();
     EXPECT_TRUE(destroyed.contains(id));
 }

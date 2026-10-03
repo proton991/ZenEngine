@@ -49,6 +49,10 @@ public:
 
     bool Present() final;
 
+    RHIStatus PrepareForPresentChecked(RHICommandList* commands) override;
+
+    RHIPresentResult PresentChecked() override;
+
     bool NeedsRecreation() const final;
 
     RHITexture* GetColorBackBuffer() final;
@@ -121,8 +125,9 @@ private:
     VulkanTexture*      m_pDepthStencilBackBuffer{nullptr};
     uint64_t            m_presentCount{0};
 
-    uint64_t m_presentSignalGeneration{0};
-    bool     m_presentAcquiredFailed{false};
-    bool     m_suspended{false};
+    uint64_t         m_presentSignalGeneration{0};
+    bool             m_presentAcquiredFailed{false};
+    bool             m_suspended{false};
+    RHIPresentResult m_presentResult{};
 };
 } // namespace zen

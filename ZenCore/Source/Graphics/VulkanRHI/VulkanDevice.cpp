@@ -20,7 +20,7 @@ void ReportVulkanDeviceLoss(VkResult result, const char* operation)
 {
     if (result == VK_ERROR_DEVICE_LOST && GVulkanRHI != nullptr)
     {
-        GVulkanRHI->BlockSubmissions();
+        GVulkanRHI->BlockSubmissions({RHIErrorCode::eDeviceLost, int64_t(result), operation, __FILE__, __LINE__});
 
         if (GVulkanRHI->GetDevice() != nullptr)
         {
@@ -326,7 +326,7 @@ void VulkanDevice::Init()
 
     if (!unsupportedReason.empty())
     {
-        LOG_ERROR_AND_THROW("Cannot initialize Vulkan device '{}': {}", m_gpuProps.deviceName, unsupportedReason);
+        VERIFY_EXPR_MSG_F(false, "Cannot initialize Vulkan device '{}': {}", m_gpuProps.deviceName, unsupportedReason);
     }
 
     // query base features
@@ -573,7 +573,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
 
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR_AND_THROW("vkCreateDevice failed: {}", int32_t(result));
+        VERIFY_EXPR_MSG_F(false, "vkCreateDevice failed: {}", int32_t(result));
     }
 
     LOGI("Vulkan Device Created");
@@ -640,12 +640,15 @@ void VulkanDevice::WaitForIdle()
 
         if (result != VK_SUCCESS)
         {
+            VERIFY_EXPR_MSG_F(result == VK_ERROR_DEVICE_LOST, "Cannot safely tear down after vkDeviceWaitIdle failed: {}",
+                              int32_t(result));
+
             // Device loss ends the lifetime wait without establishing valid contents/serials.
             LOGE("Vulkan device idle wait failed: {}", int32_t(result));
 
             if (GVulkanRHI->GetDevice() == this)
             {
-                GVulkanRHI->BlockSubmissions();
+                GVulkanRHI->BlockSubmissions(MakeVulkanError(result, "vkDeviceWaitIdle", __FILE__, __LINE__));
             }
         }
         else

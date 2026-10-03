@@ -12,7 +12,7 @@ namespace zen
 {
 RHISampler* VulkanResourceFactory::CreateSampler(const RHISamplerCreateInfo& createInfo)
 {
-    RHISampler* pSampler = VulkanSampler::CreateObject(createInfo);
+    RHISampler* pSampler = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanSampler::CreateObject(createInfo);
 
     return pSampler;
 }
@@ -87,6 +87,10 @@ void VulkanSampler::Init()
 
     if (result != VK_SUCCESS)
     {
+        m_vkSampler = VK_NULL_HANDLE;
+
+        ReportVulkanDeviceLoss(result, "vkCreateSampler");
+
         LOGE("vkCreateSampler failed: {}", GetResultString(result));
     }
 }
@@ -102,7 +106,7 @@ void VulkanSampler::Destroy()
 
 RHITexture* VulkanResourceFactory::CreateTexture(const RHITextureCreateInfo& createInfo)
 {
-    RHITexture* pTexture = VulkanTexture::CreateObject(createInfo);
+    RHITexture* pTexture = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanTexture::CreateObject(createInfo);
 
     return pTexture;
 }
@@ -406,6 +410,8 @@ void VulkanTextureView::Init()
     if (result != VK_SUCCESS)
     {
         m_vkImageView = VK_NULL_HANDLE;
+
+        ReportVulkanDeviceLoss(result, "vkCreateImageView");
 
         LOGE("Texture view '{}' creation failed: {}", m_viewInfo.tag.CStr(), GetResultString(result));
     }

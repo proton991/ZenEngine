@@ -1,13 +1,8 @@
 #pragma once
 #include "Utils/Errors.h"
 #include "Graphics/RHI/RHIError.h"
-#include "Graphics/RHI/RHIOptions.h"
 #include <string>
 #include "VulkanHeaders.h"
-
-#ifndef VKCHECK
-#    define VKCHECK(result) zen::CheckVkResult(result, __FILE__, __LINE__);
-#endif
 
 namespace zen
 {
@@ -97,33 +92,6 @@ inline const char* GetResultString(VkResult result)
     }
 #undef STR
     return pResultString;
-}
-
-inline void CheckVkResult(VkResult result, const char* pFile, int32_t line)
-{
-    ReportVulkanDeviceLoss(result, pFile);
-
-    if (result < 0)
-    {
-        VerificationFailureFormatted("Vulkan result >= VK_SUCCESS", pFile, line, "Vulkan error: {} ({})",
-                                     GetResultString(result), static_cast<int32_t>(result));
-    }
-}
-
-// Teardown ownership is fatal under RHIOptions::StrictTeardownChecks and logged otherwise.
-inline void VerifyTeardownOwnership(bool released, const char* message, const char* pFile, int line)
-{
-    if (!released)
-    {
-        if (RHIOptions::GetInstance().StrictTeardownChecks())
-        {
-            VerificationFailure("teardown ownership", pFile, line, message);
-        }
-        else
-        {
-            LOGE("{}", message);
-        }
-    }
 }
 
 template <typename T> inline std::string VkToString(T value)

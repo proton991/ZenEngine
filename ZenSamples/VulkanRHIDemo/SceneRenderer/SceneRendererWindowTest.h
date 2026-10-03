@@ -74,7 +74,7 @@ public:
 
                 if (m_cover == nullptr)
                 {
-                    LOG_ERROR_AND_THROW("Cannot create the background test cover window");
+                    VERIFY_EXPR_MSG_F(false, "Cannot create the background test cover window");
                 }
 
                 glfwSetWindowPos(m_cover, x - 40, y - 40);

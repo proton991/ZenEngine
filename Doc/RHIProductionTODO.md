@@ -1,6 +1,6 @@
 # RHI production TODO
 
-Status: proposed, 2026-10-03. This is the single list of open work before the RHI can ship in a product. It merges the open items from section 9.2 of [RHIImprovementPlan.md](RHIImprovementPlan.md) with the gaps found by a static review of `Graphics/RHI`, `Graphics/VulkanRHI` and their `RenderCore/V2` callers at `ee20bf99`. The review items (R17–R24 and the extensions to R10 and R13) come from reading code; none has been reproduced or measured yet. File references describe `ee20bf99`.
+Status: in progress, 2026-10-03. This is the single list of work before the RHI can ship in a product. It merges the open items from section 9.2 of [RHIImprovementPlan.md](RHIImprovementPlan.md) with the gaps found by a static review of `Graphics/RHI`, `Graphics/VulkanRHI` and their `RenderCore/V2` callers at `ee20bf99`. The review items (R17–R24 and the extensions to R10 and R13) originated from reading code; completed items link their implementation and verification records below. Problem descriptions and file references describe `ee20bf99` unless stated otherwise.
 
 Scope: Windows desktop Vulkan, the only platform the [RHI README](../ZenCore/Include/Graphics/RHI/README.md) supports. Item IDs continue section 8 of the improvement plan; carried items keep their original IDs so existing verification documents still match.
 
@@ -16,22 +16,22 @@ Section 5.0 of the improvement plan applies to every item:
 
 Items that change failure behavior follow section 2 of [RHIErrorHandlingPlan.md](RHIErrorHandlingPlan.md). Modified code follows the repository C++ rules and `.clang-format`.
 
-The engine does not use exceptions. Where code would throw, it writes an error message and aborts (`VERIFY_EXPR_MSG_F`). New code adds no `throw` or `LOG_ERROR_AND_THROW`.
+The engine does not use exceptions. A broken invariant or a missing required engine asset writes an error message and aborts (`VERIFY_EXPR_MSG_F`). Invalid or unsupported input data, such as a glTF file the user picks, returns a status so the caller can keep running. Engine-owned C++, including tests, has no `try`, `catch`, `throw`, or `LOG_ERROR_AND_THROW`; `tools/check_no_exceptions.py` enforces the source policy.
 
 ## 2. Summary
 
 | ID | Priority | Item | Size | Source | Gate or status |
 | --- | --- | --- | --- | --- | --- |
-| R17 | Blocker | Recoverable failures stop rendering permanently | M–L | Review | Policy decision first |
-| R18 | Blocker | Shader reflection leaks and crashes on bad SPIR-V | S | Review | None |
+| R17 | Blocker | Recoverable failures stop rendering permanently | M–L | Review | Implemented: option B; [verification](RHIProductionR17Verification.md) |
+| R18 | Blocker | Shader reflection leaks and crashes on bad SPIR-V | S | Review | Implemented; [verification](RHIProductionR18Verification.md) |
 | R19 | Blocker | Shader files load from a compile-time source path | S | Review | None |
 | R20 | Blocker | Validation is enabled by default in Release | S | Review | None |
-| R21 | Blocker | Startup failure crashes without a message | S | Review | None |
+| R21 | Blocker | Startup failure crashes without a message | S | Review | Implemented; [verification](RHIProductionR21Verification.md) |
 | R7 | Blocker | Device-loss diagnostics: manual acceptance | S | Improvement plan 9.2 | Needs a dedicated test machine |
 | R8 | Blocker | Hardware and CI acceptance | M | Improvement plan 9.2 | Needs NVIDIA and Intel hardware |
-| 5.10 | Important | Remaining error-handling work | L | Improvement plan 9.2 | Schedule with R17 |
-| R22 | Important | Fixed bindless heap capacity | M | Review | Implemented 2026-10-03 |
-| R23 | Important | Releases after teardown are not detected | S | Review | None |
+| 5.10 | Important | Remaining error-handling work | L | Improvement plan 9.2 | Implemented with R17; [verification](RHIErrorHandlingVerification.md) |
+| R22 | Important | Fixed bindless heap capacity | M | Review | Done: `8b59a3d0`, 2026-10-03 ([verification](RHIProductionR22Verification.md)) |
+| R23 | Important | Releases after teardown are not detected | S | Review | Done 2026-10-03 ([verification](RHIProductionR23Verification.md)) |
 | R24 | Important | RHI stall watchdog | S–M | Review | Design in [RHIStallWatchdogPlan.md](RHIStallWatchdogPlan.md) |
 | R10 | Gated | Synchronous pipeline compilation | M–L | Improvement plan 9.2, extended | Cold-cache and resize spikes |
 | R11 | Gated | Single-threaded recording and translation | L | Improvement plan 9.2 | A heavier scene |
@@ -41,13 +41,19 @@ The engine does not use exceptions. Where code would throw, it writes an error m
 | 5.9 | Deferred | Global singletons | L | Improvement plan 9.2 | A concrete need |
 | 5.1 B, 5.2, 5.4 | Deferred | Presentation copy removal, one submit per frame, per-frame pools | — | Improvement plan 9.2 | Gates closed |
 | 5.5 | RenderCore | Per-frame descriptor miss | S–M | Improvement plan 9.2 | [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) |
-| H1 | Housekeeping | Ignored `FinalizeCommandLists` results in tests | S | Improvement plan 9.2 | None |
+| H1 | Housekeeping | Ignored `FinalizeCommandLists` results in tests | S | Improvement plan 9.2 | Checked during error-handling migration |
 
-The RHI is ready for a shipped Windows desktop product when every Blocker item is done, and 5.10, R22, R23 and R24 are done or accepted with a recorded reason. The Gated and Deferred items decide whether the RHI can serve as a general-purpose engine RHI. They do not block a product whose content fits the current limits.
+R17, R18, R21, R22, R23 and 5.10 are done. On the final tree, clean Debug and Release builds pass all four acceptance suites (CommonTest 112, RenderCoreTest 557, VulkanRHITest 48, VulkanRHIIntegrationTest 336 in Debug and 337 in Release, with 6 capability skips), every other test executable and all 24 smoke runs, with no validation errors. Captures for all three rendering modes are byte-identical to the R22 baseline. Hardware coverage remains limited to the RX 7900 XT; see the per-item verification records for results and capability skips.
+
+The RHI is ready for a shipped Windows desktop product when the remaining Blocker items (R19, R20, R7 and R8) are done and R24 is done or accepted with a recorded reason. The Gated and Deferred items decide whether the RHI can serve as a general-purpose engine RHI. They do not block a product whose content fits the current limits.
 
 ## 3. New items from the review
 
 ### R17. Recoverable failures stop rendering permanently
+
+**Status.** Implemented 2026-10-03: option B. Required-frame rejection is terminal in every execution mode, with one primary cause diagnostic and ordered cleanup; optional standalone rejection remains local. Automatic recovery/device recreation is deferred. [Verification](RHIProductionR17Verification.md).
+
+The problem description below records the original review.
 
 **Problem.**
 
@@ -63,7 +69,7 @@ The RHI is ready for a shipped Windows desktop product when every Blocker item i
 - The README's GPU-budget section says allocation failure remains recoverable. That holds only on the inline path without async compute.
 - `RHIExecutorTest.RejectionStopsAlreadyQueuedDependentBatches` asserts the current behavior. It matches the error-handling plan's first-delivery policy (sections 5 and 9), which no plan has yet scheduled to replace.
 
-**Decision.** Choose the policy for a frame whose submission was rejected with no accepted work:
+**Decision.** Option B is selected and implemented. The alternatives considered were:
 
 | Option | Behavior | Cost |
 | --- | --- | --- |
@@ -79,6 +85,10 @@ Device loss stays terminal under both options. Device recreation, which rebuilds
 - **With either option:** the README's GPU-budget section and R12 describe the actual behavior.
 
 ### R18. Shader reflection leaks and crashes on bad SPIR-V
+
+**Status.** Implemented 2026-10-03. Reflection cleanup, malformed-input rejection and specialization input reuse are in place. [Verification and memory-measurement scope](RHIProductionR18Verification.md).
+
+The problem description below records the original review.
 
 **Problem.**
 
@@ -126,6 +136,10 @@ Check the other `Data/` paths in the same change.
 
 ### R21. Startup failure crashes without a message
 
+**Status.** Implemented 2026-10-03. Startup failures use release-active diagnostics/abort, including unsupported API/device profiles. The interactive Windows demo installs a native message reporter. [Verification](RHIProductionR21Verification.md).
+
+The problem description below records the original review.
+
 **Problem.**
 
 - Backend initialization reports failure by throwing. That covers volk initialization (no Vulkan loader), `vkCreateInstance`, `VulkanRHI::SelectGPU` (no device meets the requirements), `VulkanDevice::Init` and `vkCreateDevice`.
@@ -142,7 +156,7 @@ This is step 5 of the error-handling plan's terminal response ("let the applicat
 
 ### R22. Fixed bindless heap capacity
 
-**Status.** Implemented, 2026-10-03 ([verification](RHIProductionR22Verification.md)). The problem and done-when text below describe the state at `ee20bf99`.
+**Status.** Implemented, 2026-10-03, in commit `8b59a3d0` ([verification](RHIProductionR22Verification.md)). The problem and done-when text below describe the state at `ee20bf99`.
 
 **Problem.**
 
@@ -161,6 +175,8 @@ This is step 5 of the error-handling plan's terminal response ("let the applicat
 Add storage-image, buffer or 3D heaps only when an R13 consumer needs them.
 
 ### R23. Releases after teardown are not detected
+
+**Status.** Implemented and validated, 2026-10-03 ([verification](RHIProductionR23Verification.md)). The problem and done-when text below describe the state at `ee20bf99`.
 
 **Problem.**
 
@@ -211,9 +227,9 @@ The README calls a late release an ownership violation, but nothing detects one.
 
 ### 5.10. Remaining error-handling work
 
-**Status.** First delivery done through R1–R6 ([verification](RHIProductionVerification.md)). The rest of [RHIErrorHandlingPlan.md](RHIErrorHandlingPlan.md) is open.
+**Status.** Implemented 2026-10-03, building on R1–R6 ([initial verification](RHIProductionVerification.md)). Structured causes, typed WSI/admission/wait/progress results, explicit worker cancellation and the no-exception source policy are implemented with R17 option B. Pointer/bool compatibility adapters remain explicit failure contracts. See [current verification](RHIErrorHandlingVerification.md) for measured coverage and hardware limits.
 
-**Remaining work.**
+**Original remaining-work inventory (now implemented).**
 
 - Carry structured errors through the executor and `RHIBatchResult`, and add typed acquire, present and job-admission results (sections 5 and 6 of the error-handling plan).
 - Replace the remaining RHI-owned throws with an error message and an abort (section 1), or with a status where the existing contract already returns one. At `ee20bf99`, `Graphics/RHI` and `Graphics/VulkanRHI` still contain 39 `LOG_ERROR_AND_THROW` sites:
@@ -333,12 +349,14 @@ Revisit these items only if the workload changes, for example if steady frames s
 
 ### H1. Ignored `FinalizeCommandLists` results in tests
 
+**Status.** Fixed during the 2026-10-03 error-handling migration; the original locations below are retained as review context.
+
 [VulkanSwapchainIntegrationTests.cpp](../ZenSamples/CommonTest/VulkanSwapchainIntegrationTests.cpp) ignores the `[[nodiscard]]` `RHIStatus` returned by `FinalizeCommandLists` at lines 715 and 1095. These were lines 499 and 766 before `ee20bf99` reformatted the file. Check the result in both tests. The other housekeeping item in the improvement plan, committing the production changes, was done in `45973b11`.
 
 ## 5. Order
 
-1. **R18, R19, R20, R21 and R23.** These are small and independent, and remove crashes and shipping blockers. Do R18 first, because its leak grows during normal use.
-2. **R17's decision, then R17 together with the 5.10 remainder.** Both change executor results. Schedule them before or after 5.9, never interleaved.
-3. **R24.** R22 is done.
+1. **R19 and R20.** R18 and R21 are implemented; packaging and default validation remain independent blockers.
+2. **R17 and 5.10 are implemented.** Preserve their error/lifetime contracts when scheduling 5.9; do not interleave a singleton redesign with further executor changes.
+3. **R24.** R22 and R23 are done.
 4. **R7 and R8** whenever hardware is available. Repeat R8 after step 2.
 5. **Gated items** when their gates open: R10 (measure resize first), R11, R13, R14 and 5.3. 5.5 follows the RenderCore plan.

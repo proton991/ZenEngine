@@ -21,7 +21,7 @@ void VulkanRHI::DestroyBuffer(RHIBuffer* pBuffer)
 
 RHIBuffer* VulkanResourceFactory::CreateBuffer(const RHIBufferCreateInfo& createInfo)
 {
-    RHIBuffer* pBuffer = VulkanBuffer::CreateObject(createInfo);
+    RHIBuffer* pBuffer = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanBuffer::CreateObject(createInfo);
 
     return pBuffer;
 }

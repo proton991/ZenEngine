@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Templates/LRUCache.h"
 #include "Utils/SharedPtr.h"
 
@@ -43,35 +44,35 @@ struct ModuloEqual
     }
 };
 
-struct ThrowingKey
+struct CheckedKey
 {
-    static inline int copiesBeforeThrow = -1;
+    static inline int copiesBeforeFailure = -1;
     int               value;
 
-    explicit ThrowingKey(int value) : value(value) {}
+    explicit CheckedKey(int value) : value(value) {}
 
-    ThrowingKey(const ThrowingKey& other) : value(other.value)
+    CheckedKey(const CheckedKey& other) : value(other.value)
     {
-        if (copiesBeforeThrow == 0)
+        if (copiesBeforeFailure == 0)
         {
-            throw std::runtime_error("key copy failed");
+            VERIFY_EXPR_MSG(false, "key copy failed");
         }
 
-        if (copiesBeforeThrow > 0)
+        if (copiesBeforeFailure > 0)
         {
-            --copiesBeforeThrow;
+            --copiesBeforeFailure;
         }
     }
 
-    bool operator==(const ThrowingKey& other) const noexcept
+    bool operator==(const CheckedKey& other) const noexcept
     {
         return value == other.value;
     }
 };
 
-struct ThrowingKeyHasher
+struct CheckedKeyHasher
 {
-    size_t operator()(const ThrowingKey& key) const noexcept
+    size_t operator()(const CheckedKey& key) const noexcept
     {
         return std::hash<int>{}(key.value);
     }
@@ -90,7 +91,7 @@ TEST(LRUCacheTest, SupportsExistingMapStyleUsage)
 
     EXPECT_EQ(cache.find(1), cache.end());
 
-    EXPECT_THROW(cache.at(1), std::out_of_range);
+    EXPECT_DEATH(cache.at(1), "verification failed");
 
     int value = 42;
 
@@ -126,7 +127,7 @@ TEST(LRUCacheTest, LookupsAndUpdatesControlEvictionOrder)
 
     EXPECT_EQ(view.at(1), "one");
 
-    EXPECT_THROW(view.at(3), std::out_of_range);
+    EXPECT_DEATH(view.at(3), "verification failed");
 
     EXPECT_EQ(Keys(cache), (std::vector<int>{2, 1}));
 
@@ -205,7 +206,7 @@ TEST(LRUCacheTest, CapacityChangesEvictInOrderAndZeroDisablesInsertion)
 
     EXPECT_EQ(cache.insert_or_assign(5, 5), (std::make_pair(cache.end(), false)));
 
-    EXPECT_THROW(cache[5], std::length_error);
+    EXPECT_DEATH(cache[5], "verification failed");
 
     cache.set_capacity(2);
 
@@ -221,7 +222,6 @@ TEST(LRUCacheTest, CapacityChangesEvictInOrderAndZeroDisablesInsertion)
 TEST(LRUCacheTest, EraseClearAndDestructionDoNotInvokeEvictionCallback)
 {
     int callbacks = 0;
-
     {
         zen::LRUCache<int, int> cache(3, [&](const int&, int&) { ++callbacks; });
 
@@ -437,21 +437,21 @@ TEST(LRUCacheTest, KeepsReferencesStableAcrossRehashAndPromotion)
     EXPECT_EQ(single.at(2), "aliased value");
 }
 
-TEST(LRUCacheTest, FailedIndexInsertionPreservesExistingEntries)
+TEST(LRUCacheTest, FatalKeyCopyIsDiagnosed)
 {
-    zen::LRUCache<ThrowingKey, int, ThrowingKeyHasher> cache(1);
+    zen::LRUCache<CheckedKey, int, CheckedKeyHasher> cache(1);
 
-    ThrowingKey first(1);
+    CheckedKey first(1);
 
-    ThrowingKey second(2);
+    CheckedKey second(2);
 
     cache.try_emplace(first, 1);
 
-    ThrowingKey::copiesBeforeThrow = 1;
+    CheckedKey::copiesBeforeFailure = 1;
 
-    EXPECT_THROW(cache.try_emplace(second, 2), std::runtime_error);
+    EXPECT_DEATH(cache.try_emplace(second, 2), "verification failed");
 
-    ThrowingKey::copiesBeforeThrow = -1;
+    CheckedKey::copiesBeforeFailure = -1;
 
     EXPECT_EQ(cache.size(), 1u);
 
@@ -466,24 +466,24 @@ TEST(LRUCacheTest, FailedIndexInsertionPreservesExistingEntries)
     EXPECT_FALSE(cache.contains(first));
 }
 
-TEST(LRUCacheTest, ThrowingEvictionCallbackLeavesCacheUsable)
+TEST(LRUCacheTest, FatalEvictionCallbackIsDiagnosed)
 {
     bool fail = true;
 
     zen::LRUCache<int, int> cache(1, [&](const int&, int&) {
         if (fail)
         {
-            throw std::runtime_error("eviction failed");
+            VERIFY_EXPR_MSG(false, "eviction failed");
         }
     });
 
     cache[1] = 1;
 
-    EXPECT_THROW(cache.try_emplace(2, 2), std::runtime_error);
+    EXPECT_DEATH(cache.try_emplace(2, 2), "verification failed");
 
     EXPECT_EQ(Keys(cache), (std::vector<int>{1}));
 
-    EXPECT_THROW(cache.set_capacity(0), std::runtime_error);
+    EXPECT_DEATH(cache.set_capacity(0), "verification failed");
 
     EXPECT_EQ(cache.capacity(), 1u);
 

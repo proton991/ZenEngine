@@ -39,7 +39,7 @@ TEST(SceneImportCompatibility, RetainsPointsAndEveryLineConnectivityMode)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(CompatibilityFixture("all_primitive_modes.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(CompatibilityFixture("all_primitive_modes.gltf"), &scene)) << loader.GetError();
 
     const zen::HeapVector<sg::SubMesh*> primitives = scene.GetComponents<sg::SubMesh>();
 
@@ -81,7 +81,7 @@ TEST(SceneImportCompatibility, RejectsCorruptDracoAndPreservesThePreviousScene)
 
     asset::FastGLTFLoader loader;
 
-    loader.LoadFromFile(CompatibilityFixture("all_primitive_modes.gltf"), &scene);
+    ASSERT_TRUE(loader.LoadFromFile(CompatibilityFixture("all_primitive_modes.gltf"), &scene)) << loader.GetError();
 
     const size_t vertexCount = loader.GetVertices().size();
 
@@ -89,7 +89,7 @@ TEST(SceneImportCompatibility, RejectsCorruptDracoAndPreservesThePreviousScene)
 
     const size_t nodeCount   = scene.GetNodes().size();
 
-    EXPECT_THROW(loader.LoadFromFile(CompatibilityFixture("invalid_compressed_scene.gltf"), &scene), std::exception);
+    EXPECT_FALSE(loader.LoadFromFile(CompatibilityFixture("invalid_compressed_scene.gltf"), &scene));
 
     EXPECT_EQ(loader.GetVertices().size(), vertexCount);
 

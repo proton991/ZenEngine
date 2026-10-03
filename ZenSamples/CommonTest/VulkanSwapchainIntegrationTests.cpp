@@ -710,13 +710,22 @@ protected:
 
         HeapVector<RHIPlatformCommandList*> platform;
 
-        RHICommandList* lists[] = {commands};
+        RHICommandList* lists[]    = {commands};
 
-        session->rhi.FinalizeCommandLists({lists, 1}, platform);
+        RHISubmissionResult result = RHISubmissionResult::eRejected;
 
-        session->rhi.SubmitPlatformCommandLists(platform);
+        if (session->rhi.FinalizeCommandLists({lists, 1}, platform))
+        {
+            session->rhi.SubmitPlatformCommandLists(platform);
 
-        return session->rhi.FlushAllGPUCommands();
+            result = session->rhi.FlushAllGPUCommands();
+        }
+        else
+        {
+            ADD_FAILURE() << "Presentation recording could not be finalized";
+        }
+
+        return result;
     }
 };
 
@@ -892,13 +901,17 @@ TEST_F(VulkanSwapchainIntegrationTest, UnsupportedPresentationAndTransferUsageFa
 {
     WSIDriver::canPresent = false;
 
-    EXPECT_THROW(Create(), std::runtime_error);
+    Create();
+
+    EXPECT_FALSE(swapchain->GetStatus());
 
     WSIDriver::canPresent               = true;
 
     WSIDriver::caps.supportedUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    EXPECT_THROW(Create(), std::runtime_error);
+    Create();
+
+    EXPECT_FALSE(swapchain->GetStatus());
 
     EXPECT_EQ(WSIDriver::createdCalls, 0u);
 }
@@ -933,7 +946,7 @@ TEST_F(VulkanSwapchainIntegrationTest, AcquireFailuresDoNotPublishAnImageOrSemap
 
         if (result == VK_ERROR_DEVICE_LOST || result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
         {
-            EXPECT_THROW(swapchain->AcquireNextImage(&semaphore), std::runtime_error);
+            EXPECT_EQ(swapchain->AcquireNextImageChecked(&semaphore).outcome, RHISurfaceOutcome::eFailed);
         }
         else
         {
@@ -950,7 +963,7 @@ TEST_F(VulkanSwapchainIntegrationTest, AcquireFailuresDoNotPublishAnImageOrSemap
     EXPECT_EQ(WSIDriver::acquiredCalls, 7u);
 }
 
-TEST_F(VulkanSwapchainIntegrationTest, InvalidSuccessfulIndexFailsWithoutReacquiring)
+TEST_F(VulkanSwapchainIntegrationTest, InvalidSuccessfulIndexIsAnInvariantFailure)
 {
     Create();
 
@@ -958,13 +971,7 @@ TEST_F(VulkanSwapchainIntegrationTest, InvalidSuccessfulIndexFailsWithoutReacqui
 
     VulkanSemaphore* semaphore{};
 
-    EXPECT_THROW(swapchain->AcquireNextImage(&semaphore), std::runtime_error);
-
-    EXPECT_EQ(WSIDriver::acquiredCalls, 1u);
-
-    EXPECT_EQ(semaphore, nullptr);
-
-    EXPECT_TRUE(session->rhi.AreSubmissionsBlocked());
+    EXPECT_DEATH(swapchain->AcquireNextImage(&semaphore), "Acquired image 12 exceeds swapchain image count");
 }
 
 TEST_F(VulkanSwapchainIntegrationTest, SuboptimalAcquisitionSurvivesSuccessfulPresent)
@@ -998,7 +1005,9 @@ TEST_F(VulkanSwapchainIntegrationTest, PresentErrorsDistinguishRecreationFromFat
 
         if (result == VK_ERROR_DEVICE_LOST)
         {
-            EXPECT_THROW(swapchain->Present(nullptr), std::runtime_error);
+            EXPECT_FALSE(swapchain->Present(nullptr));
+
+            EXPECT_TRUE(swapchain->GetPresentResult().error.IsFailure());
         }
         else
         {
@@ -1092,7 +1101,7 @@ protected:
     {
         RHICommandList* lists[] = {commands};
 
-        session->rhi.FinalizeCommandLists({lists, 1}, platform);
+        ASSERT_TRUE(session->rhi.FinalizeCommandLists({lists, 1}, platform));
     }
 
     RHISubmissionResult SubmitRecording()
@@ -1122,7 +1131,7 @@ protected:
 
         bool presented = false;
 
-        EXPECT_NO_THROW(presented = viewport->Present());
+        presented      = viewport->Present();
 
         EXPECT_FALSE(presented);
 
@@ -1628,15 +1637,15 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeDeviceLossBlocksFurtherPresentation
 
     WSIDriver::acquireResult = VK_ERROR_DEVICE_LOST;
 
-    EXPECT_THROW(viewport->PrepareForPresent(commands), std::runtime_error);
+    EXPECT_FALSE(viewport->PrepareForPresentChecked(commands));
 
     EXPECT_TRUE(session->rhi.AreSubmissionsBlocked());
 
-    EXPECT_THROW(viewport->Present(), std::runtime_error);
+    EXPECT_EQ(viewport->PresentChecked().outcome, RHISurfaceOutcome::eFailed);
 
-    EXPECT_NO_THROW(viewport->Resize(128, 128));
+    viewport->Resize(128, 128);
 
-    EXPECT_NO_THROW(viewport->Resize(0, 0));
+    viewport->Resize(0, 0);
 
     EXPECT_EQ(WSIDriver::createdCalls, 1u);
 
@@ -1649,7 +1658,9 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedAcquireFenceCreationReleasesPartial
     {
         WSIDriver::fenceCreationFailures = failureAt;
 
-        EXPECT_THROW(Create(), std::runtime_error);
+        Create();
+
+        EXPECT_FALSE(swapchain->GetStatus());
 
         EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
 
@@ -1658,7 +1669,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedAcquireFenceCreationReleasesPartial
 
     EXPECT_EQ(WSIDriver::destroyedCalls, 3u);
 
-    EXPECT_NO_THROW(Create());
+    Create();
 }
 
 TEST_F(VulkanSwapchainIntegrationTest, PendingPresentationFencePreventsEarlyDestruction)
@@ -1710,7 +1721,9 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedPresentationFenceWaitRetainsResourc
 
     const size_t fences     = WSIDriver::liveFences.size();
 
-    EXPECT_THROW(swapchain->Destroy(nullptr), std::runtime_error);
+    EXPECT_DEATH(swapchain->Destroy(nullptr), "Presentation fence completion failed");
+
+    WSIDriver::rejectPresentWait = false;
 
     EXPECT_EQ(WSIDriver::liveSemaphores.size(), semaphores);
 
@@ -1718,7 +1731,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedPresentationFenceWaitRetainsResourc
 
     EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
 
-    EXPECT_NO_THROW(swapchain->Destroy(nullptr));
+    swapchain->Destroy(nullptr);
 
     EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
 
@@ -1735,9 +1748,13 @@ TEST_F(VulkanSwapchainIntegrationTest, RejectedPresentationDoesNotWaitOnUnsubmit
 
     WSIDriver::presentResult = VK_ERROR_OUT_OF_HOST_MEMORY;
 
-    EXPECT_THROW(swapchain->Present(nullptr), std::runtime_error);
+    EXPECT_FALSE(swapchain->Present(nullptr));
 
-    EXPECT_NO_THROW(swapchain->Destroy(nullptr));
+    EXPECT_TRUE(swapchain->GetPresentResult().error.IsFailure());
+
+    EXPECT_EQ(swapchain->GetPresentResult().acceptance, RHIPresentAcceptance::eRejected);
+
+    swapchain->Destroy(nullptr);
 
     EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
 
@@ -1817,7 +1834,9 @@ TEST_F(VulkanSwapchainIntegrationTest, FallbackCreationFailureCleansRetiredPrede
 
     WSIDriver::createResult = VK_ERROR_OUT_OF_HOST_MEMORY;
 
-    EXPECT_THROW(VulkanSwapchain(64, 64, false, &recreate), std::runtime_error);
+    VulkanSwapchain failed(64, 64, false, &recreate);
+
+    EXPECT_FALSE(failed.GetStatus());
 
     EXPECT_EQ(WSIDriver::destroyedCalls, 1u);
 
@@ -1838,7 +1857,9 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedSemaphoreCreationReleasesPartialSwa
     {
         WSIDriver::semaphoreFailureCountdown = failureAt;
 
-        EXPECT_THROW(Create(), std::runtime_error);
+        Create();
+
+        EXPECT_FALSE(swapchain->GetStatus());
 
         EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
 
@@ -1847,7 +1868,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedSemaphoreCreationReleasesPartialSwa
 
     EXPECT_EQ(WSIDriver::destroyedCalls, 3u);
 
-    EXPECT_NO_THROW(Create());
+    Create();
 }
 
 TEST_F(VulkanSwapchainIntegrationTest, FallbackZeroExtentPreservesOldSwapchainLinkForRestoration)

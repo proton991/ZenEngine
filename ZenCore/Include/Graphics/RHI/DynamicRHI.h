@@ -9,12 +9,23 @@
 
 namespace zen
 {
+struct [[nodiscard]] RHIProgressResult
+{
+    RHICompletionSet submitted;
+    RHICompletionSet completed;
+    RHIError         error{};
+};
+
 class DynamicRHI
 {
 public:
     static DynamicRHI* Create(RHIAPIType type);
 
-    virtual ~DynamicRHI()  = default;
+    // A new backend or executor reopens RHI cleanup admission closed by an earlier backend.
+    DynamicRHI();
+
+    // Clears GDynamicRHI when it still points to this object.
+    virtual ~DynamicRHI();
 
     virtual void Init()    = 0;
 
@@ -69,6 +80,20 @@ public:
             const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
             result.Extend(queue, QueryLastCompletedSerial(queue));
         }
+        return result;
+    }
+
+    // The snapshots remain valid on failure; they do not certify new completion.
+    RHIProgressResult QueryProgressChecked()
+    {
+        RHIProgressResult result;
+
+        result.completed = QueryCompletedSerials();
+
+        result.submitted = GetSubmittedSerials();
+
+        result.error     = GetTerminalError();
+
         return result;
     }
 
@@ -166,6 +191,42 @@ public:
     virtual bool AreSubmissionsBlocked() const
     {
         return false;
+    }
+
+    virtual RHIError GetTerminalError() const
+    {
+        return AreSubmissionsBlocked() ? MakeRHIError(RHIErrorCode::eBackendFailure, "RHI backend stopped", __FILE__, __LINE__)
+                                       : RHIError{};
+    }
+
+    virtual bool HasDeviceLoss() const
+    {
+        return GetTerminalError().code == RHIErrorCode::eDeviceLost;
+    }
+
+    // Read on the backend owner immediately after a rejected native submission.
+    virtual RHIError GetLastSubmissionError() const
+    {
+        return GetTerminalError();
+    }
+
+    virtual RHIStatus WaitDeviceIdleChecked()
+    {
+        WaitDeviceIdle();
+
+        return {GetTerminalError()};
+    }
+
+    virtual RHIWaitResult WaitForCompletionChecked(RHICommandContextType type, uint64_t serial, uint64_t timeoutNS = UINT64_MAX)
+    {
+        const bool completed = WaitForCompletion(type, serial, timeoutNS);
+
+        const RHIError error = GetTerminalError();
+
+        return {error.IsFailure() ? RHIWaitOutcome::eFailed
+                : completed       ? RHIWaitOutcome::eCompleted
+                                  : RHIWaitOutcome::eIncomplete,
+                error};
     }
 
     bool IsTransferQueueSharedWithGraphics() const

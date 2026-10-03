@@ -4,7 +4,7 @@
 #include <functional>
 #include <iterator>
 #include <list>
-#include <stdexcept>
+#include "Utils/Errors.h"
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -181,7 +181,7 @@ public:
 
         if (it == end())
         {
-            throw std::out_of_range("LRUCache::at: key not found");
+            VERIFY_EXPR_MSG(false, "LRUCache::at: key not found");
         }
 
         return it->second;
@@ -193,7 +193,7 @@ public:
 
         if (it == end())
         {
-            throw std::out_of_range("LRUCache::at: key not found");
+            VERIFY_EXPR_MSG(false, "LRUCache::at: key not found");
         }
 
         return it->second;
@@ -298,7 +298,7 @@ private:
 
         if (result.first == end())
         {
-            throw std::length_error("LRUCache::operator[]: capacity is zero");
+            VERIFY_EXPR_MSG(false, "LRUCache::operator[]: capacity is zero");
         }
 
         return result.first->second;
@@ -344,31 +344,13 @@ private:
             // Construct before eviction so arguments may safely refer to cached entries.
             m_entries.emplace_front(std::piecewise_construct, std::forward_as_tuple(std::forward<KeyArg>(key)),
                                     std::forward_as_tuple(std::forward<Args>(args)...));
-            iterator                 entry = m_entries.begin();
-            typename Index::iterator indexEntry;
+            iterator entry = m_entries.begin();
 
-            try
-            {
-                indexEntry = m_index.emplace(entry->first, entry).first;
-            }
-            catch (...)
-            {
-                m_entries.pop_front();
-                throw;
-            }
+            m_index.emplace(entry->first, entry);
 
-            try
+            if (size() > m_capacity)
             {
-                if (size() > m_capacity)
-                {
-                    EvictLeastRecent();
-                }
-            }
-            catch (...)
-            {
-                m_index.erase(indexEntry);
-                m_entries.pop_front();
-                throw;
+                EvictLeastRecent();
             }
 
             result = {entry, true};
