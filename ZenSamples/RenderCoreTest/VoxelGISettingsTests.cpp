@@ -136,4 +136,50 @@ TEST(VoxelGIRuntimeSettings, InactiveReflectanceBudgetChangesDoNotRebuild)
 
     EXPECT_TRUE(RequiresVoxelGIRebuild(previous, next));
 }
+
+TEST(VoxelGIVisibilityBounds, PadsClosedCellContactsAndUsesGridCoordinates)
+{
+    const VoxelGIVisibilityBounds bounds =
+        BuildVoxelGIVisibilityBounds(sg::AABB(Vec3(2, 4, 6), Vec3(10, 8, 14)), Vec4(-2, -2, -2, 2), 64);
+
+    EXPECT_EQ(bounds.minimum, Vec4(1, 2, 3, 0));
+
+    EXPECT_EQ(bounds.maximum, Vec4(8, 7, 10, 0));
+
+    const VoxelGIVisibilityBounds expanded =
+        BuildVoxelGIVisibilityBounds(sg::AABB(Vec3(-100), Vec3(200)), Vec4(-2, -2, -2, 2), 64);
+
+    EXPECT_EQ(expanded.minimum, Vec4(0));
+
+    EXPECT_EQ(expanded.maximum, Vec4(64, 64, 64, 0));
+}
+
+TEST(VoxelGIVisibilityBounds, FollowsGeometryOutsideTheOriginalSceneBox)
+{
+    const Vec4 grid(-32, -32, -32, 1);
+
+    const VoxelGIVisibilityBounds before = BuildVoxelGIVisibilityBounds(sg::AABB(Vec3(-4), Vec3(4)), grid, 64);
+
+    const VoxelGIVisibilityBounds after  = BuildVoxelGIVisibilityBounds(sg::AABB(Vec3(-4), Vec3(4, 16, 4)), grid, 64);
+
+    EXPECT_EQ(before.maximum, Vec4(38, 38, 38, 0));
+
+    EXPECT_EQ(after.minimum, before.minimum);
+
+    EXPECT_EQ(after.maximum, Vec4(38, 50, 38, 0));
+}
+
+TEST(VoxelGIVisibilityBounds, InvalidBoundsRetainFullGridTraversal)
+{
+    const sg::AABB invalid[] = {sg::AABB(), sg::AABB(Vec3(0), Vec3(std::numeric_limits<float>::infinity()))};
+
+    for (const sg::AABB& box : invalid)
+    {
+        const VoxelGIVisibilityBounds bounds = BuildVoxelGIVisibilityBounds(box, Vec4(0, 0, 0, 1), 128);
+
+        EXPECT_EQ(bounds.minimum, Vec4(0));
+
+        EXPECT_EQ(bounds.maximum, Vec4(128, 128, 128, 0));
+    }
+}
 } // namespace

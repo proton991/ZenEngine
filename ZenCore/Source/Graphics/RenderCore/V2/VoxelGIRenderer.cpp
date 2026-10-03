@@ -14,6 +14,37 @@ VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer)
     LoadSettings();
 }
 
+VoxelGIVisibilityBounds BuildVoxelGIVisibilityBounds(const sg::AABB& geometryBounds,
+                                                     const Vec4&     gridMinimumSize,
+                                                     uint32_t        resolution)
+{
+    const Vec3 size(static_cast<float>(resolution));
+
+    VoxelGIVisibilityBounds result{Vec4(0), Vec4(size, 0)};
+
+    const Vec3 minimum = (geometryBounds.GetMin() - Vec3(gridMinimumSize)) / gridMinimumSize.w;
+
+    const Vec3 maximum = (geometryBounds.GetMax() - Vec3(gridMinimumSize)) / gridMinimumSize.w;
+
+    bool valid         = std::isfinite(gridMinimumSize.w) && gridMinimumSize.w > 0;
+
+    for (uint32_t axis = 0; axis < 3; ++axis)
+    {
+        valid = valid && std::isfinite(minimum[axis]) && std::isfinite(maximum[axis]) && minimum[axis] <= maximum[axis];
+    }
+
+    if (valid)
+    {
+        // Closed triangle/cell coverage includes both sides of an integer boundary.
+        // Keep an extra cell for CPU/GPU transform and grid-conversion rounding.
+        result.minimum = Vec4(glm::clamp(glm::floor(minimum) - Vec3(1), Vec3(0), size), 0);
+
+        result.maximum = Vec4(glm::clamp(glm::floor(maximum) + Vec3(2), Vec3(0), size), 0);
+    }
+
+    return result;
+}
+
 bool ValidateVoxelGISettings(const VoxelGISettings& settings)
 {
     return std::isfinite(settings.indirectIntensity) && settings.indirectIntensity >= 0 && settings.indirectIntensity <= 10
@@ -217,6 +248,11 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
     {
         m_uniforms.gridMinVoxelSize = Vec4(m_voxelizer->GetSceneMinPoint(), m_voxelizer->GetVoxelSize());
 
+        // Scene bounds include committed instance transforms and vertex deformation,
+        // even when the user has fixed a smaller voxel grid with SetVoxelBounds.
+        m_visibilityBounds =
+            BuildVoxelGIVisibilityBounds(m_scene->GetAABB(), m_uniforms.gridMinVoxelSize, m_voxelizer->GetVoxelTexResolution());
+
         m_uniforms.volume   = Vec4(static_cast<float>(m_voxelizer->GetVoxelTexResolution()), m_voxelizer->GetVoxelScale(),
                                    static_cast<float>(m_radianceMips.size()), m_settings.indirectIntensity);
 
@@ -339,6 +375,8 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 void VoxelGIRenderer::BindLightingInputs(RDGPassDescBase& pass) const
 {
     pass.BindValue("uGISettings", m_uniforms);
+
+    pass.BindValue("uGIVisibilityBounds", m_visibilityBounds);
 
     pass.BindSampledTexture("voxelRadiance", m_voxelizer->GetVoxelSampler(), m_radiance->GetDefaultView());
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
+#include "SceneGraph/AABB.h"
 
 namespace zen::platform
 {
@@ -42,6 +43,18 @@ struct VoxelGIUniformData
     Vec4 lighting{1.0f}; // Analytic, environment, emissive contributions; reserved.
 };
 static_assert(sizeof(VoxelGIUniformData) == 80);
+
+// Conservative base-level occupied-cell range, with an exclusive upper bound.
+struct VoxelGIVisibilityBounds
+{
+    Vec4 minimum;
+    Vec4 maximum;
+};
+static_assert(sizeof(VoxelGIVisibilityBounds) == 32);
+
+VoxelGIVisibilityBounds BuildVoxelGIVisibilityBounds(const sg::AABB& geometryBounds,
+                                                     const Vec4&     gridMinimumSize,
+                                                     uint32_t        resolution);
 
 class VoxelGIRenderer
 {
@@ -95,6 +108,7 @@ private:
     HeapVector<RHITextureView*> m_albedoMips;
     VoxelGISettings             m_settings;
     VoxelGIUniformData          m_uniforms{};
+    VoxelGIVisibilityBounds     m_visibilityBounds{};
     uint64_t                    m_geometryRevision{0};
     uint64_t                    m_lightingRevision{0};
     uint64_t                    m_environmentRevision{0};

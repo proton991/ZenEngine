@@ -76,113 +76,151 @@ TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSeg
     {
         SCOPED_TRACE(side);
 
-        RenderGraph& graph = *device->GetCurrentFrameRDG();
-
-        ASSERT_TRUE(graph.Begin());
-
-        HeapVector<uint32_t> occupancy(side * side * side, 0);
-
-        uint32_t random = 0x32f2b698;
-
-        for (uint32_t z = 0; z < side; ++z)
+        for (bool bounded : {false, true})
         {
-            for (uint32_t y = 0; y < side; ++y)
-            {
-                for (uint32_t x = 0; x < side; ++x)
-                {
-                    // Sparse black occluders and a one-cell wall; opacity is independent of RGB.
-                    const bool occupied                  = x == side / 2 || (y > 2 && VisibilityRandom(random) % 127 == 0);
+            SCOPED_TRACE(bounded);
 
-                    occupancy[x + side * (y + side * z)] = occupied ? 0xff000000u : 0;
+            RenderGraph& graph = *device->GetCurrentFrameRDG();
+
+            ASSERT_TRUE(graph.Begin());
+
+            HeapVector<uint32_t> occupancy(side * side * side, 0);
+
+            uint32_t random = 0x32f2b698;
+
+            for (uint32_t z = 0; z < side; ++z)
+            {
+                for (uint32_t y = 0; y < side; ++y)
+                {
+                    for (uint32_t x = 0; x < side; ++x)
+                    {
+                        // Sparse black occluders and a one-cell wall; opacity is independent of RGB.
+                        const bool covered  = !bounded || (y >= 1 && y < side / 2 && z >= 1 && z < side / 2);
+
+                        const bool occupied = covered && (x == side / 2 || (y > 2 && VisibilityRandom(random) % 127 == 0));
+
+                        occupancy[x + side * (y + side * z)] = occupied ? 0xff000000u : 0;
+                    }
                 }
             }
-        }
 
-        RHITextureCreateInfo info;
+            RHITextureCreateInfo info;
 
-        info.type  = RHITextureType::e3D;
+            info.type  = RHITextureType::e3D;
 
-        info.width = info.height = info.depth = side;
+            info.width = info.height = info.depth = side;
 
-        info.format                           = DataFormat::eR8G8B8A8UNORM;
+            info.format                           = DataFormat::eR8G8B8A8UNORM;
 
-        info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
+            info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
 
-        RHITexture* opacity = device->CreateTexture(info);
+            RHITexture* opacity = device->CreateTexture(info);
 
-        textures.push_back(opacity);
+            textures.push_back(opacity);
 
-        const HeapVector<ConeVisibilityRay> rays = VisibilityRays(side);
+            HeapVector<ConeVisibilityRay> rays = VisibilityRays(side);
 
-        const uint32_t count                     = static_cast<uint32_t>(rays.size());
+            if (bounded)
+            {
+                // Rays entering from empty grid padding must still hit the wall.
+                rays.push_back({Vec4(side / 2.0f, 1.5f, side - 0.5f, 0), Vec4(0, 0, -1, 1e20f)});
 
-        const uint32_t bytes                     = count * sizeof(Vec2);
+                rays.push_back({Vec4(side / 2.0f, 1.5f, side - 0.5f, 0), Vec4(0, 0, 1, 1e20f)});
 
-        RHIBuffer* upload   = Buffer(side * side * side * sizeof(uint32_t), RHIBufferAllocateType::eCPUWrite, occupancy.data());
+                rays.push_back({Vec4(side / 2.0f, 0.5f, 1.5f, 0), Vec4(0, 1, 0, 1e20f)});
 
-        RHIBuffer* input    = Buffer(count * sizeof(ConeVisibilityRay), RHIBufferAllocateType::eCPUWrite, rays.data());
+                rays.push_back({Vec4(side / 2.0f, 0.5f, 1.5f, 0), Vec4(0, -1, 0, 1e20f)});
 
-        RHIBuffer* output   = Buffer(bytes, RHIBufferAllocateType::eGPU);
+                rays.push_back({Vec4(0.5f, side - 0.5f, 1.5f, 0), Vec4(1, 0, 0, 1e20f)});
 
-        RHIBuffer* readback = Buffer(bytes, RHIBufferAllocateType::eCPURead);
+                rays.push_back({Vec4(side / 2.0f, 0.5f, 1.5f, 0), Vec4(0, 1, 0, 0.5f)});
+            }
 
-        graph.GetResourceManager()->ImportHostWrittenBuffer(upload);
+            const uint32_t count = static_cast<uint32_t>(rays.size());
 
-        graph.GetResourceManager()->ImportHostWrittenBuffer(input);
+            const uint32_t bytes = count * sizeof(Vec2);
 
-        RHIBufferTextureCopyRegion region;
+            RHIBuffer* upload =
+                Buffer(side * side * side * sizeof(uint32_t), RHIBufferAllocateType::eCPUWrite, occupancy.data());
 
-        region.textureSize = Vec3i(side);
+            RHIBuffer* input    = Buffer(count * sizeof(ConeVisibilityRay), RHIBufferAllocateType::eCPUWrite, rays.data());
 
-        region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+            RHIBuffer* output   = Buffer(bytes, RHIBufferAllocateType::eGPU);
 
-        graph.AddTransferPass("VisibilityOpacity").CopyBufferToTexture(upload, opacity, region);
+            RHIBuffer* readback = Buffer(bytes, RHIBufferAllocateType::eCPURead);
 
-        RDGComputePassDesc pass;
+            graph.GetResourceManager()->ImportHostWrittenBuffer(upload);
 
-        pass.SetShaderProgramName("VoxelVisibilityCheckSP");
+            graph.GetResourceManager()->ImportHostWrittenBuffer(input);
 
-        pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
+            RHIBufferTextureCopyRegion region;
 
-        pass.BindSampledTexture("opacity", device->CreateSampler({}), opacity->GetDefaultView());
+            region.textureSize = Vec3i(side);
 
-        pass.BindValue("uGISettings",
-                       VoxelGIUniformData{Vec4(0, 0, 0, 1), Vec4(side, 1.0f / side, 1, 1), Vec4(1), Vec4(6, 128, 1, 0)});
+            region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
 
-        pass.BindValue("uSceneData", SceneUniformData{});
+            graph.AddTransferPass("VisibilityOpacity").CopyBufferToTexture(upload, opacity, region);
 
-        pass.BindStorageBuffer("VisibilityRays", input);
+            RDGComputePassDesc pass;
 
-        pass.BindStorageBuffer("VisibilityResults", output, RDGContentGuarantee::eFullWrite);
+            pass.SetShaderProgramName("VoxelVisibilityCheckSP");
 
-        graph.AddComputePass(std::move(pass)).RecordPassCommands([count](RDGPassCmdEncoder& encoder) {
-            encoder.Dispatch((count + 63) / 64, 1, 1);
-        });
+            pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
 
-        graph.AddTransferPass("ReadVisibility").CopyBuffer(output, readback, {0, 0, bytes}).NeverCull();
+            pass.BindSampledTexture("opacity", device->CreateSampler({}), opacity->GetDefaultView());
 
-        ASSERT_TRUE(graph.End());
+            pass.BindValue("uGISettings",
+                           VoxelGIUniformData{Vec4(0, 0, 0, 1), Vec4(side, 1.0f / side, 1, 1), Vec4(1), Vec4(6, 128, 1, 0)});
 
-        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+            pass.BindValue("uGIVisibilityBounds",
+                           bounded ? VoxelGIVisibilityBounds{Vec4(0, 1, 1, 0), Vec4(side, side / 2.0f, side / 2.0f, 0)}
+                                   : VoxelGIVisibilityBounds{Vec4(0), Vec4(Vec3(side), 0)});
 
-        device->FlushRHIThread();
+            pass.BindValue("uSceneData", SceneUniformData{});
 
-        device->WaitForIdle();
+            pass.BindStorageBuffer("VisibilityRays", input);
 
-        const HeapVector<Vec2> results = ReadStaticBuffer<Vec2>(readback);
+            pass.BindStorageBuffer("VisibilityResults", output, RDGContentGuarantee::eFullWrite);
 
-        ASSERT_EQ(results.size(), count);
+            graph.AddComputePass(std::move(pass)).RecordPassCommands([count](RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch((count + 63) / 64, 1, 1);
+            });
 
-        for (uint32_t index = 0; index < count; ++index)
-        {
-            ASSERT_EQ(results[index].x, results[index].y) << "ray " << index;
-        }
+            graph.AddTransferPass("ReadVisibility").CopyBuffer(output, readback, {0, 0, bytes}).NeverCull();
 
-        for (uint32_t index = 0; index < 6; ++index)
-        {
-            constexpr float expected[] = {0, 1, 1, 0, 1, 0};
+            ASSERT_TRUE(graph.End());
 
-            EXPECT_EQ(results[index].x, expected[index]) << "known ray " << index;
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+
+            device->FlushRHIThread();
+
+            device->WaitForIdle();
+
+            const HeapVector<Vec2> results = ReadStaticBuffer<Vec2>(readback);
+
+            ASSERT_EQ(results.size(), count);
+
+            for (uint32_t index = 0; index < count; ++index)
+            {
+                ASSERT_EQ(results[index].x, results[index].y) << "ray " << index;
+            }
+
+            for (uint32_t index = 0; index < 6; ++index)
+            {
+                constexpr float expected[] = {0, 1, 1, 0, 1, 0};
+
+                EXPECT_EQ(results[index].x, expected[index]) << "known ray " << index;
+            }
+
+            if (bounded)
+            {
+                constexpr float expected[] = {0, 1, 0, 1, 1, 1};
+
+                for (uint32_t index = 0; index < 6; ++index)
+                {
+                    EXPECT_EQ(results[count - 6 + index].x, expected[index]) << "padding ray " << index;
+                }
+            }
         }
     }
 }

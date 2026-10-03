@@ -1,5 +1,77 @@
 # VoxelGI performance
 
+## Sponza forward-movement FPS drop, 2026-10-03
+
+Moving forward from the default camera without rotating it made the roof fill
+the maximized 2560x1377 viewport and reduced the Release demo to about 42 FPS.
+The expensive work was the fragment shader's environment-visibility traversal:
+six rays per shaded pixel could walk the empty padding of the cubic voxel grid
+after leaving Sponza's much shorter geometry bounds.
+
+`VoxelGIRenderer` now supplies conservative occupied-cell bounds derived from the
+current scene AABB. The bounds include committed instance transforms and vertex
+deformation, are padded for closed triangle/cell contacts and rounding, and fall
+back to the full grid for invalid input. The shader tightens only the exit side
+of each axis, allowing rays originating in empty padding to enter and hit geometry.
+Base-level occupancy, DDA increments, z/y/x tie priority and finite endpoints stay
+unchanged. Compute injection and sky traversal are unchanged. This does not reduce
+GI resolution, cone count, shadows or image quality.
+
+Matched MSVC Release measurements on the RX 7900 XT use the same 256-cubed grid,
+geometry voxelizer, six cones, owner reflectance and 2560x1377 G-buffer. They run
+serially with 60 startup/warmup frames and 360 measured frames, fixed animation
+steps, threaded RHI, async compute disabled, and VSync, validation and overlay
+injection disabled. The baseline is commit `7f24d8ab`. Camera positions follow
+the original viewing direction at 1, 0.75, 0.5, 0.25 and 0.05 times the initial
+distance to the scene center. FPS is `1000 / mean CPU frame interval`, including
+frame-slot backpressure. Roof results average two trials per variant in
+baseline/fixed/fixed/baseline order; other positions have one matched pair.
+
+| View | Before FPS | Fixed FPS | Before GPU median | Fixed GPU median |
+| --- | ---: | ---: | ---: | ---: |
+| Starting camera | 174.9 | 576.7 | 5.50 ms | 1.50 ms |
+| Early approach (0.75) | 90.8 | 376.4 | 10.84 ms | 2.40 ms |
+| Roof fills viewport (0.5) | 43.8 | 187.9 | 22.09 ms | 5.24 ms |
+| Close roof (0.25) | 35.0 | 107.0 | 28.35 ms | 9.18 ms |
+| Inside near center (0.05) | 92.1 | 101.8 | 10.77 ms | 9.38 ms |
+
+At the roof, the SceneLighting median falls from 21.25 to 4.40 ms and CPU frame
+p95 falls from 24.68-25.79 to 5.97-5.98 ms. Pass intervals overlap and must not
+be summed. The [measurement record](../build/scene-stutter-investigation/performance-summary.json)
+contains exact commands, camera positions and timings.
+
+A normal launch was then maximized and moved with W, keeping the camera direction
+unchanged and leaving VSync, validation and the installed overlay enabled. The
+fixed roof view holds approximately 165 FPS at the display limit, the closer
+roof view measures 109-110 FPS, and the interior view measures 102-103 FPS.
+[Interactive observations and screenshots](../build/scene-stutter-investigation/observations.jsonl)
+are separate from the controlled measurements above.
+
+Verification:
+
+- Debug and Release builds succeed. Each passes all 4 cone integration tests and
+  564 enabled RenderCore tests; 7 existing RenderCore tests remain disabled.
+  The integration suite checks 393,432 GPU rays per build against the frozen
+  scalar traversal at 64/128/256 resolution in all four submission modes,
+  including rays entering from empty padding, parallel rays and finite endpoints.
+  [Native results](../build/scene-stutter-investigation/final-tests/results.json).
+- All 17 matched image cases have byte-identical screenshots and HDR components:
+  Sponza and room scenes with both voxelizers at 64/128/256, thin/slanted/cutout
+  fixtures, transformed geometry and the Sponza interior. Full-resolution captures
+  also match at all five approach positions.
+  [Image results](../build/scene-stutter-investigation/images/results.json).
+- All [162 GI regression cases](../build/scene-stutter-investigation/gi-regression/results.json)
+  and [18 glTF rendering cases](../build/scene-stutter-investigation/gltf-smoke/report.json)
+  pass with validation and synchronization validation enabled, including forward
+  materials, transmission, skinning and morph animation.
+- All five affected SPIR-V modules pass Vulkan 1.1 validation. Changed C++ files
+  pass clang-format 19.1.5 verification and the owned-source no-exceptions check.
+
+`Data/engine.cfg` is restored byte for byte. Logs, matched executables/shaders and
+captures remain under `build/scene-stutter-investigation`. These results cover
+this AMD workload; the improvement is smaller inside the scene, where rays have
+less empty padding to traverse.
+
 ## RX 7900 XT environment visibility fix, 2026-09-30
 
 At 2560x1377, the configured Sponza starting camera now measures **74.53 FPS**
