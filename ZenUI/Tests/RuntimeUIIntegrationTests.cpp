@@ -1,10 +1,10 @@
-#include "UI/RuntimeDebugUI.h"
+#include "RuntimeUI/RuntimeDebugUI.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RHI/RHIOptions.h"
-#include "Platform/GlfwWindow.h"
+#include "Platform/NativeWindow.h"
 #include "imgui_internal.h"
 #include <gtest/gtest.h>
 #include <cstdio>
@@ -315,9 +315,9 @@ TEST(RuntimeSceneControls, ModelSelectionDefaultsKeepExistingHostsCompatible)
 
 TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStaleSceneDrafts)
 {
-    platform::GlfwWindowImpl window({"Model selection tests", false, 64, 64});
+    platform::NativeWindow window({"Model selection tests", false, 64, 64});
 
-    glfwHideWindow(window.GetHandle());
+    window.Hide();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
@@ -328,6 +328,11 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
 
     device.Init(viewport);
+
+    // Window creation does not implicitly enable scene rendering.
+    EXPECT_EQ(device.GetRendererServer(), nullptr);
+
+    device.InitializeRendererServer();
 
     ImGuiContext* context = ImGui::CreateContext();
 
@@ -491,9 +496,9 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
 TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits)
 {
-    platform::GlfwWindowImpl window({"Light count tests", false, 64, 64});
+    platform::NativeWindow window({"Light count tests", false, 64, 64});
 
-    glfwHideWindow(window.GetHandle());
+    window.Hide();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
@@ -504,6 +509,11 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
 
     device.Init(viewport);
+
+    // Window creation does not implicitly enable scene rendering.
+    EXPECT_EQ(device.GetRendererServer(), nullptr);
+
+    device.InitializeRendererServer();
 
     ImGuiContext* context = ImGui::CreateContext();
 
@@ -661,9 +671,9 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
 
 TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupportsManualMode)
 {
-    platform::GlfwWindowImpl window({"Runtime UI tests", false, 64, 64});
+    platform::NativeWindow window({"Runtime UI tests", false, 64, 64});
 
-    glfwHideWindow(window.GetHandle());
+    window.Hide();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
@@ -674,6 +684,11 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
 
     device.Init(viewport);
+
+    // Window creation does not implicitly enable scene rendering.
+    EXPECT_EQ(device.GetRendererServer(), nullptr);
+
+    device.InitializeRendererServer();
 
     // Live UI counters must work without the optional --gpu-memory-stats log flag.
     EXPECT_FALSE(RHIOptions::GetInstance().GPUMemoryStats());
@@ -924,9 +939,9 @@ class ReflectanceRuntimeIntegration : public testing::TestWithParam<uint32_t>
 
 TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBothPolicies)
 {
-    platform::GlfwWindowImpl window({"Reflectance reconfiguration tests", false, 64, 64});
+    platform::NativeWindow window({"Reflectance reconfiguration tests", false, 64, 64});
 
-    glfwHideWindow(window.GetHandle());
+    window.Hide();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
@@ -938,6 +953,11 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
 
     device.Init(viewport);
+
+    // Window creation does not implicitly enable scene rendering.
+    EXPECT_EQ(device.GetRendererServer(), nullptr);
+
+    device.InitializeRendererServer();
 
     sg::Scene source;
 

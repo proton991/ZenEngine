@@ -1,4 +1,5 @@
 #pragma once
+#include "Graphics/RenderCore/V2/RenderView.h"
 #include "Utils/UniquePtr.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 
@@ -29,15 +30,17 @@ public:
         eBindTextures = 1 << 0
     };
 
-    DeferredLightingRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
+    explicit DeferredLightingRenderer(RenderDevice* pRenderDevice);
 
     void Init();
 
-    void BuildRenderGraph(VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
+    void BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
 
-    void BuildGBufferGraph();
+    void BuildGBufferGraph(const RenderView& view);
 
-    void BuildCompositionGraph(VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
+    void BuildCompositionGraph(const RenderView& view,
+                               VoxelGIRenderer*  voxelGI    = nullptr,
+                               SceneShadowRenderer* shadows = nullptr);
 
     void Destroy();
 
@@ -68,8 +71,8 @@ public:
         return m_captureRecorded;
     }
 
-    // The G-buffer is sized to the viewport. Zero when the last build declared none: forward
-    // materials or a suspended (zero-sized) viewport.
+    // The G-buffer is sized to the supplied view. Zero when the last build declared none: forward
+    // materials or a suspended (zero-sized) view.
     glm::uvec2 GetGBufferExtent() const
     {
         return m_gbufferExtent;
@@ -85,18 +88,16 @@ private:
 
     bool UsesForwardMaterials() const;
 
-    void BuildForwardGraph(VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows);
+    void BuildForwardGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows);
 
-    void BuildLightMarkers();
+    void BuildLightMarkers(const RenderView& view);
 
-    bool BuildLightingCaptureClear();
+    bool BuildLightingCaptureClear(const RenderView& view);
 
     float m_lightMarkerSize{0.02f};
     bool  m_lightMarkersEnabled{false};
 
     RenderDevice* m_pRenderDevice{nullptr};
-
-    RHIViewport* m_pViewport{nullptr};
 
     RenderScene* m_pScene{nullptr};
 

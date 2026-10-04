@@ -1489,9 +1489,10 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                     const HashMap<uint64_t, HeapVector<RDGExternalQueueState>>::const_iterator producer = external.find(id);
 
-                    valid = graph.Check(!priorAccess || resource->hasInitialState || producer != external.end(),
-                                        RDGErrorCode::eLifecycle,
-                                        "Initial resource state requires queue provenance before group recording");
+                    valid                                                                               = graph.Check(
+                        !priorAccess || resource->hasInitialState || producer != external.end(), RDGErrorCode::eLifecycle,
+                        fmt::format("Initial resource state requires queue provenance before group recording: {} (id {})",
+                                                                                                                  PhysicalResource(resource)->GetResourceTag().CStr(), id));
 
                     if (producer != external.end())
                     {

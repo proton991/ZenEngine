@@ -27,6 +27,8 @@ struct SceneData
     uint32_t             numIndices;
     sg::Camera*          pCamera;
     std::string          envTextureName;
+    // Empty honors a glTF-authored environment, then envTextureName.
+    std::string environmentOverride;
     // other scene data
 };
 
@@ -35,7 +37,11 @@ class RenderScene
 public:
     RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData);
 
-    void Init();
+    // False leaves a partially initialized scene that must be destroyed, never published.
+    bool Init();
+
+    // Allocation and upload admission only; RenderDevice drains uploads before publication.
+    bool HasRequiredResources() const;
 
     // Explicit scene teardown while the device is live, after frame work has drained.
     // Rebind renderers before retiring a scene. Repeated calls are harmless.
@@ -119,6 +125,10 @@ public:
         return m_environmentRevision;
     }
 
+    // Engine thread only, between frames. A failed replacement preserves the active
+    // environment. Empty restores the scene-authored or engine default environment.
+    bool SetEnvironmentTexture(const std::string& path, std::string& error);
+
     bool SetEnvironmentLighting(float intensity, float rotationDegrees, bool enabled, bool visible);
 
     SceneLights& GetLights()
@@ -168,7 +178,7 @@ public:
 
     const EnvTexture& GetEnvTexture() const
     {
-        return m_envTexture;
+        return *m_envTexture;
     }
 
     const HeapVector<RHITexture*>& GetSceneTextures() const
@@ -274,8 +284,10 @@ private:
     HeapVector<RHITexture*> m_sceneTextures;
     HeapVector<RHISampler*> m_sceneSamplers;
     std::string             m_envTextureName;
-    EnvTexture              m_envTexture;
-    RHITexture*             m_pDefaultBaseColorTexture{nullptr};
+    std::string             m_environmentOverride;
+    // Preprocessing jobs retain this address until execution or cancellation.
+    UniquePtr<EnvTexture> m_envTexture{MakeUnique<EnvTexture>()};
+    RHITexture*           m_pDefaultBaseColorTexture{nullptr};
     // TextureHandle m_defaultBaseColorTexture;
 };
 } // namespace zen::rc

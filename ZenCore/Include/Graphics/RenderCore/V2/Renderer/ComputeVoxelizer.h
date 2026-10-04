@@ -16,13 +16,13 @@ class RenderObject;
 class ComputeVoxelizer : public VoxelizerBase
 {
 public:
-    ComputeVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) : VoxelizerBase(pRenderDevice, pViewport) {}
+    explicit ComputeVoxelizer(RenderDevice* pRenderDevice) : VoxelizerBase(pRenderDevice) {}
 
     void Init() final;
 
     void BuildVoxelizationGraph() final;
 
-    void BuildVisualizationGraph() final;
+    void BuildVisualizationGraph(const RenderView& view) final;
 
     void OnRenderGraphExecuted(bool succeeded) final;
 

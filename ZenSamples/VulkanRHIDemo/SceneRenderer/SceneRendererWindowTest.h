@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Platform/GlfwWindow.h"
+#include "Platform/NativeWindow.h"
 #include "Utils/Errors.h"
 #include <chrono>
 
@@ -11,13 +11,13 @@ namespace zen
 class SceneRendererWindowTest
 {
 public:
-    SceneRendererWindowTest(GLFWwindow* window, uint32_t seconds) : m_window(window), m_seconds(seconds) {}
+    SceneRendererWindowTest(platform::NativeWindow& window, uint32_t seconds) : m_window(&window), m_seconds(seconds) {}
 
     ~SceneRendererWindowTest()
     {
         if (m_cover != nullptr)
         {
-            glfwDestroyWindow(m_cover);
+            delete m_cover;
         }
     }
 
@@ -44,52 +44,28 @@ public:
 
             const double elapsed                            = std::chrono::duration<double>(now - m_started).count();
 
-            if (m_phase == Phase::eForeground && m_cycles == 1 && (frame == m_phaseFrame + 2 || frame == m_phaseFrame + 3))
-            {
-                // Exercise focus loss from captured-camera mode through the installed
-                // engine/ImGui key callback chain, without coupling this probe to ZenUI.
-                GLFWkeyfun keyCallback = glfwSetKeyCallback(m_window, nullptr);
-
-                glfwSetKeyCallback(m_window, keyCallback);
-
-                if (keyCallback != nullptr)
-                {
-                    keyCallback(m_window, GLFW_KEY_F1, 0, frame == m_phaseFrame + 2 ? GLFW_PRESS : GLFW_RELEASE, 0);
-                }
-            }
-
             if (m_phase == Phase::eForeground && frame >= m_phaseFrame + 8)
             {
-                int width  = 0;
-                int height = 0;
-                int x      = 0;
-                int y      = 0;
+                const platform::WindowExtent extent     = m_window->GetExtent2D();
 
-                glfwGetWindowSize(m_window, &width, &height);
+                const platform::WindowPosition position = m_window->GetPosition();
 
-                glfwGetWindowPos(m_window, &x, &y);
+                m_cover                                 = new platform::NativeWindow(
+                    {"Background rendering test - covering demo", false, extent.width + 80, extent.height + 80});
 
-                m_cover =
-                    glfwCreateWindow(width + 80, height + 80, "Background rendering test - covering demo", nullptr, nullptr);
+                m_cover->SetPosition({position.x - 40, position.y - 40});
 
-                if (m_cover == nullptr)
-                {
-                    VERIFY_EXPR_MSG_F(false, "Cannot create the background test cover window");
-                }
-
-                glfwSetWindowPos(m_cover, x - 40, y - 40);
-
-                glfwFocusWindow(m_cover);
+                m_cover->Focus();
 
                 StartPhase(Phase::eCovered, frame, now);
             }
             else if (m_phase == Phase::eCovered && elapsed >= m_seconds)
             {
-                glfwDestroyWindow(m_cover);
+                delete m_cover;
 
                 m_cover = nullptr;
 
-                glfwFocusWindow(m_window);
+                m_window->Focus();
 
                 StartPhase(Phase::eReturned, frame, now);
             }
@@ -97,16 +73,16 @@ public:
             {
                 if (VerifyForeground(frame, now))
                 {
-                    glfwIconifyWindow(m_window);
+                    m_window->Minimize();
 
                     StartPhase(Phase::eMinimized, frame, now);
                 }
             }
             else if (m_phase == Phase::eMinimized && elapsed >= m_seconds)
             {
-                glfwRestoreWindow(m_window);
+                m_window->Restore();
 
-                glfwFocusWindow(m_window);
+                m_window->Focus();
 
                 StartPhase(Phase::eRestored, frame, now);
             }
@@ -123,7 +99,7 @@ public:
             if (now - m_lastProgress >= std::chrono::seconds(5))
             {
                 LOGI("Window test progress: phase={} frame={} focused={} iconified={}", PhaseName(m_phase), frame,
-                     glfwGetWindowAttrib(m_window, GLFW_FOCUSED), glfwGetWindowAttrib(m_window, GLFW_ICONIFIED));
+                     m_window->IsFocused(), m_window->IsMinimized());
 
                 m_lastProgress = now;
             }
@@ -160,8 +136,7 @@ private:
 
     bool VerifyForeground(uint32_t frame, std::chrono::steady_clock::time_point now)
     {
-        m_succeeded = glfwGetWindowAttrib(m_window, GLFW_FOCUSED) == GLFW_TRUE
-                   && glfwGetWindowAttrib(m_window, GLFW_ICONIFIED) == GLFW_FALSE;
+        m_succeeded = m_window->IsFocused() && !m_window->IsMinimized();
 
         if (!m_succeeded)
         {
@@ -184,8 +159,8 @@ private:
         LOGI("Window test transition: phase={} cycle={} frame={}", PhaseName(phase), m_cycles, frame);
     }
 
-    GLFWwindow*                           m_window;
-    GLFWwindow*                           m_cover{nullptr};
+    platform::NativeWindow*               m_window;
+    platform::NativeWindow*               m_cover{nullptr};
     uint32_t                              m_seconds;
     uint32_t                              m_phaseFrame{0};
     uint32_t                              m_cycles{0};

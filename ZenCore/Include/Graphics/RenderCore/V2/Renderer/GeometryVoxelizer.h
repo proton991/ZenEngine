@@ -10,13 +10,13 @@ class RenderScene;
 class GeometryVoxelizer : public VoxelizerBase
 {
 public:
-    GeometryVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) : VoxelizerBase(pRenderDevice, pViewport) {}
+    explicit GeometryVoxelizer(RenderDevice* pRenderDevice) : VoxelizerBase(pRenderDevice) {}
 
     void Init() final;
 
     void BuildVoxelizationGraph() final;
 
-    void BuildVisualizationGraph() final;
+    void BuildVisualizationGraph(const RenderView& view) final;
 
     void Destroy() final;
 };

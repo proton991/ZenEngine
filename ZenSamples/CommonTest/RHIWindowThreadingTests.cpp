@@ -1,9 +1,8 @@
 #if defined(ZEN_WIN32)
 #    include "Graphics/RHI/RHIThread.h"
-#    include "Platform/GlfwWindow.h"
+#    include "Platform/NativeWindow.h"
 #    include <Windows.h>
-#    define GLFW_EXPOSE_NATIVE_WIN32
-#    include <GLFW/glfw3native.h>
+#    include "NativeWindowTestAccess.h"
 #    include <gtest/gtest.h>
 
 namespace
@@ -43,11 +42,15 @@ uint32_t SendRHIResizeMessages(HWND window)
 {
     uint32_t delivered = 0;
 
-    for (const LPARAM size : {MAKELPARAM(120, 100), MAKELPARAM(140, 110)})
+    for (const SIZE size : {SIZE{120, 100}, SIZE{140, 110}})
     {
-        DWORD_PTR reply = 0;
+        RECT outer{0, 0, size.cx, size.cy};
 
-        if (SendMessageTimeoutW(window, WM_SIZE, SIZE_RESTORED, size, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &reply) != 0)
+        AdjustWindowRectEx(&outer, DWORD(GetWindowLongPtrW(window, GWL_STYLE)), FALSE,
+                           DWORD(GetWindowLongPtrW(window, GWL_EXSTYLE)));
+
+        if (SetWindowPos(window, nullptr, 0, 0, outer.right - outer.left, outer.bottom - outer.top,
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE))
         {
             ++delivered;
         }
@@ -59,11 +62,9 @@ uint32_t SendRHIResizeMessages(HWND window)
 
 TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpdate)
 {
-    ASSERT_TRUE(glfwInit());
-
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-
     platform::WindowConfig config;
+
+    config.visible   = false;
 
     config.width     = 96;
 
@@ -71,7 +72,7 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 
     config.resizable = true;
 
-    platform::GlfwWindowImpl window(config);
+    platform::NativeWindow window(config);
 
     window.Update();
 
@@ -85,7 +86,7 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 
     observer.waiting         = true;
 
-    const uint32_t delivered = thread.Invoke(&SendRHIResizeMessages, glfwGetWin32Window(window.GetHandle()));
+    const uint32_t delivered = thread.Invoke(&SendRHIResizeMessages, GetTestWindowHandle(window));
 
     observer.waiting         = false;
 
@@ -121,7 +122,7 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 #include "ScopedVulkanCall.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
-#include "Platform/GlfwWindow.h"
+#include "Platform/NativeWindow.h"
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -195,11 +196,9 @@ protected:
 
     void SetUp() override
     {
-        ASSERT_TRUE(glfwInit());
-
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-
         platform::WindowConfig config;
+
+        config.visible   = false;
 
         config.width     = 96;
 
@@ -207,7 +206,7 @@ protected:
 
         config.resizable = true;
 
-        window           = std::make_unique<platform::GlfwWindowImpl>(config);
+        window           = std::make_unique<platform::NativeWindow>(config);
 
         backend          = static_cast<VulkanRHI*>(DynamicRHI::Create(RHIAPIType::eVulkan));
 
@@ -298,17 +297,17 @@ protected:
         return commands;
     }
 
-    static inline PFN_vkCreateSwapchainKHR    originalCreate{};
-    static inline std::thread::id             creationThread;
-    static inline VkSwapchainKHR              oldSwapchain{};
-    static inline uint32_t                    creations{0};
-    static inline PFN_vkAcquireNextImageKHR   originalAcquire{};
-    std::thread::id                           ownerThread;
-    std::thread::id                           rhiThread;
-    std::unique_ptr<platform::GlfwWindowImpl> window;
-    VulkanRHI*                                backend{nullptr};
-    RHICommandListExecutor*                   executor{nullptr};
-    RHIViewport*                              viewport{nullptr};
+    static inline PFN_vkCreateSwapchainKHR  originalCreate{};
+    static inline std::thread::id           creationThread;
+    static inline VkSwapchainKHR            oldSwapchain{};
+    static inline uint32_t                  creations{0};
+    static inline PFN_vkAcquireNextImageKHR originalAcquire{};
+    std::thread::id                         ownerThread;
+    std::thread::id                         rhiThread;
+    std::unique_ptr<platform::NativeWindow> window;
+    VulkanRHI*                              backend{nullptr};
+    RHICommandListExecutor*                 executor{nullptr};
+    RHIViewport*                            viewport{nullptr};
 };
 } // namespace
 

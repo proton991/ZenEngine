@@ -1,4 +1,4 @@
-#include "UI/UIDrawPacket.h"
+#include "ImGui/ImGuiDrawPacket.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
 #include <gtest/gtest.h>
@@ -10,13 +10,13 @@ namespace zen::ui
 {
 namespace
 {
-TEST(UIShaderReflectionTest, PackedVertexColorHasFourByteStrideAndLocalFontBinding)
+TEST(UIShaderReflectionTest, PackedVertexColorHasFourByteStrideAndTextureSlotArrays)
 {
     RHIShaderGroupSPIRVPtr spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
 
-    spirv->SetStageSPIRV(RHIShaderStage::eVertex, platform::FileSystem::LoadSpvFile("UI/imgui.vert.spv"));
+    spirv->SetStageSPIRV(RHIShaderStage::eVertex, platform::FileSystem::LoadSpvFile("UI/ui.vert.spv"));
 
-    spirv->SetStageSPIRV(RHIShaderStage::eFragment, platform::FileSystem::LoadSpvFile("UI/imgui.frag.spv"));
+    spirv->SetStageSPIRV(RHIShaderStage::eFragment, platform::FileSystem::LoadSpvFile("UI/ui.frag.spv"));
 
     RHIShaderGroupInfo info;
 
@@ -34,11 +34,18 @@ TEST(UIShaderReflectionTest, PackedVertexColorHasFourByteStrideAndLocalFontBindi
 
     EXPECT_TRUE(info.SRDTable[0].empty());
 
-    ASSERT_EQ(info.SRDTable[1].size(), 1u);
+    ASSERT_EQ(info.SRDTable[1].size(), 2u);
 
-    EXPECT_EQ(info.SRDTable[1][0].name, NameID("uFont"));
+    EXPECT_EQ(info.SRDTable[1][0].name, NameID("uTextures"));
 
-    EXPECT_EQ(info.pushConstants.size, 16u);
+    EXPECT_EQ(info.SRDTable[1][0].arraySize, 16u);
+
+    EXPECT_EQ(info.SRDTable[1][1].name, NameID("uSamplers"));
+
+    EXPECT_EQ(info.SRDTable[1][1].arraySize, 16u);
+
+    // Projection followed by the per-draw texture slot.
+    EXPECT_EQ(info.pushConstants.size, 20u);
 }
 
 class UIDrawPacketTest : public testing::Test
@@ -120,7 +127,7 @@ TEST_F(UIDrawPacketTest, ScalesOffsetsAndClampsClipRectangle)
 {
     UIDrawPacket packet;
 
-    ASSERT_TRUE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    ASSERT_TRUE(BuildUIDrawPacket(data, 150, 160, packet));
 
     ASSERT_EQ(packet.commands.size(), 2u);
 
@@ -141,7 +148,7 @@ TEST_F(UIDrawPacketTest, ScalesOffsetsAndClampsClipRectangle)
     EXPECT_EQ(packet.commands[1].vertexOffset, 3u);
 }
 
-TEST_F(UIDrawPacketTest, SnapshotOwnsGeometryAfterSourceMutationAndPadsIndexUpload)
+TEST_F(UIDrawPacketTest, SnapshotOwnsGeometryAfterSourceMutationAndWidensIndices)
 {
     data.CmdLists.pop_back();
 
@@ -151,19 +158,15 @@ TEST_F(UIDrawPacketTest, SnapshotOwnsGeometryAfterSourceMutationAndPadsIndexUplo
 
     UIDrawPacket packet;
 
-    ASSERT_TRUE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    ASSERT_TRUE(BuildUIDrawPacket(data, 150, 160, packet));
 
-    EXPECT_EQ(packet.indices.size() % 4, 0u);
+    EXPECT_EQ(packet.indices.size(), 3u);
 
     first->VtxBuffer[0].pos.x = 500;
 
     first->IdxBuffer[0]       = 2;
 
-    ImDrawVert vertex;
-
-    std::memcpy(&vertex, packet.vertices.data(), sizeof(vertex));
-
-    EXPECT_FLOAT_EQ(vertex.pos.x, 10);
+    EXPECT_FLOAT_EQ(packet.vertices[0].position[0], 10);
 
     EXPECT_EQ(packet.indices[0], 0u);
 }
@@ -178,20 +181,20 @@ TEST_F(UIDrawPacketTest, PreservesBaseVertexBeyondSixteenBitIndexRange)
 
     UIDrawPacket packet;
 
-    ASSERT_TRUE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    ASSERT_TRUE(BuildUIDrawPacket(data, 150, 160, packet));
 
     EXPECT_EQ(packet.commands[0].vertexOffset, 70000u);
 
     EXPECT_EQ(packet.commands[1].vertexOffset, 70003u);
 }
 
-TEST_F(UIDrawPacketTest, RejectsUnknownTextureAndClearsPartialPacket)
+TEST_F(UIDrawPacketTest, RejectsInvalidTextureAndClearsPartialPacket)
 {
-    second->CmdBuffer[0].TexRef = ImTextureRef(ImTextureID(999));
+    second->CmdBuffer[0].TexRef = ImTextureRef(ImTextureID_Invalid);
 
     UIDrawPacket packet;
 
-    EXPECT_FALSE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_FALSE(BuildUIDrawPacket(data, 150, 160, packet));
 
     EXPECT_TRUE(packet.commands.empty());
 
@@ -206,20 +209,20 @@ TEST_F(UIDrawPacketTest, AcceptsResetCallbackAndRejectsArbitraryCallbacks)
 
     UIDrawPacket packet;
 
-    EXPECT_TRUE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_TRUE(BuildUIDrawPacket(data, 150, 160, packet));
 
     EXPECT_EQ(packet.commands.size(), 1u);
 
     second->CmdBuffer[0].UserCallback = UnsupportedCallback;
 
-    EXPECT_FALSE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_FALSE(BuildUIDrawPacket(data, 150, 160, packet));
 }
 
 TEST_F(UIDrawPacketTest, EmptyMinimizedAndClippedFramesProduceNoDraws)
 {
     UIDrawPacket packet;
 
-    EXPECT_TRUE(BuildUIDrawPacket(data, fontId, 0, 0, packet));
+    EXPECT_TRUE(BuildUIDrawPacket(data, 0, 0, packet));
 
     EXPECT_TRUE(packet.commands.empty());
 
@@ -228,7 +231,7 @@ TEST_F(UIDrawPacketTest, EmptyMinimizedAndClippedFramesProduceNoDraws)
         list->CmdBuffer[0].ClipRect = ImVec4(-20, -20, -10, -10);
     }
 
-    EXPECT_TRUE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_TRUE(BuildUIDrawPacket(data, 150, 160, packet));
 
     EXPECT_TRUE(packet.commands.empty());
 
@@ -240,7 +243,7 @@ TEST_F(UIDrawPacketTest, EmptyMinimizedAndClippedFramesProduceNoDraws)
 
     data.FramebufferScale = ImVec2(1, 1);
 
-    EXPECT_TRUE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_TRUE(BuildUIDrawPacket(data, 150, 160, packet));
 
     EXPECT_TRUE(packet.commands.empty());
 }
@@ -251,13 +254,13 @@ TEST_F(UIDrawPacketTest, RejectsInvalidRangesAndNonFiniteClipping)
 
     first->CmdBuffer[0].IdxOffset = 3;
 
-    EXPECT_FALSE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_FALSE(BuildUIDrawPacket(data, 150, 160, packet));
 
     first->CmdBuffer[0].IdxOffset  = 0;
 
     first->CmdBuffer[0].ClipRect.x = std::numeric_limits<float>::quiet_NaN();
 
-    EXPECT_FALSE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
+    EXPECT_FALSE(BuildUIDrawPacket(data, 150, 160, packet));
 }
 } // namespace
 } // namespace zen::ui

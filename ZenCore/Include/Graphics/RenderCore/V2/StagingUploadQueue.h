@@ -90,7 +90,7 @@ public:
 
     // Validate payload bounds, copy alignment/format, and requested mip-blit capabilities
     // before staging. Reject the whole request without retaining or flushing earlier uploads.
-    void EnqueueTexture(RHITexture*                            pTexture,
+    bool EnqueueTexture(RHITexture*                            pTexture,
                         VectorView<RHIBufferTextureCopyRegion> regions,
                         uint32_t                               dataSize,
                         const uint8_t*                         pData,

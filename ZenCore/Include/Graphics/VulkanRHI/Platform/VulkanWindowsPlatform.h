@@ -7,17 +7,6 @@
 
 namespace zen
 {
-struct Win32WindowData
-{
-    GLFWwindow* glfwWindow{nullptr};
-    uint32_t    width{0};
-    uint32_t    height{0};
-};
-typedef Win32WindowData WindowData;
-} // namespace zen
-
-namespace zen
-{
 class VulkanInstanceExtension;
 
 class VulkanWindowsPlatform
@@ -25,7 +14,7 @@ class VulkanWindowsPlatform
 public:
     static void AddInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
-    static VkSurfaceKHR CreateSurface(VkInstance instance, void* windowData);
+    static VkSurfaceKHR CreateSurface(VkInstance instance, platform::NativeWindow& window);
 
     static void DestroySurface(VkInstance instance, VkSurfaceKHR surface);
 };

@@ -111,6 +111,13 @@ Camera::Camera(const Vec3&          eye,
     m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
 }
 
+void Camera::SetPose(const Vec3& eye, const Vec3& target)
+{
+    m_target = target;
+
+    SetPosition(eye);
+}
+
 void Camera::SetPosition(const Vec3& position)
 {
     m_position = position;
@@ -193,48 +200,48 @@ void Camera::SetProjectionMatrix()
 
 void Camera::UpdatePosition(float velocity)
 {
-    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_UP))
+    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::Up))
     {
         m_speed *= 2;
     }
 
-    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_DOWN))
+    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::Down))
     {
         m_speed /= 2;
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_SPACE))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::Space))
     {
         // reset position
         m_position = {0.0f, 0.0f, 0.0f};
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_W))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::W))
     {
         m_position += m_front * velocity;
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_S))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::S))
     {
         m_position -= m_front * velocity;
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_A))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::A))
     {
         m_position -= m_right * velocity;
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_D))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::D))
     {
         m_position += m_right * velocity;
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_LEFT_SHIFT))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::LeftShift))
     {
         m_position += m_worldUp * velocity;
     }
 
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_LEFT_CONTROL))
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(platform::Key::LeftControl))
     {
         m_position -= m_worldUp * velocity;
     }
@@ -317,7 +324,7 @@ void Camera::Update(float deltaTime)
     }
     else
     {
-        if (!KeyboardMouseInput::GetInstance().IsMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT))
+        if (!KeyboardMouseInput::GetInstance().IsMouseButtonReleased(platform::MouseButton::Left))
         {
             const std::array<float, 2> delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
 

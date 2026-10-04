@@ -1,4 +1,5 @@
 #pragma once
+#include "Graphics/RenderCore/V2/RenderView.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
@@ -24,7 +25,7 @@ struct VoxelTextures
 class VoxelizerBase
 {
 public:
-    VoxelizerBase(RenderDevice* pRenderDevice, RHIViewport* pViewport);
+    explicit VoxelizerBase(RenderDevice* pRenderDevice);
 
     virtual ~VoxelizerBase() = default;
 
@@ -33,11 +34,11 @@ public:
     // Configure a newly initialized producer before allocating any volume resources.
     bool Configure(uint32_t resolution, bool averagedReflectance, uint64_t reflectanceBudgetBytes);
 
-    virtual void BuildRenderGraph();
+    virtual void BuildRenderGraph(const RenderView& view);
 
     virtual void BuildVoxelizationGraph() {}
 
-    virtual void BuildVisualizationGraph() {}
+    virtual void BuildVisualizationGraph(const RenderView&) {}
 
     uint64_t GetGeometryRevision() const
     {
@@ -131,8 +132,6 @@ protected:
     virtual void PrepareBuffers() {}
 
     RenderDevice* m_pRenderDevice{nullptr};
-
-    RHIViewport* m_pViewport{nullptr};
 
     RenderScene* m_pScene{nullptr};
 

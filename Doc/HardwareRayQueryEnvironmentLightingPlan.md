@@ -8,7 +8,7 @@ This is the current implementation plan for that work. It carries forward the ha
 
 ## Problem and evidence
 
-The reported Sponza reproduction uses camera position `(-0.053, 0.264, -0.010)`, looking down toward the floor, with the AABB +Y light, Light 3, set to zero. The marked source image is [Sponza_abnormal_shadow_debug.png](imgs/Sponza_abnormal_shadow_debug.png).
+The reported Sponza reproduction uses camera position `(-0.053, 0.264, -0.010)`, looking down toward the floor, with the AABB +Y light, Light 3, set to zero. The marked source image is [Sponza_abnormal_shadow_debug.jpg](imgs/Sponza_abnormal_shadow_debug.jpg).
 
 The investigation reproduced the stripes with all analytic lights disabled. Linear lighting captures isolated them to escaped environment diffuse lighting. In [cone_trace.glsl](../Data/Shaders/VoxelGI/cone_trace.glsl), each broad cone currently receives a single binary result from [environment_visibility.glsl](../Data/Shaders/VoxelGI/environment_visibility.glsl). An occluder on that ray can suppress the environment contribution of the entire cone. This produces excessive directional contrast even when the occluder is beside the floor rather than directly above it. Voxel geometry approximation adds a separate source of visibility error.
 

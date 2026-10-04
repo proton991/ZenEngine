@@ -93,7 +93,7 @@ void GeometryVoxelizer::BuildVoxelizationGraph()
     }
 }
 
-void GeometryVoxelizer::BuildVisualizationGraph()
+void GeometryVoxelizer::BuildVisualizationGraph(const RenderView& view)
 {
     RenderGraph* pRDG        = m_pRenderDevice->GetCurrentFrameRDG();
 
@@ -127,12 +127,11 @@ void GeometryVoxelizer::BuildVisualizationGraph()
 
     draw.SetPipelineStates(pso);
 
-    draw.AddColorOutput(m_pViewport->GetColorBackBuffer(), RHIRenderTargetLoadOp::eLoad);
+    draw.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
-    draw.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eClear,
-                               RHIRenderTargetStoreOp::eStore);
+    draw.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
-    draw.SetRenderArea(0, 0, m_pViewport->GetWidth(), m_pViewport->GetHeight());
+    draw.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
 
     draw.SetPassTag("VoxelDraw");
 

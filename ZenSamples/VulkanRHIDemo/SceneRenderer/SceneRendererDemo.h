@@ -2,10 +2,10 @@
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
-#include "Platform/GlfwWindow.h"
+#include "Platform/NativeWindow.h"
 #include "SceneRendererDemoProfiling.h"
 #if defined(ZEN_RUNTIME_UI)
-#    include "UI/RuntimeSceneControls.h"
+#    include "RuntimeUI/RuntimeSceneControls.h"
 #endif
 
 namespace zen
@@ -103,7 +103,7 @@ private:
     UniquePtr<sg::Scene>       m_scene;
     UniquePtr<rc::RenderScene> m_renderScene;
 
-    platform::GlfwWindowImpl* m_pWindow{nullptr};
+    platform::NativeWindow* m_pWindow{nullptr};
 
     RHIViewport* m_pViewport{nullptr};
 

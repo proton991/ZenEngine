@@ -14,3 +14,6 @@ __pycache__/
 
 # FetchContent sources; dependency declarations remain tracked.
 /External/*/
+
+# Optional HDR starter set; download with tools/fetch_environments.py.
+/Data/Textures/Environments/*.hdr

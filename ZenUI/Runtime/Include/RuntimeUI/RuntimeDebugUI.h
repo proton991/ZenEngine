@@ -1,0 +1,81 @@
+#pragma once
+
+#include "ImGui/UIContext.h"
+#include "ImGui/ImGuiRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/RenderOverlay.h"
+#include "Graphics/RenderCore/V2/VoxelGISettings.h"
+#include "RuntimeUI/RuntimeSceneControls.h"
+
+namespace zen::platform
+{
+class NativeWindow;
+}
+
+namespace zen::ui
+{
+// Session-only runtime controls. Editor selection/documents/undo do not live here.
+class RuntimeDebugUI : public rc::RenderOverlay
+{
+public:
+    RuntimeDebugUI(rc::RenderDevice& device, platform::NativeWindow& window, RuntimeSceneControls& sceneControls);
+
+    ~RuntimeDebugUI() override;
+
+    bool Init();
+
+    void Update(float deltaSeconds, RHIViewport& viewport);
+
+    bool BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewport) override;
+
+private:
+    friend struct RuntimeDebugUITestAccess;
+
+    void SetVisible(bool visible);
+
+    void BuildPanel();
+
+    void BuildSettings();
+
+    void BuildSceneSettings();
+
+    void BuildModelSelector();
+
+    void SynchronizeModelRevision();
+
+    bool MatchesModelSearch(const asset::GLTFModelCatalogEntry& entry) const;
+
+    bool RequestModel(const std::string& path);
+
+    void BuildConfigReference();
+
+    void MarkGIEdit(bool changed);
+
+    void EnsureReflectanceBudget();
+
+    void MarkSceneEdit(bool changed);
+
+    void ApplyPendingSettings(bool manual);
+
+    void ReloadSettings();
+
+    rc::RenderDevice&          m_device;
+    platform::NativeWindow&    m_window;
+    RuntimeSceneControls&      m_sceneControls;
+    UIContext                  m_context;
+    ImGuiRenderer              m_renderer;
+    rc::VoxelGIRuntimeSettings m_draft;
+    RuntimeSceneSettings       m_sceneDraft;
+    RuntimeSceneSettings       m_sceneBaseline;
+    bool                       m_initialized{false};
+    bool                       m_visible{true};
+    bool                       m_dirty{false};
+    bool                       m_sceneDirty{false};
+    bool                       m_autoApply{true};
+    bool                       m_applyFailed{false};
+    char                       m_configFilter[128]{};
+    char                       m_modelFilter[256]{};
+    uint64_t                   m_modelRevision{0};
+    bool                       m_modelRequestRejected{false};
+    const char*                m_status{"Settings apply to this session only."};
+};
+} // namespace zen::ui

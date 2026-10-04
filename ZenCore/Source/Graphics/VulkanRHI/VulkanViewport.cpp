@@ -30,15 +30,13 @@ struct ScopedViewportSurface
     }
 };
 
-VkSurfaceKHR CreateViewportSurface(void* window, uint32_t width, uint32_t height)
+VkSurfaceKHR CreateViewportSurface(void* window)
 {
-    platform::GlfwWindowImpl* glfwWindow = static_cast<platform::GlfwWindowImpl*>(window);
+    platform::NativeWindow* nativeWindow = static_cast<platform::NativeWindow*>(window);
 
-    glfwWindow->CheckThreadOwnership();
+    nativeWindow->CheckThreadOwnership();
 
-    WindowData windowData{glfwWindow->GetHandle(), width, height};
-
-    return VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
+    return VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), *nativeWindow);
 }
 } // namespace
 RHIViewport* VulkanRHI::CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
@@ -47,7 +45,7 @@ RHIViewport* VulkanRHI::CreateViewport(void* pWindow, uint32_t width, uint32_t h
 
     RHIViewport* viewport = nullptr;
 
-    surface.info.surface  = AreSubmissionsBlocked() ? VK_NULL_HANDLE : CreateViewportSurface(pWindow, width, height);
+    surface.info.surface  = AreSubmissionsBlocked() ? VK_NULL_HANDLE : CreateViewportSurface(pWindow);
 
     if (surface.info.surface != VK_NULL_HANDLE)
     {
@@ -159,6 +157,9 @@ bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
             colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
 
             colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
+
+            // UI-only frames clear the logical presentation image through RDG.
+            colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferDst);
 
             colorTexInfo.type  = RHITextureType::e2D;
 
@@ -505,6 +506,11 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 
 bool VulkanViewport::Present()
 {
+    return PresentInternal(false);
+}
+
+bool VulkanViewport::PresentInternal(bool deferRecreation)
+{
     GetRHIThread().CheckOwnership();
 
     bool result     = false;
@@ -550,7 +556,9 @@ bool VulkanViewport::Present()
             }
         }
 
-        if (m_pSwapchain->NeedsRecreation() && !GetRHIThread().IsThreaded())
+        // Checked submission defers recreation to RenderCore between frames in both
+        // execution modes. The direct legacy API retains its synchronous behavior.
+        if (!deferRecreation && m_pSwapchain->NeedsRecreation() && !GetRHIThread().IsThreaded())
         {
             Resize(m_width, m_height);
         }
@@ -575,7 +583,7 @@ RHIStatus VulkanViewport::PrepareForPresentChecked(RHICommandList* commands)
 
 RHIPresentResult VulkanViewport::PresentChecked()
 {
-    Present();
+    PresentInternal(true);
 
     return m_presentResult;
 }
@@ -587,7 +595,7 @@ bool VulkanViewport::NeedsRecreation() const
 
 void VulkanViewport::Resize(uint32_t width, uint32_t height)
 {
-    static_cast<platform::GlfwWindowImpl*>(m_pWindow)->CheckThreadOwnership();
+    static_cast<platform::NativeWindow*>(m_pWindow)->CheckThreadOwnership();
 
     VulkanSwapchainRecreateInfo recreateInfo;
 
@@ -595,7 +603,7 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     {
         if (recreateInfo.surface == VK_NULL_HANDLE)
         {
-            recreateInfo.surface = CreateViewportSurface(m_pWindow, width, height);
+            recreateInfo.surface = CreateViewportSurface(m_pWindow);
         }
 
         GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo);

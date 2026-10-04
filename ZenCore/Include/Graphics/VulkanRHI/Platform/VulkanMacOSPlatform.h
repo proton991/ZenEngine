@@ -10,17 +10,6 @@
 
 namespace zen
 {
-struct MacOSWindowData
-{
-    GLFWwindow* pGlfwWindow{nullptr};
-    uint32_t    width{0};
-    uint32_t    height{0};
-};
-typedef MacOSWindowData WindowData;
-} // namespace zen
-
-namespace zen
-{
 class VulkanRHI;
 class VulkanInstanceExtension;
 class VulkanMacOSPlatform
@@ -28,7 +17,7 @@ class VulkanMacOSPlatform
 public:
     static void AddInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
-    static VkSurfaceKHR CreateSurface(VkInstance instance, void* pWindowData);
+    static VkSurfaceKHR CreateSurface(VkInstance instance, platform::NativeWindow& window);
 
     static void DestroySurface(VkInstance instance, VkSurfaceKHR surface);
 };

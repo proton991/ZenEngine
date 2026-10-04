@@ -329,12 +329,14 @@ bool StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer, uint32_t dstOffset
     return stagedAll;
 }
 
-void StagingUploadQueue::EnqueueTexture(RHITexture*                            pTexture,
+bool StagingUploadQueue::EnqueueTexture(RHITexture*                            pTexture,
                                         VectorView<RHIBufferTextureCopyRegion> regions,
                                         uint32_t                               dataSize,
                                         const uint8_t*                         pData,
                                         bool                                   generateMipmaps)
 {
+    bool accepted = false;
+
     if (((dataSize != 0) && (pData != nullptr)) && (!regions.empty()))
     {
         if (pTexture == nullptr || regions.data() == nullptr)
@@ -411,11 +413,15 @@ void StagingUploadQueue::EnqueueTexture(RHITexture*                            p
                         pTexture->AddReference();
 
                         m_pendingUploads.push_back(std::move(upload));
+
+                        accepted = true;
                     }
                 }
             }
         }
     }
+
+    return accepted;
 }
 
 bool StagingUploadQueue::Flush()

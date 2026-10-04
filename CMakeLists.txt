@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "Runtime output directory")
 option(ZEN_BUILD_RUNTIME_UI "Build the optional runtime debug UI and shared UI integration" ON)
+option(ZEN_BUILD_EDITOR "Build the ZenEditor scene viewer" OFF)
+# Keep GLFW selectable until native macOS acceptance is complete.
+set(ZEN_WINDOW_BACKEND "SDL3" CACHE STRING "Window backend: SDL3 or GLFW")
+set_property(CACHE ZEN_WINDOW_BACKEND PROPERTY STRINGS SDL3 GLFW)
+if (NOT ZEN_WINDOW_BACKEND MATCHES "^(SDL3|GLFW)$")
+  message(FATAL_ERROR "ZEN_WINDOW_BACKEND must be SDL3 or GLFW")
+endif ()
 include(CTest)
 
 find_package(Vulkan REQUIRED)
@@ -24,9 +31,13 @@ endif ()
 ############################################################
 add_subdirectory(External)
 add_subdirectory(ZenCore)
-add_subdirectory(ZenSamples)
-if (ZEN_BUILD_RUNTIME_UI)
+# Libraries before their consumers: the samples link the optional runtime UI.
+if (ZEN_BUILD_RUNTIME_UI OR ZEN_BUILD_EDITOR)
   add_subdirectory(ZenUI)
+endif ()
+add_subdirectory(ZenSamples)
+if (ZEN_BUILD_EDITOR)
+  add_subdirectory(ZenEditor)
 endif ()
 
 # Platform Definitions

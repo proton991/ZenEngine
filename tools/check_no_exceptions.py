@@ -16,7 +16,7 @@ FORBIDDEN = {"throw", "try", "catch", "LOG_ERROR_AND_THROW", "EXPECT_THROW", "AS
 def main():
     failures = []
     count = 0
-    for directory in ("ZenCore", "ZenSamples", "ZenUI"):
+    for directory in ("ZenCore", "ZenEditor", "ZenSamples", "ZenUI"):
         for path in sorted((ROOT / directory).rglob("*")):
             if path.suffix not in {".h", ".hpp", ".cpp", ".inl", ".cc", ".cxx"}:
                 continue

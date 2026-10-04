@@ -1,4 +1,5 @@
 #pragma once
+#include "Graphics/RenderCore/V2/RenderView.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 #include "Graphics/RenderCore/V2/VoxelGISettings.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
@@ -31,7 +32,7 @@ enum class RenderOption : uint32_t
 class RendererServer
 {
 public:
-    RendererServer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
+    RendererServer(RenderDevice* pRenderDevice, RHIViewport* presentationViewport);
 
     void Init();
 
@@ -39,7 +40,9 @@ public:
 
     void SetRenderScene(RenderScene* pScene);
 
-    bool DispatchRenderWorkloads(RenderOverlay* overlay = nullptr);
+    // Scene targets are explicit. Presentation and UI use the native viewport separately.
+    // drawScene=false keeps UI alive while the scene panel is hidden.
+    bool DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay = nullptr, bool drawScene = true);
 
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {
@@ -90,10 +93,10 @@ public:
 private:
     void DestroyVoxelGIResources();
 
-    VoxelizerBase* CreateVoxelizer(RHIViewport* viewport);
+    VoxelizerBase* CreateVoxelizer();
 
     platform::VoxelizerMode m_voxelizerMode{platform::VoxelizerMode::eCompute};
-    RHIViewport*            m_pViewport{nullptr};
+    RHIViewport*            m_pPresentationViewport{nullptr};
     RenderDevice*           m_pRenderDevice{nullptr};
     RenderScene*            m_pScene{nullptr};
 

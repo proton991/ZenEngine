@@ -285,7 +285,7 @@ TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGe
 
     ASSERT_TRUE(graph.Begin());
 
-    skybox->BuildRenderGraph();
+    skybox->BuildRenderGraph(RenderView::FromViewport(viewport));
 
     ASSERT_TRUE(graph.End());
 

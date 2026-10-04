@@ -35,12 +35,13 @@ public:
 
     void Init(uint32_t index_, const asset::TextureInfo& info)
     {
-        index        = index_;
-        samplerIndex = info.samplerIndex;
-        width        = info.width;
-        height       = info.height;
-        format       = info.format;
-        bytesData    = std::move(info.data);
+        index             = index_;
+        linearSourceIndex = UINT32_MAX;
+        samplerIndex      = info.samplerIndex;
+        width             = info.width;
+        height            = info.height;
+        format            = info.format;
+        bytesData         = std::move(info.data);
     }
 
     TypeId GetTypeId() const override
@@ -48,7 +49,9 @@ public:
         return typeid(Texture);
     }
 
-    uint32_t      index{0};
+    uint32_t index{0};
+    // Importer-generated linear view of another texture in this scene; authored textures have no source.
+    uint32_t      linearSourceIndex{UINT32_MAX};
     int           samplerIndex{-1};
     uint32_t      width{0};
     uint32_t      height{0};
@@ -61,9 +64,9 @@ public:
 
 inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
-    bool equal = lhs.index == rhs.index && lhs.samplerIndex == rhs.samplerIndex && lhs.width == rhs.width
-              && lhs.height == rhs.height && lhs.format == rhs.format && lhs.bytesData == rhs.bytesData
-              && lhs.mipBytes.size() == rhs.mipBytes.size();
+    bool equal = lhs.index == rhs.index && lhs.linearSourceIndex == rhs.linearSourceIndex
+              && lhs.samplerIndex == rhs.samplerIndex && lhs.width == rhs.width && lhs.height == rhs.height
+              && lhs.format == rhs.format && lhs.bytesData == rhs.bytesData && lhs.mipBytes.size() == rhs.mipBytes.size();
 
     for (size_t level = 0; equal && level < lhs.mipBytes.size(); ++level)
     {

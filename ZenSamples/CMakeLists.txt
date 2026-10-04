@@ -149,6 +149,31 @@ add_executable(scene_renderer_demo
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.h)
 target_link_libraries(scene_renderer_demo ZenCore)
 
+# The optional runtime overlay; ZenUI is configured before the samples.
+if (ZEN_BUILD_RUNTIME_UI)
+    target_sources(scene_renderer_demo PRIVATE
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemoUI.cpp
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp)
+    target_compile_definitions(scene_renderer_demo PRIVATE ZEN_RUNTIME_UI=1)
+    target_link_libraries(scene_renderer_demo ZenRuntimeUI)
+
+    if (BUILD_TESTING)
+        add_executable(SceneModelSwitchTest
+            VulkanRHIDemo/SceneRenderer/SceneModelSwitchTests.cpp
+            VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
+            VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp
+            VulkanRHIDemo/SceneRenderer/SceneRendererDemoUI.cpp
+            VulkanRHIDemo/SceneRenderer/SceneRendererDemoProfiling.cpp
+            VulkanRHIDemo/SceneRenderer/SceneRendererDemoVoxelCapture.cpp
+            VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp)
+        target_include_directories(SceneModelSwitchTest PRIVATE VulkanRHIDemo/SceneRenderer)
+        target_compile_definitions(SceneModelSwitchTest PRIVATE ZEN_RUNTIME_UI=1 ZEN_SCENE_MODEL_TEST=1)
+        target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI gtest_main)
+        add_test(NAME SceneModelSwitchTest COMMAND SceneModelSwitchTest)
+        set_tests_properties(SceneModelSwitchTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+    endif ()
+endif ()
+
 # Native Cone visibility regression, isolated from suite-global Vulkan fixtures.
 if (BUILD_TESTING)
 add_executable(ConeVoxelGIIntegrationTest CommonTest/ConeVoxelGIIntegrationTests.cpp)
@@ -177,4 +202,14 @@ if (BUILD_TESTING)
     endforeach()
     add_test(NAME VulkanRHIIntegrationTest COMMAND VulkanRHIIntegrationTest)
     set_tests_properties(VulkanRHIIntegrationTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 300)
+endif ()
+
+if (BUILD_TESTING)
+    # Native acceptance tests deliberately inspect the private window adapter.
+    target_include_directories(VulkanRHIIntegrationTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Source)
+    target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenWindowBackendInternal)
+    add_executable(WindowPlatformTest CommonTest/WindowPlatformTests.cpp)
+    target_link_libraries(WindowPlatformTest PRIVATE ZenCore ZenWindowBackendInternal gtest_main)
+    add_test(NAME WindowPlatformTest COMMAND WindowPlatformTest)
+    set_tests_properties(WindowPlatformTest PROPERTIES LABELS "native" TIMEOUT 60)
 endif ()

@@ -3,15 +3,15 @@
 
 namespace zen::platform
 {
-void KeyboardMouseInput::PressKey(std::int32_t key)
+void KeyboardMouseInput::PressKey(Key keyCode)
 {
-    ASSERT(key >= 0);
+    const size_t key = static_cast<size_t>(keyCode);
 
-    ASSERT(key <= GLFW_KEY_LAST);
+    ASSERT(key < static_cast<size_t>(Key::Count));
 
     std::scoped_lock lock(m_inputMutex);
 
-    // Keep press events independently of held state: glfwPollEvents can deliver both
+    // Keep press events independently of held state: event polling can deliver both
     // press and release before the application checks its shortcuts.
     m_pendingKeyPresses[key] = m_pendingKeyPresses[key] || (!m_keyPressed[key] && !m_captureKeyboard);
 
@@ -20,11 +20,11 @@ void KeyboardMouseInput::PressKey(std::int32_t key)
     m_keyPressed[key]        = true;
 }
 
-void KeyboardMouseInput::ReleaseKey(std::int32_t key)
+void KeyboardMouseInput::ReleaseKey(Key keyCode)
 {
-    ASSERT(key >= 0);
+    const size_t key = static_cast<size_t>(keyCode);
 
-    ASSERT(key <= GLFW_KEY_LAST);
+    ASSERT(key < static_cast<size_t>(Key::Count));
 
     std::scoped_lock lock(m_inputMutex);
 
@@ -33,22 +33,22 @@ void KeyboardMouseInput::ReleaseKey(std::int32_t key)
     m_suppressedKeys[key] = false;
 }
 
-bool KeyboardMouseInput::IsKeyPressed(std::int32_t key) const
+bool KeyboardMouseInput::IsKeyPressed(Key keyCode) const
 {
-    ASSERT(key >= 0);
+    const size_t key = static_cast<size_t>(keyCode);
 
-    ASSERT(key <= GLFW_KEY_LAST);
+    ASSERT(key < static_cast<size_t>(Key::Count));
 
     std::shared_lock lock(m_inputMutex);
 
     return m_keyPressed[key] && !m_captureKeyboard && !m_suppressedKeys[key];
 }
 
-bool KeyboardMouseInput::WasKeyPressedOnce(std::int32_t key)
+bool KeyboardMouseInput::WasKeyPressedOnce(Key keyCode)
 {
-    ASSERT(key >= 0);
+    const size_t key = static_cast<size_t>(keyCode);
 
-    ASSERT(key <= GLFW_KEY_LAST);
+    ASSERT(key < static_cast<size_t>(Key::Count));
 
     std::scoped_lock lock(m_inputMutex);
 
@@ -59,11 +59,11 @@ bool KeyboardMouseInput::WasKeyPressedOnce(std::int32_t key)
     return pressed;
 }
 
-void KeyboardMouseInput::PressMouseButton(std::int32_t button)
+void KeyboardMouseInput::PressMouseButton(MouseButton buttonCode)
 {
-    ASSERT(button >= 0);
+    const size_t button = static_cast<size_t>(buttonCode);
 
-    ASSERT(button <= GLFW_MOUSE_BUTTON_LAST);
+    ASSERT(button < static_cast<size_t>(MouseButton::Count));
 
     std::scoped_lock lock(m_inputMutex);
 
@@ -74,22 +74,22 @@ void KeyboardMouseInput::PressMouseButton(std::int32_t button)
     m_mouseButtonsUpdated        = true;
 }
 
-void KeyboardMouseInput::SetMouseButtonRelease(std::int32_t button, bool released)
+void KeyboardMouseInput::SetMouseButtonRelease(MouseButton buttonCode, bool released)
 {
-    ASSERT(button >= 0);
+    const size_t button = static_cast<size_t>(buttonCode);
 
-    ASSERT(button <= GLFW_MOUSE_BUTTON_LAST);
+    ASSERT(button < static_cast<size_t>(MouseButton::Count));
 
     std::scoped_lock lock(m_inputMutex);
 
     m_mouseButtonReleased[button] = released;
 }
 
-void KeyboardMouseInput::ReleaseMouseButton(std::int32_t button)
+void KeyboardMouseInput::ReleaseMouseButton(MouseButton buttonCode)
 {
-    ASSERT(button >= 0);
+    const size_t button = static_cast<size_t>(buttonCode);
 
-    ASSERT(button <= GLFW_MOUSE_BUTTON_LAST);
+    ASSERT(button < static_cast<size_t>(MouseButton::Count));
 
     std::scoped_lock lock(m_inputMutex);
 
@@ -100,33 +100,33 @@ void KeyboardMouseInput::ReleaseMouseButton(std::int32_t button)
     m_mouseButtonsUpdated        = true;
 }
 
-bool KeyboardMouseInput::IsMouseButtonPressed(std::int32_t button) const
+bool KeyboardMouseInput::IsMouseButtonPressed(MouseButton buttonCode) const
 {
-    ASSERT(button >= 0);
+    const size_t button = static_cast<size_t>(buttonCode);
 
-    ASSERT(button <= GLFW_MOUSE_BUTTON_LAST);
+    ASSERT(button < static_cast<size_t>(MouseButton::Count));
 
     std::shared_lock lock(m_inputMutex);
 
     return m_mouseButtonPressed[button] && !m_captureMouse && !m_suppressedButtons[button];
 }
 
-bool KeyboardMouseInput::IsMouseButtonReleased(std::int32_t button) const
+bool KeyboardMouseInput::IsMouseButtonReleased(MouseButton buttonCode) const
 {
-    ASSERT(button >= 0);
+    const size_t button = static_cast<size_t>(buttonCode);
 
-    ASSERT(button <= GLFW_MOUSE_BUTTON_LAST);
+    ASSERT(button < static_cast<size_t>(MouseButton::Count));
 
     std::shared_lock lock(m_inputMutex);
 
     return !m_mouseButtonPressed[button] || m_mouseButtonReleased[button] || m_captureMouse || m_suppressedButtons[button];
 }
 
-bool KeyboardMouseInput::WasMouseButtonPressedOnce(std::int32_t button)
+bool KeyboardMouseInput::WasMouseButtonPressedOnce(MouseButton buttonCode)
 {
-    ASSERT(button >= 0);
+    const size_t button = static_cast<size_t>(buttonCode);
 
-    ASSERT(button <= GLFW_MOUSE_BUTTON_LAST);
+    ASSERT(button < static_cast<size_t>(MouseButton::Count));
 
     std::scoped_lock lock(m_inputMutex);
 

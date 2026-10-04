@@ -14,7 +14,7 @@
 #include "Memory/Memory.h"
 #include "Platform/InputController.h"
 #if defined(ZEN_RUNTIME_UI)
-#    include "UI/RuntimeDebugUI.h"
+#    include "RuntimeUI/RuntimeDebugUI.h"
 #endif
 #include <algorithm>
 #include <charconv>
@@ -42,7 +42,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      const DemoProfilingOptions&   profiling) :
     m_cameraType(type)
 {
-    m_pWindow      = new platform::GlfwWindowImpl(windowConfig);
+    m_pWindow      = new platform::NativeWindow(windowConfig);
 
     m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, rc::RenderConfig::GetInstance().numFrames);
 
@@ -51,11 +51,15 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
         m_profiling = MakeUnique<SceneRendererProfiling>(*m_renderDevice, profiling);
     }
 
-    m_pViewport = m_renderDevice->CreateViewport(m_pWindow, windowConfig.width, windowConfig.height, profiling.vsync);
+    const platform::WindowExtent pixels = m_pWindow->GetFramebufferExtent();
+
+    m_pViewport = m_renderDevice->CreateViewport(m_pWindow, pixels.width, pixels.height, profiling.vsync);
 
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice.Get());
 
     m_renderDevice->Init(m_pViewport);
+
+    m_renderDevice->InitializeRendererServer();
 
     const float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_pWindow->GetAspect();
 
@@ -189,23 +193,23 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
         {
             rc::SceneData data{};
 
-            data.pCamera        = camera.Get();
+            data.pCamera              = camera.Get();
 
-            data.pScene         = scene.Get();
+            data.pScene               = scene.Get();
 
-            data.pVertices      = loader.GetVertices().data();
+            data.pVertices            = loader.GetVertices().data();
 
-            data.pIndices       = loader.GetIndices().data();
+            data.pIndices             = loader.GetIndices().data();
 
-            data.numVertices    = loader.GetVertices().size();
+            data.numVertices          = loader.GetVertices().size();
 
-            data.numIndices     = loader.GetIndices().size();
+            data.numIndices           = loader.GetIndices().size();
 
-            data.envTextureName = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
+            data.envTextureName       = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
 
-            renderScene         = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
+            renderScene               = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
 
-            renderScene->Init();
+            const bool resourcesReady = renderScene->Init();
 
             const zen::HeapVector<sg::SceneCamera*> cameras = scene->GetComponents<sg::SceneCamera>();
 
@@ -226,7 +230,7 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
                 }
             }
 
-            if (m_renderDevice->PrepareForSceneReplacement())
+            if (resourcesReady && m_renderDevice->PrepareForSceneReplacement())
             {
                 m_renderDevice->GetRendererServer()->SetRenderScene(renderScene.Get());
 
@@ -609,7 +613,7 @@ bool SceneRendererDemo::Destroy(bool runSucceeded)
     }
 
 #if defined(ZEN_RUNTIME_UI)
-    // UI resources retire through the live device; restore GLFW callbacks before window teardown.
+    // UI resources retire through the live device; disconnect the platform adapter before window teardown.
     m_runtimeUI.Reset();
 #endif
 
@@ -641,15 +645,15 @@ void SceneRendererDemo::RunSmokeStep(uint32_t frame)
     }
     else if (frame == 12)
     {
-        glfwSetWindowSize(m_pWindow->GetHandle(), 960, 640);
+        m_pWindow->SetSize(960, 640);
     }
     else if (frame == 20)
     {
-        glfwIconifyWindow(m_pWindow->GetHandle());
+        m_pWindow->Minimize();
 
-        glfwPollEvents();
+        platform::NativeWindow::PollEvents();
 
-        glfwRestoreWindow(m_pWindow->GetHandle());
+        m_pWindow->Restore();
     }
 
     if (frame == 16 || frame == 18)
@@ -695,7 +699,7 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
                             bool               profileWarmup,
                             uint32_t           backgroundTestSeconds)
 {
-    SceneRendererWindowTest windowTest(m_pWindow->GetHandle(), backgroundTestSeconds);
+    SceneRendererWindowTest windowTest(*m_pWindow, backgroundTestSeconds);
 
     HeapVector<double> frameTimes;
 
@@ -777,24 +781,24 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
             break;
         }
 
-        const platform::WindowExtent extent = m_pWindow->GetExtent2D();
+        const platform::WindowExtent extent = m_pWindow->GetFramebufferExtent();
 
         if (extent.width == 0 || extent.height == 0)
         {
             // Wait for restore/close without submitting to an unavailable surface.
             if (windowTest.Enabled())
             {
-                glfwWaitEventsTimeout(0.05);
+                platform::NativeWindow::WaitEvents(0.05);
             }
             else if (smokeTest)
             {
-                glfwRestoreWindow(m_pWindow->GetHandle());
+                m_pWindow->Restore();
 
-                glfwWaitEventsTimeout(0.05);
+                platform::NativeWindow::WaitEvents(0.05);
             }
             else
             {
-                glfwWaitEvents();
+                platform::NativeWindow::WaitEvents(0.05);
             }
 
             m_timer->Tick();
@@ -831,20 +835,20 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
             }
         }
 
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_1)
-            | platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_1))
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::Digit1)
+            | platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::Keypad1))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelGI);
         }
 
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_2)
-            | platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_2))
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::Digit2)
+            | platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::Keypad2))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
         }
 
         // Always consume R; geometry updates are meaningful in both voxel modes.
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_R)
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(platform::Key::R)
             && m_renderDevice->GetRendererServer()->GetRenderOption() != rc::RenderOption::ePBR)
         {
             m_renderDevice->GetRendererServer()->RequestVoxelizer()->RequestVoxelization();
@@ -863,7 +867,9 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
         overlay = m_runtimeUI.Get();
 #endif
 
-        succeeded &= m_renderDevice->GetRendererServer()->DispatchRenderWorkloads(overlay);
+        const rc::RenderView view  = rc::RenderView::FromViewport(*m_pViewport);
+
+        succeeded                 &= m_renderDevice->GetRendererServer()->DispatchRenderWorkloads(view, overlay);
 
         if (smokeTest)
         {

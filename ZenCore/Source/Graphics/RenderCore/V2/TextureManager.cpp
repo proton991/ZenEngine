@@ -10,9 +10,145 @@
 #include <filesystem>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <cctype>
 
 namespace zen::rc
 {
+namespace
+{
+uint32_t ReadContainerWord(const HeapVector<char>& bytes, size_t offset)
+{
+    uint32_t value = 0;
+
+    if (offset <= bytes.size() && bytes.size() - offset >= 4)
+    {
+        // Both accepted container encodings use little-endian 32-bit words.
+        for (uint32_t byte = 0; byte < 4; ++byte)
+        {
+            value |= uint32_t(static_cast<unsigned char>(bytes[offset + byte])) << (byte * 8);
+        }
+    }
+
+    return value;
+}
+
+bool ValidCubeExtent(uint32_t width, uint32_t height, uint32_t levels)
+{
+    uint32_t maxLevels = 0;
+
+    for (uint32_t extent = width; extent > 0; extent >>= 1)
+    {
+        ++maxLevels;
+    }
+
+    return width > 0 && width <= 4096 && height == width && levels > 0 && levels <= maxLevels;
+}
+
+// GLI assumes valid headers/payloads and asserts or reads past truncated input.
+// Admit only the floating-point, non-array cubes this loader actually supports.
+bool ValidKTXEnvironment(const HeapVector<char>& bytes)
+{
+    constexpr unsigned char signature[] = {0xab, 'K', 'T', 'X', ' ', '1', '1', 0xbb, 13, 10, 26, 10};
+
+    bool valid                          = bytes.size() >= 64 && std::memcmp(bytes.data(), signature, sizeof(signature)) == 0;
+
+    if (valid)
+    {
+        const uint32_t width  = ReadContainerWord(bytes, 36);
+
+        const uint32_t levels = std::max(1u, ReadContainerWord(bytes, 56));
+
+        // Accept GLI's legacy writer too: it stores texel size instead of component size.
+        const uint32_t typeSize = ReadContainerWord(bytes, 20);
+
+        const bool half         = ReadContainerWord(bytes, 16) == 0x140b && (typeSize == 2 || typeSize == 8)
+                       && ReadContainerWord(bytes, 28) == 0x881a;
+
+        const bool full = ReadContainerWord(bytes, 16) == 0x1406 && (typeSize == 4 || typeSize == 16)
+                       && ReadContainerWord(bytes, 28) == 0x8814;
+
+        valid = ReadContainerWord(bytes, 12) == 0x04030201 && (half || full) && ReadContainerWord(bytes, 24) == 0x1908
+             && ReadContainerWord(bytes, 32) == 0x1908 && ValidCubeExtent(width, ReadContainerWord(bytes, 40), levels)
+             && ReadContainerWord(bytes, 44) == 0 && ReadContainerWord(bytes, 48) == 0 && ReadContainerWord(bytes, 52) == 6;
+
+        size_t offset = size_t(64) + ReadContainerWord(bytes, 60);
+
+        for (uint32_t level = 0; valid && level < levels; ++level)
+        {
+            const size_t extent       = std::max(1u, width >> level);
+
+            const size_t faceBytes    = extent * extent * (half ? 8 : 16);
+
+            const uint32_t imageBytes = ReadContainerWord(bytes, offset);
+
+            // Standard KTX stores one face size; GLI's writer stores the six-face sum.
+            valid = offset <= bytes.size() && bytes.size() - offset >= 4
+                 && (imageBytes == faceBytes || imageBytes == faceBytes * 6);
+
+            offset += 4;
+
+            valid   = valid && offset <= bytes.size() && bytes.size() - offset >= faceBytes * 6;
+
+            offset += faceBytes * 6;
+        }
+    }
+
+    return valid;
+}
+
+bool ValidDDSEnvironment(const HeapVector<char>& bytes)
+{
+    bool valid = bytes.size() >= 128 && std::memcmp(bytes.data(), "DDS ", 4) == 0 && ReadContainerWord(bytes, 4) == 124
+              && ReadContainerWord(bytes, 76) == 32 && ReadContainerWord(bytes, 80) == 4
+              && (ReadContainerWord(bytes, 112) & 0x200000) == 0;
+
+    if (valid)
+    {
+        const uint32_t width  = ReadContainerWord(bytes, 16);
+
+        const uint32_t levels = (ReadContainerWord(bytes, 8) & 0x20000) != 0 ? ReadContainerWord(bytes, 28) : 1;
+
+        const uint32_t fourCC = ReadContainerWord(bytes, 84);
+
+        const uint32_t caps   = ReadContainerWord(bytes, 112);
+
+        bool cube             = (caps & 0xfe00) == 0xfe00;
+
+        size_t pixelBytes     = fourCC == 113 ? 8 : fourCC == 116 ? 16 : 0;
+
+        size_t offset         = 128;
+
+        if (fourCC == 0x30315844) // DX10 header
+        {
+            const uint32_t format = ReadContainerWord(bytes, 128);
+
+            pixelBytes            = format == 10 ? 8 : format == 2 ? 16 : 0;
+
+            // A legacy cube flag takes precedence in GLI; require all its faces.
+            cube   = (caps & 0x200) != 0 ? cube : (ReadContainerWord(bytes, 136) & 4) != 0;
+
+            valid  = bytes.size() >= 148 && ReadContainerWord(bytes, 132) == 3 && ReadContainerWord(bytes, 140) == 1;
+
+            offset = 148;
+        }
+
+        valid = valid && cube && pixelBytes != 0 && ValidCubeExtent(width, ReadContainerWord(bytes, 12), levels);
+
+        for (uint32_t level = 0; valid && level < levels; ++level)
+        {
+            const size_t extent  = std::max(1u, width >> level);
+
+            offset              += extent * extent * pixelBytes * 6;
+        }
+
+        valid = valid && offset == bytes.size();
+    }
+
+    return valid;
+}
+} // namespace
+
 void TextureManager::Destroy()
 {
     m_pUploadQueue->Flush();
@@ -208,8 +344,6 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
             {
                 OwnTexture(pTexture);
 
-                outTextures.push_back(pTexture);
-
                 if (pSgTexture->mipBytes.empty())
                 {
                     UpdateTexture(pTexture, pSgTexture->bytesData.size(), pSgTexture->bytesData.data(), texFormat.mipmaps > 1);
@@ -246,15 +380,13 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
                     UpdateTextureCube(pTexture, regions, static_cast<uint32_t>(pixels.size()), pixels.data());
                 }
             }
-            else
-            {
-                outTextures.push_back(nullptr);
-            }
+
+            outTextures.push_back(pTexture);
         }
     }
 }
 
-void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture)
+bool TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture, bool fallbackToBlack)
 {
     RendererServer* server = m_pRenderDevice->GetRendererServer();
 
@@ -264,17 +396,71 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
     }
     else
     {
-        const gli::texture loaded = gli::load(file.c_str());
-
         gli::texture_cube texCube;
 
-        if (!loaded.empty() && loaded.target() == gli::TARGET_CUBE && loaded.format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
+        std::string extension = std::filesystem::u8path(file).extension().string();
+
+        for (char& character : extension)
         {
-            texCube = gli::texture_cube(loaded);
+            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
         }
-        else
+
+        if (extension == ".hdr")
         {
-            LOGW("Environment '{}' is missing or not an RGBA16F cubemap; using black", file);
+            uint32_t size = 0;
+
+            HeapVector<Vec4> pixels;
+
+            std::string error;
+
+            if (asset::TextureLoader::LoadHDRCubemap(file, size, pixels, error))
+            {
+                texCube = gli::texture_cube(gli::FORMAT_RGBA32_SFLOAT_PACK32, gli::texture_cube::extent_type(size), 1);
+
+                std::memcpy(texCube.data(), pixels.data(), pixels.size() * sizeof(Vec4));
+            }
+            else
+            {
+                LOGW("Environment '{}': {}", file, error);
+            }
+        }
+        else if (extension == ".ktx" || extension == ".dds")
+        {
+            std::ifstream stream(std::filesystem::u8path(file), std::ios::binary | std::ios::ate);
+
+            const std::streamoff length = stream ? static_cast<std::streamoff>(stream.tellg()) : 0;
+
+            if (length > 0 && length <= 256 * 1024 * 1024)
+            {
+                HeapVector<char> bytes(static_cast<size_t>(length));
+
+                stream.seekg(0);
+
+                stream.read(bytes.data(), length);
+
+                gli::texture loaded;
+
+                if (stream && extension == ".ktx" && ValidKTXEnvironment(bytes))
+                {
+                    loaded = gli::load_ktx(bytes.data(), bytes.size());
+                }
+                else if (stream && extension == ".dds" && ValidDDSEnvironment(bytes))
+                {
+                    loaded = gli::load_dds(bytes.data(), bytes.size());
+                }
+
+                if (!loaded.empty() && loaded.target() == gli::TARGET_CUBE
+                    && (loaded.format() == gli::FORMAT_RGBA16_SFLOAT_PACK16
+                        || loaded.format() == gli::FORMAT_RGBA32_SFLOAT_PACK32))
+                {
+                    texCube = gli::texture_cube(loaded);
+                }
+            }
+        }
+
+        if (texCube.empty() && fallbackToBlack)
+        {
+            LOGW("Environment '{}' is missing or unsupported; using black", file);
 
             texCube = gli::texture_cube(gli::FORMAT_RGBA16_SFLOAT_PACK16, gli::texture_cube::extent_type(1), 1);
 
@@ -291,7 +477,8 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
 
             TextureFormat texFormat{};
 
-            texFormat.format      = DataFormat::eR16G16B16A16SFloat;
+            texFormat.format      = texCube.format() == gli::FORMAT_RGBA32_SFLOAT_PACK32 ? DataFormat::eR32G32B32A32SFloat
+                                                                                         : DataFormat::eR16G16B16A16SFloat;
 
             texFormat.dimension   = TextureDimension::eCube;
 
@@ -343,22 +530,27 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
                     }
                 }
 
-                UpdateTextureCube(pTexture, regions, texCube.size(), static_cast<const uint8_t*>(texCube.data()));
+                UpdateTextureCube(pOutTexture->pSkybox, regions, texCube.size(), static_cast<const uint8_t*>(texCube.data()));
 
-                if (RHIDebug* debug = m_pRenderDevice->GetRHIDebug())
+                if (pOutTexture->pSkybox != nullptr)
                 {
-                    GetRHIThread().Invoke(&RHIDebug::SetTextureDebugName, debug, pOutTexture->pSkybox,
-                                          pTexture->GetBaseInfo().tag);
+                    if (RHIDebug* debug = m_pRenderDevice->GetRHIDebug())
+                    {
+                        GetRHIThread().Invoke(&RHIDebug::SetTextureDebugName, debug, pOutTexture->pSkybox,
+                                              pTexture->GetBaseInfo().tag);
+                    }
+
+                    SkyboxRenderer* pSkyboxRenderer = m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer();
+
+                    pSkyboxRenderer->PreprocessEnvTexture(pOutTexture);
+
+                    OwnEnvironmentTextures(pOutTexture);
                 }
-
-                SkyboxRenderer* pSkyboxRenderer = m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer();
-
-                pSkyboxRenderer->PreprocessEnvTexture(pOutTexture);
-
-                OwnEnvironmentTextures(pOutTexture);
             }
         }
     }
+
+    return pOutTexture != nullptr && pOutTexture->IsComplete();
 }
 
 void TextureManager::UploadEnvironmentCube(uint32_t                            size,
@@ -539,7 +731,7 @@ void TextureManager::LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* en
     OwnEnvironmentTextures(environment);
 }
 
-void TextureManager::UpdateTexture(RHITexture* texture, uint32_t dataSize, const uint8_t* data, bool generateMipmaps)
+void TextureManager::UpdateTexture(RHITexture*& texture, uint32_t dataSize, const uint8_t* data, bool generateMipmaps)
 {
     RHIBufferTextureCopyRegion region{};
 
@@ -549,16 +741,26 @@ void TextureManager::UpdateTexture(RHITexture* texture, uint32_t dataSize, const
 
     region.textureSize                    = {texture->GetWidth(), texture->GetHeight(), texture->GetDepth()};
 
-    m_pUploadQueue->EnqueueTexture(texture, MakeVecView(&region, 1), dataSize, data, generateMipmaps);
+    if (!m_pUploadQueue->EnqueueTexture(texture, MakeVecView(&region, 1), dataSize, data, generateMipmaps))
+    {
+        ReleaseSceneTexture(texture);
+
+        texture = nullptr;
+    }
 }
 
-void TextureManager::UpdateTextureCube(RHITexture*                                   texture,
+void TextureManager::UpdateTextureCube(RHITexture*&                                  texture,
                                        const HeapVector<RHIBufferTextureCopyRegion>& regions,
                                        uint32_t                                      dataSize,
                                        const uint8_t*                                data)
 {
     HeapVector<RHIBufferTextureCopyRegion> copy = regions;
 
-    m_pUploadQueue->EnqueueTexture(texture, copy, dataSize, data);
+    if (!m_pUploadQueue->EnqueueTexture(texture, copy, dataSize, data))
+    {
+        ReleaseSceneTexture(texture);
+
+        texture = nullptr;
+    }
 }
 } // namespace zen::rc

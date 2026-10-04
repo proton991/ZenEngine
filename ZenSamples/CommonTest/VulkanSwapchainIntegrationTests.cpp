@@ -9,7 +9,7 @@
 #include "Graphics/VulkanRHI/VulkanViewport.h"
 #include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
-#include "Platform/GlfwWindow.h"
+#include "Platform/NativeWindow.h"
 #include <gtest/gtest.h>
 #include <memory>
 #include <unordered_map>
@@ -553,14 +553,14 @@ struct WSIDriver
 class VulkanSwapchainIntegrationTest : public testing::Test
 {
 protected:
-    std::unique_ptr<test::VulkanSession>      session;
-    std::unique_ptr<platform::GlfwWindowImpl> window;
-    std::unique_ptr<VulkanSwapchain>          swapchain;
-    RHIViewport*                              viewport{};
-    RHICommandList*                           commands{};
-    FVulkanCommandListContext*                context{};
-    VkDebugUtilsMessengerEXT                  messenger{};
-    HeapVector<std::function<void()>>         restore;
+    std::unique_ptr<test::VulkanSession>    session;
+    std::unique_ptr<platform::NativeWindow> window;
+    std::unique_ptr<VulkanSwapchain>        swapchain;
+    RHIViewport*                            viewport{};
+    RHICommandList*                         commands{};
+    FVulkanCommandListContext*              context{};
+    VkDebugUtilsMessengerEXT                messenger{};
+    HeapVector<std::function<void()>>       restore;
 
     template <typename T> void Hook(T& slot, T replacement, T& previous)
     {
@@ -575,17 +575,15 @@ protected:
     {
         session = std::make_unique<test::VulkanSession>();
 
-        ASSERT_TRUE(glfwInit());
-
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-
         platform::WindowConfig config;
+
+        config.visible = false;
 
         config.width = config.height = 64;
 
         config.resizable             = true;
 
-        window                       = std::make_unique<platform::GlfwWindowImpl>(config);
+        window                       = std::make_unique<platform::NativeWindow>(config);
 
         WSIDriver::Reset();
 
@@ -673,11 +671,9 @@ protected:
     {
         VulkanSwapchainRecreateInfo surfaceInfo;
 
-        WindowData windowData{window->GetHandle(), 64, 64};
-
         window->CheckThreadOwnership();
 
-        surfaceInfo.surface = VulkanPlatform::CreateSurface(session->rhi.GetInstance(), &windowData);
+        surfaceInfo.surface = VulkanPlatform::CreateSurface(session->rhi.GetInstance(), *window);
 
         swapchain           = std::make_unique<VulkanSwapchain>(64, 64, vsync, &surfaceInfo);
     }
@@ -1030,9 +1026,9 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeResizeRebuildsSemaphoresForGrowingA
     {
         WSIDriver::count = count;
 
-        glfwSetWindowSize(window->GetHandle(), 80 + count, 72 + count);
+        window->SetSize(80 + count, 72 + count);
 
-        glfwPollEvents();
+        platform::NativeWindow::PollEvents();
 
         viewport->Resize(80 + count, 72 + count);
 
@@ -1534,6 +1530,33 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeSurfaceLossReplacesSurfaceAndOutOfD
     }
 
     EXPECT_EQ(WSIDriver::createdCalls, 3u);
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, CheckedPresentDefersBackbufferReplacementUntilRenderCoreRecreation)
+{
+    CreateNativeViewport();
+
+    RHITexture* color        = viewport->GetColorBackBuffer();
+
+    WSIDriver::presentResult = VK_SUBOPTIMAL_KHR;
+
+    ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+
+    const RHIPresentResult presented = viewport->PresentChecked();
+
+    EXPECT_TRUE(presented.presented);
+
+    EXPECT_EQ(presented.outcome, RHISurfaceOutcome::eRecreate);
+
+    EXPECT_EQ(viewport->GetColorBackBuffer(), color);
+
+    EXPECT_EQ(WSIDriver::createdCalls, 1u);
+
+    EXPECT_TRUE(viewport->NeedsRecreation());
+
+    viewport->Resize(64, 64);
+
+    EXPECT_EQ(WSIDriver::createdCalls, 2u);
 }
 
 TEST_F(VulkanSwapchainIntegrationTest, NativePresentSuboptimalRecreatesAfterConsumingSubmission)

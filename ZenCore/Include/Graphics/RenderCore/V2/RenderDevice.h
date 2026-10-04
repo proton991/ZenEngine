@@ -79,7 +79,11 @@ public:
                           RHIExecutionMode executionMode    = RenderConfig::GetInstance().rhiExecutionMode,
                           AsyncComputeMode asyncComputeMode = RenderConfig::GetInstance().asyncComputeMode);
 
+    // Initializes device/graph infrastructure; scene rendering is a separate opt-in.
     void Init(RHIViewport* pMainViewport);
+
+    // Call once during setup, after Init() and shader registration, with or without a native viewport.
+    void InitializeRendererServer();
 
     void Destroy();
 
@@ -252,7 +256,7 @@ public:
 
     void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures);
 
-    void LoadTextureEnv(const std::string& file, EnvTexture* pTexture);
+    bool LoadTextureEnv(const std::string& file, EnvTexture* pTexture, bool fallbackToBlack = true);
 
     void LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment);
 
@@ -279,6 +283,7 @@ public:
     //     return m_frames[m_currentFrame].drawCmdList;
     // }
 
+    // Borrowed instance; null until InitializeRendererServer(). Never initializes resources.
     RendererServer* GetRendererServer() const
     {
         return m_pRendererServer;

@@ -28,89 +28,89 @@ protected:
 
 TEST_F(InputControllerTest, QuickTapSurvivesReleaseBeforePolling)
 {
-    input.PressKey(GLFW_KEY_2);
+    input.PressKey(zen::platform::Key::Digit2);
 
-    input.ReleaseKey(GLFW_KEY_2);
+    input.ReleaseKey(zen::platform::Key::Digit2);
 
-    EXPECT_FALSE(input.IsKeyPressed(GLFW_KEY_2));
+    EXPECT_FALSE(input.IsKeyPressed(zen::platform::Key::Digit2));
 
-    EXPECT_TRUE(input.WasKeyPressedOnce(GLFW_KEY_2));
+    EXPECT_TRUE(input.WasKeyPressedOnce(zen::platform::Key::Digit2));
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_2));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit2));
 }
 
 TEST_F(InputControllerTest, ConsumingShortcutPreservesHeldStateAndRequiresAnotherPress)
 {
-    input.PressKey(GLFW_KEY_1);
+    input.PressKey(zen::platform::Key::Digit1);
 
-    EXPECT_TRUE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_TRUE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 
-    EXPECT_TRUE(input.IsKeyPressed(GLFW_KEY_1));
+    EXPECT_TRUE(input.IsKeyPressed(zen::platform::Key::Digit1));
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 
-    input.PressKey(GLFW_KEY_1);
+    input.PressKey(zen::platform::Key::Digit1);
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 
-    input.ReleaseKey(GLFW_KEY_1);
+    input.ReleaseKey(zen::platform::Key::Digit1);
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 
-    input.PressKey(GLFW_KEY_1);
+    input.PressKey(zen::platform::Key::Digit1);
 
-    EXPECT_TRUE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_TRUE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 }
 
 TEST_F(InputControllerTest, ShortcutsKeepIndependentPendingPresses)
 {
-    input.PressKey(GLFW_KEY_1);
+    input.PressKey(zen::platform::Key::Digit1);
 
-    input.ReleaseKey(GLFW_KEY_1);
+    input.ReleaseKey(zen::platform::Key::Digit1);
 
-    input.PressKey(GLFW_KEY_2);
+    input.PressKey(zen::platform::Key::Digit2);
 
-    input.ReleaseKey(GLFW_KEY_2);
+    input.ReleaseKey(zen::platform::Key::Digit2);
 
-    EXPECT_TRUE(input.WasKeyPressedOnce(GLFW_KEY_2));
+    EXPECT_TRUE(input.WasKeyPressedOnce(zen::platform::Key::Digit2));
 
-    EXPECT_TRUE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_TRUE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_2));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit2));
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 }
 
 TEST_F(InputControllerTest, CapturedQuickTapDoesNotEscapeIntoSceneShortcuts)
 {
-    input.PressKey(GLFW_KEY_1);
+    input.PressKey(zen::platform::Key::Digit1);
 
-    input.ReleaseKey(GLFW_KEY_1);
+    input.ReleaseKey(zen::platform::Key::Digit1);
 
     input.SetUICapture(false, true);
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 
     input.SetUICapture(false, false);
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_1));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Digit1));
 }
 
 TEST_F(InputControllerTest, CapturedHeldKeyRemainsSuppressedUntilRelease)
 {
     input.SetUICapture(false, true);
 
-    input.PressKey(GLFW_KEY_W);
+    input.PressKey(zen::platform::Key::W);
 
     input.SetUICapture(false, false);
 
-    EXPECT_FALSE(input.IsKeyPressed(GLFW_KEY_W));
+    EXPECT_FALSE(input.IsKeyPressed(zen::platform::Key::W));
 
-    input.ReleaseKey(GLFW_KEY_W);
+    input.ReleaseKey(zen::platform::Key::W);
 
-    input.PressKey(GLFW_KEY_W);
+    input.PressKey(zen::platform::Key::W);
 
-    EXPECT_TRUE(input.IsKeyPressed(GLFW_KEY_W));
+    EXPECT_TRUE(input.IsKeyPressed(zen::platform::Key::W));
 }
 
 TEST_F(InputControllerTest, MouseCaptureDiscardsMotionAndPreservesPressOwnership)
@@ -123,9 +123,9 @@ TEST_F(InputControllerTest, MouseCaptureDiscardsMotionAndPreservesPressOwnership
 
     input.SetUICapture(true, false);
 
-    input.PressMouseButton(GLFW_MOUSE_BUTTON_LEFT);
+    input.PressMouseButton(zen::platform::MouseButton::Left);
 
-    input.SetMouseButtonRelease(GLFW_MOUSE_BUTTON_LEFT, false);
+    input.SetMouseButtonRelease(zen::platform::MouseButton::Left, false);
 
     input.SetCursorPos(80, 90);
 
@@ -133,33 +133,33 @@ TEST_F(InputControllerTest, MouseCaptureDiscardsMotionAndPreservesPressOwnership
 
     input.SetUICapture(false, false);
 
-    EXPECT_FALSE(input.IsMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT));
+    EXPECT_FALSE(input.IsMouseButtonPressed(zen::platform::MouseButton::Left));
 
-    EXPECT_TRUE(input.IsMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT));
+    EXPECT_TRUE(input.IsMouseButtonReleased(zen::platform::MouseButton::Left));
 
     EXPECT_EQ(input.CalculateCursorPositionDelta(), (std::array<float, 2>{0, 0}));
 
-    input.ReleaseMouseButton(GLFW_MOUSE_BUTTON_LEFT);
+    input.ReleaseMouseButton(zen::platform::MouseButton::Left);
 
-    input.PressMouseButton(GLFW_MOUSE_BUTTON_LEFT);
+    input.PressMouseButton(zen::platform::MouseButton::Left);
 
-    EXPECT_TRUE(input.IsMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT));
+    EXPECT_TRUE(input.IsMouseButtonPressed(zen::platform::MouseButton::Left));
 }
 
 TEST_F(InputControllerTest, FocusLossResetClearsHeldAndPendingActionsIncludingLastCodes)
 {
-    input.PressKey(GLFW_KEY_LAST);
+    input.PressKey(zen::platform::Key::Menu);
 
-    input.PressMouseButton(GLFW_MOUSE_BUTTON_LAST);
+    input.PressMouseButton(zen::platform::MouseButton::Extra5);
 
     input.Reset();
 
-    EXPECT_FALSE(input.IsKeyPressed(GLFW_KEY_LAST));
+    EXPECT_FALSE(input.IsKeyPressed(zen::platform::Key::Menu));
 
-    EXPECT_FALSE(input.WasKeyPressedOnce(GLFW_KEY_LAST));
+    EXPECT_FALSE(input.WasKeyPressedOnce(zen::platform::Key::Menu));
 
-    EXPECT_FALSE(input.IsMouseButtonPressed(GLFW_MOUSE_BUTTON_LAST));
+    EXPECT_FALSE(input.IsMouseButtonPressed(zen::platform::MouseButton::Extra5));
 
-    EXPECT_TRUE(input.IsMouseButtonReleased(GLFW_MOUSE_BUTTON_LAST));
+    EXPECT_TRUE(input.IsMouseButtonReleased(zen::platform::MouseButton::Extra5));
 }
 } // namespace

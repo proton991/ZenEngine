@@ -29,7 +29,7 @@ public:
 
     void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures);
 
-    void LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture);
+    bool LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture, bool fallbackToBlack = true);
 
     void LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment);
 
@@ -49,9 +49,10 @@ private:
                                const char*                         name,
                                RHITexture*&                        texture);
 
-    void UpdateTexture(RHITexture* pTexture, uint32_t dataSize, const uint8_t* pData, bool generateMipmaps = false);
+    // Failed uploads retire the unpublished texture and clear the caller's handle.
+    void UpdateTexture(RHITexture*& pTexture, uint32_t dataSize, const uint8_t* pData, bool generateMipmaps = false);
 
-    void UpdateTextureCube(RHITexture*                                   pTexture,
+    void UpdateTextureCube(RHITexture*&                                  pTexture,
                            const HeapVector<RHIBufferTextureCopyRegion>& regions,
                            uint32_t                                      dataSize,
                            const uint8_t*                                pData);

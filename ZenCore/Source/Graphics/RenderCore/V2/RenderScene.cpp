@@ -16,7 +16,8 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
     m_pRenderDevice(pRenderDevice),
     m_pScene(sceneData.pScene),
     m_pCamera(sceneData.pCamera),
-    m_envTextureName(sceneData.envTextureName.empty() ? "papermill.ktx" : sceneData.envTextureName)
+    m_envTextureName(sceneData.envTextureName.empty() ? "papermill.ktx" : sceneData.envTextureName),
+    m_environmentOverride(sceneData.environmentOverride)
 {
     // Stop before changing the scene or allocating anything if the global heaps cannot bind it.
     const std::string capacityError = GetSceneBindlessCapacityError(m_pRenderDevice->GetGPUInfo().bindlessHeapCapacities,
@@ -120,13 +121,15 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
     m_numIndices = sceneData.numIndices;
 }
 
-void RenderScene::Init()
+bool RenderScene::Init()
 {
     LoadSceneMaterials();
 
     LoadSceneTextures();
 
     PrepareBuffers();
+
+    return HasRequiredResources();
 }
 
 void RenderScene::LoadSceneMaterials()
@@ -178,23 +181,87 @@ void RenderScene::LoadSceneTextures()
     // environment texture
     const sg::SceneAssetData& data = m_pScene->GetAssetData();
 
-    if (data.imageBasedLight >= 0 && static_cast<size_t>(data.imageBasedLight) < data.imageBasedLights.size())
+    if (m_environmentOverride.empty() && data.imageBasedLight >= 0
+        && static_cast<size_t>(data.imageBasedLight) < data.imageBasedLights.size())
     {
-        m_pRenderDevice->LoadSceneEnvironment(m_pScene, &m_envTexture);
+        m_pRenderDevice->LoadSceneEnvironment(m_pScene, m_envTexture.Get());
 
         UpdateAuthoredEnvironment();
     }
     else
     {
-        m_pRenderDevice->LoadTextureEnv(m_envTextureName, &m_envTexture);
+        m_pRenderDevice->LoadTextureEnv(m_environmentOverride.empty() ? m_envTextureName : m_environmentOverride,
+                                        m_envTexture.Get(), m_environmentOverride.empty());
     }
+}
+
+bool RenderScene::SetEnvironmentTexture(const std::string& path, std::string& error)
+{
+    error.clear();
+
+    UniquePtr<EnvTexture> candidate = MakeUnique<EnvTexture>();
+
+    bool valid                      = m_pRenderDevice->PrepareForResourceReconfiguration();
+
+    if (valid)
+    {
+        const sg::SceneAssetData& data = m_pScene->GetAssetData();
+
+        if (path.empty() && data.imageBasedLight >= 0
+            && static_cast<size_t>(data.imageBasedLight) < data.imageBasedLights.size())
+        {
+            m_pRenderDevice->LoadSceneEnvironment(m_pScene, candidate.Get());
+        }
+        else
+        {
+            m_pRenderDevice->LoadTextureEnv(path.empty() ? m_envTextureName : path, candidate.Get(), false);
+        }
+
+        valid = candidate->IsComplete();
+    }
+
+    // Drain candidate uploads even on partial failure. Reset bindings only when
+    // publishing a complete replacement; no frame can observe mixed resources.
+    const bool drained =
+        valid ? m_pRenderDevice->PrepareForSceneReplacement() : m_pRenderDevice->PrepareForResourceReconfiguration();
+
+    valid = valid && drained;
+
+    if (valid)
+    {
+        m_envTexture.Swap(candidate);
+
+        m_environmentOverride                      = path;
+
+        m_authoredEnvironmentIntensity             = 1.0f;
+
+        m_sceneUniformData.environment.x           = m_environmentIntensity;
+
+        m_sceneUniformData.environmentOrientation  = Vec4(0, 0, 0, 1);
+
+        m_sceneUniformData.environmentProperties.x = 0.0f;
+
+        UpdateAuthoredEnvironment();
+
+        ++m_environmentRevision;
+    }
+    else
+    {
+        error =
+            "Could not load the environment. Use a 2:1 HDR panorama (up to 8K), or an RGBA16F/32F KTX/DDS cubemap. The previous environment remains active.";
+    }
+
+    m_pRenderDevice->ReleaseSceneEnvironment(candidate.Get());
+
+    return valid;
 }
 
 void RenderScene::UpdateAuthoredEnvironment()
 {
     const sg::SceneAssetData& data = m_pScene->GetAssetData();
 
-    if (data.imageBasedLight >= 0 && static_cast<size_t>(data.imageBasedLight) < data.imageBasedLights.size())
+    if (m_environmentOverride.empty() && data.imageBasedLight >= 0
+        && static_cast<size_t>(data.imageBasedLight) < data.imageBasedLights.size())
     {
         const sg::ImageBasedLightAsset& light = data.imageBasedLights[data.imageBasedLight];
 

@@ -104,7 +104,7 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
             if (rebuild)
             {
-                m_pVoxelizer = CreateVoxelizer(m_pViewport);
+                m_pVoxelizer = CreateVoxelizer();
 
                 m_pVoxelizer->SetRenderScene(m_pScene);
 

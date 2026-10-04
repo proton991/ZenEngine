@@ -1,0 +1,6 @@
+#version 450
+layout(local_size_x=1,local_size_y=1,local_size_z=1) in;
+layout(set=1,binding=0) uniform usampler2D uIds;
+layout(std430,set=1,binding=1) writeonly buffer PickOutput { uint id; };
+layout(push_constant) uniform PickPixel { uvec2 pixel; };
+void main() { id = texelFetch(uIds, ivec2(pixel), 0).r; }

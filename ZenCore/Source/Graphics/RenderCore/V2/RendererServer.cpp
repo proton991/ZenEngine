@@ -12,8 +12,8 @@
 
 namespace zen::rc
 {
-RendererServer::RendererServer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
-    m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
+RendererServer::RendererServer(RenderDevice* pRenderDevice, RHIViewport* presentationViewport) :
+    m_pRenderDevice(pRenderDevice), m_pPresentationViewport(presentationViewport)
 {}
 
 void RendererServer::Init()
@@ -31,11 +31,11 @@ void RendererServer::Init()
 
     m_giSettings.asyncCompute   = m_pRenderDevice->GetAsyncComputeMode();
 
-    m_pDeferredLightingRenderer = ZEN_NEW() DeferredLightingRenderer(m_pRenderDevice, m_pViewport);
+    m_pDeferredLightingRenderer = ZEN_NEW() DeferredLightingRenderer(m_pRenderDevice);
 
     m_pDeferredLightingRenderer->Init();
 
-    m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice, m_pViewport);
+    m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice);
 
     m_pSkyboxRenderer->Init();
 
@@ -52,7 +52,7 @@ void RendererServer::Init()
 
     m_voxelizerMode = selectedMode;
 
-    m_pVoxelizer    = CreateVoxelizer(m_pViewport);
+    m_pVoxelizer    = CreateVoxelizer();
 
     m_pVoxelGI      = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pVoxelizer);
 
@@ -80,11 +80,14 @@ void RendererServer::Destroy()
     ZEN_DELETE(m_pSkyboxRenderer);
 }
 
-bool RendererServer::DispatchRenderWorkloads(RenderOverlay* overlay)
+bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay, bool drawScene)
 {
-    m_frameRenderOption    = m_renderOption;
+    m_frameRenderOption = m_renderOption;
 
-    bool succeeded         = m_pScene->Update();
+    const bool renderScene =
+        drawScene && m_pScene != nullptr && view.color != nullptr && view.depth != nullptr && view.width > 0 && view.height > 0;
+
+    bool succeeded         = !renderScene || m_pScene->Update();
 
     RenderGraph* pFrameRDG = m_pRenderDevice->GetCurrentFrameRDG();
 
@@ -92,7 +95,7 @@ bool RendererServer::DispatchRenderWorkloads(RenderOverlay* overlay)
 
     if (succeeded)
     {
-        if (m_frameRenderOption == RenderOption::eVoxelGI
+        if (renderScene && m_frameRenderOption == RenderOption::eVoxelGI
             && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
         {
             m_frameRenderOption = RenderOption::ePBR;
@@ -100,7 +103,14 @@ bool RendererServer::DispatchRenderWorkloads(RenderOverlay* overlay)
 
         succeeded = pFrameRDG->Begin();
 
-        if (succeeded)
+        if (succeeded && m_pPresentationViewport != nullptr
+            && (!renderScene || view.color != m_pPresentationViewport->GetColorBackBuffer()))
+        {
+            pFrameRDG->AddTransferPass("WorkspaceClear")
+                .ClearTexture(m_pPresentationViewport->GetColorBackBuffer(), Color(0.055f, 0.06f, 0.075f, 1.0f));
+        }
+
+        if (succeeded && renderScene)
         {
             if (m_frameRenderOption == RenderOption::eVoxelize && !m_pVoxelizer->EnsureReady())
             {
@@ -117,15 +127,15 @@ bool RendererServer::DispatchRenderWorkloads(RenderOverlay* overlay)
                 m_frameRenderOption = RenderOption::ePBR;
             }
 
-            m_pSkyboxRenderer->BuildRenderGraph();
+            m_pSkyboxRenderer->BuildRenderGraph(view);
 
             if (m_frameRenderOption == RenderOption::eVoxelize)
             {
-                m_pVoxelizer->BuildRenderGraph();
+                m_pVoxelizer->BuildRenderGraph(view);
             }
             else if (m_frameRenderOption == RenderOption::eVoxelGI)
             {
-                m_pDeferredLightingRenderer->BuildGBufferGraph();
+                m_pDeferredLightingRenderer->BuildGBufferGraph(view);
 
                 m_pVoxelizer->BuildVoxelizationGraph();
 
@@ -133,20 +143,26 @@ bool RendererServer::DispatchRenderWorkloads(RenderOverlay* overlay)
 
                 m_pVoxelGI->BuildRenderGraph(m_pSceneShadows);
 
-                m_pDeferredLightingRenderer->BuildCompositionGraph(m_pVoxelGI, m_pSceneShadows);
+                m_pDeferredLightingRenderer->BuildCompositionGraph(view, m_pVoxelGI, m_pSceneShadows);
             }
             else
             {
-                m_pDeferredLightingRenderer->BuildRenderGraph();
+                m_pDeferredLightingRenderer->BuildRenderGraph(view);
             }
         }
 
         if (succeeded && overlay != nullptr)
         {
-            succeeded = overlay->BuildRenderGraph(*pFrameRDG, *m_pViewport);
+            succeeded = m_pPresentationViewport != nullptr && overlay->BuildRenderGraph(*pFrameRDG, *m_pPresentationViewport);
         }
 
-        succeeded = succeeded && pFrameRDG->End() && m_pRenderDevice->ExecuteRenderGraph(m_pViewport);
+        succeeded = succeeded && pFrameRDG->End();
+
+        if (succeeded)
+        {
+            succeeded = m_pPresentationViewport != nullptr ? m_pRenderDevice->ExecuteRenderGraph(m_pPresentationViewport)
+                                                           : m_pRenderDevice->ExecuteRenderGraph(*pFrameRDG);
+        }
     }
 
     if (m_pVoxelizer != nullptr)
@@ -184,17 +200,17 @@ void RendererServer::SetRenderScene(RenderScene* pScene)
     m_pVoxelGI->SetRenderScene(pScene);
 }
 
-VoxelizerBase* RendererServer::CreateVoxelizer(RHIViewport* viewport)
+VoxelizerBase* RendererServer::CreateVoxelizer()
 {
     VoxelizerBase* voxelizer = nullptr;
 
     if (m_voxelizerMode == platform::VoxelizerMode::eGeometry)
     {
-        voxelizer = ZEN_NEW() GeometryVoxelizer(m_pRenderDevice, viewport);
+        voxelizer = ZEN_NEW() GeometryVoxelizer(m_pRenderDevice);
     }
     else
     {
-        voxelizer = ZEN_NEW() ComputeVoxelizer(m_pRenderDevice, viewport);
+        voxelizer = ZEN_NEW() ComputeVoxelizer(m_pRenderDevice);
     }
 
     voxelizer->Init();

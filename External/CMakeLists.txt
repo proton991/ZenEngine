@@ -83,6 +83,32 @@ zen_declare_dependency(basis_universal basis_universal
     f79c13343ddab36f3d37629775b9ca8e2fbf55a758d505e2150a8b7faee17d2a
     SOURCE_SUBDIR zen-no-cmake)
 
+# One window backend and one ImGui platform adapter per executable.
+add_library(zen_window_backend INTERFACE)
+if (ZEN_WINDOW_BACKEND STREQUAL "SDL3")
+    zen_declare_dependency(sdl3 SDL3
+        https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.zip
+        9cd42377704398796071b8597cd7e21da254a43bad98c4199739647adc13fa6f)
+    set(SDL_SHARED OFF CACHE BOOL "Build shared SDL" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "Build static SDL" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "Build SDL test library" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "Build SDL tests" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "Build SDL examples" FORCE)
+    set(SDL_INSTALL OFF CACHE BOOL "Install SDL" FORCE)
+    # Retain video, events and text/cursor support; ZenEngine owns rendering/audio.
+    set(SDL_AUDIO OFF CACHE BOOL "SDL audio" FORCE)
+    set(SDL_RENDER OFF CACHE BOOL "SDL renderer" FORCE)
+    set(SDL_GPU OFF CACHE BOOL "SDL GPU" FORCE)
+    set(SDL_CAMERA OFF CACHE BOOL "SDL camera" FORCE)
+    FetchContent_MakeAvailable(sdl3)
+    target_link_libraries(zen_window_backend INTERFACE SDL3::SDL3-static)
+    target_compile_definitions(zen_window_backend INTERFACE ZEN_WINDOW_SDL3=1 SDL_MAIN_HANDLED)
+    set(ZEN_IMGUI_PLATFORM sdl3)
+else ()
+    set(ZEN_IMGUI_PLATFORM glfw)
+    target_link_libraries(zen_window_backend INTERFACE glfw)
+endif ()
+
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "Build GLFW examples" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "Build GLFW tests" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "Build GLFW docs" FORCE)
@@ -99,7 +125,10 @@ set(FASTGLTF_ENABLE_TESTS OFF CACHE BOOL "Build fastgltf tests" FORCE)
 set(FASTGLTF_ENABLE_EXAMPLES OFF CACHE BOOL "Build fastgltf examples" FORCE)
 set(FASTGLTF_ENABLE_DOCS OFF CACHE BOOL "Build fastgltf docs" FORCE)
 set(FASTGLTF_ENABLE_INSTALL OFF CACHE BOOL "Install fastgltf" FORCE)
-FetchContent_MakeAvailable(volk vma spdlog spirv_reflect glm gli glfw stb simdjson fastgltf)
+if (ZEN_WINDOW_BACKEND STREQUAL "GLFW")
+    FetchContent_MakeAvailable(glfw)
+endif ()
+FetchContent_MakeAvailable(volk vma spdlog spirv_reflect glm gli stb simdjson fastgltf)
 
 set(DRACO_TESTS OFF CACHE BOOL "Build Draco tests" FORCE)
 set(DRACO_INSTALL OFF CACHE BOOL "Install Draco" FORCE)
@@ -165,22 +194,22 @@ if (BUILD_TESTING)
 endif ()
 
 
-if (ZEN_BUILD_RUNTIME_UI)
+if (ZEN_BUILD_RUNTIME_UI OR ZEN_BUILD_EDITOR)
     # imgui: v1.92.9b-docking
     zen_declare_dependency(zen_imgui imgui
         https://codeload.github.com/ocornut/imgui/zip/refs/tags/v1.92.9b-docking
         0434445157a575f452ff0f2d1681fdd90ea8939e0c6983e6f8e47c51fba1bccd
         SOURCE_SUBDIR zen-no-cmake)
     FetchContent_MakeAvailable(zen_imgui)
-    # Core and GLFW backend come from the same archive. No Vulkan backend.
+    # Core and the selected platform adapter share one archive. No Vulkan renderer backend.
     add_library(zen_imgui STATIC
         "${zen_imgui_SOURCE_DIR}/imgui.cpp"
         "${zen_imgui_SOURCE_DIR}/imgui_draw.cpp"
         "${zen_imgui_SOURCE_DIR}/imgui_tables.cpp"
         "${zen_imgui_SOURCE_DIR}/imgui_widgets.cpp"
-        "${zen_imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp")
+        "${zen_imgui_SOURCE_DIR}/backends/imgui_impl_${ZEN_IMGUI_PLATFORM}.cpp")
     target_include_directories(zen_imgui PUBLIC "${zen_imgui_SOURCE_DIR}")
     target_compile_definitions(zen_imgui PUBLIC
-        IMGUI_USER_CONFIG="${PROJECT_SOURCE_DIR}/ZenUI/Include/UI/ImGuiConfig.h")
-    target_link_libraries(zen_imgui PRIVATE glfw)
+        IMGUI_USER_CONFIG="${PROJECT_SOURCE_DIR}/ZenUI/ImGui/Include/ImGui/ImGuiConfig.h")
+    target_link_libraries(zen_imgui PRIVATE zen_window_backend)
 endif ()

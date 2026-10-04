@@ -1,4 +1,5 @@
 #pragma once
+#include "Graphics/RenderCore/V2/RenderView.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 
 namespace zen::rc
@@ -9,11 +10,11 @@ class RenderDevice;
 class SkyboxRenderer
 {
 public:
-    SkyboxRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
+    explicit SkyboxRenderer(RenderDevice* pRenderDevice);
 
     void Init();
 
-    void BuildRenderGraph();
+    void BuildRenderGraph(const RenderView& view);
 
     // Restore one-time work when the frame is rejected before submission.
     void OnRenderGraphExecuted(bool succeeded);
@@ -50,12 +51,11 @@ private:
 
     RenderDevice* m_pRenderDevice{nullptr};
 
-    RHIViewport* m_pViewport{nullptr};
-
     RenderScene* m_pScene{nullptr};
 
-    EnvTexture* m_pPendingPreprocessEnvTexture{nullptr};
-    EnvTexture* m_pRecordedPreprocessEnvTexture{nullptr};
+    // Each environment owns independent one-time work until execution or cancellation.
+    HeapVector<EnvTexture*> m_pendingPreprocessEnvironments;
+    HeapVector<EnvTexture*> m_recordedPreprocessEnvironments;
 
     struct
     {

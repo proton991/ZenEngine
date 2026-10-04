@@ -58,6 +58,7 @@ struct SceneInputs
     RHIBuffer*              materials{};
     RHIBuffer*              uv{};
     HeapVector<RHITexture*> textures;
+    HeapVector<RHISampler*> samplers;
     EnvTexture              environment;
     sg::CameraUniformData   camera{};
     SceneUniformData        uniforms{};
@@ -1434,6 +1435,11 @@ RHIDebug* RHIDebug::Create()
 } // namespace zen
 namespace zen::asset
 {
+bool TextureLoader::LoadHDRCubemap(const std::string&, uint32_t&, HeapVector<Vec4>&, std::string&)
+{
+    return false;
+}
+
 void TextureLoader::LoadTexture2DFromFile(const std::string& file, TextureInfo* result)
 {
     const std::string key = std::filesystem::path(file).lexically_normal().generic_string();
@@ -1443,11 +1449,13 @@ void TextureLoader::LoadTexture2DFromFile(const std::string& file, TextureInfo* 
 } // namespace zen::asset
 namespace zen::rc
 {
-RendererServer::RendererServer(RenderDevice* device, RHIViewport* viewport) : m_pViewport(viewport), m_pRenderDevice(device) {}
+RendererServer::RendererServer(RenderDevice* device, RHIViewport* viewport) :
+    m_pPresentationViewport(viewport), m_pRenderDevice(device)
+{}
 
 void RendererServer::Init()
 {
-    m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice, m_pViewport);
+    m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice);
 }
 
 void RendererServer::Destroy()
@@ -1495,7 +1503,9 @@ void RenderScene::LoadSceneTextures()
 {
     m_sceneTextures = sceneInputs.textures;
 
-    m_envTexture    = sceneInputs.environment;
+    m_sceneSamplers = sceneInputs.samplers;
+
+    *m_envTexture   = sceneInputs.environment;
 }
 
 const uint8_t* RenderScene::GetCameraUniformData() const
@@ -1682,6 +1692,8 @@ protected:
     void SetUp() override
     {
         InitializeDevice(&viewport);
+
+        device->InitializeRendererServer();
     }
 
     void TearDown() override
@@ -3899,7 +3911,7 @@ class TestVoxelVolumes : public VoxelizerBase
 {
 public:
     TestVoxelVolumes(RenderDevice* device, DataFormat format, bool radianceInputs = false, uint32_t dimension = 8) :
-        VoxelizerBase(device, nullptr), m_radianceInputs(radianceInputs)
+        VoxelizerBase(device), m_radianceInputs(radianceInputs)
     {
         m_voxelTexResolution = dimension;
 
@@ -3960,7 +3972,8 @@ public:
 
 private:
     bool m_radianceInputs;
-    void BuildRenderGraph() override {}
+
+    void BuildRenderGraph(const RenderView&) override {}
 };
 
 TEST_F(RenderCoreTest, FirstBufferWritesSkipEmptyBarriersButKeepLaterDependencies)
@@ -4259,7 +4272,7 @@ TEST_F(RenderCoreTest, LightingCaptureRejectsInvalidTargetsAndRetriesWithoutCopy
 
     RenderScene scene(device, data);
 
-    DeferredLightingRenderer lighting(device, &viewport);
+    DeferredLightingRenderer lighting(device);
 
     lighting.Init();
 
@@ -4309,7 +4322,7 @@ TEST_F(RenderCoreTest, LightingCaptureRejectsInvalidTargetsAndRetriesWithoutCopy
             }
         }
 
-        lighting.BuildRenderGraph();
+        lighting.BuildRenderGraph(RenderView::FromViewport(viewport));
 
         const bool valid = scenario == 0 || scenario == 4;
 
@@ -4423,9 +4436,9 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
     RenderScene scene(device, data);
 
-    DeferredLightingRenderer lighting(device, &viewport);
+    DeferredLightingRenderer lighting(device);
 
-    SkyboxRenderer skybox(device, &viewport);
+    SkyboxRenderer skybox(device);
 
     lighting.Init();
 
@@ -4482,9 +4495,9 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         graph->Begin();
 
-        skybox.BuildRenderGraph();
+        skybox.BuildRenderGraph(RenderView::FromViewport(viewport));
 
-        lighting.BuildRenderGraph();
+        lighting.BuildRenderGraph(RenderView::FromViewport(viewport));
 
         if (frame == 0)
         {
@@ -4501,9 +4514,9 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
             // Rebuild without loading/preprocessing the environment again.
             ASSERT_TRUE(graph->Begin());
 
-            skybox.BuildRenderGraph();
+            skybox.BuildRenderGraph(RenderView::FromViewport(viewport));
 
-            lighting.BuildRenderGraph();
+            lighting.BuildRenderGraph(RenderView::FromViewport(viewport));
         }
 
         ASSERT_TRUE(graph->End());
@@ -4698,7 +4711,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
     }
 }
 
-TEST_F(RenderCoreTest, GBufferFollowsTheViewportAndIsNotDeclaredWhileSuspended)
+TEST_F(RenderCoreTest, GBufferFollowsTheSuppliedViewAndIsNotDeclaredWhileSuspended)
 {
     RHIShaderCreateInfo shader;
 
@@ -4728,7 +4741,7 @@ TEST_F(RenderCoreTest, GBufferFollowsTheViewportAndIsNotDeclaredWhileSuspended)
 
     RenderScene scene(device, data);
 
-    DeferredLightingRenderer lighting(device, &viewport);
+    DeferredLightingRenderer lighting(device);
 
     lighting.Init();
 
@@ -4747,7 +4760,7 @@ TEST_F(RenderCoreTest, GBufferFollowsTheViewportAndIsNotDeclaredWhileSuspended)
 
         ASSERT_TRUE(graph.Begin());
 
-        lighting.BuildGBufferGraph();
+        lighting.BuildGBufferGraph(RenderView::FromViewport(viewport));
 
         EXPECT_EQ(lighting.GetGBufferExtent(), extent);
 

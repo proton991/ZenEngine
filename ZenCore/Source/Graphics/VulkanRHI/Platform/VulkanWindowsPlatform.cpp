@@ -1,4 +1,5 @@
 #include "Utils/Errors.h"
+#include "VulkanWindowBridge.h"
 #if defined(ZEN_WIN32)
 
 #    include "Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h"
@@ -11,25 +12,12 @@ void VulkanWindowsPlatform::AddInstanceExtensions(HeapVector<UniquePtr<VulkanIns
 {
     extensions.emplace_back(MakeUnique<VulkanInstanceExtension>("VK_KHR_win32_surface"));
 
-    extensions.emplace_back(MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
+    AddWindowInstanceExtensions(extensions);
 }
 
-VkSurfaceKHR VulkanWindowsPlatform::CreateSurface(VkInstance instance, void* data)
+VkSurfaceKHR VulkanWindowsPlatform::CreateSurface(VkInstance instance, platform::NativeWindow& window)
 {
-    Win32WindowData* windowData = static_cast<Win32WindowData*>(data);
-
-    VkSurfaceKHR surface{VK_NULL_HANDLE};
-
-    const VkResult result = glfwCreateWindowSurface(instance, windowData->glfwWindow, nullptr, &surface);
-
-    if (result != VK_SUCCESS)
-    {
-        LOGE("glfwCreateWindowSurface failed: {}", int32_t(result));
-
-        surface = VK_NULL_HANDLE;
-    }
-
-    return surface;
+    return CreateWindowSurface(instance, window);
 }
 
 void VulkanWindowsPlatform::DestroySurface(VkInstance instance, VkSurfaceKHR surface)

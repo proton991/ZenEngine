@@ -1,6 +1,6 @@
 #pragma once
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
-#include "Platform/GlfwWindow.h"
+#include "Platform/NativeWindow.h"
 
 namespace zen
 {

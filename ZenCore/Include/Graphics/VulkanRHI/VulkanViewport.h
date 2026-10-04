@@ -105,6 +105,8 @@ private:
 
     bool TryAcquireNextImage();
 
+    bool PresentInternal(bool deferRecreation);
+
     bool BeginResize(uint32_t width, uint32_t height, VulkanSwapchainRecreateInfo* recreateInfo);
 
     void FinishResize(VulkanSwapchainRecreateInfo* recreateInfo);

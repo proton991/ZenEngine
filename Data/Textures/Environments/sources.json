@@ -1,0 +1,65 @@
+[
+  {
+    "asset": "kloppenheim_06_puresky",
+    "file": "kloppenheim_06_puresky_1k.hdr",
+    "source": "https://polyhaven.com/a/kloppenheim_06_puresky",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloppenheim_06_puresky_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1173154,
+    "sha256": "206c67e3a1b992282821cf06662bdd69bbb4915c1c4444a66338a40d6a7d4e34"
+  },
+  {
+    "asset": "kloofendal_48d_partly_cloudy_puresky",
+    "file": "kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+    "source": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1435119,
+    "sha256": "fd94c84997b8a3c353b62c2125a9b44e19509956986a126e472684432a02d798"
+  },
+  {
+    "asset": "studio_small_09",
+    "file": "studio_small_09_1k.hdr",
+    "source": "https://polyhaven.com/a/studio_small_09",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1615248,
+    "sha256": "e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45"
+  },
+  {
+    "asset": "small_empty_room_1",
+    "file": "small_empty_room_1_1k.hdr",
+    "source": "https://polyhaven.com/a/small_empty_room_1",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/small_empty_room_1_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1548604,
+    "sha256": "b3e042c4a650370c383699f61f65fcca4f037af32660994dafa61fbb257a4b52"
+  },
+  {
+    "asset": "hotel_room",
+    "file": "hotel_room_1k.hdr",
+    "source": "https://polyhaven.com/a/hotel_room",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/hotel_room_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1572830,
+    "sha256": "a9cbe87f526df3a70041edcdbef86c95dda1cde961c5c69b1c84633d2f703fa7"
+  },
+  {
+    "asset": "large_corridor",
+    "file": "large_corridor_1k.hdr",
+    "source": "https://polyhaven.com/a/large_corridor",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/large_corridor_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1604744,
+    "sha256": "5de5e2bf0e20505e83c072cd2861f4b4d83ad84790a9e17d5001416449115f4f"
+  },
+  {
+    "asset": "carpentry_shop_01",
+    "file": "carpentry_shop_01_1k.hdr",
+    "source": "https://polyhaven.com/a/carpentry_shop_01",
+    "download": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/carpentry_shop_01_1k.hdr",
+    "license": "CC0-1.0",
+    "bytes": 1716794,
+    "sha256": "c2bf31836a7ef304f672068887cd6d9e73e2971ad41e84fd234a027d98755ea7"
+  }
+]

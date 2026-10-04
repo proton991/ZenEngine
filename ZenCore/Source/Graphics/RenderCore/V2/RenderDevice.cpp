@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <bit>
 #include <limits>
+#include <filesystem>
 
 zen::rc::RenderFrameState GRenderFrameState;
 
@@ -142,13 +143,17 @@ void RenderDevice::Init(RHIViewport* viewport)
     m_pMainViewport = viewport;
 
     BeginFrame();
+}
 
-    if (viewport != nullptr)
-    {
-        m_pRendererServer = ZEN_NEW() RendererServer(this, viewport);
+void RenderDevice::InitializeRendererServer()
+{
+    VERIFY_EXPR_MSG(m_pUploadQueue != nullptr, "Initialize the render device before its renderer server");
 
-        m_pRendererServer->Init();
-    }
+    VERIFY_EXPR_MSG(m_pRendererServer == nullptr, "RendererServer is already initialized");
+
+    m_pRendererServer = ZEN_NEW() RendererServer(this, m_pMainViewport);
+
+    m_pRendererServer->Init();
 }
 
 void RenderDevice::Destroy()
@@ -796,6 +801,11 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph&             
         StampOutgoingFrameSerials();
 
         result = native.submission;
+
+        if (native.needsRecreation && viewport != nullptr)
+        {
+            m_pRecreateViewport = viewport;
+        }
 
         if (pPresented != nullptr)
         {
@@ -2397,11 +2407,14 @@ void RenderDevice::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHIText
     m_pTextureManager->LoadSceneTextures(pScene, outTextures);
 }
 
-void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* pTexture)
+bool RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* pTexture, bool fallbackToBlack)
 {
-    std::string fullPath = ZEN_TEXTURE_PATH + file;
+    const std::filesystem::path fullPath = std::filesystem::u8path(ZEN_TEXTURE_PATH) / std::filesystem::u8path(file);
 
-    m_pTextureManager->LoadTextureEnv(fullPath, pTexture);
+    const std::u8string utf8             = fullPath.generic_u8string();
+
+    return m_pTextureManager->LoadTextureEnv(std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size()), pTexture,
+                                             fallbackToBlack);
 }
 
 void RenderDevice::LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment)

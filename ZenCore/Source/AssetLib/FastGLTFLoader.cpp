@@ -2159,7 +2159,9 @@ void FastGLTFLoader::LoadGltfTextures(sg::Scene* pScene)
                                                               source.height, Format::R8G8B8A8_UNORM, source.bytesData,
                                                               source.samplerIndex));
 
-                textures[clone.second]->mipBytes = source.mipBytes;
+                textures[clone.second]->mipBytes          = source.mipBytes;
+
+                textures[clone.second]->linearSourceIndex = source.index;
             }
 
             pScene->LoadDefaultTextures(static_cast<uint32_t>(textures.size()));

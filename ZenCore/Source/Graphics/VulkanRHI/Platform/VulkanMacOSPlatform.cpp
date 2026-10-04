@@ -1,4 +1,5 @@
 #include "Utils/Errors.h"
+#include "VulkanWindowBridge.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #if defined(ZEN_MACOS)
 #    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
@@ -13,25 +14,12 @@ void VulkanMacOSPlatform::AddInstanceExtensions(HeapVector<UniquePtr<VulkanInsta
 #    endif
     extensions.emplace_back(MakeUnique<VulkanInstanceExtension>("VK_EXT_metal_surface"));
 
-    extensions.emplace_back(MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
+    AddWindowInstanceExtensions(extensions);
 }
 
-VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* pData)
+VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, platform::NativeWindow& window)
 {
-    MacOSWindowData* pWindowData = static_cast<MacOSWindowData*>(pData);
-
-    VkSurfaceKHR surface{VK_NULL_HANDLE};
-
-    const VkResult result = glfwCreateWindowSurface(instance, pWindowData->pGlfwWindow, nullptr, &surface);
-
-    if (result != VK_SUCCESS)
-    {
-        LOGE("glfwCreateWindowSurface failed: {}", int32_t(result));
-
-        surface = VK_NULL_HANDLE;
-    }
-
-    return surface;
+    return CreateWindowSurface(instance, window);
 }
 
 void VulkanMacOSPlatform::DestroySurface(VkInstance instance, VkSurfaceKHR surface)

@@ -142,7 +142,7 @@ void ComputeVoxelizer::BuildVoxelizationGraph()
     }
 }
 
-void ComputeVoxelizer::BuildVisualizationGraph()
+void ComputeVoxelizer::BuildVisualizationGraph(const RenderView& view)
 {
     if (m_pCube == nullptr)
     {
@@ -216,12 +216,11 @@ void ComputeVoxelizer::BuildVisualizationGraph()
 
     draw.SetPipelineStates(pso);
 
-    draw.AddColorOutput(m_pViewport->GetColorBackBuffer(), RHIRenderTargetLoadOp::eLoad);
+    draw.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
-    draw.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eClear,
-                               RHIRenderTargetStoreOp::eStore);
+    draw.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
-    draw.SetRenderArea(0, 0, m_pViewport->GetWidth(), m_pViewport->GetHeight());
+    draw.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
 
     draw.SetPassTag("VoxelDraw2");
 

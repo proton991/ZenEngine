@@ -24,9 +24,7 @@ static const SmallVector<Mat4, 6> cMatrices = {
     glm::rotate(Mat4(1.0f), glm::radians(180.0f), Vec3(0.0f, 0.0f, 1.0f)),
 };
 
-SkyboxRenderer::SkyboxRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
-    m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
-{}
+SkyboxRenderer::SkyboxRenderer(RenderDevice* pRenderDevice) : m_pRenderDevice(pRenderDevice) {}
 
 void SkyboxRenderer::Init()
 {
@@ -42,6 +40,10 @@ void SkyboxRenderer::Init()
 
 void SkyboxRenderer::Destroy()
 {
+    m_pendingPreprocessEnvironments.clear();
+
+    m_recordedPreprocessEnvironments.clear();
+
     m_pRenderDevice->DestroyTexture(m_offscreenTextures.pIrradiance);
 
     m_pRenderDevice->DestroyTexture(m_offscreenTextures.pPrefiltered);
@@ -94,15 +96,30 @@ void SkyboxRenderer::PrepareTextures()
     }
 }
 
-void SkyboxRenderer::BuildRenderGraph()
+void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
 {
     RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
 
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
 
-    m_pRecordedPreprocessEnvTexture = nullptr;
+    m_recordedPreprocessEnvironments.clear();
 
-    if (EnvTexture* pTexture = m_pPendingPreprocessEnvTexture)
+    // Preparing another scene must not add its work to the active scene's graph.
+    // The BRDF target identifies the environment even when its handle bundle is copied.
+    const EnvTexture& active = m_pScene->GetEnvTexture();
+
+    const HeapVector<EnvTexture*>::iterator pending =
+        std::find_if(m_pendingPreprocessEnvironments.begin(), m_pendingPreprocessEnvironments.end(),
+                     [&active](const EnvTexture* environment) { return environment->pLutBRDF == active.pLutBRDF; });
+
+    if (pending != m_pendingPreprocessEnvironments.end())
+    {
+        m_recordedPreprocessEnvironments.push_back(*pending);
+
+        m_pendingPreprocessEnvironments.erase(pending);
+    }
+
+    for (EnvTexture* pTexture : m_recordedPreprocessEnvironments)
     {
         RHIGfxPipelineStates pso{};
 
@@ -239,10 +256,6 @@ void SkyboxRenderer::BuildRenderGraph()
 
             pRDG->AddGraphicsPass(std::move(lut)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
         }
-
-        m_pRecordedPreprocessEnvTexture = pTexture;
-
-        m_pPendingPreprocessEnvTexture  = nullptr;
     }
 
     RHIGfxPipelineStates pso{};
@@ -265,14 +278,13 @@ void SkyboxRenderer::BuildRenderGraph()
 
     desc.SetShaderProgramName("SkyboxRenderSP");
 
-    desc.AddColorOutput(m_pViewport->GetColorBackBuffer());
+    desc.AddColorOutput(view.GetColorTarget());
 
-    desc.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eClear,
-                               RHIRenderTargetStoreOp::eStore);
+    desc.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
     desc.SetPipelineStates(pso);
 
-    desc.SetRenderArea(0, 0, m_pViewport->GetWidth(), m_pViewport->GetHeight());
+    desc.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
 
     desc.SetPassTag("SkyboxDraw");
 
@@ -289,12 +301,19 @@ void SkyboxRenderer::BuildRenderGraph()
 
 void SkyboxRenderer::OnRenderGraphExecuted(bool succeeded)
 {
-    if (!succeeded && m_pPendingPreprocessEnvTexture == nullptr)
+    if (!succeeded)
     {
-        m_pPendingPreprocessEnvTexture = m_pRecordedPreprocessEnvTexture;
+        for (EnvTexture* environment : m_recordedPreprocessEnvironments)
+        {
+            if (std::find(m_pendingPreprocessEnvironments.begin(), m_pendingPreprocessEnvironments.end(), environment)
+                == m_pendingPreprocessEnvironments.end())
+            {
+                m_pendingPreprocessEnvironments.push_back(environment);
+            }
+        }
     }
 
-    m_pRecordedPreprocessEnvTexture = nullptr;
+    m_recordedPreprocessEnvironments.clear();
 }
 
 void SkyboxRenderer::PreprocessEnvTexture(EnvTexture* pTexture)
@@ -308,20 +327,27 @@ void SkyboxRenderer::PreprocessEnvTexture(EnvTexture* pTexture)
 
     PrepareLutBRDF(pTexture);
 
-    m_pPendingPreprocessEnvTexture = pTexture;
+    // A partially allocated environment must be rejected by its scene before publication.
+    // Do not let it break a frame of the still-active scene during preparation.
+    if (pTexture->pSkybox != nullptr && pTexture->pIrradiance != nullptr && pTexture->pPrefiltered != nullptr
+        && pTexture->pLutBRDF != nullptr && pTexture->pIrradianceSampler != nullptr && pTexture->pPrefilteredSampler != nullptr
+        && pTexture->pLutBRDFSampler != nullptr
+        && std::find(m_pendingPreprocessEnvironments.begin(), m_pendingPreprocessEnvironments.end(), pTexture)
+               == m_pendingPreprocessEnvironments.end())
+    {
+        m_pendingPreprocessEnvironments.push_back(pTexture);
+    }
 }
 
 void SkyboxRenderer::CancelEnvironmentPreprocessing(const EnvTexture* environment)
 {
-    if (m_pPendingPreprocessEnvTexture == environment)
-    {
-        m_pPendingPreprocessEnvTexture = nullptr;
-    }
+    m_pendingPreprocessEnvironments.erase(
+        std::remove(m_pendingPreprocessEnvironments.begin(), m_pendingPreprocessEnvironments.end(), environment),
+        m_pendingPreprocessEnvironments.end());
 
-    if (m_pRecordedPreprocessEnvTexture == environment)
-    {
-        m_pRecordedPreprocessEnvTexture = nullptr;
-    }
+    m_recordedPreprocessEnvironments.erase(
+        std::remove(m_recordedPreprocessEnvironments.begin(), m_recordedPreprocessEnvironments.end(), environment),
+        m_recordedPreprocessEnvironments.end());
 }
 
 void SkyboxRenderer::PrepareEnvCubemaps(EnvTexture* pTexture)

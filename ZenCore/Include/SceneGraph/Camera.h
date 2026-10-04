@@ -67,6 +67,9 @@ public:
 
     void SetPosition(const Vec3& position);
 
+    // Explicit pose path for tools and scripted cameras; does not consult global input.
+    void SetPose(const Vec3& eye, const Vec3& target);
+
     void SetProjectionType(CameraProjectionType type)
     {
         m_projectionType = type;

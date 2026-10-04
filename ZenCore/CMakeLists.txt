@@ -143,7 +143,6 @@ set(ZEN_CORE_HEADERS
 
 
     Include/Platform/FileSystem.h
-    Include/Platform/GlfwWindow.h
     Include/Platform/InputController.h
     Include/Platform/NativeWindow.h
     Include/Platform/Timer.h
@@ -225,7 +224,8 @@ set(ZEN_CORE_SOURCES
     Source/Memory/Memory.cpp
 
     Source/Platform/FileSystem.cpp
-    Source/Platform/GlfwWindow.cpp
+    Source/Platform/NativeWindow.cpp
+    Source/Graphics/VulkanRHI/Platform/VulkanWindowBridge.cpp
     Source/Platform/InputController.cpp
 
     Source/vk_mem_alloc.cpp
@@ -241,7 +241,6 @@ target_include_directories(ZenCore PUBLIC
 )
 
 target_link_libraries(ZenCore PUBLIC
-    glfw
     spdlog
     gli
     glm
@@ -309,3 +308,22 @@ target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH="${SHADER_SPV_PATH}")
 set(ZEN_TEXTURE_PATH ${PROJECT_SOURCE_DIR}/Data/Textures/)
 target_compile_definitions(ZenCore PUBLIC ZEN_TEXTURE_PATH="${ZEN_TEXTURE_PATH}")
 target_compile_definitions(ZenCore PUBLIC ZEN_CONFIG_PATH="${PROJECT_SOURCE_DIR}/Data/engine.cfg")
+
+# Backend headers and third-party includes never propagate through the engine API.
+target_include_directories(ZenCore PRIVATE Source)
+
+# The window adapter boundary for backend-specific integrations outside ZenCore: the
+# ImGui platform bridge and native window tests. It exposes only that header and the
+# selected backend's headers, not ZenCore's other private sources.
+add_library(ZenWindowBackendInternal INTERFACE)
+target_include_directories(ZenWindowBackendInternal INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Internal/Include)
+target_link_libraries(ZenWindowBackendInternal INTERFACE zen_window_backend)
+target_link_libraries(ZenCore PRIVATE ZenWindowBackendInternal)
+if (ZEN_WINDOW_BACKEND STREQUAL "SDL3")
+    target_sources(ZenCore PRIVATE Source/Platform/SDLWindow.cpp)
+else ()
+    target_sources(ZenCore PRIVATE Source/Platform/GlfwWindow.cpp Source/Platform/GlfwWindowFrame.cpp)
+    if (WIN32)
+        target_link_libraries(ZenCore PRIVATE comctl32 dwmapi)
+    endif ()
+endif ()

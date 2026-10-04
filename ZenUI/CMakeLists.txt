@@ -1,42 +1,47 @@
-# Reusable platform/context + RDG draw backend. A future editor links this target.
-add_library(ZenUI STATIC Source/UIContext.cpp Source/UIRenderer.cpp Source/UIDrawPacket.cpp)
-target_include_directories(ZenUI PUBLIC Include)
-target_link_libraries(ZenUI PUBLIC ZenCore zen_imgui)
+# Each library has its own include root, so a consumer of the neutral renderer cannot
+# include ImGui or runtime-panel headers it does not link.
 
-# Runtime panels are independent of any future editor model or workspace.
-add_library(ZenRuntimeUI STATIC Source/RuntimeDebugUI.cpp Source/RuntimeDebugUISettings.cpp
-  Source/RuntimeDebugUIScene.cpp Source/RuntimeDebugUIModels.cpp Source/RuntimeSceneControls.cpp)
-target_link_libraries(ZenRuntimeUI PUBLIC ZenUI)
-target_link_libraries(scene_renderer_demo ZenRuntimeUI)
-target_compile_definitions(scene_renderer_demo PRIVATE ZEN_RUNTIME_UI=1)
-target_sources(scene_renderer_demo PRIVATE
-  ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoUI.cpp)
-target_sources(scene_renderer_demo PRIVATE
-  ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp)
+# Toolkit-independent draw packets, texture registry and RDG renderer.
+add_library(ZenUI STATIC Renderer/Source/UIRenderer.cpp Renderer/Source/UIDrawPacket.cpp)
+target_include_directories(ZenUI PUBLIC Renderer/Include)
+target_link_libraries(ZenUI PUBLIC ZenCore)
+
+# ImGui adapter: context, platform bridge, fonts and draw-packet conversion.
+add_library(ZenImGui STATIC ImGui/Source/UIContext.cpp ImGui/Source/ImGuiDrawPacket.cpp ImGui/Source/ImGuiRenderer.cpp)
+target_include_directories(ZenImGui PUBLIC ImGui/Include)
+target_link_libraries(ZenImGui PUBLIC ZenUI zen_imgui PRIVATE ZenWindowBackendInternal)
+
+if (ZEN_BUILD_RUNTIME_UI)
+  # Runtime panels are independent of the editor model and workspace.
+  add_library(ZenRuntimeUI STATIC Runtime/Source/RuntimeDebugUI.cpp Runtime/Source/RuntimeDebugUISettings.cpp
+    Runtime/Source/RuntimeDebugUIScene.cpp Runtime/Source/RuntimeDebugUIModels.cpp Runtime/Source/RuntimeSceneControls.cpp)
+  target_include_directories(ZenRuntimeUI PUBLIC Runtime/Include)
+  target_link_libraries(ZenRuntimeUI PUBLIC ZenImGui)
+endif ()
 
 if (BUILD_TESTING)
+  add_executable(UIRenderingTest Tests/UIRenderingTests.cpp)
+  target_link_libraries(UIRenderingTest PRIVATE ZenUI gtest_main)
+  add_test(NAME UIRenderingContractTest COMMAND UIRenderingTest --gtest_filter=UIRenderingContract.*)
+  add_test(NAME UIRenderingNativeTest COMMAND UIRenderingTest --gtest_filter=*UIRenderingNative*)
+  set_tests_properties(UIRenderingNativeTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+
   add_executable(UIDrawPacketTest Tests/UIDrawPacketTests.cpp)
-  target_link_libraries(UIDrawPacketTest PRIVATE ZenUI gtest_main)
+  target_link_libraries(UIDrawPacketTest PRIVATE ZenImGui gtest_main)
   add_test(NAME UIDrawPacketTest COMMAND UIDrawPacketTest)
   set_tests_properties(UIDrawPacketTest PROPERTIES LABELS "unit" TIMEOUT 120)
 
-  add_executable(RuntimeUIIntegrationTest Tests/RuntimeUIIntegrationTests.cpp)
-  target_link_libraries(RuntimeUIIntegrationTest PRIVATE ZenRuntimeUI gtest_main)
-  add_test(NAME RuntimeUIIntegrationTest COMMAND RuntimeUIIntegrationTest)
-  set_tests_properties(RuntimeUIIntegrationTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+  if (ZEN_BUILD_RUNTIME_UI)
+    add_executable(RuntimeUIIntegrationTest Tests/RuntimeUIIntegrationTests.cpp)
+    target_link_libraries(RuntimeUIIntegrationTest PRIVATE ZenRuntimeUI gtest_main)
+    add_test(NAME RuntimeUIIntegrationTest COMMAND RuntimeUIIntegrationTest)
+    set_tests_properties(RuntimeUIIntegrationTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+  endif ()
 
-  add_executable(SceneModelSwitchTest
-    Tests/SceneModelSwitchTests.cpp
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoUI.cpp
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoProfiling.cpp
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoVoxelCapture.cpp
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp)
-  target_include_directories(SceneModelSwitchTest PRIVATE
-    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer)
-  target_compile_definitions(SceneModelSwitchTest PRIVATE ZEN_RUNTIME_UI=1 ZEN_SCENE_MODEL_TEST=1)
-  target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI gtest_main)
-  add_test(NAME SceneModelSwitchTest COMMAND SceneModelSwitchTest)
-  set_tests_properties(SceneModelSwitchTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+  if (ZEN_WINDOW_BACKEND STREQUAL "SDL3")
+    add_executable(UIPlatformTest Tests/UIPlatformTests.cpp)
+    target_link_libraries(UIPlatformTest PRIVATE ZenImGui ZenWindowBackendInternal gtest_main)
+    add_test(NAME UIPlatformTest COMMAND UIPlatformTest)
+    set_tests_properties(UIPlatformTest PROPERTIES LABELS "native" TIMEOUT 60)
+  endif ()
 endif ()

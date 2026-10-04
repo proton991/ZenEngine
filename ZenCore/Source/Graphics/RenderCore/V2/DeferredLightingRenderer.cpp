@@ -99,9 +99,7 @@ void RecordLightingCaptureClear(RDGPassCmdEncoder& encoder, const HeapVector<Com
 }
 } // namespace
 
-DeferredLightingRenderer::DeferredLightingRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
-    m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
-{}
+DeferredLightingRenderer::DeferredLightingRenderer(RenderDevice* pRenderDevice) : m_pRenderDevice(pRenderDevice) {}
 
 void DeferredLightingRenderer::Init()
 {
@@ -163,9 +161,9 @@ void DeferredLightingRenderer::PrepareSamplers()
     m_pTransmissionSampler                       = m_pRenderDevice->CreateSampler(transmissionSamplerInfo);
 }
 
-bool DeferredLightingRenderer::BuildLightingCaptureClear()
+bool DeferredLightingRenderer::BuildLightingCaptureClear(const RenderView& view)
 {
-    const uint64_t pixels = uint64_t(m_pViewport->GetWidth()) * m_pViewport->GetHeight();
+    const uint64_t pixels = uint64_t(view.GetWidth()) * view.GetHeight();
 
     uint64_t bytes        = 0;
 
@@ -215,25 +213,25 @@ bool DeferredLightingRenderer::BuildLightingCaptureClear()
     return valid;
 }
 
-void DeferredLightingRenderer::BuildRenderGraph(VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
+void DeferredLightingRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
 {
-    BuildGBufferGraph();
+    BuildGBufferGraph(view);
 
-    BuildCompositionGraph(voxelGI, shadows);
+    BuildCompositionGraph(view, voxelGI, shadows);
 }
 
-void DeferredLightingRenderer::BuildGBufferGraph()
+void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
 {
     RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
 
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
 
-    const uint32_t width  = m_pViewport->GetWidth();
+    const uint32_t width  = view.GetWidth();
 
-    const uint32_t height = m_pViewport->GetHeight();
+    const uint32_t height = view.GetHeight();
 
     // One texel per screen pixel: the lighting pass reads the G-buffer at its own fragment
-    // coordinate. A suspended (zero-sized) viewport renders nothing and declares no G-buffer.
+    // coordinate. A suspended (zero-sized) view renders nothing and declares no G-buffer.
     const bool declared = width != 0 && height != 0 && !UsesForwardMaterials();
 
     m_gbufferExtent     = declared ? glm::uvec2(width, height) : glm::uvec2(0, 0);
@@ -268,7 +266,7 @@ void DeferredLightingRenderer::BuildGBufferGraph()
 
         offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_emissive_occlusion");
 
-        offscreen.AddDepthStencilOutput(m_pViewport->GetDepthStencilFormat(), width, height, "offscreen_depth",
+        offscreen.AddDepthStencilOutput(view.GetDepthStencilFormat(), width, height, "offscreen_depth",
                                         RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
         offscreen.SetPipelineStates(pso);
@@ -297,11 +295,13 @@ void DeferredLightingRenderer::BuildGBufferGraph()
     }
 }
 
-void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
+void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
+                                                     VoxelGIRenderer*     voxelGI,
+                                                     SceneShadowRenderer* shadows)
 {
     if (UsesForwardMaterials())
     {
-        BuildForwardGraph(voxelGI, shadows);
+        BuildForwardGraph(view, voxelGI, shadows);
     }
     else
     {
@@ -313,9 +313,9 @@ void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI, S
 
         const bool capture      = m_captureOutput != nullptr;
 
-        const bool captureValid = !capture || BuildLightingCaptureClear();
+        const bool captureValid = !capture || BuildLightingCaptureClear(view);
 
-        const glm::uvec2 captureExtent(m_pViewport->GetWidth(), m_pViewport->GetHeight());
+        const glm::uvec2 captureExtent(view.GetWidth(), view.GetHeight());
 
         {
             RHIGfxPipelineStates pso{};
@@ -337,14 +337,14 @@ void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI, S
             lighting.SetShaderProgramName(voxelGI == nullptr ? (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP")
                                                              : (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
 
-            lighting.AddColorOutput(m_pViewport->GetColorBackBuffer(), RHIRenderTargetLoadOp::eLoad);
+            lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
-            lighting.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eClear,
+            lighting.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear,
                                            RHIRenderTargetStoreOp::eStore);
 
             lighting.SetPipelineStates(pso);
 
-            lighting.SetRenderArea(0, 0, m_pViewport->GetWidth(), m_pViewport->GetHeight());
+            lighting.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
 
             lighting.SetPassTag("SceneLighting");
 
@@ -409,7 +409,7 @@ void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI, S
             m_captureRecorded = true;
         }
 
-        BuildLightMarkers();
+        BuildLightMarkers(view);
     }
 }
 
@@ -430,15 +430,15 @@ bool DeferredLightingRenderer::UsesForwardMaterials() const
     return result;
 }
 
-void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
+void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
 {
     RenderGraph* graph            = m_pRenderDevice->GetCurrentFrameRDG();
 
     RDGResourceManager* resources = graph->GetResourceManager();
 
-    const uint32_t width          = m_pViewport->GetWidth();
+    const uint32_t width          = view.GetWidth();
 
-    const uint32_t height         = m_pViewport->GetHeight();
+    const uint32_t height         = view.GetHeight();
 
     const EnvTexture& env         = m_pScene->GetEnvTexture();
 
@@ -537,8 +537,7 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
     background.AddColorOutput(color, RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore, true);
 
-    background.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eClear,
-                                     RHIRenderTargetStoreOp::eStore);
+    background.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
     background.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
 
@@ -552,7 +551,7 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
     HeapVector<ForwardDrawDepth> translucentDepths;
 
-    const Mat4 view = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData())->view;
+    const Mat4 cameraView = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData())->view;
 
     for (sg::Node* node : m_pScene->GetRenderableNodes())
     {
@@ -571,7 +570,7 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
                 if (IsTranslucent(material))
                 {
-                    const Mat4 modelView = view * m_pScene->GetInstanceTransform(draw.nodeIndex);
+                    const Mat4 modelView = cameraView * m_pScene->GetInstanceTransform(draw.nodeIndex);
 
                     if (material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend)
                         && draw.topology == sg::MeshTopology::Triangles)
@@ -658,7 +657,7 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
                 source.AddColorOutput(scatterPosition, RHIRenderTargetLoadOp::eLoad);
 
-                source.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eLoad,
+                source.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eLoad,
                                              RHIRenderTargetStoreOp::eStore);
 
                 source.BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
@@ -818,8 +817,7 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
             forward.AddColorOutput(stage == 3 ? displayColor : color, RHIRenderTargetLoadOp::eLoad);
 
-            forward.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eLoad,
-                                          RHIRenderTargetStoreOp::eStore);
+            forward.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eLoad, RHIRenderTargetStoreOp::eStore);
 
             forward.BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
 
@@ -877,7 +875,7 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
     toneMap.SetRenderArea(0, 0, width, height);
 
-    toneMap.AddColorOutput(m_pViewport->GetColorBackBuffer(), RHIRenderTargetLoadOp::eLoad);
+    toneMap.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
     toneMap.BindSampledTexture("sceneColorMap", m_pTransmissionSampler, displayColor);
 
@@ -889,10 +887,10 @@ void DeferredLightingRenderer::BuildForwardGraph(VoxelGIRenderer* voxelGI, Scene
 
     m_captureRecorded = false;
 
-    BuildLightMarkers();
+    BuildLightMarkers(view);
 }
 
-void DeferredLightingRenderer::BuildLightMarkers()
+void DeferredLightingRenderer::BuildLightMarkers(const RenderView& view)
 {
     const SceneUniformData& sceneData = *reinterpret_cast<const SceneUniformData*>(m_pScene->GetSceneUniformData());
 
@@ -918,12 +916,11 @@ void DeferredLightingRenderer::BuildLightMarkers()
 
         markers.SetPipelineStates(pso);
 
-        markers.SetRenderArea(0, 0, m_pViewport->GetWidth(), m_pViewport->GetHeight());
+        markers.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
 
-        markers.AddColorOutput(m_pViewport->GetColorBackBuffer(), RHIRenderTargetLoadOp::eLoad);
+        markers.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
-        markers.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(), RHIRenderTargetLoadOp::eLoad,
-                                      RHIRenderTargetStoreOp::eStore);
+        markers.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eLoad, RHIRenderTargetStoreOp::eStore);
 
         markers.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
 

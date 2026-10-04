@@ -178,5 +178,17 @@ struct EnvTexture
     RHISampler* pPrefilteredSampler{nullptr};
     RHISampler* pLutBRDFSampler{nullptr};
     NameID      tag;
+
+    bool IsComplete() const
+    {
+        bool valid = pIrradianceSampler != nullptr && pPrefilteredSampler != nullptr && pLutBRDFSampler != nullptr;
+
+        for (RHITexture* texture : {pSkybox, pIrradiance, pPrefiltered, pLutBRDF})
+        {
+            valid = valid && texture != nullptr && texture->GetDefaultView() != nullptr;
+        }
+
+        return valid;
+    }
 };
 } // namespace zen::rc

@@ -1,289 +1,397 @@
-#include "Platform/GlfwWindow.h"
+// Migration fallback. Selected only with ZEN_WINDOW_BACKEND=GLFW.
+#include "Platform/WindowBackend.h"
 #include "Utils/Errors.h"
-#include "Platform/InputController.h"
+#include <algorithm>
 
 namespace zen::platform
 {
-static void GlfwErrorCallback(int code, const char* pMsg)
+namespace
 {
-    LOGE("GLFW error [{}]: {}", code, pMsg);
-}
-
-GlfwWindowImpl::GlfwWindowImpl(const WindowConfig& config)
+Key TranslateKey(int code)
 {
-    // set window data
-    m_data.width  = config.width;
+    Key key = Key::Unknown;
 
-    m_data.height = config.height;
-
-    if (!glfwInit())
+    switch (code)
     {
-        LOGE("Failed to initialize GLFW!");
-
-        abort();
+#define ZEN_KEY(engine, sdl, glfw) \
+    case glfw: key = Key::engine; break;
+#include "KeyMapping.inl"
+#undef ZEN_KEY
+        default: break;
     }
 
-    glfwSetErrorCallback(GlfwErrorCallback);
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-    glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
-
-    m_pHandle = glfwCreateWindow(config.width, config.height, config.title.c_str(), NULL, NULL);
-
-    glfwSetWindowUserPointer(m_pHandle, (void*)this);
-
-    CenterWindow();
-
-    SetupWindowCallbacks();
+    return key;
 }
 
-GlfwWindowImpl::~GlfwWindowImpl()
+NativeWindow& FromHandle(GLFWwindow* handle)
 {
-    Destroy();
+    return *static_cast<NativeWindow*>(glfwGetWindowUserPointer(handle));
 }
 
-void GlfwWindowImpl::CheckThreadOwnership() const
+void OnResize(GLFWwindow* handle, int, int)
 {
-    ASSERT(std::this_thread::get_id() == m_ownerThread);
+    WindowBackend::Resize(FromHandle(handle));
 }
 
-void GlfwWindowImpl::Destroy()
+void OnClose(GLFWwindow* handle)
 {
-    glfwDestroyWindow(m_pHandle);
-
-    glfwTerminate();
+    WindowBackend::Close(FromHandle(handle));
 }
 
-bool GlfwWindowImpl::CenterWindow()
+void OnKey(GLFWwindow* handle, int key, int, int action, int)
 {
-    int sx = 0, sy = 0;
+    InputEvent event;
 
-    int px = 0, py = 0;
+    event.type   = action == GLFW_RELEASE ? InputEventType::KeyUp : InputEventType::KeyDown;
 
-    int mx = 0, my = 0;
+    event.key    = TranslateKey(key);
 
-    int monitorCount = 0;
+    event.repeat = action == GLFW_REPEAT;
 
-    int best_area    = 0;
-
-    int final_x = 0, final_y = 0;
-
-    glfwGetWindowSize(m_pHandle, &sx, &sy);
-
-    glfwGetWindowPos(m_pHandle, &px, &py);
-
-    bool centered = false;
-
-    // Iterate throug all monitors
-    GLFWmonitor** ppMonitors = glfwGetMonitors(&monitorCount);
-
-    if (ppMonitors != nullptr)
-    {
-        centered = true;
-
-        for (int j = 0; j < monitorCount; ++j)
-        {
-            glfwGetMonitorPos(ppMonitors[j], &mx, &my);
-
-            const GLFWvidmode* pMode = glfwGetVideoMode(ppMonitors[j]);
-
-            if (!pMode)
-            {
-                continue;
-            }
-
-            // Get intersection of two rectangles - screen and window
-            int minX = std::max(mx, px);
-
-            int minY = std::max(my, py);
-
-            int maxX = std::min(mx + pMode->width, px + sx);
-
-            int maxY = std::min(my + pMode->height, py + sy);
-
-            // Calculate area of the intersection
-            int area = std::max(maxX - minX, 0) * std::max(maxY - minY, 0);
-
-            // If its bigger than actual (window covers more space on this monitor)
-            if (area > best_area)
-            {
-                // Calculate proper position in this monitor
-                final_x   = mx + (pMode->width - sx) / 2;
-
-                final_y   = my + (pMode->height - sy) / 2;
-
-                best_area = area;
-            }
-        }
-
-        // We found something
-        if (best_area)
-        {
-            glfwSetWindowPos(m_pHandle, final_x, final_y);
-        }
-
-        // Something is wrong - current window has NOT any intersection with any monitors. Move it to the default one.
-        else
-        {
-            GLFWmonitor* pPrimary = glfwGetPrimaryMonitor();
-
-            if (pPrimary)
-            {
-                const GLFWvidmode* pDesktop = glfwGetVideoMode(pPrimary);
-
-                if (pDesktop)
-                {
-                    glfwSetWindowPos(m_pHandle, (pDesktop->width - sx) / 2, (pDesktop->height - sy) / 2);
-                }
-                else
-                {
-                    centered = false;
-                }
-            }
-            else
-            {
-                centered = false;
-            }
-        }
-    }
-
-    return centered;
+    WindowBackend::Deliver(FromHandle(handle), event);
 }
 
-void GlfwWindowImpl::OnWindowSize(GLFWwindow* handle, int width, int height)
+void OnPosition(GLFWwindow* handle, double x, double y)
 {
-    GlfwWindowImpl* window = static_cast<GlfwWindowImpl*>(glfwGetWindowUserPointer(handle));
+    InputEvent event;
 
-    window->m_data.width   = width;
+    event.type = InputEventType::PointerMove;
 
-    window->m_data.height  = height;
+    event.x    = float(x);
 
-    // WSI can send WM_SIZE while RenderCore waits for RHI. Publish the dimensions
-    // now, but defer application callbacks so they cannot re-enter that RHI wait.
-    window->m_data.shouldResize = true;
+    event.y    = float(y);
+
+    WindowBackend::Deliver(FromHandle(handle), event);
 }
 
-static void OnKey(GLFWwindow*, int key, int, int action, int)
-{
-    if (key >= 0 && key <= GLFW_KEY_LAST)
-    {
-        switch (action)
-        {
-            case GLFW_PRESS: KeyboardMouseInput::GetInstance().PressKey(key); break;
-            case GLFW_RELEASE: KeyboardMouseInput::GetInstance().ReleaseKey(key); break;
-            default: break;
-        }
-    }
-}
-
-static void OnCursorPosition(GLFWwindow*, double x, double y)
-{
-    KeyboardMouseInput::GetInstance().SetCursorPos(x, y);
-}
-
-static void OnMouseButton(GLFWwindow*, int button, int action, int)
+void OnButton(GLFWwindow* handle, int button, int action, int)
 {
     if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST)
     {
-        KeyboardMouseInput& input = KeyboardMouseInput::GetInstance();
+        InputEvent event;
 
-        if (action == GLFW_PRESS)
-        {
-            input.PressMouseButton(button);
+        event.type   = action == GLFW_RELEASE ? InputEventType::ButtonUp : InputEventType::ButtonDown;
 
-            input.SetMouseButtonRelease(button, false);
-        }
-        else if (action == GLFW_RELEASE)
-        {
-            input.ReleaseMouseButton(button);
+        event.button = static_cast<MouseButton>(button);
 
-            input.SetMouseButtonRelease(button, true);
-        }
+        WindowBackend::Deliver(FromHandle(handle), event);
     }
 }
 
-static void OnFocus(GLFWwindow*, int focused)
+void OnScroll(GLFWwindow* handle, double x, double y)
 {
-    if (focused == GLFW_FALSE)
+    InputEvent event;
+
+    event.type   = InputEventType::Wheel;
+
+    event.deltaX = float(x);
+
+    event.deltaY = float(y);
+
+    WindowBackend::Deliver(FromHandle(handle), event);
+}
+
+void OnText(GLFWwindow* handle, unsigned int codepoint)
+{
+    InputEvent event;
+
+    event.type = InputEventType::Text;
+
+    if (codepoint < 0x80)
     {
-        KeyboardMouseInput::GetInstance().Reset();
+        event.text.push_back(char(codepoint));
     }
-}
-
-void GlfwWindowImpl::SetupWindowCallbacks()
-{
-    glfwSetWindowSizeCallback(m_pHandle, &GlfwWindowImpl::OnWindowSize);
-
-    glfwSetKeyCallback(m_pHandle, OnKey);
-
-    glfwSetCursorPosCallback(m_pHandle, OnCursorPosition);
-
-    glfwSetMouseButtonCallback(m_pHandle, OnMouseButton);
-
-    glfwSetWindowFocusCallback(m_pHandle, OnFocus);
-}
-
-void GlfwWindowImpl::ShowCursor() const
-{
-    glfwSetInputMode(m_pHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-}
-
-void GlfwWindowImpl::HideCursor() const
-{
-    glfwSetInputMode(m_pHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-}
-
-void GlfwWindowImpl::Update(bool processInputShortcuts)
-{
-    glfwPollEvents();
-
-    if (m_data.shouldResize)
+    else
     {
-        const uint32_t width  = static_cast<uint32_t>(m_data.width);
-
-        const uint32_t height = static_cast<uint32_t>(m_data.height);
-
-        // Clear first: a new notification during the callback belongs to the next update.
-        m_data.shouldResize = false;
-
-        if (m_onResize)
+        if (codepoint < 0x800)
         {
-            m_onResize(width, height);
-        }
-
-        LOGI("Window resized to {} x {}", width, height);
-    }
-
-    if (processInputShortcuts && KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_TAB))
-    {
-        m_data.showCursor = !m_data.showCursor;
-
-        if (m_data.showCursor)
-        {
-            ShowCursor();
-
-            KeyboardMouseInput::GetInstance().SetDirty(false);
-
-            KeyboardMouseInput::GetInstance().Pause();
+            event.text.push_back(char(0xC0 | (codepoint >> 6)));
         }
         else
         {
-            HideCursor();
+            if (codepoint < 0x10000)
+            {
+                event.text.push_back(char(0xE0 | (codepoint >> 12)));
+            }
+            else
+            {
+                event.text.push_back(char(0xF0 | (codepoint >> 18)));
 
-            KeyboardMouseInput::GetInstance().SetDirty(true);
+                event.text.push_back(char(0x80 | ((codepoint >> 12) & 0x3F)));
+            }
 
-            KeyboardMouseInput::GetInstance().Resume();
+            event.text.push_back(char(0x80 | ((codepoint >> 6) & 0x3F)));
         }
+
+        event.text.push_back(char(0x80 | (codepoint & 0x3F)));
     }
 
-    if ((processInputShortcuts && KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_ESCAPE))
-        || glfwWindowShouldClose(m_pHandle))
-    {
-        m_data.shouldClose = true;
+    WindowBackend::Deliver(FromHandle(handle), event);
+}
 
-        glfwSetWindowShouldClose(m_pHandle, GLFW_TRUE);
+void OnDrop(GLFWwindow* handle, int count, const char** paths)
+{
+    for (int index = 0; index < count; ++index)
+    {
+        InputEvent event;
+
+        event.type = InputEventType::FileDrop;
+
+        event.text = paths[index];
+
+        WindowBackend::Deliver(FromHandle(handle), event);
     }
 }
 
+void OnFocus(GLFWwindow* handle, int focused)
+{
+    InputEvent event;
+
+    event.type = focused ? InputEventType::FocusGained : InputEventType::FocusLost;
+
+    WindowBackend::Deliver(FromHandle(handle), event);
+}
+} // namespace
+
+GLFWwindow* WindowBackend::Borrow(const NativeWindow& window)
+{
+    window.CheckThreadOwnership();
+
+    return static_cast<GLFWwindow*>(window.m_handle);
+}
+
+void WindowBackend::InstallCallbacks(NativeWindow& window)
+{
+    GLFWwindow* handle = Borrow(window);
+
+    glfwSetWindowUserPointer(handle, &window);
+
+    glfwSetFramebufferSizeCallback(handle, OnResize);
+
+    glfwSetWindowCloseCallback(handle, OnClose);
+
+    glfwSetKeyCallback(handle, OnKey);
+
+    glfwSetCursorPosCallback(handle, OnPosition);
+
+    glfwSetMouseButtonCallback(handle, OnButton);
+
+    glfwSetWindowFocusCallback(handle, OnFocus);
+
+    glfwSetCharCallback(handle, OnText);
+
+    glfwSetScrollCallback(handle, OnScroll);
+
+    glfwSetDropCallback(handle, OnDrop);
+}
+
+NativeWindow::NativeWindow(const WindowConfig& config) : m_resizable(config.resizable)
+{
+    WindowBackend::Acquire();
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    glfwWindowHint(GLFW_RESIZABLE, config.resizable);
+
+    glfwWindowHint(GLFW_VISIBLE, config.visible);
+
+    m_handle = glfwCreateWindow(int(config.width), int(config.height), config.title.c_str(), nullptr, nullptr);
+
+    VERIFY_EXPR_MSG(m_handle != nullptr, "Cannot create GLFW fallback window");
+
+    WindowBackend::InstallCallbacks(*this);
+
+    WindowBackend::Register(*this);
+}
+
+NativeWindow::~NativeWindow()
+{
+    CheckThreadOwnership();
+
+    SetCustomFrame(false);
+
+    glfwDestroyWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Unregister(*this);
+}
+
+WindowExtent NativeWindow::GetExtent2D() const
+{
+    int width  = 0;
+
+    int height = 0;
+
+    glfwGetWindowSize(WindowBackend::Borrow(*this), &width, &height);
+
+    return {uint32_t(std::max(width, 0)), uint32_t(std::max(height, 0))};
+}
+
+WindowExtent NativeWindow::GetFramebufferExtent() const
+{
+    int width  = 0;
+
+    int height = 0;
+
+    if (!IsMinimized())
+    {
+        glfwGetFramebufferSize(WindowBackend::Borrow(*this), &width, &height);
+    }
+
+    return {uint32_t(std::max(width, 0)), uint32_t(std::max(height, 0))};
+}
+
+float NativeWindow::GetDisplayScale() const
+{
+    float x = 1;
+
+    float y = 1;
+
+    glfwGetWindowContentScale(WindowBackend::Borrow(*this), &x, &y);
+
+    return std::max(x, y);
+}
+
+float NativeWindow::GetUIScale() const
+{
+    const WindowExtent pixels = GetFramebufferExtent();
+
+    const WindowExtent units  = GetExtent2D();
+
+    return pixels.width > 0 ? GetDisplayScale() * float(units.width) / float(pixels.width) : 1.0f;
+}
+
+bool NativeWindow::SetCustomFrame(bool enabled)
+{
+    return WindowBackend::SetFallbackFrame(*this, enabled);
+}
+
+// GLFW has no file picker; callers provide their own path entry.
+bool NativeWindow::SupportsFileDialogs()
+{
+    return false;
+}
+
+bool NativeWindow::ShowOpenFileDialog(const FileDialogFilter&, const std::string&)
+{
+    CheckThreadOwnership();
+
+    return false;
+}
+
+bool NativeWindow::TakeFileDialogResult(std::string&)
+{
+    CheckThreadOwnership();
+
+    return false;
+}
+bool NativeWindow::IsFocused() const
+{
+    return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_FOCUSED) == GLFW_TRUE;
+}
+
+bool NativeWindow::IsMinimized() const
+{
+    return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_ICONIFIED) == GLFW_TRUE;
+}
+
+bool NativeWindow::IsMaximized() const
+{
+    return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_MAXIMIZED) == GLFW_TRUE;
+}
+
+bool NativeWindow::IsDecorated() const
+{
+    return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_DECORATED) == GLFW_TRUE;
+}
+
+void NativeWindow::Show()
+{
+    glfwShowWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::Hide()
+{
+    glfwHideWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::Focus()
+{
+    glfwFocusWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::Minimize()
+{
+    glfwIconifyWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::Maximize()
+{
+    glfwMaximizeWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::Restore()
+{
+    glfwRestoreWindow(WindowBackend::Borrow(*this));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::SetSize(uint32_t width, uint32_t height)
+{
+    glfwSetWindowSize(WindowBackend::Borrow(*this), int(width), int(height));
+
+    WindowBackend::Resize(*this);
+}
+
+void NativeWindow::SetMinimumSize(uint32_t width, uint32_t height)
+{
+    glfwSetWindowSizeLimits(WindowBackend::Borrow(*this), int(width), int(height), GLFW_DONT_CARE, GLFW_DONT_CARE);
+}
+
+WindowPosition NativeWindow::GetPosition() const
+{
+    WindowPosition position;
+
+    glfwGetWindowPos(WindowBackend::Borrow(*this), &position.x, &position.y);
+
+    return position;
+}
+
+void NativeWindow::SetPosition(WindowPosition position)
+{
+    glfwSetWindowPos(WindowBackend::Borrow(*this), position.x, position.y);
+}
+
+void NativeWindow::ShowCursor() const
+{
+    glfwSetInputMode(WindowBackend::Borrow(*this), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+    m_cursorVisible = true;
+}
+
+void NativeWindow::HideCursor() const
+{
+    glfwSetInputMode(WindowBackend::Borrow(*this), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    m_cursorVisible = false;
+}
+void NativeWindow::SetTextInputEnabled(bool)
+{
+    CheckThreadOwnership();
+}
+
+void NativeWindow::SetTextInputArea(int, int, int, int, int)
+{
+    CheckThreadOwnership();
+}
 } // namespace zen::platform

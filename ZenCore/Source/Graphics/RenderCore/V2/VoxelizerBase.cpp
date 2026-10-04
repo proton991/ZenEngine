@@ -9,9 +9,7 @@
 
 namespace zen::rc
 {
-VoxelizerBase::VoxelizerBase(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
-    m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
-{}
+VoxelizerBase::VoxelizerBase(RenderDevice* pRenderDevice) : m_pRenderDevice(pRenderDevice) {}
 
 bool VoxelizerBase::IsReady() const
 {
@@ -365,11 +363,11 @@ void VoxelizerBase::SetRenderScene(RenderScene* pScene)
     m_surfaceRevision = 0;
 }
 
-void VoxelizerBase::BuildRenderGraph()
+void VoxelizerBase::BuildRenderGraph(const RenderView& view)
 {
     BuildVoxelizationGraph();
 
-    BuildVisualizationGraph();
+    BuildVisualizationGraph(view);
 }
 
 sg::AABB VoxelizerBase::GetVoxelBounds() const

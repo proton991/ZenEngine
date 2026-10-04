@@ -165,6 +165,130 @@ TEST_F(RenderCoreTest, PartialSceneTextureAllocationPublishesCleanupHandles)
     EXPECT_TRUE(destroyed.contains(id));
 }
 
+TEST_F(RenderCoreTest, FailedTextureStagingRetiresUnpublishedDestination)
+{
+    sg::Scene source;
+
+    AddLifetimeTexture(source);
+
+    StagingBufferManager staging(1024, 4096);
+
+    StagingUploadQueue uploads(device, &staging);
+
+    TextureManager textures(device, &uploads);
+
+    rhi->failBufferCreationAt = rhi->bufferCreations + 1;
+
+    HeapVector<RHITexture*> outputs;
+
+    textures.LoadSceneTextures(&source, outputs);
+
+    ASSERT_EQ(outputs.size(), 1u);
+
+    EXPECT_EQ(outputs[0], nullptr);
+
+    EXPECT_FALSE(uploads.HasPending());
+
+    const uint64_t id = rhi->createdTextureIds.back();
+
+    EXPECT_TRUE(device->PrepareForResourceReconfiguration());
+
+    EXPECT_TRUE(destroyed.contains(id));
+
+    textures.Destroy();
+
+    uploads.Destroy();
+
+    staging.Destroy();
+}
+
+TEST_F(RenderCoreEnvironmentTest, SceneReadinessRejectsMissingBuffersTexturesAndSamplers)
+{
+    sg::Scene source;
+
+    AddLifetimeTexture(source);
+
+    AddLifetimeEnvironment(source);
+
+    source.AddComponent(MakeUnique<sg::Sampler>("readiness_sampler"));
+
+    RHIBuffer** buffers[] = {&sceneInputs.vertices, &sceneInputs.indices, &sceneInputs.uv, &sceneInputs.nodes,
+                             &sceneInputs.materials};
+
+    for (RHIBuffer** buffer : buffers)
+    {
+        *buffer = device->CreateStorageBuffer(64, nullptr, "readiness_buffer");
+    }
+
+    device->LoadSceneTextures(&source, sceneInputs.textures);
+
+    device->LoadSceneEnvironment(&source, &sceneInputs.environment);
+
+    sceneInputs.samplers.push_back(device->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat()));
+
+    SceneData data{};
+
+    data.pScene = &source;
+
+    // The fixture injects handles into RenderScene; readiness uses production code.
+    RenderScene complete(device, data);
+
+    ASSERT_TRUE(complete.HasRequiredResources());
+
+    for (RHIBuffer** buffer : buffers)
+    {
+        RHIBuffer* saved = *buffer;
+
+        *buffer          = nullptr;
+
+        RenderScene partial(device, data);
+
+        EXPECT_FALSE(partial.HasRequiredResources());
+
+        *buffer = saved;
+    }
+
+    RHITexture** textures[] = {&sceneInputs.textures[0], &sceneInputs.environment.pSkybox, &sceneInputs.environment.pIrradiance,
+                               &sceneInputs.environment.pPrefiltered, &sceneInputs.environment.pLutBRDF};
+
+    for (RHITexture** texture : textures)
+    {
+        RHITexture* saved = *texture;
+
+        *texture          = nullptr;
+
+        RenderScene partial(device, data);
+
+        EXPECT_FALSE(partial.HasRequiredResources());
+
+        *texture = saved;
+    }
+
+    RHISampler** samplers[] = {&sceneInputs.samplers[0], &sceneInputs.environment.pIrradianceSampler,
+                               &sceneInputs.environment.pPrefilteredSampler, &sceneInputs.environment.pLutBRDFSampler};
+
+    for (RHISampler** sampler : samplers)
+    {
+        RHISampler* saved = *sampler;
+
+        *sampler          = nullptr;
+
+        RenderScene partial(device, data);
+
+        EXPECT_FALSE(partial.HasRequiredResources());
+
+        *sampler = saved;
+    }
+
+    device->GetRendererServer()->RequestSkyboxRenderer()->CancelEnvironmentPreprocessing(&sceneInputs.environment);
+
+    EXPECT_TRUE(device->PrepareForResourceReconfiguration());
+
+    complete.Destroy();
+
+    sceneInputs = {};
+}
+
 TEST_F(RenderCoreTest, InitialBufferUploadAllocationFailureRetiresUnpublishedDestination)
 {
     const std::array<uint8_t, 4> payload = {1, 2, 3, 4};
@@ -400,7 +524,7 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
 
     ASSERT_TRUE(graph.Begin());
 
-    skybox->BuildRenderGraph();
+    skybox->BuildRenderGraph(RenderView::FromViewport(viewport));
 
     ASSERT_TRUE(graph.End());
 
@@ -419,7 +543,7 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
 
     ASSERT_TRUE(graph.Begin());
 
-    skybox->BuildRenderGraph();
+    skybox->BuildRenderGraph(RenderView::FromViewport(viewport));
 
     ASSERT_TRUE(graph.End());
 
@@ -441,7 +565,7 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
 
     ASSERT_TRUE(graph.Begin());
 
-    skybox->BuildRenderGraph();
+    skybox->BuildRenderGraph(RenderView::FromViewport(viewport));
 
     ASSERT_TRUE(graph.End());
 

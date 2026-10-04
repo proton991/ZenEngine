@@ -183,12 +183,12 @@ protected:
 
         const Vec3 vertical(0, 1, 0);
 
-        const std::array<int32_t, 6> keys    = {GLFW_KEY_W, GLFW_KEY_S,          GLFW_KEY_A,
-                                                GLFW_KEY_D, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_LEFT_CONTROL};
+        const std::array<platform::Key, 6> keys = {platform::Key::W, platform::Key::S,         platform::Key::A,
+                                                   platform::Key::D, platform::Key::LeftShift, platform::Key::LeftControl};
 
-        const std::array<Vec3, 6> directions = {front, -front, -right, right, vertical, -vertical};
+        const std::array<Vec3, 6> directions    = {front, -front, -right, right, vertical, -vertical};
 
-        Vec3 expected                        = camera.GetPos();
+        Vec3 expected                           = camera.GetPos();
 
         camera.SetSpeed(2.0f);
 
@@ -196,7 +196,7 @@ protected:
 
         for (uint32_t key = 0; key < keys.size(); ++key)
         {
-            SCOPED_TRACE(keys[key]);
+            SCOPED_TRACE(static_cast<uint16_t>(keys[key]));
 
             input.PressKey(keys[key]);
 
@@ -550,7 +550,7 @@ TEST_F(CameraInput, StandardFirstPersonCameraKeepsWorldUpAndCurrentFrameMouseMov
 
     const Vec3 position = camera->GetPos();
 
-    input.PressKey(GLFW_KEY_W);
+    input.PressKey(platform::Key::W);
 
     input.SetCursorPos(20, -10);
 
@@ -570,7 +570,7 @@ TEST_F(CameraInput, StandardFirstPersonCameraKeepsWorldUpAndCurrentFrameMouseMov
 
     ExpectFiniteOrthonormalView(*camera);
 
-    input.ReleaseKey(GLFW_KEY_W);
+    input.ReleaseKey(platform::Key::W);
 
     MoveWithoutRotating(*camera);
 
