@@ -1,5 +1,11 @@
 # ZenEditor implementation plan
 
+**Roadmap update, 4 October 2026:** follow the
+[ZenEditor rendering plan](ZenEditorRenderingPlan.md) for all new work. It makes
+rendering, lighting, GI, debug outputs and a separate Run window the next priority.
+Steps 5 onward below are deferred historical proposals, not the active delivery
+sequence. The implemented viewer and architectural boundaries remain the baseline.
+
 Architecture revised and adopted, 3 October 2026. Based on the current checkout.
 
 Create a top-level **`ZenEditor/`** beside `ZenCore/`, `ZenUI/`, and `ZenSamples/`.
@@ -14,7 +20,7 @@ work; steps 1–4 have now been implemented as the first read-only viewer.
 
 The adopted design keeps editor behavior independent of the UI toolkit and
 separates the ImGui adapter from shared GPU rendering. Steps 1–4 were executed on
-3 October 2026. Steps 5 onward remain planned and are not enabled.
+3 October 2026. Steps 5 onward are deferred and are not enabled.
 
 ## Required platforms and window migration
 
@@ -589,6 +595,9 @@ Frontend replacement covers input/layout interpretation, widget presentation and
 draw conversion; new rendering features may also require backend extensions.
 
 ## Delivery and review order
+
+This is the original delivery order. The active continuation is the milestone
+table in [ZenEditor rendering plan](ZenEditorRenderingPlan.md#implementation-milestones).
 
 | Delivery | Steps | Review evidence |
 | --- | --- | --- |
