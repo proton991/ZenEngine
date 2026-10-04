@@ -32,6 +32,8 @@ struct EditorPreferences
     // Keyed by stable panel ID; panels without an entry use their default visibility.
     HashMap<std::string, bool> panels;
     RecentFiles                recentFiles;
+    // The Scene view's mouse and keyboard hint.
+    bool showSceneControls{true};
 };
 
 // %LOCALAPPDATA%/ZenEngine/ZenEditor, else $XDG_CONFIG_HOME or ~/.config, else the temp directory.

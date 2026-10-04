@@ -14,6 +14,9 @@ constexpr const char* kPreferencesFile = "preferences-v3.txt";
 
 constexpr const char* kSignature       = "ZenEditorPreferences3";
 
+// Boolean options are stored as `option "name" 0|1`; builds without an option skip it.
+constexpr const char* kSceneControlsOption = "scene.controls_hint";
+
 // Versions 1 and 2 stored visibility as a bitmask in this panel order.
 constexpr const char* kLegacyPanels[] = {"Hierarchy", "SceneViewport", "Inspector", "RenderSettings", "Assets", "Output"};
 
@@ -64,6 +67,17 @@ bool LoadCurrent(const std::filesystem::path& file, EditorPreferences& preferenc
             valid = bool(fields) && recent.size() < kMaxEditorRecentFiles;
 
             recent.push_back(value);
+        }
+        else if (key == "option")
+        {
+            int enabled = 0;
+
+            valid       = bool(fields >> enabled) && !value.empty();
+
+            if (value == kSceneControlsOption)
+            {
+                loaded.showSceneControls = enabled != 0;
+            }
         }
         else
         {
@@ -247,6 +261,9 @@ bool SaveEditorPreferences(const std::filesystem::path& directory, const EditorP
         {
             output << "recent " << std::quoted(path) << '\n';
         }
+
+        output << "option " << std::quoted(std::string(kSceneControlsOption)) << ' ' << (preferences.showSceneControls ? 1 : 0)
+               << '\n';
 
         output.flush();
 

@@ -23,6 +23,14 @@ public:
 
     void Apply(const CameraInput& input);
 
+    // Orbits around the current target by angles in radians, in the same directions as
+    // an orbit drag: +x matches dragging right and +y dragging down.
+    void OrbitBy(Vec2 radians);
+
+    // Orbits around the current target to look along direction, keeping the distance.
+    // Straight down or up views stay within the pitch limit, with X to the right.
+    void LookAlong(Vec3 direction);
+
     void SetExtent(uint32_t width, uint32_t height);
 
     void SetOrthographic(bool enabled);

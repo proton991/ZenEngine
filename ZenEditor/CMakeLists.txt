@@ -14,7 +14,8 @@ add_library(ZenEditorModel STATIC
   Model/Source/EditorText.cpp
   Model/Source/InspectorNavigation.cpp
   Model/Source/NodeInspection.cpp
-  Model/Source/SceneAssets.cpp)
+  Model/Source/SceneAssets.cpp
+  Model/Source/ViewAxes.cpp)
 target_include_directories(ZenEditorModel PUBLIC Model/Include)
 target_link_libraries(ZenEditorModel PUBLIC ZenCore)
 
@@ -48,6 +49,7 @@ add_library(ZenEditorUI STATIC
   ImGui/Source/InspectorNavigationWidget.cpp
   ImGui/Source/SceneLoadingDialog.cpp
   ImGui/Source/MeshPreviewWidget.cpp
+  ImGui/Source/SceneViewOverlays.cpp
   ImGui/Source/Panels/AssetsPanel.cpp
   ImGui/Source/Panels/HierarchyPanel.cpp
   ImGui/Source/Panels/InspectorPanel.cpp

@@ -2,8 +2,10 @@
 #include "Editor/Model/EditorLog.h"
 #include "Editor/Model/EditorPreferences.h"
 #include "Editor/Model/EditorSelection.h"
+#include "Editor/Model/ViewAxes.h"
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 
 namespace zen::editor
@@ -232,6 +234,137 @@ TEST(EditorModel, BoundsPickingAndProjectionDoNotNeedAWindow)
     ASSERT_TRUE(scene.GetBounds(scene.GetRoots()[0], root));
 
     EXPECT_GT(root.GetMax().x, bounds.GetMax().x);
+}
+
+const ViewAxisEnd& FindEnd(const ViewAxes& axes, uint32_t axis, bool negative)
+{
+    const ViewAxisEnd* found = &axes.ends[0];
+
+    for (const ViewAxisEnd& end : axes.ends)
+    {
+        if (end.axis == axis && end.negative == negative)
+        {
+            found = &end;
+        }
+    }
+
+    return *found;
+}
+
+TEST(EditorModel, ViewAxesFollowTheCameraAndLookAlongKeepsTheOrbitCenter)
+{
+    EditorCamera camera;
+
+    camera.SetExtent(800, 600);
+
+    camera.Frame(sg::AABB(Vec3(-1, 0, -1), Vec3(1, 2, 1)));
+
+    const Vec3 center(0, 1, 0);
+
+    const float distance = glm::length(camera.GetCamera().GetPos() - center);
+
+    // The default view faces -Z: +X points right, +Y up (screen y grows down), +Z out.
+    ViewAxes axes = ProjectViewAxes(camera.GetCamera().GetViewMatrix());
+
+    EXPECT_NEAR(FindEnd(axes, 0, false).offset.x, 1.0f, 1e-4f);
+
+    EXPECT_NEAR(FindEnd(axes, 1, false).offset.y, -1.0f, 1e-4f);
+
+    EXPECT_EQ(axes.ends[5].GetDirection(), Vec3(0, 0, 1));
+
+    EXPECT_EQ(axes.ends[0].GetDirection(), Vec3(0, 0, -1));
+
+    uint64_t revision = camera.GetRevision();
+
+    // Viewing from the +X side looks toward -X, with -Z to the right.
+    camera.LookAlong(Vec3(-2, 0, 0));
+
+    EXPECT_GT(camera.GetRevision(), revision);
+
+    Vec3 eye = camera.GetCamera().GetPos();
+
+    EXPECT_NEAR(glm::length(eye - center), distance, distance * 1e-4f);
+
+    EXPECT_NEAR(eye.x - center.x, distance, distance * 1e-4f);
+
+    axes = ProjectViewAxes(camera.GetCamera().GetViewMatrix());
+
+    EXPECT_EQ(axes.ends[5].GetDirection(), Vec3(1, 0, 0));
+
+    EXPECT_NEAR(FindEnd(axes, 2, false).offset.x, -1.0f, 1e-4f);
+
+    // Looking straight down stays within the pitch limit with X right and -Z up.
+    camera.LookAlong(Vec3(0, -1, 0));
+
+    eye = camera.GetCamera().GetPos();
+
+    EXPECT_GT(eye.y - center.y, distance * 0.99f);
+
+    EXPECT_NEAR(glm::length(eye - center), distance, distance * 1e-4f);
+
+    axes = ProjectViewAxes(camera.GetCamera().GetViewMatrix());
+
+    EXPECT_EQ(axes.ends[5].GetDirection(), Vec3(0, 1, 0));
+
+    EXPECT_NEAR(FindEnd(axes, 0, false).offset.x, 1.0f, 1e-4f);
+
+    EXPECT_LT(FindEnd(axes, 2, true).offset.y, -0.99f);
+
+    revision = camera.GetRevision();
+
+    camera.LookAlong(Vec3(0.0f));
+
+    EXPECT_EQ(camera.GetRevision(), revision);
+}
+
+TEST(EditorModel, OrbitByTurnsTheViewLikeAGrabbedSphereAroundTheOrbitCenter)
+{
+    EditorCamera camera;
+
+    camera.SetExtent(800, 600);
+
+    camera.Frame(sg::AABB(Vec3(-1, 0, -1), Vec3(1, 2, 1)));
+
+    const Vec3 center(0, 1, 0);
+
+    const float distance = glm::length(camera.GetCamera().GetPos() - center);
+
+    // Dragging right a quarter turn carries the sphere's front (+Z) to its right edge.
+    camera.OrbitBy(Vec2(glm::half_pi<float>(), 0.0f));
+
+    Mat4 view = camera.GetCamera().GetViewMatrix();
+
+    EXPECT_NEAR(ToViewAxesSpace(view, Vec3(0, 0, 1)).x, 1.0f, 1e-4f);
+
+    EXPECT_NEAR(glm::length(camera.GetCamera().GetPos() - center), distance, distance * 1e-4f);
+
+    camera.LookAlong(Vec3(0, 0, -1));
+
+    // Dragging down carries the front down and raises the camera.
+    camera.OrbitBy(Vec2(0.0f, 0.5f));
+
+    view = camera.GetCamera().GetViewMatrix();
+
+    EXPECT_NEAR(ToViewAxesSpace(view, Vec3(0, 0, 1)).y, std::sin(0.5f), 1e-4f);
+
+    EXPECT_GT(camera.GetCamera().GetPos().y, center.y);
+
+    // Pitch stops short of the pole instead of flipping over it.
+    camera.OrbitBy(Vec2(0.0f, 10.0f));
+
+    view = camera.GetCamera().GetViewMatrix();
+
+    EXPECT_LT(ToViewAxesSpace(view, Vec3(0, 1, 0)).z, 1.0f);
+
+    EXPECT_GT(ToViewAxesSpace(view, Vec3(0, 1, 0)).z, 0.99f);
+
+    EXPECT_NEAR(glm::length(camera.GetCamera().GetPos() - center), distance, distance * 1e-4f);
+
+    const uint64_t revision = camera.GetRevision();
+
+    camera.OrbitBy(Vec2(0.0f));
+
+    EXPECT_EQ(camera.GetRevision(), revision);
 }
 
 TEST(EditorModel, SceneAssetsShareMeshesAndMaterialsWithoutEnginePlaceholders)
@@ -587,6 +720,29 @@ TEST(EditorModel, PreferencesRoundTripByPanelIdAndMigrateEarlierVersions)
     const HeapVector<std::string>& read    = loaded.recentFiles.Get();
 
     EXPECT_TRUE(std::equal(read.begin(), read.end(), written.begin(), written.end()));
+
+    EXPECT_TRUE(loaded.showSceneControls);
+
+    preferences.showSceneControls = false;
+
+    ASSERT_TRUE(SaveEditorPreferences(directory, preferences));
+
+    ASSERT_TRUE(LoadEditorPreferences(directory, loaded));
+
+    EXPECT_FALSE(loaded.showSceneControls);
+
+    {
+        // Options from newer builds are skipped; known ones still apply.
+        std::ofstream future(directory / "preferences-v3.txt", std::ios::trunc);
+
+        future << "ZenEditorPreferences3\noption \"future.option\" 1\noption \"scene.controls_hint\" 0\n";
+    }
+
+    EditorPreferences forward;
+
+    ASSERT_TRUE(LoadEditorPreferences(directory, forward));
+
+    EXPECT_FALSE(forward.showSceneControls);
 
     {
         std::ofstream corrupt(directory / "preferences-v3.txt", std::ios::trunc);

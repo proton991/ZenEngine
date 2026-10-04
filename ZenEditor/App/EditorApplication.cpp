@@ -363,6 +363,9 @@ public:
             input.orbit = Vec2(15, -8);
 
             m_controller->GetCamera().Apply(input);
+
+            // An orientation-sphere drag, which keeps the orbit center in view.
+            m_controller->GetCamera().OrbitBy(Vec2(0.7f, 0.35f));
         }
 
         if (frame == 20)

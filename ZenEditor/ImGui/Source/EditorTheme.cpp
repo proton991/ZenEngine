@@ -24,6 +24,7 @@ const EditorPalette& GetEditorPalette()
                                           .windowButtonHover = IM_COL32(55, 70, 84, 255),
                                           .closeButtonHover  = IM_COL32(190, 50, 58, 255),
                                           .axis              = {Shade(0xe85957), Shade(0x70c763), Shade(0x59a1f0)},
+                                          .axisLabel         = IM_COL32(16, 20, 26, 255),
                                           .previewBackground = IM_COL32(27, 32, 38, 255)};
 
     return palette;

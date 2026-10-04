@@ -4,6 +4,11 @@ Steps 1–4 of the [implementation plan](../Doc/ZenEditorImplementationPlan.md) 
 a separate, read-only editor application. Editing, saving scene documents, undo,
 gizmos and Play remain disabled until later phases.
 
+The active roadmap is the [rendering plan](../Doc/ZenEditorRenderingPlan.md): one
+Rendering panel for lighting, GI, algorithms and debug outputs, followed by a Run
+action that opens a separate render window. Scene and asset authoring are deferred.
+These additions are planned and are not yet implemented.
+
 ![Running maximized ZenEditor](../Doc/imgs/zeneditor-sdl3.png)
 
 ## Build and launch
@@ -62,6 +67,20 @@ configuration and do not depend on the launch working directory.
   Scene-image drags retain navigation ownership when the panel is floating.
 - F frames the selection; Home or Frame All frames the scene. Orthographic toggles
   projection. The camera is independent of cameras authored in the glTF.
+- The Scene toolbar's **Controls** checkbox shows a list of these mouse and keyboard
+  controls over the bottom-left of the scene. The frame shortcuts come from the
+  action registry. The setting is saved with the editor preferences, and the list
+  is hidden when the view is too small to hold it.
+- The orientation sphere in the top-right corner is bound to the camera. It shows
+  world X (red), Y (green) and Z (blue) on a translucent ball whose great circles
+  are brighter on the front half; faint rings mark the negative ends. Every camera
+  change turns the sphere. Dragging the sphere orbits the camera around the current
+  center at the same distance, so the sphere's surface follows the cursor (one
+  sphere radius of drag turns the view one radian). Like the viewport orbit, pitch
+  stops just short of straight up or down. Clicking an axis end without dragging
+  views the scene from that side; straight-down and straight-up views keep X to the
+  right. Left presses on the sphere never select the geometry behind it. Small
+  views omit the sphere.
 - Menus, toolbar buttons and shortcuts run the same registered actions, so each
   command has one label, shortcut and enabled state. Shortcuts work anywhere in the
   workspace except while typing, while a widget is active or while a menu or modal
@@ -184,7 +203,7 @@ headers of a layer it does not link:
 
 | Folder / target | Responsibility | Direct dependencies |
 | --- | --- | --- |
-| `Model/` `ZenEditorModel` | Scene parsing and the read-only `EditorScene` (node lookup, child lists, hierarchy filter, inspection, bounds, CPU picking), `SceneAssetIndex` and CPU previews, `EditorSelection` and pick stamps, `InspectorNavigation` tabs and history, `EditorCamera`, the `EditorActions` registry, `EditorPreferences` and recent files, environment discovery, mesh preview settings, logs | `ZenCore` |
+| `Model/` `ZenEditorModel` | Scene parsing and the read-only `EditorScene` (node lookup, child lists, hierarchy filter, inspection, bounds, CPU picking), `SceneAssetIndex` and CPU previews, `EditorSelection` and pick stamps, `InspectorNavigation` tabs and history, `EditorCamera` and `ViewAxes` orientation math, the `EditorActions` registry, `EditorPreferences` and recent files, environment discovery, mesh preview settings, logs | `ZenCore` |
 | `Rendering/` `ZenEditorRender` | `EditorViewport`: GPU scene publication as a prepare/commit/discard transaction, offscreen images, preview textures, selection bounds and GPU pick results. `MeshPreviewRenderer`: the Inspector's material-free mesh image. Reads the model, never changes it | `ZenEditorModel` |
 | `Services/` `ZenEditorServices` | `EditorController`: owns the editor state, runs transactions across model and GPU (loading, applying picks, framing) and registers the core actions | `ZenEditorRender` |
 | `Platform/` `ZenEditorPlatform` | Native title-bar hit testing and window actions; no ImGui types | `ZenCore` |

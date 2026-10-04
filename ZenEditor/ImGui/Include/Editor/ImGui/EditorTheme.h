@@ -34,6 +34,8 @@ struct EditorPalette
     ImU32  windowButtonHover;
     ImU32  closeButtonHover;
     ImVec4 axis[3];
+    // Text on the axis colors, such as the Scene view's orientation gizmo labels.
+    ImU32 axisLabel;
     // Matches the mesh preview renderer's clear color around a letterboxed image.
     ImU32 previewBackground;
 };

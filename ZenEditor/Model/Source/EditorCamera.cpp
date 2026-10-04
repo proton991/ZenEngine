@@ -4,6 +4,12 @@
 
 namespace zen::editor
 {
+namespace
+{
+// Keeps the view direction away from the world up vector used by the view matrix.
+constexpr float kMaxPitch = 1.55f;
+} // namespace
+
 EditorCamera::EditorCamera() : m_camera(Vec3(0, 0, 2), Vec3(0), 1.0f) {}
 
 Vec3 EditorCamera::Forward() const
@@ -56,7 +62,7 @@ void EditorCamera::Apply(const CameraInput& input)
 
         m_yaw               += rotation.x * 0.004f;
 
-        m_pitch              = std::clamp(m_pitch - rotation.y * 0.004f, -1.55f, 1.55f);
+        m_pitch              = std::clamp(m_pitch - rotation.y * 0.004f, -kMaxPitch, kMaxPitch);
 
         const Vec3 forward   = Forward();
 
@@ -85,6 +91,39 @@ void EditorCamera::Apply(const CameraInput& input)
         m_distance  = std::clamp(m_distance * std::exp(-input.dolly * 0.15f), m_scale * 0.005f, m_scale * 50.0f);
 
         m_eye       = m_target - forward * m_distance;
+
+        Publish();
+    }
+}
+
+void EditorCamera::OrbitBy(Vec2 radians)
+{
+    if (radians != Vec2(0.0f))
+    {
+        m_yaw   += radians.x;
+
+        m_pitch  = std::clamp(m_pitch - radians.y, -kMaxPitch, kMaxPitch);
+
+        m_eye    = m_target - Forward() * m_distance;
+
+        Publish();
+    }
+}
+
+void EditorCamera::LookAlong(Vec3 direction)
+{
+    const float length = glm::length(direction);
+
+    if (length > 0.0f)
+    {
+        const Vec3 forward = direction / length;
+
+        // Vertical views have no yaw of their own; facing -Z keeps X to the right.
+        m_yaw   = std::abs(forward.y) > 0.999f ? -glm::half_pi<float>() : std::atan2(forward.z, forward.x);
+
+        m_pitch = std::clamp(std::asin(std::clamp(forward.y, -1.0f, 1.0f)), -kMaxPitch, kMaxPitch);
+
+        m_eye   = m_target - Forward() * m_distance;
 
         Publish();
     }

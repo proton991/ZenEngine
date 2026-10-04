@@ -1,5 +1,6 @@
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
+#include "SceneViewOverlays.h"
 
 namespace zen::editor
 {
@@ -27,20 +28,23 @@ private:
         return 1;
     }
 
-    // Shortcuts such as F and Home are global actions; this handles camera input and picks.
-    void Navigate(EditorContext& context, ImVec2 origin, ImVec2 extent, bool allowed)
+    // Shortcuts such as F and Home are global actions; this handles camera input, picks
+    // and the orientation sphere, which owns left clicks and drags that start on it.
+    void Navigate(EditorContext& context, ImVec2 origin, ImVec2 extent, bool allowed, bool hovered, const ViewAxesHover& sphere)
     {
-        const ImGuiIO& io  = ImGui::GetIO();
-
-        const bool hovered = ImGui::IsItemHovered();
+        const ImGuiIO& io = ImGui::GetIO();
 
         if (!allowed || ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
             m_navigation = 0;
+
+            m_sphere.Cancel();
         }
         else
         {
-            if (hovered)
+            m_sphere.Update(context.editor.GetCamera(), sphere, hovered && !io.KeyAlt && m_navigation == 0);
+
+            if (hovered && !m_sphere.IsActive())
             {
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                 {
@@ -96,7 +100,7 @@ private:
 
             context.editor.GetCamera().Apply(input);
 
-            if (hovered && !io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            if (hovered && !io.KeyAlt && !sphere.sphere && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 context.editor.Pick(Vec2((io.MousePos.x - origin.x) / extent.x, (io.MousePos.y - origin.y) / extent.y));
             }
@@ -138,6 +142,15 @@ private:
             context.editor.GetActions().Execute(actions::FrameAll);
         }
 
+        ImGui::SameLine();
+
+        ImGui::Checkbox("Controls", &context.editor.GetPreferences().showSceneControls);
+
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("Show mouse and keyboard controls over the scene");
+        }
+
         if (context.editor.GetScene().Get() == nullptr || !context.editor.GetViewport().HasScene())
         {
             ImGui::TextWrapped(context.editor.GetScene().Get() == nullptr
@@ -145,6 +158,8 @@ private:
                                    : "This scene contains no renderable geometry. Its nodes are available in the hierarchy.");
 
             m_navigation = 0;
+
+            m_sphere.Cancel();
         }
         else
         {
@@ -182,7 +197,22 @@ private:
 
                 const bool allowed = DrawSceneImage(ui::ImGuiRenderer::GetTextureID(m_image), extent, context.focused);
 
-                Navigate(context, origin, extent, allowed);
+                // Read before the overlays, whose tooltips are separate windows.
+                const bool hovered = ImGui::IsItemHovered();
+
+                const ImVec2 end(origin.x + extent.x, origin.y + extent.y);
+
+                // The sphere responds only while no other camera drag is running.
+                const ViewAxesHover sphere =
+                    DrawViewAxes(context.editor.GetCamera().GetCamera().GetViewMatrix(), origin, end,
+                                 allowed && hovered && m_navigation == 0 && !m_sphere.IsActive(), m_sphere.IsActive());
+
+                if (context.editor.GetPreferences().showSceneControls)
+                {
+                    DrawSceneControlsHint(context.editor.GetActions(), origin, end);
+                }
+
+                Navigate(context, origin, extent, allowed, hovered, sphere);
             }
         }
     }
@@ -191,6 +221,7 @@ private:
     ui::UITextureHandle m_image;
     uint64_t            m_revision{0};
     int                 m_navigation{0};
+    ViewSphereInput     m_sphere;
 };
 } // namespace
 
