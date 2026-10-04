@@ -95,10 +95,10 @@ void main() {
 
 	// ---------- Direct Lighting ----------
 	vec3 Lo = vec3(0.0);
-	for (int i = 0; i < int(sceneUbo.lightInfo.x); ++i) {
+	for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i) {
 		vec3 L;
         float distanceToLight;
-        vec3 radiance = EvaluateLight(sceneUbo.lights[i], worldPos, L, distanceToLight);
+        vec3 radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i], worldPos, L, distanceToLight);
 		float NdotL = max(dot(N, L), 0.0);
 		if (NdotL <= 0.0) continue;
 
@@ -118,7 +118,7 @@ void main() {
 
         float visibility = 1.0;
 #ifdef VOXEL_GI
-        visibility = SceneLightVisibility(i,worldPos,surfaceNormal);
+        visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i,worldPos,surfaceNormal);
 #endif
         Lo += (kD * diffuse + specular) * radiance * NdotL * visibility;
 	}

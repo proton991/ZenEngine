@@ -71,11 +71,13 @@ private:
 
             CameraInput input;
 
-            input.seconds = context.seconds;
+            input.seconds   = context.seconds;
 
-            input.fast    = io.KeyShift;
+            input.moveSpeed = context.editor.GetPreferences().cameraMoveSpeed;
 
-            input.dolly   = hovered ? io.MouseWheel : 0;
+            input.fast      = io.KeyShift;
+
+            input.dolly     = hovered ? io.MouseWheel : 0;
 
             const Vec2 delta(io.MouseDelta.x, io.MouseDelta.y);
 
@@ -109,34 +111,6 @@ private:
 
     void DrawContents(EditorContext& context) override
     {
-        const float scaleFactor   = EditorScale();
-
-        int projection            = context.editor.GetCamera().IsOrthographic() ? 1 : 0;
-
-        const char* projections[] = {"Perspective", "Orthographic"};
-
-        ImGui::SetNextItemWidth(132 * scaleFactor);
-
-        if (ImGui::Combo("##Projection", &projection, projections, 2))
-        {
-            context.editor.GetCamera().SetOrthographic(projection == 1);
-        }
-
-        ImGui::SameLine();
-
-        int mode            = int(context.editor.GetViewport().GetSnapshot().requestedMode);
-
-        const char* modes[] = {"Voxels", "PBR", "Voxel GI"};
-
-        ImGui::SetNextItemWidth(112 * scaleFactor);
-
-        if (ImGui::Combo("##RenderMode", &mode, modes, 3))
-        {
-            context.editor.GetViewport().SetRenderMode(static_cast<rc::RenderOption>(mode));
-        }
-
-        ImGui::SameLine();
-
         if (ImGui::Button("Frame All"))
         {
             context.editor.GetActions().Execute(actions::FrameAll);

@@ -122,16 +122,18 @@ TEST(SceneImport, NormalizationKeepsMeshesLightsAndCamerasTogether)
     EXPECT_FLOAT_EQ(rendered[0].intensity, 5.0f);
 }
 
-TEST(SceneImport, FallbackLightsCoverSixFacesAndStayOutsideWorldGeometryBounds)
+TEST(SceneImport, ExplicitBoundsPresetCoversSixFacesAndStaysOutsideWorldGeometryBounds)
 {
     for (const sg::AABB& bounds :
          {sg::AABB(Vec3(-3, -1, -7), Vec3(8, 5, 2)), sg::AABB(Vec3(0), Vec3(0)), sg::AABB(Vec3(-2, 0, -2), Vec3(2, 0, 2))})
     {
         sg::Scene scene;
 
-        scene.GetAABB()                         = bounds;
+        scene.GetAABB() = bounds;
 
-        const HeapVector<rc::SceneLight> lights = rc::BuildSceneLights(scene);
+        EXPECT_TRUE(rc::BuildSceneLights(scene).empty());
+
+        const HeapVector<rc::SceneLight> lights = rc::BuildBoundsLightPreset(bounds);
 
         ASSERT_EQ(lights.size(), 6u);
 
@@ -362,7 +364,7 @@ TEST(SceneImport, ReloadReplacesNodesComponentsAndPayloadAndRejectsOtherFormats)
 
     EXPECT_EQ(loader.GetVertices().size(), 3u);
 
-    EXPECT_EQ(rc::BuildSceneLights(scene).size(), 6u);
+    EXPECT_TRUE(rc::BuildSceneLights(scene).empty());
 
     EXPECT_FALSE(loader.LoadFromFile("scene.obj", &scene));
 
@@ -398,11 +400,11 @@ TEST(SceneImport, QuantizedPositionsAndAssetsWithoutSceneAreSupported)
 
         EXPECT_EQ(scene.GetRenderableCount(), 1u);
 
-        EXPECT_EQ(rc::BuildSceneLights(scene).size(), 6u);
+        EXPECT_TRUE(rc::BuildSceneLights(scene).empty());
     }
 }
 
-TEST(SceneImport, ZeroIntensityAndInstancedLightsStillSuppressFallback)
+TEST(SceneImport, ZeroIntensityAndInstancedLightsArePreserved)
 {
     sg::Scene scene;
 

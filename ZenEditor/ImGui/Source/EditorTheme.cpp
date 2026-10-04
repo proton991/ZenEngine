@@ -15,13 +15,13 @@ ImVec4 Shade(unsigned int hex, float alpha = 1.0f)
 
 const EditorPalette& GetEditorPalette()
 {
-    static const EditorPalette palette = {.brand             = Shade(0x59abfa),
-                                          .icon              = IM_COL32(126, 172, 213, 255),
-                                          .iconStrong        = IM_COL32(121, 178, 224, 255),
-                                          .cardBackground    = IM_COL32(24, 32, 40, 255),
+    static const EditorPalette palette = {.brand             = Shade(0x8bb8ff),
+                                          .icon              = IM_COL32(153, 173, 204, 255),
+                                          .iconStrong        = IM_COL32(139, 184, 255, 255),
+                                          .cardBackground    = IM_COL32(34, 39, 50, 255),
                                           .swatchHighlight   = IM_COL32(255, 255, 255, 70),
-                                          .treeSelection     = Shade(0x33597d),
-                                          .windowButtonHover = IM_COL32(55, 70, 84, 255),
+                                          .treeSelection     = Shade(0x334867),
+                                          .windowButtonHover = IM_COL32(49, 58, 74, 255),
                                           .closeButtonHover  = IM_COL32(190, 50, 58, 255),
                                           .axis              = {Shade(0xe85957), Shade(0x70c763), Shade(0x59a1f0)},
                                           .axisLabel         = IM_COL32(16, 20, 26, 255),
@@ -42,7 +42,7 @@ void ApplyEditorTheme(float scale)
 
         ImFontConfig font;
 
-        font.SizePixels        = 15.0f * scale;
+        font.SizePixels        = 16.0f * scale;
 
         font.RasterizerDensity = io.DisplayFramebufferScale.x;
 
@@ -59,15 +59,15 @@ void ApplyEditorTheme(float scale)
 
     ImGui::StyleColorsDark(&style);
 
-    style.WindowPadding    = ImVec2(12, 10);
+    style.WindowPadding    = ImVec2(14, 12);
 
-    style.FramePadding     = ImVec2(8, 6);
+    style.FramePadding     = ImVec2(9, 5);
 
-    style.ItemSpacing      = ImVec2(8, 7);
+    style.ItemSpacing      = ImVec2(10, 8);
 
     style.ItemInnerSpacing = ImVec2(6, 4);
 
-    style.CellPadding      = ImVec2(4, 5);
+    style.CellPadding      = ImVec2(4, 6);
 
     style.IndentSpacing    = 18;
 
@@ -79,104 +79,112 @@ void ApplyEditorTheme(float scale)
 
     style.FrameBorderSize                                                  = 1;
 
-    style.WindowRounding                                                   = 3;
+    style.WindowRounding                                                   = 8;
 
-    style.ChildRounding = style.FrameRounding = style.PopupRounding = style.TabRounding = 3;
+    style.ChildRounding = style.PopupRounding = 8;
 
-    style.ScrollbarRounding                                                             = 6;
+    style.FrameRounding = style.GrabRounding = 5;
 
-    style.TabBorderSize                                                                 = 0;
+    style.TabRounding                        = 5;
 
-    style.TabBarBorderSize                                                              = 1;
+    style.ScrollbarRounding                  = 6;
 
-    style.TabBarOverlineSize                                                            = 2;
+    style.TabBorderSize                      = 0;
 
-    style.DockingSeparatorSize                                                          = 4;
+    style.TabBarBorderSize                   = 1;
 
-    style.DisabledAlpha                                                                 = 0.48f;
+    style.TabBarOverlineSize                 = 2;
 
-    ImVec4* colors                                                                      = style.Colors;
+    style.DockingSeparatorSize               = 4;
 
-    colors[ImGuiCol_Text]                                                               = Shade(0xe1e6ec);
+    style.DisabledAlpha                      = 0.5f;
 
-    colors[ImGuiCol_TextDisabled]                                                       = Shade(0x89949f);
+    style.SeparatorTextBorderSize            = 1;
 
-    colors[ImGuiCol_WindowBg]                                                           = Shade(0x202830);
+    style.SeparatorTextPadding               = ImVec2(0, 8);
 
-    colors[ImGuiCol_ChildBg]                                                            = Shade(0x1c242b);
+    ImVec4* colors                           = style.Colors;
 
-    colors[ImGuiCol_PopupBg]                                                            = Shade(0x242d36);
+    colors[ImGuiCol_Text]                    = Shade(0xe8edf5);
 
-    colors[ImGuiCol_Border]                                                             = Shade(0x36434e);
+    colors[ImGuiCol_TextDisabled]            = Shade(0x9ba8bb);
 
-    colors[ImGuiCol_BorderShadow]                                                       = Shade(0x000000, 0);
+    colors[ImGuiCol_WindowBg]                = Shade(0x1b1f28);
 
-    colors[ImGuiCol_FrameBg]                                                            = Shade(0x171f26);
+    colors[ImGuiCol_ChildBg]                 = Shade(0x222732);
 
-    colors[ImGuiCol_FrameBgHovered]                                                     = Shade(0x293947);
+    colors[ImGuiCol_PopupBg]                 = Shade(0x252b37);
 
-    colors[ImGuiCol_FrameBgActive]                                                      = Shade(0x30495e);
+    colors[ImGuiCol_Border]                  = Shade(0x3a4557, 0.65f);
 
-    colors[ImGuiCol_TitleBg] = colors[ImGuiCol_TitleBgCollapsed] = Shade(0x1b232b);
+    colors[ImGuiCol_BorderShadow]            = Shade(0x000000, 0);
 
-    colors[ImGuiCol_TitleBgActive]                               = Shade(0x252f39);
+    colors[ImGuiCol_FrameBg]                 = Shade(0x131720);
 
-    colors[ImGuiCol_MenuBarBg]                                   = Shade(0x1b232b);
+    colors[ImGuiCol_FrameBgHovered]          = Shade(0x29364a);
 
-    colors[ImGuiCol_Button]                                      = Shade(0x26313b);
+    colors[ImGuiCol_FrameBgActive]           = Shade(0x31445e);
 
-    colors[ImGuiCol_ButtonHovered]                               = Shade(0x344b60);
+    colors[ImGuiCol_TitleBg] = colors[ImGuiCol_TitleBgCollapsed] = Shade(0x151922);
 
-    colors[ImGuiCol_ButtonActive]                                = Shade(0x3e6485);
+    colors[ImGuiCol_TitleBgActive]                               = Shade(0x2a3446);
 
-    colors[ImGuiCol_Header]                                      = Shade(0x293540);
+    colors[ImGuiCol_MenuBarBg]                                   = Shade(0x151922);
 
-    colors[ImGuiCol_HeaderHovered]                               = Shade(0x354d65);
+    colors[ImGuiCol_Button]                                      = Shade(0x2b3444);
 
-    colors[ImGuiCol_HeaderActive]                                = Shade(0x3a6287);
+    colors[ImGuiCol_ButtonHovered]                               = Shade(0x3c536f);
 
-    colors[ImGuiCol_CheckMark] = colors[ImGuiCol_SliderGrab] = Shade(0x63adf4);
+    colors[ImGuiCol_ButtonActive]                                = Shade(0x476895);
 
-    colors[ImGuiCol_SliderGrabActive]                        = Shade(0x88c1f8);
+    colors[ImGuiCol_Header]                                      = Shade(0x2c3545);
 
-    colors[ImGuiCol_Separator]                               = Shade(0x36434e);
+    colors[ImGuiCol_HeaderHovered]                               = Shade(0x354b68);
 
-    colors[ImGuiCol_SeparatorHovered] = colors[ImGuiCol_SeparatorActive] = Shade(0x548fc6);
+    colors[ImGuiCol_HeaderActive]                                = Shade(0x3b5880);
 
-    colors[ImGuiCol_Tab] = colors[ImGuiCol_TabDimmed] = Shade(0x1a232b);
+    colors[ImGuiCol_CheckMark] = colors[ImGuiCol_SliderGrab] = Shade(0x8bb8ff);
 
-    colors[ImGuiCol_TabSelected] = colors[ImGuiCol_TabDimmedSelected] = Shade(0x293540);
+    colors[ImGuiCol_SliderGrabActive]                        = Shade(0xb0d0ff);
 
-    colors[ImGuiCol_TabHovered]                                       = Shade(0x33495e);
+    colors[ImGuiCol_Separator]                               = Shade(0x3a4557, 0.65f);
 
-    colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_TabDimmedSelectedOverline] = Shade(0x528fc9);
+    colors[ImGuiCol_SeparatorHovered] = colors[ImGuiCol_SeparatorActive] = Shade(0x739fdf);
 
-    colors[ImGuiCol_DockingPreview]                                                   = Shade(0x528fc9, 0.55f);
+    colors[ImGuiCol_Tab] = colors[ImGuiCol_TabDimmed] = Shade(0x151922);
 
-    colors[ImGuiCol_DockingEmptyBg]                                                   = Shade(0x141c23);
+    colors[ImGuiCol_TabSelected] = colors[ImGuiCol_TabDimmedSelected] = Shade(0x2c3545);
 
-    colors[ImGuiCol_ScrollbarBg]                                                      = Shade(0x1a2229);
+    colors[ImGuiCol_TabHovered]                                       = Shade(0x354762);
 
-    colors[ImGuiCol_ScrollbarGrab]                                                    = Shade(0x414f5d);
+    colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_TabDimmedSelectedOverline] = Shade(0x739fdf);
 
-    colors[ImGuiCol_ScrollbarGrabHovered]                                             = Shade(0x566a7a);
+    colors[ImGuiCol_DockingPreview]                                                   = Shade(0x739fdf, 0.55f);
 
-    colors[ImGuiCol_ScrollbarGrabActive]                                              = Shade(0x65829a);
+    colors[ImGuiCol_DockingEmptyBg]                                                   = Shade(0x11141b);
 
-    colors[ImGuiCol_TableHeaderBg]                                                    = Shade(0x293540);
+    colors[ImGuiCol_ScrollbarBg]                                                      = Shade(0x171b23);
 
-    colors[ImGuiCol_TableBorderStrong] = colors[ImGuiCol_TableBorderLight] = Shade(0x303d48);
+    colors[ImGuiCol_ScrollbarGrab]                                                    = Shade(0x3b4556);
 
-    colors[ImGuiCol_TextSelectedBg]                                        = Shade(0x3a6287, 0.8f);
+    colors[ImGuiCol_ScrollbarGrabHovered]                                             = Shade(0x53627a);
 
-    colors[ImGuiCol_NavCursor]                                             = Shade(0x63adf4);
+    colors[ImGuiCol_ScrollbarGrabActive]                                              = Shade(0x6b82a3);
+
+    colors[ImGuiCol_TableHeaderBg]                                                    = Shade(0x2c3545);
+
+    colors[ImGuiCol_TableBorderStrong] = colors[ImGuiCol_TableBorderLight] = Shade(0x343d4d);
+
+    colors[ImGuiCol_TextSelectedBg]                                        = Shade(0x3b5880, 0.8f);
+
+    colors[ImGuiCol_NavCursor]                                             = Shade(0x8bb8ff);
 
     style.ScaleAllSizes(scale);
 }
 
 float EditorScale()
 {
-    return ImGui::GetFontSize() / 15.0f;
+    return ImGui::GetFontSize() / 16.0f;
 }
 
 void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color)
@@ -222,7 +230,6 @@ void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color)
 
         case EditorIcon::Undo:
         case EditorIcon::Redo:
-        case EditorIcon::Rotate:
         {
             const bool redo = icon == EditorIcon::Redo;
 
@@ -242,28 +249,6 @@ void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color)
             }
         }
         break;
-
-        case EditorIcon::Move:
-            draw.AddLine(ImVec2(x, y + s * 0.5f), ImVec2(x + s, y + s * 0.5f), color, stroke);
-
-            draw.AddLine(ImVec2(x + s * 0.5f, y), ImVec2(x + s * 0.5f, y + s), color, stroke);
-
-            draw.AddTriangleFilled(ImVec2(x + s * 0.5f, y), ImVec2(x + s * 0.3f, y + s * 0.25f),
-                                   ImVec2(x + s * 0.7f, y + s * 0.25f), color);
-
-            draw.AddTriangleFilled(ImVec2(x + s, y + s * 0.5f), ImVec2(x + s * 0.75f, y + s * 0.3f),
-                                   ImVec2(x + s * 0.75f, y + s * 0.7f), color);
-            break;
-
-        case EditorIcon::Scale:
-            draw.AddRect(ImVec2(x, y + s * 0.6f), ImVec2(x + s * 0.4f, y + s), color, 0, 0, stroke);
-
-            draw.AddLine(ImVec2(x + s * 0.25f, y + s * 0.75f), ImVec2(x + s, y), color, stroke);
-
-            draw.AddLine(ImVec2(x + s * 0.5f, y), ImVec2(x + s, y), color, stroke);
-
-            draw.AddLine(ImVec2(x + s, y), ImVec2(x + s, y + s * 0.5f), color, stroke);
-            break;
 
         case EditorIcon::Cube:
         {
@@ -311,7 +296,7 @@ bool EditorToolButton(const char* label, EditorIcon icon, bool enabled, const ch
 
     DrawEditorIcon(icon,
                    ImVec2(start.x + ImGui::GetStyle().FramePadding.x, start.y + (ImGui::GetItemRectSize().y - size) * 0.5f),
-                   size, ImGui::GetColorU32(ImGuiCol_Text));
+                   size, enabled ? ImGui::GetColorU32(GetEditorPalette().brand) : ImGui::GetColorU32(ImGuiCol_Text));
 
     ImGui::EndDisabled();
 

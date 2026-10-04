@@ -1,3 +1,107 @@
+TEST_F(RenderCoreTest, ShadowResolutionPreflightAccountsForRetiredMapsWithoutMutatingResources)
+{
+    constexpr uint64_t MiB = 1024ull * 1024;
+
+    sg::Scene source;
+
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+
+    SceneData data{};
+
+    data.pScene = &source;
+
+    RenderScene scene(device, data);
+
+    sceneInputs.uniforms.lightInfo.x = MaxSceneLights;
+
+    for (uint32_t index = 0; index < MaxSceneLights; ++index)
+    {
+        sceneInputs.uniforms.lights[index] = {Vec4(0, 0, 0, 4), Vec4(0, -1, 0, 1), Vec4(1), Vec4(0, 0, 1, 0)};
+    }
+
+    SceneShadowRenderer shadows(device);
+
+    ASSERT_TRUE(shadows.SetResolution(2048));
+
+    ASSERT_TRUE(shadows.Prepare(scene, true));
+
+    const uint32_t allocations        = rhi->textureCreations;
+
+    const uint32_t waits              = rhi->deviceIdleWaits;
+
+    const size_t submissionWaits      = rhi->submissionWaits.size();
+
+    const uint64_t mapsId             = rhi->createdTextureIds.back();
+
+    rhi->info.deviceLocalMemoryBytes  = 4096 * MiB;
+
+    rhi->memoryStats.deviceLocalBytes = 3584 * MiB;
+
+    // Only 512 MiB is free, but Apply retires the 3072 MiB array and 16 MiB depth image.
+    // Their 1024 replacements need 768 + 4 MiB.
+    EXPECT_TRUE(shadows.Preflight(1024, 192));
+
+    rhi->memoryStats.budgetAvailable = true;
+
+    rhi->memoryStats.heapCount       = 1;
+
+    rhi->memoryStats.heaps[0]        = {4096 * MiB, 3584 * MiB, 4096 * MiB, true};
+
+    EXPECT_TRUE(shadows.Preflight(1024, 192));
+
+    EXPECT_TRUE(shadows.Preflight(2048, 192));
+
+    // A face-count change during a frame must allow the old and new arrays to coexist.
+    EXPECT_FALSE(shadows.Preflight(2048, 198));
+
+    EXPECT_FALSE(shadows.Preflight(4096, 192));
+
+    EXPECT_FALSE(shadows.Preflight(1024, MaxSceneShadowFaces + 1));
+
+    // Freeing the old maps does not help if unrelated usage still consumes the capacity/budget.
+    rhi->memoryStats.deviceLocalBytes = (4096 + 3088) * MiB;
+
+    EXPECT_FALSE(shadows.Preflight(1024, 192));
+
+    rhi->memoryStats.deviceLocalBytes    = 3584 * MiB;
+
+    rhi->memoryStats.heaps[0].usageBytes = (4096 + 3088) * MiB;
+
+    EXPECT_FALSE(shadows.Preflight(1024, 192));
+
+    EXPECT_EQ(rhi->textureCreations, allocations);
+
+    EXPECT_EQ(rhi->deviceIdleWaits, waits);
+
+    EXPECT_EQ(rhi->submissionWaits.size(), submissionWaits);
+
+    EXPECT_EQ(destroyed.count(mapsId), 0u);
+
+    shadows.Destroy();
+
+    rhi->memoryStats.heaps[0].usageBytes = 3584 * MiB;
+
+    // A renderer without live maps has no memory to reclaim, even if retirement is pending.
+    EXPECT_FALSE(shadows.Preflight(1024, 192));
+
+    rhi->memoryStats.deviceLocalBytes    = 0;
+
+    rhi->memoryStats.heaps[0].usageBytes = 0;
+
+    ASSERT_TRUE(shadows.SetResolution(1024));
+
+    ASSERT_TRUE(shadows.Prepare(scene, true));
+
+    rhi->memoryStats.deviceLocalBytes    = 3584 * MiB;
+
+    rhi->memoryStats.heaps[0].usageBytes = 3584 * MiB;
+
+    // Reclaiming smaller maps must not admit a replacement that still exceeds the budget.
+    EXPECT_FALSE(shadows.Preflight(2048, 192));
+
+    shadows.Destroy();
+}
+
 TEST_F(RenderCoreTest, SceneShadowsRetryFailedAllocationsAndExcludeDisabledLights)
 {
     sg::Scene source;

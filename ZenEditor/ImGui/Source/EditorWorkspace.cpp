@@ -285,6 +285,21 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
 
     if (ImGui::BeginMainMenuBar())
     {
+        if (context.appIcon.value != 0)
+        {
+            const float size = customTitleBar ? 28 * scale : ImGui::GetTextLineHeight();
+
+            const float x    = ImGui::GetCursorScreenPos().x;
+
+            const float y    = ImGui::GetWindowPos().y + (ImGui::GetWindowHeight() - size) * 0.5f;
+
+            // The engine texture loader flips image rows; restore the artwork's orientation.
+            ImGui::GetWindowDrawList()->AddImage(ui::ImGuiRenderer::GetTextureID(context.appIcon), ImVec2(x, y),
+                                                 ImVec2(x + size, y + size), ImVec2(0, 1), ImVec2(1, 0));
+
+            ImGui::Dummy(ImVec2(size, ImGui::GetTextLineHeight()));
+        }
+
         if (ImGui::GetWindowWidth() > 640 * scale)
         {
             ImGui::TextColored(GetEditorPalette().brand, "ZenEditor");
@@ -345,17 +360,6 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
             DrawActionMenuItem(registry, actions::FrameAll);
 
             DrawActionMenuItem(registry, actions::FrameSelection);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Tools"))
-        {
-            DrawActionMenuItem(registry, actions::Move);
-
-            DrawActionMenuItem(registry, actions::Rotate);
-
-            DrawActionMenuItem(registry, actions::Scale);
 
             ImGui::EndMenu();
         }
@@ -446,18 +450,6 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
     ImGui::SameLine();
 
     DrawActionButton(registry, actions::Redo, EditorIcon::Redo);
-
-    EditorToolbarSeparator();
-
-    DrawActionButton(registry, actions::Move, EditorIcon::Move);
-
-    ImGui::SameLine();
-
-    DrawActionButton(registry, actions::Rotate, EditorIcon::Rotate);
-
-    ImGui::SameLine();
-
-    DrawActionButton(registry, actions::Scale, EditorIcon::Scale);
 
     if (ImGui::GetWindowWidth() - (ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x) > 280 * EditorScale())
     {

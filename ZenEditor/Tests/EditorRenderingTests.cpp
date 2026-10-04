@@ -2,15 +2,21 @@
 #include "Editor/Model/EditorText.h"
 #include "SyntheticEnvironment.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
 #include "SceneGraph/Texture.h"
 #include <gtest/gtest.h>
+#include <spdlog/sinks/ostream_sink.h>
 #include <chrono>
 #include <thread>
 #include <fstream>
+#include <filesystem>
+#include <cstdlib>
+#include <sstream>
 #include <gli/gli.hpp>
 
 namespace zen::editor
@@ -19,6 +25,35 @@ namespace
 {
 class EditorRendering : public testing::TestWithParam<RHIExecutionMode>
 {};
+
+// Captures default-logger output for one scope while no frame is recording.
+// spdlog's logger and sink APIs require std::shared_ptr.
+class ScopedLogCapture
+{
+public:
+    ScopedLogCapture() :
+        m_previous(spdlog::default_logger()),
+        m_logger(std::make_shared<spdlog::logger>("editor_rendering_test",
+                                                  std::make_shared<spdlog::sinks::ostream_sink_mt>(m_output)))
+    {
+        spdlog::set_default_logger(m_logger);
+    }
+
+    ~ScopedLogCapture()
+    {
+        spdlog::set_default_logger(m_previous);
+    }
+
+    std::string GetText() const
+    {
+        return m_output.str();
+    }
+
+private:
+    std::ostringstream              m_output;
+    std::shared_ptr<spdlog::logger> m_previous;
+    std::shared_ptr<spdlog::logger> m_logger;
+};
 
 std::string Fixture(const char* name)
 {
@@ -53,6 +88,69 @@ bool Frame(rc::RenderDevice& device, EditorController& editor)
     editor.ProcessPicks();
 
     return valid;
+}
+
+HeapVector<uint8_t> ReadScenePixels(rc::RenderDevice& device, RHITexture* image)
+{
+    device.WaitForPreviousFrames();
+
+    const uint32_t width  = image->GetWidth();
+
+    const uint32_t height = image->GetHeight();
+
+    RHIBufferCreateInfo info;
+
+    info.size         = uint64_t(width) * height * 4;
+
+    info.allocateType = RHIBufferAllocateType::eGPU;
+
+    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+
+    RHIBuffer* packed = device.CreateBuffer(info);
+
+    info.allocateType = RHIBufferAllocateType::eCPURead;
+
+    info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+
+    RHIBuffer* readback = device.CreateBuffer(info);
+
+    RHISampler* sampler = device.CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
+
+    rc::RenderGraph graph("DebugViewReadback");
+
+    EXPECT_TRUE(graph.Begin());
+
+    rc::RDGComputePassDesc pass;
+
+    pass.SetShaderProgramName("CaptureFrameSP");
+
+    pass.BindSampledTexture("sourceColor", sampler, image->GetDefaultView());
+
+    pass.BindStorageBuffer("packedColor", packed, rc::RDGContentGuarantee::eFullWrite);
+
+    graph.AddComputePass(std::move(pass)).RecordPassCommands([width, height](rc::RDGPassCmdEncoder& encoder) {
+        encoder.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+    });
+
+    graph.AddTransferPass("ReadDebugView").CopyBuffer(packed, readback, {0, 0, info.size}).NeverCull();
+
+    EXPECT_TRUE(graph.End());
+
+    EXPECT_TRUE(device.ExecuteRenderGraph(graph));
+
+    device.WaitForPreviousFrames();
+
+    const uint8_t* pixels = readback->Map();
+
+    HeapVector<uint8_t> result(pixels, static_cast<size_t>(info.size));
+
+    readback->Unmap();
+
+    device.DestroyBuffer(packed);
+
+    device.DestroyBuffer(readback);
+
+    return result;
 }
 
 void ResolvePick(rc::RenderDevice& device, EditorController& editor)
@@ -1069,6 +1167,991 @@ TEST_P(EditorRendering, CubemapContainersRejectTruncatedAndUnsupportedFiles)
 
         std::filesystem::remove(file);
     }
+
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, RenderingConfigurationLightsCameraAndResourceApply)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    ASSERT_TRUE(editor.ResizeViewport(128, 128));
+
+    const size_t imported = editor.GetRenderingState().GetDraft().lights.size();
+
+    ASSERT_GT(imported, 0u);
+
+    ASSERT_TRUE(editor.AddBoundsLights(true));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetEntries().size(), imported + 8);
+
+    ASSERT_TRUE(editor.AddBoundsLights(true));
+
+    ASSERT_TRUE(editor.AddBoundsLights(true));
+
+    const size_t pendingLights = editor.GetRenderingState().GetDraft().lights.size();
+
+    EXPECT_FALSE(editor.AddBoundsLights(true));
+
+    EXPECT_EQ(editor.GetRenderingState().GetDraft().lights.size(), pendingLights);
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetEntries().size(), imported + 8);
+
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+    settings.algorithm             = rc::RenderAlgorithm::ePBR;
+
+    settings.lights.clear();
+
+    settings.cameraLight.enabled = true;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    const uint64_t lightsRevision = editor.GetViewport().GetRenderScene()->GetLights().GetRevision();
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    const rc::SceneUniformData before =
+        *reinterpret_cast<const rc::SceneUniformData*>(editor.GetViewport().GetRenderScene()->GetSceneUniformData());
+
+    EXPECT_EQ(before.lightInfo.x, 0.0f);
+
+    EXPECT_GT(before.cameraLight.colorIntensity.w, 0.0f);
+
+    editor.GetCamera().OrbitBy(Vec2(0.3f, 0.1f));
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    const rc::SceneUniformData after =
+        *reinterpret_cast<const rc::SceneUniformData*>(editor.GetViewport().GetRenderScene()->GetSceneUniformData());
+
+    EXPECT_NE(before.cameraLight.positionRange, after.cameraLight.positionRange);
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetRevision(), lightsRevision);
+
+    editor.ResetRenderingLights();
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetEntries().size(), imported);
+
+    settings                  = editor.GetRenderingState().GetDraft();
+
+    const uint32_t grid       = editor.GetViewport().GetSnapshot().settings.resolution;
+
+    const uint32_t staged     = grid == 64 ? 128 : 64;
+
+    const uint32_t lightCount = static_cast<uint32_t>(settings.lights.size());
+
+    settings.gi.resolution    = staged;
+
+    {
+        ScopedLogCapture log;
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+        EXPECT_EQ(editor.GetViewport().GetSnapshot().settings.resolution, grid);
+
+        // Light, environment, cone and output edits keep previewing while the grid waits for Apply.
+        settings.environment.intensity           = 2.5f;
+
+        settings.lights.front().light.intensity *= 0.5f;
+
+        settings.gi.cone.indirectIntensity       = 1.5f;
+
+        settings.debug.output                    = rc::DebugOutput::eDepth;
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+        EXPECT_FLOAT_EQ(editor.GetViewport().GetEnvironment().intensity, 2.5f);
+
+        EXPECT_FLOAT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetEntries().front().light.intensity,
+                        settings.lights.front().light.intensity);
+
+        EXPECT_FLOAT_EQ(editor.GetViewport().GetSnapshot().settings.cone.indirectIntensity, 1.5f);
+
+        EXPECT_EQ(device->GetRendererServer()->GetDebugSelection().output, rc::DebugOutput::eDepth);
+
+        EXPECT_EQ(editor.GetViewport().GetSnapshot().settings.resolution, grid);
+
+        EXPECT_TRUE(editor.GetRenderingState().NeedsResourceApply());
+
+        EXPECT_TRUE(editor.GetRenderingState().IsPending());
+
+        // Previews never rebuild GI resources, so they never log a resource application.
+        EXPECT_EQ(log.GetText().find("Applied runtime GI settings"), std::string::npos) << log.GetText();
+
+        settings.debug.output = rc::DebugOutput::eFinal;
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+        EXPECT_NE(log.GetText().find("resources=recreated"), std::string::npos) << log.GetText();
+    }
+
+    EXPECT_EQ(editor.GetViewport().GetSnapshot().settings.resolution, staged);
+
+    EXPECT_FALSE(editor.GetRenderingState().IsPending());
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetEntries().size(), lightCount);
+
+    settings.algorithm              = rc::RenderAlgorithm::eVoxelGI;
+
+    settings.gi.shadowMapResolution = 128;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
+
+    settings.gi.averagedReflectance    = true;
+
+    settings.gi.reflectanceBudgetBytes = 1;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    EXPECT_FALSE(editor.UpdateRenderingSettings());
+
+    EXPECT_FALSE(editor.GetRenderingState().GetError().empty());
+
+    EXPECT_FALSE(editor.GetRenderingState().GetApplied().gi.averagedReflectance);
+
+    settings                                = editor.GetRenderingState().GetApplied();
+
+    const uint64_t revision                 = editor.GetRenderingState().GetAppliedRevision();
+
+    settings.lights.front().light.direction = Vec3(0);
+
+    EXPECT_FALSE(editor.StageRenderingSettings(settings));
+
+    EXPECT_FALSE(editor.UpdateRenderingSettings());
+
+    EXPECT_EQ(editor.GetRenderingState().GetAppliedRevision(), revision);
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    editor.GetSelection().SelectNode({editor.GetScene().GetGeneration(), 1});
+
+    editor.FrameSelection();
+
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+
+    rc::RenderingSettings settings         = editor.GetRenderingState().GetDraft();
+
+    settings.algorithm                     = rc::RenderAlgorithm::ePBR;
+
+    settings.gi.resolution                 = 64;
+
+    settings.gi.shadowMapResolution        = 128;
+
+    settings.debug.lightId                 = settings.lights.front().id;
+
+    settings.lights.front().light.position = editor.GetCamera().GetCamera().GetPos();
+
+    settings.debug.face                    = 5;
+
+    HeapVector<uint8_t> albedo;
+
+    sg::AABB selectedBounds;
+
+    ASSERT_TRUE(editor.GetScene().GetBounds(editor.GetSelection().GetNode(), selectedBounds));
+
+    const Vec4 centerView = editor.GetCamera().GetCamera().GetViewMatrix() * Vec4(selectedBounds.GetCenter(), 1);
+
+    for (const rc::DebugOutput output :
+         {rc::DebugOutput::eFinal, rc::DebugOutput::eAlbedo, rc::DebugOutput::eNormal, rc::DebugOutput::eDepth,
+          rc::DebugOutput::eShadow, rc::DebugOutput::eVoxelSlice, rc::DebugOutput::eVoxels})
+    {
+        settings.debug.output      = output;
+
+        settings.debug.maximum     = output == rc::DebugOutput::eDepth ? 10.0f : 1.0f;
+
+        const sg::AABB voxelBounds = device->GetRendererServer()->RequestVoxelizer()->GetVoxelBounds();
+
+        settings.debug.slice       = static_cast<uint32_t>((selectedBounds.GetCenter().z - voxelBounds.GetMin().z)
+                                                           / voxelBounds.GetMaxExtent() * settings.gi.resolution);
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+        ASSERT_TRUE(Frame(*device, editor)) << static_cast<int>(output);
+
+        const rc::DebugOutputDescription description = editor.GetViewport().GetSnapshot().debug;
+
+        EXPECT_TRUE(description.available) << static_cast<int>(output) << ": " << description.reason;
+
+        EXPECT_EQ(description.output, output);
+
+        EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+
+        const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+        EXPECT_EQ(pixels.size(), 96u * 64 * 4);
+
+        if (output == rc::DebugOutput::eShadow)
+        {
+            uint8_t darkest = 255;
+
+            for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+            {
+                darkest = std::min(darkest, pixels[pixel]);
+            }
+
+            EXPECT_LT(darkest, 250);
+        }
+
+        if (output == rc::DebugOutput::eVoxelSlice)
+        {
+            uint8_t brightest = 0;
+
+            for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+            {
+                brightest = std::max(brightest, pixels[pixel]);
+            }
+
+            EXPECT_GT(brightest, 0);
+        }
+
+        if (output == rc::DebugOutput::eAlbedo)
+        {
+            albedo              = pixels;
+
+            const size_t center = (32 * 96 + 48) * 4;
+
+            EXPECT_NEAR(pixels[center], 218, 2);
+
+            EXPECT_NEAR(pixels[center + 1], 160, 2);
+
+            EXPECT_NEAR(pixels[center + 2], 89, 2);
+        }
+
+        if (output == rc::DebugOutput::eDepth)
+        {
+            const size_t center = (32 * 96 + 48) * 4;
+
+            EXPECT_NEAR(pixels[center], std::abs(centerView.z) / 10.0f * 255.0f, 2);
+        }
+
+        if (output == rc::DebugOutput::eNormal)
+        {
+            EXPECT_NE(std::memcmp(albedo.data(), pixels.data(), pixels.size()), 0);
+
+            const size_t center = (32 * 96 + 48) * 4;
+
+            EXPECT_NEAR(pixels[center], 128, 1);
+
+            EXPECT_NEAR(pixels[center + 1], 128, 1);
+
+            EXPECT_NEAR(pixels[center + 2], 255, 1);
+        }
+    }
+
+    settings.debug.output  = rc::DebugOutput::eDepth;
+
+    settings.debug.maximum = 10.0f;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    editor.GetCamera().SetOrthographic(true);
+
+    ASSERT_TRUE(editor.ResizeViewport(73, 51));
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_EQ(editor.GetViewport().GetSnapshot().debug.width, editor.GetViewport().GetRenderView().width);
+
+    const HeapVector<uint8_t> orthographic = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+    const rc::RenderView& resized          = editor.GetViewport().GetRenderView();
+
+    const size_t centerPixel               = (resized.height / 2 * resized.width + resized.width / 2) * 4;
+
+    EXPECT_NEAR(orthographic[centerPixel], std::abs(centerView.z) / 10.0f * 255.0f, 2);
+
+    settings.debug.linearDepth = false;
+
+    settings.debug.maximum     = 1.0f;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    const HeapVector<uint8_t> raw = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+    const Vec4 clip               = editor.GetCamera().GetCamera().GetProjectionMatrix() * centerView;
+
+    EXPECT_NEAR(raw[centerPixel], clip.z / clip.w * 255.0f, 2);
+
+    ASSERT_TRUE(editor.Load(std::string(ZEN_EDITOR_SHARED_FIXTURES) + "all_primitive_modes.gltf"));
+
+    settings              = editor.GetRenderingState().GetDraft();
+
+    settings.debug.output = rc::DebugOutput::eNormal;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_FALSE(editor.GetViewport().GetSnapshot().debug.available);
+
+    EXPECT_FALSE(editor.GetViewport().GetSnapshot().debug.reason.empty());
+
+    const HeapVector<uint8_t> unavailable = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+    for (size_t pixel = 4; pixel < unavailable.size(); pixel += 4)
+    {
+        EXPECT_EQ(std::memcmp(unavailable.data(), unavailable.data() + pixel, 4), 0);
+    }
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+    EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, VoxelDebugViewsSurviveGridDownsizingAndAnUnusedSliceSelection)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+    settings.gi.resolution         = 128;
+
+    settings.debug.output          = rc::DebugOutput::eVoxelSlice;
+
+    settings.debug.slice           = 100;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+    settings.gi.resolution = 64;
+
+    EXPECT_TRUE(editor.StageRenderingSettings(settings)) << editor.GetRenderingState().GetError();
+
+    EXPECT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+    EXPECT_EQ(editor.GetRenderingState().GetApplied().gi.resolution, 128u);
+
+    EXPECT_TRUE(editor.GetRenderingState().NeedsResourceApply());
+
+    EXPECT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+    EXPECT_TRUE(editor.StageRenderingSettings(editor.GetRenderingState().GetDraft(), true));
+
+    EXPECT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+    EXPECT_TRUE(Frame(*device, editor));
+
+    EXPECT_EQ(editor.GetRenderingState().GetApplied().gi.resolution, 64u);
+
+    EXPECT_EQ(editor.GetViewport().GetSnapshot().debug.width, 64u);
+
+    EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+    settings              = editor.GetRenderingState().GetDraft();
+
+    settings.debug.output = rc::DebugOutput::eVoxels;
+
+    settings.debug.slice  = 100;
+
+    EXPECT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    EXPECT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+    EXPECT_TRUE(Frame(*device, editor));
+
+    EXPECT_EQ(editor.GetViewport().GetSnapshot().debug.width, 64u);
+
+    EXPECT_EQ(editor.GetViewport().GetSnapshot().debug.output, rc::DebugOutput::eVoxels);
+
+    EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+    EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, CameraLightChangesDirectPixelsWithoutSceneLights)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    for (const std::string& path : {Fixture("inspection.gltf"), Fixture("forward_lit.gltf")})
+    {
+        ASSERT_TRUE(editor.Load(path));
+
+        ASSERT_TRUE(editor.ResizeViewport(64, 64));
+
+        rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+        settings.algorithm             = rc::RenderAlgorithm::ePBR;
+
+        settings.debug.output          = rc::DebugOutput::eFinal;
+
+        settings.lights.clear();
+
+        settings.environment.intensity = 0.0f;
+
+        settings.environment.skybox    = false;
+
+        settings.lightMarkers          = false;
+
+        settings.cameraLight.enabled   = false;
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+        ASSERT_TRUE(Frame(*device, editor));
+
+        const HeapVector<uint8_t> dark = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+        const uint64_t revision        = editor.GetViewport().GetRenderScene()->GetLights().GetRevision();
+
+        settings.cameraLight.enabled   = true;
+
+        settings.cameraLight.range     = 4.0f;
+
+        settings.cameraLight.intensity = 0.75f;
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+        ASSERT_TRUE(Frame(*device, editor));
+
+        const HeapVector<uint8_t> lit = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+        uint64_t darkSum              = 0;
+
+        uint64_t litSum               = 0;
+
+        for (size_t index = 0; index < lit.size(); ++index)
+        {
+            if (index % 4 != 3)
+            {
+                darkSum += dark[index];
+
+                litSum  += lit[index];
+            }
+        }
+
+        EXPECT_GT(litSum, darkSum) << path;
+
+        EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetRevision(), revision);
+    }
+
+    DestroyDevice(*device, editor);
+}
+
+HeapVector<uint8_t> ReadBallRadianceSlice(rc::RenderDevice& device, EditorController& editor)
+{
+    rc::RenderGraph graph("LightBallRadianceReadback");
+
+    EXPECT_TRUE(graph.Begin());
+
+    rc::DebugVisualizationData data;
+
+    data.selection.z = 2;
+
+    sg::AABB surfaceBounds;
+
+    EXPECT_TRUE(editor.GetScene().GetBounds({editor.GetScene().GetGeneration(), 1}, surfaceBounds));
+
+    rc::VoxelizerBase* voxelizer = device.GetRendererServer()->RequestVoxelizer();
+
+    data.selection.w             = static_cast<uint32_t>((surfaceBounds.GetCenter().z - voxelizer->GetVoxelBounds().GetMin().z)
+                                                         / voxelizer->GetVoxelSize());
+
+    rc::RDGGraphicsPassDesc pass =
+        rc::MakeDebugVisualizationPass(editor.GetViewport().GetRenderView(), "RenderDebugVolumeSP", data);
+
+    RHISampler* sampler = device.CreateSampler({});
+
+    pass.BindSampledTexture("sourceImage", sampler,
+                            device.GetRendererServer()->RequestVoxelGI()->GetRadianceTexture()->GetDefaultView());
+
+    rc::AddDebugVisualizationPass(graph, std::move(pass));
+
+    EXPECT_TRUE(graph.End());
+
+    EXPECT_TRUE(device.ExecuteRenderGraph(graph));
+
+    return ReadScenePixels(device, editor.GetViewport().GetRenderView().color);
+}
+
+uint64_t PixelEnergy(const HeapVector<uint8_t>& pixels)
+{
+    uint64_t sum = 0;
+
+    for (size_t index = 0; index < pixels.size(); ++index)
+    {
+        if (index % 4 != 3)
+        {
+            sum += pixels[index];
+        }
+    }
+
+    return sum;
+}
+
+// A small occluder casts a visible offset shadow on the larger receiver. Compare
+// on/off/on frames with GI and environment contributions disabled to isolate it.
+TEST_P(EditorRendering, MeshShadowsChangeDirectLightingWithoutApply)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("shadow_toggle.gltf")));
+
+    ASSERT_TRUE(editor.ResizeViewport(256, 256));
+
+    editor.GetCamera().GetCamera().SetPose(Vec3(0, 0, 1.5f), Vec3(0));
+
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+    settings.algorithm             = rc::RenderAlgorithm::eVoxelGI;
+
+    settings.debug.output          = rc::DebugOutput::eFinal;
+
+    settings.lights.clear();
+
+    settings.lightMarkers                = false;
+
+    settings.cameraLight.enabled         = false;
+
+    settings.environment.intensity       = 0;
+
+    settings.environment.skybox          = false;
+
+    settings.gi.resolution               = 64;
+
+    settings.gi.shadowMapResolution      = 256;
+
+    settings.gi.cone.indirectIntensity   = 0;
+
+    settings.gi.cone.environmentLighting = false;
+
+    settings.gi.cone.emissiveLighting    = false;
+
+    settings.gi.cone.analyticLighting    = true;
+
+    rc::RenderingLight light;
+
+    light.id              = 1;
+
+    light.light.type      = rc::SceneLightType::eDirectional;
+
+    light.light.direction = glm::normalize(Vec3(1, 0, -1));
+
+    light.light.intensity = 3;
+
+    settings.lights.push_back(light);
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    const char* sources[] = {"directional", "point", "light-ball"};
+
+    for (uint32_t source = 0; source < 3; ++source)
+    {
+        SCOPED_TRACE(sources[source]);
+
+        light.light.type      = source == 0 ? rc::SceneLightType::eDirectional : rc::SceneLightType::ePoint;
+
+        light.light.position  = Vec3(-0.4f, 0, 0.6f);
+
+        light.light.intensity = source == 0 ? 3.0f : 0.5f;
+
+        light.light.range     = 2;
+
+        settings.lights.clear();
+
+        if (source != 2)
+        {
+            settings.lights.push_back(light);
+        }
+
+        settings.cameraLight.enabled      = source == 2;
+
+        settings.cameraLight.followCamera = false;
+
+        settings.cameraLight.position     = light.light.position;
+
+        settings.cameraLight.intensity    = light.light.intensity;
+
+        settings.cameraLight.range        = light.light.range;
+
+        uint64_t energy[3]{};
+
+        for (uint32_t sample = 0; sample < 3; ++sample)
+        {
+            settings.gi.cone.shadows = sample != 1;
+
+            ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+            ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+            EXPECT_FALSE(editor.GetRenderingState().IsPending());
+
+            ASSERT_TRUE(Frame(*device, editor));
+
+            ASSERT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
+
+            const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+            energy[sample]                   = PixelEnergy(pixels);
+
+            const char* captureDirectory     = std::getenv("ZEN_EDITOR_SHADOW_CAPTURE_DIR");
+
+            if (captureDirectory != nullptr)
+            {
+                const std::filesystem::path path =
+                    std::filesystem::path(captureDirectory)
+                    / (std::string("mesh-shadows-") + sources[source] + "-" + std::to_string(sample) + ".ppm");
+
+                std::ofstream capture(path, std::ios::binary);
+
+                ASSERT_TRUE(capture.is_open());
+
+                capture << "P6\n256 256\n255\n";
+
+                for (size_t index = 0; index < pixels.size(); index += 4)
+                {
+                    capture.write(reinterpret_cast<const char*>(pixels.data() + index), 3);
+                }
+            }
+        }
+
+        EXPECT_GT(energy[0], 10000u);
+
+        EXPECT_GT(energy[1], energy[0] + 10000u);
+
+        EXPECT_EQ(energy[2], energy[0]);
+    }
+
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, LightBallRelightsVoxelsWithoutRevoxelizingAndHoldsPosition)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    ASSERT_TRUE(editor.ResizeViewport(128, 128));
+
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+    settings.algorithm             = rc::RenderAlgorithm::eVoxelGI;
+
+    settings.debug.output          = rc::DebugOutput::eFinal;
+
+    settings.lights.clear();
+
+    settings.environment.intensity       = 0;
+
+    settings.environment.skybox          = false;
+
+    settings.gi.resolution               = 64;
+
+    settings.gi.shadowMapResolution      = 128;
+
+    settings.gi.cone.environmentLighting = false;
+
+    settings.gi.cone.emissiveLighting    = false;
+
+    settings.gi.cone.analyticLighting    = true;
+
+    settings.gi.cone.shadows             = true;
+
+    settings.cameraLight.enabled         = true;
+
+    settings.cameraLight.followCamera    = false;
+
+    settings.cameraLight.intensity       = 0.01f;
+
+    settings.cameraLight.range           = 0.3f;
+
+    sg::AABB bounds;
+
+    ASSERT_TRUE(editor.GetScene().GetBounds({editor.GetScene().GetGeneration(), 1}, bounds));
+
+    settings.cameraLight.position = bounds.GetCenter() + Vec3(0, 0, 0.08f);
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    ASSERT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
+
+    const uint64_t geometry    = device->GetRendererServer()->RequestVoxelizer()->GetGeometryRevision();
+
+    const uint64_t sceneLights = editor.GetViewport().GetRenderScene()->GetLights().GetRevision();
+
+    const uint64_t lighting    = editor.GetViewport().GetRenderScene()->GetLightingRevision();
+
+    const uint64_t lit         = PixelEnergy(ReadBallRadianceSlice(*device, editor));
+
+    EXPECT_GT(lit, 100u);
+
+    editor.GetCamera().OrbitBy(Vec2(0.3f, 0.1f));
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLightingRevision(), lighting);
+
+    EXPECT_EQ(PixelEnergy(ReadBallRadianceSlice(*device, editor)), lit);
+
+    settings.cameraLight.position += Vec3(0, 0, 2);
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_GT(editor.GetViewport().GetRenderScene()->GetLightingRevision(), lighting);
+
+    EXPECT_EQ(PixelEnergy(ReadBallRadianceSlice(*device, editor)), 0u);
+
+    EXPECT_EQ(device->GetRendererServer()->RequestVoxelizer()->GetGeometryRevision(), geometry);
+
+    EXPECT_EQ(editor.GetViewport().GetRenderScene()->GetLights().GetRevision(), sceneLights);
+
+    settings.cameraLight.followCamera = true;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    const uint64_t following = editor.GetViewport().GetRenderScene()->GetLightingRevision();
+
+    editor.GetCamera().OrbitBy(Vec2(0.1f, 0));
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_GT(editor.GetViewport().GetRenderScene()->GetLightingRevision(), following);
+
+    settings.cameraLight.enabled = false;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_EQ(PixelEnergy(ReadBallRadianceSlice(*device, editor)), 0u);
+
+    EXPECT_EQ(device->GetRendererServer()->RequestVoxelizer()->GetGeometryRevision(), geometry);
+
+    DestroyDevice(*device, editor);
+}
+
+// Opt-in visual check: set ZEN_EDITOR_LIGHT_BALL_SCENE to Sponza.gltf and run
+// with --gtest_also_run_disabled_tests --gtest_filter=*LightBallSponzaCapture*.
+TEST_P(EditorRendering, DISABLED_LightBallSponzaCapture)
+{
+    const char* scenePath = std::getenv("ZEN_EDITOR_LIGHT_BALL_SCENE");
+
+    ASSERT_NE(scenePath, nullptr);
+
+    std::error_code directoryError;
+
+    std::filesystem::create_directories("build/rendering-validation", directoryError);
+
+    ASSERT_FALSE(directoryError) << directoryError.message();
+
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(scenePath));
+
+    ASSERT_TRUE(editor.ResizeViewport(800, 600));
+
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+    settings.algorithm             = rc::RenderAlgorithm::eVoxelGI;
+
+    settings.debug.output          = rc::DebugOutput::eFinal;
+
+    settings.lights.clear();
+
+    settings.lightMarkers                = false;
+
+    settings.environment.intensity       = 0;
+
+    settings.environment.skybox          = false;
+
+    settings.gi.resolution               = 128;
+
+    settings.gi.shadowMapResolution      = 512;
+
+    settings.gi.cone.environmentLighting = false;
+
+    settings.gi.cone.emissiveLighting    = false;
+
+    settings.gi.cone.analyticLighting    = true;
+
+    settings.gi.cone.shadows             = true;
+
+    settings.cameraLight.enabled         = true;
+
+    settings.cameraLight.color           = Vec3(1.0f, 0.15f, 0.03f);
+
+    const sg::AABB bounds                = editor.GetViewport().GetRenderScene()->GetAABB();
+
+    const Vec3 eye                       = bounds.GetCenter() + Vec3(0, -0.08f, 0.11f);
+
+    editor.GetCamera().GetCamera().SetPose(eye, eye + Vec3(0, -0.25f, -1));
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    uint64_t withoutGI = 0;
+
+    uint64_t withGI    = 0;
+
+    for (uint32_t sample = 0; sample < 4; ++sample)
+    {
+        settings.gi.cone.indirectIntensity = sample == 0 ? 0.0f : 1.0f;
+
+        if (sample == 2)
+        {
+            editor.GetCamera().GetCamera().SetPose(eye + Vec3(0.1f, 0, 0), eye + Vec3(0.1f, -0.25f, -1));
+        }
+
+        if (sample == 3)
+        {
+            const rc::SceneUniformData& data =
+                *reinterpret_cast<const rc::SceneUniformData*>(editor.GetViewport().GetRenderScene()->GetSceneUniformData());
+
+            settings.cameraLight.position     = Vec3(data.cameraLight.positionRange);
+
+            settings.cameraLight.followCamera = false;
+
+            editor.GetCamera().GetCamera().SetPose(eye + Vec3(0.12f, 0, 0.025f), settings.cameraLight.position);
+        }
+
+        ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+        ASSERT_TRUE(Frame(*device, editor));
+
+        ASSERT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
+
+        const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+        EXPECT_GT(PixelEnergy(pixels), 10000u) << sample;
+
+        if (sample == 0)
+        {
+            withoutGI = PixelEnergy(pixels);
+        }
+
+        if (sample == 1)
+        {
+            withGI = PixelEnergy(pixels);
+        }
+
+        const rc::RenderView& view = editor.GetViewport().GetRenderView();
+
+        const std::string path = "build/rendering-validation/light-ball-" + std::to_string(static_cast<int>(GetParam())) + "-"
+                               + std::to_string(sample) + ".ppm";
+
+        std::ofstream image(path, std::ios::binary);
+
+        ASSERT_TRUE(image.is_open());
+
+        image << "P6\n" << view.width << " " << view.height << "\n255\n";
+
+        for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+        {
+            image.write(reinterpret_cast<const char*>(pixels.data() + pixel), 3);
+        }
+    }
+
+    EXPECT_GT(withGI, withoutGI);
 
     DestroyDevice(*device, editor);
 }

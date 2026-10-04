@@ -1,13 +1,10 @@
 # ZenEditor scene viewer
 
-Steps 1–4 of the [implementation plan](../Doc/ZenEditorImplementationPlan.md) provide
-a separate, read-only editor application. Editing, saving scene documents, undo,
-gizmos and Play remain disabled until later phases.
-
-The active roadmap is the [rendering plan](../Doc/ZenEditorRenderingPlan.md): one
-Rendering panel for lighting, GI, algorithms and debug outputs, followed by a Run
-action that opens a separate render window. Scene and asset authoring are deferred.
-These additions are planned and are not yet implemented.
+The editor supports glTF inspection and a unified **Rendering** panel for lighting,
+GI, rendering algorithms and framebuffer diagnostics. Milestones 1–3 of the
+[rendering plan](../Doc/ZenEditorRenderingPlan.md) are implemented. Scene and asset
+authoring remain deferred. Run/Restart/Stop and `zen_player` belong to milestone 4;
+rendering preset files belong to milestone 5.
 
 ![Running maximized ZenEditor](../Doc/imgs/zeneditor-sdl3.png)
 
@@ -65,8 +62,16 @@ configuration and do not depend on the launch working directory.
 - Hold right mouse over the focused Scene view to look and fly with WASD/QE;
   Shift increases speed. Alt + left mouse orbits; middle mouse pans; wheel dollies.
   Scene-image drags retain navigation ownership when the panel is floating.
-- F frames the selection; Home or Frame All frames the scene. Orthographic toggles
-  projection. The camera is independent of cameras authored in the glTF.
+- **View → Panels → Camera Settings** configures fly movement speed from 0.001 to
+  100 scene units per second (default 1). Type a value in the text box or use the
+  **−/+** buttons to change it by 0.1 (hold Ctrl for steps of 1);
+  **Reset** restores the default. Imported models have a longest extent of
+  one scene unit, so the saved speed stays consistent across glTF source sizes and
+  after framing a selection. Shift multiplies it by three; diagonal flight is
+  capped at the same speed. Pan and wheel zoom continue to follow the view distance.
+- F frames the selection; Home or Frame All frames the scene. **Rendering → View
+  projection** selects perspective or orthographic projection. The camera is
+  independent of cameras authored in the glTF.
 - The Scene toolbar's **Controls** checkbox shows a list of these mouse and keyboard
   controls over the bottom-left of the scene. The frame shortcuts come from the
   action registry. The setting is saved with the editor preferences, and the list
@@ -87,20 +92,94 @@ configuration and do not depend on the launch working directory.
   is open. Disabled commands explain which plan step enables them.
 - Escape cancels navigation or a modal. Text input, active widgets, open popups,
   and loss of window/panel focus prevent viewport navigation.
-- The Scene toolbar selects PBR, Voxel GI or voxel visualization. Render Settings
-  includes environment controls, configuration and fallback diagnostics. Inspector
-  values are read-only.
+- **Rendering** selects PBR or PBR with voxel cone GI, independently of the debug
+  output. New/reset layouts select this panel in the right dock; existing layouts
+  retain the `RenderSettings` identity. Inspector source values remain read-only.
 - Output retains at most 2,048 entries of 4,096 characters each, with level/text
   filtering, Clear and Copy. GPU memory and frame-time readings are snapshots.
 
-The frontend theme follows the proposed appearance: charcoal-blue surfaces,
-restrained blue selection, proportional Roboto text, toolbar icons, read-only XYZ
-fields, and an Inspector dock spanning the full workspace height. Save, transform
-and playback controls remain disabled in this viewer.
+The frontend uses graphite surfaces, soft borders, blue accents and proportional
+Roboto text. Input widths are capped and scale with DPI; toolbar controls wrap and
+Rendering labels stack above their fields when panels become narrow. Camera Settings groups its compact
+speed input, boost readout and navigation shortcuts into cards. The Inspector keeps
+its read-only XYZ fields and full-height dock. Save and playback controls
+remain disabled in this viewer.
+
+### Rendering configuration, lighting and diagnostics
+
+The Rendering panel owns an editable draft and an applied revision. Invalid edits
+keep the applied preview intact. Light values, environment scalars, GI cone values
+and output selection apply between frames. Grid size, voxelizer, reflectance
+resources/budget and shadow resolution wait for **Apply**; other edits keep
+previewing in the meantime. **Revert** discards whatever has not been applied.
+**Apply** and **Revert** stay visible in a fixed bottom footer while settings scroll
+above them. They are enabled only while changes are pending,
+keeping the panel layout and scroll position stable during edits.
+Section resets and **Reset setup** restore the session's defaults. GPU allocation
+failures show a latched PBR fallback reason, with explicit retry and restoration of
+the last successfully rendered setup.
+
+Scenes start with their glTF lights, including disabled and zero-intensity lights.
+A scene without glTF lights starts with none. Add point, directional or spot lights,
+or six side/eight corner lights around the normalized bounds. Imported lights are
+editable copies; **Reset lights to glTF** restores the file's rig, and **Clear
+lights** is valid. New scenes reset the rig while retaining GI, environment and
+output settings. The demo still opts into the six-light preset explicitly.
+
+The **Light ball** in Rendering > Lighting is a movable point light for GI tests.
+It draws a small sphere in the selected color and lights nearby surfaces in every
+direction. Enable **Follow camera** to carry it ahead of the camera; disable it to
+hold its world position while inspecting the result. Edit color, intensity, light
+range, sphere radius, follow distance or the held position. Distances use the
+normalized scene span of one: defaults are range 0.12, radius 0.005, follow distance
+0.08 and intensity 0.0025. Range and follow distance must exceed the sphere radius.
+
+Select **PBR + voxel GI** and enable the GI **Analytic lighting** contribution to
+see bounce light. The ball casts six-face point-light shadows when mesh shadows
+are enabled. Moving it updates shadow faces and radiance mips without revoxelizing
+unchanged geometry. It has a separate lighting revision and uses none of the 32
+scene-light slots. The sphere is a visual source indicator; the point light supplies
+the energy, rather than adding an emissive mesh to the scene.
+
+For a Sponza GI check, clear other lights and set environment intensity to zero,
+enable the ball, and fly near a floor or wall. Hold it in place and compare
+**Indirect intensity** at zero and one. The native test also provides an opt-in
+Sponza capture: set `ZEN_EDITOR_LIGHT_BALL_SCENE` to the scene path and run
+`EditorRenderingTest --gtest_also_run_disabled_tests --gtest_filter=*LightBallSponzaCapture*`
+from the repository root. Images are saved under `build/rendering-validation`.
+Light positions use the normalized rendering world; the setup records its source
+center and scale.
+
+**Mesh shadows** apply immediately in **PBR + voxel GI** and control shadows from
+direct lights (including the light ball). They do not disable environment lighting
+or voxel occlusion. With no enabled shadow-casting lights, toggling this option
+does not change the image; the Shadows section points this out. To compare, add a
+light under Lighting, keep its **Casts shadows** enabled and place an object between
+the light and a visible surface. Environment lighting can soften the contrast;
+temporarily lower its intensity to isolate the cast shadow. Only **Map size**
+requires Apply. Shadow edits preflight the array size against reported GPU memory
+before publication. The GI contribution switches affect indirect light,
+separately from direct light, specular IBL and the
+skybox. The panel reports the effective voxelizer and resource errors.
+
+**Debug output** provides final color, raw/linear depth, albedo, world normals,
+shadow maps by light and point-light face, 3D surface voxels and axis-aligned voxel
+slices. Surface slices expose mip zero; radiance and additional material channels
+are deferred. Ranges and decoding run on the GPU. Selection bounds and light
+markers are suppressed in diagnostics. Albedo/normals require the deferred path;
+forward material scenes show an explicit unavailable reason and a cleared image.
+Depth describes surfaces which write the scene depth target. Output resources are
+built in the current graph and never cached as transient UI textures.
+
+For repeatable captures, `--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice`
+selects an output and `--capture-scene=path.ppm --frames=N` captures the scene target
+without workspace chrome. `--capture=path.ppm` still captures the full workspace.
+Use `--smoke-test --frames=3` to wait for asynchronous loading before a short
+capture run, without reaching the scripted navigation actions.
 
 ### Environment and skybox
 
-Open **Render Settings → Environment** to select a skybox and image-based lighting
+Open **Rendering → Environment** to select a skybox and image-based lighting
 texture together. The repository includes the papermill cubemap. An optional
 [starter set](../Data/Textures/Environments/README.md) of two outdoor skies and five
 indoor HDRs (studio, rooms, corridor and workshop) from Poly Haven (CC0) is not

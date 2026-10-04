@@ -37,6 +37,47 @@ TEST_F(RenderCoreTest, VoxelOutputsAllocateLazily)
     volumes.Destroy();
 }
 
+TEST_F(RenderCoreTest, VoxelGIFailedSurfaceAllocationStaysLatchedUntilReplacement)
+{
+    for (uint32_t failure = 1; failure <= 2; ++failure)
+    {
+        SCOPED_TRACE(failure);
+
+        TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM, false, 64);
+
+        EXPECT_FALSE(volumes.HasFailedInitialization());
+
+        const size_t firstAllocation = rhi->createdTextureIds.size();
+
+        rhi->failTextureCreationAt   = rhi->textureCreations + failure;
+
+        EXPECT_FALSE(volumes.EnsureReady());
+        EXPECT_TRUE(volumes.HasFailedInitialization());
+
+        rhi->failTextureCreationAt = 0;
+
+        const uint32_t allocations = rhi->textureCreations;
+
+        EXPECT_FALSE(volumes.EnsureReady());
+        EXPECT_EQ(rhi->textureCreations, allocations);
+
+        volumes.Destroy();
+        device->CollectCompletedResources();
+
+        for (size_t i = firstAllocation; i < rhi->createdTextureIds.size(); ++i)
+        {
+            EXPECT_TRUE(destroyed.contains(rhi->createdTextureIds[i]));
+        }
+
+        TestVoxelVolumes replacement(device, DataFormat::eR8G8B8A8UNORM, false, 64);
+
+        ASSERT_TRUE(replacement.EnsureReady());
+        EXPECT_FALSE(replacement.HasFailedInitialization());
+
+        replacement.Destroy();
+    }
+}
+
 TEST_F(RenderCoreTest, EmptyVoxelInputClearsAllSurfaceOutputsWithoutSceneBindings)
 {
     sg::Scene source;

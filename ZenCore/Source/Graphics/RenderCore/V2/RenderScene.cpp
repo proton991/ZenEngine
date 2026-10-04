@@ -364,6 +364,26 @@ bool RenderScene::Update()
 
     const Vec3 backward(camera.view[0][2], camera.view[1][2], camera.view[2][2]);
 
+    GPULight ball;
+
+    ball.positionRange       = Vec4(CameraLightPosition(m_cameraLight, m_pCamera->GetPos(), -backward), m_cameraLight.range);
+
+    ball.directionType       = Vec4(0, -1, 0, static_cast<float>(SceneLightType::ePoint));
+
+    ball.colorIntensity      = Vec4(m_cameraLight.color, m_cameraLight.enabled ? m_cameraLight.intensity : 0.0f);
+
+    ball.coneShadow          = Vec4(0, 0, 1, m_cameraLight.radius);
+
+    const GPULight& previous = m_sceneUniformData.cameraLight;
+
+    if ((ball.colorIntensity.w > 0.0f || previous.colorIntensity.w > 0.0f)
+        && (ball.positionRange != previous.positionRange || ball.colorIntensity != previous.colorIntensity))
+    {
+        ++m_cameraLightRevision;
+    }
+
+    m_sceneUniformData.cameraLight = ball;
+
     m_sceneUniformData.lightInfo.y = backward.x;
 
     m_sceneUniformData.lightInfo.z = backward.y;

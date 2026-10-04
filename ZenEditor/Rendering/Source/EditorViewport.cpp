@@ -2,6 +2,7 @@
 #include "EditorShaders.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
+#include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Platform/ConfigLoader.h"
 #include "Utils/Errors.h"
@@ -40,6 +41,21 @@ EditorViewport::EditorViewport(rc::RenderDevice&      device,
 
 bool EditorViewport::Init()
 {
+    m_defaultEnvironment = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
+
+    const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
+
+    EditorEnvironment environment;
+
+    if (config.ReadNumber("environment_intensity", environment.intensity)
+        && config.ReadNumber("environment_rotation_degrees", environment.rotationDegrees)
+        && config.ReadBool("environment_lighting", environment.lighting)
+        && config.ReadBool("skybox_visible", environment.skybox) && std::isfinite(environment.intensity)
+        && environment.intensity >= 0.0f && std::isfinite(environment.rotationDegrees))
+    {
+        m_environment = environment;
+    }
+
     VERIFY_EXPR_MSG(m_device.GetRendererServer() != nullptr, "Initialize RendererServer before the editor scene viewport");
 
     bool valid = RegisterEditorShader(m_device, "EditorPickSP", "SceneRenderer/offscreen.vert.spv", "Editor/pick.frag.spv")
@@ -214,7 +230,7 @@ bool EditorViewport::PrepareScene(const LoadedScene& candidate, std::string& err
 
         data.pCamera             = &m_camera.GetCamera();
 
-        data.envTextureName      = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
+        data.envTextureName      = m_defaultEnvironment;
 
         data.environmentOverride = m_environment.texturePath;
 
@@ -258,7 +274,34 @@ bool EditorViewport::CommitScene(std::string& error)
             m_scene->Destroy();
         }
 
-        m_scene           = std::move(m_pendingScene);
+        m_scene = std::move(m_pendingScene);
+
+        m_appliedLights.clear();
+
+        m_runtimeLightIds.clear();
+
+        if (m_scene)
+        {
+            m_scene->SetCameraLight(m_cameraLight);
+
+            for (const rc::LightEntry& entry : m_scene->GetLights().GetEntries())
+            {
+                m_appliedLights.push_back({entry.id, rc::LightOrigin::eGLTF, entry.light});
+
+                m_runtimeLightIds.push_back(entry.id);
+            }
+        }
+
+        rc::RendererServer& server = *m_device.GetRendererServer();
+
+        rc::DebugSelection debug   = server.GetDebugSelection();
+
+        debug.lightId              = m_runtimeLightIds.empty() ? 0 : m_runtimeLightIds.front();
+
+        server.SetRenderingSelection(server.GetRequestedRenderOption() == rc::RenderOption::eVoxelGI
+                                         ? rc::RenderAlgorithm::eVoxelGI
+                                         : rc::RenderAlgorithm::ePBR,
+                                     debug);
 
         m_pendingPrepared = false;
 
@@ -439,8 +482,167 @@ EditorRenderSnapshot EditorViewport::GetSnapshot() const
 {
     const rc::RendererServer& server = *m_device.GetRendererServer();
 
-    return {m_device.GetGPUMemoryStats(), server.GetVoxelGISettings(), server.GetRequestedRenderOption(),
-            server.GetRenderOption()};
+    return {m_device.GetGPUMemoryStats(),
+            server.GetVoxelGISettings(),
+            server.GetRequestedRenderOption(),
+            server.GetRenderOption(),
+            server.GetRenderingStatus(),
+            server.GetEffectiveVoxelizer(),
+            server.GetDebugOutputDescription(),
+            server.RequestDeferredLightingRenderer()->GetLightMarkersEnabled(),
+            server.RequestDeferredLightingRenderer()->GetLightMarkerSize()};
+}
+
+bool EditorViewport::ApplyRenderingSettings(const rc::RenderingSettings& settings, bool retryResources, std::string& error)
+{
+    rc::RendererServer& server = *m_device.GetRendererServer();
+
+    uint64_t reflectanceBytes  = 0;
+
+    bool valid                 = rc::ValidateRenderingSettings(settings, error);
+
+    if (valid
+        && (settings.environment.texturePath != m_environment.texturePath
+            || (m_scene
+                && !m_scene->ValidateEnvironmentLighting(settings.environment.intensity,
+                                                         settings.environment.rotationDegrees))))
+    {
+        error = "Environment texture must finish loading and its intensity must fit the scene's authored environment.";
+
+        valid = false;
+    }
+
+    HeapVector<rc::SceneLight> lights;
+
+    HeapVector<rc::SceneLight> appliedLights;
+
+    HeapVector<rc::LightEntry> replacements;
+
+    bool lightsChanged = settings.lights.size() != m_appliedLights.size();
+
+    for (const rc::RenderingLight& light : m_appliedLights)
+    {
+        appliedLights.push_back(light.light);
+    }
+
+    for (size_t index = 0; index < settings.lights.size(); ++index)
+    {
+        const rc::RenderingLight& light = settings.lights[index];
+
+        lights.push_back(light.light);
+
+        rc::LightId runtimeId = 0;
+
+        for (size_t old = 0; old < m_appliedLights.size(); ++old)
+        {
+            if (m_appliedLights[old].id == light.id)
+            {
+                runtimeId = m_runtimeLightIds[old];
+            }
+        }
+
+        replacements.push_back({runtimeId, light.light});
+
+        lightsChanged |= index >= m_appliedLights.size() || light.id != m_appliedLights[index].id
+                      || !rc::EqualSceneLight(light.light, m_appliedLights[index].light);
+    }
+
+    const bool shadows = (settings.algorithm == rc::RenderAlgorithm::eVoxelGI && settings.gi.cone.shadows)
+                      || settings.debug.output == rc::DebugOutput::eShadow;
+
+    const uint32_t shadowFaces = rc::CountShadowFaces(lights) + rc::CameraLightShadowFaces(settings.cameraLight);
+
+    if (valid && shadows && !server.ValidateShadowResources(settings.gi.shadowMapResolution, shadowFaces))
+    {
+        error = "Shadow memory preflight rejected the edit. Reduce resolution or the number of shadow-casting lights.";
+
+        valid = false;
+    }
+
+    if (valid && server.ValidateVoxelGIResources(settings.gi, reflectanceBytes) != rc::GIResourceStatus::eSuccess)
+    {
+        error = "GI resource preflight rejected the settings. Check the reflectance budget and device limits.";
+
+        valid = false;
+    }
+
+    // Light, environment and output edits arrive every frame during a drag. They skip the GI
+    // apply unless its values change or Apply explicitly retries resources.
+    if (valid && (retryResources || settings.gi != server.GetVoxelGISettings()))
+    {
+        valid = server.ApplyVoxelGISettings(settings.gi, retryResources);
+
+        if (!valid)
+        {
+            error = "Renderer could not apply the settings at this frame boundary.";
+        }
+    }
+
+    if (valid)
+    {
+        if (m_scene)
+        {
+            if (lightsChanged)
+            {
+                valid = m_scene->ReplaceLights(replacements);
+
+                if (valid)
+                {
+                    m_appliedLights = settings.lights;
+
+                    m_runtimeLightIds.clear();
+
+                    for (const rc::LightEntry& entry : replacements)
+                    {
+                        m_runtimeLightIds.push_back(entry.id);
+                    }
+                }
+
+                // A different shadow array may now fit, so a latched fallback gets one new attempt.
+                if (valid && rc::CountShadowFaces(lights) != rc::CountShadowFaces(appliedLights))
+                {
+                    server.ResetRenderingFailure();
+                }
+            }
+
+            valid = valid && m_scene->SetCameraLight(settings.cameraLight);
+
+            if (valid && rc::CameraLightShadowFaces(settings.cameraLight) != rc::CameraLightShadowFaces(m_cameraLight))
+            {
+                server.ResetRenderingFailure();
+            }
+
+            valid = valid
+                 && m_scene->SetEnvironmentLighting(settings.environment.intensity, settings.environment.rotationDegrees,
+                                                    settings.environment.lighting, settings.environment.skybox);
+        }
+
+        if (valid)
+        {
+            m_environment            = settings.environment;
+
+            m_cameraLight            = settings.cameraLight;
+
+            rc::DebugSelection debug = settings.debug;
+
+            debug.lightId            = 0;
+
+            for (size_t index = 0; index < m_appliedLights.size(); ++index)
+            {
+                if (m_appliedLights[index].id == settings.debug.lightId)
+                {
+                    debug.lightId = m_runtimeLightIds[index];
+                }
+            }
+
+            server.SetRenderingSelection(settings.algorithm, debug);
+
+            server.RequestDeferredLightingRenderer()->SetLightMarkers(
+                settings.lightMarkers && debug.output == rc::DebugOutput::eFinal, settings.lightMarkerSize);
+        }
+    }
+
+    return valid;
 }
 
 void EditorViewport::SetRenderMode(rc::RenderOption mode)
@@ -635,7 +837,10 @@ void EditorViewport::BuildOverlays(rc::RenderGraph& graph)
 {
     BuildPick(graph);
 
-    BuildBounds(graph);
+    if (m_device.GetRendererServer()->GetDebugSelection().output == rc::DebugOutput::eFinal)
+    {
+        BuildBounds(graph);
+    }
 }
 
 void EditorViewport::OnSubmitted(bool succeeded)

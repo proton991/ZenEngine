@@ -85,6 +85,28 @@ bool EditorController::Init()
 
     if (valid)
     {
+        const EditorRenderSnapshot snapshot = m_viewport.GetSnapshot();
+
+        rc::RenderingSettings settings;
+
+        settings.gi              = snapshot.settings;
+
+        settings.environment     = m_viewport.GetEnvironment();
+
+        settings.lightMarkers    = snapshot.lightMarkers;
+
+        settings.lightMarkerSize = snapshot.lightMarkerSize;
+
+        settings.algorithm =
+            snapshot.requestedMode == rc::RenderOption::eVoxelGI ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+
+        settings.debug.output =
+            snapshot.requestedMode == rc::RenderOption::eVoxelize ? rc::DebugOutput::eVoxels : rc::DebugOutput::eFinal;
+
+        m_rendering.Initialize(settings);
+
+        m_renderDefaults = settings;
+
         RegisterActions();
 
         RefreshEnvironmentTextures();
@@ -141,12 +163,9 @@ void EditorController::RegisterActions()
         {actions::Save, "Save", {platform::Key::S, kControl}, "Available with scene documents (plan step 5)."},
         {actions::Undo, "Undo", {platform::Key::Z, kControl}, "Available with undoable editing (plan step 6)."},
         {actions::Redo, "Redo", {platform::Key::Y, kControl}, "Available with undoable editing (plan step 6)."},
-        {actions::Move, "Move", {}, "Available with transform gizmos (plan step 6)."},
-        {actions::Rotate, "Rotate", {}, "Available with transform gizmos (plan step 6)."},
-        {actions::Scale, "Scale", {}, "Available with transform gizmos (plan step 6)."},
-        {actions::Play, "Play", {}, "Available with runtime preview (plan step 8)."},
-        {actions::Pause, "Pause", {}, "Available with runtime preview (plan step 8)."},
-        {actions::Stop, "Stop", {}, "Available with runtime preview (plan step 8)."}};
+        {actions::Play, "Run", {}, "Available with zen_player (rendering milestone 4)."},
+        {actions::Pause, "Pause", {}, "Simulation is deferred; rendering sessions do not pause."},
+        {actions::Stop, "Stop", {}, "Available with zen_player (rendering milestone 4)."}};
 
     for (const Placeholder& placeholder : placeholders)
     {
@@ -200,6 +219,201 @@ EditorViewport& EditorController::GetViewport()
     return m_viewport;
 }
 
+const EditorRenderingState& EditorController::GetRenderingState() const
+{
+    return m_rendering;
+}
+
+bool EditorController::StageRenderingSettings(const rc::RenderingSettings& settings, bool applyResources)
+{
+    const bool valid = m_rendering.Stage(settings);
+
+    // Every valid edit previews; Apply also publishes resource changes and retries failures.
+    m_renderResourcesRequested = valid && (applyResources || m_renderResourcesRequested);
+
+    m_renderApplyRequested     = valid;
+
+    return valid;
+}
+
+bool EditorController::UpdateRenderingSettings()
+{
+    bool applied = false;
+
+    if (m_renderApplyRequested && !m_loadState.IsActive() && !m_environmentPending)
+    {
+        const bool resources                 = m_renderResourcesRequested || !m_rendering.NeedsResourceApply();
+
+        const rc::RenderingSettings settings = resources ? m_rendering.GetDraft() : m_rendering.GetPreview();
+
+        std::string error;
+
+        applied = m_viewport.ApplyRenderingSettings(settings, m_renderResourcesRequested, error);
+
+        if (applied && resources)
+        {
+            m_rendering.Commit();
+        }
+        else if (applied)
+        {
+            m_rendering.CommitPreview();
+        }
+        else
+        {
+            m_rendering.SetError(std::move(error));
+        }
+
+        m_renderApplyRequested     = false;
+
+        m_renderResourcesRequested = false;
+    }
+
+    return applied;
+}
+
+void EditorController::RevertRenderingSettings()
+{
+    m_rendering.Revert();
+
+    m_renderApplyRequested     = false;
+
+    m_renderResourcesRequested = false;
+}
+
+bool EditorController::AddRenderingLight(rc::SceneLightType type)
+{
+    rc::RenderingSettings draft = m_rendering.GetDraft();
+
+    rc::RenderingLight entry;
+
+    entry.id         = m_nextLightId++;
+
+    entry.light.type = type;
+
+    m_camera.MakeRay(Vec2(0.5f), entry.light.position, entry.light.direction);
+
+    entry.light.position = m_camera.GetCamera().GetPos();
+
+    sg::AABB bounds;
+
+    const float span      = m_scene.GetSceneBounds(bounds) ? std::max(bounds.GetMaxExtent(), 0.01f) : 1.0f;
+
+    entry.light.intensity = type == rc::SceneLightType::eDirectional ? 1.0f : span * span * 0.75f;
+
+    entry.light.range     = span * 2.0f;
+
+    draft.lights.push_back(entry);
+
+    const bool valid = draft.lights.size() <= rc::MaxSceneLights;
+
+    if (valid)
+    {
+        StageRenderingSettings(draft);
+    }
+    else
+    {
+        m_rendering.SetError("Cannot add light: maximum 32 lights.");
+    }
+
+    return valid;
+}
+
+bool EditorController::AddBoundsLights(bool corners)
+{
+    rc::RenderingSettings draft = m_rendering.GetDraft();
+
+    sg::AABB bounds;
+
+    const bool valid = m_scene.GetSceneBounds(bounds) && draft.lights.size() + (corners ? 8u : 6u) <= rc::MaxSceneLights;
+
+    if (valid)
+    {
+        for (const rc::SceneLight& light : rc::BuildBoundsLightPreset(bounds, corners))
+        {
+            draft.lights.push_back({m_nextLightId++, corners ? rc::LightOrigin::eCorners : rc::LightOrigin::eSides, light});
+        }
+
+        StageRenderingSettings(draft);
+    }
+    else
+    {
+        m_rendering.SetError("Cannot add preset: open a scene and leave space for the entire preset (maximum 32 lights).");
+    }
+
+    return valid;
+}
+
+void EditorController::ResetRenderingLights()
+{
+    rc::RenderingSettings draft = m_rendering.GetDraft();
+
+    draft.lights                = m_importedLights;
+
+    StageRenderingSettings(draft);
+}
+
+const rc::RenderingSettings& EditorController::GetRenderingDefaults() const
+{
+    return m_renderDefaults;
+}
+
+void EditorController::ResetRenderingSetup()
+{
+    rc::RenderingSettings settings   = m_renderDefaults;
+
+    settings.scenePath               = m_rendering.GetDraft().scenePath;
+
+    settings.normalizationCenter     = m_rendering.GetDraft().normalizationCenter;
+
+    settings.normalizationScale      = m_rendering.GetDraft().normalizationScale;
+
+    settings.lights                  = m_importedLights;
+
+    settings.environment.texturePath = m_rendering.GetApplied().environment.texturePath;
+
+    StageRenderingSettings(settings);
+
+    RequestEnvironmentTexture("");
+}
+
+void EditorController::RecordRenderingResult(bool succeeded)
+{
+    const EditorRenderSnapshot snapshot = m_viewport.GetSnapshot();
+
+    if ((!m_hasSuccessfulRendering || m_successfulRenderingRevision != m_rendering.GetAppliedRevision()) && succeeded
+        && m_viewport.HasScene() && snapshot.debug.available && snapshot.debug.output == rc::DebugOutput::eFinal
+        && snapshot.status.fallbackReason.empty())
+    {
+        m_lastSuccessfulRendering     = m_rendering.GetApplied();
+
+        m_hasSuccessfulRendering      = true;
+
+        m_successfulRenderingRevision = m_rendering.GetAppliedRevision();
+    }
+}
+
+bool EditorController::CanRestoreRenderingSettings() const
+{
+    return m_hasSuccessfulRendering && m_lastSuccessfulRendering.scenePath == m_rendering.GetApplied().scenePath;
+}
+
+void EditorController::RestoreRenderingSettings()
+{
+    if (CanRestoreRenderingSettings())
+    {
+        rc::RenderingSettings settings   = m_lastSuccessfulRendering;
+
+        settings.environment.texturePath = m_rendering.GetApplied().environment.texturePath;
+
+        StageRenderingSettings(settings, true);
+
+        if (settings.environment.texturePath != m_lastSuccessfulRendering.environment.texturePath)
+        {
+            RequestEnvironmentTexture(m_lastSuccessfulRendering.environment.texturePath);
+        }
+    }
+}
+
 bool EditorController::PublishScene(UniquePtr<LoadedScene> candidate, std::string& error)
 {
     // Commit drains old-scene work before the CPU scene it references is replaced.
@@ -214,6 +428,24 @@ bool EditorController::PublishScene(UniquePtr<LoadedScene> candidate, std::strin
         m_scene.Replace(std::move(candidate));
 
         m_viewport.RefreshSceneResources();
+
+        m_importedLights.clear();
+
+        if (m_viewport.GetRenderScene() != nullptr)
+        {
+            for (const rc::LightEntry& entry : m_viewport.GetRenderScene()->GetLights().GetEntries())
+            {
+                m_importedLights.push_back({entry.id, rc::LightOrigin::eGLTF, entry.light});
+
+                m_nextLightId = std::max(m_nextLightId, entry.id + 1);
+            }
+        }
+
+        const LoadedScene& loaded = *m_scene.Get();
+
+        m_rendering.ChangeScene(path, loaded.normalizationCenter, loaded.normalizationScale, m_importedLights);
+
+        m_hasSuccessfulRendering = false;
 
         m_selection.Clear();
 
@@ -312,6 +544,10 @@ bool EditorController::UpdateEnvironment()
         if (!m_viewport.SetEnvironmentTexture(m_requestedEnvironment, m_environmentError))
         {
             LOGW("Environment switch failed: {}", m_environmentError);
+        }
+        else
+        {
+            m_rendering.CommitEnvironmentTexture(m_requestedEnvironment);
         }
 
         m_environmentPending = false;

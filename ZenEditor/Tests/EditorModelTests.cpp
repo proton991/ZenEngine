@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <limits>
 
 namespace zen::editor
 {
@@ -234,6 +235,109 @@ TEST(EditorModel, BoundsPickingAndProjectionDoNotNeedAWindow)
     ASSERT_TRUE(scene.GetBounds(scene.GetRoots()[0], root));
 
     EXPECT_GT(root.GetMax().x, bounds.GetMax().x);
+}
+
+TEST(EditorModel, CameraMoveSpeedStaysConsistentWhenFramingDifferentBounds)
+{
+    EditorCamera camera;
+
+    CameraInput input;
+
+    input.seconds   = 0.02f;
+
+    input.move      = Vec3(0, 0, 1);
+
+    input.moveSpeed = 0.25f;
+
+    for (bool orthographic : {false, true})
+    {
+        camera.SetOrthographic(orthographic);
+
+        // Whole scenes and small selections must use the same configured speed.
+        for (float extent : {0.002f, 1.0f, 100.0f})
+        {
+            camera.Frame(sg::AABB(Vec3(-extent), Vec3(extent)));
+
+            const Vec3 start = camera.GetCamera().GetPos();
+
+            camera.Apply(input);
+
+            EXPECT_NEAR(glm::length(camera.GetCamera().GetPos() - start), 0.005f, 0.00002f);
+        }
+    }
+}
+
+TEST(EditorModel, CameraMoveSpeedRespectsElapsedTimeBoostAndDiagonalLimit)
+{
+    EditorCamera camera;
+
+    CameraInput input;
+
+    input.seconds   = 0.02f;
+
+    input.move      = Vec3(1, 1, 1);
+
+    input.moveSpeed = 2.0f;
+
+    for (bool fast : {false, true})
+    {
+        input.fast = fast;
+
+        // Including pitched flight with overlapping forward and world-up motion.
+        for (Vec3 direction : {Vec3(0, 0, -1), Vec3(0, 1, -1)})
+        {
+            camera.LookAlong(direction);
+
+            const Vec3 start = camera.GetCamera().GetPos();
+
+            camera.Apply(input);
+
+            EXPECT_NEAR(glm::length(camera.GetCamera().GetPos() - start), fast ? 0.12f : 0.04f, 0.00001f);
+        }
+    }
+
+    input.fast = false;
+
+    input.move = Vec3(1, 0, 0);
+
+    // A long frame is capped to prevent jumps; zero/negative time does not move.
+    for (float seconds : {-1.0f, 0.0f, 0.01f, 0.05f, 1.0f})
+    {
+        input.seconds    = seconds;
+
+        const Vec3 start = camera.GetCamera().GetPos();
+
+        camera.Apply(input);
+
+        EXPECT_NEAR(glm::length(camera.GetCamera().GetPos() - start), 2.0f * std::clamp(seconds, 0.0f, 0.1f), 0.00001f);
+    }
+}
+
+TEST(EditorModel, CameraMoveSpeedRejectsNonFiniteAndOutOfRangeValues)
+{
+    EditorCamera camera;
+
+    CameraInput input;
+
+    input.seconds           = 0.1f;
+
+    input.move              = Vec3(1, 0, 0);
+
+    const float speeds[]    = {-1.0f, 0.0f, 1000.0f, std::numeric_limits<float>::infinity(),
+                               std::numeric_limits<float>::quiet_NaN()};
+
+    const float distances[] = {0.0001f, 0.0001f, 10.0f, 0.1f, 0.1f};
+
+    for (uint32_t index = 0; index < 5; ++index)
+    {
+        input.moveSpeed  = speeds[index];
+
+        const Vec3 start = camera.GetCamera().GetPos();
+
+        camera.Apply(input);
+
+        EXPECT_NEAR(glm::length(camera.GetCamera().GetPos() - start), distances[index], 0.00001f);
+    }
 }
 
 const ViewAxisEnd& FindEnd(const ViewAxes& axes, uint32_t axis, bool negative)
@@ -725,11 +829,15 @@ TEST(EditorModel, PreferencesRoundTripByPanelIdAndMigrateEarlierVersions)
 
     preferences.showSceneControls = false;
 
+    preferences.cameraMoveSpeed   = 0.1234567f;
+
     ASSERT_TRUE(SaveEditorPreferences(directory, preferences));
 
     ASSERT_TRUE(LoadEditorPreferences(directory, loaded));
 
     EXPECT_FALSE(loaded.showSceneControls);
+
+    EXPECT_FLOAT_EQ(loaded.cameraMoveSpeed, preferences.cameraMoveSpeed);
 
     {
         // Options from newer builds are skipped; known ones still apply.
@@ -743,6 +851,8 @@ TEST(EditorModel, PreferencesRoundTripByPanelIdAndMigrateEarlierVersions)
     ASSERT_TRUE(LoadEditorPreferences(directory, forward));
 
     EXPECT_FALSE(forward.showSceneControls);
+
+    EXPECT_FLOAT_EQ(forward.cameraMoveSpeed, kDefaultEditorCameraMoveSpeed);
 
     {
         std::ofstream corrupt(directory / "preferences-v3.txt", std::ios::trunc);
@@ -780,6 +890,8 @@ TEST(EditorModel, PreferencesRoundTripByPanelIdAndMigrateEarlierVersions)
 
     EXPECT_TRUE(migrated.recentFiles.Get().empty());
 
+    EXPECT_FLOAT_EQ(migrated.cameraMoveSpeed, kDefaultEditorCameraMoveSpeed);
+
     {
         std::ofstream second(legacy / "preferences-v2.txt");
 
@@ -793,6 +905,45 @@ TEST(EditorModel, PreferencesRoundTripByPanelIdAndMigrateEarlierVersions)
     ASSERT_EQ(migrated.recentFiles.Get().size(), 1u);
 
     EXPECT_EQ(migrated.recentFiles.Get()[0], "D:/Models/Sponza.gltf");
+}
+
+TEST(EditorModel, CameraSpeedPreferencesRecoverInvalidValuesAndPreserveOtherOptions)
+{
+    const std::filesystem::path directory = MakeSettingsDirectory("CameraSpeed");
+
+    const char* values[]                  = {"-1", "0", "1000", "nan", "inf", "invalid", "1e1000", "0.001", "100"};
+
+    const float expected[]                = {0.001f, 0.001f, 100.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.001f, 100.0f};
+
+    for (uint32_t index = 0; index < 9; ++index)
+    {
+        {
+            std::ofstream file(directory / "preferences-v3.txt", std::ios::trunc);
+
+            file << "ZenEditorPreferences3\nnumber \"camera.move_speed\" " << values[index]
+                 << "\nnumber \"future.option\" ignored\noption \"scene.controls_hint\" 0\n";
+        }
+
+        EditorPreferences preferences;
+
+        ASSERT_TRUE(LoadEditorPreferences(directory, preferences));
+
+        EXPECT_FLOAT_EQ(preferences.cameraMoveSpeed, expected[index]) << values[index];
+
+        EXPECT_FALSE(preferences.showSceneControls);
+    }
+
+    EditorPreferences preferences;
+
+    preferences.cameraMoveSpeed = std::numeric_limits<float>::quiet_NaN();
+
+    ASSERT_TRUE(SaveEditorPreferences(directory, preferences));
+
+    EditorPreferences loaded;
+
+    ASSERT_TRUE(LoadEditorPreferences(directory, loaded));
+
+    EXPECT_FLOAT_EQ(loaded.cameraMoveSpeed, kDefaultEditorCameraMoveSpeed);
 }
 
 TEST(EditorModel, ActionsDispatchByIdAndShortcutRespectingEnabledState)

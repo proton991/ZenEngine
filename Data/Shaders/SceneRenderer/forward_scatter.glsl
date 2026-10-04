@@ -33,18 +33,18 @@ void main()
 #endif
         color = (frontIrradiance + backIrradiance * VolumeAttenuation(s, DiffuseVolumeThickness(s)) * (vec3(1.0) - singleScatter)) *
             singleScatter * s.diffuseTransmissionColor * s.diffuseTransmission * (vec3(1.0) - SurfaceFresnel(s, max(dot(N, V), 0.0)));
-        for (int i = 0; i < int(sceneUbo.lightInfo.x); ++i)
+        for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i)
         {
             vec3 L;
             float distanceToLight;
-            vec3 radiance = EvaluateLight(sceneUbo.lights[i], inWorldPos, L, distanceToLight);
+            vec3 radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i], inWorldPos, L, distanceToLight);
             float nl = dot(N, L);
             vec3 weighting = nl >= 0.0 ? singleScatter : singleScatter * (vec3(1.0) - singleScatter) * VolumeAttenuation(s, DiffuseVolumeThickness(s));
             vec3 mirrorL = nl >= 0.0 ? L : reflect(L, N);
             vec3 H = SafeNormalize(V + mirrorL, N);
             float visibility = 1.0;
 #ifdef VOXEL_GI
-            visibility = SceneLightVisibility(i, inWorldPos, GeometricNormal(material));
+            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, GeometricNormal(material));
 #endif
             color += radiance * abs(nl) / M_PI * weighting * s.diffuseTransmissionColor * s.diffuseTransmission *
                 (vec3(1.0) - SurfaceFresnel(s, max(dot(V, H), 0.0))) * visibility;

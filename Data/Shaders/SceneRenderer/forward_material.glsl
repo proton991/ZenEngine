@@ -182,14 +182,14 @@ void main()
             vec2 coatBRDF = texture(lutBRDFMap, vec2(coatNV, s.clearcoatRoughness)).rg;
             color = color * (vec3(1.0) - s.clearcoat * coatF) + s.clearcoat * Prefiltered(reflect(-V, coatN), s.clearcoatRoughness) * (coatF * coatBRDF.x + coatBRDF.y) * s.ao;
         }
-        for (int i = 0; i < int(sceneUbo.lightInfo.x); ++i)
+        for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i)
         {
             vec3 L;
             float distanceToLight;
-            vec3 radiance = EvaluateLight(sceneUbo.lights[i], inWorldPos, L, distanceToLight);
+            vec3 radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i], inWorldPos, L, distanceToLight);
             float visibility = 1.0;
 #ifdef VOXEL_GI
-            visibility = SceneLightVisibility(i, inWorldPos, GeometricNormal(material));
+            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, GeometricNormal(material));
 #endif
             color += SurfaceDirect(s, N, coatN, T, B, V, L) * radiance * visibility;
         }

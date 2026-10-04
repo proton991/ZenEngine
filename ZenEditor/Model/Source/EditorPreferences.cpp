@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <limits>
+#include <locale>
 #include <sstream>
 
 namespace zen::editor
@@ -15,7 +17,9 @@ constexpr const char* kPreferencesFile = "preferences-v3.txt";
 constexpr const char* kSignature       = "ZenEditorPreferences3";
 
 // Boolean options are stored as `option "name" 0|1`; builds without an option skip it.
-constexpr const char* kSceneControlsOption = "scene.controls_hint";
+constexpr const char* kSceneControlsOption   = "scene.controls_hint";
+
+constexpr const char* kCameraMoveSpeedOption = "camera.move_speed";
 
 // Versions 1 and 2 stored visibility as a bitmask in this panel order.
 constexpr const char* kLegacyPanels[] = {"Hierarchy", "SceneViewport", "Inspector", "RenderSettings", "Assets", "Output"};
@@ -48,6 +52,8 @@ bool LoadCurrent(const std::filesystem::path& file, EditorPreferences& preferenc
     {
         std::istringstream fields(line);
 
+        fields.imbue(std::locale::classic());
+
         std::string key;
 
         std::string value;
@@ -78,6 +84,13 @@ bool LoadCurrent(const std::filesystem::path& file, EditorPreferences& preferenc
             {
                 loaded.showSceneControls = enabled != 0;
             }
+        }
+        else if (key == "number" && value == kCameraMoveSpeedOption)
+        {
+            float speed = kDefaultEditorCameraMoveSpeed;
+
+            // A malformed speed falls back without discarding other preferences.
+            loaded.cameraMoveSpeed = fields >> speed ? ClampEditorCameraMoveSpeed(speed) : kDefaultEditorCameraMoveSpeed;
         }
         else
         {
@@ -250,6 +263,8 @@ bool SaveEditorPreferences(const std::filesystem::path& directory, const EditorP
     {
         std::ofstream output(temporary, std::ios::trunc);
 
+        output.imbue(std::locale::classic());
+
         output << kSignature << '\n';
 
         for (const std::string& panel : panels)
@@ -264,6 +279,10 @@ bool SaveEditorPreferences(const std::filesystem::path& directory, const EditorP
 
         output << "option " << std::quoted(std::string(kSceneControlsOption)) << ' ' << (preferences.showSceneControls ? 1 : 0)
                << '\n';
+
+        output << "number " << std::quoted(std::string(kCameraMoveSpeedOption)) << ' '
+               << std::setprecision(std::numeric_limits<float>::max_digits10)
+               << ClampEditorCameraMoveSpeed(preferences.cameraMoveSpeed) << '\n';
 
         output.flush();
 

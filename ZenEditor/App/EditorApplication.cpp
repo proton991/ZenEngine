@@ -8,6 +8,7 @@
 #include "Editor/Model/EditorText.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "AssetLib/TextureLoader.h"
 #include <spdlog/sinks/base_sink.h>
 #include <chrono>
 #include <algorithm>
@@ -64,14 +65,50 @@ std::string GetDialogFolder(const RecentFiles& recent)
     return result;
 }
 
+RHITexture* CreateEditorIconTexture(rc::RenderDevice& device)
+{
+    const asset::TextureInfo image = asset::TextureLoader::LoadTexture2DFromFile("Editor/zen_engine_menu.png");
+
+    RHITexture* texture            = nullptr;
+
+    if (image.width > 0 && image.height > 0 && !image.data.empty())
+    {
+        rc::TextureFormat format;
+
+        format.width  = image.width;
+
+        format.height = image.height;
+
+        format.depth  = 1;
+
+        // The UI blends SDR encoded colors, so preserve the PNG's color values.
+        format.format = DataFormat::eR8G8B8A8UNORM;
+
+        texture       = device.CreateTextureSampled(format, {.copyUsage = true}, "ZenEditorIcon");
+
+        if (texture != nullptr)
+        {
+            RHIBufferTextureCopyRegion region{};
+
+            region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
+            region.textureSubresources.layerCount = 1;
+
+            region.textureSize                    = {image.width, image.height, 1};
+
+            device.UpdateTexture(texture, {&region, 1}, uint32_t(image.data.size()), image.data.data());
+        }
+    }
+
+    return texture;
+}
+
 // Explicit diagnostic capture; this wait is never used by ordinary UI drawing/resize.
-bool CaptureFrame(rc::RenderDevice& device, RHIViewport& viewport, const std::string& path)
+bool CaptureFrame(rc::RenderDevice& device, RHITexture* source, const std::string& path)
 {
     device.FlushRHIThread();
 
     device.WaitForIdle();
-
-    RHITexture* source    = viewport.GetColorBackBuffer();
 
     const uint32_t width  = source->GetWidth();
 
@@ -280,9 +317,25 @@ public:
                                                      m_exitRequested = true;
                                                  }});
 
-            m_workspace = MakeUnique<EditorWorkspace>(m_settings);
+            m_workspace   = MakeUnique<EditorWorkspace>(m_settings);
 
-            m_context   = MakeUnique<EditorContext>(EditorContext{*m_controller, m_log, *m_renderer, *m_windowChrome});
+            m_context     = MakeUnique<EditorContext>(EditorContext{*m_controller, m_log, *m_renderer, *m_windowChrome});
+
+            m_iconTexture = CreateEditorIconTexture(*m_device);
+
+            if (m_iconTexture != nullptr)
+            {
+                RHISamplerCreateInfo sampler = RHISamplerCreateInfo::CreateLinearRepeat();
+
+                sampler.repeatU = sampler.repeatV = sampler.repeatW = RHISamplerRepeatMode::eClampToEdge;
+
+                m_context->appIcon = m_renderer->GetRenderer().RegisterTexture(m_iconTexture, m_device->CreateSampler(sampler));
+            }
+
+            if (m_context->appIcon.value == 0)
+            {
+                LOGW("Could not load the ZenEditor menu icon");
+            }
 
             m_context->nativeFileDialog = platform::NativeWindow::SupportsFileDialogs();
 
@@ -562,6 +615,24 @@ public:
                     m_options.environment.clear();
                 }
 
+                if (m_options.debugSpecified && m_controller->GetViewport().HasScene()
+                    && !m_controller->GetLoadState().IsActive())
+                {
+                    rc::RenderingSettings settings = m_controller->GetRenderingState().GetDraft();
+
+                    settings.debug.output          = m_options.debugOutput;
+
+                    settings.debug.maximum         = m_options.debugOutput == rc::DebugOutput::eDepth ? 10.0f : 1.0f;
+
+                    settings.debug.slice           = settings.gi.resolution / 2;
+
+                    m_controller->StageRenderingSettings(settings);
+
+                    m_options.debugSpecified = false;
+                }
+
+                m_controller->UpdateRenderingSettings();
+
                 if (m_controller->UpdateEnvironment())
                 {
                     previous = std::chrono::steady_clock::now();
@@ -582,9 +653,17 @@ public:
 
                 viewport.OnSubmitted(valid);
 
+                m_controller->RecordRenderingResult(valid);
+
                 if (valid && !m_options.capture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
                 {
-                    valid = CaptureFrame(*m_device, *m_present, m_options.capture);
+                    valid = CaptureFrame(*m_device, m_present->GetColorBackBuffer(), m_options.capture);
+                }
+
+                if (valid && !m_options.sceneCapture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
+                {
+                    valid = viewport.HasScene() && viewport.GetRenderView().color != nullptr
+                         && CaptureFrame(*m_device, viewport.GetRenderView().color, m_options.sceneCapture);
                 }
 
                 m_device->NextFrame();
@@ -628,6 +707,10 @@ public:
             }
 
             m_renderer.Reset();
+
+            m_device->DestroyTexture(m_iconTexture);
+
+            m_iconTexture = nullptr;
 
             m_ui.Destroy();
 
@@ -680,6 +763,7 @@ private:
     UniquePtr<EditorWindowChrome>     m_windowChrome;
     UniquePtr<rc::RenderDevice>       m_device;
     RHIViewport*                      m_present{nullptr};
+    RHITexture*                       m_iconTexture{nullptr};
     ui::UIContext                     m_ui;
     UniquePtr<ui::ImGuiRenderer>      m_renderer;
     UniquePtr<EditorController>       m_controller;

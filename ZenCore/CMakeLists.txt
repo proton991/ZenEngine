@@ -1,4 +1,6 @@
 set(ZEN_CORE_HEADERS
+    Include/Graphics/RenderCore/V2/Renderer/DebugVisualization.h
+    Include/Graphics/RenderCore/V2/RenderingSettings.h
     Include/ObjectBase.h
 
     Include/AssetLib/TextureLoader.h
@@ -150,6 +152,8 @@ set(ZEN_CORE_HEADERS
 )
 
 set(ZEN_CORE_SOURCES
+    Source/Graphics/RenderCore/V2/DebugVisualization.cpp
+    Source/Graphics/RenderCore/V2/RenderingSettings.cpp
     Source/AssetLib/TextureLoader.cpp
     Source/AssetLib/FastGLTFLoader.cpp
     Source/AssetLib/GLTFModelCatalog.cpp
@@ -258,7 +262,7 @@ target_link_libraries(ZenCore PUBLIC
 ############################################################
 set(SHADER_SRC_PATH ${PROJECT_SOURCE_DIR}/Data/Shaders/)
 set(SHADER_SPV_PATH ${PROJECT_SOURCE_DIR}/Data/SpvShaders/)
-file(GLOB_RECURSE ZEN_SHADER_FILES
+file(GLOB_RECURSE ZEN_SHADER_FILES CONFIGURE_DEPENDS
     "${SHADER_SRC_PATH}/*.frag"
     "${SHADER_SRC_PATH}/*.vert"
     "${SHADER_SRC_PATH}/*.geom"

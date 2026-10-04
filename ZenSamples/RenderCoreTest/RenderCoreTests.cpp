@@ -917,6 +917,7 @@ public:
     std::array<uint64_t, 3>                                    completed{};
     std::array<bool, 3>                                        pending{};
     RHIGPUInfo                                                 info{};
+    RHIGPUMemoryStats                                          memoryStats{};
     RHIQueueCopyCapabilities                                   graphicsCopy{true, true, true, {1, 1, 1}};
     RHIQueueCopyCapabilities                                   computeCopy{false, true, true, {1, 1, 1}};
     RHIQueueCopyCapabilities                                   transferCopy{false, false, true, {1, 1, 1}};
@@ -1361,6 +1362,11 @@ public:
     const RHIGPUInfo& QueryGPUInfo() const override
     {
         return info;
+    }
+
+    RHIGPUMemoryStats GetGPUMemoryStats() const override
+    {
+        return memoryStats;
     }
 
     RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const override

@@ -2,22 +2,23 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/SceneLighting.h"
 #include "SceneGraph/AABB.h"
+#include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 
 namespace zen::rc
 {
 class RenderDevice;
 class RenderScene;
 
-constexpr uint32_t MaxSceneShadowFaces = MaxSceneLights * 6;
+constexpr uint32_t MaxSceneShadowFaces = (MaxSceneLights + 1) * 6;
 
 struct SceneShadowUniformData
 {
     Mat4 viewProjection[MaxSceneShadowFaces]{};
     // First layer, face count, inverse depth range, texel width (at unit distance for perspective).
-    Vec4 lights[MaxSceneLights]{};
-    Vec4 settings{}; // Minimum world-space bias, resolution, reserved, reserved.
+    Vec4 lights[MaxSceneLights + 1]{}; // Last slot belongs to the camera light ball.
+    Vec4 settings{};                   // Minimum world-space bias, resolution, reserved, reserved.
 };
-static_assert(sizeof(SceneShadowUniformData) == MaxSceneShadowFaces * 64 + MaxSceneLights * 16 + 16);
+static_assert(sizeof(SceneShadowUniformData) == MaxSceneShadowFaces * 64 + (MaxSceneLights + 1) * 16 + 16);
 
 // Mesh visibility shared by direct lighting and voxel radiance injection.
 class SceneShadowRenderer
@@ -34,6 +35,12 @@ public:
     }
 
     bool Prepare(const RenderScene& scene, bool enabled, bool includeInactiveLights = false);
+
+    // Resolution changes assume Apply drains GPU work and collects the old maps before allocation.
+    // At the current resolution, face-count changes must fit alongside any in-flight maps.
+    bool Preflight(uint32_t resolution, uint32_t faces) const;
+
+    DebugOutputDescription BuildDebugView(const RenderScene& scene, const RenderView& view, const DebugSelection& selection);
 
     void BuildRenderGraph(const RenderScene& scene, uint64_t geometryRevision);
 

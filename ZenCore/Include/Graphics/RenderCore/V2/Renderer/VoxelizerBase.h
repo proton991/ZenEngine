@@ -4,6 +4,7 @@
 #include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
 #include "Graphics/Shared/VoxelGI.h"
+#include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 
 namespace zen::rc
 {
@@ -39,6 +40,8 @@ public:
     virtual void BuildVoxelizationGraph() {}
 
     virtual void BuildVisualizationGraph(const RenderView&) {}
+
+    DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection);
 
     uint64_t GetGeometryRevision() const
     {
@@ -76,6 +79,11 @@ public:
     bool EnsureReady();
 
     bool IsReady() const;
+
+    bool HasFailedInitialization() const
+    {
+        return m_textureInitializationAttempted && !IsReady();
+    }
 
     bool UsesAveragedReflectance() const
     {

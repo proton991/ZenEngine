@@ -1,18 +1,12 @@
 #pragma once
 #include "Templates/HeapVector.h"
+#include "Graphics/RenderCore/V2/RenderingSettings.h"
 #include <string>
 
 namespace zen::editor
 {
 // Session preview settings. Empty texturePath honors the scene/engine default.
-struct EditorEnvironment
-{
-    std::string texturePath;
-    float       intensity{1.0f};
-    float       rotationDegrees{0.0f};
-    bool        lighting{true};
-    bool        skybox{true};
-};
+using EditorEnvironment = rc::EnvironmentSettings;
 
 struct EnvironmentTextureItem
 {

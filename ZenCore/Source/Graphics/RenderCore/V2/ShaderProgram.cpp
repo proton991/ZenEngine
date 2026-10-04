@@ -8,6 +8,32 @@ namespace zen::rc
 {
 namespace
 {
+class LightBallSP final : public ShaderProgram
+{
+public:
+    explicit LightBallSP(RenderDevice* device) : ShaderProgram(device, "LightBallSP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/light_ball.vert.spv");
+
+        AddShaderStage(RHIShaderStage::eFragment, "SceneRenderer/light_ball.frag.spv");
+
+        Init();
+    }
+};
+
+class DebugViewSP final : public ShaderProgram
+{
+public:
+    DebugViewSP(RenderDevice* device, NameID name, const char* fragment) : ShaderProgram(device, name)
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
+
+        AddShaderStage(RHIShaderStage::eFragment, fragment);
+
+        Init();
+    }
+};
+
 class VoxelCalibrationReferenceSP : public ShaderProgram
 {
 public:
@@ -194,6 +220,16 @@ void ShaderProgramManager::Destroy()
 
 void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 {
+    const char* debugNames[] = {"RenderDebug2DSP", "RenderDebugArraySP", "RenderDebugVolumeSP"};
+
+    const char* debugFiles[] = {"SceneRenderer/debug_2d.frag.spv", "SceneRenderer/debug_array.frag.spv",
+                                "SceneRenderer/debug_volume.frag.spv"};
+
+    for (uint32_t index = 0; index < 3; ++index)
+    {
+        StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, debugNames[index], debugFiles[index]));
+    }
+
     const glm::uvec3 volumeGroupSize = ResolveVoxelVolumeWorkgroupSize(pRenderDevice->GetGPUInfo());
 
     const HashMap<uint32_t, RHIShaderSpecializationValue> volumeConstants{
@@ -250,6 +286,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                      ComputeFileSP(pRenderDevice, "VoxelizationCompAveragedSP", "VoxelGI/voxelization_averaged.comp.spv"));
 
     StoreProgram(ZEN_NEW() LightMarkerSP(pRenderDevice));
+
+    StoreProgram(ZEN_NEW() LightBallSP(pRenderDevice));
 
     StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice));
 

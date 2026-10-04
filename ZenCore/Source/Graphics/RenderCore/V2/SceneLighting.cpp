@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/ConfigLoader.h"
 #include <cmath>
+#include <limits>
 
 namespace zen::rc
 {
@@ -13,10 +14,36 @@ bool FiniteVector(const Vec3& value)
 }
 } // namespace
 
+bool ValidateCameraLight(const CameraLightSettings& settings)
+{
+    return FiniteVector(settings.color) && glm::all(glm::greaterThanEqual(settings.color, Vec3(0.0f)))
+        && std::isfinite(settings.intensity) && settings.intensity >= 0.0f && std::isfinite(settings.range)
+        && std::isfinite(settings.radius) && settings.radius > 0.0f && settings.range > settings.radius
+        && std::isfinite(settings.followDistance) && settings.followDistance > settings.radius
+        && FiniteVector(settings.position);
+}
+
+Vec3 CameraLightPosition(const CameraLightSettings& settings, const Vec3& eye, const Vec3& forward)
+{
+    return settings.followCamera ? eye + forward * settings.followDistance : settings.position;
+}
+
+uint32_t CameraLightShadowFaces(const CameraLightSettings& settings)
+{
+    return settings.enabled && settings.intensity > 0.0f ? 6u : 0u;
+}
+
+bool EqualSceneLight(const SceneLight& left, const SceneLight& right)
+{
+    return left.type == right.type && left.position == right.position && left.direction == right.direction
+        && left.color == right.color && left.intensity == right.intensity && left.range == right.range
+        && left.innerAngleDegrees == right.innerAngleDegrees && left.outerAngleDegrees == right.outerAngleDegrees
+        && left.enabled == right.enabled && left.castsShadows == right.castsShadows;
+}
+
 bool RenderScene::SetEnvironmentLighting(float intensity, float rotationDegrees, bool enabled, bool visible)
 {
-    const bool valid = std::isfinite(intensity) && intensity >= 0.0f && std::isfinite(rotationDegrees)
-                    && std::isfinite(intensity * m_authoredEnvironmentIntensity);
+    const bool valid = ValidateEnvironmentLighting(intensity, rotationDegrees);
 
     if (valid)
     {
@@ -35,6 +62,12 @@ bool RenderScene::SetEnvironmentLighting(float intensity, float rotationDegrees,
     }
 
     return valid;
+}
+
+bool RenderScene::ValidateEnvironmentLighting(float intensity, float rotationDegrees) const
+{
+    return std::isfinite(intensity) && intensity >= 0.0f && std::isfinite(rotationDegrees)
+        && std::isfinite(intensity * m_authoredEnvironmentIntensity);
 }
 
 bool SceneLights::Validate(const SceneLight& light)
@@ -82,7 +115,8 @@ bool SceneLights::Update(LightId id, const SceneLight& light)
             if (entry.id == id)
             {
                 if (entry.light.enabled != light.enabled || entry.light.type != light.type
-                    || entry.light.castsShadows != light.castsShadows)
+                    || entry.light.castsShadows != light.castsShadows
+                    || (entry.light.intensity > 0.0f) != (light.intensity > 0.0f))
                 {
                     ++m_structureRevision;
                 }
@@ -220,49 +254,158 @@ HeapVector<SceneLight> BuildSceneLights(const sg::Scene& scene)
             lights.push_back(light);
         }
     }
-    else
+
+    return lights;
+}
+
+
+HeapVector<SceneLight> BuildBoundsLightPreset(const sg::AABB& bounds, bool corners)
+{
+    HeapVector<SceneLight> lights;
+
+    const Vec3 minimum = bounds.GetMin();
+
+    const Vec3 maximum = bounds.GetMax();
+
+    if (FiniteVector(minimum) && FiniteVector(maximum) && glm::all(glm::lessThanEqual(minimum, maximum)))
     {
-        const sg::AABB& bounds = scene.GetAABB();
+        const Vec3 center  = minimum * 0.5f + maximum * 0.5f;
 
-        const Vec3 min         = bounds.GetMin();
+        const float margin = std::max(bounds.GetMaxExtent() * 0.15f, 0.01f);
 
-        const Vec3 max         = bounds.GetMax();
-
-        if (FiniteVector(min) && FiniteVector(max) && glm::all(glm::lessThanEqual(min, max)))
+        for (uint32_t index = 0; index < (corners ? 8u : 6u); ++index)
         {
-            const Vec3 center  = min * 0.5f + max * 0.5f;
+            SceneLight light;
 
-            const float span   = std::max(bounds.GetMaxExtent(), 0.01f);
+            light.position = center;
 
-            const float margin = std::max(span * 0.15f, 0.01f);
-
-            for (uint32_t face = 0; face < 6; ++face)
+            if (corners)
             {
-                const uint32_t axis = face / 2;
+                Vec3 diagonal;
 
-                const bool positive = (face & 1) != 0;
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                {
+                    const bool positive  = (index & (1u << axis)) != 0;
 
-                SceneLight light;
+                    light.position[axis] = positive ? maximum[axis] : minimum[axis];
 
-                light.position = center;
+                    diagonal[axis]       = positive ? 1.0f : -1.0f;
+                }
 
-                // Outside the complete world AABB guarantees no geometry contains the light.
-                light.position[axis] = positive ? max[axis] + margin : min[axis] - margin;
+                const Vec3 offset  = light.position - center;
 
-                light.direction      = glm::normalize(center - light.position);
-
-                const float distance = glm::distance(center, light.position);
-
-                light.intensity      = distance * distance * 3.0f;
-
-                light.range          = 0.0f;
-
-                lights.push_back(light);
+                light.position    += glm::normalize(glm::length(offset) > 1e-6f ? offset : diagonal) * margin;
             }
+            else
+            {
+                const uint32_t axis  = index / 2;
+
+                light.position[axis] = (index & 1) != 0 ? maximum[axis] + margin : minimum[axis] - margin;
+            }
+
+            light.direction      = glm::normalize(center - light.position);
+
+            const float distance = glm::distance(center, light.position);
+
+            light.intensity      = distance * distance * 3.0f;
+
+            light.range          = 0.0f;
+
+            lights.push_back(light);
         }
     }
 
     return lights;
+}
+
+uint32_t CountShadowFaces(const HeapVector<SceneLight>& lights)
+{
+    uint32_t faces = 0;
+
+    for (const SceneLight& light : lights)
+    {
+        if (light.enabled && light.castsShadows && light.intensity > 0.0f)
+        {
+            faces += light.type == SceneLightType::ePoint ? 6 : 1;
+        }
+    }
+
+    return faces;
+}
+
+uint64_t EstimateShadowBytes(uint32_t resolution, uint32_t faces)
+{
+    return uint64_t(resolution) * resolution * 4 * std::max(2u, faces);
+}
+
+bool ValidateShadowMemory(uint32_t resolution, uint32_t faces, uint64_t availableBytes)
+{
+    return resolution >= 128 && resolution <= 2048 && faces <= (MaxSceneLights + 1) * 6
+        && EstimateShadowBytes(resolution, faces) + uint64_t(resolution) * resolution * 4 <= availableBytes;
+}
+
+bool SceneLights::Replace(HeapVector<LightEntry>& entries)
+{
+    bool valid      = entries.size() <= MaxSceneLights;
+
+    uint64_t newIds = 0;
+
+    for (size_t index = 0; valid && index < entries.size(); ++index)
+    {
+        valid   = Validate(entries[index].light) && (entries[index].id == 0 || Find(entries[index].id) != nullptr);
+
+        newIds += entries[index].id == 0 ? 1 : 0;
+
+        for (size_t previous = 0; valid && previous < index; ++previous)
+        {
+            valid = entries[index].id == 0 || entries[index].id != entries[previous].id;
+        }
+    }
+
+    valid = valid && (newIds == 0 || (m_nextId != 0 && newIds - 1 <= std::numeric_limits<LightId>::max() - m_nextId));
+
+    if (valid)
+    {
+        for (LightEntry& entry : entries)
+        {
+            if (entry.id == 0)
+            {
+                entry.id = m_nextId++;
+            }
+        }
+
+        m_lights = entries;
+
+        ++m_revision;
+
+        ++m_structureRevision;
+    }
+
+    return valid;
+}
+
+bool RenderScene::ReplaceLights(HeapVector<LightEntry>& entries)
+{
+    const bool valid = m_lights.Replace(entries);
+
+    if (valid)
+    {
+        m_importedLightIds.clear();
+    }
+
+    return valid;
+}
+
+bool RenderScene::SetCameraLight(const CameraLightSettings& settings)
+{
+    const bool valid = ValidateCameraLight(settings);
+
+    if (valid)
+    {
+        m_cameraLight = settings;
+    }
+
+    return valid;
 }
 
 HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config)

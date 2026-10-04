@@ -28,6 +28,8 @@ struct VoxelGISettings
     bool     analyticLighting{true};
     bool     environmentLighting{true};
     bool     emissiveLighting{true};
+
+    bool operator==(const VoxelGISettings&) const = default;
 };
 
 bool ValidateVoxelGISettings(const VoxelGISettings& settings);

@@ -14,6 +14,7 @@ struct EditorContext
     EditorLog&          log;
     ui::ImGuiRenderer&  renderer;
     EditorWindowChrome& windowChrome;
+    ui::UITextureHandle appIcon;
     // Without a platform picker the frontend asks for a typed path when Open runs.
     bool  nativeFileDialog{false};
     bool  sceneVisible{false};

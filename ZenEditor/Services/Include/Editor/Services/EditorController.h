@@ -3,6 +3,7 @@
 #include "Editor/Model/EditorPreferences.h"
 #include "Editor/Model/InspectorNavigation.h"
 #include "Editor/Model/SceneLoadState.h"
+#include "Editor/Model/EditorRenderingState.h"
 #include "Editor/Rendering/EditorViewport.h"
 #include "Editor/Rendering/MeshPreviewRenderer.h"
 
@@ -49,6 +50,32 @@ public:
     EditorPreferences& GetPreferences();
 
     EditorViewport& GetViewport();
+
+    const EditorRenderingState& GetRenderingState() const;
+
+    // Edits preview at the next update with Apply-only resource values held at their applied
+    // state. applyResources publishes those values too and retries latched GPU failures.
+    bool StageRenderingSettings(const rc::RenderingSettings& settings, bool applyResources = false);
+
+    bool UpdateRenderingSettings();
+
+    void RevertRenderingSettings();
+
+    bool AddRenderingLight(rc::SceneLightType type);
+
+    bool AddBoundsLights(bool corners);
+
+    void ResetRenderingLights();
+
+    const rc::RenderingSettings& GetRenderingDefaults() const;
+
+    void ResetRenderingSetup();
+
+    void RecordRenderingResult(bool succeeded);
+
+    bool CanRestoreRenderingSettings() const;
+
+    void RestoreRenderingSettings();
 
     // Parses, prepares GPU data and publishes both, or keeps the current scene and
     // reports the error. Synchronous; frontends normally call RequestLoad instead.
@@ -127,13 +154,22 @@ private:
 
     PickStamp MakeStamp() const;
 
-    EditorScene         m_scene;
-    EditorSelection     m_selection;
-    InspectorNavigation m_inspector;
-    EditorCamera        m_camera;
-    EditorActions       m_actions;
-    EditorPreferences   m_preferences;
-    EditorViewport      m_viewport;
+    EditorScene                    m_scene;
+    EditorSelection                m_selection;
+    InspectorNavigation            m_inspector;
+    EditorCamera                   m_camera;
+    EditorActions                  m_actions;
+    EditorPreferences              m_preferences;
+    EditorViewport                 m_viewport;
+    EditorRenderingState           m_rendering;
+    rc::RenderingSettings          m_renderDefaults;
+    rc::RenderingSettings          m_lastSuccessfulRendering;
+    bool                           m_hasSuccessfulRendering{false};
+    uint64_t                       m_successfulRenderingRevision{0};
+    bool                           m_renderApplyRequested{false};
+    bool                           m_renderResourcesRequested{false};
+    HeapVector<rc::RenderingLight> m_importedLights;
+    uint64_t                       m_nextLightId{1};
     // Declared after the viewport, whose GPU scene it draws from.
     MeshPreviewRenderer    m_meshPreview;
     EditorCamera           m_previewCamera;

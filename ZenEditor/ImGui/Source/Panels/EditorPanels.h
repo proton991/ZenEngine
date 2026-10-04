@@ -12,6 +12,8 @@ UniquePtr<EditorPanel> CreateInspectorPanel();
 
 UniquePtr<EditorPanel> CreateRenderSettingsPanel();
 
+UniquePtr<EditorPanel> CreateCameraSettingsPanel();
+
 UniquePtr<EditorPanel> CreateAssetsPanel();
 
 UniquePtr<EditorPanel> CreateOutputPanel();

@@ -3,8 +3,8 @@
 #include "../Common/scene_lighting.glsl"
 layout(std140,set=4,binding=0) uniform uSceneShadows
 {
-    mat4 viewProjection[MAX_SCENE_LIGHTS*6];
-    vec4 lights[MAX_SCENE_LIGHTS];
+    mat4 viewProjection[(MAX_SCENE_LIGHTS+1)*6];
+    vec4 lights[MAX_SCENE_LIGHTS+1];
     vec4 settings;
 } shadows;
 layout(set=4,binding=1) uniform sampler2DArray sceneShadowMaps;
@@ -22,7 +22,7 @@ float SceneLightVisibility(int lightIndex,vec3 position,vec3 normal)
     float visibility=1.0;
     if(info.y>0)
     {
-        SceneLight light=sceneUbo.lights[lightIndex];
+        SceneLight light=lightIndex==MAX_SCENE_LIGHTS ? sceneUbo.cameraLight : sceneUbo.lights[lightIndex];
         bool directional=int(light.directionType.w)==0;
         vec3 receiver=position+normal*shadows.settings.x;
         int layer=int(info.x);

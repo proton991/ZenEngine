@@ -3,6 +3,21 @@
 
 namespace zen::editor
 {
+float EditorControlWidth(float preferredWidth)
+{
+    return std::max(1.0f, std::min(preferredWidth * EditorScale(), ImGui::GetContentRegionAvail().x));
+}
+
+void SameLineIfFits(float nextItemWidth)
+{
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+
+    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + nextItemWidth <= right)
+    {
+        ImGui::SameLine();
+    }
+}
+
 bool DrawSceneImage(ImTextureID texture, ImVec2 extent, bool focused)
 {
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -66,7 +81,7 @@ void DrawVector(const char* label, Vec3 value)
 
             ImGui::SameLine(0, 4 * scale);
 
-            ImGui::SetNextItemWidth(-1);
+            ImGui::SetNextItemWidth(EditorControlWidth(100));
 
             ImGui::PushID(axis);
 

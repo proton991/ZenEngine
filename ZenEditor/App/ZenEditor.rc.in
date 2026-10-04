@@ -1,0 +1,2 @@
+// SDL uses the first icon; GLFW looks for the GLFW_ICON resource by name.
+GLFW_ICON ICON "@PROJECT_SOURCE_DIR@/Data/Textures/Editor/zen_engine.ico"

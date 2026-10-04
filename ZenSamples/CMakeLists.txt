@@ -56,6 +56,7 @@ target_compile_definitions(VulkanRHITest PRIVATE RDG_REFLECTION_TEST_PATH="${RDG
 target_compile_definitions(VulkanRHIIntegrationTest PRIVATE RDG_REFLECTION_TEST_PATH="${RDG_REFLECTION_TEST_PATH}")
 
 add_executable(RenderCoreTest
+    ../ZenCore/Source/Graphics/RenderCore/V2/DebugVisualization.cpp
     RenderCoreTest/RenderCoreTests.cpp
     RenderCoreTest/RDGMetricsTests.cpp
     RenderCoreTest/RDGProfilingTests.cpp

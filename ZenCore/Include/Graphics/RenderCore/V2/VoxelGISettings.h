@@ -14,6 +14,8 @@ struct VoxelGIRuntimeSettings
     bool                       averagedReflectance{false};
     uint64_t                   reflectanceBudgetBytes{0};
     uint32_t                   shadowMapResolution{1024};
+
+    bool operator==(const VoxelGIRuntimeSettings&) const = default;
 };
 
 bool ValidateVoxelGIRuntimeSettings(const VoxelGIRuntimeSettings& settings);

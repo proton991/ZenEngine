@@ -13,6 +13,11 @@ struct EditorRenderSnapshot
     rc::VoxelGIRuntimeSettings settings;
     rc::RenderOption           requestedMode{rc::RenderOption::ePBR};
     rc::RenderOption           renderedMode{rc::RenderOption::ePBR};
+    rc::RenderingStatus        status;
+    platform::VoxelizerMode    effectiveVoxelizer{platform::VoxelizerMode::eCompute};
+    rc::DebugOutputDescription debug;
+    bool                       lightMarkers{false};
+    float                      lightMarkerSize{0.02f};
 };
 
 // A completed GPU surface pick. The stamp is the one supplied with the request; the
@@ -63,6 +68,10 @@ public:
 
     void SetRenderMode(rc::RenderOption mode);
 
+    // Between frames. GI settings apply only when they change or retryResources is set,
+    // which also retries latched GPU allocation failures.
+    bool ApplyRenderingSettings(const rc::RenderingSettings& settings, bool retryResources, std::string& error);
+
     const EditorEnvironment& GetEnvironment() const;
 
     bool SetEnvironmentTexture(const std::string& path, std::string& error);
@@ -97,31 +106,35 @@ private:
 
     void CreatePreviews();
 
-    rc::RenderDevice&          m_device;
-    const EditorScene&         m_editorScene;
-    const EditorSelection&     m_selection;
-    EditorCamera&              m_camera;
-    UniquePtr<rc::RenderScene> m_scene;
-    UniquePtr<rc::RenderScene> m_pendingScene;
-    bool                       m_pendingPrepared{false};
-    rc::RenderView             m_view;
-    EditorEnvironment          m_environment;
-    uint64_t                   m_targetRevision{0};
-    HeapVector<RHIBuffer*>     m_boundsBuffers;
-    RHISampler*                m_pickSampler{nullptr};
-    RHISampler*                m_materialSampler{nullptr};
-    RHISampler*                m_imageSampler{nullptr};
-    RHIBuffer*                 m_pickOutput{nullptr};
-    RHIBuffer*                 m_pickReadback{nullptr};
-    bool                       m_pickRequested{false};
-    bool                       m_pickRecorded{false};
-    bool                       m_pickInFlight{false};
-    Vec2                       m_pickPosition{0.0f};
-    PickStamp                  m_requestedStamp;
-    PickStamp                  m_recordedStamp;
-    rc::ResourceRetirement     m_pickRetirement;
-    HeapVector<NodeId>         m_pickNodes;
-    HeapVector<RHITexture*>    m_previews;
-    uint64_t                   m_previewGeneration{0};
+    rc::RenderDevice&              m_device;
+    const EditorScene&             m_editorScene;
+    const EditorSelection&         m_selection;
+    EditorCamera&                  m_camera;
+    UniquePtr<rc::RenderScene>     m_scene;
+    UniquePtr<rc::RenderScene>     m_pendingScene;
+    bool                           m_pendingPrepared{false};
+    rc::RenderView                 m_view;
+    EditorEnvironment              m_environment;
+    HeapVector<rc::RenderingLight> m_appliedLights;
+    HeapVector<rc::LightId>        m_runtimeLightIds;
+    rc::CameraLightSettings        m_cameraLight;
+    std::string                    m_defaultEnvironment;
+    uint64_t                       m_targetRevision{0};
+    HeapVector<RHIBuffer*>         m_boundsBuffers;
+    RHISampler*                    m_pickSampler{nullptr};
+    RHISampler*                    m_materialSampler{nullptr};
+    RHISampler*                    m_imageSampler{nullptr};
+    RHIBuffer*                     m_pickOutput{nullptr};
+    RHIBuffer*                     m_pickReadback{nullptr};
+    bool                           m_pickRequested{false};
+    bool                           m_pickRecorded{false};
+    bool                           m_pickInFlight{false};
+    Vec2                           m_pickPosition{0.0f};
+    PickStamp                      m_requestedStamp;
+    PickStamp                      m_recordedStamp;
+    rc::ResourceRetirement         m_pickRetirement;
+    HeapVector<NodeId>             m_pickNodes;
+    HeapVector<RHITexture*>        m_previews;
+    uint64_t                       m_previewGeneration{0};
 };
 } // namespace zen::editor

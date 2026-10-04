@@ -4,6 +4,7 @@
 # Editor state, read-only scene queries, selection, actions and preferences.
 # No window, GPU device or UI toolkit.
 add_library(ZenEditorModel STATIC
+  Model/Source/EditorRenderingState.cpp
   Model/Source/EditorActions.cpp
   Model/Source/EditorCamera.cpp
   Model/Source/EditorEnvironment.cpp
@@ -51,6 +52,7 @@ add_library(ZenEditorUI STATIC
   ImGui/Source/MeshPreviewWidget.cpp
   ImGui/Source/SceneViewOverlays.cpp
   ImGui/Source/Panels/AssetsPanel.cpp
+  ImGui/Source/Panels/CameraSettingsPanel.cpp
   ImGui/Source/Panels/HierarchyPanel.cpp
   ImGui/Source/Panels/InspectorPanel.cpp
   ImGui/Source/Panels/OutputPanel.cpp
@@ -63,6 +65,12 @@ target_link_libraries(ZenEditorUI PUBLIC ZenEditorServices ZenEditorPlatform Zen
 
 add_executable(zen_editor App/Main.cpp App/EditorApplication.cpp)
 target_link_libraries(zen_editor PRIVATE ZenEditorUI)
+
+if (WIN32)
+  enable_language(RC)
+  configure_file(App/ZenEditor.rc.in "${CMAKE_CURRENT_BINARY_DIR}/ZenEditor.rc" @ONLY)
+  target_sources(zen_editor PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ZenEditor.rc")
+endif ()
 
 if (BUILD_TESTING)
   add_executable(EditorInputTest Tests/EditorInputTests.cpp Tests/InspectorNavigationWidgetTests.cpp Tests/SceneLoadingDialogTests.cpp)
@@ -78,7 +86,7 @@ if (BUILD_TESTING)
     add_test(NAME EditorWindowChromeTest COMMAND EditorWindowChromeTest)
     set_tests_properties(EditorWindowChromeTest PROPERTIES LABELS "native" TIMEOUT 30)
   endif ()
-  add_executable(EditorModelTest Tests/EditorModelTests.cpp Tests/InspectorNavigationTests.cpp Tests/EnvironmentTests.cpp)
+  add_executable(EditorModelTest Tests/EditorModelTests.cpp Tests/InspectorNavigationTests.cpp Tests/EnvironmentTests.cpp Tests/RenderingSettingsTests.cpp)
   target_link_libraries(EditorModelTest PRIVATE ZenEditorModel gtest_main)
   target_compile_definitions(EditorModelTest PRIVATE ZEN_EDITOR_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/")
   add_test(NAME EditorModelTest COMMAND EditorModelTest)

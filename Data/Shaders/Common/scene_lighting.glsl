@@ -16,6 +16,7 @@ layout(set = 2, binding = 0, std140) uniform uSceneData
     vec4 environment;
     vec4 environmentOrientation;
     vec4 environmentProperties;
+    SceneLight cameraLight;
 } sceneUbo;
 
 // Irradiance and prefiltered maps already use world orientation.

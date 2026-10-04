@@ -1,6 +1,7 @@
 #pragma once
 #include "Math/Math.h"
 #include "Templates/HeapVector.h"
+#include "SceneGraph/AABB.h"
 #include <cstdint>
 #include <cstddef>
 
@@ -40,6 +41,26 @@ struct SceneLight
     bool           castsShadows{true};
 };
 
+struct CameraLightSettings
+{
+    bool  enabled{false};
+    Vec3  color{1.0f};
+    float intensity{0.0025f};
+    float range{0.12f};
+    float radius{0.005f};
+    float followDistance{0.08f};
+    bool  followCamera{true};
+    Vec3  position{0.0f};
+};
+
+bool ValidateCameraLight(const CameraLightSettings& settings);
+
+Vec3 CameraLightPosition(const CameraLightSettings& settings, const Vec3& eye, const Vec3& forward);
+
+uint32_t CameraLightShadowFaces(const CameraLightSettings& settings);
+
+bool EqualSceneLight(const SceneLight& left, const SceneLight& right);
+
 // vec4-only layout shared with Common/scene_lighting.glsl (std140).
 struct GPULight
 {
@@ -57,10 +78,11 @@ struct SceneUniformData
     Vec4     environment{1.0f, 0.0f, 1.0f, 1.0f};            // intensity, rotation radians, enabled, visible
     Vec4     environmentOrientation{0.0f, 0.0f, 0.0f, 1.0f}; // inverse authored quaternion
     Vec4     environmentProperties{};                        // x: authored glTF cubemap coordinates
+    GPULight cameraLight{};                                  // movable GI test light; coneShadow.w is its sphere radius
 };
 static_assert(sizeof(GPULight) == 64);
 static_assert(offsetof(SceneUniformData, viewPos) == MaxSceneLights * 64);
-static_assert(sizeof(SceneUniformData) == MaxSceneLights * 64 + 80);
+static_assert(sizeof(SceneUniformData) == MaxSceneLights * 64 + 144);
 
 struct LightEntry
 {
@@ -76,6 +98,10 @@ public:
     bool Update(LightId id, const SceneLight& light);
 
     bool Remove(LightId id);
+
+    // Existing IDs preserve identity; zero IDs allocate new entries. Validates the
+    // entire candidate before publishing. IDs and revisions never restart.
+    bool Replace(HeapVector<LightEntry>& entries);
 
     const SceneLight* Find(LightId id) const;
 
@@ -114,4 +140,12 @@ struct ConfiguredLight
 HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config);
 
 HeapVector<SceneLight> BuildSceneLights(const sg::Scene& scene);
+
+HeapVector<SceneLight> BuildBoundsLightPreset(const sg::AABB& bounds, bool corners = false);
+
+uint32_t CountShadowFaces(const HeapVector<SceneLight>& lights);
+
+uint64_t EstimateShadowBytes(uint32_t resolution, uint32_t faces);
+
+bool ValidateShadowMemory(uint32_t resolution, uint32_t faces, uint64_t availableBytes);
 } // namespace zen::rc

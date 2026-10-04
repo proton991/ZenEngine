@@ -5,6 +5,7 @@
 #include "Platform/ConfigLoader.h"
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace zen::rc
 {
@@ -35,6 +36,49 @@ bool SceneShadowRenderer::SetResolution(uint32_t resolution)
     }
 
     return valid;
+}
+
+bool SceneShadowRenderer::Preflight(uint32_t resolution, uint32_t faces) const
+{
+    const bool retained = m_maps != nullptr && resolution == m_resolution && m_maps->GetArrayLayers() == std::max(2u, faces);
+
+    const RHIGPUMemoryStats memory = m_device->GetGPUMemoryStats();
+
+    const uint64_t capacity        = m_device->GetGPUInfo().deviceLocalMemoryBytes;
+
+    // ApplyVoxelGISettings drains GPU work, destroys resized maps, and collects them before
+    // allocating replacements. Use the same D32 byte estimate as ValidateShadowMemory.
+    const uint64_t reclaimed = resolution != m_resolution
+                                 ? uint64_t(m_resolution) * m_resolution * 4
+                                       * ((m_depth != nullptr ? 1u : 0u) + (m_maps != nullptr ? m_maps->GetArrayLayers() : 0u))
+                                 : 0;
+
+    const uint64_t used      = memory.deviceLocalBytes - std::min(memory.deviceLocalBytes, reclaimed);
+
+    // A backend which reports no capacity has an unknown budget, not zero bytes.
+    // Keep dimensional validation and let allocation report failure in that case.
+    uint64_t available = capacity == 0 ? std::numeric_limits<uint64_t>::max() : capacity > used ? capacity - used : 0;
+
+    if (memory.budgetAvailable)
+    {
+        uint64_t budgetAvailable = 0;
+
+        for (uint32_t index = 0; index < memory.heapCount; ++index)
+        {
+            const RHIGPUMemoryStats::Heap& heap = memory.heaps[index];
+
+            const uint64_t heapUsed             = heap.usageBytes - std::min(heap.usageBytes, reclaimed);
+
+            if (heap.deviceLocal && heap.budgetBytes > heapUsed)
+            {
+                budgetAvailable = std::max(budgetAvailable, heap.budgetBytes - heapUsed);
+            }
+        }
+
+        available = std::min(available, budgetAvailable);
+    }
+
+    return retained || ValidateShadowMemory(resolution, faces, available);
 }
 
 void SceneShadowRenderer::PrepareLight(const GPULight& light, uint32_t index, const sg::AABB& bounds)
@@ -122,10 +166,17 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         }
     }
 
+    if (enabled && sceneData.cameraLight.colorIntensity.w > 0.0f)
+    {
+        PrepareLight(sceneData.cameraLight, MaxSceneLights, scene.GetAABB());
+    }
+
     // At least two layers keep the native default view a 2D array, even with one/no light.
     const uint32_t layers = std::max(2u, static_cast<uint32_t>(m_faces.size()));
 
-    if (m_maps != nullptr && m_maps->GetArrayLayers() != layers)
+    const bool fits       = Preflight(m_resolution, static_cast<uint32_t>(m_faces.size()));
+
+    if (fits && m_maps != nullptr && m_maps->GetArrayLayers() != layers)
     {
         m_device->DestroyTexture(m_maps);
 
@@ -146,12 +197,12 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
 
     format.depth     = 1;
 
-    if (m_depth == nullptr)
+    if (fits && m_depth == nullptr)
     {
         m_depth = m_device->CreateTextureDepthStencilRT(format, {.copyUsage = true}, "scene_shadow_depth");
     }
 
-    if (m_depth != nullptr && m_maps == nullptr)
+    if (fits && m_depth != nullptr && m_maps == nullptr)
     {
         format.arrayLayers = layers;
 
@@ -168,7 +219,8 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         m_materialSampler = m_device->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
     }
 
-    const bool valid = m_depth != nullptr && m_maps != nullptr && m_depthSampler != nullptr && m_materialSampler != nullptr;
+    const bool valid =
+        fits && m_depth != nullptr && m_maps != nullptr && m_depthSampler != nullptr && m_materialSampler != nullptr;
 
     if (!valid)
     {
@@ -274,6 +326,62 @@ void SceneShadowRenderer::BindLightingInputs(RDGPassDescBase& pass) const
     pass.BindValue("uSceneShadows", m_uniforms);
 
     pass.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_maps->GetDefaultView());
+}
+
+DebugOutputDescription SceneShadowRenderer::BuildDebugView(const RenderScene&    scene,
+                                                           const RenderView&     view,
+                                                           const DebugSelection& selection)
+{
+    DebugOutputDescription description;
+
+    description.output = DebugOutput::eShadow;
+
+    description.width = description.height = m_resolution;
+
+    description.format                     = DataFormat::eD32SFloat;
+
+    description.interpretation =
+        "Normalized radial distance for point/spot lights; normalized orthographic distance for directional lights.";
+
+    description.reason    = "Select an enabled, non-zero shadow-casting light and a valid face.";
+
+    uint32_t enabledIndex = 0;
+
+    for (const LightEntry& entry : scene.GetLights().GetEntries())
+    {
+        if (entry.light.enabled)
+        {
+            if (entry.id == selection.lightId)
+            {
+                const Vec4 layers     = m_uniforms.lights[enabledIndex];
+
+                description.faceCount = static_cast<uint32_t>(layers.y);
+
+                description.available = m_maps != nullptr && selection.face < description.faceCount;
+
+                if (description.available)
+                {
+                    DebugVisualizationData data;
+
+                    data.range               = Vec4(selection.minimum, selection.maximum, 0, 0);
+
+                    data.selection.y         = static_cast<uint32_t>(layers.x) + selection.face;
+
+                    RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "RenderDebugArraySP", data);
+
+                    pass.BindSampledTexture("sourceImage", m_depthSampler, m_maps->GetDefaultView());
+
+                    AddDebugVisualizationPass(*m_device->GetCurrentFrameRDG(), std::move(pass));
+
+                    description.reason.clear();
+                }
+            }
+
+            ++enabledIndex;
+        }
+    }
+
+    return description;
 }
 
 void SceneShadowRenderer::OnRenderGraphExecuted(bool succeeded)

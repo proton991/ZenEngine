@@ -11,6 +11,8 @@ struct LoadedScene
     HeapVector<asset::Vertex> vertices;
     HeapVector<uint32_t>      indices;
     std::string               path;
+    Vec3                      normalizationCenter{0.0f};
+    float                     normalizationScale{1.0f};
 };
 
 // Parses a glTF or GLB file on the calling thread. Invalid input returns null and an error.

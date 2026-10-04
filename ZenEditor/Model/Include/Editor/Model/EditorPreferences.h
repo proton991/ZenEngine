@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Model/EditorCamera.h"
 #include "Templates/HashMap.h"
 #include "Templates/HeapVector.h"
 #include <filesystem>
@@ -34,6 +35,8 @@ struct EditorPreferences
     RecentFiles                recentFiles;
     // The Scene view's mouse and keyboard hint.
     bool showSceneControls{true};
+    // Normalized scene units per second; shared by all imported models.
+    float cameraMoveSpeed{kDefaultEditorCameraMoveSpeed};
 };
 
 // %LOCALAPPDATA%/ZenEngine/ZenEditor, else $XDG_CONFIG_HOME or ~/.config, else the temp directory.

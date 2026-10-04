@@ -3,6 +3,13 @@
 
 namespace zen::editor
 {
+constexpr float kDefaultEditorCameraMoveSpeed = 1.0f;
+constexpr float kMinEditorCameraMoveSpeed     = 0.001f;
+constexpr float kMaxEditorCameraMoveSpeed     = 100.0f;
+
+// Non-finite values restore the default; finite values stay within the UI's range.
+float ClampEditorCameraMoveSpeed(float speed);
+
 struct CameraInput
 {
     Vec2  look{0.0f};
@@ -11,6 +18,9 @@ struct CameraInput
     Vec3  move{0.0f};
     float dolly{0.0f};
     float seconds{0.0f};
+    // World units per second, independent of the last framed bounds. Imported
+    // editor scenes have a longest extent of one, regardless of glTF source units.
+    float moveSpeed{kDefaultEditorCameraMoveSpeed};
     bool  fast{false};
 };
 

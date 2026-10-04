@@ -7,6 +7,12 @@
 
 namespace zen::editor
 {
+// Caps a control's logical width and fits it to the current panel at the UI scale.
+float EditorControlWidth(float preferredWidth);
+
+// Keeps toolbar items together when their measured pixel width fits, otherwise wraps.
+void SameLineIfFits(float nextItemWidth);
+
 // Owns viewport drags without moving a floating panel; returns whether navigation may run.
 bool DrawSceneImage(ImTextureID texture, ImVec2 extent, bool focused);
 

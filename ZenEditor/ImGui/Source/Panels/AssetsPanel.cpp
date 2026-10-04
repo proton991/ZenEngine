@@ -163,20 +163,17 @@ private:
             ImGui::SetTooltip("%s", scene->path.c_str());
         }
 
-        ImGui::SameLine();
+        const float searchWidth = 230 * scale;
 
-        const float searchX = ImGui::GetWindowContentRegionMax().x - 300 * scale;
+        const float toggleWidth = ImGui::CalcTextSize(m_grid ? "List" : "Grid").x + ImGui::GetStyle().FramePadding.x * 2;
 
-        if (searchX > ImGui::GetCursorPosX())
-        {
-            ImGui::SetCursorPosX(searchX);
-        }
+        SameLineIfFits(searchWidth + ImGui::GetStyle().ItemSpacing.x + toggleWidth);
 
-        ImGui::SetNextItemWidth(230 * scale);
+        ImGui::SetNextItemWidth(EditorControlWidth(230));
 
         ImGui::InputTextWithHint("##SearchAssets", "Search assets...", m_search, sizeof(m_search));
 
-        ImGui::SameLine();
+        SameLineIfFits(toggleWidth);
 
         if (ImGui::Button(m_grid ? "List" : "Grid"))
         {

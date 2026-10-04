@@ -29,6 +29,28 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
         {
             options.capture = argument.substr(10);
         }
+        else if (argument.starts_with("--capture-scene="))
+        {
+            options.sceneCapture = argument.substr(16);
+        }
+        else if (argument.starts_with("--debug="))
+        {
+            const std::string_view names[] = {"final", "depth", "albedo", "normal", "shadow", "voxels", "voxel-slice"};
+
+            bool found                     = false;
+
+            for (uint32_t output = 0; output < 7; ++output)
+            {
+                if (argument.substr(8) == names[output])
+                {
+                    options.debugOutput    = static_cast<zen::rc::DebugOutput>(output);
+
+                    options.debugSpecified = found = true;
+                }
+            }
+
+            valid &= found;
+        }
         else if (argument.starts_with("--frames="))
         {
             const std::string_view value        = argument.substr(9);
@@ -74,8 +96,8 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
         options.frames = 40;
     }
 
-    valid =
-        valid && (options.capture.empty() || options.frames != 0) && (options.environment.empty() || !options.scene.empty());
+    valid = valid && ((options.capture.empty() && options.sceneCapture.empty()) || options.frames != 0)
+         && (options.environment.empty() || !options.scene.empty());
 
     return valid;
 }
@@ -98,7 +120,8 @@ int main(int argc, char** argv)
         std::fprintf(
             stderr,
             "Usage: zen_editor [--scene=path.gltf|path.glb] [--rhi=inline|threaded] [--frames=N] "
-            "[--environment=path.hdr|path.ktx|path.dds] [--mode=pbr|gi|voxels] [--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--smoke-test] [--hidden] [--windowed]\n");
+            "[--environment=path.hdr|path.ktx|path.dds] [--mode=pbr|gi|voxels] [--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice] "
+            "[--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--capture-scene=path.ppm] [--smoke-test] [--hidden] [--windowed]\n");
     }
 
     return result;

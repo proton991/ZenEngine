@@ -55,18 +55,19 @@ void main()
         }
 #endif
         vec3 irradiance=texelFetch(skyIrradiance,p,0).rgb;
-        for(int i=0;i<int(sceneUbo.lightInfo.x)*int(gi.lighting.x);++i)
+        for(int i=0;i<(int(sceneUbo.lightInfo.x)+1)*int(gi.lighting.x);++i)
         {
             vec3 direction; float distanceToLight;
-            vec3 incoming=EvaluateLight(sceneUbo.lights[i],position,direction,distanceToLight);
+            SceneLight light=i==int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i];
+            vec3 incoming=EvaluateLight(light,position,direction,distanceToLight);
             float cosine=max(dot(normal,direction),0.0);
             if(cosine>0 && any(greaterThan(incoming,vec3(0))))
             {
 #ifdef VOXEL_MESH_SHADOWS
-                float visibility=surfaceValid ? SceneLightVisibility(i,position,geometricNormal) :
-                    VoxelLightVisibility(voxelAlbedo,sceneUbo.lights[i],origin);
+                float visibility=surfaceValid ? SceneLightVisibility(i==int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i,position,geometricNormal) :
+                    VoxelLightVisibility(voxelAlbedo,light,origin);
 #else
-                float visibility=VoxelLightVisibility(voxelAlbedo,sceneUbo.lights[i],origin);
+                float visibility=VoxelLightVisibility(voxelAlbedo,light,origin);
 #endif
                 irradiance+=incoming*cosine*visibility;
             }

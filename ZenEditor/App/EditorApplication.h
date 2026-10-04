@@ -12,6 +12,9 @@ struct EditorOptions
     std::string      environment;
     std::string      settingsDirectory;
     std::string      capture;
+    std::string      sceneCapture;
+    rc::DebugOutput  debugOutput{rc::DebugOutput::eFinal};
+    bool             debugSpecified{false};
     uint32_t         frames{0};
     float            scale{0};
     bool             threaded{true};

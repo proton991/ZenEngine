@@ -82,7 +82,9 @@ void RendererServer::Destroy()
 
 bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay, bool drawScene)
 {
-    m_frameRenderOption = m_renderOption;
+    m_status.requested  = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
+
+    m_frameRenderOption = m_status.fallbackReason.empty() ? m_renderOption : RenderOption::ePBR;
 
     const bool renderScene =
         drawScene && m_pScene != nullptr && view.color != nullptr && view.depth != nullptr && view.width > 0 && view.height > 0;
@@ -95,12 +97,6 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
     if (succeeded)
     {
-        if (renderScene && m_frameRenderOption == RenderOption::eVoxelGI
-            && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
-        {
-            m_frameRenderOption = RenderOption::ePBR;
-        }
-
         succeeded = pFrameRDG->Begin();
 
         if (succeeded && m_pPresentationViewport != nullptr
@@ -110,44 +106,89 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
                 .ClearTexture(m_pPresentationViewport->GetColorBackBuffer(), Color(0.055f, 0.06f, 0.075f, 1.0f));
         }
 
+        m_frameShadows            = false;
+
+        m_frameGI                 = false;
+
+        m_debugDescription        = {};
+
+        m_debugDescription.output = m_debug.output;
+
         if (succeeded && renderScene)
         {
-            if (m_frameRenderOption == RenderOption::eVoxelize && !m_pVoxelizer->EnsureReady())
+            const bool diagnostic = m_debug.output != DebugOutput::eFinal && m_debug.output != DebugOutput::eDepth;
+
+            if (diagnostic)
             {
-                LOGE("Voxel visualization unavailable; selecting PBR");
-
-                m_frameRenderOption = RenderOption::ePBR;
-            }
-
-            if (m_frameRenderOption == RenderOption::eVoxelGI
-                && (!m_pVoxelGI->Init() || !m_pSceneShadows->Prepare(*m_pScene, m_pVoxelGI->GetSettings().shadows, false)))
-            {
-                LOGE("Voxel GI unavailable; selecting PBR");
-
-                m_frameRenderOption = RenderOption::ePBR;
-            }
-
-            m_pSkyboxRenderer->BuildRenderGraph(view);
-
-            if (m_frameRenderOption == RenderOption::eVoxelize)
-            {
-                m_pVoxelizer->BuildRenderGraph(view);
-            }
-            else if (m_frameRenderOption == RenderOption::eVoxelGI)
-            {
-                m_pDeferredLightingRenderer->BuildGBufferGraph(view);
-
-                m_pVoxelizer->BuildVoxelizationGraph();
-
-                m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pVoxelizer->GetRecordedGeometryRevision());
-
-                m_pVoxelGI->BuildRenderGraph(m_pSceneShadows);
-
-                m_pDeferredLightingRenderer->BuildCompositionGraph(view, m_pVoxelGI, m_pSceneShadows);
+                BuildDiagnosticFrame(view);
             }
             else
             {
-                m_pDeferredLightingRenderer->BuildRenderGraph(view);
+                if (m_frameRenderOption == RenderOption::eVoxelGI
+                    && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
+                {
+                    m_frameRenderOption     = RenderOption::ePBR;
+
+                    m_status.fallbackReason = "The scene has incomplete voxel coverage.";
+                }
+
+                if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->Init())
+                {
+                    m_frameRenderOption     = RenderOption::ePBR;
+
+                    m_status.fallbackReason = "Voxelizer or GI resource initialization failed.";
+                }
+
+                if (m_frameRenderOption == RenderOption::eVoxelGI
+                    && !m_pSceneShadows->Prepare(*m_pScene, m_pVoxelGI->GetSettings().shadows, false))
+                {
+                    m_frameRenderOption     = RenderOption::ePBR;
+
+                    m_status.fallbackReason = "Shadow memory preflight or allocation failed.";
+                }
+
+                m_pSkyboxRenderer->BuildRenderGraph(view);
+
+                if (m_frameRenderOption == RenderOption::eVoxelGI)
+                {
+                    m_pDeferredLightingRenderer->BuildGBufferGraph(view);
+
+                    m_pVoxelizer->BuildVoxelizationGraph();
+
+                    m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pVoxelizer->GetRecordedGeometryRevision());
+
+                    m_pVoxelGI->BuildRenderGraph(m_pSceneShadows);
+
+                    m_pDeferredLightingRenderer->BuildCompositionGraph(view, m_pVoxelGI, m_pSceneShadows);
+
+                    m_frameShadows = m_frameGI = true;
+                }
+                else
+                {
+                    m_pDeferredLightingRenderer->BuildRenderGraph(view);
+                }
+
+                m_debugDescription.available = true;
+
+                m_debugDescription.reason.clear();
+
+                m_debugDescription.width          = view.width;
+
+                m_debugDescription.height         = view.height;
+
+                m_debugDescription.format         = view.color->GetFormat();
+
+                m_debugDescription.interpretation = "Final SDR color.";
+
+                if (m_debug.output == DebugOutput::eDepth)
+                {
+                    m_debugDescription = m_pDeferredLightingRenderer->BuildDebugView(view, m_debug);
+                }
+            }
+
+            if (!m_debugDescription.available)
+            {
+                pFrameRDG->AddTransferPass("UnavailableDebugOutput").ClearTexture(view.color, Color(0.04f, 0.02f, 0.04f, 1.0f));
             }
         }
 
@@ -172,19 +213,98 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
     m_pSkyboxRenderer->OnRenderGraphExecuted(succeeded);
 
-    if (m_frameRenderOption == RenderOption::eVoxelGI)
+    if (m_frameGI)
     {
         m_pVoxelGI->OnRenderGraphExecuted(succeeded);
+    }
 
+    if (m_frameShadows)
+    {
         m_pSceneShadows->OnRenderGraphExecuted(succeeded);
     }
+
+    if (!succeeded)
+    {
+        m_debugDescription.available = false;
+
+        m_debugDescription.reason    = "Frame submission failed.";
+    }
+
+    m_status.effective = m_frameRenderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
 
     return succeeded;
 }
 
+void RendererServer::SetRenderingSelection(RenderAlgorithm algorithm, const DebugSelection& selection)
+{
+    const RenderOption option = algorithm == RenderAlgorithm::eVoxelGI ? RenderOption::eVoxelGI : RenderOption::ePBR;
+
+    if (m_renderOption != option || m_debug.output != selection.output)
+    {
+        ResetRenderingFailure();
+
+        m_pSceneShadows->OnRenderGraphExecuted(false);
+    }
+
+    m_renderOption            = option;
+
+    m_debug                   = selection;
+
+    m_debugDescription        = {};
+
+    m_debugDescription.output = selection.output;
+
+    m_debugDescription.reason = "Waiting for the next rendered frame.";
+}
+
+void RendererServer::BuildDiagnosticFrame(const RenderView& view)
+{
+    if (m_debug.output == DebugOutput::eAlbedo || m_debug.output == DebugOutput::eNormal)
+    {
+        m_pDeferredLightingRenderer->BuildGBufferGraph(view);
+
+        m_debugDescription = m_pDeferredLightingRenderer->BuildDebugView(view, m_debug);
+    }
+    else if (m_debug.output == DebugOutput::eShadow)
+    {
+        if (m_pSceneShadows->Prepare(*m_pScene, true, false))
+        {
+            m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pScene->GetGeometryRevision());
+
+            m_frameShadows     = true;
+
+            m_debugDescription = m_pSceneShadows->BuildDebugView(*m_pScene, view, m_debug);
+        }
+        else
+        {
+            m_debugDescription.reason = "Shadow memory preflight or allocation failed.";
+        }
+    }
+    else
+    {
+        if (m_debug.output == DebugOutput::eVoxels)
+        {
+            m_pSkyboxRenderer->BuildRenderGraph(view);
+        }
+
+        m_debugDescription = m_pVoxelizer->BuildDebugView(view, m_debug);
+    }
+}
+
+void RendererServer::ResetRenderingFailure()
+{
+    m_status.fallbackReason.clear();
+}
+
 void RendererServer::SetRenderScene(RenderScene* pScene)
 {
-    m_pScene = pScene;
+    ResetRenderingFailure();
+
+    m_pScene                  = pScene;
+
+    m_debugDescription        = {};
+
+    m_debugDescription.output = m_debug.output;
 
     m_pSceneShadows->OnRenderGraphExecuted(false);
 

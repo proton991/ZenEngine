@@ -10,6 +10,12 @@ namespace
 constexpr float kMaxPitch = 1.55f;
 } // namespace
 
+float ClampEditorCameraMoveSpeed(float speed)
+{
+    return std::isfinite(speed) ? std::clamp(speed, kMinEditorCameraMoveSpeed, kMaxEditorCameraMoveSpeed)
+                                : kDefaultEditorCameraMoveSpeed;
+}
+
 EditorCamera::EditorCamera() : m_camera(Vec3(0, 0, 2), Vec3(0), 1.0f) {}
 
 Vec3 EditorCamera::Forward() const
@@ -79,9 +85,12 @@ void EditorCamera::Apply(const CameraInput& input)
             m_target = m_eye + forward * m_distance;
         }
 
-        const float speed = m_scale * std::clamp(input.seconds, 0.0f, 0.1f) * (input.fast ? 3.0f : 1.0f);
+        const float speed =
+            ClampEditorCameraMoveSpeed(input.moveSpeed) * std::clamp(input.seconds, 0.0f, 0.1f) * (input.fast ? 3.0f : 1.0f);
 
-        const Vec3 shift  = (right * input.move.x + Vec3(0, 1, 0) * input.move.y + forward * input.move.z) * speed
+        const Vec3 movement = right * input.move.x + Vec3(0, 1, 0) * input.move.y + forward * input.move.z;
+
+        const Vec3 shift    = movement / std::max(1.0f, glm::length(movement)) * speed
                          + (-right * input.pan.x + up * input.pan.y) * m_distance * 0.002f;
 
         m_eye      += shift;

@@ -341,7 +341,9 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
 
     if (useConfiguredLights)
     {
-        m_renderScene->GetLights() = rc::SceneLights();
+        HeapVector<rc::LightEntry> empty;
+
+        m_renderScene->ReplaceLights(empty);
     }
 
     m_animatedLightIndex = std::min(animatedIndex, rc::MaxSceneLights - 1);
@@ -377,8 +379,16 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
     {
         m_boundsPresetLights = true;
 
-        // RenderScene already created the preset. Register its existing IDs so UI
-        // edits affect those lights rather than adding a second set.
+        // Reconfiguration replaces the explicit preset, preserving monotonic runtime IDs.
+        HeapVector<rc::LightEntry> preset;
+
+        for (const rc::SceneLight& light : rc::BuildBoundsLightPreset(m_renderScene->GetAABB()))
+        {
+            preset.push_back({0, light});
+        }
+
+        m_renderScene->ReplaceLights(preset);
+
         for (const rc::LightEntry& entry : m_renderScene->GetLights().GetEntries())
         {
             m_editableLightIds[m_editableLightCount]        = entry.id;

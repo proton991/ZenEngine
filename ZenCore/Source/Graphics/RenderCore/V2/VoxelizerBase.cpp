@@ -370,6 +370,55 @@ void VoxelizerBase::BuildRenderGraph(const RenderView& view)
     BuildVisualizationGraph(view);
 }
 
+DebugOutputDescription VoxelizerBase::BuildDebugView(const RenderView& view, const DebugSelection& selection)
+{
+    DebugOutputDescription description;
+
+    description.output = selection.output;
+
+    description.width = description.height = description.depth = m_voxelTexResolution;
+
+    description.format                                         = m_voxelTexFormat;
+
+    const bool validSelection =
+        selection.output == DebugOutput::eVoxels
+        || (selection.output == DebugOutput::eVoxelSlice && selection.axis < 3 && selection.slice < m_voxelTexResolution);
+
+    description.available      = validSelection && selection.mip == 0 && EnsureReady();
+
+    description.reason         = description.available ? "" : "Voxel resources or selected subresource are unavailable.";
+
+    description.interpretation = selection.output == DebugOutput::eVoxels
+                                   ? "Occupied surface voxels in normalized world space."
+                                   : "Surface albedo slice, sRGB display; empty cells are black. Mip zero only.";
+
+    if (description.available)
+    {
+        BuildVoxelizationGraph();
+
+        if (selection.output == DebugOutput::eVoxels)
+        {
+            BuildVisualizationGraph(view);
+        }
+        else
+        {
+            DebugVisualizationData data;
+
+            data.selection.z         = selection.axis;
+
+            data.selection.w         = selection.slice;
+
+            RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "RenderDebugVolumeSP", data);
+
+            pass.BindSampledTexture("sourceImage", m_pVoxelSampler, m_voxelTextures.pAlbedoView);
+
+            AddDebugVisualizationPass(*m_pRenderDevice->GetCurrentFrameRDG(), std::move(pass));
+        }
+    }
+
+    return description;
+}
+
 sg::AABB VoxelizerBase::GetVoxelBounds() const
 {
     const sg::AABB& bounds = m_pScene->GetVoxelSceneBounds();

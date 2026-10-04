@@ -63,6 +63,15 @@ UniquePtr<LoadedScene> ParseScene(const std::string& path, std::string& error)
 
         candidate->path     = path;
 
+        const float extent  = candidate->scene->GetAABB().GetMaxExtent();
+
+        if (std::isfinite(extent) && extent > 1e-6f)
+        {
+            candidate->normalizationCenter = candidate->scene->GetAABB().GetCenter();
+
+            candidate->normalizationScale  = 1.0f / extent;
+        }
+
         error.clear();
     }
     else

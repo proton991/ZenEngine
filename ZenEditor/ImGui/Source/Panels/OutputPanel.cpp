@@ -13,19 +13,19 @@ public:
 private:
     void DrawContents(EditorContext& context) override
     {
-        ImGui::SetNextItemWidth(230);
+        ImGui::SetNextItemWidth(EditorControlWidth(240));
 
         ImGui::InputTextWithHint("##SearchOutput", "Filter output...", m_search, sizeof(m_search));
 
-        ImGui::SameLine();
+        SameLineIfFits(100 * EditorScale());
 
         const char* levels[] = {"All", "Info", "Warning", "Error"};
 
-        ImGui::SetNextItemWidth(90);
+        ImGui::SetNextItemWidth(EditorControlWidth(100));
 
         ImGui::Combo("##Level", &m_level, levels, 4);
 
-        ImGui::SameLine();
+        SameLineIfFits(ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2);
 
         if (ImGui::Button("Clear"))
         {
@@ -34,7 +34,7 @@ private:
 
         const HeapVector<EditorLogEntry> entries = context.log.Query(m_level == 0 ? 0 : m_level + 1, m_search);
 
-        ImGui::SameLine();
+        SameLineIfFits(ImGui::CalcTextSize("Copy").x + ImGui::GetStyle().FramePadding.x * 2);
 
         if (ImGui::Button("Copy"))
         {
@@ -47,6 +47,8 @@ private:
 
             ImGui::SetClipboardText(text.c_str());
         }
+
+        ImGui::Separator();
 
         if (ImGui::BeginChild("LogLines"))
         {

@@ -295,6 +295,62 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
     }
 }
 
+DebugOutputDescription DeferredLightingRenderer::BuildDebugView(const RenderView& view, const DebugSelection& selection)
+{
+    DebugOutputDescription description;
+
+    description.output    = selection.output;
+
+    description.width     = view.width;
+
+    description.height    = view.height;
+
+    const bool depth      = selection.output == DebugOutput::eDepth;
+
+    description.available = m_pScene != nullptr && view.width > 0 && view.height > 0
+                         && (depth || m_gbufferExtent == glm::uvec2(view.width, view.height));
+
+    description.reason =
+        description.available ? "" : "This scene uses forward materials or non-triangle geometry; it has no G-buffer.";
+
+    description.format         = depth                                    ? view.GetDepthStencilFormat()
+                               : selection.output == DebugOutput::eNormal ? DataFormat::eR16G16B16A16SFloat
+                                                                          : DataFormat::eR8G8B8A8UNORM;
+
+    description.interpretation = depth ? "Depth of opaque/masked surfaces: raw device Z or linear view distance."
+                               : selection.output == DebugOutput::eNormal ? "World-space normal mapped from [-1,1] to RGB."
+                                                                          : "Linear base color encoded as sRGB; no lighting.";
+
+    if (description.available)
+    {
+        const sg::CameraUniformData& camera = *reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
+
+        DebugVisualizationData data;
+
+        data.inverseProjection   = glm::inverse(camera.proj);
+
+        data.range               = Vec4(selection.minimum, selection.maximum, selection.linearDepth ? 1.0f : 0.0f, 0);
+
+        data.selection.x         = depth ? 1 : selection.output == DebugOutput::eNormal ? 3 : 2;
+
+        RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "RenderDebug2DSP", data);
+
+        if (depth)
+        {
+            pass.BindSampledTexture("sourceImage", m_pDepthSampler, view.depth->GetDefaultView());
+        }
+        else
+        {
+            pass.BindSampledTexture("sourceImage", m_pDepthSampler,
+                                    NameID(selection.output == DebugOutput::eNormal ? "offscreen_normal" : "offscreen_albedo"));
+        }
+
+        AddDebugVisualizationPass(*m_pRenderDevice->GetCurrentFrameRDG(), std::move(pass));
+    }
+
+    return description;
+}
+
 void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
                                                      VoxelGIRenderer*     voxelGI,
                                                      SceneShadowRenderer* shadows)
@@ -895,6 +951,41 @@ void DeferredLightingRenderer::BuildLightMarkers(const RenderView& view)
     const SceneUniformData& sceneData = *reinterpret_cast<const SceneUniformData*>(m_pScene->GetSceneUniformData());
 
     const uint32_t lightCount         = static_cast<uint32_t>(sceneData.lightInfo.x);
+
+    if (sceneData.cameraLight.colorIntensity.w > 0.0f)
+    {
+        RHIGfxPipelineStates pso{};
+
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
+
+        pso.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
+
+        pso.colorBlendState.AddAttachment();
+
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+
+        RDGGraphicsPassDesc ball;
+
+        ball.SetShaderProgramName("LightBallSP");
+
+        ball.SetPassTag("CameraLightBall");
+
+        ball.SetPipelineStates(pso);
+
+        ball.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
+
+        ball.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
+
+        ball.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eLoad, RHIRenderTargetStoreOp::eStore);
+
+        ball.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
+
+        ball.BindValue("uSceneData", sceneData);
+
+        m_pRenderDevice->GetCurrentFrameRDG()
+            ->AddGraphicsPass(std::move(ball))
+            .RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(24 * 12 * 6, 1); });
+    }
 
     if (m_lightMarkersEnabled && lightCount > 0)
     {

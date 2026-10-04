@@ -6,6 +6,11 @@
 
 namespace zen::rc
 {
+bool RendererServer::ValidateShadowResources(uint32_t resolution, uint32_t faces) const
+{
+    return m_pSceneShadows != nullptr && m_pSceneShadows->Preflight(resolution, faces);
+}
+
 VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const
 {
     VoxelGIRuntimeSettings settings = m_giSettings;
@@ -60,7 +65,7 @@ void RendererServer::DestroyVoxelGIResources()
     m_pVoxelizer = nullptr;
 }
 
-bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requested)
+bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requested, bool retryFailedResources)
 {
     VoxelGIRuntimeSettings settings = requested;
 
@@ -73,11 +78,14 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
     {
         const VoxelGIRuntimeSettings previous = GetVoxelGISettings();
 
-        const bool rebuild                    = RequiresVoxelGIRebuild(previous, settings);
+        // Allocation failures stay latched between frames; only an explicit retry rebuilds a failed
+        // voxelizer, so interactive cone edits never drain the GPU to repeat a failed allocation.
+        const bool rebuild =
+            RequiresVoxelGIRebuild(previous, settings) || (retryFailedResources && m_pVoxelizer->HasFailedInitialization());
 
-        const bool resizeShadows              = previous.shadowMapResolution != settings.shadowMapResolution;
+        const bool resizeShadows = previous.shadowMapResolution != settings.shadowMapResolution;
 
-        valid                                 = m_pRenderDevice->SetAsyncComputeMode(settings.asyncCompute);
+        valid                    = m_pRenderDevice->SetAsyncComputeMode(settings.asyncCompute);
 
         if (valid && (rebuild || resizeShadows))
         {
@@ -86,6 +94,11 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
         if (valid)
         {
+            if (rebuild || resizeShadows || retryFailedResources)
+            {
+                ResetRenderingFailure();
+            }
+
             if (rebuild)
             {
                 DestroyVoxelGIResources();
@@ -124,8 +137,13 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
             m_pRenderDevice->CollectCompletedResources();
 
-            LOGI("Applied runtime GI settings: grid={}, voxelizer={}, resources={}", settings.resolution,
-                 m_voxelizerMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp", rebuild ? "recreated" : "retained");
+            // Cone edits apply every frame while a control is dragged; log resource changes only.
+            if (rebuild || resizeShadows)
+            {
+                LOGI("Applied runtime GI settings: grid={}, voxelizer={}, resources={}", settings.resolution,
+                     m_voxelizerMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp",
+                     rebuild ? "recreated" : "retained");
+            }
         }
     }
 

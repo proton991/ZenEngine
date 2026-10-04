@@ -267,7 +267,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
         m_recordedGeometry            = m_voxelizer->GetRecordedGeometryRevision();
 
-        m_recordedLighting            = m_scene->GetLights().GetRevision();
+        m_recordedLighting            = m_scene->GetLightingRevision();
 
         m_recordedEnvironment         = m_scene->GetEnvironmentRevision();
 

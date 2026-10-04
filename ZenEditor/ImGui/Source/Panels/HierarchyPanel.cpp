@@ -100,7 +100,7 @@ private:
     {
         const EditorScene& scene = context.editor.GetScene();
 
-        ImGui::SetNextItemWidth(-1);
+        ImGui::SetNextItemWidth(EditorControlWidth(300));
 
         ImGui::InputTextWithHint("##SearchHierarchy", "Search scene...", m_search, sizeof(m_search));
 

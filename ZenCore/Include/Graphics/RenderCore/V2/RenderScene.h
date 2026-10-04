@@ -131,6 +131,17 @@ public:
 
     bool SetEnvironmentLighting(float intensity, float rotationDegrees, bool enabled, bool visible);
 
+    bool ValidateEnvironmentLighting(float intensity, float rotationDegrees) const;
+
+    bool ReplaceLights(HeapVector<LightEntry>& entries);
+
+    bool SetCameraLight(const CameraLightSettings& settings);
+
+    uint64_t GetLightingRevision() const
+    {
+        return m_lights.GetRevision() + m_cameraLightRevision;
+    }
+
     SceneLights& GetLights()
     {
         return m_lights;
@@ -266,12 +277,14 @@ private:
     HeapVector<sg::MaterialData> m_materialsData;
     RHIBuffer*                   m_pMaterialSSBO{nullptr};
 
-    SceneUniformData m_sceneUniformData{};
-    SceneLights      m_lights;
-    uint64_t         m_environmentRevision{1};
-    float            m_authoredEnvironmentIntensity{1.0f};
-    float            m_environmentIntensity{1.0f};
-    float            m_sceneUnitScale{1.0f};
+    SceneUniformData    m_sceneUniformData{};
+    SceneLights         m_lights;
+    CameraLightSettings m_cameraLight;
+    uint64_t            m_cameraLightRevision{0};
+    uint64_t            m_environmentRevision{1};
+    float               m_authoredEnvironmentIntensity{1.0f};
+    float               m_environmentIntensity{1.0f};
+    float               m_sceneUnitScale{1.0f};
 
     RHIBuffer* m_pVertexBuffer{nullptr};
     RHIBuffer* m_pIndexBuffer{nullptr};

@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderView.h"
 #include "Utils/UniquePtr.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
+#include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 
 namespace zen::sys
 {
@@ -37,6 +38,8 @@ public:
     void BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
 
     void BuildGBufferGraph(const RenderView& view);
+
+    DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection);
 
     void BuildCompositionGraph(const RenderView& view,
                                VoxelGIRenderer*  voxelGI    = nullptr,
