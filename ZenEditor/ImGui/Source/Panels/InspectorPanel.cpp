@@ -227,6 +227,23 @@ private:
     void Synchronize(EditorContext& context) override
     {
         m_previews.Synchronize(context);
+
+        const EditorSelection& selection = context.editor.GetSelection();
+
+        if (m_selectionRevision != selection.GetRevision())
+        {
+            m_selectionRevision = selection.GetRevision();
+
+            // Synchronize runs even when another dock tab is active or this panel is closed.
+            if (selection.GetNode().generation != 0 || selection.GetAsset().generation != 0)
+            {
+                visible = true;
+
+                ImGui::SetNextWindowCollapsed(false);
+
+                ImGui::SetNextWindowFocus();
+            }
+        }
     }
 
     void DrawContents(EditorContext& context) override
@@ -360,6 +377,7 @@ private:
     InspectorNavigationWidget m_navigation;
     PreviewImages             m_previews;
     MeshPreviewWidget         m_meshPreview;
+    uint64_t                  m_selectionRevision{UINT64_MAX};
 };
 } // namespace
 

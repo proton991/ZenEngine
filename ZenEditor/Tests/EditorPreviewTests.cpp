@@ -1,8 +1,10 @@
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorTheme.h"
+#include "Editor/ImGui/EditorWorkspace.h"
 #include "Panels/EditorPanels.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RHI/RHIOptions.h"
+#include "imgui_internal.h"
 #include <gtest/gtest.h>
 #include <tuple>
 
@@ -12,6 +14,53 @@ namespace
 {
 class EditorPreview : public testing::TestWithParam<std::tuple<RHIExecutionMode, bool>>
 {};
+
+void InitializePreviewDevice(rc::RenderDevice& device)
+{
+    device.Init(nullptr);
+
+    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
+
+    device.InitializeRendererServer();
+}
+
+void InitializePreviewUI()
+{
+    ImGui::CreateContext();
+
+    ImGuiIO& io    = ImGui::GetIO();
+
+    io.IniFilename = nullptr;
+
+    io.DisplaySize = ImVec2(900, 700);
+
+    io.DeltaTime   = 1.0f / 60.0f;
+
+    ApplyEditorTheme(1);
+
+    unsigned char* pixels = nullptr;
+
+    int width             = 0;
+
+    int height            = 0;
+
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+    io.Fonts->SetTexID(1);
+}
+
+void DestroyPreviewTest(EditorController& editor, ui::ImGuiRenderer& renderer, rc::RenderDevice& device)
+{
+    renderer.Destroy();
+
+    ImGui::DestroyContext();
+
+    editor.Destroy();
+
+    rc::ShaderProgramManager::GetInstance().Destroy();
+
+    device.Destroy();
+}
 
 void DrawPreviewPanel(EditorPanel& panel, EditorContext& context, bool collapsed)
 {
@@ -43,37 +92,13 @@ TEST_P(EditorPreview, SceneSwitchRetiresPreviewsWithoutRequestingAnotherThumbnai
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
 
-    device.Init(nullptr);
-
-    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
-
-    device.InitializeRendererServer();
+    InitializePreviewDevice(device);
 
     EditorController editor(device);
 
     ASSERT_TRUE(editor.Init());
 
-    ImGui::CreateContext();
-
-    ImGuiIO& io    = ImGui::GetIO();
-
-    io.IniFilename = nullptr;
-
-    io.DisplaySize = ImVec2(900, 700);
-
-    io.DeltaTime   = 1.0f / 60.0f;
-
-    ApplyEditorTheme(1);
-
-    unsigned char* pixels = nullptr;
-
-    int width             = 0;
-
-    int height            = 0;
-
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-
-    io.Fonts->SetTexID(1);
+    InitializePreviewUI();
 
     ui::ImGuiRenderer renderer(device);
 
@@ -126,15 +151,166 @@ TEST_P(EditorPreview, SceneSwitchRetiresPreviewsWithoutRequestingAnotherThumbnai
         EXPECT_EQ(preview->GetRefCount(), 1u);
     }
 
-    renderer.Destroy();
+    DestroyPreviewTest(editor, renderer, device);
+}
 
-    ImGui::DestroyContext();
+void DrawDockedPanels(const HeapVector<UniquePtr<EditorPanel>>& panels, EditorContext& context)
+{
+    ImGui::NewFrame();
 
-    editor.Destroy();
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
 
-    rc::ShaderProgramManager::GetInstance().Destroy();
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
 
-    device.Destroy();
+    ImGui::Begin("Panel selection test", nullptr, ImGuiWindowFlags_NoDecoration);
+
+    const ImGuiID dockspace = ImGui::GetID("PanelSelectionDockspace");
+
+    if (!HasEditorLayout(dockspace))
+    {
+        BuildDefaultEditorLayout(dockspace, 900, 700, panels);
+    }
+
+    ImGui::DockSpace(dockspace);
+
+    ImGui::End();
+
+    for (const UniquePtr<EditorPanel>& panel : panels)
+    {
+        panel->Draw(context);
+    }
+
+    ImGui::Render();
+}
+
+TEST_P(EditorPreview, SelectionRevealsDockedInspectorWithoutOverridingManualTabChanges)
+{
+    platform::NativeWindow window({"Editor panel selection test", false, 900, 700, 0, false});
+
+    EditorWindowChrome chrome(window);
+
+    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+
+    RHIOptions::GetInstance().SetValidationEnabled(true);
+
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
+
+    InitializePreviewDevice(device);
+
+    EditorController editor(device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(std::string(ZEN_EDITOR_FIXTURES) + "textured.gltf"));
+
+    InitializePreviewUI();
+
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    ui::ImGuiRenderer renderer(device);
+
+    EditorLog log;
+
+    EditorContext context{editor, log, renderer, chrome};
+
+    SceneAssetId texture;
+
+    for (const SceneAssetItem& item : editor.GetScene().GetAssets().Query(""))
+    {
+        if (item.id.kind == SceneAssetKind::Texture)
+        {
+            texture = item.id;
+        }
+    }
+
+    ASSERT_NE(texture.generation, 0u);
+
+    const NodeId node = editor.GetScene().GetRoots()[0];
+
+    HeapVector<UniquePtr<EditorPanel>> panels;
+
+    panels.push_back(CreateRenderSettingsPanel());
+
+    panels.push_back(CreateInspectorPanel());
+
+    panels.push_back(std::get<1>(GetParam()) ? CreateAssetsPanel() : CreateHierarchyPanel());
+
+    DrawDockedPanels(panels, context);
+
+    DrawDockedPanels(panels, context);
+
+    ImGuiWindow* rendering = ImGui::FindWindowByName(panels[0]->GetWindowName().c_str());
+
+    ImGuiWindow* inspector = ImGui::FindWindowByName(panels[1]->GetWindowName().c_str());
+
+    ASSERT_NE(rendering, nullptr);
+
+    ASSERT_NE(inspector, nullptr);
+
+    ASSERT_NE(inspector->DockNode, nullptr);
+
+    ASSERT_EQ(rendering->DockNode, inspector->DockNode);
+
+    for (uint32_t attempt = 0; attempt < 3; ++attempt)
+    {
+        ImGui::SetWindowFocus(rendering->Name);
+
+        DrawDockedPanels(panels, context);
+
+        DrawDockedPanels(panels, context);
+
+        EXPECT_EQ(inspector->DockNode->VisibleWindow, rendering);
+
+        if (attempt == 2)
+        {
+            panels[1]->visible = false;
+
+            DrawDockedPanels(panels, context);
+        }
+
+        // These are the same selection entry points used by Assets, Hierarchy and scene picks.
+        if (std::get<1>(GetParam()))
+        {
+            editor.GetSelection().SelectAsset(texture);
+        }
+        else
+        {
+            editor.GetSelection().SelectNode(node);
+        }
+
+        DrawDockedPanels(panels, context);
+
+        DrawDockedPanels(panels, context);
+
+        EXPECT_TRUE(panels[1]->visible);
+
+        EXPECT_EQ(inspector->DockNode->VisibleWindow, inspector);
+
+        EXPECT_EQ(editor.GetInspector().GetActiveTab().id, 0u);
+
+        EXPECT_EQ(editor.GetInspector().GetActiveTab().GetTarget(),
+                  (std::get<1>(GetParam()) ? InspectionTarget{{}, texture} : InspectionTarget{node, {}}));
+
+        if (attempt == 0)
+        {
+            const InspectionTarget reference =
+                std::get<1>(GetParam()) ? InspectionTarget{node, {}} : InspectionTarget{{}, texture};
+
+            editor.GetInspector().Open(reference);
+
+            DrawDockedPanels(panels, context);
+
+            EXPECT_EQ(editor.GetInspector().GetTabs().size(), 2u);
+        }
+        else
+        {
+            EXPECT_EQ(editor.GetInspector().GetTabs().size(), 2u);
+        }
+    }
+
+    panels.clear();
+
+    DestroyPreviewTest(editor, renderer, device);
 }
 
 INSTANTIATE_TEST_SUITE_P(Panels,

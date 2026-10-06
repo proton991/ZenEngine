@@ -220,8 +220,10 @@ dismissible error. Startup scenes, File/Open and recent files use this same flow
 Assets lists the open scene's meshes, materials, textures and animations, with
 category filters, search and grid/list views. Selecting one shows it in the
 Inspector, including links to the materials, meshes and nodes that reference it.
-The Inspector's permanent Selection tab follows selection in Hierarchy, Scene and
-Assets. A reference link from Selection opens a closable tab without changing the
+Selecting a node or asset activates the Inspector's dock tab and reopens it if
+closed, including clicking the already selected item. The Inspector's permanent
+Selection tab follows selection in Hierarchy, Scene and Assets. A reference link
+from Selection opens a closable tab without changing the
 scene selection. Further links navigate within that tab; Ctrl/Cmd-click opens or
 focuses another tab. Each reference tab has Back/Forward buttons (Alt+Left/Right
 while the Inspector is focused), including a route back to its originating page.
