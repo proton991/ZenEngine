@@ -51,6 +51,7 @@ add_library(ZenEditorUI STATIC
   ImGui/Source/SceneLoadingDialog.cpp
   ImGui/Source/MeshPreviewWidget.cpp
   ImGui/Source/SceneViewOverlays.cpp
+  ImGui/Source/LightMoveWidget.cpp
   ImGui/Source/Panels/AssetsPanel.cpp
   ImGui/Source/Panels/CameraSettingsPanel.cpp
   ImGui/Source/Panels/HierarchyPanel.cpp
@@ -73,7 +74,7 @@ if (WIN32)
 endif ()
 
 if (BUILD_TESTING)
-  add_executable(EditorInputTest Tests/EditorInputTests.cpp Tests/InspectorNavigationWidgetTests.cpp Tests/SceneLoadingDialogTests.cpp)
+  add_executable(EditorInputTest Tests/EditorInputTests.cpp Tests/LightMoveWidgetTests.cpp Tests/InspectorNavigationWidgetTests.cpp Tests/SceneLoadingDialogTests.cpp)
   target_link_libraries(EditorInputTest PRIVATE ZenEditorUI gtest_main)
   target_include_directories(EditorInputTest PRIVATE ImGui/Source)
   target_compile_definitions(EditorInputTest PRIVATE ZEN_EDITOR_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/")

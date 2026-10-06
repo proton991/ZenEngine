@@ -296,7 +296,13 @@ bool EditorController::AddRenderingLight(rc::SceneLightType type)
 
     sg::AABB bounds;
 
-    const float span      = m_scene.GetSceneBounds(bounds) ? std::max(bounds.GetMaxExtent(), 0.01f) : 1.0f;
+    const float span = m_scene.GetSceneBounds(bounds) ? std::max(bounds.GetMaxExtent(), 0.01f) : 1.0f;
+
+    // Put new positional lights in view so their viewport handles can be grabbed immediately.
+    if (type != rc::SceneLightType::eDirectional)
+    {
+        entry.light.position += entry.light.direction * span;
+    }
 
     entry.light.intensity = type == rc::SceneLightType::eDirectional ? 1.0f : span * span * 0.75f;
 

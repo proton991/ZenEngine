@@ -285,6 +285,8 @@ private:
 
             changed |= ImGui::DragFloat(PropertyLabel("Marker size").c_str(), &draft.lightMarkerSize, 0.001f);
 
+            ImGui::TextWrapped("Enable Move lights in the Scene toolbar to drag point and spot lights in the viewport.");
+
             ImGui::SeparatorText("Light ball - GI test");
 
             changed     |= ImGui::Checkbox("Light ball", &draft.cameraLight.enabled);

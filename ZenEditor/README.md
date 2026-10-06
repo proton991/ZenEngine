@@ -61,6 +61,12 @@ configuration and do not depend on the launch working directory.
 - Drag panel tabs to dock; use View to hide/reopen panels or Reset Layout.
 - Select hierarchy nodes or click scene geometry to synchronize the Inspector.
   Hierarchy search retains ancestors and includes nodes without meshes.
+- Enable **Move lights** in the Scene toolbar, then left-drag a point or spot light's
+  circular handle to move it across the current view. Orbit the camera to change the
+  movement plane. Release to keep the position; Escape or focus loss cancels the drag.
+  Handles include disabled lights and show through geometry. Directional lights have
+  no position handle. Positions update the Rendering panel and preview live, including
+  shadows and GI. New point and spot lights appear in front of the camera.
 - Hold right mouse over the focused Scene view to look and fly with WASD/QE;
   Shift increases speed. Alt + left mouse orbits; middle mouse pans; wheel dollies.
   Scene-image drags retain navigation ownership when the panel is floating.

@@ -1,6 +1,7 @@
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
 #include "SceneViewOverlays.h"
+#include "LightMoveWidget.h"
 
 namespace zen::editor
 {
@@ -20,6 +21,24 @@ public:
     }
 
 private:
+    void CancelLightMove(EditorContext& context)
+    {
+        rc::RenderingSettings draft = context.editor.GetRenderingState().GetDraft();
+        if (m_lightMove.Cancel(draft.lights, context.editor.GetScene().GetGeneration()))
+        {
+            context.editor.StageRenderingSettings(draft);
+        }
+    }
+
+    void Synchronize(EditorContext& context) override
+    {
+        if (!visible || !context.focused || context.editor.GetLoadState().IsActive()
+            || ImGui::GetFrameCount() > m_lastSceneFrame + 1)
+        {
+            CancelLightMove(context);
+        }
+    }
+
     // A narrow frame leaves the scene image as large as possible.
     int PushWindowStyle() override
     {
@@ -40,7 +59,7 @@ private:
 
             m_sphere.Cancel();
         }
-        else
+        else if (!m_lightMove.OwnsMouse())
         {
             m_sphere.Update(context.editor.GetCamera(), sphere, hovered && !io.KeyAlt && m_navigation == 0);
 
@@ -125,6 +144,16 @@ private:
             ImGui::SetTooltip("Show mouse and keyboard controls over the scene");
         }
 
+        SameLineIfFits(ImGui::CalcTextSize("Move lights").x + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x);
+
+        ImGui::Checkbox("Move lights", &m_moveLights);
+
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("Show draggable handles for point and spot lights, including disabled lights.\n"
+                              "Drag across the view; orbit to change the movement plane. Esc cancels.");
+        }
+
         const RHIGPUMemoryStats memory = context.editor.GetViewport().GetSnapshot().memory;
 
         const std::string usage = memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0))
@@ -133,8 +162,12 @@ private:
         const std::string profile = fmt::format("{:.1f} FPS   |   {:.2f} ms   |   {}   |   Vulkan",
                                                 context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
 
-        const float profileX =
-            ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(profile.c_str()).x;
+        // Reserve a stable field: changing digit counts must never reflow the toolbar
+        // and resize the render target (or cancel a drag through a new camera aspect).
+        const float profileWidth =
+            ImGui::CalcTextSize("00000.0 FPS   |   00000.00 ms   |   GPU memory unavailable   |   Vulkan").x;
+
+        const float profileX = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - profileWidth;
 
         // Keep the readout beside the controls when it fits; narrow panels wrap it below.
         if (profileX >= ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetStyle().ItemSpacing.x)
@@ -142,13 +175,27 @@ private:
             ImGui::SameLine(profileX);
         }
 
-        ImGui::AlignTextToFramePadding();
+        const ImVec2 profileOrigin = ImGui::GetCursorScreenPos();
 
-        ImGui::PushTextWrapPos(0);
+        const ImVec2 profileExtent(std::max(1.0f, ImGui::GetContentRegionAvail().x), ImGui::GetFrameHeight());
 
-        ImGui::TextDisabled("%s", profile.c_str());
+        ImGui::Dummy(profileExtent);
 
-        ImGui::PopTextWrapPos();
+        ImDrawList& draw = *ImGui::GetWindowDrawList();
+
+        draw.PushClipRect(profileOrigin, ImVec2(profileOrigin.x + profileExtent.x, profileOrigin.y + profileExtent.y), true);
+
+        draw.AddText(ImVec2(profileOrigin.x, profileOrigin.y + ImGui::GetStyle().FramePadding.y),
+                     ImGui::GetColorU32(ImGuiCol_TextDisabled), profile.c_str());
+
+        draw.PopClipRect();
+
+        if (ImGui::IsItemHovered() && ImGui::CalcTextSize(profile.c_str()).x > profileExtent.x)
+        {
+            ImGui::SetTooltip("%s", profile.c_str());
+        }
+
+        bool drewScene = false;
 
         if (context.editor.GetScene().Get() == nullptr || !context.editor.GetViewport().HasScene())
         {
@@ -170,6 +217,10 @@ private:
                 && context.editor.ResizeViewport(uint32_t(available.x * scale.x), uint32_t(available.y * scale.y)))
             {
                 context.sceneVisible       = true;
+
+                drewScene                  = true;
+
+                m_lastSceneFrame           = ImGui::GetFrameCount();
 
                 const rc::RenderView& view = context.editor.GetViewport().GetRenderView();
 
@@ -194,7 +245,8 @@ private:
 
                 ImGui::SetCursorScreenPos(origin);
 
-                const bool allowed = DrawSceneImage(ui::ImGuiRenderer::GetTextureID(m_image), extent, context.focused);
+                const bool allowed = DrawSceneImage(ui::ImGuiRenderer::GetTextureID(m_image), extent, context.focused)
+                                  && !context.editor.GetLoadState().IsActive();
 
                 // Read before the overlays, whose tooltips are separate windows.
                 const bool hovered = ImGui::IsItemHovered();
@@ -204,15 +256,29 @@ private:
                 // The sphere responds only while no other camera drag is running.
                 const ViewAxesHover sphere =
                     DrawViewAxes(context.editor.GetCamera().GetCamera().GetViewMatrix(), origin, end,
-                                 allowed && hovered && m_navigation == 0 && !m_sphere.IsActive(), m_sphere.IsActive());
+                                 allowed && hovered && m_navigation == 0 && !m_sphere.IsActive() && !m_lightMove.IsActive(),
+                                 m_sphere.IsActive());
 
                 if (context.editor.GetPreferences().showSceneControls)
                 {
                     DrawSceneControlsHint(context.editor.GetActions(), origin, end);
                 }
 
+                rc::RenderingSettings draft = context.editor.GetRenderingState().GetDraft();
+                if (m_lightMove.Draw(draft.lights, context.editor.GetCamera(), context.editor.GetScene().GetGeneration(),
+                                     origin, extent, m_moveLights, allowed,
+                                     hovered && m_navigation == 0 && !m_sphere.IsActive() && !sphere.sphere))
+                {
+                    context.editor.StageRenderingSettings(draft);
+                }
+
                 Navigate(context, origin, extent, allowed, hovered, sphere);
             }
+        }
+
+        if (!drewScene)
+        {
+            CancelLightMove(context);
         }
     }
 
@@ -221,6 +287,9 @@ private:
     uint64_t            m_revision{0};
     int                 m_navigation{0};
     ViewSphereInput     m_sphere;
+    LightMoveWidget     m_lightMove;
+    bool                m_moveLights{false};
+    int                 m_lastSceneFrame{0};
 };
 } // namespace
 

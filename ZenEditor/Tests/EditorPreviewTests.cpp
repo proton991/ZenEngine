@@ -62,7 +62,7 @@ void DestroyPreviewTest(EditorController& editor, ui::ImGuiRenderer& renderer, r
     device.Destroy();
 }
 
-void DrawPreviewPanel(EditorPanel& panel, EditorContext& context, bool collapsed)
+void DrawPreviewPanel(EditorPanel& panel, EditorContext& context, bool collapsed, ImVec2 extent = ImVec2(900, 700))
 {
     ImGui::NewFrame();
 
@@ -70,7 +70,7 @@ void DrawPreviewPanel(EditorPanel& panel, EditorContext& context, bool collapsed
     {
         ImGui::SetNextWindowPos(ImVec2(0, 0));
 
-        ImGui::SetNextWindowSize(ImVec2(900, 700));
+        ImGui::SetNextWindowSize(extent);
 
         ImGui::SetNextWindowCollapsed(collapsed);
     }
@@ -151,6 +151,64 @@ TEST_P(EditorPreview, SceneSwitchRetiresPreviewsWithoutRequestingAnotherThumbnai
         EXPECT_EQ(preview->GetRefCount(), 1u);
     }
 
+    DestroyPreviewTest(editor, renderer, device);
+}
+
+TEST_P(EditorPreview, SceneViewportStaysStableAcrossProfilingAndLightPresetChanges)
+{
+    platform::NativeWindow window({"Scene layout test", false, 900, 700, 0, false});
+    EditorWindowChrome     chrome(window);
+    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetValidationEnabled(true);
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
+    InitializePreviewDevice(device);
+    EditorController editor(device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(std::string(ZEN_EDITOR_FIXTURES) + "inspection.gltf"));
+    InitializePreviewUI();
+    ui::ImGuiRenderer renderer(device);
+    EditorLog         log;
+    EditorContext     context{editor, log, renderer, chrome};
+    context.focused              = false;
+    UniquePtr<EditorPanel> panel = CreateScenePanel();
+
+    for (const float width : {240.0f, 500.0f, 604.0f, 606.0f, 612.0f, 720.0f, 900.0f})
+    {
+        SCOPED_TRACE(width);
+        rc::RenderingSettings draft = editor.GetRenderingState().GetDraft();
+        draft.algorithm             = rc::RenderAlgorithm::ePBR;
+        draft.lights.clear();
+        ASSERT_TRUE(editor.StageRenderingSettings(draft));
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+        const ImVec2 extent(width, 500);
+        DrawPreviewPanel(*panel, context, false, extent);
+        DrawPreviewPanel(*panel, context, false, extent);
+        const uint64_t targetRevision = editor.GetViewport().GetTargetRevision();
+        const uint64_t cameraRevision = editor.GetCamera().GetRevision();
+        for (int edit = 0; edit < 4; ++edit)
+        {
+            if (edit == 1 || edit == 2)
+            {
+                ASSERT_TRUE(editor.AddBoundsLights(std::get<1>(GetParam())));
+                ASSERT_TRUE(editor.UpdateRenderingSettings());
+            }
+            else if (edit == 3)
+            {
+                draft = editor.GetRenderingState().GetDraft();
+                draft.lights.clear();
+                ASSERT_TRUE(editor.StageRenderingSettings(draft));
+                ASSERT_TRUE(editor.UpdateRenderingSettings());
+            }
+            for (const float ms : {0.1f, 1.0f, 10.0f, 16.0f, 100.0f, 1000.0f})
+            {
+                context.frameMs = ms;
+                DrawPreviewPanel(*panel, context, false, extent);
+                EXPECT_EQ(editor.GetViewport().GetTargetRevision(), targetRevision) << ms;
+                EXPECT_EQ(editor.GetCamera().GetRevision(), cameraRevision) << ms;
+            }
+        }
+    }
+    panel.Reset();
     DestroyPreviewTest(editor, renderer, device);
 }
 

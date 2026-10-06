@@ -1171,6 +1171,51 @@ TEST_P(EditorRendering, CubemapContainersRejectTruncatedAndUnsupportedFiles)
     DestroyDevice(*device, editor);
 }
 
+TEST_P(EditorRendering, ManualLightPositionsPreviewAndRestoreWithoutChangingRuntimeIdentity)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(128, 128));
+
+    for (const rc::SceneLightType type : {rc::SceneLightType::ePoint, rc::SceneLightType::eSpot})
+    {
+        ASSERT_TRUE(editor.AddRenderingLight(type));
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+        rc::RenderingSettings draft = editor.GetRenderingState().GetDraft();
+        const Vec3            start = draft.lights.back().light.position;
+        const Vec4 clip = editor.GetCamera().GetCamera().GetProjectionMatrix() * editor.GetCamera().GetCamera().GetViewMatrix()
+                        * Vec4(start, 1);
+        EXPECT_GT(clip.w, 0);
+        EXPECT_NEAR(clip.x / clip.w, 0, 1e-4f);
+        EXPECT_NEAR(clip.y / clip.w, 0, 1e-4f);
+        EXPECT_GT(clip.z / clip.w, 0);
+        EXPECT_LT(clip.z / clip.w, 1);
+
+        const rc::LightId runtimeId = editor.GetViewport().GetRenderScene()->GetLights().GetEntries().back().id;
+        const uint32_t    grid      = editor.GetViewport().GetSnapshot().settings.resolution;
+        draft.gi.resolution         = grid == 64 ? 128 : 64;
+        // Repeated drag previews and cancellation also work with pending resource edits.
+        for (const Vec3 position : {start + Vec3(0.1f, 0.05f, 0), start + Vec3(0.2f, 0.1f, 0), start})
+        {
+            draft.lights.back().light.position = position;
+            ASSERT_TRUE(editor.StageRenderingSettings(draft));
+            ASSERT_TRUE(editor.UpdateRenderingSettings());
+            const rc::LightEntry& runtime = editor.GetViewport().GetRenderScene()->GetLights().GetEntries().back();
+            EXPECT_EQ(runtime.id, runtimeId);
+            EXPECT_EQ(runtime.light.position, position);
+            EXPECT_EQ(editor.GetRenderingState().GetApplied().lights.back().light.position, position);
+            EXPECT_EQ(editor.GetViewport().GetSnapshot().settings.resolution, grid);
+            EXPECT_TRUE(editor.GetRenderingState().NeedsResourceApply());
+            ASSERT_TRUE(Frame(*device, editor));
+            EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+        }
+        editor.RevertRenderingSettings();
+    }
+    DestroyDevice(*device, editor);
+}
+
 TEST_P(EditorRendering, RenderingConfigurationLightsCameraAndResourceApply)
 {
     UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
