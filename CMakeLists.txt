@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "Runtime output directory")
 option(ZEN_BUILD_RUNTIME_UI "Build the optional runtime debug UI and shared UI integration" ON)
-option(ZEN_BUILD_EDITOR "Build the ZenEditor scene viewer" OFF)
+option(ZEN_BUILD_EDITOR "Build the ZenEditor scene viewer" ON)
 # Keep GLFW selectable until native macOS acceptance is complete.
 set(ZEN_WINDOW_BACKEND "SDL3" CACHE STRING "Window backend: SDL3 or GLFW")
 set_property(CACHE ZEN_WINDOW_BACKEND PROPERTY STRINGS SDL3 GLFW)

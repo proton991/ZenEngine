@@ -13,7 +13,7 @@ rendering preset files belong to milestone 5.
 From a Visual Studio developer terminal on Windows:
 
 ```powershell
-cmake --preset x64-windows-msvc-debug -DZEN_BUILD_EDITOR=ON
+cmake --preset x64-windows-msvc-debug
 cmake --build build/x64-windows-msvc-debug --target zen_editor
 .\build\x64-windows-msvc-debug\bin\zen_editor.exe
 ```
@@ -41,7 +41,9 @@ no picker and asks for a path instead. File → Open Recent lists the last ten
 scenes that opened successfully; missing files are disabled, and Clear Recent
 empties the list.
 
-`ZEN_BUILD_EDITOR` defaults to `OFF`; `ZEN_BUILD_RUNTIME_UI` defaults to `ON`.
+`ZEN_BUILD_EDITOR` and `ZEN_BUILD_RUNTIME_UI` both default to `ON`.
+Use `-DZEN_BUILD_EDITOR=OFF` to configure without the editor. Existing build trees
+retain their cached option values; use `-DZEN_BUILD_EDITOR=ON` to enable it there.
 All four combinations are supported. Both frontends use the same pinned
 `v1.92.9b-docking` ImGui dependency. With both options off, core and samples have
 no ImGui dependency. Only editor initialization enables docking.
