@@ -125,6 +125,31 @@ private:
             ImGui::SetTooltip("Show mouse and keyboard controls over the scene");
         }
 
+        const RHIGPUMemoryStats memory = context.editor.GetViewport().GetSnapshot().memory;
+
+        const std::string usage = memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0))
+                                                   : "GPU memory unavailable";
+
+        const std::string profile = fmt::format("{:.1f} FPS   |   {:.2f} ms   |   {}   |   Vulkan",
+                                                context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
+
+        const float profileX =
+            ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(profile.c_str()).x;
+
+        // Keep the readout beside the controls when it fits; narrow panels wrap it below.
+        if (profileX >= ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetStyle().ItemSpacing.x)
+        {
+            ImGui::SameLine(profileX);
+        }
+
+        ImGui::AlignTextToFramePadding();
+
+        ImGui::PushTextWrapPos(0);
+
+        ImGui::TextDisabled("%s", profile.c_str());
+
+        ImGui::PopTextWrapPos();
+
         if (context.editor.GetScene().Get() == nullptr || !context.editor.GetViewport().HasScene())
         {
             ImGui::TextWrapped(context.editor.GetScene().Get() == nullptr

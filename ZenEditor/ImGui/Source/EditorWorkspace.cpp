@@ -482,20 +482,7 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
 
 void EditorWorkspace::DrawStatusBar(EditorContext& context)
 {
-    const RHIGPUMemoryStats memory = context.editor.GetViewport().GetSnapshot().memory;
-
-    const std::string usage = memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0))
-                                               : "GPU memory unavailable";
-
     ImGui::TextDisabled("%s", context.editor.GetLoadState().IsActive() ? "Opening scene..." : "Ready");
-
-    const std::string status = fmt::format("{:.1f} FPS   |   {:.2f} ms   |   {}   |   Vulkan",
-                                           context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
-
-    ImGui::SameLine(
-        std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - ImGui::CalcTextSize(status.c_str()).x - 16 * EditorScale()));
-
-    ImGui::TextDisabled("%s", status.c_str());
 }
 
 void EditorWorkspace::DrawDialogs(EditorContext& context)

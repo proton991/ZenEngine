@@ -78,6 +78,8 @@ configuration and do not depend on the launch working directory.
   controls over the bottom-left of the scene. The frame shortcuts come from the
   action registry. The setting is saved with the editor preferences, and the list
   is hidden when the view is too small to hold it.
+- FPS, frame time and GPU memory appear at the top of the Scene viewer, beside
+  its controls when space allows and wrapped below them in narrow panels.
 - The orientation sphere in the top-right corner is bound to the camera. It shows
   world X (red), Y (green) and Z (blue) on a translucent ball whose great circles
   are brighter on the front half; faint rings mark the negative ends. Every camera
@@ -166,7 +168,8 @@ skybox. The panel reports the effective voxelizer and resource errors.
 
 **Debug output** provides final color, raw/linear depth, albedo, world normals,
 shadow maps by light and point-light face, 3D surface voxels and axis-aligned voxel
-slices. Surface slices expose mip zero; radiance and additional material channels
+slices. Both voxel views display surface albedo in sRGB, independent of lighting.
+Surface slices expose mip zero; radiance and additional material channels
 are deferred. Ranges and decoding run on the GPU. Selection bounds and light
 markers are suppressed in diagnostics. Albedo/normals require the deferred path;
 forward material scenes show an explicit unavailable reason and a cleared image.

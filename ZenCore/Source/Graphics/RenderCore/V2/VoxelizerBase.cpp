@@ -389,7 +389,7 @@ DebugOutputDescription VoxelizerBase::BuildDebugView(const RenderView& view, con
     description.reason         = description.available ? "" : "Voxel resources or selected subresource are unavailable.";
 
     description.interpretation = selection.output == DebugOutput::eVoxels
-                                   ? "Occupied surface voxels in normalized world space."
+                                   ? "Surface albedo on occupied voxels in normalized world space; sRGB display."
                                    : "Surface albedo slice, sRGB display; empty cells are black. Mip zero only.";
 
     if (description.available)

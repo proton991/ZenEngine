@@ -1353,6 +1353,80 @@ TEST_P(EditorRendering, RenderingConfigurationLightsCameraAndResourceApply)
     DestroyDevice(*device, editor);
 }
 
+TEST_P(EditorRendering, VoxelDebugShowsOpaqueSRGBAlbedoWithoutLighting)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    editor.GetSelection().SelectNode({editor.GetScene().GetGeneration(), 1});
+
+    editor.FrameSelection();
+
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+
+    settings.algorithm             = rc::RenderAlgorithm::eVoxelGI;
+
+    settings.debug.output          = rc::DebugOutput::eVoxels;
+
+    settings.gi.resolution         = 64;
+
+    settings.lights.clear();
+
+    settings.environment.intensity = 0;
+
+    settings.environment.skybox    = false;
+
+    settings.cameraLight.enabled   = false;
+
+    for (const platform::VoxelizerMode mode : {platform::VoxelizerMode::eCompute, platform::VoxelizerMode::eGeometry})
+    {
+        if (mode == platform::VoxelizerMode::eCompute || device->GetGPUInfo().supportGeometryShader)
+        {
+            SCOPED_TRACE(static_cast<int>(mode));
+
+            settings.gi.voxelizer = mode;
+
+            ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+
+            ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+
+            // Check the initial volume build and the cached visualization on the next frame.
+            for (uint32_t frame = 0; frame < 2; ++frame)
+            {
+                ASSERT_TRUE(Frame(*device, editor));
+
+                EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+                EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+
+                const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+
+                ASSERT_EQ(pixels.size(), 96u * 64 * 4);
+
+                const size_t center = (32 * 96 + 48) * 4;
+
+                // The fixture's linear base color is (0.7, 0.35, 0.1).
+                EXPECT_NEAR(pixels[center], 218, 2);
+
+                EXPECT_NEAR(pixels[center + 1], 160, 2);
+
+                EXPECT_NEAR(pixels[center + 2], 89, 2);
+
+                EXPECT_EQ(pixels[center + 3], 255);
+            }
+        }
+    }
+
+    DestroyDevice(*device, editor);
+}
+
 TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 {
     UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
