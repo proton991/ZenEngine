@@ -44,5 +44,12 @@ public:
     static void Close(NativeWindow& window);
 
     static bool SetFallbackFrame(NativeWindow& window, bool enabled);
+#if defined(ZEN_WINDOW_SDL3) && defined(ZEN_MACOS)
+    // Cocoa keeps the titled frame and its window buttons; content extends under a
+    // transparent title bar. Safe to repeat after SDL restores its own style mask.
+    static bool SetCocoaTitleBar(NativeWindow& window, bool enabled);
+
+    static WindowTitleBarLayout GetCocoaTitleBarLayout(const NativeWindow& window);
+#endif
 };
 } // namespace zen::platform

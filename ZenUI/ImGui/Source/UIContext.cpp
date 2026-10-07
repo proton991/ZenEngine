@@ -1,6 +1,7 @@
 #include "ImGui/UIContext.h"
 #include "imgui.h"
 #include "Platform/WindowBackend.h"
+#include "Utils/Errors.h"
 #if defined(ZEN_WINDOW_SDL3)
 #    include "backends/imgui_impl_sdl3.h"
 #else
@@ -94,7 +95,22 @@ bool UIContext::Init(platform::NativeWindow& window, const UIContextOptions& opt
         m_window = &window;
 
 #if defined(ZEN_WINDOW_SDL3)
-        m_platformReady = ImGui_ImplSDL3_InitForVulkan(platform::WindowBackend::Borrow(window));
+        // ImGui changes this global hint for detached viewports. Preserve the host's
+        // native window style so later restore/maximize operations still respect the taskbar.
+        constexpr const char* borderlessStyleHint = "SDL_BORDERLESS_WINDOWED_STYLE";
+
+        const bool borderlessWindowedStyle        = SDL_GetHintBoolean(borderlessStyleHint, true);
+
+        m_platformReady                           = ImGui_ImplSDL3_InitForVulkan(platform::WindowBackend::Borrow(window));
+
+        // A higher-priority hint may reject the write while already retaining the original value.
+        valid = SDL_SetHint(borderlessStyleHint, borderlessWindowedStyle ? "1" : "0")
+             || SDL_GetHintBoolean(borderlessStyleHint, true) == borderlessWindowedStyle;
+
+        if (!valid)
+        {
+            LOGE("Could not preserve the native window style after ImGui initialization: {}", SDL_GetError());
+        }
 
         if (m_platformReady)
         {
@@ -104,7 +120,7 @@ bool UIContext::Init(platform::NativeWindow& window, const UIContextOptions& opt
         m_platformReady = ImGui_ImplGlfw_InitForOther(platform::WindowBackend::Borrow(window), true);
 #endif
 
-        valid = m_platformReady;
+        valid = valid && m_platformReady;
 
         if (!valid)
         {

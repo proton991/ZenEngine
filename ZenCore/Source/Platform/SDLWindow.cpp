@@ -171,6 +171,14 @@ NativeWindow::~NativeWindow()
         }
     }
 
+#if defined(ZEN_MACOS)
+    // The title-bar event monitor refers to this window.
+    if (m_customFrame)
+    {
+        WindowBackend::SetCocoaTitleBar(*this, false);
+    }
+#endif
+
     SDL_DestroyWindow(WindowBackend::Borrow(*this));
 
     WindowBackend::Unregister(*this);
@@ -323,16 +331,45 @@ bool NativeWindow::SetCustomFrame(bool enabled)
 {
     SDL_Window* handle = WindowBackend::Borrow(*this);
 
-    const bool success = SDL_SetWindowHitTest(handle, enabled ? &platform::HitTest : nullptr, enabled ? this : nullptr);
+    bool success       = SDL_SetWindowHitTest(handle, enabled ? &platform::HitTest : nullptr, enabled ? this : nullptr);
 
+#if defined(ZEN_MACOS)
+    // A borderless Cocoa window loses its buttons and title-bar behavior; keep the frame.
+    if (success && !WindowBackend::SetCocoaTitleBar(*this, enabled))
+    {
+        SDL_SetWindowHitTest(handle, nullptr, nullptr);
+
+        success = false;
+    }
+#else
     if (success)
     {
         SDL_SetWindowBordered(handle, !enabled);
+    }
+#endif
 
+    if (success)
+    {
         m_customFrame = enabled;
     }
 
     return success;
+}
+
+WindowTitleBarLayout NativeWindow::GetTitleBarLayout() const
+{
+    WindowTitleBarLayout layout;
+
+#if defined(ZEN_MACOS)
+    if (m_customFrame)
+    {
+        layout = WindowBackend::GetCocoaTitleBarLayout(*this);
+    }
+#else
+    layout.drawsControls = m_customFrame;
+#endif
+
+    return layout;
 }
 
 bool NativeWindow::SupportsFileDialogs()
@@ -451,6 +488,16 @@ void WindowBackend::DispatchToWindow(NativeWindow& window, const SDL_Event& even
             Resize(window);
             deliver = false;
             break;
+#if defined(ZEN_MACOS)
+        case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+            // SDL restores its windowed style mask after a full-screen space.
+            if (window.m_customFrame)
+            {
+                SetCocoaTitleBar(window, true);
+            }
+            deliver = false;
+            break;
+#endif
         case SDL_EVENT_WINDOW_FOCUS_LOST: input.type = InputEventType::FocusLost; break;
         case SDL_EVENT_WINDOW_FOCUS_GAINED: input.type = InputEventType::FocusGained; break;
         case SDL_EVENT_KEY_DOWN:

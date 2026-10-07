@@ -37,6 +37,10 @@ public:
 
     bool IsMaximized() const;
 
+    // Where editor content may go in the title row, and whether the editor draws the
+    // window controls or the platform keeps its own.
+    platform::WindowTitleBarLayout GetTitleBarLayout() const;
+
     void SetTitleBarRegion(const EditorTitleBarRegion& region);
 
     void RequestAction(EditorWindowAction action);

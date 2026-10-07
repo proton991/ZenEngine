@@ -18,17 +18,28 @@ cmake --build build/x64-windows-msvc-debug --target zen_editor
 .\build\x64-windows-msvc-debug\bin\zen_editor.exe
 ```
 
-The editor starts maximized in normal desktop window mode. It uses the actual
-framebuffer dimensions for presentation and resizes the offscreen scene to the
-available viewport pixels. Use `--windowed` to start at 1440×900 instead.
+The editor starts maximized in normal desktop window mode. The window stays
+hidden until initialization completes, then appears once at its final size. It
+uses the actual framebuffer dimensions for presentation and resizes the offscreen
+scene to the available viewport pixels. Use `--windowed` to start at 1440×900
+instead. `--hidden` never shows the window, so a maximized start renders at the
+restored 1440×900 size.
 
-On Windows, the menu and window title share one themed row, with minimize,
-maximize/restore, and close controls at the right. Drag the space after the menus
-to move the window; double-click it to maximize/restore. Window edges retain
-native resizing, and maximizing fills the monitor work area without covering the
-taskbar. Control requests are applied between frames before framebuffer resizing.
-The same title/menu row is enabled by the SDL3 path on macOS; native Cocoa
-behavior and Retina/MoltenVK presentation still require validation on a Mac.
+The menu and window title share one themed row; each platform keeps its own window
+controls and title-bar behavior:
+
+- **Windows:** the editor draws minimize, maximize/restore, and close at the right.
+  Drag the space after the menus to move the window; double-click it to
+  maximize/restore. Window edges retain native resizing, and maximizing fills the
+  monitor work area without covering the taskbar. Control requests are applied
+  between frames before framebuffer resizing.
+- **macOS:** the window keeps its titled frame with a transparent title bar, so the
+  native close, minimize, and zoom buttons stay at the left and the menus start
+  after them. Native resizing and full screen are unchanged. Drag the space after
+  the menus to move the window; double-clicking it follows the system setting
+  (zoom, minimize, or nothing). This path, Retina sizing, and MoltenVK
+  presentation still require validation on a Mac.
+
 Linux support is deferred.
 
 Use `--scene=absolute/path/model.gltf` (or `.glb`) to open an initial asset.

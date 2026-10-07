@@ -239,7 +239,8 @@ public:
 
         RHIOptions::GetInstance().SetGPUMemoryStats(true);
 
-        const platform::WindowConfig config{"ZenEditor", true, 1440, 900};
+        // Hidden until initialization completes; a pending maximize applies when shown.
+        const platform::WindowConfig config{"ZenEditor", true, 1440, 900, 0, false};
 
         m_window       = MakeUnique<platform::NativeWindow>(config);
 
@@ -252,13 +253,6 @@ public:
         if (!m_options.windowed)
         {
             m_window->Maximize();
-
-            platform::NativeWindow::PollEvents();
-        }
-
-        if (m_options.hidden)
-        {
-            m_window->Hide();
         }
 
         m_device                                 = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
@@ -346,9 +340,16 @@ public:
                 m_controller->RequestLoad(m_options.scene);
             }
 
+            // Appear once, at the final size; the first frame presents after the resize.
+            if (!m_options.hidden)
+            {
+                m_window->Show();
+            }
+
+            const platform::WindowExtent shown = m_window->GetFramebufferExtent();
+
             LOGI("ZenEditor initialized: {} RHI, UI scale {}, framebuffer {}x{}, maximized={}",
-                 m_options.threaded ? "threaded" : "inline", scale, framebufferWidth, framebufferHeight,
-                 m_window->IsMaximized());
+                 m_options.threaded ? "threaded" : "inline", scale, shown.width, shown.height, m_window->IsMaximized());
         }
 
         return valid;

@@ -12,6 +12,11 @@ set_property(CACHE ZEN_WINDOW_BACKEND PROPERTY STRINGS SDL3 GLFW)
 if (NOT ZEN_WINDOW_BACKEND MATCHES "^(SDL3|GLFW)$")
   message(FATAL_ERROR "ZEN_WINDOW_BACKEND must be SDL3 or GLFW")
 endif ()
+# The SDL backend's Cocoa title-bar adapter is Objective-C++. Enable it here, above
+# every target that links ZenCore.
+if (APPLE AND ZEN_WINDOW_BACKEND STREQUAL "SDL3")
+  enable_language(OBJCXX)
+endif ()
 include(CTest)
 
 find_package(Vulkan REQUIRED)

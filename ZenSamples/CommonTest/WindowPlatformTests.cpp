@@ -53,11 +53,25 @@ TEST(WindowPlatform, TitleGeometryUsesWindowCoordinates)
 
         EXPECT_EQ(window.HitTest(300, 100), WindowHit::Client);
 
-        EXPECT_EQ(window.HitTest(1, 1), WindowHit::TopLeft);
+        // A frame that stays decorated, as on macOS, resizes from its native edges.
+        EXPECT_EQ(window.HitTest(1, 1), window.IsDecorated() ? WindowHit::Client : WindowHit::TopLeft);
 
         window.SetTitleBarRegion({200, 40, 140, true});
 
         EXPECT_EQ(window.HitTest(300, 20), WindowHit::Client);
+
+        // Either the platform keeps its leading buttons or the application draws controls.
+        const WindowTitleBarLayout layout = window.GetTitleBarLayout();
+
+        EXPECT_NE(layout.drawsControls, layout.leadingInset > 0);
+
+        ASSERT_TRUE(window.SetCustomFrame(false));
+
+        EXPECT_TRUE(window.IsDecorated());
+
+        EXPECT_FALSE(window.GetTitleBarLayout().drawsControls);
+
+        EXPECT_EQ(window.GetTitleBarLayout().leadingInset, 0.0f);
     }
 }
 

@@ -31,6 +31,11 @@ TEST(EditorWindowChrome, MenusAndControlsStayClientWhileCaptionAndEdgesUseNative
 
         chrome.SetTitleBarRegion({300, 36, 138, false});
 
+        // Windows provides no caption buttons in the client area; the editor draws them.
+        EXPECT_TRUE(chrome.GetTitleBarLayout().drawsControls);
+
+        EXPECT_EQ(chrome.GetTitleBarLayout().leadingInset, 0.0f);
+
         // SDL retains native style bits for OS integration while removing the frame.
         EXPECT_FALSE(window.IsDecorated());
 
@@ -83,6 +88,8 @@ TEST(EditorWindowChrome, MenusAndControlsStayClientWhileCaptionAndEdgesUseNative
     }
 
     EXPECT_EQ(window.IsDecorated(), true);
+
+    EXPECT_FALSE(window.GetTitleBarLayout().drawsControls);
 
     EXPECT_EQ(GetWindowLongPtrW(handle, GWL_STYLE) & WS_CAPTION, WS_CAPTION);
 }

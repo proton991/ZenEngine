@@ -36,9 +36,9 @@ rendering path and one shared ImGui dependency for runtime and editor.
 The production SDL3 backend is implemented behind `platform::NativeWindow` and
 is the default for new builds. `ZEN_WINDOW_BACKEND=GLFW` remains available until
 macOS acceptance is complete. See [migration status](SDL3Migration.md) and the
-[SDL3 evaluation](SDL3WindowBackendEvaluation.md). macOS requires native validation of borderless
-resize/drag behavior, window controls, Retina sizing, input, and Vulkan/MoltenVK
-presentation before the migration is complete. Linux and Wayland findings in
+[SDL3 evaluation](SDL3WindowBackendEvaluation.md). macOS requires native validation of the
+integrated title bar (native buttons, drag, double-click), Retina sizing, input, and
+Vulkan/MoltenVK presentation before the migration is complete. Linux and Wayland findings in
 that evaluation are future work.
 
 ## Implementation checkpoint — steps 1–4

@@ -319,7 +319,8 @@ WindowHit NativeWindow::HitTest(float x, float y) const
 
     WindowHit hit             = WindowHit::Client;
 
-    if (m_customFrame && m_resizable && !IsMaximized())
+    // A frame that stays decorated, as on macOS, resizes from its native edges.
+    if (m_customFrame && m_resizable && !IsDecorated() && !IsMaximized())
     {
         const float border = 6.0f * GetUIScale();
 

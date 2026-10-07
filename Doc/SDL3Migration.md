@@ -49,7 +49,10 @@ platform adapter is compiled from the existing `v1.92.9b-docking` checkout.
 - Window/title geometry belongs to the platform layer. The editor draws the bar,
   publishes an immutable geometry snapshot between event pumps, and queues window
   actions for the next safe frame boundary. SDL provides the native hit test.
-  The old Win32 subclass is isolated in the private GLFW fallback.
+  The old Win32 subclass is isolated in the private GLFW fallback. On macOS the
+  frame stays titled: a private Cocoa adapter makes the title bar transparent,
+  keeps the native window buttons, and handles caption double-clicks, which SDL's
+  drag regions consume.
 - The private `WindowBackend` bridge is visible only to backend integrations and
   native tests. ZenImGui borrows the selected native handle and subscribes to raw
   events. Each context receives each raw event once; translated engine events are

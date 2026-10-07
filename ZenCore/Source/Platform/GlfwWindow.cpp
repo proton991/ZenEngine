@@ -265,6 +265,16 @@ bool NativeWindow::SetCustomFrame(bool enabled)
     return WindowBackend::SetFallbackFrame(*this, enabled);
 }
 
+// The fallback frame exists only on Windows, where the application draws the controls.
+WindowTitleBarLayout NativeWindow::GetTitleBarLayout() const
+{
+    WindowTitleBarLayout layout;
+
+    layout.drawsControls = m_customFrame;
+
+    return layout;
+}
+
 // GLFW has no file picker; callers provide their own path entry.
 bool NativeWindow::SupportsFileDialogs()
 {

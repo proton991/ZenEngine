@@ -273,25 +273,38 @@ void EditorWorkspace::DrawRecentFiles(EditorContext& context)
 
 void EditorWorkspace::DrawMenus(EditorContext& context)
 {
-    EditorActions& registry   = context.editor.GetActions();
+    EditorActions& registry                       = context.editor.GetActions();
 
-    const bool customTitleBar = context.windowChrome.IsEnabled();
+    const bool customTitleBar                     = context.windowChrome.IsEnabled();
 
-    const float scale         = EditorScale();
+    const platform::WindowTitleBarLayout titleBar = context.windowChrome.GetTitleBarLayout();
 
-    const ImVec2 padding      = ImGui::GetStyle().FramePadding;
+    const float scale                             = EditorScale();
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding.x, customTitleBar ? 10 * scale : padding.y));
+    const ImVec2 padding                          = ImGui::GetStyle().FramePadding;
+
+    // A native title-bar height keeps the platform's window buttons centered on the row.
+    const float titlePadding =
+        titleBar.height > 0 ? std::max(padding.y, 0.5f * (titleBar.height - ImGui::GetFontSize())) : 10 * scale;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding.x, customTitleBar ? titlePadding : padding.y));
 
     if (ImGui::BeginMainMenuBar())
     {
+        // Keep clear of window buttons the platform draws at the leading edge.
+        if (titleBar.leadingInset > ImGui::GetCursorPosX())
+        {
+            ImGui::SetCursorPosX(titleBar.leadingInset);
+        }
+
         if (context.appIcon.value != 0)
         {
-            const float size = customTitleBar ? 28 * scale : ImGui::GetTextLineHeight();
+            const float size =
+                customTitleBar ? std::min(28 * scale, ImGui::GetWindowHeight() - 6 * scale) : ImGui::GetTextLineHeight();
 
-            const float x    = ImGui::GetCursorScreenPos().x;
+            const float x = ImGui::GetCursorScreenPos().x;
 
-            const float y    = ImGui::GetWindowPos().y + (ImGui::GetWindowHeight() - size) * 0.5f;
+            const float y = ImGui::GetWindowPos().y + (ImGui::GetWindowHeight() - size) * 0.5f;
 
             // The engine texture loader flips image rows; restore the artwork's orientation.
             ImGui::GetWindowDrawList()->AddImage(ui::ImGuiRenderer::GetTextureID(context.appIcon), ImVec2(x, y),
@@ -379,7 +392,7 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
 
         const float buttonWidth   = 46 * scale;
 
-        const float controlsWidth = customTitleBar ? 3 * buttonWidth : 0;
+        const float controlsWidth = titleBar.drawsControls ? 3 * buttonWidth : 0;
 
         const LoadedScene* scene  = context.editor.GetScene().Get();
 
@@ -399,25 +412,28 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
 
         if (customTitleBar)
         {
-            const ImVec2 origin                 = ImGui::GetWindowPos();
+            const float height = ImGui::GetWindowHeight();
 
-            const float height                  = ImGui::GetWindowHeight();
-
-            const float start                   = origin.x + ImGui::GetWindowWidth() - controlsWidth;
-
-            const bool maximized                = context.windowChrome.IsMaximized();
-
-            const EditorWindowAction controls[] = {EditorWindowAction::Minimize, EditorWindowAction::ToggleMaximize,
-                                                   EditorWindowAction::Close};
-
-            const char* labels[]                = {"Minimize", maximized ? "Restore" : "Maximize", "Close"};
-
-            for (int index = 0; index < 3; ++index)
+            if (titleBar.drawsControls)
             {
-                if (DrawWindowButton(labels[index], controls[index], maximized,
-                                     ImVec2(start + float(index) * buttonWidth, origin.y), ImVec2(buttonWidth, height)))
+                const ImVec2 origin                 = ImGui::GetWindowPos();
+
+                const float start                   = origin.x + ImGui::GetWindowWidth() - controlsWidth;
+
+                const bool maximized                = context.windowChrome.IsMaximized();
+
+                const EditorWindowAction controls[] = {EditorWindowAction::Minimize, EditorWindowAction::ToggleMaximize,
+                                                       EditorWindowAction::Close};
+
+                const char* labels[]                = {"Minimize", maximized ? "Restore" : "Maximize", "Close"};
+
+                for (int index = 0; index < 3; ++index)
                 {
-                    context.windowChrome.RequestAction(controls[index]);
+                    if (DrawWindowButton(labels[index], controls[index], maximized,
+                                         ImVec2(start + float(index) * buttonWidth, origin.y), ImVec2(buttonWidth, height)))
+                    {
+                        context.windowChrome.RequestAction(controls[index]);
+                    }
                 }
             }
 

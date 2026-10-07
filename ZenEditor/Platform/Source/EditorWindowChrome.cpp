@@ -39,6 +39,11 @@ bool EditorWindowChrome::IsMaximized() const
     return m_state->window.IsMaximized();
 }
 
+platform::WindowTitleBarLayout EditorWindowChrome::GetTitleBarLayout() const
+{
+    return m_state->window.GetTitleBarLayout();
+}
+
 void EditorWindowChrome::SetTitleBarRegion(const EditorTitleBarRegion& region)
 {
     m_state->window.SetTitleBarRegion({region.menuEnd, region.height, region.controlsWidth, region.inputBlocked});

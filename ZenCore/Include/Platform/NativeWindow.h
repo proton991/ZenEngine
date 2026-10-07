@@ -39,6 +39,17 @@ struct WindowTitleBarRegion
     bool  inputBlocked{false};
 };
 
+// How an integrated title bar shares its row with the platform, in window coordinates.
+// On Windows the application draws the window controls; macOS keeps its native
+// buttons at the leading edge.
+struct WindowTitleBarLayout
+{
+    // The native title-bar height, or 0 when the application chooses the row height.
+    float height{0};
+    float leadingInset{0};
+    bool  drawsControls{false};
+};
+
 struct FileDialogFilter
 {
     std::string name;
@@ -138,7 +149,11 @@ public:
 
     void SetTextInputArea(int x, int y, int width, int height, int cursorOffset);
 
+    // Extends the client area into the title bar. Windows removes the native frame;
+    // macOS keeps it, with a transparent title bar over full-size content.
     bool SetCustomFrame(bool enabled);
+
+    WindowTitleBarLayout GetTitleBarLayout() const;
 
     void SetTitleBarRegion(const WindowTitleBarRegion& region);
 
