@@ -1,0 +1,4 @@
+interface:
+  display_name: "C++ Rendering Review"
+  short_description: "Review and refine rendering changes with evidence"
+  default_prompt: "Use $review-rendering-changes to review and refine my local C++ rendering-engine changes against the codebase and any relevant plan, applying only evidence-backed fixes."

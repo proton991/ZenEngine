@@ -328,6 +328,30 @@ validate voxelization and GI quality against references, and check profiling out
 2026-10-01 all 339 variants of the Khronos sample corpus imported and rendered with no
 validation errors ([details](Doc/GLTFSceneImport.md#reproducible-verification)).
 
+## Code review skill
+
+The shared [C++ rendering review skill](.agents/skills/review-rendering-changes/SKILL.md)
+contains the review workflow and seven C++ coding rules used for ZenEngine changes.
+Clone or pull this repository on another device and open it in Codex. The skill is
+discovered from `.agents/skills`; no separate installation is needed for this repository.
+If it does not appear, restart Codex ([skill discovery documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)).
+
+After making code changes, invoke it explicitly:
+
+```text
+Use $review-rendering-changes to review my current changes before committing.
+```
+
+For review with fixes, ask it to "review and refine my current changes, then run the
+relevant checks." Review-only requests do not modify files; committing and pushing
+require an explicit request. Other coding agents can read the linked `SKILL.md` directly.
+
+To install the skill for use outside this repository on another device, ask Codex:
+
+```text
+Use $skill-installer to install https://github.com/proton991/ZenEngine/tree/main/.agents/skills/review-rendering-changes
+```
+
 ## Documentation
 
 | Topic | Documents |
