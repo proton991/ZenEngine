@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
@@ -37,6 +38,20 @@ void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDr
 
 namespace
 {
+void RecordHybridDraws(RDGPassCmdEncoder&                    encoder,
+                       const HeapVector<SceneMeshDraw>&      draws,
+                       const HeapVector<HybridReceiverDraw>& constants)
+{
+    for (uint32_t index = 0; index < draws.size(); ++index)
+    {
+        encoder.SetPushConstants(constants[index]);
+        encoder.DrawIndexed(draws[index].indexCount, 1, draws[index].firstIndex, 0, 0);
+    }
+}
+} // namespace
+
+namespace
+{
 struct ForwardPushConstants
 {
     uint32_t nodeIndex;
@@ -44,15 +59,31 @@ struct ForwardPushConstants
     uint32_t topology;
 };
 
-void RecordForwardDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDraw>& draws, bool displayLinear = false)
+void RecordForwardDraws(RDGPassCmdEncoder&               encoder,
+                        const HeapVector<SceneMeshDraw>& draws,
+                        bool                             displayLinear = false,
+                        glm::uvec2                       captureExtent = glm::uvec2(0))
 {
     for (const SceneMeshDraw& draw : draws)
     {
         const ForwardPushConstants constants{draw.nodeIndex, draw.materialIndex,
                                              static_cast<uint32_t>(draw.topology) | (displayLinear ? 4u : 0u)};
 
-        encoder.SetPushConstants(constants);
-
+        if (captureExtent.x != 0)
+        {
+            struct CaptureConstants
+            {
+                ForwardPushConstants draw;
+                uint32_t             padding;
+                glm::uvec2           extent;
+            };
+            const CaptureConstants capture{constants, 0, captureExtent};
+            encoder.SetPushConstants(capture);
+        }
+        else
+        {
+            encoder.SetPushConstants(constants);
+        }
         encoder.DrawIndexed(draw.indexCount, 1, draw.firstIndex, 0, 0);
     }
 }
@@ -123,7 +154,33 @@ void DeferredLightingRenderer::Init()
     }
 }
 
-void DeferredLightingRenderer::Destroy() {}
+void DeferredLightingRenderer::Destroy()
+{
+    for (const HybridView& view : m_hybridViews)
+    {
+        view.renderer->Destroy();
+        ZEN_DELETE(view.renderer);
+    }
+    m_hybridViews.clear();
+    m_hybrid = nullptr;
+}
+
+void DeferredLightingRenderer::SetRenderScene(RenderScene* scene)
+{
+    for (const HybridView& view : m_hybridViews)
+    {
+        view.renderer->Destroy();
+    }
+    m_pScene = scene;
+}
+
+void DeferredLightingRenderer::OnRenderGraphExecuted(bool succeeded)
+{
+    if (m_hybrid != nullptr)
+    {
+        m_hybrid->OnRenderGraphExecuted(succeeded);
+    }
+}
 
 bool DeferredLightingRenderer::SetLightMarkers(bool enabled, float size)
 {
@@ -216,12 +273,12 @@ bool DeferredLightingRenderer::BuildLightingCaptureClear(const RenderView& view)
 
 void DeferredLightingRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
 {
-    BuildGBufferGraph(view);
+    BuildGBufferGraph(view, voxelGI != nullptr && voxelGI->GetSettings().rayProvider != VoxelGISettings::RayProvider::Legacy);
 
     BuildCompositionGraph(view, voxelGI, shadows);
 }
 
-void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
+void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hybrid)
 {
     RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
 
@@ -233,7 +290,35 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
 
     // One texel per screen pixel: the lighting pass reads the G-buffer at its own fragment
     // coordinate. A suspended (zero-sized) view renders nothing and declares no G-buffer.
-    const bool declared = width != 0 && height != 0 && !UsesForwardMaterials();
+    m_hybrid = nullptr;
+    if (hybrid)
+    {
+        for (const HybridView& entry : m_hybridViews)
+        {
+            if (entry.id == view.historyId)
+            {
+                m_hybrid = entry.renderer;
+            }
+        }
+        if (m_hybrid == nullptr)
+        {
+            m_hybrid = ZEN_NEW() HybridGIRenderer(m_pRenderDevice);
+            m_hybridViews.push_back({view.historyId, m_hybrid});
+        }
+        m_hybrid->Prepare(view, *m_pScene);
+        m_hybrid->SetCapture(m_hybridCaptureOutput, m_hybridCaptureReadback);
+    }
+    else
+    {
+        for (const HybridView& entry : m_hybridViews)
+        {
+            if (entry.id == view.historyId)
+            {
+                entry.renderer->InvalidateHistory("inactive");
+            }
+        }
+    }
+    const bool declared = width != 0 && height != 0 && (hybrid || !UsesForwardMaterials());
 
     m_gbufferExtent     = declared ? glm::uvec2(width, height) : glm::uvec2(0, 0);
 
@@ -249,13 +334,13 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
 
         pso.multiSampleState            = {};
 
-        pso.colorBlendState.AddAttachments(4);
+        pso.colorBlendState.AddAttachments(hybrid ? 6 : 4);
 
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
         RDGGraphicsPassDesc offscreen{};
 
-        offscreen.SetShaderProgramName("GBufferSP");
+        offscreen.SetShaderProgramName(hybrid ? "HybridReceiverSP" : "GBufferSP");
 
         offscreen.AddColorOutput(DataFormat::eR16G16UNORM, width, height, "offscreen_normal");
 
@@ -264,6 +349,13 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
         offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, width, height, "offscreen_roughness");
 
         offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_emissive_occlusion");
+
+        if (hybrid)
+        {
+            offscreen.AddColorOutput(DataFormat::eR32G32UInt, width, height, "offscreen_receiver");
+            offscreen.AddColorOutput(DataFormat::eR32G32B32A32SFloat, width, height, "offscreen_motion");
+            m_hybrid->BindReceiverInputs(offscreen);
+        }
 
         offscreen.AddDepthStencilOutput(view.GetDepthStencilFormat(), width, height, "offscreen_depth",
                                         RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
@@ -288,9 +380,24 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
 
         offscreen.BindIndexBuffer(m_pScene->GetIndexBuffer());
 
-        pRDG->AddGraphicsPass(std::move(offscreen))
-            .RecordPassCommands(
-                [draws = SnapshotSceneDraws(*m_pScene)](RDGPassCmdEncoder& encoder) { RecordGBufferDraws(encoder, draws); });
+        const HeapVector<SceneMeshDraw> draws = SnapshotSceneDraws(*m_pScene);
+        if (hybrid)
+        {
+            HeapVector<HybridReceiverDraw> constants;
+            for (const SceneMeshDraw& draw : draws)
+            {
+                constants.push_back(m_hybrid->ReceiverDraw(draw.nodeIndex, draw.materialIndex));
+            }
+            pRDG->AddGraphicsPass(std::move(offscreen)).RecordPassCommands([draws, constants](RDGPassCmdEncoder& encoder) {
+                RecordHybridDraws(encoder, draws, constants);
+            });
+        }
+        else
+        {
+            pRDG->AddGraphicsPass(std::move(offscreen)).RecordPassCommands([draws](RDGPassCmdEncoder& encoder) {
+                RecordGBufferDraws(encoder, draws);
+            });
+        }
     }
 }
 
@@ -361,6 +468,12 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
                                                      VoxelGIRenderer*     voxelGI,
                                                      SceneShadowRenderer* shadows)
 {
+    if (m_hybrid != nullptr && voxelGI != nullptr && !m_hybrid->BuildRenderGraph(view, *voxelGI))
+    {
+        LOGE("Hybrid GI history allocation failed; rendering the minimum PBR tier");
+        voxelGI = nullptr;
+        shadows = nullptr;
+    }
     if (UsesForwardMaterials())
     {
         BuildForwardGraph(view, voxelGI, shadows);
@@ -398,6 +511,12 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
 
             lighting.SetShaderProgramName(voxelGI == nullptr ? (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP")
                                                              : (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
+
+            if (m_hybrid != nullptr && m_hybrid->IsActive())
+            {
+                lighting.SetShaderProgramName(capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP");
+                m_hybrid->BindLightingInputs(lighting);
+            }
 
             lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
@@ -506,6 +625,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
     const uint32_t height         = view.GetHeight();
 
     const EnvTexture& env         = m_pScene->GetEnvTexture();
+    const bool        capture =
+        m_captureOutput != nullptr && m_hybrid != nullptr && m_hybrid->IsActive() && BuildLightingCaptureClear(view);
+    const glm::uvec2 captureExtent = capture ? glm::uvec2(width, height) : glm::uvec2(0);
+
 
     bool displayTransparency      = false;
 
@@ -874,6 +997,16 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             forward.SetShaderProgramName(voxelGI == nullptr ? "ForwardMaterialSP" : "ForwardMaterialVoxelGISP");
 
+            if (m_hybrid != nullptr && m_hybrid->IsActive())
+            {
+                forward.SetShaderProgramName(capture ? "ForwardHybridGICaptureSP" : "ForwardHybridGISP");
+                if (capture)
+                {
+                    forward.BindStorageBuffer("LightingCapture", m_captureOutput);
+                }
+                m_hybrid->BindLightingInputs(forward);
+            }
+
             forward.SetPassTag(stage < 3 ? "ForwardOpaque" : "ForwardTranslucent");
 
             forward.SetPipelineStates(state);
@@ -924,9 +1057,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             }
 
             graph->AddGraphicsPass(std::move(forward))
-                .RecordPassCommands([draws, displayLinear = stage == 3 && displayTransparency](RDGPassCmdEncoder& encoder) {
-                    RecordForwardDraws(encoder, draws, displayLinear);
-                });
+                .RecordPassCommands(
+                    [draws, captureExtent, displayLinear = stage == 3 && displayTransparency](RDGPassCmdEncoder& encoder) {
+                        RecordForwardDraws(encoder, draws, displayLinear, captureExtent);
+                    });
         }
     }
 
@@ -950,7 +1084,13 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
         encoder.Draw(3, 1);
     });
 
-    m_captureRecorded = false;
+    if (capture)
+    {
+        graph->AddTransferPass("ReadForwardLightingCapture")
+            .CopyBuffer(m_captureOutput, m_captureReadback, {0, 0, m_captureOutput->GetRequiredSize()})
+            .NeverCull();
+    }
+    m_captureRecorded = capture;
 
     BuildLightMarkers(view);
 }

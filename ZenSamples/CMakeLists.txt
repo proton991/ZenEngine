@@ -85,6 +85,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp

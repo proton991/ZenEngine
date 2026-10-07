@@ -218,7 +218,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     for (const std::array<const char*, 2>& shader :
          {std::array<const char*, 2>{"VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv"},
           {"VoxelFilterRadianceSP", "VoxelGI/filter_radiance.comp.spv"},
-          {"VoxelSkyIrradianceSP", "VoxelGI/sky_irradiance.comp.spv"},
+          {"VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv"},
           {"VoxelInjectRadianceSP", "VoxelGI/inject_radiance.comp.spv"}})
     {
         RHIShaderCreateInfo info;

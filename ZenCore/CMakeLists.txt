@@ -182,6 +182,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/ComputeVoxelizer.cpp
     Source/Graphics/RenderCore/V2/GeometryVoxelizer.cpp
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
+    Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
     Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
     Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     Source/Graphics/RenderCore/V2/ShadowMapRenderer.cpp

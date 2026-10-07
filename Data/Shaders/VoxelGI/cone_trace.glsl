@@ -1,12 +1,15 @@
+#ifndef CONE_INPUT_SET
+#define CONE_INPUT_SET 1
+#endif
 #include "environment_visibility.glsl"
-layout(set=1,binding=9) uniform sampler3D voxelRadiance;
-layout(set=1,binding=10) uniform sampler3D voxelOpacity;
-layout(set=1,binding=11) uniform samplerCube coneEnvironmentMap;
+layout(set=CONE_INPUT_SET,binding=9) uniform sampler3D voxelRadiance;
+layout(set=CONE_INPUT_SET,binding=10) uniform sampler3D voxelOpacity;
+layout(set=CONE_INPUT_SET,binding=11) uniform samplerCube coneEnvironmentMap;
 #ifdef LIGHTING_CAPTURE
 vec3 captureConeBounced, captureConeEscaped;
 vec3 captureDiffuseBounced, captureDiffuseEscaped;
 #endif
-vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
+vec3 TraceDiffuseCone(vec3 origin,vec3 direction,bool includeSky)
 {
     float distance=gi.gridMinVoxelSize.w;
     float transmittance=1.0;
@@ -31,7 +34,7 @@ vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
     captureConeBounced=incoming;
     captureConeEscaped=vec3(0);
 #endif
-    if(sceneUbo.environment.z>0 && gi.lighting.y>0)
+    if(includeSky && sceneUbo.environment.z>0 && gi.lighting.y>0)
     {
         // The visibility rays trace occupancy to the volume boundary and estimate the
         // unblocked part of the cone. Transmittance estimates the same blockers from
@@ -45,7 +48,7 @@ vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
     }
     return incoming;
 }
-vec3 DiffuseVoxelLighting(vec3 position,vec3 normal)
+vec3 DiffuseVoxelLighting(vec3 position,vec3 normal,bool includeSky)
 {
     vec3 result=vec3(0);
 #ifdef LIGHTING_CAPTURE
@@ -58,7 +61,7 @@ vec3 DiffuseVoxelLighting(vec3 position,vec3 normal)
     {
         float weight;
         vec3 direction=HemisphereCone(normal,i,count,weight);
-        result+=TraceDiffuseCone(origin,direction)*weight;
+        result+=TraceDiffuseCone(origin,direction,includeSky)*weight;
 #ifdef LIGHTING_CAPTURE
         captureDiffuseBounced+=captureConeBounced*weight;
         captureDiffuseEscaped+=captureConeEscaped*weight;
@@ -66,3 +69,6 @@ vec3 DiffuseVoxelLighting(vec3 position,vec3 normal)
     }
     return result;
 }
+
+vec3 TraceDiffuseCone(vec3 origin,vec3 direction) { return TraceDiffuseCone(origin,direction,true); }
+vec3 DiffuseVoxelLighting(vec3 position,vec3 normal) { return DiffuseVoxelLighting(position,normal,true); }

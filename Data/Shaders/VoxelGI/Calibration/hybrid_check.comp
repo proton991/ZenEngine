@@ -1,0 +1,30 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../hybrid_sampling.glsl"
+#include "../hybrid_provider.glsl"
+layout(local_size_x=1) in;
+layout(set=1,binding=0) uniform sampler3D opacity;
+layout(set=1,binding=1,std430) writeonly buffer Results { vec4 results[]; };
+void main()
+{
+    vec3 n=vec3(0,1,0), origin=vec3(1.5);
+    float visible=0.0, specular=0.0, grazing=0.0;
+    // Roughness 1 at normal incidence sends half of the visible-normal lobe below the surface;
+    // the 60-degree view also covers an off-normal lobe.
+    vec3 view=vec3(0.8660254,0.5,0);
+    for(uint i=0;i<4096u;++i)
+    {
+        float pdf;
+        vec3 d=HybridCosineSample(n,HybridSample(uvec2(0),i,0u),pdf);
+        visible+=HybridTraceRay(opacity,origin,d,1e20).hit ? 0.0 : 1.0;
+        d=HybridSpecularDirection(n,n,1.0,uvec2(0),i,0x1234u);
+        specular+=dot(n,d)>0.0 && !HybridTraceRay(opacity,origin,d,1e20).hit ? 1.0 : 0.0;
+        d=HybridSpecularDirection(n,view,0.5,uvec2(0),i,0x1234u);
+        grazing+=dot(n,d)>0.0 && !HybridTraceRay(opacity,origin,d,1e20).hit ? 1.0 : 0.0;
+    }
+    HybridRayResult entry=HybridTraceRay(opacity,vec3(-1,1.5,1.5),vec3(1,0,0),1e20);
+    results[0]=vec4(visible/4096.0,specular/4096.0,entry.hit ? 1.0:0.0,entry.position.x);
+    results[1]=vec4(entry.normal,grazing/4096.0);
+    HybridRayResult oblique=HybridTraceRay(opacity,vec3(-1,1,1.5),vec3(.8,.6,0),1e20);
+    results[2]=vec4(oblique.normal,oblique.hit ? 1.0:0.0);
+}

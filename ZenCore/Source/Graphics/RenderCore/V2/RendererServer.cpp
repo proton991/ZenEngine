@@ -4,6 +4,7 @@
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -151,7 +152,8 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                 if (m_frameRenderOption == RenderOption::eVoxelGI)
                 {
-                    m_pDeferredLightingRenderer->BuildGBufferGraph(view);
+                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, m_pVoxelGI->GetSettings().rayProvider
+                                                                             != VoxelGISettings::RayProvider::Legacy);
 
                     m_pVoxelizer->BuildVoxelizationGraph();
 
@@ -160,6 +162,13 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
                     m_pVoxelGI->BuildRenderGraph(m_pSceneShadows);
 
                     m_pDeferredLightingRenderer->BuildCompositionGraph(view, m_pVoxelGI, m_pSceneShadows);
+
+                    if (m_pDeferredLightingRenderer->GetHybridGI() != nullptr
+                        && !m_pDeferredLightingRenderer->GetHybridGI()->IsActive())
+                    {
+                        m_frameRenderOption     = RenderOption::ePBR;
+                        m_status.fallbackReason = "Hybrid GI history allocation failed.";
+                    }
 
                     m_frameShadows = m_frameGI = true;
                 }
@@ -212,6 +221,7 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
     }
 
     m_pSkyboxRenderer->OnRenderGraphExecuted(succeeded);
+    m_pDeferredLightingRenderer->OnRenderGraphExecuted(succeeded);
 
     if (m_frameGI)
     {

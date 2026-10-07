@@ -16,6 +16,12 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
                               "async_compute=invalid",
                               "voxel_resolution=65",
                               "voxel_gi_cone_count=5",
+                              "voxel_gi_samples=3",
+                              "voxel_gi_history_frames=0",
+                              "voxel_gi_history_frames=257",
+                              "voxel_gi_temporal=1",
+                              "voxel_gi_filter=invalid",
+                              "voxel_gi_ray_provider=invalid",
                               "shadow_map_resolution=0",
                               "voxel_reflectance_policy=invalid",
                               "voxel_reflectance_policy=averaged",
@@ -74,6 +80,21 @@ TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
     EXPECT_FALSE(settings.cone.environmentLighting);
 
     EXPECT_FALSE(settings.cone.emissiveLighting);
+}
+
+TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
+{
+    std::istringstream     stream("voxel_gi_samples=4\nvoxel_gi_history_frames=64\nvoxel_gi_ray_provider=hardware\n"
+                                  "voxel_gi_temporal=false\nvoxel_gi_filter=false\nvoxel_gi_specular_occlusion=false\n");
+    platform::ConfigLoader config(stream);
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+    EXPECT_EQ(settings.cone.samples, 4u);
+    EXPECT_EQ(settings.cone.historyFrames, 64u);
+    EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Hardware);
+    EXPECT_FALSE(settings.cone.temporal);
+    EXPECT_FALSE(settings.cone.filter);
+    EXPECT_FALSE(settings.cone.specularOcclusion);
 }
 
 TEST(VoxelGIRuntimeSettings, RejectsInvalidEnumsAndNonFiniteAPIValues)

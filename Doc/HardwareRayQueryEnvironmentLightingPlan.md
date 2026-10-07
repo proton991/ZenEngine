@@ -1,6 +1,6 @@
 # Hybrid Voxel GI Implementation Plan
 
-Date: 2026-10-01. Updated 2026-10-02 with the user-confirmed reproduction. Revised 2026-10-07 against the current code and new Sponza measurements, and widened from environment lighting to the complete hybrid voxel GI. Status: accepted direction; no phase below is implemented. The file name is kept because other documents link to it; earlier revisions were titled *Hardware Ray Query Environment Lighting Implementation Plan*.
+Date: 2026-10-01. Updated 2026-10-02 with the user-confirmed reproduction. Revised 2026-10-07 against the current code and new Sponza measurements, and widened from environment lighting to the complete hybrid voxel GI. Status: P0–P3 core implementation is present; acceptance and remaining requirements are recorded in [HybridGI/README.md](HybridGI/README.md). The unchecked phase gates below are not claimed complete. The file name is kept because other documents link to it; earlier revisions were titled *Hardware Ray Query Environment Lighting Implementation Plan*.
 
 **Goal:** a hybrid voxel GI in mode 3 (PBR + voxel GI).
 - Rasterization draws the visible surfaces and builds the voxel scene.
@@ -51,9 +51,9 @@ Principles:
 
 The minimum tier is the existing `RendererServer` fallback: PBR is rendered and the reason reported when voxel coverage is incomplete, GI initialization fails, or shadow memory preflight fails.
 
-## Current implementation (2026-10-07)
+## Baseline before P0–P3 (2026-10-07)
 
-This table includes the working-tree changes recorded in [VoxelGIVerification.md](VoxelGIVerification.md) on 2026-10-07.
+This table describes the cone baseline at the start of P0. For the subsequent hybrid implementation, resource sizes, settings, measurements and outstanding gates, see [the P0–P3 implementation record](HybridGI/README.md) and [VoxelGIVerification.md](VoxelGIVerification.md).
 
 | Area | Current behavior |
 | --- | --- |
@@ -143,7 +143,7 @@ Metallic/Fresnel, albedo and material AO are applied exactly once. Material AO r
 
 `specular = (S * prefiltered(R, roughness) + (1 - S) * H) * (F * A + B) * AO`
 
-- `S` is the fraction of the GGX lobe (visible-normal sampling around the view direction) whose rays escape.
+- `S` is the fraction of the specular lobe `f * cos` whose rays escape, over the upper hemisphere of the shading normal: the domain of the prefiltered map and the split-sum terms. Lobe directions below the shading normal are outside that integral and are excluded, not counted as blocked; otherwise an unoccluded rough surface gets `S < 1` (0.5 at roughness 1 and normal incidence). Directions above the shading normal but below `n_g` are blocked. Visible-normal samples carry the weight `G1(l)` (separable Smith, Fresnel excluded).
 - `H` is the mean radiance-cache value of the lobe rays that hit, with indirect intensity applied; it is zero until P6.
 - Keeping the environment part on the prefiltered map leaves only the hit part noisy.
 - In forward materials with extra lobes (clearcoat, sheen), apply the base-lobe `S` and `H` to every environment-specular lobe and document the approximation.
@@ -531,4 +531,4 @@ These are not required for done and are each assessed against the P0 limits and 
 - [ ] P8 performance and memory reports per tier, preset and platform; presets and automatic selection documented.
 - [ ] Functional report records correctness evidence and limitations per tier.
 
-This document is a plan. None of its unchecked items is claimed complete.
+This document retains the acceptance gates. P0–P3 implementation and partial verification do not imply that their unchecked exit criteria have passed; see [the implementation record](HybridGI/README.md#remaining-acceptance-work).

@@ -99,7 +99,7 @@ def validate_frame_intervals(manifest, frames):
             end = finite_nonnegative(frame['frame_end_ms'])
             assert previous_end <= start <= end, 'Overlapping or reordered frame wall intervals'
             previous_end = end
-            assert frame['gi_method'] in ('cone', 'none')
+            assert frame['gi_method'] in ('cone', 'hybrid', 'none')
 
 
 def validate(prefix, require_gpu=False, require_frame_gpu=False):

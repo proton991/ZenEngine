@@ -7,4 +7,7 @@
 #define ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL (16u * ZEN_LIGHTING_CAPTURE_COMPONENTS)
 #define ZEN_LIGHTING_CAPTURE_GROUP_SIZE      64u
 
+// Separate, opt-in hybrid diagnostics; the existing seven components keep their layout.
+#define ZEN_HYBRID_CAPTURE_COMPONENTS      13u
+#define ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL (16u * ZEN_HYBRID_CAPTURE_COMPONENTS)
 #endif

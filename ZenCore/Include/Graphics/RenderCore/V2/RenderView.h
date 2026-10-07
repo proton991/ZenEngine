@@ -11,6 +11,8 @@ struct RenderView
     RHITexture* depth{nullptr};
     uint32_t    width{0};
     uint32_t    height{0};
+    // Stable logical view identity; swapchain image identity is deliberately not used.
+    uint64_t historyId{0};
 
     // Snapshot the current window buffers for this frame; do not cache across frames or resize.
     static RenderView FromViewport(RHIViewport& viewport)

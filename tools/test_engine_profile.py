@@ -215,6 +215,10 @@ class ProfileTests(unittest.TestCase):
             self.write_rows(prefix, '.frames.csv', frames)
             self.write_manifest(prefix, manifest)
             self.assertTrue(profile.validate(prefix)['verified'])
+            for frame in frames:
+                frame['gi_method'] = 'hybrid'
+            self.write_rows(prefix, '.frames.csv', frames)
+            self.assertTrue(profile.validate(prefix)['verified'])
             frames[1]['frame_start_ms'] = '8'
             self.write_rows(prefix, '.frames.csv', frames)
             with self.assertRaisesRegex(AssertionError, 'frame wall intervals'):

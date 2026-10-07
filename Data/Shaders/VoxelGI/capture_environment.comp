@@ -1,0 +1,15 @@
+#version 450
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=1,binding=0) uniform samplerCube sourceEnvironment;
+layout(set=1,binding=1,std430) writeonly buffer EnvironmentCapture { vec4 texels[]; };
+void main()
+{
+    ivec2 size=textureSize(sourceEnvironment,0);
+    uvec3 p=gl_GlobalInvocationID;
+    if(p.x>=uint(size.x) || p.y>=uint(size.y) || p.z>=6u) return;
+    vec2 uv=(vec2(p.xy)+0.5)/vec2(size)*2.0-1.0;
+    vec3 directions[6]=vec3[6](vec3(1,-uv.y,-uv.x),vec3(-1,-uv.y,uv.x),vec3(uv.x,1,uv.y),
+        vec3(uv.x,-1,-uv.y),vec3(uv.x,-uv.y,1),vec3(-uv.x,-uv.y,-1));
+    uint index=p.x+uint(size.x)*(p.y+uint(size.y)*p.z);
+    texels[index]=textureLod(sourceEnvironment,directions[p.z],0);
+}

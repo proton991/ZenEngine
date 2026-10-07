@@ -6,6 +6,7 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/Shared/LightingCapture.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -92,17 +93,24 @@ bool WriteLightingMetadata(const std::string&        path,
 
     const glm::uvec2 gbuffer            = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
 
+    const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
+    const rc::VoxelGISettings&  settings = server.RequestVoxelGI()->GetSettings();
+    const bool    reconstructed          = server.GetRenderOption() == rc::RenderOption::eVoxelGI
+                                        && settings.rayProvider != rc::VoxelGISettings::RayProvider::Legacy && hybrid != nullptr;
     std::ofstream output(path + ".lighting.json");
 
     output
-        << std::setprecision(std::numeric_limits<float>::max_digits10) << "{\"version\":1,\"width\":" << width
+        << std::setprecision(std::numeric_limits<float>::max_digits10) << "{\"version\":2,\"width\":" << width
         << ",\"height\":" << height << ",\"format\":\"little-endian float32, pixel-interleaved float4 components, x fastest\""
         << ",\"bytes_per_pixel\":" << ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL
         << ",\"components\":[\"combined\",\"analytic_direct\",\"diffuse_outgoing\",\"specular_ibl\",\"visible_emission\",\"escaped_environment_diffuse\",\"bounced_diffuse\"]"
         << ",\"units\":\"scene-linear outgoing RGB before exposure, tone mapping and gamma; receiver BRDF and AO included\""
-        << ",\"mask\":\"alpha 1 for deferred surfaces, 0 for background; captured before marker overlay\""
+        << ",\"mask\":\"alpha 1 for covered deferred or forward opaque/mask surfaces, 0 otherwise; before marker overlay\""
         << ",\"capture_frame\":\"one additional frame after --frames; use frozen inputs for baseline comparisons\""
-        << ",\"method\":\"" << (server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone" : "pbr")
+        << ",\"method\":\""
+        << (reconstructed                                            ? "hybrid"
+            : server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone"
+                                                                     : "pbr")
         << "\",\"analytic_visibility\":\"mesh_shadow_maps\""
         << ",\"reflectance_policy\":\"" << (voxelizer.UsesAveragedReflectance() ? "averaged" : "owner")
         << "\",\"voxel_resolution\":" << voxelizer.GetVoxelTexResolution()
@@ -123,6 +131,28 @@ bool WriteLightingMetadata(const std::string&        path,
 
     WriteFloatArray(output, &data.environment.x, 4);
 
+    output
+        << ",\"tier\":\"" << (server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "compute" : "minimum")
+        << "\",\"ray_provider\":\"" << (reconstructed ? "voxel" : "legacy")
+        << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider)
+        << ",\"provider_reason\":\"Hardware queries arrive in P4; compute provider selected\""
+        << ",\"preset\":\"custom\",\"bounce_source\":\"cone\",\"sample_seed\":0"
+        << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
+        << ",\"frame\":" << (hybrid != nullptr ? hybrid->GetFrame() : 0)
+        << ",\"environment_generation\":" << scene.GetEnvironmentRevision()
+        << ",\"lighting_generation\":" << scene.GetLightingRevision()
+        << ",\"temporal\":" << (settings.temporal ? "true" : "false")
+        << ",\"static_reference_accumulation\":" << (settings.referenceSamples != 0 ? "true" : "false")
+        << ",\"history_valid\":" << (hybrid != nullptr && hybrid->IsHistoryValid() ? "true" : "false")
+        << ",\"history_limit\":" << (settings.referenceSamples != 0 ? 256u : settings.historyFrames)
+        << ",\"filter_iterations\":" << (settings.filter && settings.referenceSamples == 0 ? 5 : 0) << ",\"reset_reason\":\""
+        << (hybrid != nullptr ? hybrid->GetResetReason() : "inactive") << "\""
+        << ",\"hybrid_bytes_per_pixel\":" << (reconstructed ? ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL : 0)
+        << ",\"hybrid_components\":[\"raw_sky_nu\",\"sky_nu\",\"raw_bounce\",\"bounce\",\"raw_H_S\",\"H_S\",\"moments\",\"length_rejection\",\"position_valid\",\"normal_roughness\",\"geometric_depth\",\"previous_clip\",\"identity_bits_reserved\"]"
+        << ",\"receiver_coverage\":\"opaque_and_mask_triangles; transmission_and_scattering_use_per_surface\"";
+    output << ",\"environment_cube_size\":" << scene.GetEnvTexture().pPrefiltered->GetWidth();
+    output << ",\"environment_orientation\":";
+    WriteFloatArray(output, &data.environmentOrientation.x, 4);
     output << ",\"lights\":[";
 
     for (uint32_t i = 0; i < static_cast<uint32_t>(data.lightInfo.x); ++i)
@@ -181,6 +211,10 @@ bool SceneRendererDemo::CaptureLighting(const std::string& path)
     RHIBuffer* output   = nullptr;
 
     RHIBuffer* readback = nullptr;
+    RHIBuffer* hybridOutput   = nullptr;
+    RHIBuffer* hybridReadback = nullptr;
+    const bool captureHybrid  = option == rc::RenderOption::eVoxelGI
+                             && server->RequestVoxelGI()->GetSettings().rayProvider != rc::VoxelGISettings::RayProvider::Legacy;
 
     if (succeeded)
     {
@@ -189,12 +223,24 @@ bool SceneRendererDemo::CaptureLighting(const std::string& path)
 
     if (succeeded)
     {
+        if (captureHybrid)
+        {
+            succeeded = rc::ValidateGIStorageBuffer(uint64_t(width) * height, ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL, gpu, bytes)
+                         == rc::GIResourceStatus::eSuccess
+                     && CreateCaptureBuffers(*m_renderDevice, static_cast<uint32_t>(bytes), hybridOutput, hybridReadback);
+        }
+    }
+
+    if (succeeded)
+    {
+        renderer->SetHybridCapture(hybridOutput, hybridReadback);
         renderer->SetLightingCapture(output, readback);
 
         succeeded = Run(1, false, static_cast<uint32_t>(server->GetRequestedRenderOption()) + 1)
                  && renderer->WasLightingCaptureRecorded();
 
         renderer->SetLightingCapture(nullptr, nullptr);
+        renderer->SetHybridCapture(nullptr, nullptr);
 
         // Diagnostic-only synchronization: own both buffers until copy completion.
         m_renderDevice->FlushRHIThread();
@@ -204,12 +250,46 @@ bool SceneRendererDemo::CaptureLighting(const std::string& path)
         succeeded = succeeded && !m_renderDevice->AreSubmissionsBlocked();
     }
 
+    if (succeeded && captureHybrid)
+    {
+        const rc::EnvTexture& env          = m_renderScene->GetEnvTexture();
+        const uint32_t        side         = env.pPrefiltered->GetWidth();
+        RHIBuffer*            cubeOutput   = nullptr;
+        RHIBuffer*            cubeReadback = nullptr;
+        succeeded =
+            rc::ValidateGIStorageBuffer(uint64_t(side) * side * 6, sizeof(Vec4), gpu, bytes) == rc::GIResourceStatus::eSuccess
+            && CreateCaptureBuffers(*m_renderDevice, static_cast<uint32_t>(bytes), cubeOutput, cubeReadback);
+        if (succeeded)
+        {
+            rc::RenderGraph graph("capture_hybrid_environment");
+            succeeded = graph.Begin();
+            rc::RDGComputePassDesc pass;
+            pass.SetShaderProgramName("CaptureHybridEnvironmentSP");
+            pass.BindSampledTexture("sourceEnvironment", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
+            pass.BindStorageBuffer("EnvironmentCapture", cubeOutput, rc::RDGContentGuarantee::eFullWrite);
+            graph.AddComputePass(std::move(pass)).RecordPassCommands([side](rc::RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch((side + 7) / 8, (side + 7) / 8, 6);
+            });
+            graph.AddTransferPass("ReadHybridEnvironment").CopyBuffer(cubeOutput, cubeReadback, {0, 0, bytes}).NeverCull();
+            succeeded = succeeded && graph.End() && m_renderDevice->ExecuteRenderGraph(graph);
+            m_renderDevice->FlushRHIThread();
+            m_renderDevice->WaitForIdle();
+            succeeded = succeeded && !m_renderDevice->AreSubmissionsBlocked()
+                     && WriteCaptureBuffer(path + ".environment.bin", cubeReadback);
+        }
+        m_renderDevice->DestroyBuffer(cubeOutput);
+        m_renderDevice->DestroyBuffer(cubeReadback);
+    }
+
     if (succeeded)
     {
         succeeded = WriteCaptureBuffer(path + ".lighting.bin", readback)
+                 && (!captureHybrid || WriteCaptureBuffer(path + ".hybrid.bin", hybridReadback))
                  && WriteLightingMetadata(path, *m_renderScene, *server, width, height);
     }
 
+    m_renderDevice->DestroyBuffer(hybridOutput);
+    m_renderDevice->DestroyBuffer(hybridReadback);
     m_renderDevice->DestroyBuffer(output);
 
     m_renderDevice->DestroyBuffer(readback);

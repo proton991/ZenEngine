@@ -22,6 +22,7 @@ class RenderDevice;
 class SkyboxRenderer;
 class VoxelGIRenderer;
 class SceneShadowRenderer;
+class HybridGIRenderer;
 
 class DeferredLightingRenderer
 {
@@ -37,7 +38,17 @@ public:
 
     void BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
 
-    void BuildGBufferGraph(const RenderView& view);
+    void              BuildGBufferGraph(const RenderView& view, bool hybrid = false);
+    void              OnRenderGraphExecuted(bool succeeded);
+    HybridGIRenderer* GetHybridGI() const
+    {
+        return m_hybrid;
+    }
+    void SetHybridCapture(RHIBuffer* output, RHIBuffer* readback)
+    {
+        m_hybridCaptureOutput   = output;
+        m_hybridCaptureReadback = readback;
+    }
 
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection);
 
@@ -81,10 +92,7 @@ public:
         return m_gbufferExtent;
     }
 
-    void SetRenderScene(RenderScene* pRenderScene)
-    {
-        m_pScene = pRenderScene;
-    }
+    void SetRenderScene(RenderScene* pRenderScene);
 
 private:
     void PrepareSamplers();
@@ -100,6 +108,15 @@ private:
     float m_lightMarkerSize{0.02f};
     bool  m_lightMarkersEnabled{false};
 
+    struct HybridView
+    {
+        uint64_t          id;
+        HybridGIRenderer* renderer;
+    };
+    HeapVector<HybridView> m_hybridViews;
+    HybridGIRenderer*      m_hybrid{nullptr};
+    RHIBuffer*             m_hybridCaptureOutput{nullptr};
+    RHIBuffer*             m_hybridCaptureReadback{nullptr};
     RenderDevice* m_pRenderDevice{nullptr};
 
     RenderScene* m_pScene{nullptr};

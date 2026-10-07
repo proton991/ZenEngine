@@ -53,7 +53,11 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && std::isfinite(settings.normalBiasVoxels) && settings.normalBiasVoxels >= 0.5f && settings.normalBiasVoxels <= 4
         && std::isfinite(settings.maxDistanceGridLengths) && settings.maxDistanceGridLengths > 0
         && settings.maxDistanceGridLengths <= 2 && (settings.coneCount == 4 || settings.coneCount == 6)
-        && settings.maxSteps >= 8 && settings.maxSteps <= 512;
+        && settings.maxSteps >= 8 && settings.maxSteps <= 512
+        && (settings.samples == 1 || settings.samples == 2 || settings.samples == 4)
+        && (settings.referenceSamples == 0 || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
+        && settings.historyFrames >= 1 && settings.historyFrames <= 256
+        && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Legacy);
 }
 
 bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
@@ -64,7 +68,7 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
     {
         if (settings.coneCount != m_settings.coneCount || settings.normalBiasVoxels != m_settings.normalBiasVoxels
             || settings.environmentLighting != m_settings.environmentLighting
-            || settings.coneAngleDegrees != m_settings.coneAngleDegrees)
+            || settings.coneAngleDegrees != m_settings.coneAngleDegrees || settings.rayProvider != m_settings.rayProvider)
         {
             m_environmentRevision = 0;
         }
@@ -107,6 +111,19 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid      &= config.ReadBool("voxel_gi_environment_lighting", settings.environmentLighting);
 
     valid      &= config.ReadBool("voxel_gi_emissive_lighting", settings.emissiveLighting);
+
+    valid                      &= config.ReadNumber("voxel_gi_samples", settings.samples);
+    valid                      &= config.ReadNumber("voxel_gi_reference_samples", settings.referenceSamples);
+    valid                      &= config.ReadNumber("voxel_gi_history_frames", settings.historyFrames);
+    valid                      &= config.ReadBool("voxel_gi_temporal", settings.temporal);
+    valid                      &= config.ReadBool("voxel_gi_filter", settings.filter);
+    valid                      &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
+    const std::string provider  = config.GetString("voxel_gi_ray_provider", "auto");
+    valid                      &= provider == "auto" || provider == "voxel" || provider == "hardware" || provider == "legacy";
+    settings.rayProvider        = provider == "legacy"   ? VoxelGISettings::RayProvider::Legacy
+                                : provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
+                                : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
+                                                         : VoxelGISettings::RayProvider::Auto;
 
     valid       = valid && ValidateVoxelGISettings(settings);
 
@@ -293,7 +310,17 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
         {
             RDGComputePassDesc sky;
 
-            sky.SetShaderProgramName("VoxelSkyIrradianceSP");
+            const bool surfaceSky =
+                m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy && m_scene->GetVoxelTriangleCount() != 0;
+            sky.SetShaderProgramName(surfaceSky ? "VoxelSkyIrradianceSP" : "VoxelSkyIrradianceLegacySP");
+            if (surfaceSky)
+            {
+                sky.BindStorageImage("voxelOwner", textures.pOwner->GetDefaultView());
+                sky.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
+                sky.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
+                sky.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+                sky.BindStorageBuffer("TriangleRecords", m_scene->GetVoxelTriangleBuffer());
+            }
 
             sky.SetPassTag("VoxelSkyIrradiance");
 
@@ -375,11 +402,15 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
 void VoxelGIRenderer::BindLightingInputs(RDGPassDescBase& pass) const
 {
-    pass.BindValue("uGISettings", m_uniforms);
-
+    BindRayInputs(pass);
     pass.BindValue("uGIVisibilityBounds", m_visibilityBounds);
 
     pass.BindSampledTexture("voxelRadiance", m_voxelizer->GetVoxelSampler(), m_radiance->GetDefaultView());
+}
+
+void VoxelGIRenderer::BindRayInputs(RDGPassDescBase& pass) const
+{
+    pass.BindValue("uGISettings", m_uniforms);
 
     pass.BindSampledTexture("voxelOpacity", m_voxelizer->GetVoxelSampler(),
                             m_voxelizer->GetVoxelTextures().pAlbedo->GetDefaultView());

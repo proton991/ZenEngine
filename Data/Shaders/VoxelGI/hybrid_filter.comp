@@ -1,0 +1,75 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hybrid_guides.glsl"
+#include "gi_common.glsl"
+layout(set=3,binding=1) uniform sampler3D voxelOpacity;
+layout(set=3,binding=2) uniform samplerCube coneEnvironmentMap;
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=1,binding=6) uniform sampler2D inputSky;
+layout(set=1,binding=7) uniform sampler2D inputSpecular;
+layout(set=1,binding=8) uniform sampler2D moments;
+layout(set=1,binding=9) uniform sampler2D historyLength;
+layout(set=1,binding=10,rgba16f) uniform writeonly image2D filteredSky;
+layout(set=1,binding=11,rgba16f) uniform writeonly image2D filteredSpecular;
+layout(set=1,binding=12) uniform sampler2D inputVariance;
+layout(set=1,binding=13,rg32f) uniform writeonly image2D filteredVariance;
+layout(push_constant) uniform FilterConstants { uint stepWidth; } atrous;
+vec2 ReadVariance(ivec2 p)
+{
+    vec4 m=texelFetch(moments,p,0);
+    vec2 v=max(vec2(m.g-m.r*m.r,m.a-m.b*m.b),vec2(0));
+    return atrous.stepWidth==1u ? v/max(texelFetch(historyLength,p,0).rg,vec2(1)) : texelFetch(inputVariance,p,0).rg;
+}
+bool OccupiedStart(ivec2 p)
+{
+    vec3 uv=WorldToVoxelUV(TraceOrigin(HybridPosition(p),HybridGeometricNormal(p)));
+    return InsideVoxelVolume(uv) && texelFetch(voxelOpacity,ivec3(floor(uv*gi.volume.x)),0).a>0.5;
+}
+void main()
+{
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(!HybridInView(p)) return;
+    vec4 center=texelFetch(inputSky,p,0), centerSpec=texelFetch(inputSpecular,p,0);
+    uint identity=texelFetch(receiverSurface,p,0).g;
+    vec3 position=HybridPosition(p), normal=HybridNormal(p), geometric=HybridGeometricNormal(p);
+    vec2 mean=vec2(0), second=vec2(0); float count=0.0;
+    // A local variance estimate is also used during the first four frames.
+    for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x)
+    {
+        ivec2 q=p+ivec2(x,y)*int(atrous.stepWidth);
+        if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity) continue;
+        vec2 value=vec2(HybridLuminance(texelFetch(inputSky,q,0).rgb),texelFetch(inputSpecular,q,0).a);
+        mean+=value; second+=value*value; count+=1.0;
+    }
+    mean/=max(count,1.0); second/=max(count,1.0);
+    vec2 lengths=texelFetch(historyLength,p,0).rg;
+    vec2 variance=ReadVariance(p);
+    if(atrous.stepWidth==1u)
+        variance=mix(variance,max(second-mean*mean,vec2(0)),lessThan(lengths,vec2(4)));
+    const float kernel[5]=float[5](1,4,6,4,1);
+    vec4 sky=vec4(0), spec=vec4(0); vec2 total=vec2(0), varianceOut=vec2(0);
+    float centerLuminance=HybridLuminance(center.rgb);
+    bool occupiedStart=OccupiedStart(p);
+    for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x)
+    {
+        ivec2 q=p+ivec2(x,y)*int(atrous.stepWidth);
+        if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity) continue;
+        // Preserve exact D2 start-cell occlusion; filtering it away leaks at wall bases.
+        if(occupiedStart!=OccupiedStart(q)) continue;
+        vec3 delta=HybridPosition(q)-position;
+        float plane=abs(dot(delta,geometric));
+        if(plane>hybrid.rejection.x*max(1.0,length(delta))) continue;
+        float normalWeight=pow(max(dot(normal,HybridNormal(q)),0.0),32.0);
+        if(dot(geometric,HybridGeometricNormal(q))<0.9) continue;
+        vec4 sampleSky=texelFetch(inputSky,q,0), sampleSpec=texelFetch(inputSpecular,q,0);
+        vec2 difference=abs(vec2(HybridLuminance(sampleSky.rgb)-centerLuminance,sampleSpec.a-centerSpec.a));
+        vec2 neighborVariance=ReadVariance(q);
+        vec2 sigma=4.0*sqrt(max(variance+neighborVariance,vec2(0)))+vec2(1e-4);
+        vec2 w=kernel[x+2]*kernel[y+2]*normalWeight*exp(-difference/sigma);
+        varianceOut+=w*w*neighborVariance;
+        sky+=w.x*sampleSky; spec+=w.y*sampleSpec; total+=w;
+    }
+    imageStore(filteredVariance,p,vec4(varianceOut/max(total*total,vec2(1e-20)),0,0));
+    imageStore(filteredSky,p,total.x>0.0 ? sky/total.x : center);
+    imageStore(filteredSpecular,p,total.y>0.0 ? spec/total.y : centerSpec);
+}

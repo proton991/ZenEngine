@@ -16,12 +16,26 @@ layout(set=3,binding=4) uniform sampler2D opaqueColorMap;
 layout(set=3,binding=5) uniform samplerCube envSourceMap;
 layout(set=3,binding=6) uniform sampler2D scatterLightingMap;
 layout(set=3,binding=7) uniform sampler2D scatterPositionMap;
-layout(push_constant) uniform Constants { uint uNodeIndex; uint uMaterialIndex; uint uTopology; };
+layout(push_constant) uniform Constants { uint uNodeIndex; uint uMaterialIndex; uint uTopology;
+#ifdef LIGHTING_CAPTURE
+    uint padding; uvec2 captureExtent;
+#endif
+};
+#ifdef LIGHTING_CAPTURE
+#include "Graphics/Shared/LightingCapture.h"
+layout(set=4,binding=2,std430) buffer LightingCapture { vec4 components[]; };
+#endif
 layout(location=0) out vec4 outColor;
+#ifdef HYBRID_GI
+#include "../VoxelGI/hybrid_composition.glsl"
+float hybridSpecularVisibility=1.0;
+#else
+const float hybridSpecularVisibility=1.0;
+#endif
 
 vec3 Prefiltered(vec3 direction, float roughness)
 {
-    return textureLod(envPrefilteredMap, EnvironmentDirection(direction), roughness * float(textureQueryLevels(envPrefilteredMap) - 1)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;
+    return textureLod(envPrefilteredMap, EnvironmentDirection(direction), roughness * float(textureQueryLevels(envPrefilteredMap) - 1)).rgb * sceneUbo.environment.x * sceneUbo.environment.z * hybridSpecularVisibility;
 }
 
 vec3 SheenEnvironment(MaterialSurface s, vec3 N, vec3 V)
@@ -48,7 +62,7 @@ vec3 SheenEnvironment(MaterialSurface s, vec3 N, vec3 V)
         }
         result *= s.sheenColor * sceneUbo.environment.x * sceneUbo.environment.z / 64.0;
     }
-    return result;
+    return result * hybridSpecularVisibility;
 }
 
 vec3 Refraction(MaterialSurface s, vec3 N, vec3 V)
@@ -131,6 +145,10 @@ void main()
         (material.materialProperties.z < 0.5 || material.volumeIridescence.x > 0.0) && !(gl_FrontFacing == (inOrientation >= 0.0)))) discard;
     float alpha = material.surfaceProperties.y == 2.0 ? s.baseColor.a : 1.0;
     vec3 color = s.baseColor.rgb;
+#ifdef LIGHTING_CAPTURE
+    vec3 capturedDirect=vec3(0), capturedDiffuse=vec3(0), capturedSpecular=vec3(0), capturedEmission=color;
+    vec3 capturedSky=vec3(0), capturedBounce=vec3(0);
+#endif
     if (material.materialProperties.y < 0.5 && (topology == 2 || dot(inNormal, inNormal) > 1e-12))
     {
         vec3 V = uProjMatrix[3][3] > 0.5 ? normalize(transpose(mat3(uViewMatrix))[2]) :
@@ -142,9 +160,29 @@ void main()
         vec3 iblF = SurfaceIBLFresnel(s, nv, brdf);
         vec3 irradiance = texture(envIrradianceMap, EnvironmentDirection(N)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;
 #ifdef VOXEL_GI
+#ifdef HYBRID_GI
+        bool reconstructed=topology==2u && material.surfaceProperties.y!=2.0 && s.transmission==0.0 &&
+            s.diffuseTransmission==0.0 && HybridReceiverMatches(uNodeIndex,gl_FrontFacing==(inOrientation>=0.0));
+        irradiance=DiffuseVoxelLighting(inWorldPos,N,!reconstructed);
+        if(reconstructed)
+        {
+            irradiance+=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
+#ifdef LIGHTING_CAPTURE
+            captureDiffuseEscaped=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
+#endif
+            hybridSpecularVisibility=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).a;
+        }
+#else
         irradiance = DiffuseVoxelLighting(inWorldPos, N);
 #endif
+#endif
         color = (vec3(1.0) - iblF) * irradiance * s.diffuse * (1.0 - s.transmission) * (1.0 - s.diffuseTransmission);
+#ifdef LIGHTING_CAPTURE
+        capturedDiffuse=color;
+        vec3 diffuseFactor=(vec3(1)-iblF)*s.diffuse*(1.0-s.transmission)*(1.0-s.diffuseTransmission);
+        capturedSky=captureDiffuseEscaped*diffuseFactor;
+        capturedBounce=captureDiffuseBounced*diffuseFactor;
+#endif
         vec3 reflectionN = N;
         if (s.anisotropy > 0.0)
         {
@@ -182,6 +220,12 @@ void main()
             vec2 coatBRDF = texture(lutBRDFMap, vec2(coatNV, s.clearcoatRoughness)).rg;
             color = color * (vec3(1.0) - s.clearcoat * coatF) + s.clearcoat * Prefiltered(reflect(-V, coatN), s.clearcoatRoughness) * (coatF * coatBRDF.x + coatBRDF.y) * s.ao;
         }
+#ifdef LIGHTING_CAPTURE
+        vec3 layer=vec3(SheenLayerScale(s,nv,nv)*s.ao);
+        if(s.clearcoat>0.0) layer*=vec3(1)-s.clearcoat*F_Schlick(vec3(.04),max(dot(coatN,V),1e-5));
+        capturedDiffuse*=layer; capturedSky*=layer; capturedBounce*=layer;
+        capturedSpecular=color-capturedDiffuse;
+#endif
         for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i)
         {
             vec3 L;
@@ -191,7 +235,11 @@ void main()
 #ifdef VOXEL_GI
             visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, GeometricNormal(material));
 #endif
-            color += SurfaceDirect(s, N, coatN, T, B, V, L) * radiance * visibility;
+            vec3 direct=SurfaceDirect(s, N, coatN, T, B, V, L) * radiance * visibility;
+            color += direct;
+#ifdef LIGHTING_CAPTURE
+            capturedDirect+=direct;
+#endif
         }
         if (max(max(s.multiscatterColor.r, s.multiscatterColor.g), s.multiscatterColor.b) > 0.0 && s.diffuseTransmission > 0.0)
             color += GatherVolumeScatter(s) * (1.0 - s.metallic) * (1.0 - s.transmission) *
@@ -199,8 +247,22 @@ void main()
         vec3 emissionLayer = s.emissive;
         if (s.clearcoat > 0.0) emissionLayer *= vec3(1.0) - s.clearcoat * F_Schlick(vec3(0.04), max(dot(coatN, V), 0.0));
         color += emissionLayer;
+#ifdef LIGHTING_CAPTURE
+        capturedEmission=emissionLayer;
+#endif
     }
     else if (topology != 2 && material.materialProperties.y < 0.5) color += s.emissive;
+#ifdef LIGHTING_CAPTURE
+    if(topology==2u && material.surfaceProperties.y!=2.0 && s.transmission==0.0 && s.diffuseTransmission==0.0 &&
+       HybridReceiverMatches(uNodeIndex,gl_FrontFacing==(inOrientation>=0.0)) && all(lessThan(uvec2(gl_FragCoord.xy),captureExtent)))
+    {
+        uvec2 p=uvec2(gl_FragCoord.xy); uint index=(p.x+captureExtent.x*p.y)*ZEN_LIGHTING_CAPTURE_COMPONENTS;
+        components[index+0]=vec4(color,1); components[index+1]=vec4(capturedDirect,1);
+        components[index+2]=vec4(capturedDiffuse,1); components[index+3]=vec4(capturedSpecular,1);
+        components[index+4]=vec4(capturedEmission,1); components[index+5]=vec4(capturedSky,1);
+        components[index+6]=vec4(capturedBounce,1);
+    }
+#endif
     // Unlit base colors are display-referred. Encode the inverse tone curve so
     // the common HDR composition preserves their authored colors.
     if (material.materialProperties.y > 0.5 && !displayLinear)

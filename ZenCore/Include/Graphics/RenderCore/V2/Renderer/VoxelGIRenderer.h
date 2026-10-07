@@ -17,6 +17,20 @@ class SceneShadowRenderer;
 
 struct VoxelGISettings
 {
+    enum class RayProvider : uint32_t
+    {
+        Auto,
+        Voxel,
+        Hardware,
+        Legacy
+    };
+    RayProvider rayProvider{RayProvider::Auto};
+    uint32_t    samples{4};
+    uint32_t    referenceSamples{0}; // Diagnostic: 0, 1024 or 4096; static running mean, no spatial filter.
+    uint32_t    historyFrames{32};
+    bool        temporal{true};
+    bool        filter{true};
+    bool        specularOcclusion{true};
     float    indirectIntensity{1.0f};
     float    coneAngleDegrees{60.0f};
     float    stepScale{1.0f};
@@ -81,6 +95,7 @@ public:
     }
 
     void BindLightingInputs(RDGPassDescBase& pass) const;
+    void BindRayInputs(RDGPassDescBase& pass) const;
 
     bool IsInitialized() const
     {

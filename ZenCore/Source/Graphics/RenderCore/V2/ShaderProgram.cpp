@@ -256,12 +256,30 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                      ComputeFileSP(pRenderDevice, "VoxelVisibilityCheckSP", "VoxelGI/Calibration/visibility_check.comp.spv"));
 
     StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice));
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverSP", "SceneRenderer/receiver.vert.spv",
+                                            "SceneRenderer/receiver.frag.spv"));
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGISP", "SceneRenderer/deferred.vert.spv",
+                                            "SceneRenderer/hybrid_gi.frag.spv"));
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHybridGISP", "SceneRenderer/offscreen.vert.spv",
+                                            "SceneRenderer/forward_material_hybrid.frag.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv",
+                                         volumeConstants));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureHybridEnvironmentSP", "VoxelGI/capture_environment.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridCaptureSP", "VoxelGI/hybrid_capture.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridFilterSP", "VoxelGI/hybrid_filter.comp.spv"));
+
 
     if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)
     {
         StoreProgram(ZEN_NEW() DeferredLightingSP(pRenderDevice, true));
 
         StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice, true));
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHybridGICaptureSP", "SceneRenderer/offscreen.vert.spv",
+                                                "SceneRenderer/forward_material_hybrid_capture.frag.spv"));
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGICaptureSP", "SceneRenderer/deferred.vert.spv",
+                                                "SceneRenderer/hybrid_gi_capture.frag.spv"));
 
         StoreProgram(
             ZEN_NEW() ComputeFileSP(pRenderDevice, "ClearLightingCaptureSP", "SceneRenderer/clear_lighting_capture.comp.spv"));

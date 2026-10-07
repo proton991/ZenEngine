@@ -24,6 +24,9 @@ layout(push_constant) uniform CaptureConstants { uvec2 extent; } capture;
 #include "../VoxelGI/cone_trace.glsl"
 #include "../ShadowMapping/scene_shadows.glsl"
 #endif
+#ifdef HYBRID_GI
+#include "../VoxelGI/hybrid_composition.glsl"
+#endif
 const float PI = 3.14159265359;
 
 // ---------- PBR Helpers ----------
@@ -71,10 +74,14 @@ void main() {
 	vec3 worldPos = relativePosition + gbuffer.worldOrigin.xyz;
 	vec3 N = DecodeGBufferNormal(SURFACE_SAMPLE(normalMap).rg);
 #if defined(VOXEL_GI)
+#ifdef HYBRID_GI
+    vec3 surfaceNormal=DecodeGBufferNormal(unpackUnorm2x16(texelFetch(hybridSurface,ivec2(gl_FragCoord.xy),0).r));
+#else
     vec3 surfaceNormal=cross(dFdx(relativePosition),dFdy(relativePosition));
     float normalLength=length(surfaceNormal);
     surfaceNormal=normalLength>1e-8 ? surfaceNormal/normalLength : N;
     if(dot(surfaceNormal,N)<0) surfaceNormal=-surfaceNormal;
+#endif
 #endif
 	vec4 albRGBA = SURFACE_SAMPLE(albedoMap);
 	vec3 albedo = albRGBA.rgb;
@@ -134,7 +141,16 @@ void main() {
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 #if defined(VOXEL_GI)
+#ifdef HYBRID_GI
+    vec3 sky=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
+    vec3 diffuseIBL=(DiffuseVoxelLighting(worldPos,N,false)+sky)*albedo;
+    prefilteredColor*=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).a;
+#ifdef LIGHTING_CAPTURE
+    captureDiffuseEscaped=sky;
+#endif
+#else
     vec3 diffuseIBL = DiffuseVoxelLighting(worldPos,N) * albedo;
+#endif
 #else
     vec3 diffuseIBL = irradiance * albedo;
 #endif

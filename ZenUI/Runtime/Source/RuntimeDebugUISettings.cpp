@@ -243,6 +243,27 @@ void RuntimeDebugUI::BuildSettings()
         }
     }
 
+    if (ImGui::CollapsingHeader("Hybrid sky and specular"))
+    {
+        int provider = static_cast<int>(m_draft.cone.rayProvider);
+        if (ImGui::Combo("Ray provider", &provider, "Auto\0Voxel\0Hardware (falls back to voxel)\0Legacy comparison\0"))
+        {
+            m_draft.cone.rayProvider = static_cast<rc::VoxelGISettings::RayProvider>(provider);
+            MarkGIEdit(true);
+        }
+        int samples = m_draft.cone.samples == 1 ? 0 : m_draft.cone.samples == 2 ? 1 : 2;
+        if (ImGui::Combo("Diffuse samples", &samples, "1\0 2\0 4\0"))
+        {
+            m_draft.cone.samples = 1u << samples;
+            MarkGIEdit(true);
+        }
+        MarkGIEdit(ImGui::Checkbox("Temporal accumulation", &m_draft.cone.temporal));
+        MarkGIEdit(ImGui::Checkbox("Spatial filter", &m_draft.cone.filter));
+        MarkGIEdit(ImGui::Checkbox("Specular occlusion", &m_draft.cone.specularOcclusion));
+        MarkGIEdit(UIntSlider("History frames", m_draft.cone.historyFrames, 1, 256));
+        ImGui::TextUnformatted("Provider: voxel. Bounce: cones. Reflected scene radiance: unavailable.");
+    }
+
     if (ImGui::CollapsingHeader("Cone tracing"))
     {
         int cones = m_draft.cone.coneCount == 4 ? 0 : 1;

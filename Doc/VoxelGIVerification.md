@@ -2,6 +2,14 @@
 
 Date: 2026-09-21. Implementation follows [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md), with execution refinements recorded there.
 
+## Hybrid environment lighting P0–P3 (2026-10-07)
+
+Mode 3 now uses voxel-ray diffuse sky and GGX environment-specular visibility, with per-view receiver history and temporal/spatial reconstruction. Opaque/mask forward materials use a receiver prepass; cone bounce and the translucent/scattering per-surface path remain. The default is four diffuse samples, one specular sample and 32 history frames. The original cone sky is available with `voxel_gi_ray_provider=legacy` while acceptance remains open.
+
+The top and hall Sponza floor regions pass the frozen shipping error limits at exactly 64 successful frames (RMS 5.263% and 3.860%; P99 18.041% and 13.922%; no unexpected zeros). Deferred and forward closed boxes have exactly zero sky and environment specular. The legacy top capture is byte-identical to the pre-change baseline. The hall's complete image still fails the limits, and full motion/platform/memory acceptance is not complete.
+
+Builds, 112 shader validations, 112 Common tests, 21 configuration tests, 570 RenderCore tests, 48 Vulkan RHI unit tests and 16 native cone/hybrid GPU cases pass. Broader Vulkan integration/presentation tests remain failing, including the already documented presentation synchronization hazard. See [the full implementation and verification record](HybridGI/README.md), [frozen inputs](HybridGI/baseline.json), and [machine-readable results](HybridGI/verification.json) for exact scope, commands, resource sizes, measurements and limitations. No unchecked phase gate is marked complete.
+
 ## Cone environment filtering (2026-10-07)
 
 ScatteringSkull developed metallic-looking patterns when switching from PBR to voxel GI. Its metalness remained zero: the scattering source replaced diffuse irradiance with four/six sharp mip-zero environment samples. An environment-only material ablation produced identical PBR/GI pixels without volume scattering, isolating the affected path.

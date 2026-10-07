@@ -8,6 +8,7 @@
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
@@ -4877,6 +4878,7 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 }
 
 #include "VoxelGIRendererTests.inl"
+#include "HybridGIRendererTests.inl"
 #include "SceneShadowRendererTests.inl"
 #include "SceneTextureImportTests.inl"
 #include "SceneResourceLifetimeTests.inl"

@@ -58,7 +58,7 @@ def validate(executable, output):
                                 light_count=1, environment_texture='papermill.ktx',
                                 environment_lighting='true', environment_intensity=0.25,
                                 environment_rotation_degrees=0, skybox_visible='false',
-                                voxel_gi_indirect_intensity=1, voxel_gi_shadow_enabled='true',
+                                voxel_gi_indirect_intensity=1, voxel_gi_ray_provider='legacy', voxel_gi_shadow_enabled='true',
                                 shadow_map_resolution=256)
                 settings.update({'light_markers.enabled': 'false', 'dynamic_light.enabled': 'false',
                                  'light.0.type': 'point', 'light.0.position': '0,0.25,0',

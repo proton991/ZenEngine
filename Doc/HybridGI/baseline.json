@@ -1,0 +1,561 @@
+{
+  "version": 1,
+  "frozen": "2026-10-07",
+  "samples_cpu": 4096,
+  "samples_voxel": 1024,
+  "seed": 0,
+  "roughness_cutoff": 0.2,
+  "analytic_relative_error": 0.005,
+  "closed_filtered_relative_max": 1e-06,
+  "converged_mean_bias": 0.01,
+  "converged_rms": 0.03,
+  "shipping_frames": 64,
+  "shipping_mean_bias": 0.02,
+  "shipping_rms": 0.08,
+  "shipping_p99": 0.2,
+  "cut_settle_frames": 32,
+  "light_settle_frames": 8,
+  "bounce_bias": 0.1,
+  "thin_wall_leak": 0.01,
+  "specular_absolute_error": 0.02,
+  "performance_ms": {
+    "rt_high_static": 3,
+    "rt_high_moving": 5,
+    "compute_medium_static": 4,
+    "compute_medium_moving": 6,
+    "frame": 16.7
+  },
+  "platforms": {
+    "Windows RTX 5080 RT enabled": "explicit hardware request reports voxel fallback; RT query tier unimplemented",
+    "Windows RTX 5080 RT disabled": "compute path tested; partial acceptance, see verification.json",
+    "Windows RX 7900 XT RT enabled": "unverified; hardware unavailable",
+    "Windows RX 7900 XT RT disabled": "unverified; hardware unavailable",
+    "Apple Silicon MoltenVK": "unverified; hardware unavailable",
+    "non-RT GPU": "unverified; hardware unavailable"
+  },
+  "configurations": {
+    "viewport": [
+      [
+        960,
+        540
+      ],
+      [
+        1920,
+        1080
+      ]
+    ],
+    "voxel_resolution": [
+      64,
+      128,
+      256
+    ],
+    "indirect_intensity": [
+      0,
+      1
+    ],
+    "lighting": [
+      "environment",
+      "analytic",
+      "both"
+    ]
+  },
+  "cameras": {
+    "top": {
+      "version": 1,
+      "width": 960,
+      "height": 540,
+      "format": "little-endian float32, pixel-interleaved float4 components, x fastest",
+      "bytes_per_pixel": 112,
+      "components": [
+        "combined",
+        "analytic_direct",
+        "diffuse_outgoing",
+        "specular_ibl",
+        "visible_emission",
+        "escaped_environment_diffuse",
+        "bounced_diffuse"
+      ],
+      "units": "scene-linear outgoing RGB before exposure, tone mapping and gamma; receiver BRDF and AO included",
+      "mask": "alpha 1 for deferred surfaces, 0 for background; captured before marker overlay",
+      "capture_frame": "one additional frame after --frames; use frozen inputs for baseline comparisons",
+      "method": "cone",
+      "analytic_visibility": "mesh_shadow_maps",
+      "reflectance_policy": "owner",
+      "voxel_resolution": 64,
+      "voxel_geometry_generation": 1,
+      "scene_geometry_generation": 1,
+      "scene_surface_generation": 1,
+      "voxel_coverage_mask": 3,
+      "gbuffer_extent": [
+        960,
+        540
+      ],
+      "indirect_intensity": 0,
+      "camera_position": [
+        0.0162647925,
+        0.362418026,
+        0.0103983022
+      ],
+      "projection_view_column_major": [
+        0,
+        1.7320509,
+        0,
+        0,
+        0,
+        0,
+        -1.0005002,
+        -1,
+        -0.974278629,
+        0,
+        0,
+        0,
+        0.0101308441,
+        -0.028171448,
+        0.36091876,
+        0.362418026
+      ],
+      "environment_intensity_rotation_enabled_visible": [
+        1,
+        0,
+        1,
+        0
+      ],
+      "lights": [],
+      "lighting_sha256": "6874d1acb2dcdfccd045adee3e5ec21f456ca99ba90d0a1dc9707e034b3d39f5"
+    },
+    "hall": {
+      "version": 1,
+      "width": 960,
+      "height": 540,
+      "format": "little-endian float32, pixel-interleaved float4 components, x fastest",
+      "bytes_per_pixel": 112,
+      "components": [
+        "combined",
+        "analytic_direct",
+        "diffuse_outgoing",
+        "specular_ibl",
+        "visible_emission",
+        "escaped_environment_diffuse",
+        "bounced_diffuse"
+      ],
+      "units": "scene-linear outgoing RGB before exposure, tone mapping and gamma; receiver BRDF and AO included",
+      "mask": "alpha 1 for deferred surfaces, 0 for background; captured before marker overlay",
+      "capture_frame": "one additional frame after --frames; use frozen inputs for baseline comparisons",
+      "method": "cone",
+      "analytic_visibility": "mesh_shadow_maps",
+      "reflectance_policy": "owner",
+      "voxel_resolution": 64,
+      "voxel_geometry_generation": 1,
+      "scene_geometry_generation": 1,
+      "scene_surface_generation": 1,
+      "voxel_coverage_mask": 3,
+      "gbuffer_extent": [
+        960,
+        540
+      ],
+      "indirect_intensity": 0,
+      "camera_position": [
+        0.285020292,
+        -0.124701306,
+        0.0103983022
+      ],
+      "projection_view_column_major": [
+        0,
+        0.108042382,
+        -0.998551905,
+        -0.998052657,
+        0,
+        -1.72867799,
+        -0.0624094978,
+        -0.0623782948,
+        -0.974278629,
+        0,
+        0,
+        0,
+        0.0101308441,
+        -0.246362671,
+        0.275144458,
+        0.276686609
+      ],
+      "environment_intensity_rotation_enabled_visible": [
+        1,
+        0,
+        1,
+        0
+      ],
+      "lights": [],
+      "lighting_sha256": "1b08c5a535975c8e123872ef28688aab432647fcce10dfa1ff081de4d4c92ae4"
+    }
+  },
+  "original_report_camera": "Position only was archived. Exact original view is not recoverable; not claimed reproduced.",
+  "baseline_archive": "build/sponza-environment-analysis-20261007/out/p0-before-{top,hall}.{lighting.json,lighting.bin,ppm}",
+  "floor_region": {
+    "valid": "position_valid.w > 0",
+    "normal": "geometric_normal.y > 0.99",
+    "position": "normalized_world.y < -0.12"
+  },
+  "voxel_reference_accumulation": {
+    "rays_per_frame": 1024,
+    "successful_frames": 65,
+    "spatial_filter": false,
+    "reprojection": false
+  },
+  "reproduction_tool": "tools/capture_hybrid_gi.py",
+  "source_inputs": [
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\Sponza.gltf",
+      "bytes": 167176,
+      "sha256": "646c10cbc8fab990ca29f363e90e2d65155f3a3569506852eb1434a9465b9501"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\Sponza.bin",
+      "bytes": 9528220,
+      "sha256": "fdbdbfb6a76edeb6626f28a1401bc1536bb1c864131a64e90fbc3df2d2d191bd"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8773302468495022225.jpg",
+      "bytes": 413837,
+      "sha256": "dc5bf5f3091b548f1dfe40410b1aa1e2e55d82e2d77ba57dbd1f92955a0d8ff8"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\5061699253647017043.png",
+      "bytes": 2427921,
+      "sha256": "6fbdbf67d3501831ad3a4e2adbf3d27e4c3d13ba1d655e5861c3f39b5f899f65"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\11872827283454512094.jpg",
+      "bytes": 668962,
+      "sha256": "da2a0b308b4d6d57ffbcf4bb7509d4afe91156d5d86d0396e83d7cac883a4857"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\12501374198249454378.jpg",
+      "bytes": 418235,
+      "sha256": "fe640b8875c8ff04f4ec427274d2e799b703cff384b9c2dafef63b61d05f34fa"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8006627369776289000.png",
+      "bytes": 1225157,
+      "sha256": "75328d1aac87f8539be2456e6a5392cef7c6d08476d75585eafcd334dbeee0c5"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\715093869573992647.jpg",
+      "bytes": 280745,
+      "sha256": "d81efcb42b3a044595ca984cb46d941b159064bddae9a43ed8d9582db68d6b47"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\4477655471536070370.jpg",
+      "bytes": 211322,
+      "sha256": "f0592537da8edc8476d9903f4ab1839d1a7ab0efa2507d303e8720b57bedf848"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\7268504077753552595.jpg",
+      "bytes": 572245,
+      "sha256": "430758549ba2189d94f06abeaae092bfc0a1d8c22afc56f5caf3f99c5ee7407c"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8503262930880235456.jpg",
+      "bytes": 104626,
+      "sha256": "c288a37ed8373d1132644873624b096a72ba81d03cda601e050a5de24ba13c39"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\13982482287905699490.jpg",
+      "bytes": 347538,
+      "sha256": "b91209e6ede0b905565bd719d6e27533abc7a5930d031a454f9aae65771fc4b0"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8750083169368950601.jpg",
+      "bytes": 362437,
+      "sha256": "73a94a12fb0a9ab4c75e40996c9a2d49ac45ac18a8c8ae81d5ceb1c8ae52d6dc"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\16885566240357350108.jpg",
+      "bytes": 12575,
+      "sha256": "5562f0e76ca213d72295e48b8a14a59ee1971f58a47f95e5c022a4e78371c5aa"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\16299174074766089871.jpg",
+      "bytes": 322693,
+      "sha256": "21d5f7ab6a7d05200b76165771fb3c5f14d006236a9dd27fff9eb92b69de4fa6"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\5792855332885324923.jpg",
+      "bytes": 564801,
+      "sha256": "9330cf1d51c8f6924b6c9ce09f2dedb21a82e1c7406c37d49ce95beca40bb3be"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\11968150294050148237.jpg",
+      "bytes": 530384,
+      "sha256": "bee42826d56d3ff719c4908c11ef65584fbe19e08273862fde7ec1408e44ba25"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2051777328469649772.jpg",
+      "bytes": 206618,
+      "sha256": "0f25b73991003300bd5e2c8fcbc46ec4e2788a8deb42321f575d5187aee21b85"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\14650633544276105767.jpg",
+      "bytes": 521947,
+      "sha256": "e8b68080eb4c5709536dfb7858d595d51d4bb725003e11b0f383acf76a7e05a3"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\4871783166746854860.jpg",
+      "bytes": 570081,
+      "sha256": "259b6659cb2681e06ef04becd49298d379f2f25b2cc468acf0c2ade4d190637c"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\10388182081421875623.jpg",
+      "bytes": 917202,
+      "sha256": "c915c9cc8be8f198ab1cc3bc68c2f6c694b88432f381a8f27935d480141ae8f5"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\15295713303328085182.jpg",
+      "bytes": 520162,
+      "sha256": "5bbd0cbf2da7416d5620514ebb0c4837b0ccc841b649cf4070281aa333ff8520"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\9916269861720640319.jpg",
+      "bytes": 608687,
+      "sha256": "81b21b9352f1fb9ccfeaf237f8547b985ddbf0cfd7ade7a4a8670b73a72b2cb5"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\15722799267630235092.jpg",
+      "bytes": 560258,
+      "sha256": "8511ada3c77ed171a21d58362d996b20cfa6c632fe4c95c3a8614e410e623a31"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\6047387724914829168.jpg",
+      "bytes": 518310,
+      "sha256": "c39c9f304c2605be791b4c0a58cd0f8eb20de2dd6a4a4af893c4eb112d158353"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8051790464816141987.jpg",
+      "bytes": 260119,
+      "sha256": "4f06c93f8e9f90be44a2e78847e57acec82bd793f58f7be7f86b088150730b88"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\14267839433702832875.jpg",
+      "bytes": 711217,
+      "sha256": "d14f693c5cf7d1e506865488fdb68daadd42bbdcb0c534e2f96ccfd747e46a60"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\5823059166183034438.jpg",
+      "bytes": 573157,
+      "sha256": "34b464edddbd2295b0ee23fa7a7a440a19456888c586acdc47032f841b302abd"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\13824894030729245199.jpg",
+      "bytes": 313460,
+      "sha256": "9158388312a76ba25a40d3b57978e1ace224882e53198a766494d98f9118aeba"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\6667038893015345571.jpg",
+      "bytes": 703420,
+      "sha256": "34f6408c6b8e8dc3c89d528e014ee3b254c7208c41339cfd15c4ae5151ad7cbe"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\7441062115984513793.jpg",
+      "bytes": 665796,
+      "sha256": "9edc7c1c73661658cd8ed7733728002d45fecd17cb37a962fb654ff1d8c1933d"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8114461559286000061.jpg",
+      "bytes": 193077,
+      "sha256": "06c6480e207ce64f9e7c08df3f7f21638da7da43f77682657f4c823acd8c81a5"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\3628158980083700836.jpg",
+      "bytes": 527788,
+      "sha256": "5a05dc004bbff7e6f89cffab57ae4f4fe2cf04dfbd22b52ec85cf17bf92c8855"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\11490520546946913238.jpg",
+      "bytes": 321375,
+      "sha256": "98e4c4a091fea684cd693f3ae7ebe83e491969b501b4cd6e1fdd6a3cc1fa5cab"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\3455394979645218238.jpg",
+      "bytes": 551432,
+      "sha256": "967005ccfbf4d38f674df41aebb3e58ac1fdcd91f554ead7acfcc132372f8ec6"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\7645212358685992005.jpg",
+      "bytes": 656995,
+      "sha256": "da33886bb34e236f0ed9616ff40e87d87c4ab5ed458858e0d96839fa717978af"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\6151467286084645207.jpg",
+      "bytes": 643517,
+      "sha256": "170f6c637ebd71a101244eb4d80c3dcf7063caf89e42053d3114d8aeca755cdf"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8783994986360286082.jpg",
+      "bytes": 388462,
+      "sha256": "93d495e33d754c5723c910e322ac94108fc753b65af082a19be5252905aa741b"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2299742237651021498.jpg",
+      "bytes": 772672,
+      "sha256": "da92fd0303571290c36b0f655f357fda77015b788613c65b18346480e1bd8324"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\4975155472559461469.jpg",
+      "bytes": 399027,
+      "sha256": "fbdb7bcced57a005b84b4c3bbf744bae6309804cca51dabd9237e03a72fbc505"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\3371964815757888145.jpg",
+      "bytes": 682743,
+      "sha256": "d939d2e8bf11c2cf375154129f861b982c786b83db79cb9fde1a2b94b46caf62"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\7056944414013900257.jpg",
+      "bytes": 852079,
+      "sha256": "782c48410db52360083719a48f8d15d29aa5cd4beeb817f1fd195083b2feb60a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\4675343432951571524.jpg",
+      "bytes": 764529,
+      "sha256": "9d5fd79619a52db0232edb2287f5f05c0124c304355e3b035a4e48c0871090bf"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\7815564343179553343.jpg",
+      "bytes": 623144,
+      "sha256": "8ad0e8a9ca6de602225a527361bc718881de8741bc48927e27259a8803e7fed7"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2374361008830720677.jpg",
+      "bytes": 852079,
+      "sha256": "782c48410db52360083719a48f8d15d29aa5cd4beeb817f1fd195083b2feb60a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2775690330959970771.jpg",
+      "bytes": 785678,
+      "sha256": "751606c94a5fe5bda3bf6709e7f6a74363bd7902bf2353d54e55ef3b50007487"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\332936164838540657.jpg",
+      "bytes": 852079,
+      "sha256": "782c48410db52360083719a48f8d15d29aa5cd4beeb817f1fd195083b2feb60a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2185409758123873465.jpg",
+      "bytes": 780166,
+      "sha256": "88861c8c7f10517c1d7942f316aae3b74dc5b8ae2faa2021d9dfe9d2c09fb24f"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\6593109234861095314.jpg",
+      "bytes": 1043152,
+      "sha256": "70eaa9efca842696271d2e4e04b1c77c087f8b5350d8d90940b800cc654b269a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\17876391417123941155.jpg",
+      "bytes": 1151448,
+      "sha256": "005b774a968c1f6af00e4bf97afd668a6a045126a94f524df722ba19edc77d61"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\466164707995436622.jpg",
+      "bytes": 486634,
+      "sha256": "21bb124f5b5d4d5e9c8d9773cd31dedfc41b30eb302af36e7257cf930152908e"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\4601176305987539675.jpg",
+      "bytes": 1043152,
+      "sha256": "70eaa9efca842696271d2e4e04b1c77c087f8b5350d8d90940b800cc654b269a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\11474523244911310074.jpg",
+      "bytes": 1079152,
+      "sha256": "23c32277c33d8eac091cd73daf81561ebe3640eede49b037546ed5c244a01347"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\4910669866631290573.jpg",
+      "bytes": 1043152,
+      "sha256": "70eaa9efca842696271d2e4e04b1c77c087f8b5350d8d90940b800cc654b269a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\9288698199695299068.jpg",
+      "bytes": 1044330,
+      "sha256": "7f55814430f289e89c7d675c3db925eee904fbc566ff83f4b49904de53138e98"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\14170708867020035030.jpg",
+      "bytes": 140738,
+      "sha256": "55cbda42c13377a71cb8ee78406309e888f56bc85af9473ca84a6097f2252166"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\16275776544635328252.png",
+      "bytes": 1077432,
+      "sha256": "d6df943a0dcf535d9dfb009c2833e0c7dc21939cfe3a2c10316c552b3dc3441b"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\1219024358953944284.jpg",
+      "bytes": 329124,
+      "sha256": "9cbd61fcb8047f1c21450eff05207b29d71824edd75483267b5fbc2f7b21378c"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\3827035219084910048.jpg",
+      "bytes": 608394,
+      "sha256": "1c2fc5ddaefc59763823f58d0450c00d114d89ab3d0ac395fd1316b664a8a56d"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\755318871556304029.jpg",
+      "bytes": 302363,
+      "sha256": "9f849f0510ca0df66ba1cba2380a6a1b481444d9e64b68da6b2ce202b54d9cec"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2411100444841994089.jpg",
+      "bytes": 399963,
+      "sha256": "12e1f2ea3c2714a6ec455fa8e623a702e33ef95765ebd09f7874a68fa55fd104"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\10381718147657362067.jpg",
+      "bytes": 881980,
+      "sha256": "c119be5aae2419a8120fd17691033ca28e0b5546cef7e31d40f6dec1543affee"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8481240838833932244.jpg",
+      "bytes": 531156,
+      "sha256": "1da7664b7b88ae58386a6e6b5eca2829537818061d704f002356d8fc483c1a28"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\17556969131407844942.jpg",
+      "bytes": 370061,
+      "sha256": "cb09708202859d08764601acc9c9ea3b5254b2c4fd39dcc6b6055768c77aee9b"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\759203620573749278.jpg",
+      "bytes": 509411,
+      "sha256": "c76e66915ce3abaf2ce365b314cf1e1a95f77bd4791adebdad01ab5c93658d0a"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\6772804448157695701.jpg",
+      "bytes": 599959,
+      "sha256": "1ea4f9bc86354d363ea8153df9b7593c3bd3da153c53b9624c1fd8a960cb3ebc"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\13196865903111448057.jpg",
+      "bytes": 281980,
+      "sha256": "8c26ae9523cfae7a062fd074f74e0ddbb61630772f9a2130489e1d6e4724c38b"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\14118779221266351425.jpg",
+      "bytes": 1611314,
+      "sha256": "994ba4e063564d75350ceec1381347a620baef75f9ca689e28718a88c3e3bd88"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\2969916736137545357.jpg",
+      "bytes": 822373,
+      "sha256": "dfa17f2dee2cd2d850585673d19d5cda477a63e21659b346d8730e80edd3b347"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\8747919177698443163.jpg",
+      "bytes": 872255,
+      "sha256": "8e90e94cadf80528a3df3496035d3c77900eba24d88b1c1d31c9dce77990fc44"
+    },
+    {
+      "path": "E:\\Dev\\glTF-Sample-Assets\\Models\\Sponza\\glTF\\white.png",
+      "bytes": 951,
+      "sha256": "e2ab2939dda535ad28779e41c20c98368f630f29c5824a0a5a430f47b3b6da12"
+    }
+  ]
+}

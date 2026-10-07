@@ -133,6 +133,17 @@ public:
     }
 };
 
+class HybridGraphicsSP : public ShaderProgram
+{
+public:
+    HybridGraphicsSP(RenderDevice* device, NameID name, const char* vertex, const char* fragment) : ShaderProgram(device, name)
+    {
+        AddShaderStage(RHIShaderStage::eVertex, vertex);
+        AddShaderStage(RHIShaderStage::eFragment, fragment);
+        Init();
+    }
+};
+
 class GBufferSP : public ShaderProgram
 {
 public:

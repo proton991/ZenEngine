@@ -1,0 +1,213 @@
+{
+  "date": "2026-10-07",
+  "acceptance_complete": false,
+  "device": {
+    "name": "NVIDIA GeForce RTX 5080",
+    "vendor_id": 4318,
+    "device_id": 11266,
+    "api_version_raw": 4211039,
+    "driver_version_raw": 2588114944
+  },
+  "build": {
+    "compiler": "MSVC 1951",
+    "ndebug": false
+  },
+  "default": {
+    "provider": "voxel",
+    "diffuse_samples": 4,
+    "specular_samples": 1,
+    "history_frames": 32,
+    "filter_iterations": 5
+  },
+  "cpu_reference_self_tests": {
+    "open_plane": "pass",
+    "half_wall": "pass",
+    "closed_hemisphere": "pass",
+    "ggx_normal_incidence": "pass",
+    "empty_bounce": "pass",
+    "uniform_bounce": "pass",
+    "ggx_lobe_fraction": "pass",
+    "open_closed_specular": "pass",
+    "mask_continue": "pass"
+  },
+  "tests": {
+    "CommonTest": 112,
+    "ConfigLoaderTest": 21,
+    "RenderCoreTest": 570,
+    "VulkanRHITest": 48,
+    "ConeVoxelGIIntegrationTest": 16,
+    "profile_verifier": 15,
+    "spirv_variants": 112
+  },
+  "shipping": {
+    "top": {
+      "all_receivers": {
+        "pixels": 518400,
+        "reference_mean": 0.7817854881286621,
+        "bias": -0.0016229116590693593,
+        "rms": 0.04575229436159134,
+        "p99": 0.14450666308403015,
+        "unexpected_zeros": 0,
+        "passed": true
+      },
+      "sponza_floor": {
+        "pixels": 52404,
+        "reference_mean": 0.07373620569705963,
+        "bias": -0.0008904145215637982,
+        "rms": 0.05263087525963783,
+        "p99": 0.18040731549263,
+        "unexpected_zeros": 0,
+        "passed": true
+      }
+    },
+    "hall": {
+      "all_receivers": {
+        "pixels": 518400,
+        "reference_mean": 0.02698221057653427,
+        "bias": -0.005606801714748144,
+        "rms": 0.14554764330387115,
+        "p99": 0.5848276019096375,
+        "unexpected_zeros": 8,
+        "passed": false
+      },
+      "sponza_floor": {
+        "pixels": 110437,
+        "reference_mean": 0.08075655996799469,
+        "bias": -0.002325121546164155,
+        "rms": 0.03860300034284592,
+        "p99": 0.13922174274921417,
+        "unexpected_zeros": 0,
+        "passed": true
+      }
+    }
+  },
+  "fixtures": {
+    "open_plane": {
+      "preexisting_present_hazards": 10,
+      "sky_mean": 0.9988841414451599,
+      "sky_max": 0.9990234375,
+      "S_mean": 0.9988770484924316,
+      "history_min": 32.0,
+      "history_max": 32.0,
+      "covered_pixels": 36420,
+      "motion_error_pixels": 0.0016087917573368352,
+      "composition_error": 0.0,
+      "diffuse_split_error": 0.0,
+      "reset_reason": "none"
+    },
+    "closed_box": {
+      "preexisting_present_hazards": 10,
+      "sky_mean": 0.0,
+      "sky_max": 0.0,
+      "S_mean": 0.0,
+      "history_min": 32.0,
+      "history_max": 32.0,
+      "covered_pixels": 57600,
+      "motion_error_pixels": 0.0016553356490154507,
+      "composition_error": 0.0,
+      "diffuse_split_error": 0.0,
+      "reset_reason": "none"
+    },
+    "forward_open_plane": {
+      "preexisting_present_hazards": 10,
+      "sky_mean": 0.9988841414451599,
+      "sky_max": 0.9990234375,
+      "S_mean": 0.9988770484924316,
+      "history_min": 32.0,
+      "history_max": 32.0,
+      "covered_pixels": 36420,
+      "motion_error_pixels": 0.0016087917573368352,
+      "composition_error": 0.0,
+      "diffuse_split_error": 2.9802322387695312e-08,
+      "reset_reason": "none"
+    },
+    "forward_closed_box": {
+      "preexisting_present_hazards": 10,
+      "sky_mean": 0.0,
+      "sky_max": 0.0,
+      "S_mean": 0.0,
+      "history_min": 32.0,
+      "history_max": 32.0,
+      "covered_pixels": 57600,
+      "motion_error_pixels": 0.0016553356490154507,
+      "composition_error": 0.0,
+      "diffuse_split_error": 0.0,
+      "reset_reason": "none"
+    }
+  },
+  "moving_fixture": {
+    "moving_occluder_light": {
+      "preexisting_present_hazards": 10,
+      "sky_mean": 0.9688175320625305,
+      "sky_max": 0.99951171875,
+      "S_mean": 0.9275721907615662,
+      "history_min": 1.0,
+      "history_max": 1.0,
+      "covered_pixels": 37722,
+      "motion_error_pixels": 3.459892477740158,
+      "composition_error": 1.1920928955078125e-07,
+      "diffuse_split_error": 0.0,
+      "reset_reason": "geometry_or_opacity"
+    }
+  },
+  "compatibility": {
+    "legacy_top_max_abs_error": 0,
+    "separate_runs_environment_on_off_on_max_abs_error": 0,
+    "environment_off_sky_max": 0
+  },
+  "performance": {
+    "hybrid": {
+      "gpu_frame_ms": {
+        "count": 63,
+        "min": 6.454464,
+        "max": 7.087072,
+        "mean": 6.591196952380949,
+        "median": 6.483712000000001,
+        "p95": 6.928256
+      },
+      "offscreen_median_us": 393.408,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "voxel_resolution": 64,
+      "validation": true,
+      "profile": "build\\hybrid-p3-final\\sponza-top-1080.profile.json"
+    },
+    "legacy": {
+      "gpu_frame_ms": {
+        "count": 63,
+        "min": 4.361344,
+        "max": 5.1514560000000005,
+        "mean": 4.537990095238096,
+        "median": 4.403072,
+        "p95": 4.778752000000001
+      },
+      "offscreen_median_us": 256.928,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "voxel_resolution": 64,
+      "validation": true,
+      "profile": "build\\hybrid-p3-final\\sponza-top-legacy-1080.profile.json"
+    }
+  },
+  "limitations": "See README.md Remaining acceptance work. No phase exit gate is claimed complete.",
+  "specular_occlusion_horizon_fix": {
+    "gpu_open_roughness1_normal_incidence": {
+      "before": 0.500244141,
+      "after": 1.0
+    },
+    "gpu_open_roughness05_view60": {
+      "before": 0.929931641,
+      "after": 1.0
+    },
+    "open_plane_S_mean": {
+      "before": 0.9266366362571716,
+      "after": 0.9988770484924316
+    },
+    "open_plane_reference_1024_raw_S_mean": 0.999987,
+    "open_plane_filter_off_S_mean": 0.999724
+  }
+}

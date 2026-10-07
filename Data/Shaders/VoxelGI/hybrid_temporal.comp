@@ -1,0 +1,88 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hybrid_guides.glsl"
+#include "../Common/scene_lighting.glsl"
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=1,binding=6) uniform sampler2D rawSky;
+layout(set=1,binding=7) uniform sampler2D rawSpecular;
+layout(set=1,binding=8) uniform sampler2D previousSky;
+layout(set=1,binding=9) uniform sampler2D previousSpecular;
+layout(set=1,binding=10) uniform sampler2D previousMoments;
+layout(set=1,binding=11) uniform sampler2D previousLength;
+layout(set=1,binding=12) uniform sampler2D previousPosition;
+layout(set=1,binding=13) uniform sampler2D previousNormal;
+layout(set=1,binding=14) uniform usampler2D previousReceiver;
+layout(set=1,binding=15,rgba32f) uniform writeonly image2D nextSky;
+layout(set=1,binding=16,rgba16f) uniform writeonly image2D nextSpecular;
+layout(set=1,binding=17,rgba32f) uniform writeonly image2D nextMoments;
+layout(set=1,binding=18,rgba16f) uniform writeonly image2D nextLength;
+layout(set=1,binding=19,rgba32f) uniform writeonly image2D nextPosition;
+layout(set=1,binding=20,rgba16f) uniform writeonly image2D nextNormal;
+layout(set=1,binding=21,rg32ui) uniform writeonly uimage2D nextReceiver;
+void main()
+{
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(!HybridInView(p)) return;
+    vec4 sky=texelFetch(rawSky,p,0), spec=texelFetch(rawSpecular,p,0);
+    vec3 position=HybridPosition(p), n=HybridNormal(p), ng=HybridGeometricNormal(p);
+    uvec2 identity=texelFetch(receiverSurface,p,0).rg;
+    if(texelFetch(receiverDepth,p,0).r>=1.0) identity=uvec2(0);
+    vec4 clip=texelFetch(receiverMotion,p,0);
+    vec2 previousPixel=(clip.xy/max(clip.w,1e-8)*0.5+0.5)*vec2(textureSize(receiverDepth,0))-0.5;
+    if(hybrid.rejection.w>0.5) previousPixel=vec2(p);
+    ivec2 base=ivec2(floor(previousPixel)); vec2 f=fract(previousPixel);
+    vec4 oldSky=vec4(0), oldSpec=vec4(0), oldMoments=vec4(0);
+    vec2 oldLength=vec2(0); float weight=0.0, specWeight=0.0;
+    float reason=hybrid.sampling.w==0u ? 1.0 : 2.0;
+    float roughness=texelFetch(receiverRoughness,p,0).g;
+    vec3 view=sceneUbo.viewPosition.w<0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz-position);
+    if(hybrid.sampling.w!=0u && hybrid.rejection.z>0.0 && clip.w>0.0 && identity.g!=0u)
+    {
+        for(int y=0;y<2;++y) for(int x=0;x<2;++x)
+        {
+            ivec2 q=base+ivec2(x,y);
+            if(!HybridInView(q)) continue;
+            if(texelFetch(previousReceiver,q,0).g!=identity.g) { reason=3.0; continue; }
+            vec3 oldPosition=texelFetch(previousPosition,q,0).xyz;
+            vec4 oldNormals=texelFetch(previousNormal,q,0);
+            float planeDistance=abs(dot(oldPosition-position,ng));
+            float threshold=hybrid.rejection.x*max(1.0,length(position-sceneUbo.viewPosition.xyz));
+            if(planeDistance>threshold || dot(DecodeGBufferNormal(oldNormals.rg),n)<0.9
+                || dot(DecodeGBufferNormal(oldNormals.ba),ng)<0.9) { reason=4.0; continue; }
+            float w=(x==0 ? 1.0-f.x:f.x)*(y==0 ? 1.0-f.y:f.y);
+            vec4 moments=texelFetch(previousMoments,q,0);
+            vec2 lengths=texelFetch(previousLength,q,0).rg;
+            weight+=w; oldSky+=texelFetch(previousSky,q,0)*w;
+            oldMoments.rg+=moments.rg*w; oldLength.x+=lengths.x*w;
+            vec3 previousView=sceneUbo.viewPosition.w<0.5 ? hybrid.previousViewDirection.xyz : normalize(hybrid.previousViewPosition.xyz-oldPosition);
+            if(abs(texelFetch(previousLength,q,0).a-roughness)<0.02 && dot(previousView,view)>mix(0.9995,0.9,roughness*roughness) )
+            {
+                specWeight+=w; oldSpec+=texelFetch(previousSpecular,q,0)*w;
+                oldMoments.ba+=moments.ba*w; oldLength.y+=lengths.y*w;
+            }
+        }
+    }
+    float luminance=HybridLuminance(sky.rgb);
+    vec4 moments=vec4(luminance,luminance*luminance,spec.a,spec.a*spec.a);
+    vec2 lengths=vec2(1);
+    if(weight>=0.01)
+    {
+        lengths.x=min(oldLength.x/weight+1.0,float(hybrid.sampling.z));
+        float alpha=1.0/lengths.x;
+        sky=mix(oldSky/weight,sky,alpha);
+        moments.rg=mix(oldMoments.rg/weight,moments.rg,alpha);
+        reason=0.0;
+    }
+    if(specWeight>=0.01)
+    {
+        lengths.y=min(oldLength.y/specWeight+1.0,(hybrid.rejection.w>0.5 ? float(hybrid.sampling.z) : mix(4.0,float(hybrid.sampling.z),smoothstep(0.04,0.4,roughness))));
+        spec=mix(oldSpec/specWeight,spec,1.0/lengths.y);
+        moments.ba=mix(oldMoments.ba/specWeight,moments.ba,1.0/lengths.y);
+    }
+    if(identity.g==0u) { lengths=vec2(0); sky=vec4(0); spec=vec4(0); moments=vec4(0); }
+    imageStore(nextSky,p,sky); imageStore(nextSpecular,p,spec);
+    imageStore(nextMoments,p,moments); imageStore(nextLength,p,vec4(lengths,reason,roughness));
+    imageStore(nextPosition,p,vec4(position,texelFetch(receiverDepth,p,0).r));
+    imageStore(nextNormal,p,vec4(EncodeGBufferNormal(n),EncodeGBufferNormal(ng)));
+    imageStore(nextReceiver,p,uvec4(identity,0,0));
+}
