@@ -1,9 +1,22 @@
 #include "Editor/ImGui/EditorWorkspace.h"
+#include "Editor/ImGui/EditorTheme.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#include <algorithm>
 
 namespace zen::editor
 {
+namespace
+{
+// Docks start at a preferred size in UI-scaled pixels, so panels keep room for their
+// labels at high DPI and wide screens give the extra space to the scene. In small
+// windows a dock takes at most 35% of the space it splits.
+float DockRatio(float preferred, float available)
+{
+    return std::min(preferred * EditorScale() / std::max(available, 1.0f), 0.35f);
+}
+} // namespace
+
 bool HasEditorLayout(unsigned int dockspace)
 {
     const ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspace);
@@ -26,11 +39,14 @@ void BuildDefaultEditorLayout(unsigned int                              dockspac
     ImGuiID center = dockspace;
 
     // The Inspector spans the full height, as in the proposed workspace.
-    ImGuiID right  = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.24f, nullptr, &center);
+    const float rightRatio = DockRatio(380, width);
 
-    ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.27f, nullptr, &center);
+    ImGuiID right          = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, rightRatio, nullptr, &center);
 
-    ImGuiID left   = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.24f, nullptr, &center);
+    ImGuiID bottom         = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, DockRatio(240, height), nullptr, &center);
+
+    ImGuiID left =
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, DockRatio(260, width * (1 - rightRatio)), nullptr, &center);
 
     for (ImGuiID id : {center, right, bottom, left})
     {

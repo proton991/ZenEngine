@@ -3,6 +3,17 @@
 
 namespace zen::editor
 {
+// What a view reports about the rendering settings.
+enum class EditorRenderingApplyStatus
+{
+    // Applied, or live edits that the next settings update applies.
+    Applied,
+    // Resource changes that wait for an explicit Apply.
+    AwaitingApply,
+    // The draft is invalid or the last edit or application failed; see GetError.
+    Failed
+};
+
 // Invalid drafts remain editable. Only a successful runtime application publishes
 // an applied revision, including applications which later fall back on the GPU.
 class EditorRenderingState
@@ -54,6 +65,15 @@ public:
     bool NeedsResourceApply() const
     {
         return rc::RequiresRenderingResourceApply(m_applied, m_draft);
+    }
+
+    // Live edits are pending only until the next update, so they report Applied and
+    // views stay steady while a slider is dragged.
+    EditorRenderingApplyStatus GetApplyStatus() const
+    {
+        return !m_error.empty()                    ? EditorRenderingApplyStatus::Failed
+             : IsPending() && NeedsResourceApply() ? EditorRenderingApplyStatus::AwaitingApply
+                                                   : EditorRenderingApplyStatus::Applied;
     }
 
     const std::string& GetError() const

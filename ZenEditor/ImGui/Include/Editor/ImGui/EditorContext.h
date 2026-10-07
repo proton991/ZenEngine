@@ -21,5 +21,8 @@ struct EditorContext
     bool  focused{true};
     float seconds{0};
     float frameMs{0};
+    // The render service's state, read once per UI frame through GetRenderSnapshot.
+    EditorRenderSnapshot renderSnapshot;
+    int                  renderSnapshotFrame{-1};
 };
 } // namespace zen::editor

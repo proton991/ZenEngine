@@ -13,6 +13,8 @@ void EditorLog::Append(int level, const std::string& text)
     }
 
     m_entries.push_back({level, text.substr(0, 4096)});
+
+    ++m_revision;
 }
 
 void EditorLog::Clear()
@@ -20,6 +22,8 @@ void EditorLog::Clear()
     const std::lock_guard<std::mutex> lock(m_mutex);
 
     m_entries.clear();
+
+    ++m_revision;
 }
 
 HeapVector<EditorLogEntry> EditorLog::Query(int minimumLevel, const std::string& search) const
@@ -37,5 +41,12 @@ HeapVector<EditorLogEntry> EditorLog::Query(int minimumLevel, const std::string&
     }
 
     return result;
+}
+
+uint64_t EditorLog::GetRevision() const
+{
+    const std::lock_guard<std::mutex> lock(m_mutex);
+
+    return m_revision;
 }
 } // namespace zen::editor

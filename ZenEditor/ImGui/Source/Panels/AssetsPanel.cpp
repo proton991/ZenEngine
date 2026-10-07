@@ -5,6 +5,48 @@ namespace zen::editor
 {
 namespace
 {
+// Tile geometry follows the font, so captions keep their spacing at any UI scale.
+struct AssetTileLayout
+{
+    ImVec2 size;
+    float  thumbnail{0.0f};
+    float  cardHeight{0.0f};
+    float  nameY{0.0f};
+    float  detailY{0.0f};
+};
+
+AssetTileLayout GetAssetTileLayout(bool grid)
+{
+    const float scale = EditorScale();
+
+    const float line  = ImGui::GetTextLineHeight();
+
+    AssetTileLayout layout;
+
+    if (grid)
+    {
+        layout.thumbnail  = 64 * scale;
+
+        layout.cardHeight = layout.thumbnail + 12 * scale;
+
+        layout.nameY      = 2 * scale + layout.cardHeight + 4 * scale;
+
+        layout.detailY    = layout.nameY + line + 2 * scale;
+
+        layout.size       = ImVec2(125 * scale, layout.detailY + line + 2 * scale);
+    }
+    else
+    {
+        layout.size      = ImVec2(ImGui::GetContentRegionAvail().x, std::max(24 * scale, line + 8 * scale));
+
+        layout.thumbnail = std::min(18 * scale, layout.size.y - 4 * scale);
+
+        layout.nameY     = 0.5f * (layout.size.y - line);
+    }
+
+    return layout;
+}
+
 // Resources of the open scene. Opening files belongs to File > Open.
 class AssetsPanel final : public EditorPanel
 {
@@ -17,8 +59,10 @@ private:
         m_previews.Synchronize(context);
     }
 
-    void DrawAsset(EditorContext& context, const SceneAssetItem& item, ImVec2 size)
+    void DrawAsset(EditorContext& context, const SceneAssetItem& item, const AssetTileLayout& layout)
     {
+        const ImVec2 size = layout.size;
+
         ImGui::PushID(int(item.id.kind));
 
         ImGui::PushID(int(item.id.index));
@@ -45,43 +89,46 @@ private:
 
         if (m_grid)
         {
-            const ImVec2 top(start.x + 5 * scale, start.y + 4 * scale);
+            const float inset = 5 * scale;
 
-            const ImVec2 bottom(start.x + size.x - 5 * scale, start.y + 85 * scale);
+            const ImVec2 top(start.x + inset, start.y + 2 * scale);
+
+            const ImVec2 bottom(start.x + size.x - inset, top.y + layout.cardHeight);
 
             draw.AddRectFilled(top, bottom, GetEditorPalette().cardBackground, 4 * scale);
 
-            DrawAssetThumbnail(context, m_previews, item, ImVec2(start.x + (size.x - 70 * scale) * 0.5f, start.y + 10 * scale),
-                               70 * scale);
+            DrawAssetThumbnail(
+                context, m_previews, item,
+                ImVec2(start.x + (size.x - layout.thumbnail) * 0.5f, top.y + (layout.cardHeight - layout.thumbnail) * 0.5f),
+                layout.thumbnail);
 
             draw.AddRect(top, bottom, ImGui::GetColorU32(active ? ImGuiCol_TabSelectedOverline : ImGuiCol_Border), 4 * scale);
 
-            draw.PushClipRect(ImVec2(start.x, start.y + 87 * scale), ImVec2(start.x + size.x - 4 * scale, start.y + size.y),
-                              true);
+            draw.PushClipRect(ImVec2(start.x, bottom.y), ImVec2(start.x + size.x - inset, start.y + size.y), true);
 
-            draw.AddText(ImVec2(start.x + 5 * scale, start.y + 90 * scale), ImGui::GetColorU32(ImGuiCol_Text),
-                         item.name.c_str());
+            draw.AddText(ImVec2(start.x + inset, start.y + layout.nameY), ImGui::GetColorU32(ImGuiCol_Text), item.name.c_str());
 
-            draw.AddText(ImVec2(start.x + 5 * scale, start.y + 110 * scale), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+            draw.AddText(ImVec2(start.x + inset, start.y + layout.detailY), ImGui::GetColorU32(ImGuiCol_TextDisabled),
                          detail.c_str());
 
             draw.PopClipRect();
         }
         else
         {
-            DrawAssetThumbnail(context, m_previews, item, ImVec2(start.x + 3 * scale, start.y + 2 * scale), 18 * scale);
+            DrawAssetThumbnail(context, m_previews, item,
+                               ImVec2(start.x + 3 * scale, start.y + (size.y - layout.thumbnail) * 0.5f), layout.thumbnail);
 
             const float detailX =
                 std::max(start.x + 240 * scale, start.x + size.x - ImGui::CalcTextSize(detail.c_str()).x - 8 * scale);
 
             draw.PushClipRect(start, ImVec2(detailX - 8 * scale, start.y + size.y), true);
 
-            draw.AddText(ImVec2(start.x + 28 * scale, start.y + 3 * scale), ImGui::GetColorU32(ImGuiCol_Text),
+            draw.AddText(ImVec2(start.x + 28 * scale, start.y + layout.nameY), ImGui::GetColorU32(ImGuiCol_Text),
                          item.name.c_str());
 
             draw.PopClipRect();
 
-            draw.AddText(ImVec2(detailX, start.y + 3 * scale), ImGui::GetColorU32(ImGuiCol_TextDisabled), detail.c_str());
+            draw.AddText(ImVec2(detailX, start.y + layout.nameY), ImGui::GetColorU32(ImGuiCol_TextDisabled), detail.c_str());
         }
 
         ImGui::PopID();
@@ -184,7 +231,7 @@ private:
 
         if (!context.editor.GetError().empty())
         {
-            ImGui::TextWrapped("%s", context.editor.GetError().c_str());
+            DrawStatusText(GetEditorPalette().error, context.editor.GetError().c_str());
         }
 
         if (context.editor.GetLoadState().IsActive())
@@ -194,7 +241,7 @@ private:
 
         if (scene == nullptr)
         {
-            ImGui::TextWrapped("No scene is open. Its meshes, materials, textures and animations appear here.");
+            DrawHint("No scene is open. Its meshes, materials, textures and animations appear here.");
 
             if (ImGui::Button("Open..."))
             {
@@ -218,18 +265,16 @@ private:
             {
                 const HeapVector<SceneAssetItem>& shown = m_shown;
 
-                const float tileWidth                   = m_grid ? 125 * scale : ImGui::GetContentRegionAvail().x;
+                const AssetTileLayout layout            = GetAssetTileLayout(m_grid);
 
-                const float tileHeight                  = m_grid ? 132 * scale : 24 * scale;
+                const float spacing                     = ImGui::GetStyle().ItemSpacing.x;
 
-                const int columns                       = m_grid
-                                                            ? std::max(1, int((ImGui::GetContentRegionAvail().x + ImGui::GetStyle().ItemSpacing.x)
-                                                        / (tileWidth + ImGui::GetStyle().ItemSpacing.x)))
-                                                            : 1;
+                const int columns =
+                    m_grid ? std::max(1, int((ImGui::GetContentRegionAvail().x + spacing) / (layout.size.x + spacing))) : 1;
 
                 ImGuiListClipper clipper;
 
-                clipper.Begin((int(shown.size()) + columns - 1) / columns, tileHeight + ImGui::GetStyle().ItemSpacing.y);
+                clipper.Begin((int(shown.size()) + columns - 1) / columns, layout.size.y + ImGui::GetStyle().ItemSpacing.y);
 
                 while (clipper.Step())
                 {
@@ -242,15 +287,14 @@ private:
                                 ImGui::SameLine();
                             }
 
-                            DrawAsset(context, shown[row * columns + column], ImVec2(tileWidth, tileHeight));
+                            DrawAsset(context, shown[row * columns + column], layout);
                         }
                     }
                 }
 
                 if (shown.empty())
                 {
-                    ImGui::TextWrapped(m_search[0] != 0 ? "No assets match the search."
-                                                        : "This scene has no assets of this kind.");
+                    DrawHint(m_search[0] != 0 ? "No assets match the search." : "This scene has no assets of this kind.");
                 }
             }
 

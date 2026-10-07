@@ -1048,6 +1048,8 @@ TEST(EditorModel, EmptySceneAndBoundedFilteredLogs)
 
     EditorLog log;
 
+    const uint64_t empty = log.GetRevision();
+
     for (int index = 0; index < 2100; ++index)
     {
         log.Append(index == 2099 ? 4 : 2, index == 2099 ? "Final ERROR" : "old entry");
@@ -1057,9 +1059,18 @@ TEST(EditorModel, EmptySceneAndBoundedFilteredLogs)
 
     EXPECT_EQ(log.Query(4, "error").size(), 1u);
 
+    // Views reuse a query until the revision changes; queries alone do not change it.
+    const uint64_t filled = log.GetRevision();
+
+    EXPECT_NE(filled, empty);
+
+    EXPECT_EQ(log.GetRevision(), filled);
+
     log.Clear();
 
     EXPECT_TRUE(log.Query(0, "").empty());
+
+    EXPECT_NE(log.GetRevision(), filled);
 }
 } // namespace
 } // namespace zen::editor

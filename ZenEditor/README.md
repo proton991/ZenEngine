@@ -135,14 +135,30 @@ configuration and do not depend on the launch working directory.
   output. New/reset layouts select this panel in the right dock; existing layouts
   retain the `RenderSettings` identity. Inspector source values remain read-only.
 - Output retains at most 2,048 entries of 4,096 characters each, with level/text
-  filtering, Clear and Copy. GPU memory and frame-time readings are snapshots.
+  filtering, Clear and Copy. Warnings and errors are colored, and the list follows
+  new entries while it is scrolled to the bottom. Multi-line entries show one row per
+  line. The filtered list is rebuilt only when the log, level or filter changes, and
+  the horizontal scroll range covers the widest row shown since then. GPU memory and
+  frame-time readings are snapshots.
+- The status bar shows loading progress, or a failed load until its dialog is
+  dismissed (hover for the error), the current selection and the rendering path
+  actually drawn. It also notes resource changes that await Apply, a rendering
+  settings error and a PBR fallback; hover for the reason. The Rendering footer
+  reports the same status.
 
 The frontend uses graphite surfaces, soft borders, blue accents and proportional
-Roboto text. Input widths are capped and scale with DPI; toolbar controls wrap and
-Rendering labels stack above their fields when panels become narrow. Camera Settings groups its compact
-speed input, boost readout and navigation shortcuts into cards. The Inspector keeps
-its read-only XYZ fields and full-height dock. Save and playback controls
-remain disabled in this viewer.
+Roboto text. Only the focused panel's tab carries the blue accent, since shortcuts
+and navigation follow focus; each tab has its own close button. The toolbar shows
+icon buttons with Open labeled and the run controls centered. Tooltips name each
+command and its shortcut, and say why a disabled command is unavailable. New and
+reset layouts size the docks from preferred widths scaled by DPI; in small windows
+each dock takes at most 35% of the space it splits. Input widths are capped and scale with DPI; toolbar controls
+wrap. Rendering properties keep their labels in a left column and stack them above
+their fields when panels become narrow; help text is muted, and warnings and
+errors use amber and red. Camera Settings groups its compact speed input, boost
+readout and navigation shortcuts into cards. The Inspector keeps its read-only XYZ
+fields and full-height dock. Save and playback controls remain disabled in this
+viewer.
 
 ### Rendering configuration, lighting and diagnostics
 
@@ -152,8 +168,11 @@ and output selection apply between frames. Grid size, voxelizer, reflectance
 resources/budget and shadow resolution wait for **Apply**; other edits keep
 previewing in the meantime. **Revert** discards whatever has not been applied.
 **Apply** and **Revert** stay visible in a fixed bottom footer while settings scroll
-above them. They are enabled only while changes are pending,
-keeping the panel layout and scroll position stable during edits.
+above them. Live edits apply on the next frame, so the footer keeps reporting
+"All changes applied" and both buttons stay disabled while a slider is dragged.
+**Apply** is enabled while resource changes wait for it or a pending edit failed to
+apply; **Revert** is enabled for either of those or a settings error. The panel
+layout and scroll position stay stable during edits.
 Section resets and **Reset setup** restore the session's defaults. GPU allocation
 failures show a latched PBR fallback reason, with explicit retry and restoration of
 the last successfully rendered setup.

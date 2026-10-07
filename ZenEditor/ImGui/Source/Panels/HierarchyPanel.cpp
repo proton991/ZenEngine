@@ -1,5 +1,6 @@
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
+#include <algorithm>
 
 namespace zen::editor
 {
@@ -18,33 +19,29 @@ private:
 
     bool HasIncludedChildren(const EditorScene& scene, NodeId id) const
     {
-        bool result = false;
+        const HeapVector<NodeId>& children = scene.GetChildren(id);
 
-        for (const NodeId child : scene.GetChildren(id))
-        {
-            result = result || IsIncluded(child);
-        }
-
-        return result;
+        return std::any_of(children.begin(), children.end(), [this](NodeId child) { return IsIncluded(child); });
     }
 
     // Visits open nodes only, so drawing cost follows the expanded part of the tree.
     void DrawNode(EditorContext& context, NodeId id, bool root)
     {
-        const EditorScene& scene = context.editor.GetScene();
+        const EditorScene& scene  = context.editor.GetScene();
 
-        const sg::Node& node     = *scene.Resolve(id);
+        const sg::Node& node      = *scene.Resolve(id);
 
-        const bool children      = HasIncludedChildren(scene, id);
+        const bool children       = HasIncludedChildren(scene, id);
 
-        ImGuiTreeNodeFlags flags =
-            ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding;
+        ImGuiTreeNodeFlags flags  = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick
+                                  | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding
+                                  | ImGuiTreeNodeFlags_DrawLinesFull;
 
-        flags                  |= children ? 0 : ImGuiTreeNodeFlags_Leaf;
+        flags                    |= children ? 0 : ImGuiTreeNodeFlags_Leaf;
 
-        flags                  |= id == context.editor.GetSelection().GetNode() ? ImGuiTreeNodeFlags_Selected : 0;
+        flags                    |= id == context.editor.GetSelection().GetNode() ? ImGuiTreeNodeFlags_Selected : 0;
 
-        const std::string name  = scene.GetNodeDisplayName(id);
+        const std::string name    = scene.GetNodeDisplayName(id);
 
         ImGui::PushID(int(id.index));
 
@@ -59,18 +56,28 @@ private:
 
         const ImVec2 start = ImGui::GetCursorScreenPos();
 
+        const float right  = start.x + ImGui::GetContentRegionAvail().x;
+
+        // Leading spaces leave room for the icon drawn over the label.
+        const std::string label = fmt::format("     {}{}", node.IsVisible() ? "" : "[hidden] ", name);
+
         ImGui::PushStyleColor(ImGuiCol_Header, GetEditorPalette().treeSelection);
 
-        const bool open = ImGui::TreeNodeEx("Node", flags, "     %s%s", node.IsVisible() ? "" : "[hidden] ", name.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              ImGui::GetStyle().Colors[node.IsVisible() ? ImGuiCol_Text : ImGuiCol_TextDisabled]);
 
-        ImGui::PopStyleColor();
+        const bool open = ImGui::TreeNodeEx("Node", flags, "%s", label.c_str());
+
+        ImGui::PopStyleColor(2);
 
         DrawEditorIcon(children ? EditorIcon::Folder : EditorIcon::Cube,
                        ImVec2(start.x + ImGui::GetTreeNodeToLabelSpacing(),
                               start.y + ImGui::GetStyle().FramePadding.y + 1 * EditorScale()),
                        13 * EditorScale(), ImGui::GetColorU32(ImGuiCol_TextDisabled));
 
-        if (ImGui::IsItemHovered())
+        // Only names cut off by the panel edge need a tooltip.
+        if (ImGui::IsItemHovered()
+            && start.x + ImGui::GetTreeNodeToLabelSpacing() + ImGui::CalcTextSize(label.c_str()).x > right)
         {
             ImGui::SetTooltip("%s", name.c_str());
         }
@@ -100,18 +107,13 @@ private:
     {
         const EditorScene& scene = context.editor.GetScene();
 
-        ImGui::SetNextItemWidth(EditorControlWidth(300));
+        ImGui::SetNextItemWidth(-FLT_MIN);
 
         ImGui::InputTextWithHint("##SearchHierarchy", "Search scene...", m_search, sizeof(m_search));
 
         if (scene.Get() == nullptr)
         {
-            const EditorAction* open   = context.editor.GetActions().Find(actions::Open);
-
-            const std::string shortcut = open != nullptr ? FormatShortcut(open->shortcut) : "";
-
-            ImGui::TextWrapped("Open a glTF or GLB scene with File > Open%s%s%s to inspect its hierarchy.",
-                               shortcut.empty() ? "" : " (", shortcut.c_str(), shortcut.empty() ? "" : ")");
+            DrawHint(FormatOpenSceneHint(context.editor.GetActions(), "to inspect its hierarchy.").c_str());
         }
         else
         {
@@ -124,7 +126,9 @@ private:
                 m_filterText       = m_search;
             }
 
-            ImGui::TextDisabled("%zu nodes", m_search[0] == 0 ? scene.GetNodeCount() : m_filter.size());
+            const size_t count = m_search[0] == 0 ? scene.GetNodeCount() : m_filter.size();
+
+            ImGui::TextDisabled("%zu %s%s", count, count == 1 ? "node" : "nodes", m_search[0] == 0 ? "" : " found");
 
             for (const NodeId root : scene.GetRoots())
             {

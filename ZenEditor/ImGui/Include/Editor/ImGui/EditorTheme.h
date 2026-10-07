@@ -35,6 +35,9 @@ struct EditorPalette
     ImU32 axisLabel;
     // Matches the mesh preview renderer's clear color around a letterboxed image.
     ImU32 previewBackground;
+    // Status text: problems the user can still work around, and failed operations.
+    ImVec4 warning;
+    ImVec4 error;
 };
 
 const EditorPalette& GetEditorPalette();
@@ -47,6 +50,9 @@ void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color);
 
 // The tooltip appears on hover, including while the button is disabled.
 bool EditorToolButton(const char* label, EditorIcon icon, bool enabled = true, const char* tooltip = nullptr);
+
+// A square button showing only the icon; the ID names it, the tooltip describes it.
+bool EditorIconButton(const char* id, EditorIcon icon, bool enabled = true, const char* tooltip = nullptr);
 
 void EditorToolbarSeparator();
 } // namespace zen::editor

@@ -5,6 +5,7 @@
 #include "Editor/Model/ViewAxes.h"
 #include <cmath>
 #include "imgui.h"
+#include "imgui_internal.h"
 #include <gtest/gtest.h>
 
 namespace zen::editor
@@ -378,6 +379,155 @@ TEST_F(EditorInput, ControlsHintDrawsOnlyWhenTheImageCanHoldIt)
     EXPECT_EQ(afterTiny, initial);
 
     EXPECT_GT(afterRoomy, afterTiny);
+}
+
+TEST_F(EditorInput, ActionTooltipsNameTheCommandAndWhyItIsDisabled)
+{
+    const EditorAction open{.id             = "open",
+                            .label          = "Open...",
+                            .shortcut       = {platform::Key::O, uint16_t(platform::KeyModifier::Control)},
+                            .disabledReason = "Busy"};
+
+    const std::string shortcut = FormatShortcut(open.shortcut);
+
+    ASSERT_FALSE(shortcut.empty());
+
+    // Icon-only toolbar buttons rely on the tooltip for their name, even while disabled.
+    EXPECT_EQ(FormatActionTooltip(open, true), "Open (" + shortcut + ")");
+
+    EXPECT_EQ(FormatActionTooltip(open, false), "Open (" + shortcut + ")\nBusy");
+
+    const EditorAction run{.id = "run", .label = "Run"};
+
+    EXPECT_EQ(FormatActionTooltip(run, false), "Run");
+}
+
+TEST_F(EditorInput, PropertyRowsStackLabelsOnlyInNarrowPanels)
+{
+    for (const float width : {420.0f, 180.0f})
+    {
+        SCOPED_TRACE(width);
+
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+
+        ImGui::SetNextWindowSize(ImVec2(width, 300));
+
+        ImGui::Begin("Properties");
+
+        const ImVec2 row        = ImGui::GetCursorScreenPos();
+
+        const std::string label = PropertyLabel("Intensity");
+
+        float value             = 1.0f;
+
+        ImGui::DragFloat(label.c_str(), &value);
+
+        const ImVec2 widget      = ImGui::GetItemRectMin();
+
+        const ImVec2 widgetEnd   = ImGui::GetItemRectMax();
+
+        const float contentRight = row.x + ImGui::GetContentRegionAvail().x;
+
+        ImGui::End();
+
+        ImGui::Render();
+
+        // The widget ID ignores the layout, so resizing keeps its state.
+        EXPECT_EQ(label, "###Intensity");
+
+        if (width > 300)
+        {
+            EXPECT_FLOAT_EQ(widget.y, row.y);
+
+            EXPECT_GT(widget.x, row.x);
+        }
+        else
+        {
+            EXPECT_GT(widget.y, row.y);
+
+            EXPECT_FLOAT_EQ(widget.x, row.x);
+        }
+
+        EXPECT_LE(widgetEnd.x, contentRight + 0.5f);
+    }
+}
+
+TEST_F(EditorInput, ClippedLabelsShowTheirTextInDisabledSections)
+{
+    const char* label = "A property label far too long for its narrow column";
+
+    ImVec2 labelMin;
+
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        ImGui::GetIO().MousePos = ImVec2(labelMin.x + 4, labelMin.y + 4);
+
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+
+        ImGui::SetNextWindowSize(ImVec2(400, 200));
+
+        ImGui::Begin("Disabled properties");
+
+        ImGui::BeginDisabled();
+
+        DrawClippedText(label, ImVec2(60, ImGui::GetFrameHeight()), ImGui::GetColorU32(ImGuiCol_Text));
+
+        labelMin = ImGui::GetItemRectMin();
+
+        ImGui::EndDisabled();
+
+        ImGui::End();
+
+        ImGui::Render();
+    }
+
+    const ImGuiWindow* tooltip = ImGui::FindWindowByName("##Tooltip_00");
+
+    ASSERT_NE(tooltip, nullptr);
+
+    EXPECT_TRUE(tooltip->Active);
+}
+
+TEST_F(EditorInput, LogLinesGiveEveryLineOfAnEntryItsOwnRow)
+{
+    HeapVector<EditorLogEntry> entries;
+
+    entries.push_back({2, "single"});
+
+    entries.push_back({4, "metrics\n  group=0\n  details"});
+
+    entries.push_back({3, "trailing break\n"});
+
+    entries.push_back({2, ""});
+
+    const HeapVector<LogLine> lines = SplitLogLines(entries);
+
+    ASSERT_EQ(lines.size(), 6u);
+
+    const auto text = [&entries](const LogLine& line) {
+        return entries[line.entry].text.substr(line.begin, line.end - line.begin);
+    };
+
+    EXPECT_EQ(text(lines[0]), "single");
+
+    EXPECT_EQ(text(lines[1]), "metrics");
+
+    EXPECT_EQ(text(lines[2]), "  group=0");
+
+    EXPECT_EQ(text(lines[3]), "  details");
+
+    EXPECT_EQ(lines[3].entry, 1u);
+
+    EXPECT_EQ(text(lines[4]), "trailing break");
+
+    // An empty entry still occupies a row.
+    EXPECT_EQ(lines[5].entry, 3u);
+
+    EXPECT_EQ(text(lines[5]), "");
 }
 } // namespace
 } // namespace zen::editor

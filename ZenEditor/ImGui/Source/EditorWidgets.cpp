@@ -18,6 +18,127 @@ void SameLineIfFits(float nextItemWidth)
     }
 }
 
+const EditorRenderSnapshot& GetRenderSnapshot(EditorContext& context)
+{
+    if (context.renderSnapshotFrame != ImGui::GetFrameCount())
+    {
+        context.renderSnapshot      = context.editor.GetViewport().GetSnapshot();
+
+        context.renderSnapshotFrame = ImGui::GetFrameCount();
+    }
+
+    return context.renderSnapshot;
+}
+
+const char* GetRenderAlgorithmName(rc::RenderAlgorithm algorithm)
+{
+    return algorithm == rc::RenderAlgorithm::eVoxelGI ? "PBR + voxel GI" : "PBR";
+}
+
+std::string GetInspectionTargetName(const EditorScene& scene, InspectionTarget target)
+{
+    return target.node.generation != 0 ? scene.GetNodeDisplayName(target.node) : scene.GetAssets().Describe(target.asset).name;
+}
+
+void DrawClippedText(const char* text, ImVec2 extent, ImU32 color)
+{
+    const ImVec2 start = ImGui::GetCursorScreenPos();
+
+    ImGui::Dummy(extent);
+
+    ImDrawList& draw = *ImGui::GetWindowDrawList();
+
+    draw.PushClipRect(start, ImVec2(start.x + extent.x, start.y + extent.y), true);
+
+    draw.AddText(ImVec2(start.x, start.y + 0.5f * (extent.y - ImGui::GetTextLineHeight())), color, text);
+
+    draw.PopClipRect();
+
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::CalcTextSize(text).x > extent.x)
+    {
+        ImGui::SetTooltip("%s", text);
+    }
+}
+
+std::string PropertyLabel(const char* label)
+{
+    const float scale     = EditorScale();
+
+    const float available = ImGui::GetContentRegionAvail().x;
+
+    if (available < 250 * scale)
+    {
+        ImGui::TextWrapped("%s", label);
+    }
+    else
+    {
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+
+        const float column  = std::clamp(available * 0.4f, 90 * scale, 170 * scale);
+
+        DrawClippedText(label, ImVec2(column - spacing, ImGui::GetFrameHeight()), ImGui::GetColorU32(ImGuiCol_Text));
+
+        ImGui::SameLine(0, spacing);
+    }
+
+    // Very wide floating panels keep sliders at a usable length.
+    ImGui::SetNextItemWidth(EditorControlWidth(420));
+
+    return std::string("###") + label;
+}
+
+void DrawHint(const char* text)
+{
+    // BeginDisabled already fades text through the style alpha; fading a hint a second
+    // time would leave it unreadable, so disabled sections use the normal text color.
+    const bool disabled = ImGui::GetStyle().Alpha < 1.0f;
+
+    DrawStatusText(ImGui::GetStyle().Colors[disabled ? ImGuiCol_Text : ImGuiCol_TextDisabled], text);
+}
+
+void DrawStatusText(const ImVec4& color, const char* text)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+
+    ImGui::TextWrapped("%s", text);
+
+    ImGui::PopStyleColor();
+}
+
+std::string FormatOpenSceneHint(const EditorActions& registry, const char* purpose)
+{
+    const EditorAction* open   = registry.Find(actions::Open);
+
+    const std::string shortcut = open != nullptr ? FormatShortcut(open->shortcut) : "";
+
+    return fmt::format("Open a scene with File > Open{} {}", shortcut.empty() ? "" : " (" + shortcut + ")", purpose);
+}
+
+HeapVector<LogLine> SplitLogLines(const HeapVector<EditorLogEntry>& entries)
+{
+    HeapVector<LogLine> lines;
+
+    for (uint32_t entry = 0; entry < uint32_t(entries.size()); ++entry)
+    {
+        const std::string& text = entries[entry].text;
+
+        uint32_t begin          = 0;
+
+        do
+        {
+            const size_t found = text.find('\n', begin);
+
+            const uint32_t end = found == std::string::npos ? uint32_t(text.size()) : uint32_t(found);
+
+            lines.push_back({entry, begin, end});
+
+            begin = end + 1;
+        } while (begin < text.size());
+    }
+
+    return lines;
+}
+
 bool DrawSceneImage(ImTextureID texture, ImVec2 extent, bool focused)
 {
     const ImVec2 origin = ImGui::GetCursorScreenPos();

@@ -371,6 +371,109 @@ TEST_P(EditorPreview, SelectionRevealsDockedInspectorWithoutOverridingManualTabC
     DestroyPreviewTest(editor, renderer, device);
 }
 
+// The Output panel's scrolling child window.
+ImGuiWindow* FindOutputLines(const EditorPanel& panel)
+{
+    const ImGuiWindow* output = ImGui::FindWindowByName(panel.GetWindowName().c_str());
+
+    ImGuiWindow* result       = nullptr;
+
+    for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+    {
+        if (window->ParentWindow == output && std::string(window->Name).find("/LogLines_") != std::string::npos)
+        {
+            result = window;
+        }
+    }
+
+    return result;
+}
+
+TEST_P(EditorPreview, OutputRowsCoverMultiLineEntriesAndFollowNewEntries)
+{
+    platform::NativeWindow window({"Editor output test", false, 900, 700, 0, false});
+
+    EditorWindowChrome chrome(window);
+
+    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+
+    RHIOptions::GetInstance().SetValidationEnabled(true);
+
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
+
+    InitializePreviewDevice(device);
+
+    EditorController editor(device);
+
+    ASSERT_TRUE(editor.Init());
+
+    InitializePreviewUI();
+
+    ui::ImGuiRenderer renderer(device);
+
+    EditorLog log;
+
+    EditorContext context{editor, log, renderer, chrome};
+
+    UniquePtr<EditorPanel> panel = CreateOutputPanel();
+
+    // Every third entry spans three lines, as the render graph's metrics do.
+    for (int index = 0; index < 60; ++index)
+    {
+        log.Append(index % 3 == 0 ? 4 : 2, index % 3 == 0 ? "metrics\n  group=0\n  details" : "entry");
+    }
+
+    const uint32_t rows = 20 * 3 + 40;
+
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        DrawPreviewPanel(*panel, context, false, ImVec2(600, 300));
+    }
+
+    ImGuiWindow* lines = FindOutputLines(*panel);
+
+    ASSERT_NE(lines, nullptr);
+
+    // Each line is one clipped row; a row per entry would leave the last lines unreachable.
+    const float spacing = ImGui::GetStyle().ItemSpacing.y;
+
+    EXPECT_NEAR(lines->ContentSize.y, float(rows) * (ImGui::GetTextLineHeight() + spacing) - spacing, 1.0f);
+
+    EXPECT_GT(lines->ScrollMax.y, 0.0f);
+
+    EXPECT_FLOAT_EQ(lines->Scroll.y, lines->ScrollMax.y);
+
+    // New entries keep a view at the bottom there.
+    log.Append(4, "late\n  detail");
+
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        DrawPreviewPanel(*panel, context, false, ImVec2(600, 300));
+    }
+
+    EXPECT_NEAR(lines->ContentSize.y, float(rows + 2) * (ImGui::GetTextLineHeight() + spacing) - spacing, 1.0f);
+
+    EXPECT_FLOAT_EQ(lines->Scroll.y, lines->ScrollMax.y);
+
+    // A view scrolled up stays where the reader left it.
+    ImGui::SetScrollY(lines, 0.0f);
+
+    DrawPreviewPanel(*panel, context, false, ImVec2(600, 300));
+
+    log.Append(2, "later");
+
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        DrawPreviewPanel(*panel, context, false, ImVec2(600, 300));
+    }
+
+    EXPECT_FLOAT_EQ(lines->Scroll.y, 0.0f);
+
+    panel.Reset();
+
+    DestroyPreviewTest(editor, renderer, device);
+}
+
 INSTANTIATE_TEST_SUITE_P(Panels,
                          EditorPreview,
                          testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),

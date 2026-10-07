@@ -36,7 +36,11 @@ bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& erro
 
             if (state.stage == SceneLoadStage::Failed)
             {
+                ImGui::PushStyleColor(ImGuiCol_Text, GetEditorPalette().error);
+
                 ImGui::TextWrapped("Could not open scene: %s", error.c_str());
+
+                ImGui::PopStyleColor();
 
                 if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape))
                 {
@@ -93,11 +97,7 @@ bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& erro
 
                 ImGui::TextUnformatted(label);
 
-                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, GetEditorPalette().brand);
-
                 ImGui::ProgressBar(progress, ImVec2(-1, 0), step);
-
-                ImGui::PopStyleColor();
             }
         }
 

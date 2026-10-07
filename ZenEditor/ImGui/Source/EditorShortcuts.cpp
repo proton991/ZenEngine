@@ -88,4 +88,35 @@ void HandleActionShortcuts(EditorActions& registry, EditorShortcutScope scope, b
         registry.ExecuteShortcut(pressed, scope);
     }
 }
+
+std::string GetActionCaption(const EditorAction& action)
+{
+    std::string result = action.label;
+
+    if (result.ends_with("..."))
+    {
+        result.resize(result.size() - 3);
+    }
+
+    return result;
+}
+
+std::string FormatActionTooltip(const EditorAction& action, bool enabled)
+{
+    std::string result         = GetActionCaption(action);
+
+    const std::string shortcut = FormatShortcut(action.shortcut);
+
+    if (!shortcut.empty())
+    {
+        result += " (" + shortcut + ")";
+    }
+
+    if (!enabled && !action.disabledReason.empty())
+    {
+        result += "\n" + action.disabledReason;
+    }
+
+    return result;
+}
 } // namespace zen::editor

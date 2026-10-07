@@ -154,20 +154,20 @@ private:
                               "Drag across the view; orbit to change the movement plane. Esc cancels.");
         }
 
-        const RHIGPUMemoryStats memory = context.editor.GetViewport().GetSnapshot().memory;
+        const RHIGPUMemoryStats& memory = GetRenderSnapshot(context).memory;
 
-        const std::string usage = memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0))
-                                                   : "GPU memory unavailable";
+        const std::string usage =
+            memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0)) : "GPU memory n/a";
 
-        const std::string profile = fmt::format("{:.1f} FPS   |   {:.2f} ms   |   {}   |   Vulkan",
+        const std::string profile = fmt::format("{:.1f} FPS  |  {:.2f} ms  |  {}  |  Vulkan",
                                                 context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
 
         // Reserve a stable field: changing digit counts must never reflow the toolbar
         // and resize the render target (or cancel a drag through a new camera aspect).
-        const float profileWidth =
-            ImGui::CalcTextSize("00000.0 FPS   |   00000.00 ms   |   GPU memory unavailable   |   Vulkan").x;
+        // Rare longer readings are clipped, with the full text in a tooltip.
+        const float profileWidth = ImGui::CalcTextSize("0000.0 FPS  |  000.00 ms  |  GPU 00000 MiB  |  Vulkan").x;
 
-        const float profileX = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - profileWidth;
+        const float profileX     = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - profileWidth;
 
         // Keep the readout beside the controls when it fits; narrow panels wrap it below.
         if (profileX >= ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetStyle().ItemSpacing.x)
@@ -175,25 +175,8 @@ private:
             ImGui::SameLine(profileX);
         }
 
-        const ImVec2 profileOrigin = ImGui::GetCursorScreenPos();
-
-        const ImVec2 profileExtent(std::max(1.0f, ImGui::GetContentRegionAvail().x), ImGui::GetFrameHeight());
-
-        ImGui::Dummy(profileExtent);
-
-        ImDrawList& draw = *ImGui::GetWindowDrawList();
-
-        draw.PushClipRect(profileOrigin, ImVec2(profileOrigin.x + profileExtent.x, profileOrigin.y + profileExtent.y), true);
-
-        draw.AddText(ImVec2(profileOrigin.x, profileOrigin.y + ImGui::GetStyle().FramePadding.y),
-                     ImGui::GetColorU32(ImGuiCol_TextDisabled), profile.c_str());
-
-        draw.PopClipRect();
-
-        if (ImGui::IsItemHovered() && ImGui::CalcTextSize(profile.c_str()).x > profileExtent.x)
-        {
-            ImGui::SetTooltip("%s", profile.c_str());
-        }
+        DrawClippedText(profile.c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), ImGui::GetFrameHeight()),
+                        ImGui::GetColorU32(ImGuiCol_TextDisabled));
 
         bool drewScene = false;
 
@@ -201,16 +184,11 @@ private:
         {
             if (context.editor.GetScene().Get() == nullptr)
             {
-                const EditorAction* open   = context.editor.GetActions().Find(actions::Open);
-
-                const std::string shortcut = open != nullptr ? FormatShortcut(open->shortcut) : "";
-
-                ImGui::TextWrapped("Open a scene with File > Open%s%s%s to start exploring.", shortcut.empty() ? "" : " (",
-                                   shortcut.c_str(), shortcut.empty() ? "" : ")");
+                DrawHint(FormatOpenSceneHint(context.editor.GetActions(), "to start exploring.").c_str());
             }
             else
             {
-                ImGui::TextWrapped("This scene contains no renderable geometry. Its nodes are available in the hierarchy.");
+                DrawHint("This scene contains no renderable geometry. Its nodes are available in the hierarchy.");
             }
 
             m_navigation = 0;

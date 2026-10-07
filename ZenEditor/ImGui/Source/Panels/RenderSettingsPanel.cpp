@@ -5,25 +5,9 @@ namespace zen::editor
 {
 namespace
 {
-// Stack property labels in narrow docks; keep each widget's ID stable while resizing.
-std::string PropertyLabel(const char* label)
+const char* GetLightTypeName(rc::SceneLightType type)
 {
-    const bool stacked = ImGui::GetContentRegionAvail().x < 340 * EditorScale();
-
-    std::string result = std::string("###") + label;
-
-    if (stacked)
-    {
-        ImGui::TextWrapped("%s", label);
-
-        ImGui::SetNextItemWidth(EditorControlWidth(200));
-    }
-    else
-    {
-        result.insert(0, label);
-    }
-
-    return result;
+    return type == rc::SceneLightType::ePoint ? "Point" : type == rc::SceneLightType::eSpot ? "Spot" : "Directional";
 }
 
 class RenderSettingsPanel final : public EditorPanel
@@ -48,9 +32,7 @@ private:
 
             const std::string label     = EnvironmentTextureLabel(settings.texturePath);
 
-            ImGui::SetNextItemWidth(EditorControlWidth(320));
-
-            if (ImGui::BeginCombo("##EnvironmentTexture", label.c_str()))
+            if (ImGui::BeginCombo(PropertyLabel("Texture").c_str(), label.c_str()))
             {
                 if (ImGui::Selectable("Scene / engine default", settings.texturePath.empty()))
                 {
@@ -94,6 +76,8 @@ private:
 
             if (!context.nativeFileDialog)
             {
+                ImGui::SetNextItemWidth(EditorControlWidth(320));
+
                 ImGui::InputTextWithHint("##EnvironmentPath", "HDR / KTX / DDS file path", m_environmentPath,
                                          sizeof(m_environmentPath));
 
@@ -153,12 +137,10 @@ private:
 
             if (!editor.GetEnvironmentError().empty())
             {
-                ImGui::TextWrapped("%s", editor.GetEnvironmentError().c_str());
+                DrawStatusText(GetEditorPalette().error, editor.GetEnvironmentError().c_str());
             }
 
-            ImGui::TextDisabled("HDR panorama or floating-point cubemap");
-
-            ImGui::TextWrapped("Preview settings apply across scenes for this session.");
+            DrawHint("HDR panorama or floating-point cubemap. Preview settings apply across scenes for this session.");
         }
     }
 
@@ -211,7 +193,7 @@ private:
 
             if (draft.lights.empty())
             {
-                ImGui::TextUnformatted("No lights");
+                ImGui::TextDisabled("No lights");
             }
 
             const char* origins[] = {"glTF", "Manual", "Side preset", "Corner preset"};
@@ -224,7 +206,10 @@ private:
 
                 ImGui::PushID(static_cast<int>(entry.id));
 
-                const std::string label = std::string(origins[static_cast<int>(entry.origin)]) + " " + std::to_string(entry.id);
+                // The visible title follows type and state; the ID keeps the node open while they change.
+                const std::string label =
+                    fmt::format("{} {} | {}{}###Light", GetLightTypeName(entry.light.type), entry.id,
+                                origins[static_cast<int>(entry.origin)], entry.light.enabled ? "" : " | off");
 
                 if (ImGui::TreeNode(label.c_str()))
                 {
@@ -285,7 +270,7 @@ private:
 
             changed |= ImGui::DragFloat(PropertyLabel("Marker size").c_str(), &draft.lightMarkerSize, 0.001f);
 
-            ImGui::TextWrapped("Enable Move lights in the Scene toolbar to drag point and spot lights in the viewport.");
+            DrawHint("Enable Move lights in the Scene toolbar to drag point and spot lights in the viewport.");
 
             ImGui::SeparatorText("Light ball - GI test");
 
@@ -337,10 +322,10 @@ private:
                 changed           = true;
             }
 
-            ImGui::TextWrapped(
+            DrawHint(
                 "Disable Follow camera to hold the ball in place. Range, radius and distance use normalized scene units (scene span = 1). Range and hold distance must exceed the radius.");
 
-            ImGui::TextWrapped(
+            DrawHint(
                 "Lights nearby surfaces in every direction. Select PBR + voxel GI and enable Analytic lighting for bounce light. Mesh shadows include the ball; moving it updates shadows and GI radiance.");
 
             if (changed)
@@ -371,7 +356,7 @@ private:
                 changed                      = true;
             }
 
-            ImGui::TextWrapped(
+            DrawHint(
                 "Mesh shadows affect direct lights in PBR + voxel GI and update immediately. Environment lighting and voxel occlusion are independent.");
 
             changed                      |= ImGui::Checkbox("Mesh shadows", &settings.cone.shadows);
@@ -382,7 +367,7 @@ private:
 
             settings.shadowMapResolution  = static_cast<uint32_t>(resolution);
 
-            ImGui::TextWrapped("Map size changes require Apply.");
+            DrawHint("Map size changes require Apply.");
 
             HeapVector<rc::SceneLight> lights;
 
@@ -398,8 +383,8 @@ private:
 
             if (faces == 0)
             {
-                ImGui::TextWrapped(
-                    "No shadow-casting lights. Add one under Lighting or enable Light ball to see mesh shadows.");
+                DrawStatusText(GetEditorPalette().warning,
+                               "No shadow-casting lights. Add one under Lighting or enable Light ball to see mesh shadows.");
             }
         }
 
@@ -438,9 +423,9 @@ private:
 
             changed |= ImGui::SliderFloat(PropertyLabel("GI distance").c_str(), &cone.maxDistanceGridLengths, 0.01f, 2.0f);
 
-            ImGui::TextDisabled("GI distance is measured in grid lengths.");
+            DrawHint("GI distance is measured in grid lengths.");
 
-            ImGui::TextUnformatted("Indirect lighting contributions:");
+            ImGui::SeparatorText("Indirect lighting contributions");
 
             changed |= ImGui::Checkbox("Analytic lights into GI", &cone.analyticLighting);
 
@@ -448,7 +433,7 @@ private:
 
             changed |= ImGui::Checkbox("Emissive into GI", &cone.emissiveLighting);
 
-            ImGui::TextWrapped("These toggles do not disable direct lighting, specular environment lighting or the skybox.");
+            DrawHint("These toggles do not disable direct lighting, specular environment lighting or the skybox.");
         }
 
         if (ImGui::CollapsingHeader("GI resources"))
@@ -507,8 +492,7 @@ private:
 
             ImGui::Text("GPU committed: %.1f MiB", double(snapshot.memory.deviceLocalBytes) / (1024.0 * 1024.0));
 
-            ImGui::TextWrapped(
-                "Apply validates resources before rebuilding. A later GPU allocation failure is reported as a fallback.");
+            DrawHint("Apply validates resources before rebuilding. A later GPU allocation failure is reported as a fallback.");
         }
 
         if (changed)
@@ -561,7 +545,7 @@ private:
             {
                 const std::string selected = debug.lightId == 0 ? "Select light" : std::to_string(debug.lightId);
 
-                if (ImGui::BeginCombo("Shadow light", selected.c_str()))
+                if (ImGui::BeginCombo(PropertyLabel("Shadow light").c_str(), selected.c_str()))
                 {
                     for (const rc::RenderingLight& light : draft.lights)
                     {
@@ -632,7 +616,7 @@ private:
 
                 debug.slice = static_cast<uint32_t>(slice);
 
-                ImGui::TextDisabled("Surface albedo: mip 0 (only available mip)");
+                DrawHint("Surface albedo: mip 0 (only available mip)");
             }
 
             if (changed)
@@ -648,7 +632,7 @@ private:
             }
             else
             {
-                ImGui::TextWrapped("Unavailable: %s", snapshot.debug.reason.c_str());
+                DrawStatusText(GetEditorPalette().warning, ("Unavailable: " + snapshot.debug.reason).c_str());
             }
         }
     }
@@ -657,11 +641,19 @@ private:
     {
         EditorController& editor = context.editor;
 
-        ImGui::PushItemWidth(std::min(EditorControlWidth(200), ImGui::GetContentRegionAvail().x * 0.56f));
+        // The file name fits a docked panel; the tooltip shows the full path.
+        const std::string& scenePath = editor.GetRenderingState().GetDraft().scenePath;
 
-        ImGui::TextWrapped("Scene: %s", editor.GetRenderingState().GetDraft().scenePath.empty()
-                                            ? "None"
-                                            : editor.GetRenderingState().GetDraft().scenePath.c_str());
+        ImGui::TextDisabled("Scene");
+
+        ImGui::SameLine();
+
+        ImGui::TextUnformatted(scenePath.empty() ? "None" : PathToUtf8(std::filesystem::u8path(scenePath).filename()).c_str());
+
+        if (!scenePath.empty() && ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("%s", scenePath.c_str());
+        }
 
         if (ImGui::Button("Open scene..."))
         {
@@ -703,53 +695,35 @@ private:
             editor.GetCamera().SetOrthographic(projection == 1);
         }
 
-        const EditorRenderingState& state = editor.GetRenderingState();
+        const EditorRenderingState& state    = editor.GetRenderingState();
 
-        ImGui::Text("Revision: %llu / applied: %llu", static_cast<unsigned long long>(state.GetRevision()),
-                    static_cast<unsigned long long>(state.GetAppliedRevision()));
-
-        if (!state.GetError().empty())
-        {
-            ImGui::TextWrapped("%s", state.GetError().c_str());
-        }
-
-        const EditorRenderSnapshot snapshot = context.editor.GetViewport().GetSnapshot();
+        const EditorRenderSnapshot& snapshot = GetRenderSnapshot(context);
 
         if (snapshot.debug.output == rc::DebugOutput::eFinal || snapshot.debug.output == rc::DebugOutput::eDepth)
         {
-            ImGui::Text("Effective algorithm: %s",
-                        snapshot.status.effective == rc::RenderAlgorithm::eVoxelGI ? "PBR + voxel GI" : "PBR");
+            ImGui::TextDisabled("Effective algorithm: %s", GetRenderAlgorithmName(snapshot.status.effective));
         }
         else
         {
-            ImGui::TextUnformatted("Inspecting diagnostic output");
+            ImGui::TextDisabled("Inspecting diagnostic output");
         }
 
-        DrawLights(editor);
+        if (!state.GetError().empty())
+        {
+            DrawStatusText(GetEditorPalette().error, state.GetError().c_str());
+        }
 
-        DrawEnvironment(context);
-
-        DrawGI(editor, snapshot);
-
-        DrawDebug(editor, snapshot);
-
-        const rc::RenderView& view = context.editor.GetViewport().GetRenderView();
-
-        ImGui::Text("Scene target: %u x %u", view.width, view.height);
-
-        ImGui::TextUnformatted("SDR | single sample | independent editor camera");
-
-        ImGui::TextWrapped(
-            "Surface picking includes opaque and alpha-masked triangles. Blended/transmissive surfaces, points and lines are excluded. Animations are frozen.");
-
+        // Problems stay above the sections, where they are seen without scrolling.
         if (snapshot.requestedMode != snapshot.renderedMode)
         {
-            ImGui::TextWrapped("PBR fallback: %s", snapshot.status.fallbackReason.c_str());
+            DrawStatusText(GetEditorPalette().warning, ("PBR fallback: " + snapshot.status.fallbackReason).c_str());
 
             if (ImGui::Button("Retry settings"))
             {
                 editor.StageRenderingSettings(editor.GetRenderingState().GetDraft(), true);
             }
+
+            SameLineIfFits(ImGui::CalcTextSize("Restore last working setup").x + ImGui::GetStyle().FramePadding.x * 2);
 
             ImGui::BeginDisabled(!editor.CanRestoreRenderingSettings());
 
@@ -761,7 +735,27 @@ private:
             ImGui::EndDisabled();
         }
 
-        ImGui::PopItemWidth();
+        ImGui::Spacing();
+
+        DrawLights(editor);
+
+        DrawEnvironment(context);
+
+        DrawGI(editor, snapshot);
+
+        DrawDebug(editor, snapshot);
+
+        if (ImGui::CollapsingHeader("Viewer info"))
+        {
+            const rc::RenderView& view = context.editor.GetViewport().GetRenderView();
+
+            ImGui::Text("Scene target: %u x %u", view.width, view.height);
+
+            ImGui::TextUnformatted("SDR | single sample | independent editor camera");
+
+            DrawHint(
+                "Surface picking includes opaque and alpha-masked triangles. Blended/transmissive surfaces, points and lines are excluded. Animations are frozen.");
+        }
     }
 
     void DrawContents(EditorContext& context) override
@@ -774,8 +768,8 @@ private:
         const float buttonRows = ImGui::GetContentRegionAvail().x >= buttonsWidth ? 1.0f : 2.0f;
 
         // Reserve the same footer height for pending and applied states, including wrapped buttons.
-        const float footerHeight = ImGui::GetTextLineHeightWithSpacing() + buttonRows * ImGui::GetFrameHeightWithSpacing()
-                                 + 2 * style.ItemSpacing.y + 1;
+        const float footerHeight   = ImGui::GetTextLineHeightWithSpacing() + buttonRows * ImGui::GetFrameHeightWithSpacing()
+                                   + 2 * style.ItemSpacing.y + 1;
 
         const float settingsHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y - footerHeight);
 
@@ -793,20 +787,39 @@ private:
 
         const EditorRenderingState& state = editor.GetRenderingState();
 
-        const bool pending                = state.IsPending();
+        // The status bar reports the same status, so both always agree. Live edits apply on
+        // the next frame and report Applied, so text and buttons stay steady during drags.
+        const EditorRenderingApplyStatus status = state.GetApplyStatus();
 
-        ImGui::TextDisabled("%s", !pending                     ? "All changes applied"
-                                  : state.NeedsResourceApply() ? "Resource changes pending Apply"
-                                                               : "Changes pending");
+        const bool attention                    = status != EditorRenderingApplyStatus::Applied;
 
-        ImGui::BeginDisabled(!pending);
+        ImGui::TextColored(attention ? GetEditorPalette().warning : style.Colors[ImGuiCol_TextDisabled], "%s",
+                           status == EditorRenderingApplyStatus::Failed          ? "Rendering settings error"
+                           : status == EditorRenderingApplyStatus::AwaitingApply ? "Resource changes pending Apply"
+                                                                                 : "All changes applied");
+
+        if (ImGui::IsItemHovered())
+        {
+            const std::string error = state.GetError().empty() ? "" : state.GetError() + "\n";
+
+            ImGui::SetTooltip("%sRevision %llu, applied %llu", error.c_str(),
+                              static_cast<unsigned long long>(state.GetRevision()),
+                              static_cast<unsigned long long>(state.GetAppliedRevision()));
+        }
+
+        // Apply stays available after a failed application so pending changes can be retried.
+        ImGui::BeginDisabled(!state.IsPending() || status == EditorRenderingApplyStatus::Applied);
 
         if (ImGui::Button("Apply"))
         {
             editor.StageRenderingSettings(state.GetDraft(), true);
         }
 
+        ImGui::EndDisabled();
+
         SameLineIfFits(ImGui::CalcTextSize("Revert").x + style.FramePadding.x * 2);
+
+        ImGui::BeginDisabled(!attention);
 
         if (ImGui::Button("Revert"))
         {

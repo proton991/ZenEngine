@@ -1,5 +1,6 @@
 #include "InspectorNavigationWidget.h"
 #include "EditorShortcuts.h"
+#include "EditorWidgets.h"
 #include "imgui.h"
 
 namespace zen::editor
@@ -8,23 +9,7 @@ namespace
 {
 std::string TabTitle(const InspectorTab& tab, const EditorScene& scene)
 {
-    std::string title = "Selection";
-
-    if (tab.id != 0)
-    {
-        const InspectionTarget target = tab.GetTarget();
-
-        if (target.node.generation != 0)
-        {
-            title = scene.GetNodeDisplayName(target.node);
-        }
-        else
-        {
-            title = scene.GetAssets().Describe(target.asset).name;
-        }
-    }
-
-    return title;
+    return tab.id == 0 ? "Selection" : GetInspectionTargetName(scene, tab.GetTarget());
 }
 
 void DrawHistoryButton(EditorActions& registry, const char* id, ImGuiDir direction)
@@ -46,13 +31,7 @@ void DrawHistoryButton(EditorActions& registry, const char* id, ImGuiDir directi
 
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         {
-            const std::string shortcut = FormatShortcut(action->shortcut);
-
-            const std::string tooltip  = !enabled         ? action->disabledReason
-                                       : shortcut.empty() ? action->label
-                                                          : action->label + " (" + shortcut + ")";
-
-            ImGui::SetTooltip("%s", tooltip.c_str());
+            ImGui::SetTooltip("%s", FormatActionTooltip(*action, enabled).c_str());
         }
     }
 }

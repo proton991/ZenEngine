@@ -1,5 +1,6 @@
 #include "Editor/ImGui/EditorWorkspace.h"
 #include "EditorShortcuts.h"
+#include "EditorWidgets.h"
 #include "SceneLoadingDialog.h"
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorTheme.h"
@@ -120,33 +121,44 @@ void DrawActionMenuItem(EditorActions& registry, const char* id)
     }
 }
 
-void DrawActionButton(EditorActions& registry, const char* id, EditorIcon icon)
+// Toolbar buttons show only their icon unless labeled; the tooltip names the action,
+// its shortcut and, while disabled, the reason.
+void DrawActionButton(EditorActions& registry, const char* id, EditorIcon icon, bool labeled = false)
 {
     const EditorAction* action = registry.Find(id);
 
     if (action != nullptr)
     {
-        const bool enabled         = registry.IsEnabled(id);
+        const bool enabled        = registry.IsEnabled(id);
 
-        const std::string shortcut = FormatShortcut(action->shortcut);
+        const std::string tooltip = FormatActionTooltip(*action, enabled);
 
-        // Toolbar captions drop the menu ellipsis.
-        std::string label = action->label;
+        const bool clicked = labeled ? EditorToolButton(GetActionCaption(*action).c_str(), icon, enabled, tooltip.c_str())
+                                     : EditorIconButton(id, icon, enabled, tooltip.c_str());
 
-        if (label.ends_with("..."))
-        {
-            label.resize(label.size() - 3);
-        }
-
-        const std::string tooltip = !enabled         ? action->disabledReason
-                                  : shortcut.empty() ? label
-                                                     : label + " (" + shortcut + ")";
-
-        if (EditorToolButton(label.c_str(), icon, enabled, tooltip.c_str()))
+        if (clicked)
         {
             registry.Execute(id);
         }
     }
+}
+
+constexpr int kBarStyleCount = 3;
+
+// Square, edge-to-edge bars; the minimum window size would otherwise make the status
+// bar taller than its line of text.
+void PushBarStyle(ImVec2 padding)
+{
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, padding);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1, 1));
+}
+
+float ToolbarButtonsWidth(int buttons)
+{
+    return float(buttons) * ImGui::GetFrameHeight() + float(buttons - 1) * ImGui::GetStyle().ItemSpacing.x;
 }
 } // namespace
 
@@ -641,7 +653,8 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
 {
     EditorActions& registry = context.editor.GetActions();
 
-    DrawActionButton(registry, actions::Open, EditorIcon::Open);
+    // Open is the only labeled button: it is the first thing to do in an empty editor.
+    DrawActionButton(registry, actions::Open, EditorIcon::Open, true);
 
     ImGui::SameLine();
 
@@ -655,9 +668,23 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
 
     DrawActionButton(registry, actions::Redo, EditorIcon::Redo);
 
-    if (ImGui::GetWindowWidth() - (ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x) > 280 * EditorScale())
+    const float scale    = EditorScale();
+
+    const float runWidth = ToolbarButtonsWidth(3);
+
+    const float editEnd  = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
+
+    const float padding  = ImGui::GetStyle().WindowPadding.x;
+
+    // Run controls are centered in the window; narrow windows place them after the edit
+    // group, and windows too narrow for them omit them.
+    const float centeredX = (ImGui::GetWindowWidth() - runWidth) * 0.5f;
+
+    const float gap       = 24 * scale;
+
+    if (centeredX >= editEnd + gap || editEnd + gap + runWidth <= ImGui::GetWindowWidth() - padding)
     {
-        EditorToolbarSeparator();
+        ImGui::SameLine(std::max(centeredX, editEnd + gap));
 
         DrawActionButton(registry, actions::Play, EditorIcon::Play);
 
@@ -672,9 +699,9 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
 
     const char* badge  = "SCENE VIEWER";
 
-    const float badgeX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(badge).x - 18 * EditorScale();
+    const float badgeX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(badge).x - padding;
 
-    if (badgeX > ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + 35 * EditorScale())
+    if (badgeX > ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + gap)
     {
         ImGui::SameLine(badgeX);
 
@@ -686,7 +713,105 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
 
 void EditorWorkspace::DrawStatusBar(EditorContext& context)
 {
-    ImGui::TextDisabled("%s", context.editor.GetLoadState().IsActive() ? "Opening scene..." : "Ready");
+    EditorController& editor     = context.editor;
+
+    const SceneLoadState& load   = editor.GetLoadState();
+
+    const EditorPalette& palette = GetEditorPalette();
+
+    if (load.IsActive())
+    {
+        ImGui::TextDisabled("Opening %s...", PathToUtf8(std::filesystem::u8path(load.path).filename()).c_str());
+    }
+    else if (load.stage == SceneLoadStage::Failed)
+    {
+        // Matches the failure dialog: dismissing it returns to the scene that stayed open.
+        ImGui::TextColored(palette.error, "Could not open scene");
+
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("%s", editor.GetError().c_str());
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled("Ready");
+    }
+
+    const EditorSelection& selection = editor.GetSelection();
+
+    std::string selected;
+
+    if (selection.GetAsset().generation != 0)
+    {
+        selected = std::string(GetAssetKindName(selection.GetAsset().kind, false)) + ": "
+                 + GetInspectionTargetName(editor.GetScene(), {{}, selection.GetAsset()});
+    }
+    else if (selection.GetNode().generation != 0)
+    {
+        selected = "Node: " + GetInspectionTargetName(editor.GetScene(), {selection.GetNode(), {}});
+    }
+
+    // Right side: the rendering path actually drawn and rendering problems to act on.
+    const EditorRenderSnapshot& snapshot    = GetRenderSnapshot(context);
+
+    const EditorRenderingState& rendering   = editor.GetRenderingState();
+
+    const EditorRenderingApplyStatus status = rendering.GetApplyStatus();
+
+    const bool fallback                     = snapshot.requestedMode != snapshot.renderedMode;
+
+    const char* mode         = editor.GetViewport().HasScene() ? GetRenderAlgorithmName(snapshot.status.effective) : "";
+
+    const char* notice       = fallback                                            ? "PBR fallback"
+                             : status == EditorRenderingApplyStatus::Failed        ? "Rendering settings error"
+                             : status == EditorRenderingApplyStatus::AwaitingApply ? "Rendering changes await Apply"
+                                                                                   : "";
+
+    const ImGuiStyle& style  = ImGui::GetStyle();
+
+    const float spacing      = 2 * style.ItemSpacing.x;
+
+    const float rightWidth   = ImGui::CalcTextSize(mode).x + (notice[0] != 0 ? ImGui::CalcTextSize(notice).x + spacing : 0);
+
+    const float rightX       = ImGui::GetWindowWidth() - style.WindowPadding.x - rightWidth;
+
+    const float stateEnd     = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
+
+    const bool showRight     = rightWidth > 0 && rightX >= stateEnd + spacing;
+
+    const float selectionEnd = showRight ? rightX - spacing : ImGui::GetWindowWidth() - style.WindowPadding.x;
+
+    if (!selected.empty() && selectionEnd > stateEnd + 2 * spacing)
+    {
+        ImGui::SameLine(0, spacing);
+
+        // Clip a long name before the right-hand readout instead of overlapping it.
+        const float width = ImGui::GetWindowPos().x + selectionEnd - ImGui::GetCursorScreenPos().x;
+
+        DrawClippedText(selected.c_str(), ImVec2(width, ImGui::GetTextLineHeight()), ImGui::GetColorU32(ImGuiCol_TextDisabled));
+    }
+
+    if (showRight)
+    {
+        ImGui::SameLine(rightX);
+
+        if (notice[0] != 0)
+        {
+            ImGui::TextColored(palette.warning, "%s", notice);
+
+            const std::string& reason = fallback ? snapshot.status.fallbackReason : rendering.GetError();
+
+            if (!reason.empty() && ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("%s", reason.c_str());
+            }
+
+            ImGui::SameLine(0, spacing);
+        }
+
+        ImGui::TextDisabled("%s", mode);
+    }
 }
 
 void EditorWorkspace::DrawDialogs(EditorContext& context)
@@ -740,11 +865,19 @@ void EditorWorkspace::Draw(EditorContext& context)
 
     DrawDialogs(context);
 
-    ImGuiViewport* viewport   = ImGui::GetMainViewport();
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    const float toolbarHeight = ImGui::GetFrameHeight() + 20.0f * EditorScale();
+    const float scale       = EditorScale();
 
-    const float statusHeight  = 32.0f * EditorScale();
+    // Thin bars leave the height to the dock space: one row of controls in the toolbar,
+    // one line of text in the status bar.
+    const ImVec2 toolbarPadding(10 * scale, 6 * scale);
+
+    const ImVec2 statusPadding(10 * scale, 0.5f * (ImGui::GetFrameHeight() - ImGui::GetTextLineHeight()));
+
+    const float toolbarHeight = ImGui::GetFrameHeight() + 2 * toolbarPadding.y;
+
+    const float statusHeight  = ImGui::GetFrameHeight();
 
     const ImGuiWindowFlags barFlags =
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
@@ -753,7 +886,13 @@ void EditorWorkspace::Draw(EditorContext& context)
 
     ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, toolbarHeight));
 
-    if (ImGui::Begin("Toolbar###Toolbar", nullptr, barFlags))
+    PushBarStyle(toolbarPadding);
+
+    const bool toolbar = ImGui::Begin("Toolbar###Toolbar", nullptr, barFlags);
+
+    ImGui::PopStyleVar(kBarStyleCount);
+
+    if (toolbar)
     {
         DrawToolbar(context);
     }
@@ -795,7 +934,13 @@ void EditorWorkspace::Draw(EditorContext& context)
 
     ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, statusHeight));
 
-    if (ImGui::Begin("Status###Status", nullptr, barFlags))
+    PushBarStyle(statusPadding);
+
+    const bool status = ImGui::Begin("Status###Status", nullptr, barFlags);
+
+    ImGui::PopStyleVar(kBarStyleCount);
+
+    if (status)
     {
         DrawStatusBar(context);
     }

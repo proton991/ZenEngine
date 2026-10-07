@@ -371,4 +371,60 @@ TEST(RenderingSettings, SceneChangeResetsLightsButPreservesPendingGIAndEnvironme
 
     EXPECT_EQ(state.GetDraft().environment.texturePath, "studio.hdr");
 }
+
+TEST(RenderingSettings, ApplyStatusIgnoresLiveEditsAndReportsWaitingAndFailedChanges)
+{
+    EditorRenderingState state;
+
+    state.Initialize({});
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Applied);
+
+    // A scalar edit is pending only until the next update applies it.
+    rc::RenderingSettings draft     = state.GetDraft();
+
+    draft.gi.cone.indirectIntensity = 2.0f;
+
+    ASSERT_TRUE(state.Stage(draft));
+
+    EXPECT_TRUE(state.IsPending());
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Applied);
+
+    draft.gi.resolution = 64;
+
+    ASSERT_TRUE(state.Stage(draft));
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::AwaitingApply);
+
+    // Publishing the preview keeps the resource change waiting.
+    state.CommitPreview();
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::AwaitingApply);
+
+    state.Commit();
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Applied);
+
+    draft.environment.intensity = -1.0f;
+
+    EXPECT_FALSE(state.Stage(draft));
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Failed);
+
+    state.Revert();
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Applied);
+
+    // Failures outside a draft, such as a rejected light, are reported without a pending edit.
+    state.SetError("Cannot add light: maximum 32 lights.");
+
+    EXPECT_FALSE(state.IsPending());
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Failed);
+
+    state.Revert();
+
+    EXPECT_EQ(state.GetApplyStatus(), EditorRenderingApplyStatus::Applied);
+}
 } // namespace zen::editor

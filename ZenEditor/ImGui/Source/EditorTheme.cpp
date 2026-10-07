@@ -25,7 +25,9 @@ const EditorPalette& GetEditorPalette()
                                           .closeButtonHover  = IM_COL32(190, 50, 58, 255),
                                           .axis              = {Shade(0xe85957), Shade(0x70c763), Shade(0x59a1f0)},
                                           .axisLabel         = IM_COL32(16, 20, 26, 255),
-                                          .previewBackground = IM_COL32(27, 32, 38, 255)};
+                                          .previewBackground = IM_COL32(27, 32, 38, 255),
+                                          .warning           = Shade(0xe8b85c),
+                                          .error             = Shade(0xf07178)};
 
     return palette;
 }
@@ -59,15 +61,16 @@ void ApplyEditorTheme(float scale)
 
     ImGui::StyleColorsDark(&style);
 
-    style.WindowPadding    = ImVec2(14, 12);
+    // Compact enough that docked panels show several properties at 150-200% scale.
+    style.WindowPadding    = ImVec2(12, 10);
 
-    style.FramePadding     = ImVec2(9, 5);
+    style.FramePadding     = ImVec2(8, 4);
 
-    style.ItemSpacing      = ImVec2(10, 8);
+    style.ItemSpacing      = ImVec2(8, 6);
 
     style.ItemInnerSpacing = ImVec2(6, 4);
 
-    style.CellPadding      = ImVec2(4, 6);
+    style.CellPadding      = ImVec2(6, 4);
 
     style.IndentSpacing    = 18;
 
@@ -97,33 +100,36 @@ void ApplyEditorTheme(float scale)
 
     style.DockingSeparatorSize               = 4;
 
-    style.DisabledAlpha                      = 0.5f;
+    // Each tab has its own close button; a second one per dock node closes every tab.
+    style.DockingNodeHasCloseButton = false;
 
-    style.SeparatorTextBorderSize            = 1;
+    style.DisabledAlpha             = 0.5f;
 
-    style.SeparatorTextPadding               = ImVec2(0, 8);
+    style.SeparatorTextBorderSize   = 1;
 
-    ImVec4* colors                           = style.Colors;
+    style.SeparatorTextPadding      = ImVec2(0, 8);
 
-    colors[ImGuiCol_Text]                    = Shade(0xe8edf5);
+    ImVec4* colors                  = style.Colors;
 
-    colors[ImGuiCol_TextDisabled]            = Shade(0x9ba8bb);
+    colors[ImGuiCol_Text]           = Shade(0xe8edf5);
 
-    colors[ImGuiCol_WindowBg]                = Shade(0x1b1f28);
+    colors[ImGuiCol_TextDisabled]   = Shade(0x9ba8bb);
 
-    colors[ImGuiCol_ChildBg]                 = Shade(0x222732);
+    colors[ImGuiCol_WindowBg]       = Shade(0x1b1f28);
 
-    colors[ImGuiCol_PopupBg]                 = Shade(0x252b37);
+    colors[ImGuiCol_ChildBg]        = Shade(0x222732);
 
-    colors[ImGuiCol_Border]                  = Shade(0x3a4557, 0.65f);
+    colors[ImGuiCol_PopupBg]        = Shade(0x252b37);
 
-    colors[ImGuiCol_BorderShadow]            = Shade(0x000000, 0);
+    colors[ImGuiCol_Border]         = Shade(0x3a4557, 0.65f);
 
-    colors[ImGuiCol_FrameBg]                 = Shade(0x131720);
+    colors[ImGuiCol_BorderShadow]   = Shade(0x000000, 0);
 
-    colors[ImGuiCol_FrameBgHovered]          = Shade(0x29364a);
+    colors[ImGuiCol_FrameBg]        = Shade(0x131720);
 
-    colors[ImGuiCol_FrameBgActive]           = Shade(0x31445e);
+    colors[ImGuiCol_FrameBgHovered] = Shade(0x29364a);
+
+    colors[ImGuiCol_FrameBgActive]  = Shade(0x31445e);
 
     colors[ImGuiCol_TitleBg] = colors[ImGuiCol_TitleBgCollapsed] = Shade(0x151922);
 
@@ -153,31 +159,50 @@ void ApplyEditorTheme(float scale)
 
     colors[ImGuiCol_Tab] = colors[ImGuiCol_TabDimmed] = Shade(0x151922);
 
-    colors[ImGuiCol_TabSelected] = colors[ImGuiCol_TabDimmedSelected] = Shade(0x2c3545);
+    colors[ImGuiCol_TabSelected]                      = Shade(0x2c3545);
 
-    colors[ImGuiCol_TabHovered]                                       = Shade(0x354762);
+    colors[ImGuiCol_TabDimmedSelected]                = Shade(0x232a37);
 
-    colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_TabDimmedSelectedOverline] = Shade(0x739fdf);
+    colors[ImGuiCol_TabHovered]                       = Shade(0x354762);
 
-    colors[ImGuiCol_DockingPreview]                                                   = Shade(0x739fdf, 0.55f);
+    // Only the focused panel's tab carries the accent; shortcuts and navigation follow focus.
+    colors[ImGuiCol_TabSelectedOverline]       = Shade(0x739fdf);
 
-    colors[ImGuiCol_DockingEmptyBg]                                                   = Shade(0x11141b);
+    colors[ImGuiCol_TabDimmedSelectedOverline] = Shade(0x3a4557, 0.65f);
 
-    colors[ImGuiCol_ScrollbarBg]                                                      = Shade(0x171b23);
+    colors[ImGuiCol_DockingPreview]            = Shade(0x739fdf, 0.55f);
 
-    colors[ImGuiCol_ScrollbarGrab]                                                    = Shade(0x3b4556);
+    colors[ImGuiCol_DockingEmptyBg]            = Shade(0x11141b);
 
-    colors[ImGuiCol_ScrollbarGrabHovered]                                             = Shade(0x53627a);
+    colors[ImGuiCol_ScrollbarBg]               = Shade(0x171b23);
 
-    colors[ImGuiCol_ScrollbarGrabActive]                                              = Shade(0x6b82a3);
+    colors[ImGuiCol_ScrollbarGrab]             = Shade(0x3b4556);
 
-    colors[ImGuiCol_TableHeaderBg]                                                    = Shade(0x2c3545);
+    colors[ImGuiCol_ScrollbarGrabHovered]      = Shade(0x53627a);
+
+    colors[ImGuiCol_ScrollbarGrabActive]       = Shade(0x6b82a3);
+
+    colors[ImGuiCol_TableHeaderBg]             = Shade(0x2c3545);
 
     colors[ImGuiCol_TableBorderStrong] = colors[ImGuiCol_TableBorderLight] = Shade(0x343d4d);
 
     colors[ImGuiCol_TextSelectedBg]                                        = Shade(0x3b5880, 0.8f);
 
-    colors[ImGuiCol_NavCursor]                                             = Shade(0x8bb8ff);
+    colors[ImGuiCol_TextLink] = colors[ImGuiCol_NavCursor] = colors[ImGuiCol_DragDropTarget] = Shade(0x8bb8ff);
+
+    colors[ImGuiCol_PlotHistogram]                                                           = Shade(0x8bb8ff);
+
+    colors[ImGuiCol_PlotHistogramHovered]                                                    = Shade(0xb0d0ff);
+
+    colors[ImGuiCol_ResizeGrip]                                                              = Shade(0x739fdf, 0.2f);
+
+    colors[ImGuiCol_ResizeGripHovered]                                                       = Shade(0x739fdf, 0.6f);
+
+    colors[ImGuiCol_ResizeGripActive]                                                        = Shade(0x8bb8ff, 0.9f);
+
+    colors[ImGuiCol_TreeLines]                                                               = Shade(0x3a4557);
+
+    colors[ImGuiCol_ModalWindowDimBg]                                                        = Shade(0x0b0d12, 0.6f);
 
     style.ScaleAllSizes(scale);
 }
@@ -282,21 +307,41 @@ void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color)
     }
 }
 
-bool EditorToolButton(const char* label, EditorIcon icon, bool enabled, const char* tooltip)
+namespace
 {
+// Sizes the button from the measured icon and label instead of padding the caption
+// with spaces, so the icon never overlaps the text at any font size.
+bool DrawIconButton(const char* id, const char* label, EditorIcon icon, bool enabled, const char* tooltip)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    const float iconSize    = 14.0f * EditorScale();
+
+    const float height      = ImGui::GetFrameHeight();
+
+    const float labelWidth  = label != nullptr ? style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x : 0.0f;
+
+    const float width       = label != nullptr ? 2 * style.FramePadding.x + iconSize + labelWidth : height;
+
     ImGui::BeginDisabled(!enabled);
 
-    const std::string caption = std::string("     ") + label;
+    const bool clicked = ImGui::Button(id, ImVec2(width, height));
 
-    const bool clicked        = ImGui::Button(caption.c_str());
+    const ImVec2 start = ImGui::GetItemRectMin();
 
-    const ImVec2 start        = ImGui::GetItemRectMin();
+    const ImVec2 iconMin(label != nullptr ? start.x + style.FramePadding.x : start.x + (width - iconSize) * 0.5f,
+                         start.y + (height - iconSize) * 0.5f);
 
-    const float size          = 14.0f * EditorScale();
+    // Colors are read before EndDisabled so disabled buttons are dimmed.
+    DrawEditorIcon(icon, iconMin, iconSize,
+                   enabled ? ImGui::GetColorU32(GetEditorPalette().brand) : ImGui::GetColorU32(ImGuiCol_Text));
 
-    DrawEditorIcon(icon,
-                   ImVec2(start.x + ImGui::GetStyle().FramePadding.x, start.y + (ImGui::GetItemRectSize().y - size) * 0.5f),
-                   size, enabled ? ImGui::GetColorU32(GetEditorPalette().brand) : ImGui::GetColorU32(ImGuiCol_Text));
+    if (label != nullptr)
+    {
+        ImGui::GetWindowDrawList()->AddText(
+            ImVec2(iconMin.x + iconSize + style.ItemInnerSpacing.x, start.y + style.FramePadding.y),
+            ImGui::GetColorU32(ImGuiCol_Text), label);
+    }
 
     ImGui::EndDisabled();
 
@@ -307,18 +352,39 @@ bool EditorToolButton(const char* label, EditorIcon icon, bool enabled, const ch
 
     return clicked;
 }
+} // namespace
+
+bool EditorToolButton(const char* label, EditorIcon icon, bool enabled, const char* tooltip)
+{
+    const std::string id = std::string("##") + label;
+
+    return DrawIconButton(id.c_str(), label, icon, enabled, tooltip);
+}
+
+bool EditorIconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip)
+{
+    const std::string hidden = std::string("##") + id;
+
+    return DrawIconButton(hidden.c_str(), nullptr, icon, enabled, tooltip);
+}
 
 void EditorToolbarSeparator()
 {
-    ImGui::SameLine(0, 10 * EditorScale());
+    const float gap = 8 * EditorScale();
 
+    ImGui::SameLine(0, gap);
+
+    // Inset so the rule reads as a divider rather than a border.
     const ImVec2 start = ImGui::GetCursorScreenPos();
 
-    ImGui::GetWindowDrawList()->AddLine(start, ImVec2(start.x, start.y + ImGui::GetFrameHeight()),
+    const float inset  = ImGui::GetStyle().FramePadding.y;
+
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(start.x, start.y + inset),
+                                        ImVec2(start.x, start.y + ImGui::GetFrameHeight() - inset),
                                         ImGui::GetColorU32(ImGuiCol_Border));
 
     ImGui::Dummy(ImVec2(1, ImGui::GetFrameHeight()));
 
-    ImGui::SameLine(0, 10 * EditorScale());
+    ImGui::SameLine(0, gap);
 }
 } // namespace zen::editor

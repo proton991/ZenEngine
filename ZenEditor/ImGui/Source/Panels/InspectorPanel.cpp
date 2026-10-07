@@ -73,6 +73,30 @@ void DrawNodeLinks(EditorContext& context, const char* label, const HeapVector<N
     }
 }
 
+// The icon and name of the inspected object, its summary line and a separator.
+void DrawInspectorHeader(EditorIcon icon, const std::string& name, const std::string& summary)
+{
+    const float scale   = EditorScale();
+
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+
+    DrawEditorIcon(icon, ImVec2(origin.x, origin.y + 2 * scale), 18 * scale, GetEditorPalette().iconStrong);
+
+    ImGui::Dummy(ImVec2(24 * scale, 22 * scale));
+
+    ImGui::SameLine();
+
+    ImGui::TextWrapped("%s", name.c_str());
+
+    ImGui::TextDisabled("%s", summary.c_str());
+
+    ImGui::Spacing();
+
+    ImGui::Separator();
+
+    ImGui::Spacing();
+}
+
 void DrawAssetInspection(EditorContext&              context,
                          PreviewImages&              previews,
                          MeshPreviewWidget&          meshPreview,
@@ -82,25 +106,9 @@ void DrawAssetInspection(EditorContext&              context,
 
     const float scale          = EditorScale();
 
-    const ImVec2 origin        = ImGui::GetCursorScreenPos();
-
-    DrawEditorIcon(GetAssetIcon(item.id.kind), ImVec2(origin.x, origin.y + 2 * scale), 18 * scale,
-                   GetEditorPalette().iconStrong);
-
-    ImGui::Dummy(ImVec2(24 * scale, 22 * scale));
-
-    ImGui::SameLine();
-
-    ImGui::TextWrapped("%s", item.name.c_str());
-
-    ImGui::TextDisabled("%s %u | Read only | %s", GetAssetKindName(item.id.kind, false), item.id.index,
-                        GetAssetDetail(item).c_str());
-
-    ImGui::Spacing();
-
-    ImGui::Separator();
-
-    ImGui::Spacing();
+    DrawInspectorHeader(
+        GetAssetIcon(item.id.kind), item.name,
+        fmt::format("{} {} | Read only | {}", GetAssetKindName(item.id.kind, false), item.id.index, GetAssetDetail(item)));
 
     if (item.id.kind == SceneAssetKind::Texture && ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -116,7 +124,7 @@ void DrawAssetInspection(EditorContext&              context,
         }
         else
         {
-            ImGui::TextDisabled("No preview for this format.");
+            DrawHint("No preview for this format.");
         }
 
         ImGui::TextWrapped("Size: %u x %u | Format: %s", item.width, item.height, GetFormatLabel(item.format).c_str());
@@ -212,7 +220,7 @@ void DrawAssetInspection(EditorContext&              context,
     {
         ImGui::TextWrapped("Duration: %.3f s | Channels: %u", item.duration, item.channels);
 
-        ImGui::TextWrapped("Playback is frozen in the viewer.");
+        DrawHint("Playback is frozen in the viewer.");
 
         DrawNodeLinks(context, "Targets", data.nodes);
     }
@@ -279,28 +287,12 @@ private:
         }
         else if (!data.valid)
         {
-            ImGui::TextWrapped("Select a node in the hierarchy, a surface in the Scene view, or an item in Assets.");
+            DrawHint("Select a node in the hierarchy, a surface in the Scene view, or an item in Assets.");
         }
         else
         {
-            const ImVec2 origin = ImGui::GetCursorScreenPos();
-
-            DrawEditorIcon(EditorIcon::Cube, ImVec2(origin.x, origin.y + 2 * EditorScale()), 18 * EditorScale(),
-                           GetEditorPalette().iconStrong);
-
-            ImGui::Dummy(ImVec2(24 * EditorScale(), 22 * EditorScale()));
-
-            ImGui::SameLine();
-
-            ImGui::TextWrapped("%s", context.editor.GetScene().GetNodeDisplayName(data.id).c_str());
-
-            ImGui::TextDisabled("Node %u | Read only | %s", data.id.index, data.visible ? "Visible" : "Hidden");
-
-            ImGui::Spacing();
-
-            ImGui::Separator();
-
-            ImGui::Spacing();
+            DrawInspectorHeader(EditorIcon::Cube, context.editor.GetScene().GetNodeDisplayName(data.id),
+                                fmt::format("Node {} | Read only | {}", data.id.index, data.visible ? "Visible" : "Hidden"));
 
             if (data.hasTransform && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
             {
@@ -369,7 +361,7 @@ private:
 
                 ImGui::TextWrapped("FOV: %.1f degrees | Near: %.4f | Far: %.3f", data.fov, data.nearPlane, data.farPlane);
 
-                ImGui::TextWrapped("The Scene view uses an independent editor camera.");
+                DrawHint("The Scene view uses an independent editor camera.");
             }
         }
     }
