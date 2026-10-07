@@ -106,7 +106,12 @@ private:
 
         if (scene.Get() == nullptr)
         {
-            ImGui::TextWrapped("Open a glTF or GLB scene with File > Open (Ctrl+O) to inspect its hierarchy.");
+            const EditorAction* open   = context.editor.GetActions().Find(actions::Open);
+
+            const std::string shortcut = open != nullptr ? FormatShortcut(open->shortcut) : "";
+
+            ImGui::TextWrapped("Open a glTF or GLB scene with File > Open%s%s%s to inspect its hierarchy.",
+                               shortcut.empty() ? "" : " (", shortcut.c_str(), shortcut.empty() ? "" : ")");
         }
         else
         {

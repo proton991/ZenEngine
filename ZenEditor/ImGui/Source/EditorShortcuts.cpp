@@ -62,7 +62,7 @@ bool IsShortcutPressed(EditorShortcut shortcut)
 
 } // namespace
 
-void HandleActionShortcuts(EditorActions& registry, EditorShortcutScope scope, bool focused)
+void HandleActionShortcuts(EditorActions& registry, EditorShortcutScope scope, bool focused, bool nativeMenuShortcuts)
 {
     const bool blocked = !focused || ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive()
                       || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
@@ -71,7 +71,12 @@ void HandleActionShortcuts(EditorActions& registry, EditorShortcutScope scope, b
 
     for (const EditorAction& action : registry.GetActions())
     {
-        if (!blocked && action.shortcutScope == scope && pressed.key == platform::Key::Unknown
+        const bool native =
+            nativeMenuShortcuts && scope == EditorShortcutScope::Global
+            && (action.shortcut.modifiers & (uint16_t(platform::KeyModifier::Control) | uint16_t(platform::KeyModifier::Super)))
+                   != 0;
+
+        if (!blocked && !native && action.shortcutScope == scope && pressed.key == platform::Key::Unknown
             && IsShortcutPressed(action.shortcut))
         {
             pressed = action.shortcut;

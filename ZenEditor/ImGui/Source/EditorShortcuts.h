@@ -5,5 +5,5 @@ namespace zen::editor
 {
 // Shared input translation for the workspace and focused views. Blocks text entry,
 // active widgets and popups; labels, bindings and availability come from the registry.
-void HandleActionShortcuts(EditorActions& registry, EditorShortcutScope scope, bool focused);
+void HandleActionShortcuts(EditorActions& registry, EditorShortcutScope scope, bool focused, bool nativeMenuShortcuts = false);
 } // namespace zen::editor

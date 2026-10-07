@@ -96,9 +96,15 @@ TEST_F(InspectorBrowsing, HistoryActionsShareAvailabilityAndDispatchOnlyWithinTh
 
     const EditorShortcut forward = registry.Find(actions::InspectorForward)->shortcut;
 
+#if defined(ZEN_MACOS)
+    EXPECT_EQ(FormatShortcut(back), "Option+Left");
+
+    EXPECT_EQ(FormatShortcut(forward), "Option+Right");
+#else
     EXPECT_EQ(FormatShortcut(back), "Alt+Left");
 
     EXPECT_EQ(FormatShortcut(forward), "Alt+Right");
+#endif
 
     EXPECT_FALSE(registry.Execute(actions::InspectorBack));
 

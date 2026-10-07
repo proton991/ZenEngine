@@ -78,6 +78,26 @@ bool DrawWindowButton(const char* label, EditorWindowAction action, bool maximiz
     return pressed;
 }
 
+EditorMenuItem MakeActionMenuItem(const EditorActions& registry, const char* id, bool blocked)
+{
+    EditorMenuItem item;
+
+    item.id = id;
+
+    if (const EditorAction* action = registry.Find(id))
+    {
+        item.label    = action->label;
+
+        item.shortcut = action->shortcut;
+
+        item.tooltip  = action->disabledReason;
+    }
+
+    item.enabled = !blocked && registry.IsEnabled(id);
+
+    return item;
+}
+
 void DrawActionMenuItem(EditorActions& registry, const char* id)
 {
     const EditorAction* action = registry.Find(id);
@@ -145,9 +165,7 @@ void EditorWorkspace::Initialize(EditorContext& context)
         panel->visible = found != saved.end() ? found->second : panel->GetDesc().visibleByDefault;
     }
 
-    context.editor.GetActions().Register({actions::ResetLayout, "Reset Layout", {}, "", nullptr, [this]() {
-                                              ResetLayout();
-                                          }});
+    context.editor.GetActions().Register({actions::ResetLayout, "Reset Layout", {}, "", nullptr, [this]() { ResetLayout(); }});
 
     std::error_code error;
 
@@ -174,6 +192,10 @@ void EditorWorkspace::Initialize(EditorContext& context)
     }
 
     m_resetLayout = !restored;
+
+    m_menuBar.Initialize();
+
+    UpdateNativeMenus(context);
 }
 
 void EditorWorkspace::Save(EditorContext& context)
@@ -224,7 +246,169 @@ void EditorWorkspace::ResetLayout()
 
 void EditorWorkspace::HandleShortcuts(EditorContext& context)
 {
-    HandleActionShortcuts(context.editor.GetActions(), EditorShortcutScope::Global, context.focused);
+    // AppKit consumes the native menu's modified shortcuts during event polling.
+    // Keep plain scene keys in ImGui, where text and widget focus can block them.
+    HandleActionShortcuts(context.editor.GetActions(), EditorShortcutScope::Global, context.focused, m_menuBar.IsEnabled());
+}
+
+void EditorWorkspace::ProcessMenuCommands(EditorContext& context)
+{
+    std::string command;
+
+    while (m_menuBar.TakeCommand(command))
+    {
+        if (command != actions::Exit && ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+        {
+            continue;
+        }
+
+        if (command.starts_with("panel:"))
+        {
+            for (const UniquePtr<EditorPanel>& panel : m_panels)
+            {
+                if (command.substr(6) == panel->GetDesc().id)
+                {
+                    panel->visible = !panel->visible;
+                }
+            }
+        }
+        else if (command.starts_with("recent:"))
+        {
+            if (context.editor.GetActions().IsEnabled(actions::Open))
+            {
+                context.editor.RequestLoad(command.substr(7));
+            }
+        }
+        else if (command == "recent.clear")
+        {
+            context.editor.GetPreferences().recentFiles.Clear();
+        }
+        else
+        {
+            // Enabled state may have changed since AppKit displayed the item.
+            context.editor.GetActions().Execute(command);
+        }
+    }
+
+    UpdateNativeMenus(context);
+}
+
+void EditorWorkspace::UpdateNativeMenus(EditorContext& context)
+{
+    if (m_menuBar.IsEnabled())
+    {
+        EditorActions& registry = context.editor.GetActions();
+
+        const bool blocked      = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+
+        EditorMenuItem separator;
+
+        separator.separator = true;
+
+        EditorMenuItem recent;
+
+        recent.label = "Open Recent";
+
+        recent.enabled =
+            !blocked && registry.IsEnabled(actions::Open) && !context.editor.GetPreferences().recentFiles.Get().empty();
+
+        for (const std::string& file : context.editor.GetPreferences().recentFiles.Get())
+        {
+            const std::filesystem::path path = std::filesystem::u8path(file);
+
+            std::error_code error;
+
+            const bool exists = std::filesystem::is_regular_file(path, error);
+
+            EditorMenuItem item;
+
+            item.id      = "recent:" + file;
+
+            item.label   = PathToUtf8(path.filename()) + " — " + PathToUtf8(path.parent_path());
+
+            item.tooltip = file + (exists ? "" : "\nFile not found");
+
+            item.enabled = !blocked && exists && registry.IsEnabled(actions::Open);
+
+            recent.children.push_back(std::move(item));
+        }
+
+        recent.children.push_back(separator);
+
+        EditorMenuItem clear;
+
+        clear.id      = "recent.clear";
+
+        clear.label   = "Clear Recent";
+
+        clear.enabled = !blocked;
+
+        recent.children.push_back(std::move(clear));
+
+        EditorMenuItem file;
+
+        file.label    = "File";
+
+        file.children = {MakeActionMenuItem(registry, actions::Open, blocked), std::move(recent), separator,
+                         MakeActionMenuItem(registry, actions::Save, blocked)};
+
+        EditorMenuItem edit;
+
+        edit.label    = "Edit";
+
+        edit.children = {MakeActionMenuItem(registry, actions::Undo, blocked),
+                         MakeActionMenuItem(registry, actions::Redo, blocked)};
+
+        EditorMenuItem panels;
+
+        panels.label = "Panels";
+
+        for (const UniquePtr<EditorPanel>& panel : m_panels)
+        {
+            EditorMenuItem item;
+
+            item.id      = "panel:" + std::string(panel->GetDesc().id);
+
+            item.label   = panel->GetDesc().title;
+
+            item.checked = panel->visible;
+
+            item.enabled = !blocked;
+
+            panels.children.push_back(std::move(item));
+        }
+
+        EditorMenuItem view;
+
+        view.label    = "View";
+
+        view.children = {std::move(panels), MakeActionMenuItem(registry, actions::ResetLayout, blocked)};
+
+        EditorMenuItem scene;
+
+        scene.label    = "Scene";
+
+        scene.children = {MakeActionMenuItem(registry, actions::FrameAll, blocked),
+                          MakeActionMenuItem(registry, actions::FrameSelection, blocked)};
+
+        EditorMenuItem help;
+
+        help.label = "Help";
+
+        for (const char* text : {"ZenEditor | Scene Viewer", "RMB + WASD/QE: fly | Alt+LMB: orbit | MMB: pan | Wheel: dolly",
+                                 "F: frame selection | Home: frame all | Escape: release navigation"})
+        {
+            EditorMenuItem item;
+
+            item.label   = text;
+
+            item.enabled = false;
+
+            help.children.push_back(std::move(item));
+        }
+
+        m_menuBar.Update({std::move(file), std::move(edit), std::move(view), std::move(scene), std::move(help)});
+    }
 }
 
 void EditorWorkspace::DrawRecentFiles(EditorContext& context)
@@ -273,180 +457,184 @@ void EditorWorkspace::DrawRecentFiles(EditorContext& context)
 
 void EditorWorkspace::DrawMenus(EditorContext& context)
 {
-    EditorActions& registry                       = context.editor.GetActions();
-
-    const bool customTitleBar                     = context.windowChrome.IsEnabled();
-
-    const platform::WindowTitleBarLayout titleBar = context.windowChrome.GetTitleBarLayout();
-
-    const float scale                             = EditorScale();
-
-    const ImVec2 padding                          = ImGui::GetStyle().FramePadding;
-
-    // A native title-bar height keeps the platform's window buttons centered on the row.
-    const float titlePadding =
-        titleBar.height > 0 ? std::max(padding.y, 0.5f * (titleBar.height - ImGui::GetFontSize())) : 10 * scale;
-
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding.x, customTitleBar ? titlePadding : padding.y));
-
-    if (ImGui::BeginMainMenuBar())
+    if (!m_menuBar.IsEnabled())
     {
-        // Keep clear of window buttons the platform draws at the leading edge.
-        if (titleBar.leadingInset > ImGui::GetCursorPosX())
+        EditorActions& registry                       = context.editor.GetActions();
+
+        const bool customTitleBar                     = context.windowChrome.IsEnabled();
+
+        const platform::WindowTitleBarLayout titleBar = context.windowChrome.GetTitleBarLayout();
+
+        const float scale                             = EditorScale();
+
+        const ImVec2 padding                          = ImGui::GetStyle().FramePadding;
+
+        // A native title-bar height keeps the platform's window buttons centered on the row.
+        const float titlePadding =
+            titleBar.height > 0 ? std::max(padding.y, 0.5f * (titleBar.height - ImGui::GetFontSize())) : 10 * scale;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding.x, customTitleBar ? titlePadding : padding.y));
+
+        if (ImGui::BeginMainMenuBar())
         {
-            ImGui::SetCursorPosX(titleBar.leadingInset);
-        }
-
-        if (context.appIcon.value != 0)
-        {
-            const float size =
-                customTitleBar ? std::min(28 * scale, ImGui::GetWindowHeight() - 6 * scale) : ImGui::GetTextLineHeight();
-
-            const float x = ImGui::GetCursorScreenPos().x;
-
-            const float y = ImGui::GetWindowPos().y + (ImGui::GetWindowHeight() - size) * 0.5f;
-
-            // The engine texture loader flips image rows; restore the artwork's orientation.
-            ImGui::GetWindowDrawList()->AddImage(ui::ImGuiRenderer::GetTextureID(context.appIcon), ImVec2(x, y),
-                                                 ImVec2(x + size, y + size), ImVec2(0, 1), ImVec2(1, 0));
-
-            ImGui::Dummy(ImVec2(size, ImGui::GetTextLineHeight()));
-        }
-
-        if (ImGui::GetWindowWidth() > 640 * scale)
-        {
-            ImGui::TextColored(GetEditorPalette().brand, "ZenEditor");
-
-            ImGui::TextDisabled("  |  ");
-        }
-
-        if (ImGui::BeginMenu("File"))
-        {
-            DrawActionMenuItem(registry, actions::Open);
-
-            if (ImGui::BeginMenu("Open Recent", !context.editor.GetPreferences().recentFiles.Get().empty()))
+            // Keep clear of window buttons the platform draws at the leading edge.
+            if (titleBar.leadingInset > ImGui::GetCursorPosX())
             {
-                DrawRecentFiles(context);
-
-                ImGui::EndMenu();
+                ImGui::SetCursorPosX(titleBar.leadingInset);
             }
 
-            ImGui::Separator();
-
-            DrawActionMenuItem(registry, actions::Save);
-
-            ImGui::Separator();
-
-            DrawActionMenuItem(registry, actions::Exit);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Edit"))
-        {
-            DrawActionMenuItem(registry, actions::Undo);
-
-            DrawActionMenuItem(registry, actions::Redo);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("View"))
-        {
-            if (ImGui::BeginMenu("Panels"))
+            if (context.appIcon.value != 0)
             {
-                for (const UniquePtr<EditorPanel>& panel : m_panels)
+                const float size =
+                    customTitleBar ? std::min(28 * scale, ImGui::GetWindowHeight() - 6 * scale) : ImGui::GetTextLineHeight();
+
+                const float x = ImGui::GetCursorScreenPos().x;
+
+                const float y = ImGui::GetWindowPos().y + (ImGui::GetWindowHeight() - size) * 0.5f;
+
+                // The engine texture loader flips image rows; restore the artwork's orientation.
+                ImGui::GetWindowDrawList()->AddImage(ui::ImGuiRenderer::GetTextureID(context.appIcon), ImVec2(x, y),
+                                                     ImVec2(x + size, y + size), ImVec2(0, 1), ImVec2(1, 0));
+
+                ImGui::Dummy(ImVec2(size, ImGui::GetTextLineHeight()));
+            }
+
+            if (ImGui::GetWindowWidth() > 640 * scale)
+            {
+                ImGui::TextColored(GetEditorPalette().brand, "ZenEditor");
+
+                ImGui::TextDisabled("  |  ");
+            }
+
+            if (ImGui::BeginMenu("File"))
+            {
+                DrawActionMenuItem(registry, actions::Open);
+
+                if (ImGui::BeginMenu("Open Recent", !context.editor.GetPreferences().recentFiles.Get().empty()))
                 {
-                    ImGui::MenuItem(panel->GetDesc().title, nullptr, &panel->visible);
+                    DrawRecentFiles(context);
+
+                    ImGui::EndMenu();
                 }
 
+                ImGui::Separator();
+
+                DrawActionMenuItem(registry, actions::Save);
+
+                ImGui::Separator();
+
+                DrawActionMenuItem(registry, actions::Exit);
+
                 ImGui::EndMenu();
             }
 
-            DrawActionMenuItem(registry, actions::ResetLayout);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Scene"))
-        {
-            DrawActionMenuItem(registry, actions::FrameAll);
-
-            DrawActionMenuItem(registry, actions::FrameSelection);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Help"))
-        {
-            ImGui::TextUnformatted("ZenEditor | Scene Viewer");
-
-            ImGui::TextUnformatted("RMB + WASD/QE: fly | Alt+LMB: orbit | MMB: pan | Wheel: dolly");
-
-            ImGui::TextUnformatted("F: frame selection | Home: frame all | Escape: release navigation");
-
-            ImGui::EndMenu();
-        }
-
-        const float menuEnd       = ImGui::GetCursorPosX() + 12 * scale;
-
-        const float buttonWidth   = 46 * scale;
-
-        const float controlsWidth = titleBar.drawsControls ? 3 * buttonWidth : 0;
-
-        const LoadedScene* scene  = context.editor.GetScene().Get();
-
-        if (scene != nullptr)
-        {
-            const std::string name = PathToUtf8(std::filesystem::u8path(scene->path).stem());
-
-            const float position   = ImGui::GetWindowWidth() - controlsWidth - ImGui::CalcTextSize(name.c_str()).x - 24 * scale;
-
-            if (position > menuEnd + 30 * scale)
+            if (ImGui::BeginMenu("Edit"))
             {
-                ImGui::SetCursorPosX(position);
+                DrawActionMenuItem(registry, actions::Undo);
 
-                ImGui::TextDisabled("%s", name.c_str());
+                DrawActionMenuItem(registry, actions::Redo);
+
+                ImGui::EndMenu();
             }
-        }
 
-        if (customTitleBar)
-        {
-            const float height = ImGui::GetWindowHeight();
-
-            if (titleBar.drawsControls)
+            if (ImGui::BeginMenu("View"))
             {
-                const ImVec2 origin                 = ImGui::GetWindowPos();
-
-                const float start                   = origin.x + ImGui::GetWindowWidth() - controlsWidth;
-
-                const bool maximized                = context.windowChrome.IsMaximized();
-
-                const EditorWindowAction controls[] = {EditorWindowAction::Minimize, EditorWindowAction::ToggleMaximize,
-                                                       EditorWindowAction::Close};
-
-                const char* labels[]                = {"Minimize", maximized ? "Restore" : "Maximize", "Close"};
-
-                for (int index = 0; index < 3; ++index)
+                if (ImGui::BeginMenu("Panels"))
                 {
-                    if (DrawWindowButton(labels[index], controls[index], maximized,
-                                         ImVec2(start + float(index) * buttonWidth, origin.y), ImVec2(buttonWidth, height)))
+                    for (const UniquePtr<EditorPanel>& panel : m_panels)
                     {
-                        context.windowChrome.RequestAction(controls[index]);
+                        ImGui::MenuItem(panel->GetDesc().title, nullptr, &panel->visible);
+                    }
+
+                    ImGui::EndMenu();
+                }
+
+                DrawActionMenuItem(registry, actions::ResetLayout);
+
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Scene"))
+            {
+                DrawActionMenuItem(registry, actions::FrameAll);
+
+                DrawActionMenuItem(registry, actions::FrameSelection);
+
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Help"))
+            {
+                ImGui::TextUnformatted("ZenEditor | Scene Viewer");
+
+                ImGui::TextUnformatted("RMB + WASD/QE: fly | Alt+LMB: orbit | MMB: pan | Wheel: dolly");
+
+                ImGui::TextUnformatted("F: frame selection | Home: frame all | Escape: release navigation");
+
+                ImGui::EndMenu();
+            }
+
+            const float menuEnd       = ImGui::GetCursorPosX() + 12 * scale;
+
+            const float buttonWidth   = 46 * scale;
+
+            const float controlsWidth = titleBar.drawsControls ? 3 * buttonWidth : 0;
+
+            const LoadedScene* scene  = context.editor.GetScene().Get();
+
+            if (scene != nullptr)
+            {
+                const std::string name = PathToUtf8(std::filesystem::u8path(scene->path).stem());
+
+                const float position =
+                    ImGui::GetWindowWidth() - controlsWidth - ImGui::CalcTextSize(name.c_str()).x - 24 * scale;
+
+                if (position > menuEnd + 30 * scale)
+                {
+                    ImGui::SetCursorPosX(position);
+
+                    ImGui::TextDisabled("%s", name.c_str());
+                }
+            }
+
+            if (customTitleBar)
+            {
+                const float height = ImGui::GetWindowHeight();
+
+                if (titleBar.drawsControls)
+                {
+                    const ImVec2 origin                 = ImGui::GetWindowPos();
+
+                    const float start                   = origin.x + ImGui::GetWindowWidth() - controlsWidth;
+
+                    const bool maximized                = context.windowChrome.IsMaximized();
+
+                    const EditorWindowAction controls[] = {EditorWindowAction::Minimize, EditorWindowAction::ToggleMaximize,
+                                                           EditorWindowAction::Close};
+
+                    const char* labels[]                = {"Minimize", maximized ? "Restore" : "Maximize", "Close"};
+
+                    for (int index = 0; index < 3; ++index)
+                    {
+                        if (DrawWindowButton(labels[index], controls[index], maximized,
+                                             ImVec2(start + float(index) * buttonWidth, origin.y), ImVec2(buttonWidth, height)))
+                        {
+                            context.windowChrome.RequestAction(controls[index]);
+                        }
                     }
                 }
+
+                const bool blocked = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)
+                                  || ImGui::IsAnyItemActive();
+
+                context.windowChrome.SetTitleBarRegion({menuEnd, height, controlsWidth, blocked});
             }
 
-            const bool blocked = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)
-                              || ImGui::IsAnyItemActive();
-
-            context.windowChrome.SetTitleBarRegion({menuEnd, height, controlsWidth, blocked});
+            ImGui::EndMainMenuBar();
         }
 
-        ImGui::EndMainMenuBar();
+        ImGui::PopStyleVar();
     }
-
-    ImGui::PopStyleVar();
 }
 
 void EditorWorkspace::DrawToolbar(EditorContext& context)
@@ -613,5 +801,8 @@ void EditorWorkspace::Draw(EditorContext& context)
     }
 
     ImGui::End();
+
+    // Closing a dock panel or applying Reset Layout also updates native checks.
+    UpdateNativeMenus(context);
 }
 } // namespace zen::editor

@@ -7,7 +7,13 @@ namespace zen::editor
 {
 namespace
 {
-constexpr uint16_t kControl = uint16_t(platform::KeyModifier::Control);
+#if defined(ZEN_MACOS)
+constexpr uint16_t       kCommand = uint16_t(platform::KeyModifier::Super);
+constexpr EditorShortcut kRedoShortcut{platform::Key::Z, uint16_t(kCommand | uint16_t(platform::KeyModifier::Shift))};
+#else
+constexpr uint16_t       kCommand = uint16_t(platform::KeyModifier::Control);
+constexpr EditorShortcut kRedoShortcut{platform::Key::Y, kCommand};
+#endif
 
 bool Unavailable()
 {
@@ -134,7 +140,7 @@ void EditorController::RegisterActions()
 
     m_actions.Register({actions::Open,
                         "Open...",
-                        {platform::Key::O, kControl},
+                        {platform::Key::O, kCommand},
                         "Wait for the current scene to finish opening.",
                         [this]() { return !m_loadState.IsActive() && !m_environmentPending; },
                         [this]() {
@@ -160,9 +166,9 @@ void EditorController::RegisterActions()
                         }});
 
     const Placeholder placeholders[] = {
-        {actions::Save, "Save", {platform::Key::S, kControl}, "Available with scene documents (plan step 5)."},
-        {actions::Undo, "Undo", {platform::Key::Z, kControl}, "Available with undoable editing (plan step 6)."},
-        {actions::Redo, "Redo", {platform::Key::Y, kControl}, "Available with undoable editing (plan step 6)."},
+        {actions::Save, "Save", {platform::Key::S, kCommand}, "Available with scene documents (plan step 5)."},
+        {actions::Undo, "Undo", {platform::Key::Z, kCommand}, "Available with undoable editing (plan step 6)."},
+        {actions::Redo, "Redo", kRedoShortcut, "Available with undoable editing (plan step 6)."},
         {actions::Play, "Run", {}, "Available with zen_player (rendering milestone 4)."},
         {actions::Pause, "Pause", {}, "Simulation is deferred; rendering sessions do not pause."},
         {actions::Stop, "Stop", {}, "Available with zen_player (rendering milestone 4)."}};

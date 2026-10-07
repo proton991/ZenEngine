@@ -18,37 +18,55 @@ cmake --build build/x64-windows-msvc-debug --target zen_editor
 .\build\x64-windows-msvc-debug\bin\zen_editor.exe
 ```
 
+On macOS:
+
+```sh
+cmake --preset arm64-apple-clang-debug
+cmake --build --preset arm64-apple-clang-debug --target zen_editor
+build/arm64-apple-clang-debug/bin/ZenEditor.app/Contents/MacOS/ZenEditor
+```
+
+The CMake target stays `zen_editor`; its macOS output is `ZenEditor.app`, with
+the executable at `ZenEditor.app/Contents/MacOS/ZenEditor`. IDE Run launches this
+executable. The bundle supplies the ZenEditor name and logo for Finder and the
+Dock. A `bin/zen_editor` symlink preserves existing direct launch commands and
+replaces the previous standalone build artifact. To pass diagnostic arguments
+directly, run `build/arm64-apple-clang-debug/bin/zen_editor --windowed`.
+
 The editor starts maximized in normal desktop window mode. The window stays
 hidden until initialization completes, then appears once at its final size. It
-uses the actual framebuffer dimensions for presentation and resizes the offscreen
+activates and brings its window to the front when launched from an IDE or terminal.
+It uses the actual framebuffer dimensions for presentation and resizes the offscreen
 scene to the available viewport pixels. Use `--windowed` to start at 1440×900
 instead. `--hidden` never shows the window, so a maximized start renders at the
 restored 1440×900 size.
 
-The menu and window title share one themed row; each platform keeps its own window
-controls and title-bar behavior:
+The editor uses platform-specific menus and window title bars:
 
 - **Windows:** the editor draws minimize, maximize/restore, and close at the right.
   Drag the space after the menus to move the window; double-click it to
   maximize/restore. Window edges retain native resizing, and maximizing fills the
   monitor work area without covering the taskbar. Control requests are applied
   between frames before framebuffer resizing.
-- **macOS:** the window keeps its titled frame with a transparent title bar, so the
-  native close, minimize, and zoom buttons stay at the left and the menus start
-  after them. Native resizing and full screen are unchanged. Drag the space after
-  the menus to move the window; double-clicking it follows the system setting
-  (zoom, minimize, or nothing). This path, Retina sizing, and MoltenVK
-  presentation still require validation on a Mac.
+- **macOS:** the window uses a native title bar with the system close, minimize,
+  and zoom buttons. File, Edit, View, Scene, and Help appear in the macOS system
+  menu bar. The application menu includes Services, Hide, and Quit (Cmd+Q).
+  Cocoa handles title-bar dragging and double-clicks, resizing, and full screen.
+  Toolbar buttons stay in the editor's content below the title bar. Native menu
+  dispatch, panel toggles, Cmd+O/Cmd+Q, window decoration, and basic MoltenVK
+  presentation have been checked on macOS. Full migration acceptance still
+  requires the interaction and display checks listed in the migration status.
 
 Linux support is deferred.
 
 Use `--scene=absolute/path/model.gltf` (or `.glb`) to open an initial asset.
 Without it the shell starts empty. An import failure keeps the current scene and
 reports its error in Assets and Output, including failures of the initial asset.
-File → Open (Ctrl+O or the toolbar Open button) shows the platform file picker,
-filtered to glTF/GLB, without blocking rendering. It starts beside the most recent
-scene, otherwise in the configured `model_base_path`. The GLFW fallback backend has
-no picker and asks for a path instead. File → Open Recent lists the last ten
+File → Open (Cmd+O on macOS, Ctrl+O elsewhere, or the toolbar Open button) shows
+the platform file picker, filtered to glTF/GLB, without blocking rendering. It
+starts beside the most recent scene, otherwise in the configured `model_base_path`.
+The GLFW fallback backend has no picker and asks for a path instead.
+File → Open Recent lists the last ten
 scenes that opened successfully; missing files are disabled, and Clear Recent
 empties the list.
 
@@ -309,7 +327,7 @@ headers of a layer it does not link:
 | `Model/` `ZenEditorModel` | Scene parsing and the read-only `EditorScene` (node lookup, child lists, hierarchy filter, inspection, bounds, CPU picking), `SceneAssetIndex` and CPU previews, `EditorSelection` and pick stamps, `InspectorNavigation` tabs and history, `EditorCamera` and `ViewAxes` orientation math, the `EditorActions` registry, `EditorPreferences` and recent files, environment discovery, mesh preview settings, logs | `ZenCore` |
 | `Rendering/` `ZenEditorRender` | `EditorViewport`: GPU scene publication as a prepare/commit/discard transaction, offscreen images, preview textures, selection bounds and GPU pick results. `MeshPreviewRenderer`: the Inspector's material-free mesh image. Reads the model, never changes it | `ZenEditorModel` |
 | `Services/` `ZenEditorServices` | `EditorController`: owns the editor state, runs transactions across model and GPU (loading, applying picks, framing) and registers the core actions | `ZenEditorRender` |
-| `Platform/` `ZenEditorPlatform` | Native title-bar hit testing and window actions; no ImGui types | `ZenCore` |
+| `Platform/` `ZenEditorPlatform` | Native title-bar hit testing, window actions, and macOS system menus; no ImGui types | `ZenEditorModel` |
 | `ImGui/` `ZenEditorUI` | Workspace, descriptor-based panels (one file each under `Source/Panels`), theme palette, shortcut translation, toolkit layout file | Services, platform, `ZenImGui` |
 | `App/` `zen_editor` | Application lifecycle, platform file picker, preference loading/saving, frame submission and diagnostics | `ZenEditorUI` |
 

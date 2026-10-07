@@ -46,13 +46,16 @@ platform adapter is compiled from the existing `v1.92.9b-docking` checkout.
   convenience entry point for application polling and optional runtime shortcuts.
   Resize callbacks are coalesced and dispatched after the pump, using pixel sizes.
   Native message processing never calls renderer resize callbacks directly.
-- Window/title geometry belongs to the platform layer. The editor draws the bar,
-  publishes an immutable geometry snapshot between event pumps, and queues window
-  actions for the next safe frame boundary. SDL provides the native hit test.
-  The old Win32 subclass is isolated in the private GLFW fallback. On macOS the
-  frame stays titled: a private Cocoa adapter makes the title bar transparent,
-  keeps the native window buttons, and handles caption double-clicks, which SDL's
-  drag regions consume.
+- Window/title geometry belongs to the platform layer. On Windows the editor
+  draws the title/menu row, publishes an immutable geometry snapshot between
+  event pumps, and queues window actions for the next safe frame boundary. SDL
+  provides the native hit test. The old Win32 subclass is isolated in the private
+  GLFW fallback. On macOS the editor keeps a native titled window without
+  transparent or full-size title-bar content. Cocoa owns title-bar dragging,
+  double-clicks, and the native window buttons. File, Edit, View, Scene, and Help
+  use the macOS system menu bar; the application menu supplies Services, Hide,
+  and Quit (Cmd+Q). File → Open uses Cmd+O. Editor toolbar buttons remain in client
+  content. Other platforms retain the custom title/menu row.
 - The private `WindowBackend` bridge is visible only to backend integrations and
   native tests. ZenImGui borrows the selected native handle and subscribes to raw
   events. Each context receives each raw event once; translated engine events are
@@ -98,9 +101,20 @@ results above; this is a validation workaround, not a claim that the combined
 suite is fixed. Vulkan validation remained enabled, and CTest retains the full
 suite without a filter.
 
-A native macOS run remains required for Cocoa resizing/dragging, maximize/restore,
-Retina sizing, real IME, clipboard/capture/focus, and Vulkan/MoltenVK presentation.
-Source portability and a Windows build do not establish macOS acceptance.
+macOS menu validation, 7 October 2026: the Release editor build and
+`EditorInputTest`, `EditorModelTest`, and `EditorMenuBarTest` passed (62 tests).
+Native tests cover titled window decoration, menu commands and shortcuts,
+checked/disabled states, and application-menu restoration. An interactive preview
+confirmed system menu placement, Cmd+O opening one native file picker, panel
+toggles, Reset Layout, and Cmd+Q teardown. A six-frame hidden editor capture also
+completed with MoltenVK and no Vulkan validation errors. Evidence is retained in
+`build/mac-system-menu-build.log`, `build/mac-system-menu-smoke.log`, and
+`build/mac-system-menu-smoke.ppm`.
+
+Remaining macOS acceptance includes Cocoa resizing/dragging, maximize/restore,
+mixed-display Retina sizing, real IME, clipboard/capture/focus, and loaded-scene
+Vulkan/MoltenVK presentation. These menu checks do not establish full migration
+acceptance.
 Physical Windows mixed-DPI transitions, real IME composition, and drag-to-snap
 also need interactive checks. Windows 11 maximize-hover Snap Layouts remains
 optional and is not implemented. GLFW removal is deferred until required native

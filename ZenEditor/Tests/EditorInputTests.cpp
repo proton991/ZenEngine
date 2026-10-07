@@ -1,5 +1,6 @@
 #include "Editor/ImGui/EditorTheme.h"
 #include "EditorWidgets.h"
+#include "EditorShortcuts.h"
 #include "SceneViewOverlays.h"
 #include "Editor/Model/ViewAxes.h"
 #include <cmath>
@@ -54,6 +55,8 @@ protected:
     {
         ImGui::NewFrame();
 
+        HandleActionShortcuts(shortcutActions, EditorShortcutScope::Global, focused, nativeMenuShortcuts);
+
         ImGui::SetNextWindowPos(ImVec2(100, 100), ImGuiCond_Once);
 
         ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_Once);
@@ -87,13 +90,15 @@ protected:
         ImGui::Render();
     }
 
-    ImVec2 position;
-    ImVec2 imageOrigin;
-    ImVec2 imageEnd;
-    bool   active{false};
-    bool   allowed{false};
-    bool   focused{true};
-    bool   drawAxes{false};
+    ImVec2        position;
+    ImVec2        imageOrigin;
+    ImVec2        imageEnd;
+    bool          active{false};
+    bool          allowed{false};
+    bool          focused{true};
+    bool          drawAxes{false};
+    bool          nativeMenuShortcuts{false};
+    EditorActions shortcutActions;
     // The Scene panel's sphere wiring, with a standalone camera.
     EditorCamera    camera;
     ViewSphereInput sphere;
@@ -164,6 +169,49 @@ TEST_F(EditorInput, FloatingPanelsStillMoveByTheirTitleBar)
     EXPECT_FLOAT_EQ(position.x, start.x + 40);
 
     EXPECT_FLOAT_EQ(position.y, start.y + 20);
+}
+
+TEST_F(EditorInput, NativeMenuShortcutsDoNotExecuteAgainThroughImGui)
+{
+    int opened = 0;
+
+    int framed = 0;
+
+    shortcutActions.Register(
+        {actions::Open, "Open...", {platform::Key::O, uint16_t(platform::KeyModifier::Super)}, "", nullptr, [&opened]() {
+             ++opened;
+         }});
+
+    shortcutActions.Register(
+        {actions::FrameAll, "Frame All", {platform::Key::Home, 0}, "", nullptr, [&framed]() { ++framed; }});
+
+    nativeMenuShortcuts = true;
+
+    ImGuiIO& io         = ImGui::GetIO();
+
+    // SDL forwards this key to ImGui even when AppKit dispatches the menu item.
+    io.AddKeyEvent(ImGuiMod_Super, true);
+
+    io.AddKeyEvent(ImGuiKey_O, true);
+
+    shortcutActions.Execute(actions::Open);
+
+    DrawFrame();
+
+    EXPECT_EQ(opened, 1);
+
+    io.AddKeyEvent(ImGuiKey_O, false);
+
+    io.AddKeyEvent(ImGuiMod_Super, false);
+
+    DrawFrame();
+
+    // Plain scene shortcuts still belong to the workspace.
+    io.AddKeyEvent(ImGuiKey_Home, true);
+
+    DrawFrame();
+
+    EXPECT_EQ(framed, 1);
 }
 
 TEST_F(EditorInput, ViewSphereReportsTheSphereAndAxisEndUnderTheMouse)

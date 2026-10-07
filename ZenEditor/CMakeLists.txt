@@ -34,10 +34,20 @@ add_library(ZenEditorServices STATIC Services/Source/EditorController.cpp)
 target_include_directories(ZenEditorServices PUBLIC Services/Include)
 target_link_libraries(ZenEditorServices PUBLIC ZenEditorRender)
 
-# Native title-bar behavior; no UI toolkit types.
+# Native title-bar and system menu behavior; no UI toolkit types.
 add_library(ZenEditorPlatform STATIC Platform/Source/EditorWindowChrome.cpp)
+if (APPLE)
+  target_sources(ZenEditorPlatform PRIVATE
+    Platform/Source/EditorMenuBarCocoa.mm
+    Platform/Source/EditorApplicationIconCocoa.mm)
+  target_link_libraries(ZenEditorPlatform PRIVATE "-framework AppKit")
+else ()
+  target_sources(ZenEditorPlatform PRIVATE
+    Platform/Source/EditorMenuBar.cpp
+    Platform/Source/EditorApplicationIcon.cpp)
+endif ()
 target_include_directories(ZenEditorPlatform PUBLIC Platform/Include)
-target_link_libraries(ZenEditorPlatform PUBLIC ZenCore)
+target_link_libraries(ZenEditorPlatform PUBLIC ZenEditorModel)
 
 # The ImGui frontend: workspace, panels, theme and input translation.
 add_library(ZenEditorUI STATIC
@@ -67,6 +77,25 @@ target_link_libraries(ZenEditorUI PUBLIC ZenEditorServices ZenEditorPlatform Zen
 add_executable(zen_editor App/Main.cpp App/EditorApplication.cpp)
 target_link_libraries(zen_editor PRIVATE ZenEditorUI)
 
+if (APPLE)
+  set_target_properties(zen_editor PROPERTIES
+    MACOSX_BUNDLE TRUE
+    OUTPUT_NAME ZenEditor
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/App/Info.plist.in"
+    MACOSX_BUNDLE_BUNDLE_NAME ZenEditor
+    MACOSX_BUNDLE_GUI_IDENTIFIER org.zenengine.editor
+    MACOSX_BUNDLE_ICON_FILE ZenEditor.icns
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+  target_sources(zen_editor PRIVATE App/ZenEditor.icns)
+  set_source_files_properties(App/ZenEditor.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  add_custom_command(TARGET zen_editor POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E rm -f "$<TARGET_BUNDLE_DIR:zen_editor>/../zen_editor"
+    COMMAND "${CMAKE_COMMAND}" -E create_symlink
+      "$<TARGET_FILE:zen_editor>" "$<TARGET_BUNDLE_DIR:zen_editor>/../zen_editor"
+    VERBATIM)
+endif ()
+
 if (WIN32)
   enable_language(RC)
   configure_file(App/ZenEditor.rc.in "${CMAKE_CURRENT_BINARY_DIR}/ZenEditor.rc" @ONLY)
@@ -86,6 +115,15 @@ if (BUILD_TESTING)
     target_include_directories(EditorWindowChromeTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenSamples/CommonTest)
     add_test(NAME EditorWindowChromeTest COMMAND EditorWindowChromeTest)
     set_tests_properties(EditorWindowChromeTest PROPERTIES LABELS "native" TIMEOUT 30)
+  endif ()
+  if (APPLE)
+    add_executable(EditorMenuBarTest Tests/EditorMenuBarTests.mm)
+    target_link_libraries(EditorMenuBarTest PRIVATE ZenEditorPlatform ZenWindowBackendInternal gtest_main "-framework AppKit")
+    add_test(NAME EditorMenuBarTest COMMAND EditorMenuBarTest)
+    set_tests_properties(EditorMenuBarTest PROPERTIES LABELS "native" TIMEOUT 30)
+    if (ZEN_WINDOW_BACKEND STREQUAL "SDL3")
+      set_tests_properties(EditorMenuBarTest PROPERTIES ENVIRONMENT "SDL_VULKAN_LIBRARY=${Vulkan_LIBRARY}")
+    endif ()
   endif ()
   add_executable(EditorModelTest Tests/EditorModelTests.cpp Tests/InspectorNavigationTests.cpp Tests/EnvironmentTests.cpp Tests/RenderingSettingsTests.cpp)
   target_link_libraries(EditorModelTest PRIVATE ZenEditorModel gtest_main)

@@ -28,16 +28,17 @@ Windows and macOS are required platforms for ZenEditor and the SDL3
 window/input migration. Linux support is deferred and does not block completing
 the migration or removing GLFW after parity on the two required platforms.
 
-Both platforms must provide the same combined title/menu layout through shared
-editor UI, with window behavior behind an engine-owned API. Keep SDL and ImGui
+Windows uses the combined title/menu row; macOS uses a native title bar and
+system menus, with editor toolbar buttons in client content. Both platforms share
+editor actions, with window behavior behind an engine-owned API. Keep SDL and ImGui
 types out of the public window/input contract. Retain the engine's RDG/RHI
 rendering path and one shared ImGui dependency for runtime and editor.
 
 The production SDL3 backend is implemented behind `platform::NativeWindow` and
 is the default for new builds. `ZEN_WINDOW_BACKEND=GLFW` remains available until
 macOS acceptance is complete. See [migration status](SDL3Migration.md) and the
-[SDL3 evaluation](SDL3WindowBackendEvaluation.md). macOS requires native validation of the
-integrated title bar (native buttons, drag, double-click), Retina sizing, input, and
+[SDL3 evaluation](SDL3WindowBackendEvaluation.md). macOS requires native validation of
+the native title bar, system menus and shortcuts, Retina sizing, input, and
 Vulkan/MoltenVK presentation before the migration is complete. Linux and Wayland findings in
 that evaluation are future work.
 

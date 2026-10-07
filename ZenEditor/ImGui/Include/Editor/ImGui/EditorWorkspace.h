@@ -1,5 +1,6 @@
 #pragma once
 #include "Editor/ImGui/EditorPanel.h"
+#include "Editor/Platform/EditorMenuBar.h"
 #include <filesystem>
 
 namespace zen::editor
@@ -18,6 +19,10 @@ public:
 
     void Draw(EditorContext& context);
 
+    // Native menu callbacks queue commands during event polling. Dispatch them
+    // between frames, including while the editor window is minimized.
+    void ProcessMenuCommands(EditorContext& context);
+
     // Writes the toolkit layout and records panel visibility in the editor preferences.
     void Save(EditorContext& context);
 
@@ -32,6 +37,8 @@ private:
 
     void DrawRecentFiles(EditorContext& context);
 
+    void UpdateNativeMenus(EditorContext& context);
+
     void DrawToolbar(EditorContext& context);
 
     void DrawStatusBar(EditorContext& context);
@@ -39,6 +46,7 @@ private:
     void DrawDialogs(EditorContext& context);
 
     HeapVector<UniquePtr<EditorPanel>> m_panels;
+    EditorMenuBar                      m_menuBar;
     std::filesystem::path              m_settings;
     bool                               m_resetLayout{false};
     char                               m_path[2048]{};

@@ -2,6 +2,7 @@
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorWorkspace.h"
 #include "Editor/ImGui/EditorTheme.h"
+#include "Editor/Platform/EditorApplicationIcon.h"
 #include "ImGui/UIContext.h"
 #include "Platform/NativeWindow.h"
 #include "Platform/ConfigLoader.h"
@@ -244,6 +245,13 @@ public:
 
         m_window       = MakeUnique<platform::NativeWindow>(config);
 
+#if defined(ZEN_MACOS)
+        if (!InitializeEditorApplicationIcon())
+        {
+            LOGW("Could not load the ZenEditor application icon");
+        }
+#endif
+
         m_windowChrome = MakeUnique<EditorWindowChrome>(*m_window);
 
         m_windowChrome->Initialize();
@@ -255,7 +263,7 @@ public:
             m_window->Maximize();
         }
 
-        m_device                                 = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
+        m_device = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
                                                 m_options.threaded ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline);
 
         int framebufferWidth                     = 0;
@@ -307,9 +315,18 @@ public:
 
             LoadEditorPreferences(m_settings, m_controller->GetPreferences());
 
-            m_controller->GetActions().Register({actions::Exit, "Exit", {}, "", nullptr, [this]() {
-                                                     m_exitRequested = true;
-                                                 }});
+#if defined(ZEN_MACOS)
+            const EditorShortcut quitShortcut{platform::Key::Q, uint16_t(platform::KeyModifier::Super)};
+
+            constexpr const char* quitLabel = "Quit ZenEditor";
+#else
+            const EditorShortcut quitShortcut{};
+
+            constexpr const char* quitLabel = "Exit";
+#endif
+
+            m_controller->GetActions().Register(
+                {actions::Exit, quitLabel, quitShortcut, "", nullptr, [this]() { m_exitRequested = true; }});
 
             m_workspace   = MakeUnique<EditorWorkspace>(m_settings);
 
@@ -344,6 +361,10 @@ public:
             if (!m_options.hidden)
             {
                 m_window->Show();
+
+                // Showing a Cocoa window alone does not activate an app launched
+                // from an IDE or terminal. Bring the ready editor to the front.
+                m_window->Focus();
             }
 
             const platform::WindowExtent shown = m_window->GetFramebufferExtent();
@@ -563,6 +584,17 @@ public:
 
             m_window->Update(false);
 
+            m_context->focused = m_window->IsFocused();
+
+            m_workspace->ProcessMenuCommands(*m_context);
+
+            ProcessFileDialog();
+
+            if (m_exitRequested)
+            {
+                break;
+            }
+
             int width                                = 0;
 
             int height                               = 0;
@@ -596,10 +628,6 @@ public:
                 m_context->seconds                              = std::min(seconds, 0.1f);
 
                 m_context->frameMs = m_context->frameMs == 0 ? seconds * 1000.0f : m_context->frameMs * 0.9f + seconds * 100.0f;
-
-                m_context->focused = m_window->IsFocused();
-
-                ProcessFileDialog();
 
                 // Advance outside UI recording. GPU stages can block; restart timing
                 // after a transition so navigation does not jump when opening finishes.

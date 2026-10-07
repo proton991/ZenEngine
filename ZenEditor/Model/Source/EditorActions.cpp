@@ -120,7 +120,11 @@ std::string FormatShortcut(EditorShortcut shortcut)
 
     if (shortcut.key != platform::Key::Unknown)
     {
-        const char* prefixes[]                  = {"Ctrl+", "Shift+", "Alt+", "Super+"};
+#if defined(ZEN_MACOS)
+        const char* prefixes[] = {"Ctrl+", "Shift+", "Option+", "Cmd+"};
+#else
+        const char* prefixes[] = {"Ctrl+", "Shift+", "Alt+", "Super+"};
+#endif
 
         const platform::KeyModifier modifiers[] = {platform::KeyModifier::Control, platform::KeyModifier::Shift,
                                                    platform::KeyModifier::Alt, platform::KeyModifier::Super};

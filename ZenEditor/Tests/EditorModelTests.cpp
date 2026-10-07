@@ -999,6 +999,27 @@ TEST(EditorModel, ActionsDispatchByIdAndShortcutRespectingEnabledState)
     EXPECT_EQ(FormatShortcut({}), "");
 }
 
+TEST(EditorModel, ShortcutLabelsFollowPlatformModifierNames)
+{
+    const uint16_t super = uint16_t(platform::KeyModifier::Super);
+
+    const uint16_t alt   = uint16_t(platform::KeyModifier::Alt);
+
+#if defined(ZEN_MACOS)
+    EXPECT_EQ(FormatShortcut({platform::Key::O, super}), "Cmd+O");
+
+    EXPECT_EQ(FormatShortcut({platform::Key::Left, alt}), "Option+Left");
+
+    EXPECT_EQ(FormatShortcut({platform::Key::Z, uint16_t(super | uint16_t(platform::KeyModifier::Shift))}), "Shift+Cmd+Z");
+#else
+    EXPECT_EQ(FormatShortcut({platform::Key::O, super}), "Super+O");
+
+    EXPECT_EQ(FormatShortcut({platform::Key::Left, alt}), "Alt+Left");
+
+    EXPECT_EQ(FormatShortcut({platform::Key::Z, uint16_t(super | uint16_t(platform::KeyModifier::Shift))}), "Shift+Super+Z");
+#endif
+}
+
 void RegisterDuplicateAction()
 {
     EditorActions registry;

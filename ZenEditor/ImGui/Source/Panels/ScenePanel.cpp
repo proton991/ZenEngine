@@ -199,9 +199,19 @@ private:
 
         if (context.editor.GetScene().Get() == nullptr || !context.editor.GetViewport().HasScene())
         {
-            ImGui::TextWrapped(context.editor.GetScene().Get() == nullptr
-                                   ? "Open a scene with File > Open (Ctrl+O) to start exploring."
-                                   : "This scene contains no renderable geometry. Its nodes are available in the hierarchy.");
+            if (context.editor.GetScene().Get() == nullptr)
+            {
+                const EditorAction* open   = context.editor.GetActions().Find(actions::Open);
+
+                const std::string shortcut = open != nullptr ? FormatShortcut(open->shortcut) : "";
+
+                ImGui::TextWrapped("Open a scene with File > Open%s%s%s to start exploring.", shortcut.empty() ? "" : " (",
+                                   shortcut.c_str(), shortcut.empty() ? "" : ")");
+            }
+            else
+            {
+                ImGui::TextWrapped("This scene contains no renderable geometry. Its nodes are available in the hierarchy.");
+            }
 
             m_navigation = 0;
 

@@ -24,7 +24,13 @@ EditorWindowChrome::~EditorWindowChrome()
 
 bool EditorWindowChrome::Initialize()
 {
+#if defined(ZEN_MACOS)
+    // macOS owns the title bar and traffic lights; editor menus live in NSApp's
+    // system menu bar rather than extending the client area into the caption.
+    m_state->enabled = false;
+#else
     m_state->enabled = m_state->window.SetCustomFrame(true);
+#endif
 
     return m_state->enabled;
 }

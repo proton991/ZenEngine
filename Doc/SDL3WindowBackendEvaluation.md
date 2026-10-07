@@ -2,6 +2,11 @@
 
 Evaluated on 2026-10-03 for ZenEngine and ZenEditor. **Recommendation: adopt SDL3 behind an engine-owned window and input API in stages, targeting Windows and macOS first.** Shared window/input integration and the existing ImGui SDL3 adapter make it a useful alternative to maintaining our own native backends. The Windows probe supports this direction; macOS validation remains required before completing the migration.
 
+**Layout update (2026-10-07):** The shared title/menu row requirement below is
+superseded for macOS. The editor now uses a native title bar and macOS system
+menus, with toolbar buttons in client content. Windows retains its combined row;
+see [migration status](SDL3Migration.md) for the current behavior and acceptance work.
+
 **Required platform scope: Windows and macOS. Linux is deferred.** Both required platforms must provide the shared combined title/menu layout and pass native window, input, DPI, and rendering acceptance checks. Linux, X11, and Wayland work does not block making SDL the default or removing GLFW once Windows and macOS reach parity. Keep the API portable so Linux can be added later.
 
 The original evaluation added an isolated Windows probe under `ZenSamples/SDL3WindowProbe`. The production migration is now implemented: `ZEN_WINDOW_BACKEND=SDL3` selects the pinned, statically linked SDL source build; `GLFW` remains a selectable fallback pending native macOS acceptance. SDL owns windowing, events, and Vulkan surface integration; ZenEngine retains its RDG/RHI renderer. See [migration status and validation](SDL3Migration.md) for current results. The probe evidence below describes the original investigation.
