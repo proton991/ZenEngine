@@ -63,7 +63,8 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
     if (valid)
     {
         if (settings.coneCount != m_settings.coneCount || settings.normalBiasVoxels != m_settings.normalBiasVoxels
-            || settings.environmentLighting != m_settings.environmentLighting)
+            || settings.environmentLighting != m_settings.environmentLighting
+            || settings.coneAngleDegrees != m_settings.coneAngleDegrees)
         {
             m_environmentRevision = 0;
         }
@@ -306,7 +307,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             const EnvTexture& env = m_scene->GetEnvTexture();
 
-            sky.BindSampledTexture("skyboxMap", env.pPrefilteredSampler, env.pSkybox->GetDefaultView());
+            sky.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
 
             sky.BindStorageImage("skyIrradiance", m_skyIrradiance->GetDefaultView(), RDGContentGuarantee::eFullWrite);
 
@@ -385,7 +386,7 @@ void VoxelGIRenderer::BindLightingInputs(RDGPassDescBase& pass) const
 
     const EnvTexture& env = m_scene->GetEnvTexture();
 
-    pass.BindSampledTexture("skyboxMap", env.pPrefilteredSampler, env.pSkybox->GetDefaultView());
+    pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
 }
 
 void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)

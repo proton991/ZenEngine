@@ -1,10 +1,10 @@
 #include "../Common/material_surface.glsl"
 #include "../Common/hdr_storage.glsl"
-layout(location=0) out vec4 outPosition;
-layout(location=1) out vec4 outNormal;
-layout(location=2) out vec4 outAlbedo;
-layout(location=3) out vec4 outMetallicRoughness;
-layout(location=4) out vec4 outEmissiveOcclusion;
+#include "../Common/gbuffer.glsl"
+layout(location=0) out vec2 outNormal;
+layout(location=1) out vec4 outAlbedo;
+layout(location=2) out vec4 outMetallicRoughness;
+layout(location=3) out vec4 outEmissiveOcclusion;
 layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
 layout(push_constant) uniform Constants { uint uNodeIndex; uint uMaterialIndex;
 };
@@ -22,8 +22,7 @@ void main()
     float occlusion=MaterialSlotTexture(material, 3, material.occlusionTexIndex,
         MaterialTransformedUV(material, 3, material.aoTexSet,inUV,inUV1)).r;
     occlusion=mix(1.0,occlusion,material.materialProperties.x);
-    outPosition=vec4(inWorldPos,1);
-    outNormal=vec4(normal,1);
+    outNormal=EncodeGBufferNormal(normal);
     outAlbedo=vec4(albedo.rgb,1);
     outMetallicRoughness=vec4(material.metallicFactor*mr.b,material.roughnessFactor*mr.g,material.materialProperties.y,0);
     outEmissiveOcclusion=vec4(ClampHDRStorage(emission),occlusion);

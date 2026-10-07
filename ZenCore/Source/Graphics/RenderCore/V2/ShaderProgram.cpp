@@ -220,12 +220,12 @@ void ShaderProgramManager::Destroy()
 
 void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 {
-    const char* debugNames[] = {"RenderDebug2DSP", "RenderDebugArraySP", "RenderDebugVolumeSP"};
+    const char* debugNames[] = {"RenderDebug2DSP", "RenderDebugArraySP", "RenderDebugVolumeSP", "RenderDebugNormalSP"};
 
     const char* debugFiles[] = {"SceneRenderer/debug_2d.frag.spv", "SceneRenderer/debug_array.frag.spv",
-                                "SceneRenderer/debug_volume.frag.spv"};
+                                "SceneRenderer/debug_volume.frag.spv", "SceneRenderer/debug_normal.frag.spv"};
 
-    for (uint32_t index = 0; index < 3; ++index)
+    for (uint32_t index = 0; index < 4; ++index)
     {
         StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, debugNames[index], debugFiles[index]));
     }

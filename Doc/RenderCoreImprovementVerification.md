@@ -1,17 +1,17 @@
 # RenderCore improvement verification
 
-Status: Phases 0–2 implemented, 2026-10-03, on top of `329d20be` (uncommitted). Phase 3 is not started; its gate is evaluated below. Implements [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) and closes item 5.5 of [RHIProductionTODO.md](RHIProductionTODO.md#55-per-frame-descriptor-miss).
+Status: Phases 0–2 implemented 2026-10-03 on top of `329d20be`; Phase 3 implemented 2026-10-07 on top of `8a72369a` and the pre-existing local GI changes. The original P0–P2 evidence below is historical; [the P3 section](#phase-3-implementation-and-verification-2026-10-07) records the current machine, checks, and remaining validation limits. Implements [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) and addresses item 5.5 of [RHIProductionTODO.md](RHIProductionTODO.md#55-per-frame-descriptor-miss).
 
 ## Result
 
-Steady-state frames record zero descriptor-cache misses and zero render-graph pool misses at every measured size, including the 4096² stress case that Phase 2 removed. The deferred G-buffer now matches the viewport and is read with `texelFetch`.
+In the original P0–P2 measurements, steady-state frames recorded zero descriptor-cache misses and zero render-graph pool misses at every measured size, including the 4096² stress case that Phase 2 removed. The deferred G-buffer matches the viewport and is read with `texelFetch`. The P3 rerun's exceptions to the zero-miss result are recorded below.
 
 | Phase | Outcome |
 | --- | --- |
 | 0 Baseline | Recorded (the "Phase 0" columns below). The demo profile now reports pool hits, misses and evictions. |
 | 1 Steady working set | Implemented. Captures byte-identical to Phase 0. Descriptor misses 600 → 0 and pool misses about 1,200 → 0 per 600 frames. At a 4096² G-buffer the CPU frame fell from 7.3/9.2 ms to 1.3/2.9 ms (PBR/GI) and now tracks GPU time. Peak device-local memory fell by 256–1,282 MiB. |
 | 2 Screen-sized G-buffer | Implemented. Images change by design; silhouettes no longer blend foreground and background. At 720p the G-buffer shrinks from 144 to 31.6 MiB per slot and the GPU frame falls 37% (PBR) and 14% (GI). At 2560 × 1421, GI costs 6–8% more GPU time; see [the 1440p GI trade-off](#1440p-gi-trade-off). |
-| 3 Compact encoding | Not started. Its gate (G-buffer reads remain a measurable share after Phase 2) is discussed under [Phase 3 gate](#phase-3-gate). |
+| 3 Compact encoding | Implemented 2026-10-07: 24 bytes/pixel, depth reconstruction, RG16 UNORM octahedral normals. Fresh A/B GPU-frame savings: about 6%/12% in 720p/1440p PBR and 1.5%/2.4% in GI. See the P3 evidence and limits below. |
 
 ## Changes
 
@@ -132,7 +132,7 @@ The Phase 0 hashes for this configuration were `2f9890cd…`, `08b5aa62…` and 
 
 ### Phase 3 gate
 
-After Phase 2, OffScreen takes 195 of 254 µs of the 720p PBR GPU frame (77%), 168 of 1521 µs in GI (11%), and 335 of 478 µs at 1440p PBR (70%). In PBR the G-buffer pass still dominates. Whether that comes from G-buffer bandwidth, which Phase 3 targets, or from geometry and material work was not measured, so the gate stays closed until a pass-level breakdown shows bandwidth-bound writes or reads.
+At the original 2026-10-03 evaluation, OffScreen took 195 of 254 µs of the 720p PBR GPU frame (77%), 168 of 1521 µs in GI (11%), and 335 of 478 µs at 1440p PBR (70%). Its bandwidth versus geometry/material cost was not isolated, so implementation was deferred. The explicit 2026-10-07 P3 request was followed by a fresh baseline satisfying the plan's measurable-pass-share gate and a controlled compact-layout A/B experiment, recorded below. No hardware-counter claim of bandwidth saturation is made.
 
 ## Correctness on the final tree
 
@@ -156,3 +156,80 @@ All runs used the final executables (temporary switch removed), with Vulkan vali
 - `tools/validate_voxel_gi.py`: all 162 GPU cases and image assertions pass.
 - `tools/check_no_exceptions.py`, `git diff --check` and Python compilation of the two changed tools pass.
 - Whole-file clang-format 19.1.5 `--dry-run --Werror` passes on the 12 changed C++ files.
+
+## Phase 3 implementation and verification, 2026-10-07
+
+### Implementation
+
+P0–P2 were already present when this work started. Their pool retention, exact texel reads, viewport extents, suspension handling and removed `--gbuffer-size` option were inspected; the existing pool and resize regression tests were rerun. Historical P0/P1 binaries and the removed square-G-buffer stress option were not recreated.
+
+The G-buffer now contains RG16 UNORM octahedral normal, RGBA8 albedo, RGBA8 metallic/roughness, RGBA16F emissive/occlusion and depth. D32 gives **24 bytes/pixel**, down from 36: **21.09 MiB at 1280×720** and **84.38 MiB at 2560×1440** per slot. The position attachment and its sampled descriptor are removed. All four deferred/capture fragment variants share the same decode path.
+
+`BuildGBufferUniformData` inverts the actual rasterization matrix in double precision on the CPU. It subtracts the world-space near-plane center before converting the inverse to floats, and carries that origin separately. Fragment reconstruction uses Vulkan's zero-to-one device depth and the existing camera Y flip. GI geometric derivatives operate on the relative position, then the origin is added for lighting and cone tracing. A plain float inverse/world-position derivative prototype failed the new near-camera precision test; this version passes without relaxing its tolerances.
+
+`Common/gbuffer.glsl` also supplies normal encoding/decoding for the dedicated normal debug shader and voxel material-calibration capture. The debug view uses depth to keep background black. Calibration retains its last-fragment policy with always-pass depth writes and reconstructs the same diagnostic positions; its record format is unchanged. G-buffer draw recording is shared between production and calibration. Forward materials and the pool/queue retirement policy are unchanged.
+
+### Environment and reproduction
+
+Windows x64, MSVC 19.51, Ninja, NVIDIA GeForce RTX 5080, driver 617.14, Vulkan SDK 1.4.357.0. Both full Debug and Release builds completed. The first Debug build encountered a stale simdjson PCH charset mismatch; regenerating that build artifact resolved it. No source workaround was needed.
+
+Evidence and runners are in `build/rendercore-p3/`:
+
+- `p2/` preserves the starting executable and SPIR-V; `p3/` preserves the final ones. GPU runs use byte-identical `7zFM.exe` copies with `VK_LOADER_LAYERS_DISABLE=~implicit~`; correctness runs also set `VK_LAYER_VALIDATE_SYNC=1`.
+- `run.py`, `ab.py`, `performance.json`: initial gate measurements, then interleaved P2–P3–P3–P2 profiles at both resolutions, modes 2/3 and RHI thread 0/1. Settings: `--no-ui --fixed-step --vsync=0 --async-compute=0 --disable-validation --gpu-memory-stats --warmup=60 --frames=660`. This demo executes 60 warm-up frames plus **660 measured frames**. The existing config selects Sponza, compute voxelization, voxel resolution 64 and three frame slots; its configured camera sees an outer wall. These timings describe that view, not the authored hall view below.
+- `hall.py`, `compare.py`, `hall-comparison.json`: additional authored hall-camera comparisons at both sizes in modes 1–3. `diagnostic.py` temporarily compiles capture-only position/geometric-normal diagnostics, restoring the saved production shaders afterward.
+- `test.py`, `tests-debug/`, `tests-release/`, `acceptance.py`, `smoke-debug/`, `smoke-release/`: executable suites and 24 smoke runs.
+- `voxel-gi-images/`, `gltf-images/`, `cone-images/`, `calibration/`, `calibration-p2/`: image-tool and material-calibration evidence.
+
+The configuration was restored byte-for-byte after each override: SHA-256 `1c40ff0126df9ad97ca42c60dbb5128b403f1496bf9ae31b1f88d5b97b6ee450`. Pre-existing source and documentation edits were preserved.
+
+### Performance and retention
+
+The initial P2 baseline put OffScreen at 122/178 µs of the 720p PBR GPU frame and 349/522 µs at 1440p (69%/67%), meeting the plan's measurable-cost gate. The table gives the median of two run medians in the interleaved comparison; each row is P2 → P3. Peak memory is VMA commitment, not residency.
+
+| Width / mode / RHI thread | CPU frame ms | GPU frame ms | OffScreen µs | SceneLighting µs | Peak device-local MiB |
+| --- | --- | --- | --- | --- | --- |
+| 1280 / PBR / 0 | 0.640 → 0.645 | 0.178 → 0.167 | 121.4 → 109.0 | 30.8 → 32.8 | 622.8 → 589.0 |
+| 1280 / PBR / 1 | 0.655 → 0.644 | 0.178 → 0.167 | 121.5 → 108.9 | 30.8 → 32.8 | 622.8 → 589.0 |
+| 1280 / GI / 0 | 0.745 → 0.734 | 0.737 → 0.726 | 123.1 → 110.6 | 587.6 → 589.5 | 770.8 → 737.0 |
+| 1280 / GI / 1 | 0.752 → 0.761 | 0.736 → 0.726 | 123.1 → 110.6 | 587.6 → 589.4 | 770.8 → 737.0 |
+| 2560 / PBR / 0 | 0.649 → 0.648 | 0.521 → 0.457 | 347.6 → 287.0 | 120.6 → 117.2 | 949.0 → 814.0 |
+| 2560 / PBR / 1 | 0.670 → 0.644 | 0.521 → 0.457 | 347.2 → 287.3 | 120.5 → 117.3 | 949.0 → 814.0 |
+| 2560 / GI / 0 | 2.649 → 2.598 | 2.618 → 2.557 | 352.7 → 292.8 | 2208.9 → 2208.6 | 1097.0 → 962.0 |
+| 2560 / GI / 1 | 2.665 → 2.602 | 2.619 → 2.556 | 352.6 → 292.6 | 2209.6 → 2208.6 | 1097.0 → 962.0 |
+
+OffScreen improves about 10% at 720p and 17% at 1440p. Reconstruction adds about 2 µs to 720p lighting; the whole GPU frame still improves. CPU differences in the CPU-bound cases are small and mixed.
+
+The original per-frame recreation is absent. Most runs have zero measured pool misses, but the literal zero-miss exit criterion is **not universal on this machine**. Threaded 1440p PBR intermittently needs a third set after it has been unused for over 120 builds: P2 records 6/12 misses in its two runs; P3 records 5/15 (one to three sets). Graph records show idle-age eviction followed later by renewed demand, not budget eviction of each frame's active set. Available idle memory is below budget. A few other P3 runs have 1–6 descriptor misses with zero texture-pool misses; the counts and each raw run are retained in `performance.json`. The policy and its mandatory idle-age tests remain unchanged; this work does not claim every descriptor stays resident indefinitely.
+
+### Precision and images
+
+The new GPU regression runs all four execution/queue combinations. It tests 64 normal directions including all six axes, RG16 UNORM quantization, translated/rolled finite perspective, infinite perspective and orthographic cameras, and distances 0.01, 1 and 10. Normal-vector error stays below 0.0001 (about 0.006°), reconstructed position stays within the declared D32 distance-dependent bound, and planar geometric normals have dot product above 0.9999 with their analytic direction. The RenderCore regressions verify the 24-byte layout, resize/suspension, and that the inverse/origin uniforms retain the recorded camera snapshot.
+
+The hall capture-only probe compares 921,600 covered pixels. World-position difference from the former half-float target is 0.000100 median, 0.000160 p95 and 0.000269 maximum in renderer units. Geometric-normal differences are larger (2.13° median, 21.25° p95, 38.74° p99, 179.73° maximum): derivatives of the old quantized position texture are not a precision reference. The analytic GPU test above checks reconstruction independently. This is a real input change, not a byte-identical encoding substitution; strict geometric-normal equivalence with P2 is not achieved.
+
+Hall image comparisons and visual review found no broad silhouette or GI-edge regression. PBR mean absolute channel differences are 0.020/0.021 of 255 at 720p/1440p. GI differences are 0.133/0.099; 0.023%/0.010% of pixels differ by more than 32, concentrated at individual surface/shadow boundaries. GI scene-linear combined relative RMS is 2.11%/4.53%, diffuse relative RMS 2.69%/2.72%, and mean combined bias −0.106%/−0.152%. Images are intentionally not claimed byte-identical. Mode 1, which does not consume the G-buffer, differs at only a handful of pixels between independent runs; the separate entrance-view repeats were byte-identical within each phase. Raw captures, comparison crops and all component statistics remain in the evidence directory.
+
+### Current checks and remaining limits
+
+| Check | Debug | Release |
+| --- | --- | --- |
+| RenderCoreTest | 568 pass | 568 pass |
+| VulkanRHITest | 48 pass | 48 pass |
+| VulkanRHIIntegrationTest | 342 pass, 1 native-window failure | 343 pass, 1 native-window failure |
+| CommonTest | 112 pass | 112 pass |
+| ConeVoxelGIIntegrationTest | 12 pass, including 4 compact-layout precision cases | 12 pass |
+| SceneModelSwitch / RuntimeUIIntegration / UIDrawPacket | 8 / 10 / 8 pass | 8 / 10 / 8 pass |
+| UIRendering / UIPlatform / WindowPlatform | 5 / 2 / 4 pass | 5 / 2 / 4 pass |
+| EditorInput / EditorWindowChrome / EditorModel / EditorRendering / EditorPreview | 22 / 2 / 41 / 39 / 16 pass | 22 / 2 / 41 / 39 / 16 pass |
+| SmartPtr / FlatHashMap / LRUCache / InputController / ConfigLoader / ThreadPool | All pass | All pass |
+| Modes 1–3 × thread 0/1 × async 0/1 smoke | 12/12 pass | 12/12 pass |
+
+The smoke sequence cycles render modes and finishes with a 960×640 G-buffer after resize/minimize/restore. No validation or synchronization hazard was found in the smoke/image runs. Release image tools: `validate_voxel_gi.py` **162/162**, `smoke_gltf_rendering.py` **18/18**, and `validate_cone_lighting.py` **10/10** with diffuse additivity error below 0.041%.
+
+Two additional validation limits remain:
+
+- `RHIWindowThreadingTest.SentResizesDeferAndCoalesceCallbacksUntilWindowUpdate` expects width 140 but this Windows environment produces width 176, in both configurations. It exercises unchanged native-window/RHI-thread code and has no renderer dependency. No unrelated window fix was included.
+- The optional material-atlas calibration reports four emission differences above 0.016 per voxelizer (0.017578–0.019531). Repeating it with the saved P2 executable and shaders produces the **same cells, values and failures**. Both phases match 1,637 surface samples, with zero color/normal errors in the failing cells and no missing/extra voxels or owner mismatches. The compact calibration path adds no failure; the existing emission threshold discrepancy remains open.
+
+Whole-file clang-format 19.1.5, the no-exceptions check, and `git diff --check` pass for the changed source. All 32 interleaved profiles pass `validate_engine_profile.py --require-gpu --require-frame-gpu`; eight affected SPIR-V modules pass `spirv-val --target-env vulkan1.2` and match the restored final snapshot. These results validate this Windows/NVIDIA configuration; they do not establish AMD or MoltenVK performance or precision for P3.

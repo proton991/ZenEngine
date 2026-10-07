@@ -9,7 +9,7 @@ layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUM
        local_size_z=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_z_id=ZEN_VOXEL_VOLUME_GROUP_Z_ID) in;
 layout(set=1,binding=0) uniform sampler3D voxelAlbedo;
 layout(set=1,binding=1) uniform sampler3D voxelNormal;
-layout(set=1,binding=2) uniform samplerCube skyboxMap;
+layout(set=1,binding=2) uniform samplerCube coneEnvironmentMap;
 layout(set=1,binding=3,rgba16f) uniform writeonly image3D skyIrradiance;
 void main()
 {
@@ -26,8 +26,8 @@ void main()
         {
             float weight;
             vec3 direction=HemisphereCone(normal,i,count,weight);
-            float visibility=VoxelVisibility(voxelAlbedo,origin,direction,1e20);
-            irradiance+=textureLod(skyboxMap,EnvironmentSourceDirection(direction),0).rgb*visibility*weight;
+            float visibility=VoxelConeVisibility(voxelAlbedo,origin,direction);
+            irradiance+=ConeEnvironmentRadiance(coneEnvironmentMap,direction)*visibility*weight;
         }
         irradiance*=3.14159265359*sceneUbo.environment.x;
     }

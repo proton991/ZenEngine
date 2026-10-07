@@ -1,6 +1,6 @@
 # RenderCore improvement plan
 
-Status: Phases 0–2 implemented 2026-10-03 ([verification](RenderCoreImprovementVerification.md)); Phase 3 not started, its gate closed. Proposed 2026-10-02, based on `e79660ec` plus the uncommitted RHI section-5 changes described in [RHIDeferredWorkVerification.md](RHIDeferredWorkVerification.md). The findings below describe the code before Phase 1.
+Status: Phases 0–2 implemented 2026-10-03; Phase 3 implemented 2026-10-07 after fresh baseline and interleaved A/B measurements ([verification and remaining validation limits](RenderCoreImprovementVerification.md#phase-3-implementation-and-verification-2026-10-07)). Proposed 2026-10-02, based on `e79660ec` plus the uncommitted RHI section-5 changes described in [RHIDeferredWorkVerification.md](RHIDeferredWorkVerification.md). The findings below describe the code before Phase 1.
 
 Size the deferred G-buffer to the screen, and stop the render graph's transient pool from recreating render targets that every frame uses. Together these remove per-frame texture creation and descriptor misses at every resolution, cut G-buffer memory, and give screen-space algorithms one G-buffer texel per screen pixel. The ray-query lighting work requires that.
 
@@ -12,7 +12,7 @@ Scope: `RenderCore/V2` (render-graph resource pool, `RenderDevice`, `DeferredLig
 | --- | --- |
 | [RDGRenderCoreAnalysisAndPlan.md](RDGRenderCoreAnalysisAndPlan.md) | Phase 5 introduced the pool budget (256 MiB of idle payload, 120 idle builds). This plan keeps that policy for every graph by default and adds a retention window only for the frame graph. Phase 4 (range-aware barriers) and the deferred Phase 6 items stay deferred; whole-allocation synchronization is unchanged. |
 | [RHIDeferredWorkVerification.md](RHIDeferredWorkVerification.md) | Item 5.5 traced the per-frame descriptor miss to this pool churn; its measurements are the evidence below. |
-| [HardwareRayQueryEnvironmentLightingPlan.md](HardwareRayQueryEnvironmentLightingPlan.md) | H1 adds temporal accumulation, reprojection, edge-aware filtering, receiver identity and motion outputs, all in screen space. Land Phase 2 of this plan before H1 so those inputs share a 1:1 screen-sized G-buffer. A half-resolution trace in H1 would use its own targets, not the G-buffer. |
+| [HardwareRayQueryEnvironmentLightingPlan.md](HardwareRayQueryEnvironmentLightingPlan.md) (Hybrid Voxel GI plan) | P1 adds receiver identity and motion outputs; P3 adds temporal accumulation, reprojection and edge-aware filtering, all in screen space. Land Phase 2 of this plan before P1 so those inputs share a 1:1 screen-sized G-buffer. A half-resolution trace (P8) would use its own targets, not the G-buffer. |
 | [EngineProfiling.md](EngineProfiling.md) | Documents `--gbuffer-size`, which Phase 2 removes. |
 
 ## 2. Findings
@@ -84,6 +84,8 @@ Start only if, after Phase 2, the G-buffer pass or the lighting pass's G-buffer 
 3. Check GI precision: cone origins and the derivative normal must match Phase 2 within the image-tool thresholds.
 
 This takes the G-buffer from 36 to about 24 bytes per pixel. Reprojection inputs added by ray-query H1 must be included in the same layout review.
+
+Implemented with RG16 UNORM octahedral normals and D32 reconstruction. The inverse matrix uses a nearby world origin so GI derivatives are calculated before adding translation. Normal debug views and the voxel material-calibration capture consume the same encoding. The current renderer has no receiver-identity or motion attachments; adding those remains part of the separate Hybrid Voxel GI plan.
 
 ## 5. Expected effects
 

@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
+#include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
@@ -4454,7 +4455,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
     skybox.SetRenderScene(&scene);
 
-    std::vector<RHIResource*> priorBindings;
+    HeapVector<RHIResource*> priorBindings;
 
     uint32_t pipelinesAfterResize = 0;
 
@@ -4579,7 +4580,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
         {
             const RHIRenderingLayout& layout = context.renderingLayouts[index];
 
-            if (layout.numColorRenderTargets == 5)
+            if (layout.numColorRenderTargets == 4)
             {
                 offscreenIndex = index;
             }
@@ -4604,7 +4605,9 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         const RHIRenderingLayout& offscreen = context.renderingLayouts[offscreenIndex];
 
-        EXPECT_EQ(offscreen.numColorRenderTargets, 5u);
+        EXPECT_EQ(offscreen.numColorRenderTargets, 4u);
+
+        EXPECT_EQ(offscreen.colorRenderTargets[0].pTexture->GetFormat(), DataFormat::eR16G16UNORM);
 
         // The G-buffer follows the viewport, including after the frame-1 resize.
         EXPECT_EQ(lighting.GetGBufferExtent(), glm::uvec2(viewport.GetWidth(), viewport.GetHeight()));
@@ -4670,6 +4673,8 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
         }
 
         EXPECT_TRUE(HasShaderValue(context, camera));
+
+        EXPECT_TRUE(HasShaderValue(context, BuildGBufferUniformData(camera.projViewMatrix)));
 
         EXPECT_TRUE(HasShaderValue(context, uniforms));
 
@@ -4784,7 +4789,18 @@ TEST_F(RenderCoreTest, GBufferFollowsTheSuppliedViewAndIsNotDeclaredWhileSuspend
         {
             const RHIRenderingLayout& layout = rhi->graphics.renderingLayouts[0];
 
-            EXPECT_EQ(layout.numColorRenderTargets, 5u);
+            ASSERT_EQ(layout.numColorRenderTargets, 4u);
+
+            uint32_t bytesPerPixel = GetTextureFormatPixelSize(layout.depthStencilRenderTarget.pTexture->GetFormat());
+
+            for (uint32_t target = 0; target < layout.numColorRenderTargets; ++target)
+            {
+                bytesPerPixel += GetTextureFormatPixelSize(layout.colorRenderTargets[target].pTexture->GetFormat());
+            }
+
+            EXPECT_EQ(bytesPerPixel, 24u);
+
+            EXPECT_EQ(layout.colorRenderTargets[0].pTexture->GetFormat(), DataFormat::eR16G16UNORM);
 
             EXPECT_EQ(layout.renderArea.maxX, extent.x);
 

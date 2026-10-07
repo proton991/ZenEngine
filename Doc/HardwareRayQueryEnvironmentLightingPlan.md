@@ -1,285 +1,534 @@
-# Hardware Ray Query Environment Lighting Implementation Plan
+# Hybrid Voxel GI Implementation Plan
 
-Date: 2026-10-01. Updated: 2026-10-02 with the user-confirmed environment-lighting reproduction. Status: accepted design direction; implementation and acceptance checks remain open.
+Date: 2026-10-01. Updated 2026-10-02 with the user-confirmed reproduction. Revised 2026-10-07 against the current code and new Sponza measurements, and widened from environment lighting to the complete hybrid voxel GI. Status: accepted direction; no phase below is implemented. The file name is kept because other documents link to it; earlier revisions were titled *Hardware Ray Query Environment Lighting Implementation Plan*.
 
-Implement hardware triangle visibility for diffuse environment lighting, using distributed direction samples, temporal accumulation, and edge-aware filtering. Keep voxel cone tracing for bounced diffuse lighting. Complete the RHI, VulkanRHI, and render-graph support needed to build, bind, query, update, and retire acceleration structures safely.
+**Goal:** a hybrid voxel GI in mode 3 (PBR + voxel GI).
+- Rasterization draws the visible surfaces and builds the voxel scene.
+- Ray queries answer visibility and hit questions: hardware triangle rays where the device supports them, voxel-occupancy rays otherwise.
+- The voxel radiance volume is the radiance cache that ray hits read.
 
-This is the current implementation plan for that work. It carries forward the hardware infrastructure and validation requirements from [DynamicVoxelGIImplementationPlan.md](DynamicVoxelGIImplementationPlan.md), especially Section 4.3 and H0–H2, while targeting the current cone renderer. The older plan describes a directional irradiance pipeline that must not be assumed to exist in the current checkout. Completing this plan does not by itself complete or restore that older algorithm.
+Every ray-traced feature has a non-RT path, and the renderer selects the best tier the device can run. The result must converge to independent references, look stable, and meet measured per-tier performance and memory targets.
+
+This plan carries forward the hardware infrastructure requirements of [DynamicVoxelGIImplementationPlan.md](DynamicVoxelGIImplementationPlan.md) (Section 4.3 and H0–H2) for the current cone renderer. That older directional-irradiance pipeline was removed on 2026-09-30 and must not be assumed to exist.
+
+## Definition of done
+
+Evaluated on the frozen scenes, presets and limits of [P0](#p0-baseline-references-limits-and-targets):
+
+1. **Diffuse GI.** Sky light and one bounce at opaque and alpha-tested receivers, in deferred and forward rendering, converge on the RT tier to independent CPU triangle references. Fully enclosed receivers get no sky light, and no contribution is counted twice. On the compute tier they converge to the voxel reference, with documented voxel-geometry limits.
+2. **Image stability.** At the shipping presets, there are no voxel-aligned steps. Settling after cuts is bounded, and camera, receiver, occluder and light motion produce no ghost trails or cross-surface leaks.
+3. **Specular.** The scene occludes environment specular. Glossy surfaces above the roughness cutoff reflect scene light from the radiance cache. Behavior below the cutoff is documented.
+4. **Radiance cache.** The voxel sky cache and light injection follow the same lighting contract from valid surface points.
+5. **Fallbacks.** Every signal has a defined path on every tier. The renderer selects the tier from device capability and budget and reports the selection and reasons. Each tier is tested on its reference platforms, including RT disabled on RT-capable GPUs and macOS.
+6. **Performance and memory.** Per-tier targets are met on the reference hardware with the frozen presets. A shortfall is documented with measurements and resolved by an explicit preset change, never by a hidden quality reduction.
+7. **One implementation per signal.** The per-cone sky path survives only for translucent and scattering layers. Cone-traced bounce survives only where P8 measures it as the better compute-tier choice.
+
+**Out of scope:**
+- Mirror-sharp reflections that need full material shading at hit points.
+- More than one diffuse bounce (listed as a later candidate).
+- Colored transmission or volume scattering through translucent occluders.
+- Ray-generation pipelines.
+- Cascaded or clip-mapped voxel volumes for large worlds. One volume is fitted to the scene; on the RT tier voxels only supply radiance, so coarse cells cost less quality there than on the compute tier.
+
+## Target architecture
+
+Principles:
+- Raster work produces the visible surfaces (G-buffer, or a receiver prepass in forward mode) and the voxel scene (voxelization, light injection, radiance mips).
+- Ray queries return only visibility and hit location. Each query has a hardware and a voxel implementation behind the same shader interface.
+- Each signal has one estimator and one reconstruction, shared by all tiers. Tiers differ in ray source, tracing resolution, sample counts and enabled features.
+- No fallback may produce unoccluded sky light inside closed geometry.
+
+| Signal | RT tier | Compute tier (no ray queries) | Minimum (voxel GI unavailable) |
+| --- | --- | --- | --- |
+| Visible surfaces | Raster G-buffer, or forward receiver prepass | Same | Same |
+| Radiance cache | Voxelization, injection, radiance mips | Same | — |
+| Diffuse sky | Hardware rays + reconstruction | Voxel rays + reconstruction | PBR irradiance map, unoccluded |
+| Diffuse bounce | Same rays; hits read the radiance cache (P5) | Cone march, or voxel-ray hits if P8 measures them better | None |
+| Specular (environment and glossy) | Lobe rays: misses use the environment, hits read the radiance cache (P6) | Same with voxel rays, or occlusion only if P8 measures reflections too costly | PBR prefiltered environment |
+| Analytic shadows (pixels and injection) | Shadow maps; hardware shadow rays if P7 is adopted | Shadow maps | Shadow maps |
+| Voxel sky cache | Hardware rays | Voxel rays | — |
+| Translucent and scattering layers | Per-surface cone path | Same | PBR |
+
+The minimum tier is the existing `RendererServer` fallback: PBR is rendered and the reason reported when voxel coverage is incomplete, GI initialization fails, or shadow memory preflight fails.
+
+## Current implementation (2026-10-07)
+
+This table includes the working-tree changes recorded in [VoxelGIVerification.md](VoxelGIVerification.md) on 2026-10-07.
+
+| Area | Current behavior |
+| --- | --- |
+| Frame order | [RendererServer.cpp](../ZenCore/Source/Graphics/RenderCore/V2/RendererServer.cpp) builds the G-buffer, voxelization, mesh shadow maps, `VoxelGIRenderer` (sky cache, radiance injection, radiance mips), then composition. |
+| Voxel volume | One cube fitted to the scene bounds at 64³, 128³ or 256³ (Sponza cells are 0.48 m at 64³). Any geometry or surface revision re-voxelizes the whole scene ([VoxelizerBase.cpp](../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp)); this took 4.6 ms for Sponza at 64³ (Debug, RTX 5080). |
+| Receiver diffuse | `DiffuseVoxelLighting` in [cone_trace.glsl](../Data/Shaders/VoxelGI/cone_trace.glsl) traces fixed cones (default six; weights 2/7 and 1/7; side cones 60° from the shading normal). Bounce composites voxel radiance front to back with transmittance. Escaped sky per cone is eight-ray occupancy visibility × the GGX-prefiltered environment at a cone-width LOD × intensity; transmittance no longer scales or gates it. The result is cosine-weighted mean radiance (irradiance/π), the convention of the PBR irradiance map ([irradiancecube.frag](../Data/Shaders/Environment/irradiancecube.frag)). |
+| Visibility traversal | `VoxelEnvironmentVisibility` ([environment_visibility.glsl](../Data/Shaders/VoxelGI/environment_visibility.glsl)) and `VoxelVisibility` ([gi_common.glsl](../Data/Shaders/VoxelGI/gi_common.glsl)) step one base-level cell at a time with no empty-space skipping; occupancy above 0.5 blocks. Rays start at `position + shading normal × 1.5 voxels`, and the start cell itself is tested. |
+| Voxel sky cache | [sky_irradiance.comp](../Data/Shaders/VoxelGI/sky_irradiance.comp) uses the same cones and eight-ray visibility from the voxel center plus normal bias, then multiplies by π and intensity. [inject_radiance.glsl](../Data/Shaders/VoxelGI/inject_radiance.glsl) applies albedo/π. Analytic injection evaluates at the owner-triangle surface point with mesh shadow maps; the sky cache does not use that point. The voxel radiance stores one isotropic value per cell. |
+| Analytic shadows | `SceneShadowRenderer` mesh shadow maps: six faces per point light, one projection per spot or directional light; up to 32 lights. |
+| Specular IBL | [deferred_lighting.glsl](../Data/Shaders/SceneRenderer/deferred_lighting.glsl) multiplies the prefiltered environment by the split-sum terms and material AO only; the scene does not occlude it. |
+| Receiver paths | `DeferredLightingRenderer::UsesForwardMaterials` renders the whole scene forward, opaque surfaces included, when any material uses an extended glTF feature or specular-glossiness (`materialProperties.w`), any material is translucent, or any draw is not triangles. Forward mode declares no G-buffer; `forward_material` and `forward_scatter` voxel variants call `DiffuseVoxelLighting` per fragment. |
+| G-buffer | Compact layout since [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) Phase 3: shading normal as RG16 UNORM octahedral, albedo RGBA8, metallic/roughness RGBA8, emissive/occlusion RGBA16F, and the device depth format (D32_SFLOAT on the RTX 5080), 24 bytes per pixel with D32. There is no position target: [gbuffer.glsl](../Data/Shaders/Common/gbuffer.glsl) reconstructs world position from depth with a double-precision inverse projection-view built relative to the near-plane center ([GBuffer.h](../ZenCore/Include/Graphics/RenderCore/V2/Renderer/GBuffer.h)), and holds the shared normal encoding. There is no geometric normal, surface identity or motion. Deferred voxel shading derives a geometric normal from screen-space derivatives of the reconstructed position, which mixes neighboring surfaces at silhouettes. |
+| Temporal data | `CameraUniformData` ([Camera.h](../ZenCore/Include/SceneGraph/Camera.h)) holds the current projection-view, projection and view only. No previous camera, node transforms or vertex positions are kept, and the renderer has no history resources. |
+| Animation | Node animation, CPU skinning and morph weights ([SceneAnimation.cpp](../ZenCore/Source/SceneGraph/SceneAnimation.cpp)). `RenderScene` tracks geometry and surface revisions for static, dynamic and all instances. |
+| Ray tracing | Buffer-device-address, acceleration-structure, ray-tracing-pipeline and ray-query features are detected and enabled ([VulkanExtension.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanExtension.cpp)); `--disable-rt` disables them. There is no acceleration-structure (AS) resource, build command or descriptor, and reflection rejects AS bindings ([RHIShaderUtil.h](../ZenCore/Include/Graphics/RHI/RHIShaderUtil.h)). Access and stage enums have 17 bits each ([RHICommon.h](../ZenCore/Include/Graphics/RHI/RHICommon.h)). Ray-query availability on macOS (MoltenVK) has not been checked. |
+| Diagnostics | Seven-component lighting capture ([LightingCapture.h](../ZenCore/Include/Graphics/Shared/LightingCapture.h)) through `scene_renderer_demo --capture-lighting`; `--capture-voxels`; per-pass GPU profiles through `--profile`; GPU tests in `ConeVoxelGIIntegrationTest`. The `tools/requirements-gi-quality.txt` environment includes Embree (`embreex`) for CPU references. |
 
 ## Problem and evidence
 
-The reported Sponza reproduction uses camera position `(-0.053, 0.264, -0.010)`, looking down toward the floor, with the AABB +Y light, Light 3, set to zero. The marked source image is [Sponza_abnormal_shadow_debug.jpg](imgs/Sponza_abnormal_shadow_debug.jpg).
+### Original report
 
-The investigation reproduced the stripes with all analytic lights disabled. Linear lighting captures isolated them to escaped environment diffuse lighting. In [cone_trace.glsl](../Data/Shaders/VoxelGI/cone_trace.glsl), each broad cone currently receives a single binary result from [environment_visibility.glsl](../Data/Shaders/VoxelGI/environment_visibility.glsl). An occluder on that ray can suppress the environment contribution of the entire cone. This produces excessive directional contrast even when the occluder is beside the floor rather than directly above it. Voxel geometry approximation adds a separate source of visibility error.
+The reported Sponza view uses camera position `(-0.053, 0.264, -0.010)`, looking down at the floor, with the AABB +Y light (Light 3) at zero intensity; see [Sponza_abnormal_shadow_debug.jpg](imgs/Sponza_abnormal_shadow_debug.jpg). Repeated dark strips appear on the floor. On 2026-10-02 the user confirmed that disabling **Environment lighting** removes them. Disabling it is a diagnostic, not a fix: it removes useful lighting with the artifact. The 2026-10-02 artifacts under `build/sponza-floor-debug/` no longer exist, and that reproduction recorded only the camera position, not the full matrices.
 
-A distributed 16-ray-per-cone experiment removed the large stripes, but the measured median `SceneLighting` GPU time rose from 17.326 ms to 215.221 ms at 1920×1080 on the RX 7900 XT. These are lighting-pass measurements for that experiment, not total frame times or predictions of hardware RT performance. Removing visibility altogether also removed the lines but admitted environment light into enclosed areas. Both experiments were reverted; no production fix remains from the investigation.
+That investigation also measured a 16-ray-per-cone experiment: median `SceneLighting` rose from 17.326 ms to 215.221 ms at 1920×1080 on an RX 7900 XT.
 
-Local diagnostic artifacts are under `build/sponza-floor-debug/` and are ignored, non-portable evidence. Before implementation, regenerate and archive a reproducible baseline with full camera matrices, configuration, scene/shader hashes, device/driver, HDR components, and fixed floor regions. Camera position alone is insufficient to reproduce the exact view.
+### Analysis of 2026-10-07
 
-### Bug record and UI reproduction
+Conditions: environment light only, 64³, 960×540, Debug build, RTX 5080. The reference is the same voxel visibility with 64 rays per cone. Scripts, debug shaders, comparison images and capture metadata are in `build/sponza-environment-analysis-20261007/` (ignored, non-portable; raw HDR files were not kept but can be regenerated with its `probe.py`).
 
-Status: diagnosed and unresolved. On 2026-10-02, the user confirmed that disabling **Environment lighting** in the UI makes the abnormal floor shadows/black strips disappear.
+| ID | Defect | Evidence | Status |
+| --- | --- | --- | --- |
+| D1 | **Angular quantization.** Every pixel traces the same fixed directions and gets binary answers. In Sponza's narrow atrium only 0–3 of the upward cone's eight rays escape, so one ray changes floor brightness by up to about 40%, with voxel-square edges. | Up-cone visibility on the atrium floor takes only the values 0, 1/8, 2/8 and 3/8. With 16 rays per cone the floor is still blocky; 32 is nearly smooth. | Open: P2, P3 |
+| D2 | **Voxel geometry error.** Sponza's flagpoles are 0.17 m thick at 6.6–7.1 m height but occupy 0.48 m cells, casting bands. Ray starts land inside column-base and curb cells for 26% of atrium-floor pixels in a top-down view, and those return zero visibility. | A CPU query of the glTF triangles confirmed the poles. The black squares remain with 64 rays. Moving the start out of occupied cells removed them but added bright seams at curtain bases. | Open: RT tier (P4); documented compute-tier limit |
+| D3 | **Occlusion counted twice.** Escaped sky was transmittance × visibility; both estimate the same blockers. On open roofs, where at least 97% of rays escape, transmittance was still 0.82. | Before: 18% (top-down) and 60% (hall) darker than the reference; open roofs at 73% of PBR diffuse IBL. After: within 1.3% and 10%; roofs at 86%. | Fixed 2026-10-07 |
+| D4 | **Unoccluded specular sky.** Covered areas reflect the full environment. | Code inspection. | Open: P3, P6 |
+| D5 | **Sky cache sampling.** The voxel sky cache has the same fixed eight-ray quantization and starts from voxel centers, which can lie inside walls. The bounce gather blurs it, so it is not directly visible. | Code inspection. | Open: P2, P4 |
+| D6 | **Cone bounce leaks.** Mip-averaged opacity lets cones see light through thin walls; the cone-bounce limitation is recorded in [VoxelGIVerification.md](VoxelGIVerification.md). | Existing verification record. | Open: P5 on the RT tier; compute-tier limit unless P8 adopts ray hits |
 
-1. Load Sponza in Voxel GI mode with environment lighting enabled.
-2. Set the camera position to `(-0.053, 0.264, -0.010)` and look down at the floor areas marked in the screenshot.
-3. Set Light 3 at AABB +Y to intensity zero. Observe the repeated dark strips despite no apparent object directly above those floor locations.
-4. Disable **Environment lighting** in the UI. The user observed that the strips disappear.
-5. For regression capture, re-enable environment lighting without changing the camera or other settings and verify that the baseline artifact returns. Also repeat with all analytic lights disabled to isolate the environment contribution.
+Cost reference: in a static scene only the G-buffer (0.09 ms) and the lighting pass run each frame; voxelization, injection, the sky cache and mips run only on changes. Going from 6 to 48 voxel rays per pixel raised the lighting pass from 0.229 ms to 0.814 ms (960×540, 64³, Debug, RTX 5080), roughly 0.014 ms per additional ray per pixel there. The RX 7900 XT experiment implies a much higher per-ray cost at 1080p. Voxel-ray cost grows with grid resolution.
 
-Expected behavior: environment lighting should remain occluded by scene geometry, with the diffuse response accounting for the visible range of incoming directions. A narrow blocker should not remove the light assigned to an entire broad cone. Disabling environment lighting is a diagnostic workaround, not a correction: it removes useful lighting along with the artifact.
+## Phase overview
 
-### How environment light enters voxel GI
+D1 requires distributed per-pixel sampling with temporal and spatial reconstruction, whatever traces the rays; one hardware ray in place of each fixed voxel ray would keep the steps. D2 and D6 require triangle visibility. Shared estimators and reconstruction are therefore built first with the existing voxel traversal, which also delivers the compute-tier fallback. Hardware ray queries follow behind the same interface, then the remaining hybrid signals, then tier tuning.
 
-Environment light is directional radiance from the HDR cubemap. It is independent of Light 3 and the other analytic lights. The current renderer consumes it through three paths:
-
-| Path | Implementation | Effect of disabling environment lighting |
+| Phase | Delivers | Depends on |
 | --- | --- | --- |
-| Environment to visible diffuse surface | `TraceDiffuseCone` in [cone_trace.glsl](../Data/Shaders/VoxelGI/cone_trace.glsl) adds environment radiance when a cone escapes the volume and its visibility ray is clear | Removes the escaped environment diffuse term responsible for the observed strips |
-| Environment to voxel surface to visible surface | [sky_irradiance.comp](../Data/Shaders/VoxelGI/sky_irradiance.comp) estimates incident environment light; [inject_radiance.glsl](../Data/Shaders/VoxelGI/inject_radiance.glsl) converts it to reflected voxel radiance, later gathered by cone tracing | Removes the environment-sourced portion of bounced diffuse lighting |
-| Environment to specular reflection | [deferred_lighting.glsl](../Data/Shaders/SceneRenderer/deferred_lighting.glsl) samples the prefiltered environment independently of diffuse cone tracing | Removes specular IBL |
+| P0 | Frozen baseline, CPU references, fixtures, limits, performance targets, platform matrix | — |
+| P1 | Receiver data, previous-frame data, persistent history, forward receiver prepass | P0 |
+| P2 | Sky estimator with the voxel provider; sky-cache update; settings | P1 |
+| P3 | Temporal accumulation, spatial filtering, specular occlusion | P2 |
+| P4 | Hardware ray-query provider: RHI, render graph, scene acceleration structures | P0; P4a–P4c may run in parallel with P1–P3; P4e after P3 |
+| P5 | Diffuse bounce from ray hits | P3; P4 for the RT tier |
+| P6 | Glossy reflections from the radiance cache | P3, P5 |
+| P7 | Hardware shadow rays (optional; adopted only if P8 measures a benefit) | P4 |
+| P8 | Compute-tier and RT-tier performance, presets, memory, platform validation, automatic selection | P5, P6; P7 if implemented |
 
-The UI experiment establishes environment dependence but, by itself, does not distinguish these three paths. The earlier linear component captures identify escaped environment diffuse as the source of the strong floor stripes. Analytic direct lighting and non-environment bounce sources remain independent of this switch; skybox visibility has its own control.
-
-### Why the strips appear
-
-For each escaping cone, the current shader effectively adds:
-
-`cone weight * remaining transmittance * binary voxel visibility * environment radiance * environment intensity`.
-
-`VoxelEnvironmentVisibility` traverses base-level voxel occupancy along one ray. Encountering a cell with opacity above `0.5` returns zero, regardless of how much of the cone's angular footprint that cell actually blocks. With the default six cones, [HemisphereCone in gi_common.glsl](../Data/Shaders/VoxelGI/gi_common.glsl) gives the normal-aligned cone weight `2/7` and each of the five tilted cones weight `1/7`. These are integration weights, not fixed fractions of the final pixel brightness; environment radiance and transmittance vary by direction.
-
-A hit therefore removes a substantial directional contribution abruptly. A neighboring floor pixel may miss the same occupied cells and retain that contribution. Sparse fixed directions create coherent strips, while voxel boundaries and shading-normal variation can make their edges jagged. Sampling one unfiltered environment direction per cone also poorly represents an HDR environment with strong directional variation.
-
-The tilted rays can encounter geometry beside the receiver. No object directly overhead is required for environment occlusion. The bug is the excessive darkness and abrupt shape caused by using one binary ray to represent a broad cone, compounded by voxel geometry approximation. The strips represent missing incoming light, not a separate black layer or necessarily a Light 3 shadow-map error. Specific blocker triangles have not been identified by the component captures alone.
-
-The planned fix must address both angular sampling and geometric visibility. Distributed samples, temporal accumulation, and edge-aware filtering reconstruct the environment contribution; hardware triangle queries improve occluder accuracy. Replacing each existing voxel ray with one hardware ray while retaining the same all-or-nothing cone gate would preserve the sampling defect.
-
-## Scope and completion boundary
-
-The delivery includes:
-
-- Usable hardware capabilities, acceleration-structure resources, GPU builds and updates, shader reflection and bindings, synchronization, and deferred lifetime management.
-- A reusable triangle-query scene with static, dynamic, and full-scene views; the environment consumer uses full-scene visibility.
-- Distributed environment sampling at visible diffuse receivers, reprojection, history rejection, and spatial reconstruction.
-- Environment visibility at occupied voxel surfaces for radiance injection, while retaining cone tracing to gather bounced radiance.
-- Runtime selection, resource limits, capability fallback, diagnostics, automated correctness tests, and final performance assessment.
-
-Use `VK_KHR_ray_query` in compute shaders for the main receiver pass. Ray queries may also serve the explicit forward-surface fallback described below. A ray-generation pipeline, shader binding table, `TraceRays` commands, recursive path tracing, RT reflections, and replacement of analytic-light shadow maps are outside this delivery. Query support must not depend on enabling `VK_KHR_ray_tracing_pipeline`; the APIs are separate paths with shared acceleration structures. See the [Vulkan ray-tracing guide](https://docs.vulkan.org/guide/latest/extensions/ray_tracing.html) and [ray-query sample](https://docs.vulkan.org/samples/latest/samples/extensions/ray_queries/README.html).
-
-The compatibility cone path remains available with RT disabled. Hardware RT is not a guarantee of speed or a substitute for adequate angular sampling. A single hardware ray controlling an entire cone would retain the sampling defect.
-
-## Current code and ownership
-
-| Area | Observed state | Planned responsibility |
-| --- | --- | --- |
-| [VulkanExtension.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanExtension.cpp) | Device-address, acceleration-structure, and ray-query feature plumbing exists | Distinguish support, requested enablement, successful device enablement, and renderer readiness |
-| [RHIShaderUtil.h](../ZenCore/Include/Graphics/RHI/RHIShaderUtil.h) | Acceleration-structure reflection is explicitly unsupported | Add AS resource type, reflection, binding validation, and backend descriptors |
-| [RHICommon.h](../ZenCore/Include/Graphics/RHI/RHICommon.h) and [RHIResource.h](../ZenCore/Include/Graphics/RHI/RHIResource.h) | No complete public AS build/query contract; access/stage enums have no AS operations | Add backend-neutral resources, limits, build descriptions, and accesses |
-| [RenderSubmissionHistory.cpp](../ZenCore/Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp) and RDG | Existing transactional resource/submission tracking | Extend it to AS dependencies and all referenced resources |
-| [VoxelGIRenderer.cpp](../ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp) | Owns voxel radiance, sky irradiance, revision tracking, and lighting bindings | Keep bounce transport; integrate the selected environment provider |
-| [offscreen_surface.glsl](../Data/Shaders/SceneRenderer/offscreen_surface.glsl) | Writes position, shading normal, materials, and depth-related receiver data; no temporal receiver identity or velocity output here | Supply stable receiver identity, geometric normal, and previous position/motion for reconstruction |
-| [deferred_lighting.glsl](../Data/Shaders/SceneRenderer/deferred_lighting.glsl) and [forward_material.glsl](../Data/Shaders/SceneRenderer/forward_material.glsl) | Both consume cone diffuse lighting | Replace only the environment term for eligible receivers, preserving material composition |
-| [LightingCapture.h](../ZenCore/Include/Graphics/Shared/LightingCapture.h) | Seven components include escaped environment and bounced diffuse | Preserve component meaning and add versioned diagnostic metadata |
-
-Proposed RenderCore components are `RayQueryScene` for scene acceleration structures and `EnvironmentVisibilityRenderer` for sampling/history/filtering. These names are provisional. Share scene geometry and material infrastructure rather than creating a second importer or native Vulkan renderer. Backend handles and Vulkan synchronization translation stay in VulkanRHI.
-
-Follow the current [RHI lifetime and submission contracts](../ZenCore/Include/Graphics/RHI/README.md). Use engine containers, explicit C++ types without `auto`, one terminal return for value-returning functions, small necessary lambdas, and repository formatting. No renderer-owned native queue submissions or per-frame device-idle waits.
+Each phase leaves the renderer usable, with focused tests and a short verification record in [VoxelGIVerification.md](VoxelGIVerification.md).
 
 ## Lighting contract
 
-### Separate direct environment from bounced radiance
+### Diffuse signals
 
-For hardware mode, define the unmaterialed diffuse environment signal as:
+For a receiver at `x` with shading normal `n_s` and geometric normal `n_g`, and `V(x, w) = 1` when the ray in direction `w` escapes:
 
-`D_env(x, n) = (1 / pi) * integral[L_env(w) * V_triangle(x, w) * max(dot(n, w), 0) dw]`.
+`D_sky(x) = (1 / pi) * integral[L_env(w) * V(x, w) * max(dot(n_s, w), 0) dw]`
 
-For samples with solid-angle density `p(w)`, estimate it with `sum(L_env * V * cosine / (pi * p)) / sampleCount`. Begin with cosine-weighted hemisphere samples, for which the weight simplifies to `L_env * V`. Keep the PDF explicit in the interface so later environment importance sampling cannot silently change the energy scale.
+`D_bounce(x) = (1 / pi) * integral[L_hit(x, w) * (1 - V(x, w)) * max(dot(n_s, w), 0) dw]`
 
-A confirmed opaque hit contributes zero environment radiance. A miss samples the rotated HDR environment with the existing intensity convention. Trace against all eligible scene geometry, including objects outside the voxel volume. Derive the finite ray limit from scene bounds and receiver position so it cannot omit a registered occluder; document floating-point margins and test out-of-bounds receivers.
+- Units match the PBR irradiance map and the current `DiffuseVoxelLighting` output: a constant environment `L` with nothing blocking gives `D_sky = L`.
+- `L_env(w)` is level 0 of the prefiltered environment map, looked up with `EnvironmentDirection(w)` and multiplied by environment intensity and enablement. Level 0 is generated at roughness 0, and the prefiltered maps share their orientation with specular IBL. `EnvironmentSourceDirection` applies only to the raw skybox texture.
+- `L_hit` is the radiance-cache value at the first hit (see [Hit radiance](#hit-radiance)), multiplied by indirect intensity.
+- Directions with `dot(n_g, w) <= 0` lie below the actual surface and count as blocked with zero radiance.
+- A ray escapes only when no accepted opaque hit occurs before it leaves the scene bounds (triangle provider) or the voxel volume (voxel provider). Alpha-mask candidates that fail the material's cutoff are rejected and traversal continues. Blend and transmissive surfaces count as opaque occluders; this is a documented limitation.
+- Estimate with cosine-weighted hemisphere samples around `n_s`. A miss adds `L_env` to the sky channel; a hit adds `L_hit` to the bounce channel. Keep the sample PDF explicit in the shader interface so later importance sampling cannot silently change the scale.
+- Also accumulate `nu`, the cosine-weighted unblocked fraction, for diagnostics and filter guidance.
+- Sky and bounce are reconstructed as separate channels: bounce must respond to light changes that leave sky history valid.
 
-In hardware mode, composition uses:
+Do not multiply either signal by cone transmittance or by a second visibility term. Until P5 is adopted on a tier, `D_bounce` is the existing cone bounce `B_cone` (transmittance compositing and indirect intensity, unchanged).
 
-`diffuse outgoing = receiver diffuse factor * (D_env_filtered + D_bounced_cones)`.
+### Composition
 
-Apply existing metallic/Fresnel, albedo, AO, and material-layer factors exactly once at composition. Accumulate and filter the linear, unmaterialed environment signal. Disable the old escaped-environment branch of cone tracing for that receiver. Do not multiply the RT environment estimate by cone transmittance or a second voxel visibility term. Cone transmittance still applies while gathering bounced voxel radiance.
+`diffuse outgoing = kD * albedo * AO * (D_sky + D_bounce)`
 
-Preserve the current controls: indirect intensity scales the bounced term as it does today; environment intensity and environment enablement govern environment contributions. Analytic direct lighting, visible emission, specular IBL, skybox visibility, and their captures retain their existing contracts.
+Metallic/Fresnel, albedo and material AO are applied exactly once. Material AO represents detail absent from the geometry and stays, as in PBR mode. A receiver without a valid reconstructed value, such as a translucent layer or an unsupported topology, keeps the per-cone path, and capture metadata reports which path each class of receiver used.
 
-### Sampling and ray origins
+### Specular
 
-Use a deterministic, spatially decorrelated sequence that advances with successful rendered frames. Distribute samples across the hemisphere rather than assigning a binary result to a broad cone. Supply a fixed seed/frame sequence for reference captures. Start with full receiver resolution and explicit 1, 2, and 4 sample presets for functional testing; choose production defaults only in H2.
+`specular = (S * prefiltered(R, roughness) + (1 - S) * H) * (F * A + B) * AO`
 
-Use a geometric normal and scale-aware origin offset for intersection robustness, with the shading normal used for the lighting estimator. Handle shading-normal directions below the geometric surface consistently and test the chosen correction against a reference. Document the offset and `tMin` policy for small, large, mirrored, and nonuniformly scaled geometry. Avoid ignoring an entire source instance to suppress self-intersections: that would remove legitimate self-occlusion.
+- `S` is the fraction of the GGX lobe (visible-normal sampling around the view direction) whose rays escape.
+- `H` is the mean radiance-cache value of the lobe rays that hit, with indirect intensity applied; it is zero until P6.
+- Keeping the environment part on the prefiltered map leaves only the hit part noisy.
+- In forward materials with extra lobes (clearcoat, sheen), apply the base-lobe `S` and `H` to every environment-specular lobe and document the approximation.
+- Below the roughness cutoff fixed in P0 (initially 0.2), reflected scene detail is limited by voxel resolution; it is still occluded correctly. Analytic specular is unchanged.
 
-For alpha masks, inspect candidate intersections, reconstruct the appropriate UVs and vertex alpha, apply material UV transforms and alpha cutoff, and continue traversal after rejected candidates. Do not mark masked geometry opaque. Match raster material and sidedness policy, including mirrored transforms and two-sided surfaces. Define texture LOD explicitly because compute queries have no implicit screen derivatives.
+### Hit radiance
 
-Blend and transmissive surfaces require an explicit occluder policy. Initially treat solid surfaces as opaque unless their supported mask rejects the hit; any conservative treatment of blend/transmission must be reported in diagnostics and tested. Physically correct colored transmission and volumetric shadow transport are deferred, not implied by enabling RT.
+Shared by P5 and P6:
+- **Hit point and normal.** The hardware provider uses the triangle hit and its geometric normal. The voxel provider uses the entry point into the occupied cell and the face it entered through.
+- **Lookup.** Read the base-level radiance of the hit cell. Each cell stores one isotropic value for its owner surface. If the cell's stored normal faces away from the ray (`dot(n_voxel, -w) <= 0`), it represents the far side of a thin surface or the receiver's own surface. In that case use the adjacent cell on the ray's side when it is occupied and facing; otherwise return zero, and count rejected lookups in diagnostics. Trilinear lookups must divide by coverage so empty neighbors do not darken the result.
+- **Content.** The cache contains injected analytic light, injected sky light and emission, so each path delivers exactly one bounce of each.
+- **Thin walls.** Must pass the thin-wall fixture: a wall lit on one side contributes nothing to receivers on its unlit side.
 
-### Environment lighting for voxel bounce sources
+### Ray starts and ranges
 
-Retain radiance injection and radiance mip filtering. In hardware mode, replace the voxel sky-irradiance visibility provider with the same triangle-query/material acceptance rules and distributed sampling. Evaluate from a valid represented surface position and normal, not an arbitrary voxel center inside a wall. Reuse the existing owner/triangle data and define a valid representative point for both owner and averaged reflectance policies.
+- Ray starts use the depth-reconstructed position from `gbuffer.glsl`. Its error grows with the square of view distance for perspective cameras; `CompactGBufferPreservesNormalsPositionsAndPlanarDerivatives` bounds it at 1×10⁻⁴ + 1×10⁻⁴ × distance² renderer units with a 0.001 near plane. Start offsets must exceed that error at the receiver's distance and near plane, and are tested at near, middle and far distances.
+- The triangle provider offsets along `n_g` with a floating-point-aware offset, such as the method of Wächter and Binder (Ray Tracing Gems, chapter 6). It must not ignore whole instances to avoid self-hits, because that removes legitimate self-occlusion.
+- The voxel provider offsets along `n_g` instead of the shading normal, keeping the current bias in voxels. The D2 start-inside-occupancy defect remains a documented compute-tier limit unless a start policy passes all leak fixtures in P0, including a receiver at the base of a one-voxel wall.
+- The triangle provider traces to the scene bounds, including geometry outside the voxel volume. The voxel provider traces to the volume boundary.
 
-Compute this cache when its geometry, surface-opacity, environment, or sampling inputs change. Use a deterministic sufficient-sample calculation for initial correctness; camera-space history must not be reused as voxel history. Preserve irradiance units, including the `pi` conversion required by injection. This remains a voxel approximation for material representation and bounce gathering; no triangle-accurate bounced GI claim is made.
+### Sampling sequence
 
-## H0 Complete hardware query infrastructure
+Use a per-pixel decorrelated low-discrepancy sequence, for example blue-noise or R2 points rotated per pixel by a hash. Advance it once per successfully executed frame. Captures use a fixed seed and frame index. Diffuse samples per pixel are 1, 2 or 4; specular uses one lobe sample per pixel initially. A reference mode accumulates many frames with reprojection and filtering disabled; it is the converged estimate used by acceptance tests.
 
-### H0a Capabilities and shader variants
+### Voxel sky cache
 
-- Expose enabled buffer device address, AS, ray-query support, queue build capability, geometry-format support, and relevant limits through generic RHI capabilities.
-- Audit the complete extension dependency chain for the configured Vulkan API version. Do not infer usability from extension names or support flags alone, and enable only required features.
-- Audit the current SPIR-V 1.3 build target. Compile query shaders for a supported ray-query target and validate them separately; retain RT-free variants for unsupported devices. Shader-program discovery must not instantiate unsupported modules.
-- Preserve `--disable-rt` as a hard device-feature override. Runtime selection cannot enable a feature omitted at device creation.
+- Evaluate each occupied voxel at the owner-triangle surface point with that triangle's geometric normal, using the reconstruction analytic injection already uses. Define a representative point for the averaged-reflectance policy. Fall back to the voxel center only when no owner exists, and count those voxels.
+- Use a deterministic stratified cosine sample set (initially 64 directions) with the active provider. Never use camera-space history for voxels.
+- Updates may complete progressively over several frames. Consumers keep using the last complete generation; a partial generation is never published.
+- Units are unchanged: irradiance is `pi * mean(L_env * V) * intensity`, and injection multiplies by albedo/π.
 
-Exit: supported, disabled, and unsupported paths resolve correctly; ordinary cone rendering starts without loading query shaders or allocating AS resources when RT is disabled.
+## P0 Baseline, references, limits and targets
 
-### H0b Resources commands and descriptors
+1. **Cameras.** Freeze full camera matrices, not only positions, for:
+   - the original report view;
+   - a top-down atrium view (camera at (0, 16, 0) in glTF space looking down, screen-up = −X, 60° vertical FOV, as in the archived `probe.py`);
+   - the hall view from the 2026-10-07 analysis;
+   - a fixture view for each fixture below.
 
-- Add a stable-identity RHI AS resource, build-size queries, storage allocation, device addresses, and explicit creation/build status. Expose vertex/index/instance build-input and scratch buffer requirements.
-- Record build and update commands through the current command stream. Copy descriptions, geometry arrays, and ranges into command-owned storage so threaded execution cannot retain caller stack memory.
-- Add AS reflection and ordinary descriptor binding, descriptor cache keys, pool sizing, and validation. Keep AS descriptors separate from the material texture heap.
-- Retain TLAS, referenced BLAS, storage, geometry/material lookup tables, and other query dependencies through completion. An AS descriptor retaining its pool does not retain those resources.
-- Validate build/update eligibility, formats, counts, instance fields, device-address range/offsets, and scratch alignment before recording. Use fresh resources for incompatible replacements.
+   Store them as glTF camera nodes or capture metadata.
+2. **Configurations.** Environment light only; analytic lights only; both. Bounce intensity 0 and 1. Voxel resolutions 64, 128 and 256. Viewports of 960×540 and 1920×1080. Record scene and shader hashes, device and driver.
+3. **CPU references** in `tools/environment_reference.py`, using the Embree binding from `tools/requirements-gi-quality.txt`:
+   - **Sky.** Load the glTF scene with the renderer's normalization and take receiver positions and normals from a capture. Trace at least 4096 cosine samples per receiver against all triangles with material alpha cutoffs, and sample the same environment cubemap with the same rotation and orientation. Output `D_sky` and `nu`.
+   - **One bounce.** For uniform-albedo fixtures, compute one-bounce diffuse light at the same receivers from analytic lights and sky, with triangle-accurate visibility at both the receiver and the hit point.
+   - **Specular.** Sample the GGX lobe and output `S` and the hit fraction.
 
-GPU build/update rules and queried allocation sizes must follow the [Vulkan acceleration-structure specification](https://docs.vulkan.org/spec/latest/chapters/accelstructures.html). AS compaction is an optional H2 optimization; serialization and host builds are outside scope.
+   Validate each reference against analytic fixtures before using it.
+4. **Fixtures**, for the GPU tests and the CPU references:
+   - open plane under a constant environment (`D_sky = L`);
+   - closed box with one-voxel walls (no sky light inside);
+   - receiver at the base of an infinitely tall wall (`D_sky = L/2` for a constant environment);
+   - narrow slot;
+   - thin pole above a plane;
+   - alpha-masked blocker;
+   - mirrored and two-sided meshes;
+   - an occluder outside the voxel volume;
+   - a uniform-albedo room lit by one point light (bounce);
+   - a one-voxel wall lit on one side only (thin-wall leak);
+   - a glossy floor beside a lit colored wall (reflections);
+   - a moving occluder and a moving light over a static floor.
+5. **Capture extensions.** Add raw and reconstructed sky, bounce, `nu`, `S` and `H` as debug outputs. Also add history length, rejection reason, hit-or-miss masks, rejected-lookup counts, receiver position and geometric normal. None of these may be permanent production allocations. Keep the seven existing components compatible and add a format version to the metadata.
+6. **Platform matrix.** Windows RTX 5080 and RX 7900 XT, each with RT enabled and with `--disable-rt`; macOS on Apple Silicon through MoltenVK (record ray-query availability); one GPU without ray queries if available. Untested platforms are reported as unverified.
+7. **Frozen limits.** These initial limits are frozen by this revision. Changing one requires a written rationale recorded before any candidate result is evaluated.
 
-### H0c RDG synchronization and retirement
+| Check | Limit |
+| --- | --- |
+| Analytic fixtures, converged raw estimate | Within 0.5% of the analytic value; closed box exactly zero sky |
+| Closed box after reconstruction | Sky ≤ 10⁻⁶ × environment mean |
+| RT tier, converged, versus CPU sky reference over frozen regions | Absolute mean bias ≤ 1%; RMS error ≤ 3% of the region mean |
+| Shipping preset after 64 static frames, versus the converged reference of its tier | Absolute mean bias ≤ 2%; RMS error ≤ 8%; 99th-percentile absolute error ≤ 20% of the region mean; no exact zeros where the reference is ≥ 10% of the region mean |
+| Compute tier, converged, versus its 1024-sample voxel reference | Same as the RT-tier converged limits; versus the CPU reference, report only |
+| One-bounce fixture at 128³, RT tier, versus the CPU bounce reference | Absolute mean bias ≤ 10%; the difference is reported per cause (cache resolution, isotropic cells) |
+| Thin-wall fixture | Bounce on the unlit side ≤ 1% of the lit side's bounce |
+| Settling after a camera cut or history reset | Within the shipping-preset limits within 32 frames |
+| Moving occluder over a static floor | No frame shows the old shadow position; within the shipping-preset limits within 32 frames after it stops |
+| Light moved or switched | Bounce channel within the shipping-preset limits within 8 frames; sky channel unaffected |
+| Glossy floor fixture, RT tier, converged, versus CPU specular reference | `S` and hit fraction within 2% absolute |
 
-Represent AS build writes, update source reads, query reads, and indirect BLAS references in RDG and submission history. Track build inputs and scratch as resources in the same graph. Audit all access/stage bit counts, fixed-size arrays, expansion loops, queue checks, and metrics when adding flags; the current enums contain 17 ordinary access/stage bits.
+8. **Performance targets** (engineering targets proposed by this revision; confirm before the P0 freeze). All GI passes combined, including reflections and reconstruction, at 1920×1080, Release build, frozen presets:
 
-Required dependency chains are upload or deformation to BLAS build, BLAS build to TLAS build, TLAS build to query, previous readers to an update, and previous scratch users to scratch reuse. Query reads use the actual shader stage with AS-read access; builds use the AS-build stage and appropriate resource accesses. Follow the [Vulkan synchronization rules](https://docs.vulkan.org/guide/latest/extensions/ray_tracing.html#synchronization-for-ray-tracing).
+| Tier and preset | Reference hardware | Static scene | One moving light and one moving object |
+| --- | --- | --- | --- |
+| RT tier, High | RTX 5080, RX 7900 XT | ≤ 3.0 ms | ≤ 5.0 ms |
+| Compute tier, Medium | Same GPUs with `--disable-rt` | ≤ 4.0 ms | ≤ 6.0 ms |
+| Compute tier, Low | Apple Silicon (MoltenVK) or the slowest available GPU | Measured and reported | Measured and reported |
 
-Start builds and queries on the graphics queue. Preserve exact cross-graph producer provenance and retain resources until every relevant queue serial completes. Failed or rejected work must not publish valid AS generations, history, or reusable scratch. Native GPU allocation-failure recovery remains outside scope, as in the old H0–H2 plan; pre-allocation budget/limit rejection and existing failure contracts remain required.
+The 16.7 ms total mode-3 frame time at 1080p remains the overall target. GI memory (voxel volumes, acceleration structures, scratch, histories and retired generations) is measured per preset in P8 and gets a default budget there.
 
-Exit for H0: graph-driven triangle hit/miss/distance/barycentrics/instance/primitive/material identity is correct with no validation errors. Cover inline and threaded execution, empty scenes, shared BLAS instances, transforms, masked candidates, scratch reuse, replacement, and injected submission failures. Extend affected mock RHIs as well as native tests.
+Exit: references, fixtures, cameras, limits, targets and the platform matrix are archived and reproducible, and each CPU reference passes its analytic fixtures.
 
-## H1 Integrate environment lighting and reconstruction
+## P1 Receiver data and history infrastructure
 
-### H1a Scene geometry and query service
+### Receiver data
 
-Build per-mesh BLAS resources from the same effective geometry and indexing used by rasterization. Share immutable BLAS across instances. Provide static-only, dynamic-only, and full-scene TLAS views without triplicating BLAS; build additional views lazily when requested by a consumer or test.
+- Add a receiver target to the G-buffer pass with the geometric normal and a stable surface identity (node index plus a facing bit). Encode the geometric normal with the existing `EncodeGBufferNormal`. Compute it from `dFdx`/`dFdy` of the interpolated world position in the G-buffer pass, where the 2×2 quad lies on one triangle, and orient it like the shading normal. Replace the composition pass's derivative reconstruction with it, which also fixes the silhouette error noted above.
+- Review the receiver and motion targets together with the compact layout (24 bytes per pixel today), as [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) Phase 3 requires, and record the new size and G-buffer pass time against the Phase 3 measurements.
+- Add motion as the previous clip-space position. Keep previous world matrices per node and the previous projection-view. For CPU-skinned or morphed meshes, keep previous deformed positions, or mark those pixels as deforming and reset their history.
+- Publish previous camera, node and deformation state only after a frame executes successfully.
 
-Track instance, geometry, topology, surface-opacity, and material generations separately. Rigid motion updates instance data; compatible deformations use eligible updates or rebuilds; topology changes rebuild. Position, skin/morph deformation, handedness, alpha acceptance, and material identity must match the raster frame snapshot. Keep query resources coherent with that snapshot across frames in flight.
+### Forward receiver prepass
 
-Expose both any-accepted-hit visibility and closest-accepted-hit queries with versioned hit metadata. The environment estimator needs visibility; closest-hit identity and barycentrics preserve the useful H1 decoding contract for later consumers. Do not restore the old directional-GI sender cache solely to exercise decoding.
+Forward mode currently has no G-buffer. Add a receiver prepass for opaque and alpha-mask forward draws that writes depth, shading normal, roughness, the receiver target and motion. Forward opaque fragments use the reconstructed signals only when their identity and depth match the prepass pixel. Otherwise they keep the per-surface path, and coverage metadata counts them. Translucent and scattering layers keep the per-surface path.
 
-Exit: moving/deforming geometry, material-opacity edits, instance removal, scene replacement, and geometry outside the voxel volume all affect visibility correctly without stale addresses or mixed generations.
+### History resources
 
-### H1b Unfiltered environment estimator and composition
-
-Implement a full-resolution compute pass using the lighting contract above. Initially capture raw estimates at high sample counts with accumulation/filtering disabled to verify the estimator independently. Add deterministic low-sample sequences only after energy and material acceptance tests pass.
-
-Split bounced and escaped environment terms at the common cone-lighting interface. Select exactly one environment provider for each receiver and capture the actual provider. Connect the hardware provider to voxel sky injection and preserve the existing radiance gather. Verify isolated direct, environment, emissive, bounced, and specular components, including zero-intensity cases.
-
-Exit: high-sample results converge to a triangle visibility reference, the Sponza stripes disappear without opening closed geometry to sky light, and no environment contribution is counted twice.
-
-### H1c Temporal accumulation and spatial filtering
-
-Add the receiver data required for correct reprojection. Camera-only reprojection may begin with world position and the previous view/projection matrix, but moving receivers require previous transforms or previous deformed positions. Do not assume an existing usable velocity buffer. Preserve stable surface identity across frames and reset it on incompatible geometry changes.
-
-Store previous receiver depth/position, normal, identity, environment estimate, luminance moments, and history length/confidence. Reproject in explicit pixel/UV conventions, accounting for viewport and projection changes. Reject history for off-screen coordinates, disocclusion, depth/normal/identity mismatch, camera cuts, and incompatible generations. Bound history length and use variance-aware neighborhood clamping to limit stale bright samples.
-
-Moving occluders can invalidate lighting while the receiver remains stationary. Start with conservative history reset on any relevant occluder or opacity-generation change. This is a correctness baseline with a known convergence cost during animation. Local reactive invalidation and history reuse are H2 options only after ghosting tests pass.
-
-Use depth-, geometric-normal-, and surface-identity-aware spatial filtering of linear environment radiance, guided by variance. Keep thin walls and foreground/background boundaries separate. Disoccluded pixels receive current valid samples rather than invented history. If half-resolution tracing is introduced in H2, require the same guides for upsampling and a tested fallback at unresolved edges.
+- Keep per-view persistent textures for: sky, bounce and `nu`; `S` and `H`; luminance moments per channel; history length; and previous depth, normals and identity. Size them to the view, recreate them on resize, and give every additional GI view its own set.
+- Import history textures into the render graph each frame and order them against readers and writers of previous frames in flight. A two-texture ping-pong alone is insufficient.
+- A failed or rejected frame publishes neither history nor previous-frame state.
 
 | Change | Required response |
 | --- | --- |
-| Camera cut, projection change, resize, scene replacement | Reset receiver histories and recreate extent-dependent resources as needed |
-| Environment texture, rotation, intensity, enablement | Invalidate environment history and affected voxel sky cache |
-| Geometry, topology, transform/deformation, opacity acceptance | Update AS first; invalidate affected caches and conservatively reset environment history |
-| Backend, sample distribution, resolution, bias, ray-range policy | Reset incompatible history and provider data |
-| Albedo-only edit with unchanged opacity and receiver geometry | Recompose material factors; preserve unmaterialed receiver history where valid; refresh affected voxel radiance |
-| Rejected/failed frame | Publish neither its history nor successful AS/cache generations |
+| Camera cut, projection change, resize, scene replacement | Reset all receiver histories; recreate extent-dependent resources |
+| Environment texture, rotation, intensity, enablement | Reset sky and specular histories; rebuild the voxel sky cache; bounce follows the radiance-cache update |
+| Analytic light change (lighting revision), emissive change | Keep sky history; bounce and `H` use the responsive policy of P3 |
+| Geometry, topology, transform, deformation, opacity acceptance | Update acceleration structures first; rebuild affected caches; reset histories globally. While anything animates, the result is spatially filtered only and noisier; P8 may add local invalidation |
+| Provider, sample count, tracing resolution, bias, ray-range policy | Reset incompatible history and provider data |
+| Albedo-only edit with unchanged opacity and geometry | Recompose material factors; keep unmaterialed history; refresh affected voxel radiance |
+| Failed or rejected frame | Publish no history, previous-frame state, acceleration structure or cache generation |
 
-History read/write resources must be ordered through RDG across frames in flight. A two-image ping-pong scheme alone is insufficient without dependencies on prior readers and writers. Publish previous camera/geometry/history state only for successful frames.
+Exit: render-graph tests cover history ordering across frames in flight, resize and failed frames. Captured geometric normals match mesh face normals. Identity is stable across frames. Under camera motion in a static scene, motion reprojects to within 0.01 pixel.
 
-Exit: static convergence, camera motion, moving receivers and occluders, disocclusion, resizing, pauses, cuts, and failed submissions pass without ghost trails or cross-surface filtering leaks.
+## P2 Sky estimator with the voxel provider
 
-### H1d Receiver coverage controls and fallback
+- Add a GI compute pass (provisional name `HybridGIRenderer`) after `VoxelGIRenderer` and before composition. It reads receiver data, the voxel occupancy volume and the prefiltered environment, and writes raw sky and `nu`.
+- Define one shader-side provider interface returning visibility, and on request the hit point and normal, for an origin, direction and maximum distance. The voxel provider wraps the existing traversal.
+- Deferred and forward opaque receivers read the sky signal from this pass. Their per-cone sky branch is disabled; receivers on the per-surface path keep it. Lighting-capture component 5 reports the sky term actually used.
+- The voxel sky cache adopts the owner-surface start, geometric normal and stratified samples defined above, using the same provider.
+- Add settings through the existing `VoxelGISettings` load, validate and live-apply path, and its runtime UI (names provisional):
 
-Cover deferred opaque and alpha-tested receivers first. Forward opaque material variants also call `DiffuseVoxelLighting`; add a compatible receiver prepass for those surfaces, preserving their final depth, normals, identity, and material-side convention. They must consume their own reconstructed environment result, not an unrelated opaque G-buffer pixel.
-
-Transparent layers cannot generally reuse a single opaque-screen history. Provide an explicit per-surface query variant without temporal reconstruction for supported forward layers, or retain their current cone environment path with clear coverage metadata. The initial required reconstruction scope is opaque and alpha-tested diffuse receivers; transparent transmission/scattering remains a documented limitation. Never suppress their old environment term unless a valid replacement exists.
-
-Proposed settings, to be integrated with existing runtime settings and tests rather than treated as already available:
-
-| Setting | Proposed behavior |
+| Setting | Behavior |
 | --- | --- |
-| `environment_visibility_backend=auto\|voxel_dda\|hardware_rt` | Select only the environment provider; cone bounce transport stays selected independently |
-| `environment_rt_samples_per_pixel` | Explicit validated sample count; initial test presets 1, 2, 4 |
-| `environment_rt_temporal_enabled` | Disable for independent raw-estimator/reference tests |
-| `environment_rt_filter_enabled` | Disable to measure temporal and spatial contributions separately |
-| `environment_rt_history_limit` | Bounded accumulation length, with documented clamp/reset policy |
-| `environment_rt_budget_mb` | Pre-allocation cap covering AS, scratch, lookup tables, reconstruction, and overlapping retired generations |
+| `voxel_gi_quality=low\|medium\|high\|ultra` | Preset from P8: voxel resolution, tracing resolution, samples, reflections, bounce source, provider preference |
+| `voxel_gi_ray_provider=auto\|voxel\|hardware` | Ray source for every query in this plan; `auto` follows the tier selection |
+| `voxel_gi_samples=1\|2\|4` | Diffuse samples per pixel |
+| `voxel_gi_bounce_source=cone\|rays` | Diagnostic override of the preset's bounce source |
+| `voxel_gi_reflections`, `voxel_gi_specular_occlusion` | Enable `H` and `S` |
+| `voxel_gi_temporal`, `voxel_gi_filter` | Disable reprojection or spatial filtering, for tests and reference captures |
+| `voxel_gi_history_frames` | Upper bound on accumulated frames (default 32) |
+| `voxel_gi_rt_shadows` | P7, only if adopted |
+| `voxel_gi_memory_budget_mb` | Pre-allocation cap covering voxel volumes, acceleration structures, scratch, histories and retired generations |
 
-During H0–H1, `auto` keeps the existing provider. Explicit hardware requests either activate a usable complete provider or report the reason and actual fallback. Diagnostics must separate requested backend, enabled device features, ready scene resources, selected provider, receiver coverage, and reset reason. Do not silently reduce voxel resolution, sample count, or unrelated quality settings to fit a budget.
+During the transition, a `legacy` value of `voxel_gi_ray_provider` selects the current per-cone sky path for comparison. It is removed when P3 passes.
 
-Use the existing cone/PBR availability policy if the overall GI path cannot run. Do not describe fallback as hardware RT. Free retired provider resources after their actual readers complete. Switching back to an existing provider restores its environment branch and invalidates incompatible histories.
+Exit:
+- The analytic fixtures pass the converged raw limits.
+- The compute tier's converged Sponza result passes its own-reference limits, and the closed box stays zero.
+- Zero-environment, zero-indirect, emission-only and analytic-only cases show no duplicated energy.
+- With `legacy`, images match the pre-change baselines.
 
-Exit for H1: all functional and image-quality checks below pass with explicit hardware selection, provider switching in both directions, unsupported capabilities, RT disabled, budget rejection, and frames in flight. Publish scope and limitations before H2. Performance does not gate H1.
+## P3 Reconstruction and specular occlusion
 
-## H2 Measure optimize and decide automatic selection
+### Temporal accumulation
 
-Begin new GPU profiling work and optimization after H1 correctness acceptance, following the original H0–H2 ordering. The prior debugging measurements motivate this plan but do not establish a new backend performance result.
+- Reproject each pixel with its motion and a 2×2 bilinear history footprint. A tap is valid only if all of these hold:
+  - it lies inside the view;
+  - its identity matches;
+  - its previous position lies within a depth-relative plane distance of the current geometric plane;
+  - its normals agree (dot product above 0.9).
 
-Extend the existing profiling/capture infrastructure rather than adding a separate timing system. Report cold AS construction, rigid updates, deformation updates/rebuilds, voxel sky updates, receiver query, temporal, filter/upsample, composition, complete GPU frame, CPU submission cost, and peak committed device memory. Include scratch and old generations retained during transitions. Report sample counts and actual rays issued, not only configuration values.
+  Below a total valid weight of 0.01, treat the pixel as disoccluded with history length zero.
+- Accumulate with `alpha = max(1 / historyLength, 1 / historyLimit)`, including first and second luminance moments per channel.
+- **Sky channel:** no neighborhood clamping in steady state, because clamping biases the estimate. Resets follow the P1 table.
+- **Responsive policy** (bounce channel and `H`): a lower history limit, and clamping to the current neighborhood's variance box for a bounded number of frames after a lighting, emissive or radiance-cache generation change.
+- **`S` and `H`:** shorten history at low roughness and reject it when the view direction changes by more than a roughness-dependent angle.
 
-Measure the legacy cone path and hardware environment path on the same scenes, camera matrices, viewport, G-buffer extent, voxel resolution, material settings, and hardware. Include the Sponza reproduction at 256 cubed to match the investigation and 64/128 cubed for scaling. Verify RT-disabled compatibility on a supported device and an unavailable-capability path. Record AMD and NVIDIA measurements separately when those devices are available; untested vendors remain unverified.
+### Spatial filtering
 
-Use 1920×1080 as the primary viewport. Carry forward 16.7 ms total mode-3 GPU frame time as an engineering target, not a guaranteed outcome or functional gate. Freeze the tested preset and exact hardware before assessing it. Report median and tail times, initialization costs, and moving-scene costs; a faster isolated query pass does not prove a faster frame.
+Apply an edge-avoiding à-trous filter (SVGF style, five iterations of a 5×5 kernel) to the unmaterialed diffuse channels and `nu`, and separately to `S` and `H`. Edge-stopping weights use:
+- plane distance along `n_g`;
+- shading-normal similarity;
+- identity match (hard);
+- luminance difference scaled by the filtered variance.
 
-Candidate optimizations, each requiring correctness revalidation, are environment importance sampling with correct PDFs, adaptive sample allocation, reduced-resolution tracing with guided reconstruction, spatially localized history invalidation, sparse voxel-sky updates, eligible BLAS updates/compaction, scratch pooling, and validated async queue placement. Do not raise bias or remove occluders to meet a time target.
+When history length is below 4, estimate variance spatially. Thin walls and foreground/background boundaries must not exchange values.
 
-Promote `auto` to hardware only for measured, validated capability/preset combinations with acceptable complete-frame cost and memory. Otherwise retain explicit opt-in and publish non-promotion. Preserve the compatibility provider and report the exact selection reason.
+### Specular occlusion
 
-Exit for H2: reproducible performance and memory reports, post-optimization correctness results, documented presets, and an explicit automatic-selection decision. Missing hardware evidence cannot be marked passed.
+Trace one visible-normal GGX sample per pixel with the active provider for `S`, reconstruct it, and apply it as defined in the lighting contract with `H = 0`.
 
-## Validation and acceptance evidence
+Exit:
+- Sponza floor regions from all frozen cameras pass the shipping-preset limits on the compute tier against its own reference.
+- The voxel-aligned steps are gone; the remaining difference from the CPU reference is due to voxel geometry (D2).
+- Camera motion, camera cuts, resize, a moving occluder, moving and deforming receivers, alpha edits and environment rotation pass their settling limits with no ghost trails.
+- The closed box stays dark after filtering, and glossy surfaces inside it show no environment specular.
 
-Freeze numerical tolerances, convergence windows, image regions, seeds, and performance comparison inputs before evaluating optimized results. H1 begins by checking the reference against analytic open/closed fixtures; do not derive acceptance limits from a candidate implementation's error. Store raw linear HDR data as well as display images.
+## P4 Hardware ray-query provider
+
+### P4a Capabilities and shader variants
+
+- Expose enabled buffer device address, AS, ray query, build-queue capability, geometry formats and relevant limits through generic RHI capabilities. Audit the extension dependency chain for the configured Vulkan version; do not infer usability from names or support flags alone. Check macOS through MoltenVK explicitly.
+- Ray-query compute shaders compile and pass `spirv-val --target-env vulkan1.2` at the existing SPIR-V 1.3 target (checked 2026-10-07 with Vulkan SDK 1.4.357), so no global target change is needed. Build them as separate variants and validate each. Keep RT-free variants; shader discovery must not instantiate query modules on unsupported devices.
+- `--disable-rt` stays a hard device-feature override; runtime selection cannot enable a feature omitted at device creation.
+
+Exit: supported, disabled and unsupported devices resolve correctly, and voxel-tier rendering starts without loading query shaders or allocating AS resources when RT is unavailable.
+
+### P4b Resources, commands and descriptors
+
+- Add a stable-identity RHI AS resource with build-size queries, storage allocation, device addresses and explicit creation and build status. Expose vertex, index, instance and scratch buffer requirements.
+- Record build and update commands through the current command stream. Copy descriptions, geometry arrays and ranges into command-owned storage so threaded execution never retains caller stack memory.
+- Add AS reflection, ordinary descriptor binding, descriptor cache keys, pool sizing and validation. Keep AS descriptors separate from the material texture heap.
+- Retain the TLAS, referenced BLASes, storage, geometry and material lookup tables, and other query inputs until completion. An AS descriptor retaining its pool does not retain those resources.
+- Validate build and update eligibility, formats, counts, instance fields, device-address ranges and offsets, and scratch alignment before recording. Use fresh resources for incompatible replacements.
+
+Builds, updates and allocation sizes follow the [Vulkan acceleration-structure specification](https://docs.vulkan.org/spec/latest/chapters/accelstructures.html). Compaction is a P8 option; serialization and host builds are out of scope.
+
+### P4c Render-graph synchronization and retirement
+
+- Represent AS build writes, update-source reads, query reads and indirect BLAS references in the render graph and submission history. Track build inputs and scratch in the same graph. Adding flags to the 17-bit access and stage enums requires auditing every fixed-size array, expansion loop, queue check and metric that depends on them.
+- Required chains:
+  - upload or deformation, then BLAS build;
+  - BLAS build, then TLAS build;
+  - TLAS build, then query;
+  - previous readers, then an update;
+  - previous scratch users, then scratch reuse.
+
+  Queries read with the shader stage that uses them and AS-read access; builds use the AS-build stage. Follow the [Vulkan ray-tracing synchronization guidance](https://docs.vulkan.org/guide/latest/extensions/ray_tracing.html#synchronization-for-ray-tracing).
+- Start builds and queries on the graphics queue. Preserve cross-graph producer provenance and retain resources until every relevant queue serial completes.
+- Failed or rejected work publishes no valid AS generation, history or reusable scratch. Native allocation-failure recovery remains out of scope; pre-allocation budget rejection and existing failure contracts remain required.
+
+Exit: graph-driven triangle hit, miss, distance, barycentrics, and instance, primitive and material identity are correct with no validation errors. Cover inline and threaded execution, empty scenes, shared BLAS instances, transforms, masked candidates, scratch reuse, replacement and injected submission failures, in mock and native RHIs.
+
+### P4d Scene query service
+
+- Build one BLAS per mesh from the same vertex and index data and indexing used by rasterization, shared across instances. Provide a full-scene TLAS; build static-only and dynamic-only views only when a consumer or test needs them.
+- Track instance, geometry, topology, surface-opacity and material generations separately:
+  - rigid motion updates instance data;
+  - CPU-skinned and morphed meshes update or rebuild their BLAS from the deformed positions of the raster snapshot;
+  - topology changes rebuild.
+- Handedness, two-sidedness, alpha acceptance and material identity must match rasterization.
+- Alpha-mask candidates reconstruct UVs, apply texture transforms and cutoff with an explicit texture LOD (compute shaders have no derivatives), and continue traversal when rejected. Never mark masked geometry opaque.
+- Expose any-hit visibility, and closest-hit queries with versioned hit metadata (instance, primitive, barycentrics, material, geometric normal) for hit radiance and later consumers.
+
+Exit: moving and deforming geometry, opacity edits, instance removal, scene replacement and geometry outside the voxel volume all affect visibility, without stale addresses or mixed generations.
+
+### P4e Provider integration
+
+- Implement the hardware provider behind the P2 interface for the sky, specular occlusion and the voxel sky cache, with the start offsets and ranges defined above.
+- Fallback order:
+  - `hardware` when ray queries are enabled and the scene's acceleration structures are ready;
+  - otherwise `voxel`;
+  - the minimum tier when voxel GI itself cannot run.
+
+  A fallback is never reported as hardware RT.
+- Explicit `hardware` requests either activate a complete, ready provider or report the reason and the actual fallback. Diagnostics separate the requested provider, enabled device features, ready scene resources, selected provider, receiver coverage and reset reason.
+- Never reduce voxel resolution, sample count or unrelated quality settings to fit a budget.
+- Switching providers in either direction resets incompatible histories. Retired provider resources are freed after their last readers complete.
+
+Exit:
+- The RT tier's converged sky passes the CPU-reference limits.
+- The shipping preset passes the shipping-preset limits on every frozen camera.
+- D2 is gone: no zero squares at column bases, and the flagpole shadows match the reference.
+- Provider switching, unsupported capabilities, `--disable-rt`, budget rejection and frames in flight behave as specified.
+
+## P5 Diffuse bounce from ray hits
+
+- Use the diffuse rays' hits for `D_bounce` through the hit-radiance contract, with both providers. The hardware provider uses closest-hit queries; the voxel provider returns the first occupied cell and entered face.
+- Reconstruct bounce as its own channel with the responsive temporal policy.
+- Compare against the cone bounce (`voxel_gi_bounce_source=cone`) on every fixture and frozen camera, for quality (bounce fixture, thin-wall fixture, D6 leaks, noise after 64 frames) and cost.
+- On the RT tier, ray-hit bounce replaces cone bounce when it passes the limits. On the compute tier, P8 chooses between cone and ray-hit bounce by measurement; the losing path is removed for that tier.
+
+Exit: the one-bounce, thin-wall and light-change limits pass on the RT tier, and both bounce sources are measured on the compute tier.
+
+## P6 Glossy reflections from the radiance cache
+
+- Use the specular lobe rays' hits for `H` through the hit-radiance contract, and compose specular as defined in the lighting contract.
+- For low roughness, reproject `H` with hit distance (reflection parallax), not only surface motion. Keep history short below the roughness cutoff.
+- Mirror-sharp reflections and full material shading at hits remain out of scope; below the cutoff, reflections show voxel-resolution detail.
+- On the compute tier, P8 decides between reflections and occlusion only (`H = 0`) by measurement.
+
+Exit: the glossy-floor fixture passes its limit on the RT tier. Enclosed glossy surfaces reflect scene light instead of sky. Open glossy surfaces keep their PBR specular within the frozen limits. Reconstructed reflections show no ghost trails under camera motion.
+
+## P7 Hardware shadow rays (optional)
+
+- Trace one shadow ray per shadowed light per pixel at receivers, and one per lit voxel per light during injection from the owner-surface point, against the full-scene TLAS with the same alpha rules. Hard shadows first; soft shadows from light radius need their own reconstruction and are a later option.
+- Shadow maps remain the fallback and the compute-tier path.
+- P8 measures both paths with 1, 4, 16 and 32 lights. P7 is adopted per tier and preset only if it matches or beats shadow-map cost there, or improves quality at an accepted cost.
+
+Exit: hardware shadows match a CPU shadow reference on the fixtures, and the adoption decision is recorded.
+
+## P8 Tiers, performance, memory and automatic selection
+
+### Measurement
+
+- Extend the existing profiling and capture tools. Report:
+  - voxelization, injection, sky-cache and mip updates;
+  - cold AS construction, rigid updates and deformation updates or rebuilds;
+  - sky, bounce and specular tracing, temporal, filter and composition passes;
+  - complete GPU frame and CPU submission;
+  - peak committed device memory, including scratch and retired generations.
+
+  Report the rays actually issued, not only the configured counts.
+- Measure every tier and preset on the P0 platform matrix with the same scenes, camera matrices, viewport, voxel resolution and material settings, using median and tail times, initialization and moving-scene costs. Record AMD and NVIDIA results separately.
+
+### Compute-tier performance
+
+- **Empty-space skipping.** Hierarchical traversal over an occupancy max-mip pyramid. It must return the same first occupied cell as the base traversal for a frozen ray set.
+- **Reduced-resolution tracing.** Half-resolution tracing with guided upsampling, using the same guides as the filter and a tested fallback at unresolved edges.
+- **Bounce and reflections.** Choose between cone and ray-hit bounce, and between reflections and occlusion only, by measurement.
+- **Partial voxel updates.** Keep static voxels and re-voxelize only the regions of dynamic instances. Today any geometry revision re-voxelizes the whole scene.
+- **Amortization.** Spread sky-cache and injection updates over frames, never publishing partial generations.
+
+### RT-tier performance
+
+BLAS update-versus-rebuild policy, compaction, scratch pooling, and async-compute placement of builds and GI passes, each validated against the render-graph tests.
+
+### Presets and selection
+
+- Define `low`, `medium`, `high` and `ultra` presets mapping voxel resolution, tracing resolution, samples, reflections, bounce source, provider preference and P7 adoption. Record each preset's measured time and memory on the reference hardware.
+- Automatic selection picks the tier from capability (`hardware` only for measured, validated capability and preset combinations) and the default preset from the measured table for the device class. It reports both, with reasons. Runtime dynamic-resolution tuning is a later candidate.
+- The editor exposes the preset and provider, and shows the selected tier, fallback reason and GI GPU time in its diagnostics. Raw, reconstructed, history-length, hit-or-miss and rejection views are added to the existing debug output selection.
+- Every optimization is revalidated against the P0 limits. Do not raise bias, remove occluders or silently drop features to meet a time target.
+
+Exit: reproducible performance and memory reports per tier, preset and platform; post-optimization correctness results; the P0 targets met or the shortfall documented with the preset decision; and an explicit automatic-selection decision. Missing hardware evidence cannot be marked passed.
+
+## Validation and acceptance
+
+Tolerances, regions, seeds and comparison inputs are those frozen in P0. Store raw linear HDR data as well as display images.
 
 | Test group | Required evidence |
 | --- | --- |
-| Triangle-query oracle | Hit/miss, distance, barycentrics, instance/primitive/material identity against an independent CPU or trusted triangle reference; masked rejection continues to later blockers |
-| Open and enclosed geometry | Constant-environment normalization; fully enclosed opaque receiver has zero raw environment contribution within frozen numeric tolerance; no filter leakage through thin walls |
-| Sparse and oblique blockers | Thin pole, slanted wall, small aperture, mirrored/two-sided mesh, alpha-cutout geometry, and occluders outside the voxel grid |
-| Sponza floor | Capture the documented environment on/off/on UI sequence and zero-analytic-light isolation at fixed camera matrices. After the fix, environment-on floor-region HDR comparisons must show removal of false hard stripes while preserving legitimate occlusion; disappearance only with environment disabled does not pass. Separate escaped environment, bounced diffuse, and specular components. |
-| Estimator isolation | Raw high-sample reference, low-sample raw, temporal-only, and temporal-plus-filter outputs; demonstrate convergence and quantify bias/noise separately |
-| Lighting composition | No duplicated environment energy; zero environment, zero indirect, emission-only, and analytic-only cases; direct/specular/emission invariants where their inputs are unchanged |
-| Animation and history | Camera motion/cut, moving occluder over a static floor, moving/deforming receiver, alpha edits, disocclusion, environment rotation, and scene replacement; bounded settling time and no stale history |
-| RHI and RDG | Inline/threaded execution, graph boundaries, scratch reuse, multiple frames in flight, queue equivalence, failed submission, object retirement, and zero validation/synchronization errors |
-| Selection and limits | Disabled/unsupported features, explicit requests, budget/limit rejection, empty scene, switching both ways, reported fallback and coverage |
-| Compatibility | Existing voxel occupancy/reflectance and cone lighting tests remain valid; RT-off image baselines remain unchanged within existing tolerances |
+| CPU references | Analytic fixtures pass before each reference is used; reference inputs and outputs archived |
+| Triangle-query oracle | Hit, miss, distance, barycentrics, normal and identity match an independent CPU reference; rejected mask candidates continue to later blockers |
+| Voxel traversal oracle | Base and hierarchical traversal return identical first occupied cells and entered faces on a frozen ray set |
+| Open and enclosed geometry | Constant-environment normalization; no sky in enclosed receivers before or after filtering; no filter leakage through thin walls |
+| Sparse and oblique blockers | Thin pole, slanted wall, narrow slot, mirrored and two-sided meshes, alpha-cutout geometry, occluders outside the voxel volume |
+| Bounce and hit radiance | One-bounce fixture, thin-wall fixture, emissive surfaces, rejected-lookup counts; cone versus ray-hit comparison on both tiers |
+| Reflections | Glossy-floor fixture; enclosed glossy receivers reflect no sky; open glossy receivers keep PBR specular within limits |
+| Sponza floors | Every frozen camera. The environment on/off/on sequence of the original report. Sky, bounce and specular separated. Steps removed while legitimate occlusion remains. Disappearance with environment disabled does not pass. |
+| Estimator isolation | Converged raw, low-sample raw, temporal-only and temporal-plus-filter outputs; bias and noise quantified separately per channel |
+| Composition | No duplicated energy; zero-environment, zero-indirect, emission-only and analytic-only cases; direct, emission and analytic specular unchanged where their inputs are unchanged |
+| Animation and history | Camera motion and cuts, moving occluder, moving and switched lights, moving and deforming receivers, alpha edits, disocclusion, environment rotation, resize, scene replacement, failed frames |
+| RHI and render graph | Inline and threaded execution, graph boundaries, scratch reuse, frames in flight, queue equivalence, failed submission, retirement, zero validation and synchronization errors |
+| Tiers and selection | Every platform-matrix entry; disabled and unsupported features; explicit requests; budget rejection; empty scene; provider switching both ways; reported tier, preset, fallback and coverage |
+| Performance and memory | P0 targets per tier and preset on the reference hardware, with the measurement conditions recorded |
+| Compatibility | Existing voxelization, reflectance and cone-lighting tests pass; translucent and scattering layers keep their per-surface path |
 
-Use the existing `scene_renderer_demo`, `ConfigLoaderTest`, `CommonTest`, `RenderCoreTest`, `VulkanRHITest`, and `ConeVoxelGIIntegrationTest` targets where applicable. Add focused native ray-query and reconstruction integration tests following current target conventions. Run shader compilation and SPIR-V validation for each variant, plus Vulkan synchronization validation. Distinguish skips and unrelated pre-existing failures from passes.
+Use the existing `scene_renderer_demo`, `ConfigLoaderTest`, `CommonTest`, `RenderCoreTest`, `VulkanRHITest`, `VulkanRHIIntegrationTest` and `ConeVoxelGIIntegrationTest` targets, and add focused native estimator, reconstruction, hit-radiance and ray-query tests following their conventions. Compile and validate every shader variant, and run with Vulkan synchronization validation. Report skips and unrelated pre-existing failures separately from passes.
 
-Capture metadata must include selected environment provider, cone bounce provider, receiver coverage, frame/geometry/environment generations, sample seed/count, history validity/length, filter settings, and reset reason. Keep the existing seven lighting components compatible where their semantics remain valid; version the format if changing them. Add raw environment, reconstructed environment, variance/history, and rejection debug outputs without making them permanent production allocations.
+Capture metadata must include:
+- format version;
+- tier, preset and ray provider;
+- bounce source and receiver coverage;
+- frame, geometry, lighting and environment generations;
+- sample seed and count;
+- history validity and length;
+- filter settings and reset reason.
 
-## Relationship to the older H0 H1 H2 plan
+## Later candidates
 
-| Earlier requirement | Disposition in this plan |
+These are not required for done and are each assessed against the P0 limits and targets:
+- environment and emitter importance sampling;
+- a second bounce by gathering into the radiance cache over frames;
+- localized history invalidation;
+- runtime dynamic resolution;
+- soft hardware shadows;
+- full material shading at reflection hits;
+- cascaded voxel volumes for large worlds.
+
+## Relationship to earlier plans
+
+| Earlier requirement | Disposition |
 | --- | --- |
-| H0 capabilities, AS, descriptors, commands, synchronization, lifetime | Required in full for hardware queries |
-| H1 static/dynamic/full-scene views, transforms, deformation, masks, out-of-grid geometry | Required in the reusable query service; full-scene view drives environment visibility |
-| H1 triangle hit decoding | Required as versioned instance/primitive/barycentric/material metadata |
-| H1 directional-GI sender packing and shared directional gather | Deferred with that older algorithm; cone transport remains the accepted bounce method |
-| H1 provider switching and histories | Required for the new environment provider and its reconstruction resources |
-| H2 profiling, optimization, memory and automatic promotion | Required after functional acceptance, with independent hardware measurements |
-
-This mapping deliberately does not mark the old paper-based Stage B checklist complete. It completes the reusable hardware foundation and the newly accepted environment-lighting consumer. A future directional-GI revival can reuse the query service but needs its own sender-cache/gather integration and acceptance.
+| Old H0 capabilities, acceleration structures, descriptors, commands, synchronization, lifetime | P4a–P4c, in full |
+| Old H1 scene views, transforms, deformation, masks, out-of-grid geometry | P4d; the full-scene view serves every query |
+| Old H1 triangle hit decoding | P4d versioned hit metadata, used by hit radiance |
+| Old H1 directional-GI sender packing and gather | Not carried forward; the radiance cache and ray-hit gather replace it |
+| Old H1 provider switching and histories | P1, P2 and P4e |
+| Old H2 profiling, optimization, memory, automatic promotion | P8 |
+| [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md) §6.2 escaped sky and specular IBL | Escaped sky replaced by `D_sky` for covered receivers; the "separately bounded" specular occlusion is delivered as `S`, extended with `H` |
 
 ## Delivery checklist
 
-- [ ] Archive the baseline, reference fixtures, limits, and HDR capture contract.
-- [ ] H0a enabled capabilities and RT-free/query shader selection pass.
-- [ ] H0b AS resources, recorded commands, reflection, and descriptors pass.
-- [ ] H0c graph dependencies, lifetime, retirement, and failure tests pass.
-- [ ] H1a scene updates and material-aware query service pass.
-- [ ] H1b distributed environment estimation, voxel sky injection, and composition pass.
-- [ ] H1c motion/reprojection, accumulation, and edge-aware filtering pass.
-- [ ] H1d receiver coverage, runtime settings, fallback, and switching pass.
-- [ ] H1 functional report records correctness evidence and limitations.
-- [ ] H2 profiling and optimization report records full-frame and memory results.
-- [ ] Automatic-selection promotion or non-promotion is documented.
+- [ ] P0 cameras, configurations, CPU references, fixtures, limits, performance targets and platform matrix archived.
+- [ ] P1 receiver data, motion, previous-frame state, history resources and forward receiver prepass pass.
+- [ ] P2 voxel-provider sky estimator, composition, sky-cache update and settings pass.
+- [ ] P3 temporal accumulation, spatial filtering and specular occlusion pass on all frozen cameras.
+- [ ] P4a capabilities and shader variants pass.
+- [ ] P4b acceleration-structure resources, commands, reflection and descriptors pass.
+- [ ] P4c render-graph dependencies, lifetime, retirement and failure tests pass.
+- [ ] P4d scene query service passes.
+- [ ] P4e hardware provider passes the CPU-reference and shipping-preset limits.
+- [ ] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured.
+- [ ] P6 glossy reflections pass on the RT tier; compute-tier choice measured.
+- [ ] P7 hardware shadows evaluated and the adoption decision recorded (optional).
+- [ ] P8 performance and memory reports per tier, preset and platform; presets and automatic selection documented.
+- [ ] Functional report records correctness evidence and limitations per tier.
 
-Each milestone should leave the legacy renderer usable and produce reviewable code, focused tests, and a short verification record. This document records the plan only; none of its unchecked implementation items is claimed complete.
+This document is a plan. None of its unchecked items is claimed complete.

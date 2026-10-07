@@ -7,6 +7,7 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
+#include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -366,9 +367,10 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
             // The calibration projection keeps +Y for direct XY cell correspondence.
             states.rasterizationState.frontFace = RHIPolygonFrontFace::eClockWise;
 
-            states.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eNever);
+            // Preserve the calibration's last-fragment policy while retaining depth for reconstruction.
+            states.depthStencilState = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eAlways);
 
-            states.colorBlendState.AddAttachments(5);
+            states.colorBlendState.AddAttachments(4);
 
             rc::RDGGraphicsPassDesc draw;
 
@@ -378,15 +380,16 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
 
             draw.SetRenderArea(0, 0, rasterSize, rasterSize);
 
-            draw.AddColorOutput(DataFormat::eR16G16B16A16SFloat, rasterSize, rasterSize, "calibration_position");
-
-            draw.AddColorOutput(DataFormat::eR16G16B16A16SFloat, rasterSize, rasterSize, "calibration_normal");
+            draw.AddColorOutput(DataFormat::eR16G16UNORM, rasterSize, rasterSize, "calibration_normal");
 
             draw.AddColorOutput(DataFormat::eR8G8B8A8UNORM, rasterSize, rasterSize, "calibration_albedo");
 
             draw.AddColorOutput(DataFormat::eR8G8B8A8UNORM, rasterSize, rasterSize, "calibration_metallic");
 
             draw.AddColorOutput(DataFormat::eR16G16B16A16SFloat, rasterSize, rasterSize, "calibration_emission");
+
+            draw.AddDepthStencilOutput(DataFormat::eD32SFloat, rasterSize, rasterSize, "calibration_depth",
+                                       RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
             draw.BindStorageBuffer("NodeBuffer", m_renderScene->GetNodesDataSSBO());
 
@@ -404,21 +407,16 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
 
             graph.AddGraphicsPass(std::move(draw))
                 .RecordPassCommands([draws = rc::SnapshotSceneDraws(*m_renderScene)](rc::RDGPassCmdEncoder& encoder) {
-                    for (const rc::SceneMeshDraw& mesh : draws)
-                    {
-                        const rc::GBufferSP::PushConstantsData constants{mesh.nodeIndex, mesh.materialIndex};
-
-                        encoder.SetPushConstants(constants);
-
-                        encoder.DrawIndexed(mesh.indexCount, 1, mesh.firstIndex, 0, 0);
-                    }
+                    rc::RecordGBufferDraws(encoder, draws);
                 });
 
             rc::RDGComputePassDesc copy;
 
             copy.SetShaderProgramName("VoxelCaptureGBufferSP");
 
-            copy.BindSampledTexture("positionMap", sampler, "calibration_position");
+            copy.BindSampledTexture("depthMap", sampler, "calibration_depth");
+
+            copy.BindValue("uGBufferData", rc::BuildGBufferUniformData(camera.projViewMatrix));
 
             copy.BindSampledTexture("normalMap", sampler, "calibration_normal");
 

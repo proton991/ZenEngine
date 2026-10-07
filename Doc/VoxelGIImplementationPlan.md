@@ -233,6 +233,8 @@ Apply the same environment orientation and intensity to sky lighting, deferred I
 
 At a shaded G-buffer surface, GI cones accumulate reflected voxel radiance. Their remaining transmittance samples the environment after the cone exits the grid. This supplies direct diffuse sky illumination through openings; sky injected into voxels supplies the additional reflected contribution. Avoid adding the existing unoccluded diffuse IBL term on top of these contributions in mode 3.
 
+**Escaped-sky follow-up (2026-10-07):** the receiver now scales escaped sky by occupancy visibility traced to the boundary, not by remaining transmittance. Multiplying both counted the same blockers twice. See the [verification record](VoxelGIVerification.md#escaped-sky-without-cone-transmittance-2026-10-07).
+
 Do not treat reaching a trace iteration/distance budget inside the grid as reaching the sky. Continue a bounded visibility-only query to the boundary or conservatively suppress that unresolved sky term. This prevents artificial light through thick walls. Keep environment specular IBL as the initial specular approximation, with separately bounded occlusion rather than applying diffuse occlusion indiscriminately.
 
 ### 6.3 Mip chains and cone integration
@@ -337,7 +339,7 @@ Storage/sampling feature checks and precise mip views should follow the existing
 
 ## 11. Execution record (2026-09-21)
 
-Steps 1¨C7 are implemented, and step 8 includes regression tests, a repeatable GPU validation script, image comparisons, and the verification report.
+Steps 1ï¿½C7 are implemented, and step 8 includes regression tests, a repeatable GPU validation script, image comparisons, and the verification report.
 
 - **1:** Validated point/directional/spot configuration, stable light IDs, runtime updates/removal, and immutable uniform snapshots. The ignored local `Data/engine.cfg` is configured; tracked `Data/engine.example.cfg` supplies the portable example.
 - **2:** Both backends share a padded cubic grid and separate geometry production from visualization. Mode 3 records no voxel visualization draw.

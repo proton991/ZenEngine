@@ -373,9 +373,9 @@ Use $skill-installer to install https://github.com/proton991/ZenEngine/tree/main
   128 samplers.
 - Refraction uses a single opaque-scene snapshot. See the
   [glTF practical limits](Doc/GLTFSceneImport.md#practical-limits).
-- Next: hardware ray-query visibility for diffuse environment lighting to fix those strips
-  ([plan](Doc/HardwareRayQueryEnvironmentLightingPlan.md)), while keeping cone tracing for
-  bounced light.
+- Next: hybrid voxel GI ([plan](Doc/HardwareRayQueryEnvironmentLightingPlan.md)). Sampled,
+  temporally filtered sky light removes those strips first. Hardware ray queries then add
+  triangle-accurate visibility, bounce and reflections, with voxel rays as the fallback.
 
 ## Development history
 

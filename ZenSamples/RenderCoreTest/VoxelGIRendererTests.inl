@@ -233,7 +233,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     environmentFormat.arrayLayers = 6;
     environmentFormat.width = environmentFormat.height = 8;
     environmentFormat.format                           = DataFormat::eR16G16B16A16SFloat;
-    sceneInputs.environment.pSkybox             = device->CreateTextureSampled(environmentFormat, {.copyUsage = true}, "sky");
+    sceneInputs.environment.pPrefiltered        = device->CreateTextureSampled(environmentFormat, {.copyUsage = true}, "sky");
     sceneInputs.environment.pPrefilteredSampler = device->CreateSampler({});
     sg::Scene source;
     source.GetAABB() = sg::AABB(Vec3(-1.0f), Vec3(1.0f));
@@ -325,7 +325,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         }
         if (frame == 0)
         {
-            graph->AddTransferPass("InitializeSky").ClearTexture(sceneInputs.environment.pSkybox, Color(0));
+            graph->AddTransferPass("InitializeSky").ClearTexture(sceneInputs.environment.pPrefiltered, Color(0));
         }
         gi.BuildRenderGraph();
         graph->AddComputePass(IntentPass("keepalive"));
@@ -334,7 +334,8 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         gi.OnRenderGraphExecuted(true);
         volumes.OnRenderGraphExecuted(true);
-        const bool skyChanged = geometryChanged || environmentChanged || frame == 8 || frame == 9 || frame == 25 || frame == 29;
+        const bool skyChanged =
+            geometryChanged || environmentChanged || frame == 3 || frame == 8 || frame == 9 || frame == 25 || frame == 29;
         const bool radianceChanged =
             skyChanged || frame == 7 || frame == 11 || frame == 24 || frame == 26 || frame == 28 || frame == 30;
         const RDGMetricsSnapshot& snapshot = metrics.GetLastSnapshot();
@@ -345,5 +346,5 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     }
     gi.Destroy();
     volumes.Destroy();
-    device->DestroyTexture(sceneInputs.environment.pSkybox);
+    device->DestroyTexture(sceneInputs.environment.pPrefiltered);
 }

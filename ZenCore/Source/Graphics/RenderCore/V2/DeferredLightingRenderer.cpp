@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
+#include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
@@ -17,8 +18,6 @@
 #include <algorithm>
 
 namespace zen::rc
-{
-namespace
 {
 void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDraw>& draws)
 {
@@ -36,6 +35,8 @@ void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDr
     }
 }
 
+namespace
+{
 struct ForwardPushConstants
 {
     uint32_t nodeIndex;
@@ -248,7 +249,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
 
         pso.multiSampleState            = {};
 
-        pso.colorBlendState.AddAttachments(5);
+        pso.colorBlendState.AddAttachments(4);
 
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
@@ -256,9 +257,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view)
 
         offscreen.SetShaderProgramName("GBufferSP");
 
-        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_position");
-
-        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_normal");
+        offscreen.AddColorOutput(DataFormat::eR16G16UNORM, width, height, "offscreen_normal");
 
         offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, width, height, "offscreen_albedo");
 
@@ -314,7 +313,7 @@ DebugOutputDescription DeferredLightingRenderer::BuildDebugView(const RenderView
         description.available ? "" : "This scene uses forward materials or non-triangle geometry; it has no G-buffer.";
 
     description.format         = depth                                    ? view.GetDepthStencilFormat()
-                               : selection.output == DebugOutput::eNormal ? DataFormat::eR16G16B16A16SFloat
+                               : selection.output == DebugOutput::eNormal ? DataFormat::eR16G16UNORM
                                                                           : DataFormat::eR8G8B8A8UNORM;
 
     description.interpretation = depth ? "Depth of opaque/masked surfaces: raw device Z or linear view distance."
@@ -333,7 +332,9 @@ DebugOutputDescription DeferredLightingRenderer::BuildDebugView(const RenderView
 
         data.selection.x         = depth ? 1 : selection.output == DebugOutput::eNormal ? 3 : 2;
 
-        RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "RenderDebug2DSP", data);
+        const bool normal        = selection.output == DebugOutput::eNormal;
+
+        RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, normal ? "RenderDebugNormalSP" : "RenderDebug2DSP", data);
 
         if (depth)
         {
@@ -343,6 +344,11 @@ DebugOutputDescription DeferredLightingRenderer::BuildDebugView(const RenderView
         {
             pass.BindSampledTexture("sourceImage", m_pDepthSampler,
                                     NameID(selection.output == DebugOutput::eNormal ? "offscreen_normal" : "offscreen_albedo"));
+        }
+
+        if (normal)
+        {
+            pass.BindSampledTexture("depthMap", m_pDepthSampler, "offscreen_depth");
         }
 
         AddDebugVisualizationPass(*m_pRenderDevice->GetCurrentFrameRDG(), std::move(pass));
@@ -406,7 +412,10 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
 
             const EnvTexture& env = m_pScene->GetEnvTexture();
 
-            lighting.BindSampledTexture("positionMap", m_pColorSampler, "offscreen_position");
+            const sg::CameraUniformData& camera =
+                *reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
+
+            lighting.BindValue("uGBufferData", BuildGBufferUniformData(camera.projViewMatrix));
 
             lighting.BindSampledTexture("normalMap", m_pColorSampler, "offscreen_normal");
 

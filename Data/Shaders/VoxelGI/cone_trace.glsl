@@ -1,7 +1,7 @@
 #include "environment_visibility.glsl"
 layout(set=1,binding=9) uniform sampler3D voxelRadiance;
 layout(set=1,binding=10) uniform sampler3D voxelOpacity;
-layout(set=1,binding=11) uniform samplerCube skyboxMap;
+layout(set=1,binding=11) uniform samplerCube coneEnvironmentMap;
 #ifdef LIGHTING_CAPTURE
 vec3 captureConeBounced, captureConeEscaped;
 vec3 captureDiffuseBounced, captureDiffuseEscaped;
@@ -11,11 +11,10 @@ vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
     float distance=gi.gridMinVoxelSize.w;
     float transmittance=1.0;
     vec3 incoming=vec3(0);
-    vec3 uv=WorldToVoxelUV(origin+direction*distance);
     float maxDistance=gi.cone.w/gi.volume.y;
     for(int step=0;step<int(gi.limits.y);++step)
     {
-        uv=WorldToVoxelUV(origin+direction*distance);
+        vec3 uv=WorldToVoxelUV(origin+direction*distance);
         if(!InsideVoxelVolume(uv) || distance>maxDistance || transmittance<0.01) break;
         float diameter=max(gi.gridMinVoxelSize.w,2.0*gi.cone.x*distance);
         float lod=clamp(log2(diameter/gi.gridMinVoxelSize.w),0.0,gi.volume.z-1.0);
@@ -32,11 +31,13 @@ vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
     captureConeBounced=incoming;
     captureConeEscaped=vec3(0);
 #endif
-    if(!InsideVoxelVolume(uv) && sceneUbo.environment.z>0 && gi.lighting.y>0 && transmittance>0.01)
+    if(sceneUbo.environment.z>0 && gi.lighting.y>0)
     {
-        float visibility=VoxelEnvironmentVisibility(voxelOpacity,origin,direction,1e20);
-        vec3 escaped=transmittance*visibility*textureLod(skyboxMap,EnvironmentSourceDirection(direction),0).rgb*
-            sceneUbo.environment.x;
+        // The visibility rays trace occupancy to the volume boundary and estimate the
+        // unblocked part of the cone. Transmittance estimates the same blockers from
+        // filtered mips, so it must not attenuate the sky again or gate it.
+        float visibility=VoxelEnvironmentConeVisibility(voxelOpacity,origin,direction);
+        vec3 escaped=visibility*ConeEnvironmentRadiance(coneEnvironmentMap,direction)*sceneUbo.environment.x;
         incoming+=escaped;
 #ifdef LIGHTING_CAPTURE
         captureConeEscaped=escaped;

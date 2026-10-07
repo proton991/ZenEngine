@@ -1,0 +1,22 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../../Common/gbuffer.glsl"
+layout(local_size_x=64) in;
+struct Sample { vec4 normal; vec4 pixelDepth; };
+layout(set=1,binding=0,std430) readonly buffer GBufferSamples { Sample samples[]; };
+layout(set=1,binding=1,std430) writeonly buffer GBufferResults { vec4 results[]; };
+layout(set=1,binding=2,std140) uniform uGBufferData { mat4 inverseViewProjection; vec4 worldOrigin; } gbuffer;
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    // Match RG16 UNORM storage, including the negative-Z pole and fold seams.
+    vec2 encoded = unpackUnorm2x16(packUnorm2x16(EncodeGBufferNormal(samples[i].normal.xyz)));
+    results[i*3] = vec4(DecodeGBufferNormal(encoded), 1.0);
+    vec3 pixel = samples[i].pixelDepth.xyz;
+    ivec2 extent = ivec2(1280, 720);
+    vec3 center = ReconstructGBufferPosition(pixel.xy, extent, pixel.z, gbuffer.inverseViewProjection);
+    vec3 dx = ReconstructGBufferPosition(pixel.xy + vec2(1,0), extent, pixel.z, gbuffer.inverseViewProjection) - center;
+    vec3 dy = ReconstructGBufferPosition(pixel.xy + vec2(0,1), extent, pixel.z, gbuffer.inverseViewProjection) - center;
+    results[i*3+1] = vec4(center + gbuffer.worldOrigin.xyz, 1.0);
+    results[i*3+2] = vec4(normalize(cross(dx,dy)), 1.0);
+}

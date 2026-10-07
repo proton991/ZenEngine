@@ -16,6 +16,7 @@ enum class DataFormat : uint32_t
     eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
     eR16SInt            = 75,  // = VK_FORMAT_R16_SINT
     eR16SFloat          = 76,  // = VK_FORMAT_R16_SFLOAT
+    eR16G16UNORM        = 77,  // = VK_FORMAT_R16G16_UNORM
     eR16G16UInt         = 81,  // = VK_FORMAT_R16G16_UINT
     eR16G16SInt         = 82,  // = VK_FORMAT_R16G16_SINT
     eR16G16SFloat       = 83,  // = VK_FORMAT_R16G16_SFLOAT
@@ -108,6 +109,7 @@ inline uint32_t GetTextureFormatPixelSize(DataFormat format)
         case DataFormat::eB8G8R8A8SRGB:
         case DataFormat::eD32SFloat:
         case DataFormat::eD24UNORMS8UInt:
+        case DataFormat::eR16G16UNORM:
         case DataFormat::eR16G16UInt:
         case DataFormat::eR16G16SInt:
         case DataFormat::eR16G16SFloat:

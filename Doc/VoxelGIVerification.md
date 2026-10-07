@@ -2,6 +2,36 @@
 
 Date: 2026-09-21. Implementation follows [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md), with execution refinements recorded there.
 
+## Cone environment filtering (2026-10-07)
+
+ScatteringSkull developed metallic-looking patterns when switching from PBR to voxel GI. Its metalness remained zero: the scattering source replaced diffuse irradiance with four/six sharp mip-zero environment samples. An environment-only material ablation produced identical PBR/GI pixels without volume scattering, isolating the affected path.
+
+Visible cone escape and voxel sky injection now share `ConeEnvironmentRadiance`, sampling the existing GGX-prefiltered environment with a blur derived from cone aperture. The GGX median half-vector angle provides an approximate cone footprint; this is not exact solid-angle integration. Prefiltered maps use `EnvironmentDirection`, including their existing orientation convention. Changing aperture invalidates cached sky injection. Material roughness, specular IBL, visibility traversal, and contribution controls retain their existing behavior.
+
+Debug editor/demo and affected shaders built successfully. All 568 RenderCore tests and eight native Cone GPU tests passed. The new GPU regression checks checker-pattern filtering, mean radiance/intensity, occlusion and environment switches at 10/60/90-degree apertures with four/six cones in all four submission modes. Replacing filtered lookup with mip-zero sampling makes the regression fail. Skull captures with both voxelizers lose the reflective pattern; PBR and the scattering-disabled control remain pixel-identical to their baselines. These are targeted checks, not complete shading conformance tests.
+
+Evidence is under `build/skull-render-review`. Scene captures exited successfully but still reported the pre-existing `PRESENT_AFTER_WRITE` presentation synchronization error seen before this change; their smoke status is therefore failed. Offscreen native GPU tests reported no validation errors. `engine.cfg` was restored byte-for-byte.
+
+## Sponza environment visibility (2026-10-07)
+
+An environment-only Sponza capture showed a hard dark strip across the floor at 64/128/256 voxel resolutions. It persisted with analytic shadows and bounced lighting disabled. The escaped environment contribution was exactly zero inside the strip because one blocked center ray rejected the entire diffuse cone. Removing that guard erased the strip but admitted sky through covered areas, so it was only a diagnostic probe.
+
+Cone escape and cached sky injection now average eight equal-solid-angle visibility samples across each cone. Each sample retains exact voxel occupancy traversal; partial coverage no longer rejects a whole cone. This remains a finite quadrature approximation, and lighting through narrow openings can differ from the previous center-ray estimate.
+
+The eight native GPU tests pass with synchronization validation across all four submission modes. Added coverage checks a partial overhead blocker and an empty room enclosed by one-voxel walls, at three apertures and both cone counts. The partial-blocker regression fails when restored to center-ray visibility; the closed room remains exactly black. Sponza captures at 64/128 resolve the hard strip, and a ScatteringSkull capture retains the previous filtering correction. At pixel (480,414) in the fixed 960x540 Sponza camera, escaped scene-linear red changes from 0 to 0.006927. The earlier presentation validation error remains; native offscreen tests have no validation errors.
+
+On the RTX 5080, Debug, 960x540, 64 cubed, environment-only with zero bounce intensity, validation disabled, 20 warmup and 80 measured frames: median GPU frame time was 0.338 ms for center-ray visibility and 0.938 ms for footprint sampling. This is a measured quality/cost tradeoff for that workload, not a general performance claim. Builds, captures, negative regression, and timing CSVs are under `build/sponza-strip-review`; configuration bytes were restored.
+
+## Escaped sky without cone transmittance (2026-10-07)
+
+Escaped sky at visible receivers was `transmittance * visibility * environment`. Both factors estimate the same blockers inside the volume, so occlusion was applied twice. Cached voxel sky already used visibility alone. Against a 64-ray-per-cone visibility reference, environment-only Sponza captures at 64 cubed were too dark by 18% (top-down atrium) and 60% (hall camera). On open roofs, where at least 97% of visibility rays escape, cone transmittance was still 0.82; receiver sky was 73% of PBR diffuse IBL.
+
+`TraceDiffuseCone` now scales escaped sky by the eight-ray occupancy visibility only. It no longer requires the radiance march to exit the volume or retain transmittance: the visibility rays already trace to the boundary, and an exhausted march budget is not treated as sky. Transmittance still composites bounced voxel radiance.
+
+After the change, mean escaped sky is within 1.3% (top-down) and 10% (hall) of the 64-ray reference, with RMS error reduced from 0.113 to 0.015 and from 0.023 to 0.015. Open roofs receive 86% of PBR diffuse IBL. The remaining difference comes from cone quadrature, cone-footprint environment filtering, and shading-normal cone directions; it has not been separated further. The eight-ray quantization is unchanged: brighter atrium floors make its voxel-shaped steps more visible. Origins pushed into neighboring occupied voxels still return zero visibility.
+
+A new GPU scenario fills the radiance volume with black, half-opaque voxels and leaves occupancy empty. Escaped sky must equal the unoccluded mean for all three apertures and both cone counts. Both native Cone GPU tests pass in all four submission modes (eight cases) without validation messages. With the previous formula, only this scenario fails. Visibility rays are now traced for cones that the march terminated; that cost change was not measured.
+
 ## Cone-only update (2026-09-30)
 
 Dynamic Voxel GI has been removed at the user's request. Cone tracing is the only supported voxel GI method. Analytic radiance injection now reuses the mesh shadow atlas at a representative point on the owner triangle. The `voxel_gi_analytic_lighting`, `voxel_gi_environment_lighting`, and `voxel_gi_emissive_lighting` switches control diffuse GI independently; direct lighting, visible emission, and specular IBL remain independent. All three default to true and apply live through the runtime UI.

@@ -19,6 +19,8 @@ struct SceneMeshDraw
     sg::MeshTopology topology{sg::MeshTopology::Triangles};
 };
 
+void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDraw>& draws);
+
 // Commands and resource declarations must describe the same scene snapshot.
 inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,
                                                     uint32_t           classMask = GI_ALL,

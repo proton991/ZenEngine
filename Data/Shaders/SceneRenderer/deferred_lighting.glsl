@@ -1,7 +1,8 @@
 #include "../Common/bindless_heap.glsl"
 #include "../Common/linear_to_srgb.glsl"
+#include "../Common/gbuffer.glsl"
 
-layout (set = 1, binding = 0) uniform sampler2D positionMap;
+layout (set = 1, binding = 0, std140) uniform uGBufferData { mat4 inverseViewProjection; vec4 worldOrigin; } gbuffer;
 layout (set = 1, binding = 1) uniform sampler2D normalMap;
 layout (set = 1, binding = 2) uniform sampler2D albedoMap;
 layout (set = 1, binding = 3) uniform sampler2D metallicRoughnessMap;
@@ -66,10 +67,11 @@ void main() {
 	// Authored near/far ranges can place valid geometry arbitrarily close to
 	// depth one. Only the attachment's exact clear depth identifies background.
 	if (depth >= 1.0) discard;
-	vec3 worldPos = SURFACE_SAMPLE(positionMap).rgb;
-	vec3 N = normalize(SURFACE_SAMPLE(normalMap).rgb);
+	vec3 relativePosition = ReconstructGBufferPosition(gl_FragCoord.xy, textureSize(depthMap, 0), depth, gbuffer.inverseViewProjection);
+	vec3 worldPos = relativePosition + gbuffer.worldOrigin.xyz;
+	vec3 N = DecodeGBufferNormal(SURFACE_SAMPLE(normalMap).rg);
 #if defined(VOXEL_GI)
-    vec3 surfaceNormal=cross(dFdx(worldPos),dFdy(worldPos));
+    vec3 surfaceNormal=cross(dFdx(relativePosition),dFdy(relativePosition));
     float normalLength=length(surfaceNormal);
     surfaceNormal=normalLength>1e-8 ? surfaceNormal/normalLength : N;
     if(dot(surfaceNormal,N)<0) surfaceNormal=-surfaceNormal;
