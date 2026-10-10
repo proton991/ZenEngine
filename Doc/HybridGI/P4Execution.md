@@ -2,11 +2,11 @@
 
 **P4 is not accepted.** This is the implementation and measurement record for [P4Gaps.md](P4Gaps.md). Error limits, the five shipping-gate environments, the nine ground-truth environments, camera matrices, four diffuse rays, 32 history frames and five edge-stopping iterations are unchanged. Failed estimator probes were restored; none is a shipping implementation.
 
-Final sweep: maximum full-image/floor shipping bias is **0.46%**. After the review's [flat default normal fix](#flat-default-normal-fix-review-2026-10-10), converged references pass 17/18 views; only the hotel hall (**3.13%**) exceeds the 3% excess limit (before the fix: 16/18, hotel 3.87% and qwantani 4.62%). Seven of ten gating camera/environment pairs fail shipping quality, including all five halls. Provider-switch settling and large-coordinate rendering also fail. Detailed numerical evidence is saved in [p4-gap-results.json](p4-gap-results.json).
+Final sweep: maximum full-image/floor shipping bias is **0.46%**. After the review's [flat default normal fix](#flat-default-normal-fix-review-2026-10-10) and [surface-agreement fix](#surface-agreement-at-shared-edges-review-2026-10-10), converged references pass **all 18 views** (hotel hall 1.51% excess). Before them: 16/18 (hotel 3.87%, qwantani 4.62%), then 17/18 (hotel 3.13%). The [G1 sky estimator](#g1-sky-estimator-2026-10-10) reduces gating shipping failures from seven of ten pairs to one (kloppenheim hall, P99 26.68%) with a maximum shipping bias of 0.25%. With the [bias correction removed](#bias-correction-removed-2026-10-10), hotel hall also fails on three isolated all-miss pixels the correction had hidden: two of ten. Provider-switch settling also fails. Large-coordinate rendering fails and is moved out of P4 ([decision 8](P4Gaps.md#decisions-2026-10-10)). Detailed numerical evidence is saved in [p4-gap-results.json](p4-gap-results.json).
 
 ## Changes retained
 
-- **G2, filter bias:** seven coarse residual passes recover the geometry-safe, demodulated difference between temporal sky and the five-pass filtered result. The negative correction is bounded to preserve resolved positive samples. The correction never feeds back into history. The first, unbounded probe introduced floor zeros and was rejected.
+- **G2, filter bias** (removed on 2026-10-10 once the G1 estimator made it unnecessary; see [Bias correction removed](#bias-correction-removed-2026-10-10)): seven coarse residual passes recovered the geometry-safe, demodulated difference between temporal sky and the five-pass filtered result. The negative correction is bounded to preserve resolved positive samples. The correction never feeds back into history. The first, unbounded probe introduced floor zeros and was rejected.
 - **G3, receiver positions:** hardware rays now start from interpolated RGBA32F raster positions instead of depth-unprojected positions with a two-depth-step displacement. Voxel receivers retain depth reconstruction. The shared hybrid G-buffer grows from 48 to 64 bytes/pixel. This follows the pre-experiment rationale in P4Gaps.md; it improves measured distant shadow agreement but does not close G3 by itself.
 - **Independent reference fixes:** rejected alpha candidates continue along the incoming ray instead of moving along the rejected surface normal. A transparent sheet separated from an opaque sheet by 20 micro-units is a regression. Primary rays now derive their eye and directions from the same inverse of the captured float32 projection-view matrix. All twelve base fixtures are required, rather than silently skipping missing captures.
 - **Reference throughput:** the alpha visibility loop runs on the device. One million Sponza visibility queries matched the previous scalar loop bit for bit; warmed query time was 0.03465 s versus 0.09176 s. This is a query microbenchmark, not a full-render speedup claim.
@@ -43,7 +43,7 @@ The corrected immutable dataset is `build/ground-truth/dataset-p4-corrected/`. T
 
 Both RTX 5080 and AMD Radeon iGPU pass 13 hardware and 10 voxel native fixtures with the FP32 layout (46 cases total). The extended ray-query suite passes 12 cases on each GPU, including translations of 100 and 10,000 units. This establishes coarse query behavior, not full-image large-coordinate accuracy.
 
-The Sponza origin sequence translates every instance and the camera together, preserving the view direction. Relative to its zero-offset capture, at 100 units the floor RMS is 0.59% with no floor zeros, but the full image has 420 unexpected zeros. At 10,000 units full-image bias is -49.65%, RMS 75.53%, and there are 177,691 unexpected zeros; floor RMS is 13.17% with 247 zeros. All images remain finite and fully covered. **Large-coordinate rendering fails.** A camera-relative/rebased rendering design is still needed; passing AS queries does not replace that work.
+The Sponza origin sequence translates every instance and the camera together, preserving the view direction. Relative to its zero-offset capture, at 100 units the floor RMS is 0.59% with no floor zeros, but the full image has 420 unexpected zeros. At 10,000 units full-image bias is -49.65%, RMS 75.53%, and there are 177,691 unexpected zeros; floor RMS is 13.17% with 247 zeros. All images remain finite and fully covered. **Large-coordinate rendering fails.** A camera-relative/rebased rendering design is still needed; passing AS queries does not replace that work. By decision 8 this is outside P4; the cause analysis and fix pattern are in [CameraRelativeRenderingPlan.md](../CameraRelativeRenderingPlan.md).
 
 Provider switching captures hardware -> voxel -> hardware at frames 1 and 32. Both actual transitions reset to history length 1 with `provider_changed`; frame-32 lengths reach approximately 32. Image-quality results are reported below separately from reset correctness.
 
@@ -134,6 +134,90 @@ Against the unchanged corrected dataset, every one of the 18 views moves closer 
 | carpentry-hall | 2.63% → 1.38% | 5.96% → 2.39% | 2.05% → 0.24% | Pass on 8×8 blocks (per-pixel noise 5.40%) |
 
 Verification on the fixed build: CommonTest 112, RenderCoreTest 576, RayQueryIntegrationTest 12, ConeVoxelGIIntegrationTest 16, EditorModelTest 41, EditorRenderingTest 39 and EditorPreviewTest 16 pass with synchronization validation and no validation messages; the 13 hardware and 10 voxel native fixtures pass. The sweep is `build/ground-truth/runs/2026-10-10-flat-normal/` (`report.json`, `summary.md`); the tables below predate this fix.
+
+## G1 sky estimator (2026-10-10)
+
+Executed after the review fixes, in the order of decision 4: bright sources first, then reuse of the directions that reach the sky. The preset stays frozen (four diffuse rays, 32 history frames, five filter iterations); the source rays below are dedicated shadow rays pulled into P4 from P7.
+
+**What the gate needs.** Longer histories stand in for more samples on a static view: at 2×, 4× and 8× the shipping samples, P99 falls only as about samples^-0.3, and 8× still failed hotel (26.5%), carpentry (30.5%) and kloppenheim (22.5% and 2 zeros). The worst 1% of hall pixels are 10–15× brighter than the image mean, lit directly by small lamps or sun through the arcades; because errors are normalized by the region mean, a few percent of relative noise there breaks the 20% P99 limit. The exact zeros were dim pixels on fine geometry whose 128 samples all missed a small visible patch of sky. Offline (Embree at the engine's receivers, `build/p4-gaps/`), the components below cut per-pixel variance by 18–218× in the lamp and sun halls and 9–11× in the soft-sky halls.
+
+**Changes.**
+
+1. *Exact bilinear environment sampling.* Radiance is a bilinear lookup but the proposal was uniform within each texel, so a noon sun three texels wide left a 41% spread in radiance/density across sun samples. Texels are now drawn by the mean of the bilinear luminance over their area (a 3×3 kernel in `environment_columns.comp`), and positions within the texel follow the bilinear surface exactly (marginal and conditional inversion over its four quarters, `environment_sampling.glsl`). The spread falls to 0.17%; the integral is unchanged (7.482 against 7.484 for the old proposal on qwantani).
+2. *Source tiles.* The importance map is split into 8×8 tiles per face (384). A tile holding at least 5% of the environment, more than half of it in texels brighter than eight times the mean radiance, is a source tile (at most four; `environment_tiles.comp`): qwantani's sun (two tiles), hotel's two lamps, four carpentry lights, kloofendal's sun; none in kloppenheim. Each source tile gets dedicated rays drawn within it, half the residual count (two per frame at the shipping preset, 512 in reference mode), removing selection noise between sources. The residual environment is drawn from its own copy of the row and column distributions with the source tiles removed; drawing it tile-first instead lost the sampler's 2D stratification and was reverted.
+3. *Visibility guide.* Each 16×16-pixel screen tile learns, from its own rays, the visible residual radiance (without the receiver cosine) over the 384 environment tiles, averaged over up to 64 frames and reset with the history (`hybrid_trace.glsl`, double-buffered in `HybridGIRenderer`). Each receiver weights the guide, smoothed over the 3×3 neighbouring screen tiles, by its own cosine toward the tile centres. Two of the four rays are guided, one samples the residual environment and one the cosine lobe; every ray is weighted by the three-proposal mixture density, so the estimate stays unbiased whatever the guide learns. Guided directions are one 2D warp of the ray's stratified sample (atlas row, then tile, then position within it); choosing the tile from a separate sample dimension broke the blue-noise structure (neighbour error correlation +0.10 instead of −0.14) and halved the filter's effect.
+
+Probes measured and not adopted: 8×8-pixel guide tiles (noisier guides, kloppenheim P99 30.5%); three guided rays and no environment ray (mixed: kloppenheim 26.9%, carpentry 24.1%); a looser filter (luminance σ 2: carpentry 27.2%, hotel 21.7%).
+
+**Option A round** (chosen over a preset change, 2026-10-10). The changes above (sweep `build/ground-truth/runs/2026-10-10-g1-estimator/`) passed 8 of 10 gating views, leaving kloppenheim hall (P99 26.98%) and carpentry hall (22.70%).
+
+- *Two rays per source tile* (half the residual count; one before). Measured against the same references: carpentry hall P99 23.24% → 19.19% and hotel hall 20.44% → 19.65%, for about 0.13 ms in carpentry's four source tiles, since rays toward fixed source directions are coherent.
+- *One sequence per ray slot.* A pixel's rays used consecutive R2 indices (frame × count + slot), so with four rays a slot's first coordinate advanced only 0.0195 per frame and swept 62% of its domain over a 32-frame history. Each slot now has its own scrambled dimension, advanced once per frame. Kloppenheim hall 27.10% → 26.60%; the rest unchanged.
+- *Finer guide directions, bounded offline and not built.* Kloppenheim's worst pixels are the distant sky-lit upper facade and galleries at the far end of the hall: bright (median 7× the mean), sub-pixel geometry the filter cannot average, and a jumble of surfaces within one guide tile. On 120 of them, against the screen-tile guide's 7.4× variance reduction over the original estimator, a 4× finer direction grid gives about 1.3×, an oracle guide learned from each pixel's own visibility 1.18×, and that oracle on the finer grid 1.85× (13.6×). Even the unreachable oracle would leave P99 near 20–21%.
+
+**Results** (`build/ground-truth/runs/2026-10-10-g1-option-a/`, every engine capture and tier reference regenerated). The converged gate passes all 18 views (bias −0.02% to −0.10%). **Nine of ten gating views pass the shipping gate**; kloppenheim hall fails on P99 alone (26.68%; RMS 6.10%, no zeros, floor 6.90%). Every floor passes, no view has an exact zero, and the maximum full-image/floor shipping bias is **0.25%**. The seven default and nine environment, bright-edge and normal-map native fixtures pass on both providers (bright and rotated environment planes within 0.05% RMS of the analytic integral on the hardware provider, 0.2% on the voxel provider), as do RenderCoreTest 576, CommonTest 112, RayQueryIntegrationTest 12 and ConeVoxelGIIntegrationTest 16.
+
+| View | Before G1: all receivers / floor (RMS, P99, zeros) | After | Converged excess before → after |
+| --- | --- | --- | --- |
+| papermill-top | 1.88%, 6.28%, 0 / 3.16%, 10.96%, 0 | 1.48%, 4.80%, 0 / 1.85%, 6.56%, 0 | 0.34% → 0.37% |
+| papermill-hall | 5.90%, 21.56%, 4 **Fail** / 2.32%, 8.23%, 0 | 3.63%, 13.26%, 0 / 1.46%, 5.07%, 0 | 0.58% → 0.69% |
+| hotel-top | 2.78%, 8.95%, 0 / 6.36%, 21.40%, 0 **Fail** | 1.01%, 3.32%, 0 / 1.95%, 7.71%, 0 | 0.60% → 0.40% |
+| hotel-hall | 13.93%, 51.54%, 6 **Fail** / 7.91%, 18.45%, 0 | 4.52%, 19.04%, 0 / 2.56%, 6.93%, 0 | 1.51% → 1.13% |
+| kloppenheim-top | 2.55%, 8.48%, 0 / 5.80%, 19.10%, 0 | 1.81%, 5.66%, 0 / 2.02%, 7.77%, 0 | 0.34% → 0.36% |
+| kloppenheim-hall | 11.90%, 48.26%, 44 **Fail** / 5.02%, 17.15%, 0 | 6.10%, 26.68%, 0 **Fail** / 1.94%, 6.90%, 0 | 0.62% → 0.83% |
+| kloofendal-top (tracked) | 1.47%, 4.81%, 0 / 5.89%, 18.02%, 0 | 0.65%, 1.96%, 0 / 1.92%, 7.05%, 0 | 0.43% → 0.42% |
+| kloofendal-hall (tracked) | 7.81%, 27.95%, 16 **Fail** / 6.67%, 18.64%, 0 | 2.92%, 11.37%, 0 / 1.87%, 6.21%, 0 | 1.03% → 0.98% |
+| qwantani-top | 2.99%, 10.25%, 0 / 6.94%, 23.40%, 0 **Fail** | 0.34%, 1.03%, 0 / 2.48%, 9.57%, 0 | 0.48% → 0.45% |
+| qwantani-hall | 13.51%, 49.14%, 6 **Fail** / 6.42%, 23.10%, 0 **Fail** | 2.20%, 7.28%, 0 / 2.24%, 7.95%, 0 | 2.02% → 1.79% |
+| studio-top (tracked) | 3.48%, 10.81%, 0 / 5.75%, 21.68%, 0 **Fail** | 2.24%, 6.87%, 0 / 2.83%, 11.82%, 0 | 0.34% → 0.36% |
+| studio-hall (tracked) | 31.35%, 88.73%, 30 **Fail** / 4.35%, 13.83%, 0 | 19.28%, 40.32%, 0 **Fail** / 2.16%, 8.13%, 0 | 0.70% → 1.82% |
+| emptyroom-top (tracked) | 4.49%, 15.60%, 0 / 5.44%, 16.92%, 0 | 2.54%, 8.95%, 0 / 1.94%, 6.80%, 0 | 0.32% → 0.34% |
+| emptyroom-hall (tracked) | 12.13%, 45.30%, 39 **Fail** / 5.22%, 15.94%, 0 | 5.39%, 20.31%, 0 **Fail** / 2.14%, 7.17%, 0 | 0.74% → 0.75% |
+| corridor-top (tracked) | 3.12%, 10.43%, 0 / 6.90%, 23.52%, 0 **Fail** | 2.04%, 6.67%, 0 / 2.06%, 7.52%, 0 | 0.32% → 0.34% |
+| corridor-hall (tracked) | 13.67%, 48.66%, 26 **Fail** / 5.50%, 18.76%, 0 | 7.28%, 22.69%, 0 **Fail** / 2.09%, 7.61%, 0 | 1.08% → 1.04% |
+| carpentry-top | 2.79%, 9.52%, 0 / 3.29%, 12.52%, 0 | 1.18%, 3.63%, 0 / 1.14%, 4.70%, 0 | 0.38% → 0.36% |
+| carpentry-hall | 13.75%, 57.23%, 7 **Fail** / 6.44%, 27.41%, 0 **Fail** | 4.66%, 18.71%, 0 / 2.11%, 9.61%, 0 | 1.32% → 0.68% |
+
+**Remaining gap.** Kloppenheim hall needs more samples on its isolated far pixels. With this estimator its P99 is 23.06% at a 48-frame history, 21.40% at 64, 20.32% at 96 and 17.64% at 128 (`build/p4-gaps/g1-option-a-history/`). That is decision 5's preset lever; by [decision 9](P4Gaps.md#decisions-2026-10-10) the 32-frame history stays and the remaining failures are re-measured after the later plan phases.
+
+**Cost** (RTX 5080, 960×540, the sweep's measured GPU medians). The trace pass takes 1.0–1.33 ms in the halls against 0.32 ms before G1, mostly the per-pixel scans over 384 guide weights; all hybrid GI passes take 3.95–4.28 ms against 3.2 ms. Memory adds a 6 MB environment luminance table, 6.3 MB of residual row and column distributions, 0.1 MB of tile distributions, and two guide buffers of 3.1 MB each at this resolution (12.6 MB each at 1920×1080). Qualification is P8 work.
+
+## Bias correction removed (2026-10-10)
+
+The G2 correction (seven coarse residual stages after the à-trous filter) was retained to recover energy the filter's luminance test removed around noisy small sources. With the [G1 sky estimator](#g1-sky-estimator-2026-10-10) that darkening is gone, so the correction was measured off on all 18 views against the option A tier references (`build/p4-gaps/no-bias-pass/`, then `build/p4-gaps/bias-removed/` with the code removed):
+
+| | With correction | Without |
+| --- | --- | --- |
+| Largest full-image/floor bias | 0.25% | 0.30% (typically −0.15%; G2 target ±1%, limit ±2%) |
+| P99: hotel / carpentry / kloppenheim hall | 19.04% / 18.71% / 26.68% | 19.32% / 18.87% / 26.90% |
+| Exact-zero pixels, all 18 views | 0 | 4 (3 in hotel hall) |
+| Pixels below 5% of their reference | 6 | 8 |
+| GPU time of the stages (RTX 5080, 960×540) | 1.05–1.08 ms | — |
+| Hybrid GI passes | 3.94–4.28 ms | 2.86–3.20 ms |
+
+The correction no longer affects bias, RMS or P99 measurably. Its remaining effect was to lift isolated pixels whose 128 samples all missed a small patch of visible sky from exactly zero to about 0.001–0.018× the mean (their references are 0.11–0.18×): still black, but no longer counted by the zero test. It was removed with its 112 bytes/pixel of transient RGBA32F targets (`hybrid_bias.comp`, `HybridBiasSP`). Hotel hall's three all-miss pixels now fail the gate openly and are part of G1. RenderCoreTest 576, CommonTest 112, RayQueryIntegrationTest 12, ConeVoxelGIIntegrationTest 16 and the sixteen native fixtures on both providers pass.
+
+## Surface agreement at shared edges (review, 2026-10-10)
+
+The hotel hall's remaining converged failure was a comparison defect, not an engine one. The same-surface test compared only positions (within four depth-quantization steps). Where two faces meet at a pixel center, both hits lie on the shared edge, so positions agree, but the rasterizer, which snaps vertices to fixed-point subpixels, and the ray can take different faces. Engine and ground-truth geometric normals are bimodal: 513,664 agreeing hall pixels are within 0.05° (G-buffer encoding and derivative error), one lies between 0.05° and 0.1°, and 172 (0.03%) differ by 0.1–89° (median 7°). Of the 173 beyond 0.05°, 146 match the ground-truth normal of an adjacent pixel within 0.01°. The engine's derivative normals are therefore exact; it is the faces that differ.
+
+Embree decided which side was right (the MIS tracer of [environment_reference.py](../../tools/environment_reference.py), 32,768 samples per proposal, at both receivers of all 172 pixels). Normalized by the view mean, the engine reference against Mitsuba differs by 150.0% RMS on these pixels; Embree at the engine's receivers matches the engine within 1.35%, and Embree at the ground truth's receivers matches Mitsuba within 3.35% (Mitsuba's own noise). Each is correct for its own face. These pixels carried about three quarters of the view's squared excess.
+
+`receiver_agreement` ([ground_truth_mitsuba.py](../../tools/ground_truth_mitsuba.py)) now also requires geometric normals within 0.5° (`SAME_SURFACE_NORMAL_DEGREES`, either orientation), ten times the largest same-face disagreement; verdicts are identical at 0.1° and 2°. Pixels it rejects are reported as primary mismatches with the alpha and silhouette cases: 1,101 instead of 984 per top view and 4,718 instead of 4,563 per hall view. The arbitration tool uses the same test. No engine code, capture, limit or stored render changed: a full regeneration with the current build (`build/ground-truth/runs/2026-10-10-surface-agreement/`) produced captures byte-identical to the flat-normal sweep's.
+
+**All 18 views now pass the converged ground-truth gate**, six of them on 8×8 blocks under decision 2. Top views change by at most 0.16 points. Shipping results are unchanged: 13 of 18 views fail, including 7 of the 10 gating pairs, and the maximum shipping bias stays 0.46%. Diagnostics are archived in `build/p4-gaps/surface-agreement/`.
+
+| View | Excess before → after | 8×8 excess before → after | Beyond 0.3 units before → after | Verdict after |
+| --- | --- | --- | --- | --- |
+| papermill-hall | 0.63% → 0.58% | 0.08% → 0.07% | 0.72% → 0.61% | Pass |
+| hotel-hall | 3.13% → 1.51% | 0.51% → 0.33% | 8.67% → 4.09% | Pass on 8×8 blocks (per-pixel noise 4.14%) |
+| kloppenheim-hall | 0.71% → 0.62% | 0.10% → 0.09% | 0.64% → 0.27% | Pass on 8×8 blocks (per-pixel noise 3.37%) |
+| kloofendal-hall | 1.28% → 1.03% | 0.25% → 0.22% | 3.42% → 2.72% | Pass |
+| qwantani-hall | 2.36% → 2.02% | 0.42% → 0.38% | 6.57% → 5.60% | Pass |
+| studio-hall | 0.70% → 0.70% | 0.49% → 0.49% | 1.61% → 1.60% | Pass on 8×8 blocks (per-pixel noise 11.14%) |
+| emptyroom-hall | 0.85% → 0.74% | 0.17% → 0.15% | 0.89% → 0.76% | Pass on 8×8 blocks (per-pixel noise 3.11%) |
+| corridor-hall | 1.10% → 1.08% | 0.32% → 0.31% | 2.43% → 2.41% | Pass on 8×8 blocks (per-pixel noise 4.35%) |
+| carpentry-hall | 1.38% → 1.32% | 0.24% → 0.23% | 2.39% → 2.32% | Pass on 8×8 blocks (per-pixel noise 5.40%) |
 
 ## Nine-environment sweep (before the flat default normal fix)
 

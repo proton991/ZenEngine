@@ -656,18 +656,30 @@
         "papermill-hall"
       ],
       "shading_normals": "captured engine normals, unit-renormalized and fingerprinted; independent primary geometry and visibility"
-    }
+    },
+    "same_surface": "Within four depth-quantization steps and, where the truth has geometric normals, geometric normals within 0.5 degrees (either orientation)"
   },
   "p4_execution": {
     "record": "Doc/HybridGI/P4Execution.md",
     "results": "Doc/HybridGI/p4-gap-results.json",
     "accepted": false,
     "gbuffer_bytes_per_pixel": 64,
-    "extra_bias_transient_bytes_per_pixel_before_reuse": 112,
-    "failed_converged_views": [
+    "failed_converged_views": [],
+    "failed_shipping_gating_views": [
+      "kloppenheim-hall",
       "hotel-hall"
     ],
-    "failed_shipping_gating_views": [
+    "max_shipping_full_or_floor_bias": 0.003,
+    "failed_converged_views_before_flat_normal_fix": [
+      "hotel-hall",
+      "qwantani-hall"
+    ],
+    "failed_converged_views_before_surface_agreement": [
+      "hotel-hall"
+    ],
+    "converged_run": "build/ground-truth/runs/2026-10-10-surface-agreement",
+    "large_coordinates": "Moved out of P4 by decision 8; Doc/CameraRelativeRenderingPlan.md",
+    "failed_shipping_gating_views_before_g1_estimator": [
       "papermill-hall",
       "hotel-top",
       "hotel-hall",
@@ -676,10 +688,16 @@
       "qwantani-hall",
       "carpentry-hall"
     ],
-    "max_shipping_full_or_floor_bias": 0.004559504799544811,
-    "failed_converged_views_before_flat_normal_fix": [
-      "hotel-hall",
-      "qwantani-hall"
-    ]
+    "g1_run": "build/ground-truth/runs/2026-10-10-g1-option-a",
+    "kloppenheim_hall_p99_by_history": {
+      "32": 0.2668,
+      "48": 0.2306,
+      "64": 0.214,
+      "96": 0.2032,
+      "128": 0.1764
+    },
+    "bias_correction": "removed 2026-10-10; max full-image/floor bias without it 0.0030",
+    "hotel_hall_exact_zeros": 3,
+    "history_frames_decision": "decision 9 (2026-10-10): keep 32; re-measure G1 failures after later plan phases"
   }
 }
