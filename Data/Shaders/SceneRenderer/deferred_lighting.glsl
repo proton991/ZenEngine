@@ -143,10 +143,12 @@ void main() {
 #if defined(VOXEL_GI)
 #ifdef HYBRID_GI
     vec3 sky=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
-    vec3 diffuseIBL=(DiffuseVoxelLighting(worldPos,N,false)+sky)*albedo;
+    vec3 bounce=gi.lighting.w>0.5 ? texelFetch(hybridBounce,ivec2(gl_FragCoord.xy),0).rgb : DiffuseVoxelLighting(worldPos,N,false);
+    vec3 diffuseIBL=(bounce+sky)*albedo;
     prefilteredColor*=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).a;
 #ifdef LIGHTING_CAPTURE
     captureDiffuseEscaped=sky;
+    captureDiffuseBounced=bounce;
 #endif
 #else
     vec3 diffuseIBL = DiffuseVoxelLighting(worldPos,N) * albedo;

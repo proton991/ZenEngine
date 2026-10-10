@@ -991,6 +991,7 @@ struct DemoOptions
     std::string providerSwitchCapturePath;
     std::string originStressCapturePath;
     std::string stabilityCapturePath;
+    std::string bounceLightCapturePath;
     std::string lightingCapturePath;
     std::string voxelCapturePath;
     bool        voxelReference{false};
@@ -1089,6 +1090,11 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             options.stabilityCapturePath = argument.substr(20);
             valid                        = !options.stabilityCapturePath.empty();
+        }
+        else if (argument.starts_with("--capture-bounce-lights="))
+        {
+            options.bounceLightCapturePath = argument.substr(24);
+            valid                          = !options.bounceLightCapturePath.empty();
         }
         else if (argument.starts_with("--capture-lighting="))
         {
@@ -1361,6 +1367,10 @@ int main(int argc, char** pArgv)
         {
             result = pDemo->CaptureStability(options.stabilityCapturePath) ? 0 : 1;
         }
+        if (result == 0 && !options.bounceLightCapturePath.empty())
+        {
+            result = pDemo->CaptureBounceLightChanges(options.bounceLightCapturePath) ? 0 : 1;
+        }
         if (result == 0 && !options.capturePath.empty())
         {
             result = pDemo->CaptureFrame(options.capturePath) ? 0 : 1;
@@ -1407,7 +1417,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-provider-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-provider-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-bounce-lights=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

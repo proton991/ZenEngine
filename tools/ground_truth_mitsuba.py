@@ -292,10 +292,12 @@ def camera_rays(metadata, capture):
     return eye, directions.reshape(height, width, 3)
 
 
-def primary_hits(mi, dr, scene, eye, directions, max_layers=64):
+def primary_hits(mi, dr, scene, eye, directions, max_layers=64, origins=None):
     """Rasterization-equivalent primary hits: skip culled back faces and masked texels."""
     count = len(directions)
-    ray = mi.Ray3f(mi.Point3f(*[mi.Float(np.full(count, c, np.float32)) for c in eye]),
+    origin = (mi.Point3f(*[mi.Float(np.full(count, c, np.float32)) for c in eye]) if origins is None else
+              mi.Point3f(*[mi.Float(origins[:, i].astype(np.float32)) for i in range(3)]))
+    ray = mi.Ray3f(origin,
                    mi.Vector3f(*[mi.Float(directions[:, i].astype(np.float32)) for i in range(3)]))
     active = mi.Bool(np.ones(count, bool))
     for _ in range(max_layers):

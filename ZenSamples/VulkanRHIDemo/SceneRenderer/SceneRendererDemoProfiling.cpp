@@ -1058,7 +1058,11 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
 
         output << ",\"gi_method\":\"" << (cone.rayProvider == rc::VoxelGISettings::RayProvider::Legacy ? "cone" : "hybrid")
                << "\""
-               << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider)
+               << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider) << ",\"bounce_source\":\""
+               << (cone.rayProvider != rc::VoxelGISettings::RayProvider::Legacy && server.RequestVoxelGI()->UsesRayBounce()
+                       ? "rays"
+                       : "cone")
+               << "\""
                << ",\"diffuse_samples\":" << cone.samples << ",\"reference_samples\":" << cone.referenceSamples
                << ",\"history_frames\":" << cone.historyFrames << ",\"temporal\":" << cone.temporal
                << ",\"filter\":" << cone.filter << ",\"specular_occlusion\":" << cone.specularOcclusion

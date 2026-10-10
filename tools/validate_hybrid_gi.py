@@ -34,7 +34,10 @@ def environment_integral(prefix, metadata, normal):
     return np.sum(cube[...,:3]*weight[...,None],axis=(0,1,2))
 
 
-def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0):
+def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0,
+        bounce_source='cone',resolution=64,environment_lighting=True,shadows=False,light_changes=False,spatial_filter=True,
+        width=320,height=180):
+    exe=exe.resolve();folder=folder.resolve()
     fixtures=folder/'fixtures'
     generate(fixtures)
     config=ROOT/'Data/engine.cfg'
@@ -47,11 +50,13 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
         for name in names:
             settings=dict(default_model_path=(fixtures/(name+'.gltf')).as_posix(),environment_texture=(fixtures/'constant.hdr').as_posix(),
                           environment_lighting='true',environment_intensity=1,skybox_visible='false',
-                          scene_lighting_override='true',light_count=0,voxel_resolution=64,voxel_gi_indirect_intensity=indirect,
+                          scene_lighting_override='true',light_count=0,voxel_resolution=resolution,voxel_gi_indirect_intensity=indirect,
                           voxel_gi_shadow_enabled='false',voxel_gi_ray_provider=provider,voxel_gi_samples=samples,
                           voxel_gi_reference_samples=reference_samples,
-                          voxel_gi_temporal='true',voxel_gi_filter='true',voxel_gi_specular_occlusion='true',
+                          voxel_gi_temporal='true',voxel_gi_filter=str(spatial_filter).lower(),voxel_gi_specular_occlusion='true',
                           async_compute='auto')
+            settings.update(voxel_gi_bounce_source=bounce_source,environment_lighting=str(environment_lighting).lower(),
+                            voxel_gi_shadow_enabled=str(shadows).lower())
             settings.update({'dynamic_light.enabled':'false','light_markers.enabled':'false'})
             settings['environment_rotation_degrees'] = 0
             if name in ('bright_environment_plane','rotated_environment_plane','black_environment_plane') or name.startswith('bright_edge_'):
@@ -65,11 +70,12 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             prefix=folder/name
             assert frames >= 2
             command=[str(exe),'--no-ui','--fixed-step',f'--frames={frames-1}',
-                     '--mode=3','--width=320','--height=180',f'--capture-lighting={prefix}',f'--profile={prefix}']
+                     '--mode=3',f'--width={width}',f'--height={height}',f'--capture-lighting={prefix}',f'--profile={prefix}']
             if not rt: command.append('--disable-rt')
             if gpu: command.append('--gpu='+gpu)
+            if light_changes: command.append('--capture-bounce-lights='+str(prefix)+'-lights')
             with prefix.with_suffix('.log').open('w') as log:
-                result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,timeout=180)
+                result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,timeout=1800 if light_changes else 300)
             log=prefix.with_suffix('.log').read_text(errors='replace')
             errors=[line for line in log.splitlines() if '[error]' in line or 'VUID-' in line or 'SYNC-HAZARD' in line]
             baseline=[line for line in errors if 'SYNC-HAZARD-PRESENT-AFTER-WRITE' in line]
@@ -84,17 +90,17 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             if provider == 'legacy':
                 results[name] = {'legacy':True}
                 continue
-            capture=np.fromfile(str(prefix)+'.hybrid.bin','<f4').reshape(180,320,13,4)
+            capture=np.fromfile(str(prefix)+'.hybrid.bin','<f4').reshape(height,width,13,4)
             mask=capture[:,:,8,3]>0
             assert mask.any() and np.isfinite(capture).all()
             sky=capture[:,:,1,:3][mask];specular=capture[:,:,5,3][mask]
             # Component 11: NDC motion (previous - current) and previous w; a static view must not move.
             motion=capture[:,:,11,:][mask]
             assert np.all(motion[:,2]>0),(name,'receiver behind the previous camera')
-            motion_error=float(np.linalg.norm(motion[:,:2]*.5*[320,180],axis=1).max())
+            motion_error=float(np.linalg.norm(motion[:,:2]*.5*[width,height],axis=1).max())
             if name != 'moving_occluder_light':
                 assert motion_error < .01, (name,'static reprojection',motion_error)
-            lighting=np.fromfile(str(prefix)+'.lighting.bin','<f4').reshape(180,320,7,4)
+            lighting=np.fromfile(str(prefix)+'.lighting.bin','<f4').reshape(height,width,7,4)
             composition_error=float(np.max(abs(lighting[:,:,0,:3]-lighting[:,:,1:5,:3].sum(2))))
             split_error=float(np.max(abs(lighting[:,:,2,:3]-lighting[:,:,5:7,:3].sum(2))))
             assert composition_error < 1e-5 and split_error < 1e-5,(name,composition_error,split_error)
@@ -168,6 +174,15 @@ if __name__=='__main__':
     parser.add_argument('--rt',action='store_true')
     parser.add_argument('--gpu',help='Device name substring passed to the native demo')
     parser.add_argument('--reference-samples',type=int,choices=(0,1024,4096),default=0)
+    parser.add_argument('--bounce-source',choices=('cone','rays'),default='cone')
+    parser.add_argument('--indirect',type=float,default=0)
+    parser.add_argument('--resolution',type=int,choices=(64,128,256),default=64)
+    parser.add_argument('--environment-lighting',action=argparse.BooleanOptionalAction,default=True)
+    parser.add_argument('--shadows',action='store_true')
+    parser.add_argument('--light-changes',action='store_true')
+    parser.add_argument('--spatial-filter',action=argparse.BooleanOptionalAction,default=True)
+    parser.add_argument('--width',type=int,default=320)
+    parser.add_argument('--height',type=int,default=180)
     parser.add_argument('--sky-cache-check',action='store_true',help='Compare hardware and voxel sky caches through half-wall bounce (needs RT)')
     parser.add_argument('--allow-present-baseline',action='store_true',help='Report the separately reproduced legacy presentation hazard without blocking image checks')
     args=parser.parse_args()
@@ -175,4 +190,7 @@ if __name__=='__main__':
     if args.sky_cache_check:
         sky_cache_check(args.exe.resolve(),args.output.resolve(),args.frames,args.allow_present_baseline,args.gpu)
     else:
-        run(args.exe.resolve(),args.output.resolve(),args.fixtures,args.frames,args.provider,args.allow_present_baseline,args.rt,args.samples,gpu=args.gpu,reference_samples=args.reference_samples)
+        run(args.exe.resolve(),args.output.resolve(),args.fixtures,args.frames,args.provider,args.allow_present_baseline,args.rt,args.samples,
+            indirect=args.indirect,gpu=args.gpu,reference_samples=args.reference_samples,bounce_source=args.bounce_source,
+            resolution=args.resolution,environment_lighting=args.environment_lighting,shadows=args.shadows,light_changes=args.light_changes,
+            spatial_filter=args.spatial_filter,width=args.width,height=args.height)

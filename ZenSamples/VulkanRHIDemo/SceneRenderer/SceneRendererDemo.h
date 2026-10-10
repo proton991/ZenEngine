@@ -66,6 +66,7 @@ public:
     bool CaptureOriginStress(const std::string& path);
 
     bool CaptureStability(const std::string& path);
+    bool CaptureBounceLightChanges(const std::string& path);
 
     bool CaptureVoxelVolume(const std::string& path);
 

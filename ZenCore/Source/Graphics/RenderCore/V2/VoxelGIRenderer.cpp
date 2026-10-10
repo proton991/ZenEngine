@@ -59,6 +59,7 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && (settings.samples == 1 || settings.samples == 2 || settings.samples == 4)
         && (settings.referenceSamples == 0 || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
         && settings.historyFrames >= 1 && settings.historyFrames <= 256
+        && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
         && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Legacy);
 }
 
@@ -122,6 +123,11 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid      &= config.ReadBool("voxel_gi_filter", settings.filter);
     valid      &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
     const std::string provider  = config.GetString("voxel_gi_ray_provider", "auto");
+    const std::string bounce    = config.GetString("voxel_gi_bounce_source", "auto");
+    valid                      &= bounce == "auto" || bounce == "cone" || bounce == "rays";
+    settings.bounceSource       = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
+                                : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
+                                                   : VoxelGISettings::BounceSource::Auto;
     valid                      &= provider == "auto" || provider == "voxel" || provider == "hardware" || provider == "legacy";
     settings.rayProvider        = provider == "legacy"   ? VoxelGISettings::RayProvider::Legacy
                                 : provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
@@ -293,12 +299,13 @@ void VoxelGIRenderer::BuildMipChain(const HeapVector<RHITextureView*>& views, Na
 
 void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 {
+    m_recordedRadiance = false;
     if (IsInitialized() && m_scene != nullptr)
     {
         const bool  previousHardware = m_hardwareQueries;
         const char* previousReason   = m_providerReason;
         const bool  requestHardware  = m_settings.rayProvider == VoxelGISettings::RayProvider::Auto
-                                  || m_settings.rayProvider == VoxelGISettings::RayProvider::Hardware;
+                                    || m_settings.rayProvider == VoxelGISettings::RayProvider::Hardware;
         m_hardwareQueries =
             requestHardware
             && m_rayQuery.BuildRenderGraph(*m_scene, uint64_t(m_settings.accelerationStructureBudgetMB) * 1024 * 1024);
@@ -328,23 +335,24 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
         m_visibilityBounds =
             BuildVoxelGIVisibilityBounds(m_scene->GetAABB(), m_uniforms.gridMinVoxelSize, m_voxelizer->GetVoxelTexResolution());
 
-        m_uniforms.volume   = Vec4(static_cast<float>(m_voxelizer->GetVoxelTexResolution()), m_voxelizer->GetVoxelScale(),
-                                   static_cast<float>(m_radianceMips.size()), m_settings.indirectIntensity);
+        m_uniforms.volume     = Vec4(static_cast<float>(m_voxelizer->GetVoxelTexResolution()), m_voxelizer->GetVoxelScale(),
+                                     static_cast<float>(m_radianceMips.size()), m_settings.indirectIntensity);
 
-        m_uniforms.cone     = Vec4(std::tan(glm::radians(m_settings.coneAngleDegrees) * 0.5f), m_settings.stepScale,
-                                   m_settings.normalBiasVoxels, m_settings.maxDistanceGridLengths);
+        m_uniforms.cone       = Vec4(std::tan(glm::radians(m_settings.coneAngleDegrees) * 0.5f), m_settings.stepScale,
+                                     m_settings.normalBiasVoxels, m_settings.maxDistanceGridLengths);
 
-        m_uniforms.limits   = Vec4(static_cast<float>(m_settings.coneCount), static_cast<float>(m_settings.maxSteps),
-                                 m_settings.shadows ? 1.0f : 0.0f, 0.0f);
+        m_uniforms.limits     = Vec4(static_cast<float>(m_settings.coneCount), static_cast<float>(m_settings.maxSteps),
+                                     m_settings.shadows ? 1.0f : 0.0f, 0.0f);
 
-        m_uniforms.lighting = Vec4(m_settings.analyticLighting ? 1.0f : 0.0f, m_settings.environmentLighting ? 1.0f : 0.0f,
-                                   m_settings.emissiveLighting ? 1.0f : 0.0f, 0.0f);
+        m_uniforms.lighting   = Vec4(m_settings.analyticLighting ? 1.0f : 0.0f, m_settings.environmentLighting ? 1.0f : 0.0f,
+                                     m_settings.emissiveLighting ? 1.0f : 0.0f,
+                                     UsesRayBounce() ? 1.0f : 0.0f);
 
-        m_recordedGeometry            = m_voxelizer->GetRecordedGeometryRevision();
+        m_recordedGeometry    = m_voxelizer->GetRecordedGeometryRevision();
 
-        m_recordedLighting            = m_scene->GetLightingRevision();
+        m_recordedLighting    = m_scene->GetLightingRevision();
 
-        m_recordedEnvironment         = m_scene->GetEnvironmentRevision();
+        m_recordedEnvironment = m_scene->GetEnvironmentRevision();
 
         const bool geometryChanged    = m_geometryRevision != m_recordedGeometry;
 
@@ -413,8 +421,43 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             });
         }
 
+        // Ray-hit bounce reads the base level from before each injection, so its history can follow the
+        // change that the same rays see (hybrid_temporal.comp). Cone bounce keeps a 1x1x1 placeholder.
+        const bool     rays     = UsesRayBounce();
+        const uint32_t previous = rays ? m_voxelizer->GetVoxelTexResolution() : 1u;
+        if (m_previousRadiance != nullptr && m_previousRadiance->GetWidth() != previous)
+        {
+            m_device->DestroyTexture(m_previousRadiance);
+            m_previousRadiance = nullptr;
+        }
+        if (m_previousRadiance == nullptr)
+        {
+            TextureFormat format;
+            format.dimension   = TextureDimension::e3D;
+            format.format      = DataFormat::eR16G16B16A16SFloat;
+            format.width       = previous;
+            format.height      = previous;
+            format.depth       = previous;
+            m_previousRadiance = m_device->CreateTextureStorage(format, {.copyUsage = true}, "voxel_previous_radiance");
+            if (m_previousRadiance != nullptr)
+            {
+                graph->AddTransferPass("InitializePreviousRadiance").ClearTexture(m_previousRadiance, Color(0));
+            }
+        }
+
         if (skyChanged || m_lightingRevision != m_recordedLighting)
         {
+            m_recordedRadiance = true;
+            if (rays && m_previousRadiance != nullptr)
+            {
+                RHITextureCopyRegion region{};
+                region.size = Vec3i(static_cast<int>(previous));
+                region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+                region.srcSubresources.layerCount = 1;
+                region.dstSubresources            = region.srcSubresources;
+                graph->AddTransferPass("VoxelKeepPreviousRadiance")
+                    .CopyTexture(m_radiance, m_previousRadiance, MakeVecView(&region, 1));
+            }
             RDGComputePassDesc inject;
 
             const bool meshShadows = shadows != nullptr && m_scene->GetVoxelTriangleCount() != 0;
@@ -497,6 +540,15 @@ void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass) const
     m_rayQuery.BindInputs(pass, *m_scene);
 }
 
+void VoxelGIRenderer::BindHitRadianceInputs(RDGPassDescBase& pass) const
+{
+    pass.BindSampledTexture("hitRadiance", m_voxelizer->GetVoxelSampler(), m_radiance->GetDefaultView());
+    pass.BindSampledTexture("hitRadiancePrevious", m_voxelizer->GetVoxelSampler(),
+                            (m_previousRadiance != nullptr ? m_previousRadiance : m_radiance)->GetDefaultView());
+    pass.BindSampledTexture("hitNormal", m_voxelizer->GetVoxelSampler(),
+                            m_voxelizer->GetVoxelTextures().pNormal->GetDefaultView());
+}
+
 void VoxelGIRenderer::BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const
 {
     pass.BindStorageBuffer("EnvironmentColumns", m_environmentColumns);
@@ -552,6 +604,11 @@ void VoxelGIRenderer::BuildEnvironmentDistribution()
 
 void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)
 {
+    if (succeeded && m_recordedRadiance)
+    {
+        ++m_radianceGeneration;
+    }
+    m_recordedRadiance = false;
     m_rayQuery.OnRenderGraphExecuted(succeeded);
     m_geometryRevision    = succeeded ? m_recordedGeometry : 0;
 
@@ -565,6 +622,9 @@ void VoxelGIRenderer::Destroy()
     m_rayQuery.Destroy();
     m_hardwareQueries = false;
     m_device->DestroyTexture(m_radiance);
+
+    m_device->DestroyTexture(m_previousRadiance);
+    m_previousRadiance = nullptr;
 
     m_device->DestroyTexture(m_skyIrradiance);
 
@@ -585,9 +645,9 @@ void VoxelGIRenderer::Destroy()
     m_environmentResidualColumns = nullptr;
     m_environmentResidualRows    = nullptr;
 
-    m_radiance             = nullptr;
+    m_radiance                   = nullptr;
 
-    m_skyIrradiance        = nullptr;
+    m_skyIrradiance              = nullptr;
 
     m_radianceMips.clear();
 

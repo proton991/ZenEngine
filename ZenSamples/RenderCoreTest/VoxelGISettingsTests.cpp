@@ -95,6 +95,16 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
     EXPECT_FALSE(settings.cone.temporal);
     EXPECT_FALSE(settings.cone.filter);
     EXPECT_FALSE(settings.cone.specularOcclusion);
+    // Ray-hit bounce with hardware queries, cones otherwise (P5 passed on the RT tier only).
+    EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Auto);
+    std::istringstream     bounceStream("voxel_gi_bounce_source=rays\n");
+    platform::ConfigLoader bounceConfig(bounceStream);
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(bounceConfig, settings));
+    EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Rays);
+    std::istringstream     invalidStream("voxel_gi_bounce_source=invalid\n");
+    platform::ConfigLoader invalidConfig(invalidStream);
+    EXPECT_FALSE(LoadVoxelGIRuntimeSettings(invalidConfig, settings));
+    EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Rays);
 }
 
 TEST(VoxelGIRuntimeSettings, RejectsInvalidEnumsAndNonFiniteAPIValues)

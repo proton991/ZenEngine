@@ -163,12 +163,14 @@ void main()
 #ifdef HYBRID_GI
         bool reconstructed=topology==2u && material.surfaceProperties.y!=2.0 && s.transmission==0.0 &&
             s.diffuseTransmission==0.0 && HybridReceiverMatches(uNodeIndex,gl_FrontFacing==(inOrientation>=0.0));
-        irradiance=DiffuseVoxelLighting(inWorldPos,N,!reconstructed);
+        irradiance=reconstructed && gi.lighting.w>0.5 ? texelFetch(hybridBounce,ivec2(gl_FragCoord.xy),0).rgb
+                                                     : DiffuseVoxelLighting(inWorldPos,N,!reconstructed);
         if(reconstructed)
         {
             irradiance+=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
 #ifdef LIGHTING_CAPTURE
             captureDiffuseEscaped=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
+            captureDiffuseBounced=irradiance-captureDiffuseEscaped;
 #endif
             hybridSpecularVisibility=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).a;
         }

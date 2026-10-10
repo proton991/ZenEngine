@@ -2,6 +2,8 @@
 
 Date: 2026-09-21. Implementation follows [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md), with execution refinements recorded there.
 
+Latest hybrid extension (2026-10-10): [P5 ray-hit bounce](HybridGI/P5.md) records the implementation and its gate. Ray-hit bounce passes the RT-tier limits, including a continuously moving light, and is the default with the hardware provider; cone bounce remains the compute-tier default until P8.
+
 ## Hybrid environment lighting P0–P3 (2026-10-07)
 
 Mode 3 now uses voxel-ray diffuse sky and GGX environment-specular visibility, with per-view receiver history and temporal/spatial reconstruction. Opaque/mask forward materials use a receiver prepass; cone bounce and the translucent/scattering per-surface path remain. The default is four diffuse samples, one specular sample and 32 history frames. The original cone sky is available with `voxel_gi_ray_provider=legacy` while acceptance remains open.

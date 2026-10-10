@@ -152,7 +152,10 @@ bool WriteLightingMetadata(const std::string&        path,
         << (GDynamicRHI->QueryGPUInfo().rayQuery.accelerationStructure ? "true" : "false")
         << ",\"buffer_device_address_enabled\":"
         << (GDynamicRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress ? "true" : "false")
-        << ",\"preset\":\"custom\",\"bounce_source\":\"cone\",\"sample_seed\":0"
+        << ",\"preset\":\"custom\",\"bounce_source\":\""
+        << (reconstructed && server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone")
+        << "\",\"sample_seed\":0,\"radiance_generation\":" << server.RequestVoxelGI()->GetRadianceGeneration()
+        << ",\"bounce_diagnostics\":\"raw alpha: rejected lookups; reconstructed alpha: history length\""
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
         << ",\"frame\":" << (hybrid != nullptr ? hybrid->GetFrame() : 0)
         << ",\"environment_generation\":" << scene.GetEnvironmentRevision()
@@ -362,6 +365,88 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     if (!succeeded)
     {
         LOGE("Stability capture requires the hardware shipping tier and masked materials; capture or restoration failed");
+    }
+    return succeeded;
+}
+
+bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
+{
+    rc::VoxelGIRenderer*             gi               = m_renderDevice->GetRendererServer()->RequestVoxelGI();
+    const rc::VoxelGISettings        settings         = gi->GetSettings();
+    const HeapVector<rc::LightEntry> original         = m_renderScene->GetLights().GetEntries();
+    const HeapVector<sg::Material*>  materials        = m_scene->GetComponents<sg::Material>();
+    const sg::MaterialData           originalMaterial = materials.empty() ? sg::MaterialData{} : materials[0]->data;
+    const uint32_t                   materialIndex    = materials.empty() ? 0u : materials[0]->index;
+    sg::MaterialData                 emissiveMaterial = originalMaterial;
+    emissiveMaterial.emissiveFactor                   = Vec4(.4f, .2f, .1f, 1.0f);
+    emissiveMaterial.emissiveTexIndex                 = -1;
+    bool        succeeded = !original.empty() && !materials.empty() && settings.referenceSamples == 0
+                         && gi->UsesRayBounce();
+    const char* stages[]  = {"move", "off", "emissive_on", "emissive_off", "orbit"};
+    for (uint32_t stage = 0; stage < 5 && succeeded; ++stage)
+    {
+        if (stage == 3)
+        {
+            succeeded = m_renderScene->UpdateMaterial(materialIndex, emissiveMaterial);
+        }
+        succeeded =
+            succeeded && Run(63, false, 3, {}, true) && CaptureLighting(fmt::format("{}-{}-before", path, stages[stage]));
+        HeapVector<rc::LightEntry> changed = original;
+        if (stage == 4)
+        {
+            // The first light orbits at 45 degrees per second (the demo default) with radius 0.5 at the
+            // fixed 60 Hz step, starting at its authored position. It moves in every frame, including the
+            // captured one; the reference below keeps it where that frame left it.
+            for (uint32_t frame = 1; frame <= 64 && succeeded; ++frame)
+            {
+                const float angle         = glm::radians(45.0f) * static_cast<float>(frame) / 60.0f;
+                changed[0].light.position = original[0].light.position
+                                          + 0.5f * Vec3(std::cos(angle) - 1.0f, 0.0f, std::sin(angle));
+                succeeded                 = m_renderScene->ReplaceLights(changed)
+                         && (frame < 64 ? Run(1, false, 3, {}, true) : CaptureLighting(fmt::format("{}-orbit-frame64", path)));
+            }
+        }
+        else
+        {
+            if (stage == 0)
+            {
+                changed[0].light.position.x += .15f;
+            }
+            else if (stage == 1)
+            {
+                for (rc::LightEntry& entry : changed)
+                {
+                    entry.light.enabled = false;
+                }
+            }
+            succeeded =
+                succeeded
+                && (stage < 2 ? m_renderScene->ReplaceLights(changed)
+                              : m_renderScene->UpdateMaterial(materialIndex, stage == 2 ? emissiveMaterial : originalMaterial));
+            uint32_t previous = 0;
+            for (uint32_t frame : {1u, 4u, 8u})
+            {
+                if (succeeded && frame > previous + 1)
+                {
+                    succeeded = Run(frame - previous - 1, false, 3, {}, true);
+                }
+                succeeded = succeeded && CaptureLighting(fmt::format("{}-{}-frame{}", path, stages[stage], frame));
+                previous  = frame;
+            }
+        }
+        rc::VoxelGISettings reference               = settings;
+        reference.referenceSamples                  = 1024;
+        succeeded                                   = succeeded && gi->SetSettings(reference) && Run(63, false, 3, {}, true)
+                                                   && CaptureLighting(fmt::format("{}-{}-reference", path, stages[stage]));
+        HeapVector<rc::LightEntry> restore          = original;
+        const bool                 restoredLights   = m_renderScene->ReplaceLights(restore);
+        const bool                 restoredSettings = gi->SetSettings(settings);
+        const bool                 restoredMaterial = m_renderScene->UpdateMaterial(materialIndex, originalMaterial);
+        succeeded                                   = succeeded && restoredLights && restoredSettings && restoredMaterial;
+    }
+    if (!succeeded)
+    {
+        LOGE("Bounce light capture requires ray bounce and an authored light; capture or restoration failed");
     }
     return succeeded;
 }

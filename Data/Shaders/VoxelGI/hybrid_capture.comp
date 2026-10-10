@@ -11,6 +11,8 @@ layout(set=1,binding=8) uniform sampler2D reconstructedSky;
 layout(set=1,binding=9) uniform sampler2D reconstructedSpecular;
 layout(set=1,binding=10) uniform sampler2D moments;
 layout(set=1,binding=11) uniform sampler2D historyLength;
+layout(set=1,binding=12) uniform sampler2D rawBounce;
+layout(set=1,binding=13) uniform sampler2D reconstructedBounce;
 layout(set=4,binding=0,std430) writeonly buffer HybridCapture { vec4 diagnostics[]; };
 void main()
 {
@@ -23,8 +25,8 @@ void main()
     vec3 bounce=valid ? DiffuseVoxelLighting(position,n,false) : vec3(0);
     diagnostics[index+0]=texelFetch(rawSky,p,0);
     diagnostics[index+1]=texelFetch(reconstructedSky,p,0);
-    diagnostics[index+2]=vec4(bounce,0);
-    diagnostics[index+3]=vec4(bounce,0); // P0-P3 keep deterministic cone bounce unchanged.
+    diagnostics[index+2]=hybrid.bounce.x!=0u ? texelFetch(rawBounce,p,0) : vec4(bounce,0);
+    diagnostics[index+3]=hybrid.bounce.x!=0u ? texelFetch(reconstructedBounce,p,0) : vec4(bounce,0);
     diagnostics[index+4]=texelFetch(rawSpecular,p,0);
     diagnostics[index+5]=texelFetch(reconstructedSpecular,p,0);
     diagnostics[index+6]=texelFetch(moments,p,0);

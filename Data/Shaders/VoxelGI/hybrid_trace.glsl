@@ -1,6 +1,7 @@
 #include "hybrid_guides.glsl"
 #include "hybrid_sampling.glsl"
 #include "hybrid_provider.glsl"
+#include "hit_radiance.glsl"
 #include "environment_sampling.glsl"
 // One workgroup per screen tile of the visibility guide (HybridGIRenderer::kGuideTile).
 layout(local_size_x=16,local_size_y=16) in;
@@ -10,6 +11,13 @@ layout(set=1,binding=6) uniform sampler3D voxelOpacity;
 layout(set=1,binding=7) uniform samplerCube coneEnvironmentMap;
 layout(set=1,binding=8,rgba16f) uniform writeonly image2D rawSky;
 layout(set=1,binding=9,rgba16f) uniform writeonly image2D rawSpecular;
+layout(set=1,binding=12,rgba16f) uniform writeonly image2D rawBounce;
+layout(set=1,binding=13) uniform sampler3D hitRadiance;
+layout(set=1,binding=14) uniform sampler3D hitNormal;
+// Base radiance level from before this frame's injection, and the bounce this frame's rays read from
+// it (meaningful only when the cache changed; hybrid_temporal.comp).
+layout(set=1,binding=15) uniform sampler3D hitRadiancePrevious;
+layout(set=1,binding=16,rgba16f) uniform writeonly image2D rawBouncePrevious;
 // Visibility guide: per screen tile, the visible residual radiance (without the receiver's cosine)
 // over the environment's tiles, learned from this pass's rays, followed by the frames it averages.
 // Each receiver weights it by its own cosine toward the tile centres and draws guided rays from it,
@@ -125,7 +133,7 @@ void main()
     if(lane==0u) guideReceivers=0u;
     barrier();
 
-    vec4 sky=vec4(0), specular=vec4(0,0,0,1);
+    vec4 sky=vec4(0), specular=vec4(0,0,0,1), bounce=vec4(0), previous=vec4(0);
     if(HybridInView(p) && texelFetch(receiverDepth,p,0).r<1.0 && texelFetch(receiverSurface,p,0).g!=0u)
     {
         atomicAdd(guideReceivers,1u);
@@ -136,7 +144,8 @@ void main()
         // Shares of guided, residual-environment and cosine rays; without a guide its share goes to
         // the environment. Every density below is the mixture of these three proposals.
         vec3 share=guideTotal>0.0 ? vec3(0.5,0.25,0.25) : vec3(0.0,HYBRID_ENVIRONMENT_SHARE,1.0-HYBRID_ENVIRONMENT_SHARE);
-        bool residualEnvironment=environmentResidualRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS]>0.0;
+        bool residualEnvironment=environmentResidualRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS]>0.0
+            && gi.lighting.y*sceneUbo.environment.x*sceneUbo.environment.z>0.0;
         if(!residualEnvironment) share=vec3(0,0,1);
         for(uint i=0u;i<hybrid.sampling.y;++i)
         {
@@ -164,7 +173,24 @@ void main()
             float guided=guideTotal>0.0 ? GuideCosineWeight(tile,n)/guideTotal*tilePDF : 0.0;
             float residual=source || !residualEnvironment ? 0.0 : EnvironmentDistributionPDF(w,true);
             pdf=share.x*guided+share.y*residual+share.z*max(dot(n,w),0.0)/HYBRID_PI;
-            bool escaped=pdf>0.0 && dot(n,w)>0.0 && dot(ng,w)>0.0 && !HybridTraceRay(voxelOpacity,origin,w,1e20).hit;
+            bool inDomain=pdf>0.0 && dot(n,w)>0.0 && dot(ng,w)>0.0;
+            HybridRayResult hit=HybridRayResult(false,origin,vec3(0),ivec3(-1));
+            if(inDomain)
+                hit=hybrid.bounce.x!=0u ? HybridTraceClosestRay(voxelOpacity,origin,w,1e20)
+                                       : HybridTraceRay(voxelOpacity,origin,w,1e20);
+            bool escaped=inDomain && !hit.hit;
+            if(inDomain && hit.hit && hybrid.bounce.x!=0u)
+            {
+                bool rejected;
+                float weight=max(dot(n,w),0.0)/(HYBRID_PI*pdf);
+                vec3 value=HitRadiance(hitRadiance,hitNormal,hit,w,rejected)*weight;
+                bounce.rgb+=value;
+                bounce.a+=rejected ? 1.0:0.0;
+                // The same hit in the previous cache: these correlated lookups measure the change
+                // with little noise when lighting changes a little.
+                if(hybrid.bounce.w!=0u)
+                    previous.rgb+=HitRadiance(hitRadiancePrevious,hitNormal,hit,w,rejected)*weight;
+            }
             if(escaped)
             {
                 float weight=max(dot(n,w),0.0)/(HYBRID_PI*pdf);
@@ -180,6 +206,8 @@ void main()
             }
         }
         sky/=float(hybrid.sampling.y);
+        bounce.rgb/=float(hybrid.sampling.y);
+        previous.rgb/=float(hybrid.sampling.y);
         // Each source tile gets its own rays, half the residual count (two at the shipping preset),
         // so sources are integrated without selection noise between them. Their directions are
         // coherent across pixels, so they cost far less than residual rays (P4Execution.md).
@@ -212,6 +240,11 @@ void main()
     {
         imageStore(rawSky,p,sky);
         imageStore(rawSpecular,p,specular);
+        if(hybrid.bounce.x!=0u) // 1x1 placeholders for cone bounce
+        {
+            imageStore(rawBounce,p,bounce);
+            imageStore(rawBouncePrevious,p,previous);
+        }
     }
     barrier();
     // Average this frame into the guide: equally over the first frames, then exponentially.

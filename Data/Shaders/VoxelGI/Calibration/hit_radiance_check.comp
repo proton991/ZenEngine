@@ -1,0 +1,21 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../hybrid_provider.glsl"
+#include "../hit_radiance.glsl"
+layout(local_size_x=1) in;
+layout(set=1,binding=0) uniform sampler3D radiance;
+layout(set=1,binding=1) uniform sampler3D normals;
+layout(set=1,binding=2,std430) writeonly buffer Results { vec4 values[]; };
+void main()
+{
+    uint i=gl_GlobalInvocationID.x;
+    ivec3 cell=i<2u ? ivec3(2,1,1) : i==2u ? ivec3(2,2,1) : ivec3(9);
+    vec3 direction=i==1u ? vec3(-1,0,0) : vec3(1,0,0);
+    HybridRayResult hit=HybridRayResult(true,vec3(cell),-direction,cell);
+    // This cell is occupied at the origin. It blocks, but must not radiate from
+    // an invented entered face toward the back side of a thin wall.
+    if(i==4u) hit=HybridTraceRay(radiance,vec3(1.5,2.5,1.5),direction,10.0);
+    bool rejected;
+    vec3 value=HitRadiance(radiance,normals,hit,direction,rejected);
+    values[i]=vec4(value,rejected ? 1.0:0.0);
+}

@@ -382,16 +382,20 @@ def bounce_reference(oracle, position, normal, environment, light_position, ligh
     directions = cosine_directions(normal,samples)
     ids,distances,normals = oracle.intersect(position+normal*1e-5,directions)
     result = np.zeros((samples,3))
-    for i in np.flatnonzero(ids >= 0):
-        point = position+normal*1e-5+directions[i]*distances[i]
-        n = normals[i] if np.dot(normals[i],-directions[i]) > 0 else -normals[i]
-        delta = np.asarray(light_position)-point
-        distance = np.linalg.norm(delta)
-        light = delta/distance
-        blocker,_,_ = oracle.intersect(point+n*1e-5,light[None,:],distance-2e-5)
-        direct = np.asarray(light_intensity)*max(np.dot(n,light),0)/distance**2 if blocker[0]<0 else np.zeros(3)
-        sky,_ = sky_reference(oracle,point,n,n,environment,256)
-        result[i] = albedo*(direct/np.pi+sky)
+    hits = np.flatnonzero(ids >= 0)
+    points = position+normal*1e-5+directions[hits]*distances[hits,None]
+    faces = normals[hits]*np.where(np.sum(normals[hits]*-directions[hits],axis=1)>0,1,-1)[:,None]
+    delta = np.asarray(light_position)-points
+    distance = np.linalg.norm(delta,axis=1)
+    light = delta/np.maximum(distance[:,None],1e-30)
+    blocker,_,_ = oracle.intersect(points+faces*1e-5,light,distance-2e-5)
+    direct = np.asarray(light_intensity)*(np.maximum(np.sum(faces*light,axis=1),0)
+                                         *(blocker<0)/np.maximum(distance**2,1e-30))[:,None]
+    result[hits] = albedo*direct/np.pi
+    if environment.intensity != 0:
+        for i,point,n in zip(hits,points,faces):
+            sky,_ = sky_reference(oracle,point,n,n,environment,256)
+            result[i] += albedo*sky
     return result.mean(axis=0)
 
 

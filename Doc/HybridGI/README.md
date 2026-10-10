@@ -1,5 +1,7 @@
 # Hybrid GI P0–P3 implementation record
 
+Current follow-on status (2026-10-10): [P4](P4Execution.md) provides hardware queries, and [P5](P5.md) adds ray-hit bounce, which meets the P5 exit and is the default with the hardware provider (cones remain the compute-tier default). The P0-P3 measurements and fallback statements below are historical; consult those follow-on records for current behavior and open acceptance gates.
+
 2026-10-07. Implements the receiver, voxel-ray sky, reconstruction and specular-occlusion path in [the plan](../HardwareRayQueryEnvironmentLightingPlan.md). **The phase acceptance gates remain open.** The table below distinguishes working code and measured results from the remaining requirements.
 
 ## Delivered behavior

@@ -1,3 +1,62 @@
+TEST_P(ConeVoxelGIIntegrationTest, HitRadianceRejectsThinWallBackfacesAndNormalizesCoverage)
+{
+    ShaderProgramManager::GetInstance().StoreProgram(
+        ZEN_NEW() ComputeFileSP(device, "HitRadianceCheckSP", "VoxelGI/Calibration/hit_radiance_check.comp.spv"));
+    RHITextureCreateInfo info;
+    info.type  = RHITextureType::e3D;
+    info.width = info.height = info.depth = 4;
+    info.format                           = DataFormat::eR32G32B32A32SFloat;
+    info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
+    RHITexture* radiance = device->CreateTexture(info);
+    RHITexture* normals  = device->CreateTexture(info);
+    textures.push_back(radiance);
+    textures.push_back(normals);
+    HeapVector<Vec4> values(64, Vec4(0));
+    HeapVector<Vec4> faces(64, Vec4(.5f));
+    values[2 + 4 * (1 + 4)]                 = Vec4(1, 2, 3, .5f);
+    faces[2 + 4 * (1 + 4)]                  = Vec4(0, .5f, .5f, 1);
+    values[2 + 4 * (2 + 4)]                 = Vec4(100, 100, 100, 1);
+    faces[2 + 4 * (2 + 4)]                  = Vec4(1, .5f, .5f, 1);
+    values[1 + 4 * (2 + 4)]                 = Vec4(2, 3, 4, 1);
+    faces[1 + 4 * (2 + 4)]                  = Vec4(0, .5f, .5f, 1);
+    RHIBuffer*                 upload       = Buffer(64 * sizeof(Vec4), RHIBufferAllocateType::eCPUWrite, values.data());
+    RHIBuffer*                 normalUpload = Buffer(64 * sizeof(Vec4), RHIBufferAllocateType::eCPUWrite, faces.data());
+    RHIBuffer*                 output       = Buffer(5 * sizeof(Vec4), RHIBufferAllocateType::eGPU);
+    RHIBuffer*                 readback     = Buffer(5 * sizeof(Vec4), RHIBufferAllocateType::eCPURead);
+    RHIBufferTextureCopyRegion region;
+    region.textureSize = Vec3i(4);
+    region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+    RenderGraph graph("hit_radiance_contract");
+    ASSERT_TRUE(graph.Begin());
+    graph.AddTransferPass("UploadRadiance").CopyBufferToTexture(upload, radiance, region);
+    graph.AddTransferPass("UploadNormals").CopyBufferToTexture(normalUpload, normals, region);
+    VoxelGIUniformData gi{};
+    gi.gridMinVoxelSize = Vec4(0, 0, 0, 1);
+    gi.volume           = Vec4(4, .25f, 1, .5f);
+    RDGComputePassDesc pass;
+    pass.SetShaderProgramName("HitRadianceCheckSP");
+    pass.BindValue("uGISettings", gi);
+    SceneUniformData scene{};
+    pass.BindValue("uSceneData", scene);
+    RHISampler* sampler = device->CreateSampler({});
+    pass.BindSampledTexture("radiance", sampler, radiance->GetDefaultView());
+    pass.BindSampledTexture("normals", sampler, normals->GetDefaultView());
+    pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
+    graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(5, 1, 1); });
+    graph.AddTransferPass("ReadHitRadiance").CopyBuffer(output, readback, {0, 0, 5 * sizeof(Vec4)}).NeverCull();
+    ASSERT_TRUE(graph.End());
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+    device->FlushRHIThread();
+    device->WaitForIdle();
+    const HeapVector<Vec4> result = ReadStaticBuffer<Vec4>(readback);
+    ASSERT_EQ(result.size(), 5u);
+    EXPECT_EQ(result[0], Vec4(1, 2, 3, 0));
+    EXPECT_EQ(result[1], Vec4(0, 0, 0, 1));
+    EXPECT_EQ(result[2], Vec4(1, 1.5f, 2, 0));
+    EXPECT_EQ(result[3], Vec4(0, 0, 0, 1));
+    EXPECT_EQ(result[4], Vec4(0, 0, 0, 1));
+}
+
 TEST_P(ConeVoxelGIIntegrationTest, HybridEstimatorNormalizesAndClosedGeometryBlocksSkyAndSpecular)
 {
     ShaderProgramManager::GetInstance().StoreProgram(

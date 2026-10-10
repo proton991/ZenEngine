@@ -41,6 +41,8 @@ def main():
     parser.add_argument('--reference-samples', type=int, choices=(0, 1024, 4096), default=0)
     parser.add_argument('--history-frames', type=int, default=32, help='Temporal history length (frozen preset: 32)')
     parser.add_argument('--bounce', type=float, default=0)
+    parser.add_argument('--bounce-source', choices=('auto', 'cone', 'rays'), default='cone',
+                        help='auto, the engine default, resolves to rays with hardware queries and to cone otherwise')
     parser.add_argument('--environment', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--environment-texture', default='papermill.ktx',
                         help='Environment path, relative to Data/Textures or absolute')
@@ -91,6 +93,7 @@ def main():
                     environment_lighting=str(args.environment).lower(), environment_intensity=1,
                     environment_rotation_degrees=0, skybox_visible='false', scene_lighting_override='true',
                     light_count=0, voxel_resolution=args.resolution, voxel_gi_indirect_intensity=args.bounce,
+                    voxel_gi_bounce_source=args.bounce_source,
                     voxel_gi_shadow_enabled='false', voxel_gi_ray_provider=args.provider,
                     voxel_gi_acceleration_structure_budget_mb=args.as_budget_mb,
                     voxel_gi_samples=args.samples, voxel_gi_reference_samples=args.reference_samples,

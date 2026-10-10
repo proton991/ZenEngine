@@ -26,24 +26,31 @@ struct VoxelGISettings
         Legacy
     };
     RayProvider rayProvider{RayProvider::Auto};
-    uint32_t    samples{4};
-    uint32_t    accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
-    uint32_t    referenceSamples{0};              // Diagnostic: 0, 1024 or 4096; static running mean, no spatial filter.
-    uint32_t    historyFrames{32};
-    bool        temporal{true};
-    bool        filter{true};
-    bool        specularOcclusion{true};
-    float       indirectIntensity{1.0f};
-    float       coneAngleDegrees{60.0f};
-    float       stepScale{1.0f};
-    float       normalBiasVoxels{1.5f};
-    float       maxDistanceGridLengths{1.7321f};
-    uint32_t    coneCount{6};
-    uint32_t    maxSteps{128};
-    bool        shadows{true};
-    bool        analyticLighting{true};
-    bool        environmentLighting{true};
-    bool        emissiveLighting{true};
+    enum class BounceSource : uint32_t
+    {
+        Auto, // Ray hits with hardware queries (P5 passed on the RT tier); cones on the compute tier until P8.
+        Cone,
+        Rays
+    };
+    BounceSource bounceSource{BounceSource::Auto};
+    uint32_t     samples{4};
+    uint32_t     accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
+    uint32_t     referenceSamples{0};              // Diagnostic: 0, 1024 or 4096; static running mean, no spatial filter.
+    uint32_t     historyFrames{32};
+    bool         temporal{true};
+    bool         filter{true};
+    bool         specularOcclusion{true};
+    float        indirectIntensity{1.0f};
+    float        coneAngleDegrees{60.0f};
+    float        stepScale{1.0f};
+    float        normalBiasVoxels{1.5f};
+    float        maxDistanceGridLengths{1.7321f};
+    uint32_t     coneCount{6};
+    uint32_t     maxSteps{128};
+    bool         shadows{true};
+    bool         analyticLighting{true};
+    bool         environmentLighting{true};
+    bool         emissiveLighting{true};
 
     bool operator==(const VoxelGISettings&) const = default;
 };
@@ -58,7 +65,7 @@ struct VoxelGIUniformData
     Vec4 volume;
     Vec4 cone;
     Vec4 limits;
-    Vec4 lighting{1.0f}; // Analytic, environment, emissive contributions; reserved.
+    Vec4 lighting{1.0f, 1.0f, 1.0f, 0.0f}; // Analytic, environment, emissive contributions; ray-hit bounce enabled.
 };
 static_assert(sizeof(VoxelGIUniformData) == 80);
 
@@ -98,10 +105,22 @@ public:
 
     void BindLightingInputs(RDGPassDescBase& pass) const;
     void BindRayInputs(RDGPassDescBase& pass) const;
+    void BindHitRadianceInputs(RDGPassDescBase& pass) const;
+
+    uint64_t GetRadianceGeneration() const
+    {
+        return m_radianceGeneration + (m_recordedRadiance ? 1 : 0);
+    }
 
     bool UsesHardwareQueries() const
     {
         return m_hardwareQueries;
+    }
+    // The resolved bounce source; valid once BuildRenderGraph has selected the provider.
+    bool UsesRayBounce() const
+    {
+        return m_settings.bounceSource == VoxelGISettings::BounceSource::Rays
+            || (m_settings.bounceSource == VoxelGISettings::BounceSource::Auto && m_hardwareQueries);
     }
     const char* GetProviderReason() const
     {
@@ -155,6 +174,8 @@ private:
     RenderScene*                m_scene{nullptr};
     VoxelizerBase*              m_voxelizer{nullptr};
     RHITexture*                 m_radiance{nullptr};
+    // Base level as it was before the latest injection, for ray-hit bounce history; 1x1x1 otherwise.
+    RHITexture*                 m_previousRadiance{nullptr};
     RHITexture*                 m_skyIrradiance{nullptr};
     RHIBuffer*                  m_environmentColumns{nullptr};
     RHIBuffer*                  m_environmentRows{nullptr};
@@ -175,5 +196,7 @@ private:
     uint64_t                    m_recordedGeometry{0};
     uint64_t                    m_recordedLighting{0};
     uint64_t                    m_recordedEnvironment{0};
+    uint64_t                    m_radianceGeneration{0};
+    bool                        m_recordedRadiance{false};
 };
 } // namespace zen::rc

@@ -707,5 +707,24 @@
       "P4c",
       "P4d"
     ]
+  },
+  "p5": {
+    "record": "Doc/HybridGI/P5.md",
+    "results": "Doc/HybridGI/P5Verification.json",
+    "gate": "tools/validate_hybrid_bounce.py",
+    "exit_met": true,
+    "default_bounce_source": "auto: rays with the hardware provider, cone on the compute tier until P8",
+    "decisions": "Doc/HardwareRayQueryEnvironmentLightingPlan.md#p5-review-decisions-2026-10-10",
+    "added_limit": "Light moving continuously: bounce within the shipping-preset limits after 64 frames of motion",
+    "static_frozen_camera_signal": "composed diffuse D_sky + D_bounce; bounce-only errors reported",
+    "responsive_policy": "history kept across cache changes; pooled ratio of correlated new/previous cache lookups with Beale correction",
+    "tightest_margin": "thin-wall light move, frame 8 P99: 0.1939 RT, 0.1983 compute",
+    "final_reports": [
+      "build/p5/final-hardware/bounce-results.json",
+      "build/p5/final-voxel/rays",
+      "build/p5/gate-voxel/bounce-results.json"
+    ],
+    "superseded_record": "build/p5/P5Verification-full-2026-10-10.json",
+    "independent_reference": "tools/ground_truth_bounce.py on Mitsuba cuda_ad_rgb, every pixel, 4096 samples; bias RT room -0.0452, thin wall -0.0477; compute room -0.0396, thin wall -0.0305"
   }
 }

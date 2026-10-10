@@ -57,9 +57,24 @@ def generate(folder):
             # outward: receivers inside see their back faces, which must still block.
             f.document['materials'][0]['doubleSided']=False
         if name in ('closed_box','point_light_room','forward_closed_box','single_sided_closed_box'):
-            f.mesh(box([-2,0,-2],[2,3,2]))
+            walls=box([-2,0,-2],[2,3,2])
+            if name=='point_light_room':
+                # The one-value radiance cache stores the authored owner side. This
+                # room's receiver and emitter surfaces face inward; avoid duplicating
+                # the floor and do not rely on raster double-sided normal flipping.
+                walls=[t for t in walls if not all(p[1]==0 for p in t)]
+                for t in walls:
+                    a,b,c=t
+                    u=[b[k]-a[k] for k in range(3)];v=[c[k]-a[k] for k in range(3)]
+                    n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]
+                    inward=[-sum(p[k] for p in t)/3+(1.5 if k==1 else 0) for k in range(3)]
+                    if sum(n[k]*inward[k] for k in range(3))<0:t[1],t[2]=t[2],t[1]
+            f.mesh(walls)
         elif name in ('half_wall','thin_wall_light','glossy_floor'):
-            f.mesh(quad([0,0,-2],[0,3,-2],[0,3,2],[0,0,2]))
+            wall=quad([0,0,-2],[0,3,-2],[0,3,2],[0,0,2])
+            if name=='thin_wall_light':
+                for t in wall:t[1],t[2]=t[2],t[1] # Face the light at negative X.
+            f.mesh(wall)
         elif name=='narrow_slot':
             f.mesh(box([-2,1,-2],[-.1,1.0625,2])+box([.1,1,-2],[2,1.0625,2]))
         elif name=='thin_pole':

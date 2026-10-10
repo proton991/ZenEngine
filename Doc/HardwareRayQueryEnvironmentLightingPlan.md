@@ -130,7 +130,7 @@ For a receiver at `x` with shading normal `n_s` and geometric normal `n_g`, and 
 - A ray escapes only when no accepted opaque hit occurs before it leaves the scene bounds (triangle provider) or the voxel volume (voxel provider). Alpha-mask candidates that fail the material's cutoff are rejected and traversal continues. Blend and transmissive surfaces count as opaque occluders; this is a documented limitation. Both faces of every surface occlude, whatever its raster sidedness.
 - Sky sampling, amended 2026-10-10 by decision 4 ([G1 sky estimator](HybridGI/P4Execution.md#g1-sky-estimator-2026-10-10)): `D_sky` is the sum of the source tiles' integrals and the residual environment's. Source tiles are tiles of the importance map dominated by a compact bright source; each gets its own rays (half the diffuse count, two at the shipping preset), drawn within the tile. Each ray slot follows its own scrambled R2 sequence, advanced once per frame. The residual is estimated by the mixture of guided samples (one half: a per-screen-tile visibility guide over the environment tiles, weighted by the receiver's cosine), residual-environment samples (one quarter) and cosine samples (one quarter), with the mixture density as the PDF; without a learned guide its share goes to the environment. Environment densities follow the bilinear radiance within each texel. The original estimator, kept for the voxel sky cache, follows.
 - Original sky sampling: environment-luminance samples (three quarters) with cosine-weighted hemisphere samples around `n_s` (one quarter). Sample counts that are multiples of four split deterministically; one and two samples choose each proposal with those probabilities. A miss adds `L_env * max(dot(n_s, w), 0) / (pi * p_mixture(w))`, where `p_mixture = 0.75 * p_env + 0.25 * p_cos`; the explicit mixture PDF preserves the scale. A black environment falls back to cosine sampling. The same estimator is used by the diagnostic reference mode. See the [hotel-room noise investigation](HybridGI/P4.md#hotel-room-noise-2026-10-08), which introduced equal proportions, and the [hall reconstruction follow-up](HybridGI/P4.md#hall-full-image-reconstruction-2026-10-09), which measured the three-to-one split.
-- P5 hit radiance must likewise use its actual sample PDF when adding `L_hit` to the bounce channel. Hit-radiance sampling is still deferred; the current cone bounce is unchanged.
+- P5 hit radiance likewise uses its actual sample PDF, the residual rays' mixture density, when adding `L_hit` to the bounce channel; source-tile rays do not add bounce.
 - Also accumulate `nu`, the cosine-weighted unblocked fraction, for diagnostics and filter guidance.
 - Sky and bounce are reconstructed as separate channels: bounce must respond to light changes that leave sky history valid.
 
@@ -193,7 +193,7 @@ Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in 
    - **Environments** (added 2026-10-10; see the [decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10)). The ground truth (rung 3) covers nine: `papermill.ktx` and the eight Poly Haven panoramas in `Data/Textures/Environments`. The shipping-preset limits gate five of them, one per lighting type: Papermill (soft interior daylight), kloppenheim 06 (soft sky), qwantani noon (hard sun), hotel room (interior with small lamps) and carpentry shop 01 (artificial lights with daylight). Studio small 09, small empty room 1, large corridor and kloofendal 48d are tracked and reported but do not gate: they repeat those types or, like the studio's softboxes, are extreme cases kept as stress tests. A wrong converged answer is a defect under any environment, so correctness is checked on all nine; the shipping limits are a noise budget, so they apply to a representative set. File hashes are in `baseline.json`.
 3. **CPU references** in `tools/environment_reference.py`, using the Embree binding from `tools/requirements-gi-quality.txt`:
    - **Sky.** Load the glTF scene with the renderer's normalization and take receiver positions and normals from a capture. Trace at least 4096 cosine samples per receiver against all triangles with material alpha cutoffs, and sample the same environment cubemap with the same rotation and orientation. Output `D_sky` and `nu`.
-   - **One bounce.** For uniform-albedo fixtures, compute one-bounce diffuse light at the same receivers from analytic lights and sky, with triangle-accurate visibility at both the receiver and the hit point.
+   - **One bounce.** For uniform-albedo fixtures, compute one-bounce diffuse light at the same receivers from analytic lights and sky, with triangle-accurate visibility at both the receiver and the hit point. Amended 2026-10-10: gates use the full-image equivalent on the GPU, `tools/ground_truth_bounce.py` with Mitsuba's CUDA backend, which covers every pixel instead of sparse receivers.
    - **Specular.** Sample the GGX lobe and output `S` and the hit fraction.
    - **Full-image sky** (added 2026-10-09) in `tools/ground_truth_mitsuba.py`, using Mitsuba 3 from the same requirements file: `D_sky` and `nu` at every pixel center, with independent primary visibility. See [Ground truth](#ground-truth).
 
@@ -223,11 +223,12 @@ Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in 
 | RT tier, converged, versus CPU sky reference over frozen regions | Absolute mean bias ≤ 1%; RMS error ≤ 3% of the region mean |
 | Shipping preset after 64 static frames, versus the converged reference of its tier | Absolute mean bias ≤ 2%; RMS error ≤ 8%; 99th-percentile absolute error ≤ 20% of the region mean; no exact zeros where the reference is ≥ 10% of the region mean |
 | Compute tier, converged, versus its 1024-sample voxel reference | Same as the RT-tier converged limits; versus the CPU reference, report only |
-| One-bounce fixture at 128³, RT tier, versus the CPU bounce reference | Absolute mean bias ≤ 10%; the difference is reported per cause (cache resolution, isotropic cells) |
+| One-bounce fixture at 128³, RT tier, versus the independent bounce reference (amended 2026-10-10: the full-image Mitsuba reference on CUDA, `tools/ground_truth_bounce.py`, replaces the sparse CPU receivers; the limit is unchanged) | Absolute mean bias ≤ 10%; the difference is reported per cause (cache resolution, isotropic cells) |
 | Thin-wall fixture | Bounce on the unlit side ≤ 1% of the lit side's bounce |
 | Settling after a camera cut or history reset | Within the shipping-preset limits within 32 frames |
 | Moving occluder over a static floor | No frame shows the old shadow position; within the shipping-preset limits within 32 frames after it stops |
 | Light moved or switched | Bounce channel within the shipping-preset limits within 8 frames; sky channel unaffected |
+| Light moving continuously (added 2026-10-10, before measurement; [P5 review decisions](#p5-review-decisions-2026-10-10)) | After 64 frames of continuous motion, bounce channel within the shipping-preset limits versus the converged reference with the light frozen at its current position; sky channel unaffected |
 | Glossy floor fixture, RT tier, converged, versus CPU specular reference | `S` and hit fraction within 2% absolute |
 
 8. **Performance targets** (engineering targets proposed by this revision; confirm before the P0 freeze). All GI passes combined, including reflections and reconstruction, at 1920×1080, Release build, frozen presets:
@@ -314,7 +315,7 @@ Exit:
   Below a total valid weight of 0.01, treat the pixel as disoccluded with history length zero.
 - Accumulate with `alpha = max(1 / historyLength, 1 / historyLimit)`, including first and second luminance moments per channel.
 - **Sky channel:** no neighborhood clamping in steady state, because clamping biases the estimate. Resets follow the P1 table.
-- **Responsive policy** (bounce channel and `H`): a lower history limit, and clamping to the current neighborhood's variance box for a bounded number of frames after a lighting, emissive or radiance-cache generation change.
+- **Responsive policy** (bounce channel and `H`): a lower history limit, and clamping to the current neighborhood's variance box for a bounded number of frames after a lighting, emissive or radiance-cache generation change. Such a change keeps the history (amended 2026-10-10, [P5 review decisions](#p5-review-decisions-2026-10-10)). On the frame of the change, the bounce rays also read the radiance cache as it was before the injection. Over the same-surface neighborhood, the ratio of the new to the previous results scales the history, and the relative size of the change shortens it, down to a restart when a light goes out or comes on. The two lookups share rays and hits, so the ratio is nearly exact for small changes. Discarding the history at every change leaves one frame of samples while a light moves; a test of the old history against new samples alone cannot separate a moderate change from four-ray noise.
 - **`S` and `H`:** shorten history at low roughness and reject it when the view direction changes by more than a roughness-dependent angle.
 
 ### Spatial filtering
@@ -411,12 +412,23 @@ Exit:
 
 ## P5 Diffuse bounce from ray hits
 
+Status (2026-10-10): **exit met** on the RTX 5080 ([P5 record](HybridGI/P5.md)).
+- The RT tier passes the one-bounce, thin-wall, light-change and continuous-motion limits, and the frozen Sponza cameras on composed diffuse (review decision 2).
+- The compute tier passes the same fixture limits, and both bounce sources are measured there.
+- The default `voxel_gi_bounce_source=auto` uses ray-hit bounce with the hardware provider and cones on the compute tier until P8 chooses.
+- Frozen limits are unchanged; one limit row was added by review decision 1.
+
 - Use the diffuse rays' hits for `D_bounce` through the hit-radiance contract, with both providers. The hardware provider uses closest-hit queries; the voxel provider returns the first occupied cell and entered face.
 - Reconstruct bounce as its own channel with the responsive temporal policy.
 - Compare against the cone bounce (`voxel_gi_bounce_source=cone`) on every fixture and frozen camera, for quality (bounce fixture, thin-wall fixture, D6 leaks, noise after 64 frames) and cost.
 - On the RT tier, ray-hit bounce replaces cone bounce when it passes the limits. On the compute tier, P8 chooses between cone and ray-hit bounce by measurement; the losing path is removed for that tier.
 
 Exit: the one-bounce, thin-wall and light-change limits pass on the RT tier, and both bounce sources are measured on the compute tier.
+
+### P5 review decisions (2026-10-10)
+
+1. **Continuously moving light.** The light-change limit covers one change followed by static frames. A policy that discards bounce history at every radiance-cache change passes it, yet leaves bounce at one frame of samples whenever lighting changes every frame, as with the demo's orbiting light. One frame after such a reset, the RT fixtures measured RMS 16.7% / P99 62% (room) and RMS 132% / P99 448% (thin wall). The new limit row is recorded before any candidate result. Motion: the fixture's point light orbits at 45°/s (the demo default) with radius 0.5, at the fixed 60 Hz step, starting at its authored position; it stays on the lit side of the thin wall. The light is moved in every frame, including the captured one. The reference then keeps the light at that position. The responsive policy was amended to keep bounce history across such changes ([Temporal accumulation](#temporal-accumulation)).
+2. **Static frozen cameras with ray-hit bounce.** The shipping-preset limits apply to the composed diffuse irradiance `D_sky + D_bounce`, the signal that is shaded, against the converged reference of the tier. Bounce-channel errors are reported, not gated. The P5 contract asks for a noise comparison with the cone bounce on frozen cameras, not for a bounce-channel limit. In the Sponza top view bounce is 0.5% of diffuse irradiance, so a bounce-channel limit judges a signal the image barely contains. The fixture limits, the light-change limits and the new continuous-motion limit remain on the bounce channel. This decision was recorded after the 2026-10-10 Sponza captures had been evaluated; the bounce-only results stay in the [P5 record](HybridGI/P5.md).
 
 ## P6 Glossy reflections from the radiance cache
 
@@ -496,7 +508,7 @@ Rules:
 - Each tier reference must match rung 3 within the RT-tier converged limits of P0 (absolute mean bias ≤ 1%, RMS ≤ 3%) on every frozen camera and environment. Indoor receivers that see the sky through small openings stay noisy even at tens of thousands of samples per pixel, so report the ground truth's own noise and judge RMS with that noise removed (`excess_rms`), per pixel and on 8×8 pixel blocks. A per-pixel or 8×8 excess above the limit fails, since the excess is already corrected for the ground truth's noise. Where the per-pixel excess is within the limit but the ground truth's per-pixel noise exceeds it, the per-pixel pass cannot be confirmed; the 8×8-block result then decides and the per-pixel result is reported ([decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10): blocks still expose systematic error and misplaced shadows at low noise, while resolving the studio hall per pixel would take about 14× the samples). Pixels under diagnosis get targeted high-sample renders instead.
 - Rung-3 renders are stored once per frozen view and environment and never replaced, together with what they depend on (scene and environment file hashes, camera matrix, captured environment cube) and their fixture-gate report. Engine captures are regenerated for each build by `tools/ground_truth_sweep.py`, which refuses a capture that no longer matches its render; a changed input needs a new render.
 - Run rungs 1–3 before tuning reconstruction against a tier reference, after any change to the estimator, visibility, environment handling or receiver reconstruction, and for every acceptance claim.
-- The rung-3 scope grows with the plan: sky now; one bounce with uniform albedo for P5 (a validation comparison of the radiance-cache approximation, with differences reported per cause); and the composed final image with real materials as a report-only validation of the whole model (split-sum specular, specular occlusion, single bounce).
+- The rung-3 scope grows with the plan: sky now; one bounce with uniform albedo for P5 (a validation comparison of the radiance-cache approximation, with differences reported per cause; `tools/ground_truth_bounce.py` on CUDA, which gates the P5 one-bounce limit); and the composed final image with real materials as a report-only validation of the whole model (split-sum specular, specular occlusion, single bounce).
 
 ## Validation and acceptance
 
@@ -567,7 +579,7 @@ These are not required for done and are each assessed against the P0 limits and 
 - [x] P4c render-graph dependencies, lifetime, retirement and failure tests pass. (2026-10-10, on the tested devices)
 - [x] P4d scene query service passes. (2026-10-10, on the tested devices)
 - [ ] P4e hardware provider passes the CPU-reference and shipping-preset limits.
-- [ ] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured.
+- [x] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured. (2026-10-10, RTX 5080; ray-hit bounce is the RT-tier default)
 - [ ] P6 glossy reflections pass on the RT tier; compute-tier choice measured.
 - [ ] P7 hardware shadows evaluated and the adoption decision recorded (optional).
 - [ ] P8 performance and memory reports per tier, preset and platform; presets and automatic selection documented.

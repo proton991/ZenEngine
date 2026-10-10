@@ -21,6 +21,12 @@ layout(set=1,binding=19,rgba32f) uniform writeonly image2D nextPosition;
 layout(set=1,binding=20,rgba16f) uniform writeonly image2D nextNormal;
 layout(set=1,binding=21,rg32ui) uniform writeonly uimage2D nextReceiver;
 layout(set=1,binding=23,rgba16f) uniform writeonly image2D skyGuide;
+layout(set=1,binding=25) uniform sampler2D rawBounce;
+layout(set=1,binding=26) uniform sampler2D previousBounce;
+layout(set=1,binding=27) uniform sampler2D previousBounceMoments;
+layout(set=1,binding=28,rgba32f) uniform writeonly image2D nextBounce;
+layout(set=1,binding=29,rg32f) uniform writeonly image2D nextBounceMoments;
+layout(set=1,binding=30) uniform sampler2D rawBouncePrevious;
 void main()
 {
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
@@ -35,6 +41,10 @@ void main()
     ivec2 base=ivec2(floor(previousPixel)); vec2 f=fract(previousPixel);
     vec4 oldSky=vec4(0), oldSpec=vec4(0), oldMoments=vec4(0);
     vec2 oldLength=vec2(0); float weight=0.0, specWeight=0.0;
+    // Bounce histories are allocated at full size only while ray-hit bounce is selected.
+    bool rays=hybrid.bounce.x!=0u;
+    vec4 bounce=rays ? vec4(texelFetch(rawBounce,p,0).rgb,1.0) : vec4(0), oldBounce=vec4(0);
+    vec2 oldBounceMoments=vec2(0);
     float reason=hybrid.sampling.w==0u ? 1.0 : 2.0;
     float roughness=texelFetch(receiverRoughness,p,0).g;
     vec3 view=sceneUbo.viewPosition.w<0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz-position);
@@ -56,6 +66,11 @@ void main()
             vec2 lengths=texelFetch(previousLength,q,0).rg;
             weight+=w; oldSky+=texelFetch(previousSky,q,0)*w;
             oldMoments.rg+=moments.rg*w; oldLength.x+=lengths.x*w;
+            if(rays)
+            {
+                oldBounce+=texelFetch(previousBounce,q,0)*w;
+                oldBounceMoments+=texelFetch(previousBounceMoments,q,0).rg*w;
+            }
             vec3 previousView=sceneUbo.viewPosition.w<0.5 ? hybrid.previousViewDirection.xyz : normalize(hybrid.previousViewPosition.xyz-oldPosition);
             if(abs(texelFetch(previousLength,q,0).a-roughness)<0.02 && dot(previousView,view)>mix(0.9995,0.9,roughness*roughness) )
             {
@@ -82,6 +97,71 @@ void main()
         moments.ba=mix(oldMoments.ba/specWeight,moments.ba,1.0/lengths.y);
     }
     if(identity.g==0u) { lengths=vec2(0); sky=vec4(0); spec=vec4(0); moments=vec4(0); }
+    float bounceLuminance=HybridLuminance(bounce.rgb);
+    vec2 bounceMoments=vec2(bounceLuminance,bounceLuminance*bounceLuminance);
+    if(rays && hybrid.bounce.y!=0u && weight>=0.01)
+    {
+        oldBounce/=weight;
+        oldBounceMoments/=weight;
+        float limit=hybrid.rejection.w>0.5 ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z),16.0);
+        if(hybrid.bounce.z!=0u && hybrid.rejection.w<0.5)
+        {
+            vec3 mean=vec3(0), second=vec3(0), previous=vec3(0); float count=0.0;
+            vec2 products=vec2(0); // luminance: previous squared, previous times new
+            for(int y=-4;y<=4;++y) for(int x=-4;x<=4;++x)
+            {
+                ivec2 q=p+ivec2(x,y);
+                if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity.g) continue;
+                if(dot(HybridGeometricNormal(q),ng)<0.9 || abs(dot(HybridPosition(q)-position,ng))>hybrid.rejection.x) continue;
+                vec3 value=texelFetch(rawBounce,q,0).rgb;
+                mean+=value; second+=value*value; count+=1.0;
+                if(hybrid.bounce.w!=0u)
+                {
+                    vec3 old=texelFetch(rawBouncePrevious,q,0).rgb;
+                    previous+=old;
+                    products+=HybridLuminance(old)*vec2(HybridLuminance(old),HybridLuminance(value));
+                }
+            }
+            mean/=max(count,1.0); second/=max(count,1.0); previous/=max(count,1.0);
+            if(hybrid.bounce.w!=0u)
+            {
+                // This frame's rays read both the previous and the new radiance cache. Over the
+                // neighbourhood, the ratio of the two results scales the history: the lookups are
+                // correlated, so it is nearly exact for a light that moves a little, and the history
+                // keeps accumulating while it moves. The relative size of the change shortens the
+                // history, down to a restart when a light goes out or comes on.
+                float before=HybridLuminance(previous), after=HybridLuminance(mean);
+                // Beale's correction removes the ratio's first-order bias, which sparse hits make
+                // about one percent when the change is largest where hits are brightest.
+                float beale=1.0;
+                if(before>0.0 && after>0.0 && count>1.0)
+                {
+                    vec2 covariance=(products/count-before*vec2(before,after))*count/(count-1.0);
+                    beale=(1.0+covariance.y/(count*before*after))/(1.0+covariance.x/(count*before*before));
+                }
+                oldBounce.rgb=mix(oldBounce.rgb+mean,oldBounce.rgb*mean/max(previous,vec3(1e-30))*beale,greaterThan(previous,vec3(0)));
+                float ratio=before>0.0 ? after/before*beale : 1.0;
+                float spread=max(oldBounceMoments.y-oldBounceMoments.x*oldBounceMoments.x,0.0)*ratio*ratio;
+                oldBounceMoments.x=HybridLuminance(oldBounce.rgb);
+                oldBounceMoments.y=spread+oldBounceMoments.x*oldBounceMoments.x;
+                oldBounce.a*=1.0-abs(after-before)/max(max(after,before),1e-30);
+            }
+            // Four-ray hit radiance has sparse bright samples; a 3x3, three-sigma box clipped valid
+            // point-light energy. This wide box still empties history where the light went out.
+            vec3 deviation=10.0*sqrt(max(second-mean*mean,vec3(0)));
+            oldBounce.rgb=clamp(oldBounce.rgb,max(mean-deviation,vec3(0)),mean+deviation);
+            limit=min(limit,8.0);
+        }
+        bounce.a=min(oldBounce.a+1.0,limit);
+        bounce.rgb=mix(oldBounce.rgb,bounce.rgb,1.0/bounce.a);
+        bounceMoments=mix(oldBounceMoments,bounceMoments,1.0/bounce.a);
+    }
+    if(identity.g==0u) { bounce=vec4(0); bounceMoments=vec2(0); }
+    if(rays)
+    {
+        imageStore(nextBounce,p,bounce);
+        imageStore(nextBounceMoments,p,vec4(bounceMoments,0,0));
+    }
     imageStore(nextSky,p,sky); imageStore(nextSpecular,p,spec);
     imageStore(nextMoments,p,moments); imageStore(nextLength,p,vec4(lengths,reason,roughness));
     imageStore(nextPosition,p,vec4(position,texelFetch(receiverDepth,p,0).r));

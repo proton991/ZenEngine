@@ -7,7 +7,7 @@ layout(std140,set=3,binding=0) uniform uGISettings
     vec4 volume; // resolution, inverse side, mip count, indirect intensity
     vec4 cone; // tangent of half aperture, step scale, bias in voxels, maximum grid distance
     vec4 limits; // cone count, max cone steps, analytic shadows, reserved
-    vec4 lighting; // Analytic, environment, emissive GI contributions; reserved
+    vec4 lighting; // Analytic, environment, emissive GI contributions; ray-hit bounce enabled
 } gi;
 vec3 WorldToVoxelUV(vec3 position) { return (position-gi.gridMinVoxelSize.xyz)*gi.volume.y; }
 bool InsideVoxelVolume(vec3 uv) { return all(greaterThanEqual(uv,vec3(0))) && all(lessThan(uv,vec3(1))); }

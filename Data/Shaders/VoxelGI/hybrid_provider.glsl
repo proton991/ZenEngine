@@ -12,7 +12,9 @@ struct HybridRayResult
 #include "hardware_ray_query.glsl"
 // Keep call sites provider-independent; occupancy is absent in the RT variant.
 #define HybridTraceRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,false)
+#define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,true)
 #else
+#define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) HybridTraceRay(occupancy,origin,direction,maximumDistance)
 vec3 HybridTraceOrigin(vec3 position,vec3 normal,float error) { return TraceOrigin(position,normal); }
 // The starting cell is tested. Do not skip occupied starts: that leaks at wall bases.
 // Slab entry also handles rays starting outside the voxel volume.
@@ -21,7 +23,9 @@ HybridRayResult HybridTraceRay(sampler3D occupancy, vec3 origin, vec3 direction,
     HybridRayResult result = HybridRayResult(false,origin,vec3(0),ivec3(-1));
     vec3 p = (origin-gi.gridMinVoxelSize.xyz)/gi.gridMinVoxelSize.w;
     float enter = 0.0, leave = maximumDistance/gi.gridMinVoxelSize.w;
-    vec3 entryNormal=-direction; // An occupied origin has no entered face.
+    // An occupied origin blocks visibility, but has no entered face. Do not
+    // invent a facing normal: bounce cannot identify which wall side it hit.
+    vec3 entryNormal=vec3(0);
     bool intersects = true;
     for(int axis=0;axis<3;++axis)
     {

@@ -397,21 +397,26 @@ private:
                 changed       = true;
             }
 
-            rc::VoxelGISettings& cone  = settings.cone;
+            rc::VoxelGISettings& cone    = settings.cone;
 
-            int count                  = cone.coneCount == 4 ? 0 : 1;
+            int         bounce           = static_cast<int>(cone.bounceSource);
+            const char* bounceSources[]  = {"Auto", "Cones", "Ray hits"};
+            changed                     |= ImGui::Combo(PropertyLabel("Bounce source").c_str(), &bounce, bounceSources, 3);
+            cone.bounceSource            = static_cast<rc::VoxelGISettings::BounceSource>(bounce);
 
-            const char* counts[]       = {"4", "6"};
+            int count                    = cone.coneCount == 4 ? 0 : 1;
 
-            changed                   |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
+            const char* counts[]         = {"4", "6"};
 
-            cone.coneCount             = count == 0 ? 4 : 6;
+            changed                     |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
 
-            int steps                  = static_cast<int>(cone.maxSteps);
+            cone.coneCount               = count == 0 ? 4 : 6;
 
-            changed                   |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
+            int steps                    = static_cast<int>(cone.maxSteps);
 
-            cone.maxSteps              = static_cast<uint32_t>(steps);
+            changed                     |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
+
+            cone.maxSteps                = static_cast<uint32_t>(steps);
 
             changed |= ImGui::SliderFloat(PropertyLabel("Cone angle").c_str(), &cone.coneAngleDegrees, 10.0f, 90.0f);
 
