@@ -4,6 +4,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
          {std::array<const char*, 2>{"HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"},
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
+          {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
           {"HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"},
           {"HybridFilterSP", "VoxelGI/hybrid_filter.comp.spv"},
           {"HybridBiasSP", "VoxelGI/hybrid_bias.comp.spv"},

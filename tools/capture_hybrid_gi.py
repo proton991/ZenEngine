@@ -39,6 +39,7 @@ def main():
     parser.add_argument('--as-budget-mb', type=int, default=0, help='Acceleration-structure preflight cap; zero leaves it unset')
     parser.add_argument('--samples', type=int, choices=(1, 2, 4), default=4)
     parser.add_argument('--reference-samples', type=int, choices=(0, 1024, 4096), default=0)
+    parser.add_argument('--history-frames', type=int, default=32, help='Temporal history length (frozen preset: 32)')
     parser.add_argument('--bounce', type=float, default=0)
     parser.add_argument('--environment', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--environment-texture', default='papermill.ktx',
@@ -93,7 +94,7 @@ def main():
                     voxel_gi_shadow_enabled='false', voxel_gi_ray_provider=args.provider,
                     voxel_gi_acceleration_structure_budget_mb=args.as_budget_mb,
                     voxel_gi_samples=args.samples, voxel_gi_reference_samples=args.reference_samples,
-                    voxel_gi_history_frames=32, voxel_gi_temporal=str(args.temporal).lower(),
+                    voxel_gi_history_frames=args.history_frames, voxel_gi_temporal=str(args.temporal).lower(),
                     voxel_gi_filter=str(args.filter).lower(), voxel_gi_specular_occlusion='true')
     settings.update({'dynamic_light.enabled': 'false', 'light_markers.enabled': 'false'})
     config = ROOT / 'Data/engine.cfg'

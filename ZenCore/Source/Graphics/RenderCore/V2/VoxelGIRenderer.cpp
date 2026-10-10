@@ -214,6 +214,20 @@ bool VoxelGIRenderer::Init()
             m_environmentHarmonics = m_device->CreateStorageBuffer((ZEN_ENVIRONMENT_HARMONIC_GROUPS + 1u)
                                                                        * ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS * sizeof(Vec4),
                                                                    nullptr, "environment_harmonics");
+            m_environmentLuminance =
+                m_device->CreateStorageBuffer(ZEN_ENVIRONMENT_IMPORTANCE_ROWS * ZEN_ENVIRONMENT_IMPORTANCE_SIZE * sizeof(float),
+                                              nullptr, "environment_luminance");
+            m_environmentTiles = m_device->CreateStorageBuffer(
+                ZEN_ENVIRONMENT_TILES * (ZEN_ENVIRONMENT_TILE_SIZE + 1u) * sizeof(float), nullptr, "environment_tiles");
+            // Source count, source tiles and the residual tile prefix sums (environment_tiles.comp).
+            m_environmentSources = m_device->CreateStorageBuffer((1u + ZEN_ENVIRONMENT_MAX_SOURCES + ZEN_ENVIRONMENT_TILES + 1u)
+                                                                     * sizeof(uint32_t),
+                                                                 nullptr, "environment_sources");
+            m_environmentResidualColumns = m_device->CreateStorageBuffer(
+                ZEN_ENVIRONMENT_IMPORTANCE_ROWS * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u) * sizeof(float), nullptr,
+                "environment_residual_columns");
+            m_environmentResidualRows = m_device->CreateStorageBuffer((ZEN_ENVIRONMENT_IMPORTANCE_ROWS + 1u) * sizeof(float),
+                                                                      nullptr, "environment_residual_rows");
         }
 
         valid = IsInitialized() && PrepareMipViews(m_radiance, m_radianceMips)
@@ -487,6 +501,11 @@ void VoxelGIRenderer::BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const
 {
     pass.BindStorageBuffer("EnvironmentColumns", m_environmentColumns);
     pass.BindStorageBuffer("EnvironmentRows", m_environmentRows);
+    pass.BindStorageBuffer("EnvironmentLuminance", m_environmentLuminance);
+    pass.BindStorageBuffer("EnvironmentTiles", m_environmentTiles);
+    pass.BindStorageBuffer("EnvironmentSources", m_environmentSources);
+    pass.BindStorageBuffer("EnvironmentResidualColumns", m_environmentResidualColumns);
+    pass.BindStorageBuffer("EnvironmentResidualRows", m_environmentResidualRows);
 }
 
 void VoxelGIRenderer::BindEnvironmentHarmonics(RDGPassDescBase& pass) const
@@ -505,6 +524,7 @@ void VoxelGIRenderer::BuildEnvironmentDistribution()
     columns.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
     columns.BindStorageBuffer("EnvironmentColumns", m_environmentColumns, RDGContentGuarantee::eFullWrite);
     columns.BindStorageBuffer("EnvironmentHarmonics", m_environmentHarmonics, RDGContentGuarantee::eFullWrite);
+    columns.BindStorageBuffer("EnvironmentLuminance", m_environmentLuminance, RDGContentGuarantee::eFullWrite);
     graph->AddComputePass(std::move(columns)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
         encoder.Dispatch((ZEN_ENVIRONMENT_IMPORTANCE_ROWS + 63u) / 64u, 1, 1);
     });
@@ -516,6 +536,18 @@ void VoxelGIRenderer::BuildEnvironmentDistribution()
     rows.BindStorageBuffer("EnvironmentRows", m_environmentRows, RDGContentGuarantee::eFullWrite);
     rows.BindStorageBuffer("EnvironmentHarmonics", m_environmentHarmonics);
     graph->AddComputePass(std::move(rows)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+
+    RDGComputePassDesc tiles;
+    tiles.SetShaderProgramName("EnvironmentTilesSP");
+    tiles.SetPassTag("EnvironmentTiles");
+    tiles.BindStorageBuffer("EnvironmentColumns", m_environmentColumns);
+    tiles.BindStorageBuffer("EnvironmentRows", m_environmentRows);
+    tiles.BindStorageBuffer("EnvironmentLuminance", m_environmentLuminance);
+    tiles.BindStorageBuffer("EnvironmentTiles", m_environmentTiles, RDGContentGuarantee::eFullWrite);
+    tiles.BindStorageBuffer("EnvironmentSources", m_environmentSources, RDGContentGuarantee::eFullWrite);
+    tiles.BindStorageBuffer("EnvironmentResidualColumns", m_environmentResidualColumns, RDGContentGuarantee::eFullWrite);
+    tiles.BindStorageBuffer("EnvironmentResidualRows", m_environmentResidualRows, RDGContentGuarantee::eFullWrite);
+    graph->AddComputePass(std::move(tiles)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
 }
 
 void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)
@@ -539,9 +571,19 @@ void VoxelGIRenderer::Destroy()
     m_device->DestroyBuffer(m_environmentColumns);
     m_device->DestroyBuffer(m_environmentRows);
     m_device->DestroyBuffer(m_environmentHarmonics);
-    m_environmentColumns   = nullptr;
-    m_environmentRows      = nullptr;
-    m_environmentHarmonics = nullptr;
+    m_device->DestroyBuffer(m_environmentLuminance);
+    m_device->DestroyBuffer(m_environmentTiles);
+    m_device->DestroyBuffer(m_environmentSources);
+    m_device->DestroyBuffer(m_environmentResidualColumns);
+    m_device->DestroyBuffer(m_environmentResidualRows);
+    m_environmentColumns         = nullptr;
+    m_environmentRows            = nullptr;
+    m_environmentHarmonics       = nullptr;
+    m_environmentLuminance       = nullptr;
+    m_environmentTiles           = nullptr;
+    m_environmentSources         = nullptr;
+    m_environmentResidualColumns = nullptr;
+    m_environmentResidualRows    = nullptr;
 
     m_radiance             = nullptr;
 

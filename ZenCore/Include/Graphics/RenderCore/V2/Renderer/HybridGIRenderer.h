@@ -88,6 +88,8 @@ private:
     RHIBuffer*          m_captureOutput{nullptr};
     RHIBuffer*          m_captureReadback{nullptr};
     RHITexture*         m_history[2][Count]{};
+    // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
+    RHIBuffer*          m_guide[2]{};
     RDGTexture          m_outputSky, m_outputSpecular;
     HeapVector<Mat4>    m_previousModels;
     HeapVector<Mat4>    m_recordedModels;

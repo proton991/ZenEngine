@@ -121,7 +121,9 @@ public:
     bool IsInitialized() const
     {
         return m_radiance != nullptr && m_skyIrradiance != nullptr && m_environmentColumns != nullptr
-            && m_environmentRows != nullptr && m_environmentHarmonics != nullptr;
+            && m_environmentRows != nullptr && m_environmentHarmonics != nullptr && m_environmentLuminance != nullptr
+            && m_environmentTiles != nullptr && m_environmentSources != nullptr && m_environmentResidualColumns != nullptr
+            && m_environmentResidualRows != nullptr;
     }
 
     RHITexture* GetRadianceTexture() const
@@ -157,6 +159,11 @@ private:
     RHIBuffer*                  m_environmentColumns{nullptr};
     RHIBuffer*                  m_environmentRows{nullptr};
     RHIBuffer*                  m_environmentHarmonics{nullptr};
+    RHIBuffer*                  m_environmentLuminance{nullptr};
+    RHIBuffer*                  m_environmentTiles{nullptr};
+    RHIBuffer*                  m_environmentSources{nullptr};
+    RHIBuffer*                  m_environmentResidualColumns{nullptr};
+    RHIBuffer*                  m_environmentResidualRows{nullptr};
     HeapVector<RHITextureView*> m_radianceMips;
     HeapVector<RHITextureView*> m_albedoMips;
     VoxelGISettings             m_settings;

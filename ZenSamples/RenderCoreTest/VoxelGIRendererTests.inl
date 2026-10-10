@@ -219,6 +219,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
          {std::array<const char*, 2>{"VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv"},
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
+          {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
           {"VoxelFilterRadianceSP", "VoxelGI/filter_radiance.comp.spv"},
           {"VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv"},
           {"VoxelInjectRadianceSP", "VoxelGI/inject_radiance.comp.spv"}})

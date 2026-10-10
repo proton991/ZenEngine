@@ -1,0 +1,119 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "Graphics/Shared/EnvironmentSampling.h"
+// One invocation per tile of the importance map: the prefix sums of its row segments, then the
+// source tiles, and the residual distribution (rows and columns without the source tiles).
+layout(local_size_x=ZEN_ENVIRONMENT_TILES) in;
+layout(std430,set=1,binding=0) readonly buffer EnvironmentColumns { float environmentColumns[]; };
+layout(std430,set=1,binding=1) readonly buffer EnvironmentRows { float environmentRows[]; };
+layout(std430,set=1,binding=2) readonly buffer EnvironmentLuminance { float environmentLuminance[]; };
+layout(std430,set=1,binding=3) writeonly buffer EnvironmentTiles { float environmentTiles[]; };
+layout(std430,set=1,binding=4) writeonly buffer EnvironmentSources
+{
+    uint sourceCount;
+    uint sourceTiles[ZEN_ENVIRONMENT_MAX_SOURCES];
+    // Prefix sums of tile masses with the source tiles excluded.
+    float residualTiles[ZEN_ENVIRONMENT_TILES + 1u];
+};
+layout(std430,set=1,binding=5) writeonly buffer EnvironmentResidualColumns { float residualColumns[]; };
+layout(std430,set=1,binding=6) buffer EnvironmentResidualRows { float residualRows[]; };
+shared float tileMass[ZEN_ENVIRONMENT_TILES];
+shared float brightMass[ZEN_ENVIRONMENT_TILES];
+shared uint chosen[ZEN_ENVIRONMENT_MAX_SOURCES];
+shared uint chosenCount;
+// A source tile holds at least this share of the environment, and most of it in texels brighter
+// than eight times the environment's mean radiance (the extraction threshold of
+// tools/prototype_environment_sources.py).
+const float SOURCE_SHARE = 0.05;
+const float SOURCE_CONCENTRATION = 0.5;
+const float BRIGHT_RATIO = 8.0;
+void main()
+{
+    uint tile = gl_LocalInvocationID.x;
+    uint perFace = ZEN_ENVIRONMENT_TILES_PER_FACE * ZEN_ENVIRONMENT_TILES_PER_FACE;
+    uint face = tile / perFace, ty = (tile % perFace) / ZEN_ENVIRONMENT_TILES_PER_FACE, tx = tile % ZEN_ENVIRONMENT_TILES_PER_FACE;
+    uint x0 = tx * ZEN_ENVIRONMENT_TILE_SIZE, x1 = x0 + ZEN_ENVIRONMENT_TILE_SIZE;
+    float total = environmentRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS];
+    // Rows store the mean luminance times the cube Jacobian, so the integral over directions is
+    // total times the texel face area, 4 / size^2.
+    float meanRadiance = total * 4.0 / float(ZEN_ENVIRONMENT_IMPORTANCE_SIZE * ZEN_ENVIRONMENT_IMPORTANCE_SIZE) / (4.0 * 3.14159265359);
+    uint base = tile * (ZEN_ENVIRONMENT_TILE_SIZE + 1u);
+    float sum = 0.0, bright = 0.0;
+    environmentTiles[base] = 0.0;
+    for(uint r = 0u; r < ZEN_ENVIRONMENT_TILE_SIZE; ++r)
+    {
+        uint row = face * ZEN_ENVIRONMENT_IMPORTANCE_SIZE + ty * ZEN_ENVIRONMENT_TILE_SIZE + r;
+        uint offset = row * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u);
+        // Segments are differences of the row's prefix sums, exactly as columns are drawn.
+        sum += max(environmentColumns[offset + x1] - environmentColumns[offset + x0], 0.0);
+        environmentTiles[base + r + 1u] = sum;
+        for(uint x = x0; x < x1; ++x)
+            if(environmentLuminance[row * ZEN_ENVIRONMENT_IMPORTANCE_SIZE + x] > BRIGHT_RATIO * meanRadiance)
+                bright += max(environmentColumns[offset + x + 1u] - environmentColumns[offset + x], 0.0);
+    }
+    tileMass[tile] = sum;
+    brightMass[tile] = bright;
+    barrier();
+    if(tile == 0u)
+    {
+        uint count = 0u;
+        for(uint s = 0u; s < ZEN_ENVIRONMENT_MAX_SOURCES; ++s)
+        {
+            uint best = ZEN_ENVIRONMENT_TILES;
+            for(uint t = 0u; t < ZEN_ENVIRONMENT_TILES; ++t)
+            {
+                bool taken = false;
+                for(uint k = 0u; k < count; ++k) taken = taken || chosen[k] == t;
+                if(!taken && tileMass[t] >= SOURCE_SHARE * total && brightMass[t] >= SOURCE_CONCENTRATION * tileMass[t]
+                   && (best == ZEN_ENVIRONMENT_TILES || tileMass[t] > tileMass[best]))
+                    best = t;
+            }
+            if(best == ZEN_ENVIRONMENT_TILES) break;
+            chosen[count++] = best;
+        }
+        for(uint s = 0u; s < ZEN_ENVIRONMENT_MAX_SOURCES; ++s) sourceTiles[s] = s < count ? chosen[s] : ZEN_ENVIRONMENT_TILES;
+        sourceCount = count;
+        chosenCount = count;
+        float residual = 0.0;
+        residualTiles[0] = 0.0;
+        for(uint t = 0u; t < ZEN_ENVIRONMENT_TILES; ++t)
+        {
+            bool source = false;
+            for(uint k = 0u; k < count; ++k) source = source || chosen[k] == t;
+            residual += source ? 0.0 : tileMass[t];
+            residualTiles[t + 1u] = residual;
+        }
+    }
+    barrier();
+    uint rowsPerInvocation = ZEN_ENVIRONMENT_IMPORTANCE_ROWS / ZEN_ENVIRONMENT_TILES;
+    for(uint i = 0u; i < rowsPerInvocation; ++i)
+    {
+        uint row = tile * rowsPerInvocation + i;
+        uint rowFace = row / ZEN_ENVIRONMENT_IMPORTANCE_SIZE;
+        uint rowTile = (rowFace * ZEN_ENVIRONMENT_TILES_PER_FACE + (row % ZEN_ENVIRONMENT_IMPORTANCE_SIZE) / ZEN_ENVIRONMENT_TILE_SIZE)
+            * ZEN_ENVIRONMENT_TILES_PER_FACE;
+        uint offset = row * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u);
+        float running = 0.0;
+        residualColumns[offset] = 0.0;
+        for(uint x = 0u; x < ZEN_ENVIRONMENT_IMPORTANCE_SIZE; ++x)
+        {
+            bool source = false;
+            for(uint k = 0u; k < chosenCount; ++k) source = source || chosen[k] == rowTile + x / ZEN_ENVIRONMENT_TILE_SIZE;
+            running += source ? 0.0 : max(environmentColumns[offset + x + 1u] - environmentColumns[offset + x], 0.0);
+            residualColumns[offset + x + 1u] = running;
+        }
+        residualRows[row + 1u] = running;
+    }
+    memoryBarrierBuffer();
+    barrier();
+    if(tile == 0u)
+    {
+        float sum = 0.0;
+        residualRows[0] = 0.0;
+        for(uint row = 0u; row < ZEN_ENVIRONMENT_IMPORTANCE_ROWS; ++row)
+        {
+            sum += residualRows[row + 1u];
+            residualRows[row + 1u] = sum;
+        }
+    }
+}

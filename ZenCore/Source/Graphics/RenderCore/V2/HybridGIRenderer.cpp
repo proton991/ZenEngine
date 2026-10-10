@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
+#include "Graphics/Shared/EnvironmentSampling.h"
 
 namespace zen::rc
 {
@@ -12,6 +13,8 @@ const DataFormat  kHistoryFormats[] = {DataFormat::eR32G32B32A32SFloat, DataForm
                                        DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
                                        DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
                                        DataFormat::eR32G32UInt};
+// The trace pass learns and reads the visibility guide per workgroup of this many pixels squared.
+constexpr uint32_t kGuideTile = 16;
 } // namespace
 
 HybridGIRenderer::HybridGIRenderer(RenderDevice* device) : m_device(device)
@@ -105,6 +108,17 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width, uint32_t height)
                         .ClearTexture(m_history[side][texture], Color(0));
                 }
             }
+        }
+    }
+    const glm::uvec2 tiles = (glm::uvec2(width, height) + glm::uvec2(kGuideTile - 1)) / kGuideTile;
+    for (uint32_t side = 0; side < 2 && valid; ++side)
+    {
+        if (m_guide[side] == nullptr)
+        {
+            // Per tile: the environment-tile weights and the number of frames they average.
+            m_guide[side] = m_device->CreateStorageBuffer(tiles.x * tiles.y * (ZEN_ENVIRONMENT_TILES + 1u) * sizeof(float),
+                                                          nullptr, NameID(fmt::format("hybrid_guide_{}", side)));
+            valid         = m_guide[side] != nullptr;
         }
     }
     if (!valid)
@@ -208,7 +222,12 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         trace.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
         trace.BindStorageImage("rawSky", rawSky, RDGContentGuarantee::eFullWrite);
         trace.BindStorageImage("rawSpecular", rawSpecular, RDGContentGuarantee::eFullWrite);
-        Dispatch(std::move(trace));
+        trace.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
+        trace.BindStorageBuffer("HybridGuideNext", m_guide[m_current], RDGContentGuarantee::eFullWrite);
+        const glm::uvec2 guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
+        graph->AddComputePass(std::move(trace)).RecordPassCommands([guideGroups](RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
+        });
 
         desc.name                   = "hybrid_sky_guide";
         const RDGTexture   skyGuide = resources->CreateTexture(desc);
@@ -367,6 +386,8 @@ void HybridGIRenderer::Destroy()
             m_device->DestroyTexture(m_history[side][texture]);
             m_history[side][texture] = nullptr;
         }
+        m_device->DestroyBuffer(m_guide[side]);
+        m_guide[side] = nullptr;
     }
     m_valid  = false;
     m_extent = glm::uvec2(0);
