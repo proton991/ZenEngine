@@ -666,10 +666,10 @@
     "gbuffer_bytes_per_pixel": 64,
     "failed_converged_views": [],
     "failed_shipping_gating_views": [
-      "kloppenheim-hall",
-      "hotel-hall"
+      "hotel-hall",
+      "kloppenheim-hall"
     ],
-    "max_shipping_full_or_floor_bias": 0.003,
+    "max_shipping_full_or_floor_bias": 0.0030204681679606438,
     "failed_converged_views_before_flat_normal_fix": [
       "hotel-hall",
       "qwantani-hall"
@@ -698,6 +698,14 @@
     },
     "bias_correction": "removed 2026-10-10; max full-image/floor bias without it 0.0030",
     "hotel_hall_exact_zeros": 3,
-    "history_frames_decision": "decision 9 (2026-10-10): keep 32; re-measure G1 failures after later plan phases"
+    "history_frames_decision": "decision 9 (2026-10-10): keep 32; re-measure G1 failures after later plan phases",
+    "acceptance_run": "build/ground-truth/runs/2026-10-10-p4-acceptance",
+    "settling": "build/p4-gaps/step4-guide/report.json; hall full image fails at frame 32 after cut, deformation, alpha edit and provider switches; deferred by decision 9",
+    "checklist_ticked": [
+      "P4a",
+      "P4b",
+      "P4c",
+      "P4d"
+    ]
   }
 }

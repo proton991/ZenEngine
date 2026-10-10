@@ -73,7 +73,7 @@ python tools/report_hybrid_gi_flagpoles.py --captures build/p4-gaps/acceptance-v
 
 Generated archives are ignored by Git: `build/p4-gaps/acceptance-verified/`, `final-native/`, `fp32-native/`, `arbitrate-final/`, `edges-final/`, `truth-fixtures-primary/`, `material-truth/`, `normal-final/`, `normal-unit-fixture/`, `flagpoles/`, and `sources-separated/`. The frozen nine-environment report follows.
 
-## Settling and provider-switch results
+## Settling and provider-switch results (before G1)
 
 All errors are bias / RMS / P99 / unexpected zeros. Each event is compared with a reference of its current geometry and camera.
 
@@ -196,6 +196,33 @@ The G2 correction (seven coarse residual stages after the à-trous filter) was r
 | Hybrid GI passes | 3.94–4.28 ms | 2.86–3.20 ms |
 
 The correction no longer affects bias, RMS or P99 measurably. Its remaining effect was to lift isolated pixels whose 128 samples all missed a small patch of visible sky from exactly zero to about 0.001–0.018× the mean (their references are 0.11–0.18×): still black, but no longer counted by the zero test. It was removed with its 112 bytes/pixel of transient RGBA32F targets (`hybrid_bias.comp`, `HybridBiasSP`). Hotel hall's three all-miss pixels now fail the gate openly and are part of G1. RenderCoreTest 576, CommonTest 112, RayQueryIntegrationTest 12, ConeVoxelGIIntegrationTest 16 and the sixteen native fixtures on both providers pass.
+
+## P4 acceptance run (2026-10-10)
+
+`build/ground-truth/runs/2026-10-10-p4-acceptance/`, every engine capture and tier reference regenerated on the final build (G1 estimator, bias correction removed, guide kept across non-screen resets). The converged gate passes all 18 views. The shipping gate passes 8 of 10 gating views; kloppenheim hall fails on P99 (26.89%) and hotel hall on three exact zeros (its P99 is 19.31%). Every floor passes and the maximum full-image/floor shipping bias is 0.30%. Seventeen native fixtures (the seven defaults, the environment, bright-edge and normal-map fixtures, and the moving occluder) pass on both providers, as do RenderCoreTest 576, CommonTest 112, RayQueryIntegrationTest 12 and ConeVoxelGIIntegrationTest 16.
+
+## Settling after the G1 estimator (2026-10-10)
+
+The settling and provider-switch sequences of the [earlier results](#settling-and-provider-switch-results-before-g1) were rerun on the current build (Papermill, frame 32 after each event against a reference of the changed scene; provider switches against each provider's tier reference; `build/p4-gaps/step4-guide/`). Bias / RMS / P99 / unexpected zeros:
+
+| View and event, frame 32 | Before G1: all receivers / floor | Now: all receivers | Now: floor |
+| --- | --- | --- | --- |
+| top, camera motion | 7.71% P99, 0 zeros / 12.66% P99 | -0.11% / 2.09% / 7.05% / 0 | -0.16% / 2.57% / 8.62% / 0 |
+| top, cut | 24.52% P99, 2 zeros / 18.96% P99 | -0.23% / 4.12% / 15.05% / 0 | -0.27% / 3.23% / 10.64% / 0 |
+| top, deformation | 9.71% P99, 0 zeros / 23.24% P99 | -0.14% / 2.69% / 8.34% / 0 | -0.16% / 3.48% / 12.39% / 0 |
+| top, alpha edit | 9.45% P99, 0 zeros / 22.40% P99 | -0.14% / 2.58% / 8.10% / 0 | -0.12% / 3.46% / 12.21% / 0 |
+| top, switch to voxel | 9.13% P99, 0 zeros / 37.85% P99 | -0.15% / 2.59% / 8.25% / 0 | -0.15% / 4.40% / 15.75% / 0 |
+| top, switch back to hardware | 9.51% P99, 0 zeros / 22.26% P99 | -0.14% / 2.55% / 7.96% / 0 | -0.12% / 3.47% / 12.12% / 0 |
+| hall, camera motion | 26.54% P99, 4 zeros / 9.28% P99 | -0.23% / 5.16% / 19.72% / 0 | -0.24% / 2.07% / 7.11% / 0 |
+| hall, cut | 36.85% P99, 3 zeros / 19.51% P99 | -0.31% / 5.55% / 20.83% / 0 **Fail** | -0.29% / 3.41% / 11.30% / 0 |
+| hall, deformation | 45.45% P99, 9 zeros / 19.35% P99 | -0.17% / 5.89% / 23.26% / 1 **Fail** | -0.14% / 3.05% / 10.44% / 0 |
+| hall, alpha edit | 41.56% P99, 12 zeros / 19.43% P99 | -0.21% / 5.83% / 22.71% / 0 **Fail** | -0.20% / 3.16% / 10.65% / 0 |
+| hall, switch to voxel | 70.45% P99, 6 zeros / 35.43% P99 | -0.28% / 8.34% / 32.24% / 3 **Fail** | -0.18% / 3.75% / 13.18% / 0 |
+| hall, switch back to hardware | 43.05% P99, 20 zeros / 19.87% P99 | -0.21% / 5.88% / 23.29% / 2 **Fail** | -0.17% / 3.25% / 10.89% / 0 |
+
+The visibility guide now survives history resets that keep the screen and the environment (geometry or opacity edits, settings and provider changes): it only steers sampling, so the estimate stays unbiased whatever it holds. A cut, resize, new scene or new environment still restarts it. With the guide restarted at every reset, the hall's deformation P99 was 25.69%; keeping it gives 23.26% (`build/p4-gaps/step4/` against `step4-guide/`).
+
+Every top-view event and every floor passes. The hall's full image still fails at frame 32 after a cut, a deformation, an alpha edit and both provider switches; camera motion passes (P99 19.72%). These are the G1 noise limit with half the samples: at frame 32 after a reset the history holds 32 equally weighted frames, against about 63 effective frames for the 32-frame exponential average in steady state, where the same view's P99 is 13.3%. They are re-measured with G1 under [decision 9](P4Gaps.md#decisions-2026-10-10). Continuous deformation and every-frame moving shadows remain unverified.
 
 ## Surface agreement at shared edges (review, 2026-10-10)
 

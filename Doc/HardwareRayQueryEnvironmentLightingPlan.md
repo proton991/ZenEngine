@@ -162,7 +162,7 @@ Shared by P5 and P6:
 
 ### Ray starts and ranges
 
-- Ray starts use the depth-reconstructed position from `gbuffer.glsl`. Its error grows with the square of view distance for perspective cameras; `CompactGBufferPreservesNormalsPositionsAndPlanarDerivatives` bounds it at 1×10⁻⁴ + 1×10⁻⁴ × distance² renderer units with a 0.001 near plane. Start offsets must exceed that error at the receiver's distance and near plane, and are tested at near, middle and far distances.
+- Ray starts on the RT tier use an RGBA32F raster-position target (amended 2026-10-10: G3 arbitration showed depth reconstruction changing sharp distant shadows while Vulkan and Embree agreed from identical origins; 16 bytes/pixel, a 64-byte hybrid G-buffer; [P4 gaps](HybridGI/P4Gaps.md#execution-notes-2026-10-10)). The voxel tier uses the depth-reconstructed position from `gbuffer.glsl`. Its error grows with the square of view distance for perspective cameras; `CompactGBufferPreservesNormalsPositionsAndPlanarDerivatives` bounds it at 1×10⁻⁴ + 1×10⁻⁴ × distance² renderer units with a 0.001 near plane. Start offsets must exceed that error at the receiver's distance and near plane, and are tested at near, middle and far distances.
 - The triangle provider offsets along `n_g` with a floating-point-aware offset, such as the method of Wächter and Binder (Ray Tracing Gems, chapter 6). It must not ignore whole instances to avoid self-hits, because that removes legitimate self-occlusion.
 - The voxel provider offsets along `n_g` instead of the shading normal, keeping the current bias in voxels. The D2 start-inside-occupancy defect remains a documented compute-tier limit unless a start policy passes all leak fixtures in P0, including a receiver at the base of a one-voxel wall.
 - The triangle provider traces to the scene bounds, including geometry outside the voxel volume. The voxel provider traces to the volume boundary.
@@ -188,7 +188,7 @@ Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in 
 
    Store them as glTF camera nodes or capture metadata.
 
-   **Receiver precision amendment, 2026-10-10.** G3 arbitration implicated receiver positions: Vulkan and Embree agree from identical origins, while depth reconstruction changes sharp distant shadows. The rationale was recorded before the FP32 experiment in [P4 gaps](HybridGI/P4Gaps.md#execution-notes-2026-10-10). Hardware receivers now use an RGBA32F raster-position target, adding 16 bytes/pixel to the hybrid G-buffer (64 bytes total). The voxel tier retains its depth reconstruction. Ray count, 32-frame history, five edge-stopping iterations, camera matrices and error limits are unchanged. Seven additional coarse residual passes address filter bias; their memory and GPU cost still need P8 qualification. This amendment does not mark P4 accepted.
+   Receiver positions were amended on 2026-10-10 (FP32 raster positions on the RT tier); see [Ray starts and ranges](#ray-starts-and-ranges). Ray count, 32-frame history, five edge-stopping iterations, camera matrices and error limits are unchanged.
 2. **Configurations.** Environment light only; analytic lights only; both. Bounce intensity 0 and 1. Voxel resolutions 64, 128 and 256. Viewports of 960×540 and 1920×1080. Record scene and shader hashes, device and driver.
    - **Environments** (added 2026-10-10; see the [decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10)). The ground truth (rung 3) covers nine: `papermill.ktx` and the eight Poly Haven panoramas in `Data/Textures/Environments`. The shipping-preset limits gate five of them, one per lighting type: Papermill (soft interior daylight), kloppenheim 06 (soft sky), qwantani noon (hard sun), hotel room (interior with small lamps) and carpentry shop 01 (artificial lights with daylight). Studio small 09, small empty room 1, large corridor and kloofendal 48d are tracked and reported but do not gate: they repeat those types or, like the studio's softboxes, are extreme cases kept as stress tests. A wrong converged answer is a defect under any environment, so correctness is checked on all nine; the shipping limits are a noise budget, so they apply to a representative set. File hashes are in `baseline.json`.
 3. **CPU references** in `tools/environment_reference.py`, using the Embree binding from `tools/requirements-gi-quality.txt`:
@@ -341,7 +341,7 @@ Exit:
 
 ## P4 Hardware ray-query provider
 
-Implementation status, 2026-10-09: the hardware path is implemented and tested on RTX 5080 and an AMD Radeon iGPU; see [P4 implementation and verification](HybridGI/P4.md). The checklist remains open where the full acceptance matrix has not passed. The hall's full-image shipping reconstruction now passes bias and RMS but still misses the 99th-percentile and exact-zero limits at four samples per pixel (21.65% against 20%, ten zeros); eight samples per pixel pass. Against the full-image [ground truth](#ground-truth), the converged tier reference passes on three of four frozen views; the hotel-room hall misses the per-pixel limit on distant lamp-lit receivers. A nine-environment sweep on 2026-10-10 widens both findings: the shipping preset fails in every hall view, and the tier reference misses the ground truth per pixel in four of nine hall views, all with small bright sources. Gaps and fix steps are in [P4 gaps](HybridGI/P4Gaps.md), together with the decisions recorded on 2026-10-10: the environment sets, the ground-truth noise rule, unverified platforms, bright-source handling, deferred preset changes and texture LOD for alpha.
+Implementation status, 2026-10-10: the hardware path is implemented and tested on an RTX 5080 and an AMD Radeon iGPU ([P4](HybridGI/P4.md), [gaps](HybridGI/P4Gaps.md), [execution](HybridGI/P4Execution.md)). P4a–P4d pass on the tested devices, with the platforms of decision 3 unverified. For P4e, the converged RT sky matches the full-image ground truth on all 18 frozen views (nine environments), D2 is gone, and switching behaves as specified. The shipping preset passes 8 of the 10 gating views with the amended sky estimator; kloppenheim hall (P99), hotel hall (three exact zeros) and the hall's frame-32 settling after resets still fail and are re-measured after the later phases (decision 9). Scenes far from the world origin moved to the [camera-relative rendering plan](CameraRelativeRenderingPlan.md) (decision 8).
 
 ### P4a Capabilities and shader variants
 
@@ -562,10 +562,10 @@ These are not required for done and are each assessed against the P0 limits and 
 - [ ] P1 receiver data, motion, previous-frame state, history resources and forward receiver prepass pass.
 - [ ] P2 voxel-provider sky estimator, composition, sky-cache update and settings pass.
 - [ ] P3 temporal accumulation, spatial filtering and specular occlusion pass on all frozen cameras.
-- [ ] P4a capabilities and shader variants pass.
-- [ ] P4b acceleration-structure resources, commands, reflection and descriptors pass.
-- [ ] P4c render-graph dependencies, lifetime, retirement and failure tests pass.
-- [ ] P4d scene query service passes.
+- [x] P4a capabilities and shader variants pass. (2026-10-10, RTX 5080 and AMD Radeon iGPU; RX 7900 XT, a GPU without ray queries and MoltenVK unverified by decision 3)
+- [x] P4b acceleration-structure resources, commands, reflection and descriptors pass. (2026-10-10, on the tested devices)
+- [x] P4c render-graph dependencies, lifetime, retirement and failure tests pass. (2026-10-10, on the tested devices)
+- [x] P4d scene query service passes. (2026-10-10, on the tested devices)
 - [ ] P4e hardware provider passes the CPU-reference and shipping-preset limits.
 - [ ] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured.
 - [ ] P6 glossy reflections pass on the RT tier; compute-tier choice measured.
