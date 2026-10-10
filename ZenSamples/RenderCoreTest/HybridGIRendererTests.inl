@@ -49,6 +49,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     HybridGIRenderer* first = nullptr;
     for (uint32_t frame = 0; frame < 9; ++frame)
     {
+        SCOPED_TRACE(frame);
         RenderGraph* graph = device->GetCurrentFrameRDG();
         ASSERT_TRUE(graph->Begin());
         if (frame == 0)
@@ -74,10 +75,10 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         {
             view.width *= 2;
         }
-        if (frame == 6)
+        if (frame == 2 || frame == 6)
         {
             VoxelGISettings changed = gi.GetSettings();
-            changed.samples         = 2;
+            changed.samples         = frame == 2 ? 2 : 4;
             ASSERT_TRUE(gi.SetSettings(changed));
         }
         if (frame == 7)
@@ -105,7 +106,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         gi.BuildRenderGraph();
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
         EXPECT_EQ(hybrid->IsHistoryValid(), frame == 1 || frame == 5);
-        if (frame == 6)
+        if (frame == 2 || frame == 6)
         {
             EXPECT_STREQ(hybrid->GetResetReason(), "settings");
         }
@@ -118,7 +119,23 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         const bool accepted = frame != 1;
         if (accepted)
         {
+            const size_t firstValue = rhi->graphics.values.size();
             ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
+            bool foundUniforms = false;
+            for (size_t value = firstValue; value < rhi->graphics.values.size(); ++value)
+            {
+                if (rhi->graphics.values[value].size() == sizeof(HybridGIUniformData))
+                {
+                    HybridGIUniformData uniforms;
+                    std::memcpy(&uniforms, rhi->graphics.values[value].data(), sizeof(uniforms));
+                    EXPECT_EQ(uniforms.sampling.w, hybrid->IsHistoryValid() ? 1u : 0u);
+                    // Only steady history and a settings reset after a successful frame can reuse the guide.
+                    // Startup, failed-frame recovery, a new view, resize, environment and scene resets cannot.
+                    EXPECT_EQ(uniforms.provider.y, frame == 5 || frame == 6 ? 1u : 0u);
+                    foundUniforms = true;
+                }
+            }
+            EXPECT_TRUE(foundUniforms);
         }
         renderer.OnRenderGraphExecuted(accepted);
         gi.OnRenderGraphExecuted(accepted);

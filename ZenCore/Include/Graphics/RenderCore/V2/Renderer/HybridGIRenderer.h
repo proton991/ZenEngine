@@ -24,7 +24,7 @@ struct HybridGIUniformData
     Vec4               previousViewPosition{0};
     Vec4               previousViewDirection{0, 0, 1, 0};
     glm::uvec4         sampling{0};  // frame, sample count, history limit, history valid
-    glm::uvec4         provider{0};  // Hardware provider, reserved.
+    glm::uvec4         provider{0};  // hardware provider, guide valid, reserved, reserved
     Vec4               rejection{0}; // plane threshold, specular enabled, temporal enabled, static reference
 };
 static_assert(sizeof(HybridGIUniformData) == 224);
