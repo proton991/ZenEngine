@@ -1,6 +1,6 @@
 """Compare fresh engine captures of the frozen Sponza views with the stored sky ground truth.
 
-The ground-truth dataset (default build/ground-truth/dataset, ignored by Git) holds one Mitsuba
+The ground-truth dataset (default build/ground-truth/dataset-p4-corrected, ignored by Git) holds one Mitsuba
 render per environment and camera, truth-<environment>-<camera>.npz/.json, the fixture-gate report
 the renders were validated with, and dataset.json. For each view, dataset.json records what the
 render depends on: the scene and environment file hashes, the camera matrix and resolution, and
@@ -40,7 +40,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare_hybrid_gi import compare as shipping_gate, load as load_capture  # noqa: E402
-from ground_truth_mitsuba import compare as compare_truth  # noqa: E402
+from capture_hybrid_gi import CAMERAS as CAMERA_MATRICES  # noqa: E402
+from ground_truth_mitsuba import compare as compare_truth, receiver_agreement  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CAMERAS = ('top', 'hall')
@@ -70,8 +71,6 @@ def log(text):
 
 
 def capture(args, prefix, environment, camera, strip, reference):
-    if args.reuse_captures and Path(str(prefix) + '.inputs.json').exists():
-        return
     command = [sys.executable, str(ROOT / 'tools/capture_hybrid_gi.py'), '--exe', str(args.exe), '--scene', str(args.scene),
                '--output', str(prefix), '--camera', camera, '--provider', 'hardware', '--rt',
                '--environment-texture', ENVIRONMENTS[environment]]
@@ -79,6 +78,33 @@ def capture(args, prefix, environment, camera, strip, reference):
         command.append('--strip-normal-maps')
     if reference:
         command += ['--reference-samples', '1024']
+    if args.reuse_captures and Path(str(prefix) + '.inputs.json').exists():
+        inputs = json.loads(Path(str(prefix) + '.inputs.json').read_text())
+        files = [inputs['executable']] + inputs['shaders'] + inputs['source_inputs']
+        stale = [entry['path'] for entry in files
+                 if not Path(entry['path']).exists() or sha256(entry['path']) != entry['sha256']]
+        missing = [str(prefix)+suffix for suffix in ('.lighting.json', '.hybrid.bin', '.environment.bin', '.gltf')
+                   if not Path(str(prefix)+suffix).exists()]
+        scene = json.loads(Path(str(prefix)+'.gltf').read_text()) if not missing else {}
+        metadata = json.loads(Path(str(prefix)+'.lighting.json').read_text()) if not missing else {}
+        has_normals = any('normalTexture' in material for material in scene.get('materials', []))
+        source = json.loads(args.scene.read_text(encoding='utf-8'))
+        expected_normals = not strip and any('normalTexture' in material for material in source.get('materials', []))
+        settings = inputs['settings']
+        expected = dict(environment_texture=ENVIRONMENTS[environment], voxel_gi_reference_samples=1024 if reference else 0,
+                        voxel_gi_ray_provider='hardware', voxel_gi_samples=4, voxel_gi_history_frames=32,
+                        voxel_gi_indirect_intensity=0, voxel_resolution=64, voxel_gi_temporal='true', voxel_gi_filter='true')
+        nodes = scene.get('nodes', [])
+        wrong_settings = (any(settings.get(key) != value for key, value in expected.items())
+                          or has_normals != expected_normals
+                          or not nodes or nodes[-1].get('matrix') != CAMERA_MATRICES[camera]
+                          or any(metadata.get(key) != value for key, value in
+                                 dict(width=960, height=540, frame=64, ray_provider='hardware').items())
+                          or sha256(args.scene) not in {entry['sha256'] for entry in inputs['source_inputs']}
+                          or inputs['executable']['sha256'] != sha256(args.exe))
+        if stale or missing or wrong_settings:
+            raise SystemExit(f'Refusing stale/incomplete capture {prefix}: files={stale + missing}, settings={wrong_settings}')
+        return
     result = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if result.returncode != 0:
         raise SystemExit(f'Capture {prefix.name} failed:\n{result.stdout[-2000:]}')
@@ -93,7 +119,7 @@ def identity(prefix):
     environment = Path(inputs['settings']['environment_texture'])
     environment = environment if environment.is_absolute() else ROOT / 'Data/Textures' / environment
     environment_hash = next(i['sha256'] for i in inputs['source_inputs'] if Path(i['path']) == environment.resolve())
-    return dict(
+    result = dict(
         width=metadata['width'], height=metadata['height'],
         projection_view_column_major=metadata['projection_view_column_major'],
         environment_texture=inputs['settings']['environment_texture'], environment_sha256=environment_hash,
@@ -102,6 +128,10 @@ def identity(prefix):
         environment_cube_sha256=sha256(str(prefix) + '.environment.bin'),
         scene_sha256=sorted(i['sha256'] for i in inputs['source_inputs'] if i['sha256'] != environment_hash),
         normal_maps=any('normalTexture' in m for m in scene.get('materials', [])))
+    if result['normal_maps']:
+        _, data = load_capture(prefix)
+        result['shading_normals_sha256'] = hashlib.sha256(data[:, :, 9, :3].copy().tobytes()).hexdigest()
+    return result
 
 
 def check_identity(view, entry, prefix):
@@ -111,6 +141,8 @@ def check_identity(view, entry, prefix):
                 if actual[key] != entry[key]]
     if not np.allclose(actual['projection_view_column_major'], entry['projection_view_column_major'], rtol=0, atol=1e-7):
         problems.append('projection_view_column_major')
+    if entry['normal_maps'] and actual['shading_normals_sha256'] != entry.get('shading_normals_sha256'):
+        problems.append('shading_normals_sha256')
     if problems:
         raise SystemExit(f'{view}: capture {prefix} does not match its ground truth ({", ".join(problems)}). '
                          'The stored render no longer applies; render a new dataset instead of comparing.')
@@ -135,8 +167,10 @@ def register(folder, dataset, view, truth_prefix, gate):
     source = Path(render['capture'])
     source = source if source.is_absolute() else ROOT / source
     entry = identity(source)
-    if entry['normal_maps']:
-        raise SystemExit(f'{view}: the render was made from a normal-mapped capture; use --strip-normal-maps captures')
+    if render.get('receivers', 'exact') != 'exact':
+        raise SystemExit(f'{view}: diagnostic engine receivers cannot be registered as independent ground truth')
+    if entry['normal_maps'] and render.get('shading_normals') != 'engine':
+        raise SystemExit(f'{view}: normal-mapped captures require ground truth rendered with --shading-normals engine')
     for suffix in ('.npz', '.json'):
         shutil.copyfile(str(truth_prefix) + suffix, folder / f'truth-{view}{suffix}')
     report = Path(str(truth_prefix) + '-compare.json')
@@ -171,6 +205,7 @@ def render(args, view):
     log(f'rendering ground truth {view}')
     result = subprocess.run([sys.executable, str(ROOT / 'tools/ground_truth_mitsuba.py'), str(prefix), '--output', str(output),
                              '--samples', str(args.samples), '--batch', str(args.batch), '--seed', str(args.seed),
+                             '--shading-normals', 'engine' if args.normal_maps else 'vertex',
                              '--backend', args.backend], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     Path(str(output) + '.log').write_text(result.stdout)
     if result.returncode != 0:
@@ -218,11 +253,13 @@ def compare_view(args, dataset, view):
         check_identity(view, entry, prefix)
     result['ground_truth'] = dict(reference=compare_truth(truth, reference), shipping=compare_truth(truth, shipping),
                                   truth_samples=entry['render']['samples'])
+    metadata, data = load_capture(reference)
+    covered, _, agree = receiver_agreement(np.load(truth), metadata, data)
     if not args.skip_shipping_gate:
         shipping, reference = args.output / 'ship' / view, args.output / 'ship' / f'{view}-reference'
         capture(args, reference, environment, camera, False, True)
         capture(args, shipping, environment, camera, False, False)
-        result['shipping_gate'] = shipping_gate(shipping, reference)
+        result['shipping_gate'] = shipping_gate(shipping, reference, {'primary_mismatch_receivers': covered & ~agree})
         result['attribution'] = attribution(shipping, reference)
     return result
 
@@ -277,6 +314,21 @@ def summary(report):
             lines.append(f'| {view} | {cells[0]} | {cells[1]} | {percent(t["temporal_bias"], True)} / {percent(t["temporal_rms"])} | '
                          f'{percent(t["filtered_bias"], True)} / {percent(t["filtered_rms"])} | '
                          f'{percent(result["attribution"]["fine_geometry"]["largest_error_share"])} |')
+    lines += ['', '## Primary-surface mismatches', '',
+              'Different primary surfaces are excluded from the agreement gate above and reported here separately. '
+              'Truth errors compare different surfaces; shipping errors use the same raster receiver and tier reference. '
+              'Rays retain level-zero alpha acceptance.', '',
+              '| View | Mismatches / covered | Missing truth hits | Reference vs truth: bias / excess | Shipping vs tier: bias / RMS / P99 / zeros |',
+              '| --- | --- | --- | --- | --- |']
+    for view, result in report['views'].items():
+        ref = result['ground_truth']['reference']
+        mismatch = ref.get('primary_mismatch_receivers')
+        truth_cell = f'{percent(mismatch["bias"], True)} / {percent(mismatch["excess_rms"])}' if mismatch else '-'
+        ship = result.get('shipping_gate', {}).get('primary_mismatch_receivers')
+        ship_cell = (f'{percent(ship["bias"], True)} / {percent(ship["rms"])} / {percent(ship["p99"])} / '
+                     f'{ship["unexpected_zeros"]}') if ship else '-'
+        lines.append(f'| {view} | {ref["primary_mismatch"]} / {ref["covered"]} | {ref.get("primary_missing", 0)} | '
+                     f'{truth_cell} | {ship_cell} |')
     return '\n'.join(lines) + '\n'
 
 
@@ -284,7 +336,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--exe', type=Path, help='scene_renderer_demo executable')
     parser.add_argument('--scene', type=Path, help='glTF Sample Assets Sponza/glTF/Sponza.gltf')
-    parser.add_argument('--dataset', type=Path, default=ROOT / 'build/ground-truth/dataset')
+    parser.add_argument('--dataset', type=Path, default=ROOT / 'build/ground-truth/dataset-p4-corrected')
     parser.add_argument('--output', type=Path, default=ROOT / 'build/ground-truth/runs/latest', help='Captures and reports of this run')
     parser.add_argument('--environments', nargs='+', choices=ENVIRONMENTS, default=list(ENVIRONMENTS))
     parser.add_argument('--cameras', nargs='+', choices=CAMERAS, default=list(CAMERAS))
@@ -297,6 +349,8 @@ def main():
     parser.add_argument('--batch', type=int, default=32)
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--backend', choices=('auto', 'cuda', 'llvm'), default='auto')
+    parser.add_argument('--normal-maps', action='store_true',
+                        help='Check captured normal-mapped shading normals; requires a separate matching ground-truth dataset')
     parser.add_argument('--import-truth', nargs=2, action='append', metavar=('VIEW', 'TRUTH_PREFIX'), default=[],
                         help='Register an earlier ground_truth_mitsuba.py render as <environment>-<camera>')
     args = parser.parse_args()
@@ -327,8 +381,8 @@ def main():
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         for view in views:
             environment, camera = view.rsplit('-', 1)
-            capture(args, args.output / 'gt' / f'{view}-reference', environment, camera, True, True)
-            capture(args, args.output / 'gt' / view, environment, camera, True, False)
+            capture(args, args.output / 'gt' / f'{view}-reference', environment, camera, not args.normal_maps, True)
+            capture(args, args.output / 'gt' / view, environment, camera, not args.normal_maps, False)
             if view in missing:
                 futures[view] = pool.submit(render, args, view)
         for view, future in futures.items():

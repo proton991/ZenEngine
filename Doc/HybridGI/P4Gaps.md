@@ -2,20 +2,22 @@
 
 Status on 2026-10-10. The hardware ray-query provider is implemented. Its tests and fixtures pass on an RTX 5080 and an AMD Radeon iGPU, but **no P4 checklist item in the [plan](../HardwareRayQueryEnvironmentLightingPlan.md#delivery-checklist) is ticked**. This page lists what stands between the current working tree and P4 acceptance: the evidence for each gap, the steps to close it, and the [decisions](#decisions-2026-10-10) recorded on 2026-10-10. The implementation record is [P4.md](P4.md).
 
-The main finding of the [environment sweep](#environment-sweep-2026-10-10) is that the gap is wider than the Papermill hall suggested. Papermill is the mildest of nine environments. With the others, the four-ray shipping reconstruction fails in every hall view and on six floor regions. Error after reconstruction is dominated by variance on ordinary surfaces lit through openings, not only by fine geometry. Separately, the converged tier reference misses the ground truth at distant receivers in four of nine hall views, all with small bright sources; every top view and every floor region matches it. Per the decisions, the ground truth judges all nine environments and the shipping limits gate five of them; results are reported for all nine.
+**Execution result: P4 remains unaccepted.** The final results and reproducible artifacts are in [P4Execution.md](P4Execution.md) and [p4-gap-results.json](p4-gap-results.json). The bounded filter correction reduces maximum full-image/floor bias to 0.46%. FP32 receiver positions and corrected independent references reduce converged failures from four halls to two (hotel 3.87%, qwantani 4.62%); the review's [flat default normal fix](P4Execution.md#flat-default-normal-fix-review-2026-10-10) leaves one: hotel 3.13% excess, against 3%. All five gating halls still fail the shipping gate. Provider-switch settling and large-coordinate rendering also fail. Failed estimator and precision probes were reverted; no preset or error limit was relaxed.
+
+The environment tables below preserve the **pre-experiment historical baseline**. Current status is stated in the summary, exit criteria and execution notes; historical numbers in each original gap description explain the work requested. Ground truth judges all nine environments and shipping limits gate five, with all nine reported.
 
 ## Summary
 
 | ID | Gap | Blocks | Kind | First step |
 | --- | --- | --- | --- | --- |
-| [G1](#g1-shipping-variance-in-high-contrast-views) | Four-ray shipping reconstruction fails in every hall view and on six floor regions (four in the five gating environments) | P4e shipping exit; P3 checklist | Engineering: estimator variance | Filter experiment (step 2), then a bright-source extraction prototype with shadow rays (decision 4) |
-| [G2](#g2-filter-bias-with-small-bright-sources) | The spatial filter's bias reaches −1.99% (limit 2%) on floors under small bright sources; temporal output is unbiased | P4e shipping exit | Engineering: filter | Low-frequency bias correction after the edge-stopping passes |
-| [G3](#g3-converged-reference-at-distant-receivers) | The converged tier reference misses the ground truth at receivers beyond 0.3 units when sources are small | P4e converged exit; ground-truth checklist | Investigation | Arbitrate the disagreeing pixels with a third tracer (Embree) before changing either side |
+| [G1](#g1-shipping-variance-in-high-contrast-views) | Still fails all five gating halls; filter, extracted-source and reservoir probes failed | P4e shipping exit; P3 checklist | Open: estimator variance | A passing estimator is still needed; rejected probes and bounds are recorded |
+| [G2](#g2-filter-bias-with-small-bright-sources) | Measured full-image/floor bias is at most 0.46% across all nine environments | Bias target met | Implemented: bounded coarse residual | P8 must qualify its cost; it does not close G1 |
+| [G3](#g3-converged-reference-at-distant-receivers) | Hotel hall still fails (3.13%); the other 17 views pass | P4e converged exit; ground-truth checklist | Open: receiver/visibility agreement | Continue from fixed-origin Vulkan/Embree agreement and targeted origin factorization |
 | [G4](#g4-acceptance-environment-set) | Environment sets for the image gates | Every image gate | Decided | Closed by decision 1: ground truth on all nine, shipping limits on five |
 | [G5](#g5-platform-matrix) | RX 7900 XT, a GPU without ray queries and MoltenVK are untested | P4a exit; definition of done 5 | Hardware access | Test when hardware is available; P4 can close with them reported unverified (decision 3) |
-| [G6](#g6-acceptance-checks-not-yet-run) | Flagpole sign-off, runtime provider switching, origin stress and the material matrix are not run | P4e exit; P4d | Execution | Run each check; no code changes expected |
-| [G7](#g7-raster-and-ray-alpha-disagreement) | Rasterization and rays see different surfaces at 2.0% of hall pixels, mostly alpha-masked foliage | Only if it breaks a limit | Measurement | Measure the error on those pixels; level-zero alpha stays the contract (decision 6) |
-| [G8](#g8-ground-truth-coverage-and-tooling) | Ground truth excludes normal maps | Ground-truth checklist | Tooling | Normal-map support in the ground-truth scene; the noise rule is decided (decision 2) |
+| [G6](#g6-acceptance-checks-not-yet-run) | Checks executed; settling and large-origin image gates fail | P4e exit; P4d | Measured, partly open | Fix the reported image failures; continuous deformation remains unverified |
+| [G7](#g7-raster-and-ray-alpha-disagreement) | Corrected primary mismatch is 0.88% of hall pixels and 0.19% of top pixels | Open where limits fail | Measurement implemented | Separate-region errors are reported; level-zero alpha remains the contract |
+| [G8](#g8-ground-truth-coverage-and-tooling) | Captured-normal support, analytic fixture and two independent Papermill views added | Ground-truth checklist | Implemented with limited coverage | The other eight environments have vertex-normal truth and normal-mapped same-tier gates |
 | [G9](#g9-uncommitted-work) | P4 work was uncommitted | — | Process | Closed by decision 7: committed as a checkpoint |
 
 ## Exit criteria
@@ -26,10 +28,10 @@ The main finding of the [environment sweep](#environment-sweep-2026-10-10) is th
 | P4b: AS resources, commands, reflection and descriptors | Met on the tested devices | RenderCoreTest 576, VulkanRHITest 51; the AMD instance-alignment fix | Other devices ([G5](#g5-platform-matrix)) |
 | P4c: graph-driven hit, miss, distance, barycentrics and identities correct without validation errors, inline and threaded, with replacement and failure cases | Met on the tested devices | RayQueryIntegrationTest 12 on both GPUs; RenderCoreTest failure and barrier regressions | — |
 | P4d: motion, deformation, opacity edits, removal, replacement and geometry outside the voxel volume affect visibility | Met on the tested devices | RayQueryIntegrationTest scene, deformation and empty-scene cases | Measure the alpha-mismatch pixels; level-zero alpha is the contract ([G7](#g7-raster-and-ray-alpha-disagreement), decision 6) |
-| P4e: converged RT sky within the converged limits | **Fails** on 4 of 18 views; the other 14 pass, 4 of them on 8×8 blocks (decision 2) | [Ground truth](#ground-truth): all top views and floors pass | [G3](#g3-converged-reference-at-distant-receivers) |
+| P4e: converged RT sky within the converged limits | **Fails** on 1 of 18 views (hotel hall, 3.13%); the other 17 pass, 5 of them on 8×8 blocks (decision 2) | [Flat default normal fix](P4Execution.md#flat-default-normal-fix-review-2026-10-10): all top views and floors pass | [G3](#g3-converged-reference-at-distant-receivers) |
 | P4e: shipping preset within the shipping limits on every frozen camera | **Fails** in all five gating environments | [Shipping gate](#shipping-gate) | [G1](#g1-shipping-variance-in-high-contrast-views), [G2](#g2-filter-bias-with-small-bright-sources) |
-| P4e: D2 gone (no zero squares; flagpole shadows match the reference) | Evidence in hand, not signed off | No start-cell zero squares on any floor; the Papermill top-floor tier reference matches the ground truth within 0.35% (0.07% on 8×8 blocks) | Sign-off ([G6](#g6-acceptance-checks-not-yet-run)) |
-| P4e: provider switching, unsupported capabilities, `--disable-rt`, budget rejection, frames in flight | Partly met | Unit and integration tests; Sponza budget fallback; `--disable-rt` fixtures | Runtime provider-switch image check ([G6](#g6-acceptance-checks-not-yet-run)) |
+| P4e: D2 gone (no zero squares; flagpole shadows match the reference) | D2 artifact sign-off complete for the frozen top views | All nine crop sheets inspected; no start-cell zero squares and converged shadow structure agrees. Two isolated zeros meet the crop-specific threshold in tracked environments | Shipping variance still fails some crop P99 values and full-floor gates ([G1](#g1-shipping-variance-in-high-contrast-views)) |
+| P4e: provider switching, unsupported capabilities, `--disable-rt`, budget rejection, frames in flight | Partly met; switching image gate **fails** | Both actual transitions reset history to 1; frame-32 quality failures recorded | Runtime settling ([G6](#g6-acceptance-checks-not-yet-run)) |
 
 The P3 checklist item ("temporal accumulation, spatial filtering and specular occlusion pass on all frozen cameras") is blocked by the same reconstruction results as the P4e shipping exit.
 
@@ -119,6 +121,8 @@ Normal-map-free captures of the same views against Mitsuba 3 (CUDA, 32768 sample
 
 ## G1 Shipping variance in high-contrast views
 
+**Execution status:** open. Global and isolated-face filter probes, directional collapse, finite-source quadrature with separate source-group reconstruction, and a bounded reservoir fallback were evaluated and rejected. Seven of the ten gating camera/environment pairs fail at least one full-image/floor shipping limit. Four rays, 32-frame history and the five existing filter iterations remain frozen; no P8 preset change is adopted. See [rejected probes](P4Execution.md#estimator-probes-rejected).
+
 **Gap.** At four rays, 32 history frames and five filter iterations, every hall view fails the full-image limits (RMS up to 31.8%, P99 up to 88.8%, up to 66 exact zeros), and floors fail P99 under the noon sun, the corridor, the hotel lamps, the studio and the carpentry shop.
 
 **Cause.** Hall receivers reach the sky through the arcades. With small bright sources, a single ray's contribution varies by orders of magnitude, so the 128 samples a pixel accumulates (4 rays × 32 frames) leave temporal RMS of 26–83%. Neighbors cannot always be averaged: they differ in visibility, which is the signal.
@@ -138,6 +142,8 @@ Normal-map-free captures of the same views against Mitsuba 3 (CUDA, 32768 sample
 
 ## G2 Filter bias with small bright sources
 
+**Execution status:** the bias target is met. The retained bounded coarse residual correction keeps every measured full-image/floor region across all eighteen views within ±0.46%, with no floor zeros in the final sweep. It adds seven transient RGBA32F targets before graph reuse. Performance qualification remains P8 work.
+
 **Gap.** The filtered sky is darker than the reference in almost every region, by up to 1.99%, worst on floors under small sources: studio hall floor −1.99% against the 2% limit, studio top floor −1.65%, qwantani hall floor −1.43%, corridor top floor −1.02%. Unfiltered temporal output is unbiased on the same pixels (|bias| ≤ 0.11%).
 
 **Cause.** The 1σ luminance edge-stopping weight rejects rare bright samples more often than dark ones, so the weighted mean is pulled down. Small bright sources make such samples common. (The same mechanism gave −7.5% when filtered output was fed back into history; that option was rejected in the [hall work](P4.md#hall-full-image-reconstruction-2026-10-09).)
@@ -151,6 +157,8 @@ Normal-map-free captures of the same views against Mitsuba 3 (CUDA, 32768 sample
 **Done when** every region of the five gating environments is within ±1% bias after filtering (limit ±2%); the tracked four are reported.
 
 ## G3 Converged reference at distant receivers
+
+**Execution status:** improved, still open. Review fix: materials without a normal map were shaded 0.32° off their vertex normal by the 8-bit default normal texture; with that fixed, qwantani passes (2.36%) and hotel is the only failure (3.13%, 8×8 excess 0.51%); see the [fix](P4Execution.md#flat-default-normal-fix-review-2026-10-10). Earlier in the execution: Independent alpha continuation and primary-ray construction were corrected. Fixed-origin Vulkan and Embree agree on 619,804 visibility queries. The retained FP32 position target passes all controlled near/middle/far bright-edge fixtures and reduces the failing Sponza set to hotel (3.87%) and qwantani (4.62% excess). Receiver-plane and derivative pixel-center probes were reverted. The original diagnosis below predates this evidence; see [final arbitration](P4Execution.md#independent-arbitration-and-precision).
 
 **Gap.** The tier reference (1024 samples × 64 frames, no reconstruction) should match the ground truth within 1% bias and 3% excess. It does within 0.3 units of the camera on every view except the carpentry shop's hall, but not beyond 0.3 units when sources are small. Four hall views fail per pixel (qwantani noon 9.69%, hotel room 7.82%, carpentry shop 5.92%, kloofendal 5.53% excess) and four more pass only on 8×8 blocks. Beyond 0.3 units the excess is 2.9–27.0% in every hall except Papermill's; within 0.3 units it is at most 1.43%, except the carpentry shop (3.9%). All top views and all floor regions pass.
 
@@ -178,6 +186,8 @@ Normal-map-free captures of the same views against Mitsuba 3 (CUDA, 32768 sample
 
 ## G5 Platform matrix
 
+**Execution status:** all 46 native FP32-layout cases pass (13 hardware plus 10 voxel on each available GPU); twelve ray-query integration cases pass on each. RTX 5080 driver 617.14 and the local AMD Radeon iGPU were exercised. RX 7900 XT, a non-query GPU and Apple Silicon/MoltenVK remain unverified under decision 3.
+
 **Gap.** P0's matrix requires RTX 5080 and RX 7900 XT, each with RT on and with `--disable-rt`; macOS on Apple Silicon through MoltenVK (recording ray-query availability); and a GPU without ray queries if available. Only the RTX 5080 and an AMD Radeon iGPU have been tested. P0 says untested platforms are reported as unverified; P4a says MoltenVK must be checked explicitly.
 
 **Steps.** On each available device: the unit and integration suites, the 13 hardware and 10 voxel fixtures, the sky-cache check, and the Sponza captures. On a device without ray queries: the voxel tier must start without loading query shaders or allocating AS resources. Record each device and driver.
@@ -188,16 +198,20 @@ Recorded separately and outside P4 code: fixture and capture runs need `--allow-
 
 ## G6 Acceptance checks not yet run
 
-| Check | Requirement | Step |
+The heading is retained for existing links. These checks have now been run; failures remain open.
+
+| Check | Requirement | Result and remaining work |
 | --- | --- | --- |
-| D2 flagpole shadows | P4e exit | Crop the flagpole shadows from the top-floor comparisons (all environments in the set) and sign off; evidence above already shows the floor matching the ground truth |
-| Runtime provider switching | P4e exit | Switch hardware → voxel → hardware during a capture; histories reset, and the image is within the shipping limits within 32 frames of each switch |
-| Near, middle and far origins | P4 open item | Offset the scene far from the world origin and rerun the fixtures and one Sponza view; relates to [G3](#g3-converged-reference-at-distant-receivers) |
-| Material matrix | P4d | Alpha-mask fixtures with texture transforms, second UV set, vertex alpha, specular-glossiness alpha and sampler modes; ray acceptance against rasterization |
-| Image stability under motion | Definition of done 2; P3 exit | Camera motion, cuts, deforming receivers and alpha edits on Sponza at the RT tier; settling within 32 frames and no ghost trails. Fixtures exist; the native image validation listed in the [README](README.md#remaining-acceptance-work) is incomplete |
-| D5 voxel sky cache | Plan defect D5 (open for P2 and P4); definition of done 4 | The hardware cache samples owner surfaces with 48 + 16 directions (sky-cache check ratio 1.040), but voxels without an owner fall back to the voxel center and that fallback is not counted. Export the counter, report the fallback fraction on Sponza, then update D5 |
+| D2 flagpole shadows | P4e exit | All nine crop sheets reviewed; the specific zero-square defect is absent and converged shadow structure agrees. Shipping variance is reported separately |
+| Runtime provider switching | P4e exit | Hardware → voxel → hardware resets histories correctly; frame-32 full-image/floor limits still fail. See the final transition table |
+| Near, middle and far origins | P4 open item | Controlled bright-edge and translated-AS fixtures pass. Sponza at 100 units has 420 unexpected zeros; at 10,000 units full-image RMS is 75.53% with 177,691 zeros. Large-world rendering remains open |
+| Material matrix | P4d | All seven requested alpha variants pass native/independent comparisons; largest primary mismatch approximately 0.027% |
+| Image stability under motion | Definition of done 2; P3 exit | Motion, cut, one-shot deformation and alpha-edit sequences captured at frames 1/4/8/32 with matching references. Several frame-32 limits fail. Continuous deformation and every-frame moving-shadow behavior remain unverified |
+| D5 voxel sky cache | Plan defect D5; definition of done 4 | Capture-only counter implemented: 0 center fallbacks / 22,997 evaluated occupied voxels on Sponza, both providers. Ownerless fallback policy remains relevant on other geometry |
 
 ## G7 Raster and ray alpha disagreement
+
+**Execution status:** measured in the final report. Corrected primary rays reduce mismatches to 984/518,400 top pixels (0.19%) and 4,563/518,400 hall pixels (0.88%), with no missing independent primary hits. These regions fail local error limits but account for at most 3.74% of whole-image shipping squared RGB error. Their errors combine surface disagreement and reconstruction variance; the result does not isolate texture LOD as the cause. Level-zero alpha remains unchanged, and LOD matching remains open rather than being marked unnecessary or passed.
 
 **Gap.** At 2.0% of hall pixels and 0.35% of top pixels, the primary surface the rasterizer drew differs from the one a ray finds through the pixel center. Most are alpha-masked foliage: the rasterizer tests alpha at a mip level, rays test it at level zero (compute shaders have no derivatives). The rest are silhouettes. These pixels are excluded from the ground-truth comparison.
 
@@ -206,6 +220,8 @@ Recorded separately and outside P4 code: fixture and capture runs need `--allow-
 **Decided** (decision 6). Alpha acceptance follows rasterization's rule but at texture level zero; pixels where the two see different surfaces are reported as primary mismatches, and LOD matching is revisited only if they break a limit. The measurement above remains to be done.
 
 ## G8 Ground-truth coverage and tooling
+
+**Execution status:** captured-normal support and its analytic tilted-normal fixture are implemented. Captured half-precision normals are renormalized before cosine sampling and fingerprinted in the dataset. Two full independent Papermill normal-mapped views are checked; sixteen other views retain vertex-normal independent coverage. The corrected vertex-normal dataset contains all eighteen views at 32,768 samples. See [coverage and results](P4Execution.md#native-acceptance-checks).
 
 - **Normal maps.** The ground truth uses vertex normals (`--strip-normal-maps`), so the normal-mapped shading path is not checked against it. Add tangent-space normal mapping to the Mitsuba scene (its `normalmap` BSDF, with tangents matching the engine), or evaluate the ground truth at the engine's captured shading normals.
 - **Ground-truth noise** (decided, decision 2). Four hall views have per-pixel ground-truth noise of 3.1–11% at 32768 samples; resolving them per pixel would take 1.1–14× the samples. A per-pixel or 8×8 excess above the limit fails; where the per-pixel excess is within the limit but the noise exceeds it, the blocks decide. Pixels under diagnosis ([G3](#g3-converged-reference-at-distant-receivers)) get targeted high-sample renders.
@@ -232,6 +248,21 @@ Taken by the project owner on 2026-10-10, accepting the recommendations made wit
 
 ## Order of work
 
+### Execution notes (2026-10-10)
+
+The execution record is [P4Execution.md](P4Execution.md). The original sweep tables above remain historical baseline results; they are not the current build or corrected-reference verdict.
+
+- G3's Embree environment-MIS tiebreaker found a ground-truth defect: alpha rejection used Mitsuba's normal-offset `spawn_ray`, changing the line of sight through nearby foliage. Direction-preserving continuation fixes this, passes the twelve original fixtures and a new 20-micro-unit separated-sheet regression. The intermediate immutable dataset is `build/ground-truth/dataset-alpha-continuation`; the old dataset is preserved. At that stage hotel and qwantani halls still failed (6.49% and 9.74% excess). Final results additionally include corrected primary rays and FP32 receivers.
+- Embree at the engine's receivers reproduces the engine much more closely than at exact primary hits. Merely projecting the depth-error offset onto the normal reduced the targeted hotel disagreement only from 0.08010 to 0.07637 absolute RGB RMS and is not adopted. **Next receiver experiment, recorded before evaluation:** store the camera-relative receiver-plane constant in the existing FP32 motion target's unused fourth component, then intersect the pixel ray with that plane. This tests receiver precision without adding the proposed 16-byte position target. Exact raster positions permit the existing small transform/ULP origin offset without the two-depth-step displacement. Keep depth reconstruction for callers without the new plane data and measure the experiment against the corrected ground truth before adopting it.
+- G2's coarse demodulated residual correction brings all nine environments' measured full-image and floor biases below 0.5%. Its negative correction is bounded to preserve positive resolved samples. Five edge-stopping iterations, four diffuse rays and 32 history frames remain unchanged.
+- Both global soft-normal and isolated-face filter probes reduced exact zeros but worsened errors elsewhere; neither is adopted.
+- Bright-source probes were measured on qwantani, hotel, carpentry and studio halls. Directional collapse fails due to finite-source shadow error. Finite-source quadrature plus residual sampling improves the first three but still fails the gates; it remains an opt-in tool, not a lighting-contract change.
+- G6: exported sky-cache counts show 22,997 evaluated occupied Sponza voxels and zero center fallbacks. Runtime hardware/voxel/hardware captures show both resets to length 1. The seven alpha-material fixtures and the captured-normal-map fixture have native captures and independent comparisons. Final quality failures and coverage limits are recorded in P4Execution.md.
+- The receiver-plane probe still fails (hotel 3.92%, qwantani 4.23% excess with matched offsets); it is reverted. Vulkan and Embree agree on all 619,804 fixed-source visibility rays from identical origins, and the targeted MIS comparison reproduces Vulkan at its own receivers. **Next precision experiment, recorded before evaluation:** use the G3-authorized RGBA32F raster-position target (16 additional bytes/pixel, 64-byte hybrid G-buffer), avoiding inverse-depth reconstruction and its two-depth-step origin displacement for hardware rays. The voxel provider retains its existing reconstruction. This is an evidence-driven receiver experiment, not an accepted P0/preset change; keep it only after the corrected ground-truth comparison and relevant native checks.
+
+- **Pixel-center experiment, recorded before evaluation:** the final 128-pixel arbitration shows FP32 raster positions reprojecting at median 0.00096 pixels (hotel) and 0.00082 (qwantani), versus about 0.000009 for independent primary hits. Their median normal-plane error is at most 4e-9 world units. Test a first-order correction along fragment position derivatives from the interpolated projected coordinate to the actual pixel center. The existing two reserved receiver push-constant words carry the viewport extent; no target, ray, history or limit is added. Keep only after independent comparisons and native checks.
+  Result: reprojection improved, but hotel/qwantani excess remained 3.85%/4.52%; the correction was reverted. The confirmed FP32 target remains without that correction.
+
 1. G3 step 1 (Embree tiebreaker) and G2 (bias correction): small and independent.
 2. G6 checks.
 3. G1 step 2 (filter experiment).
@@ -242,10 +273,10 @@ Taken by the project owner on 2026-10-10, accepting the recommendations made wit
 
 ## Reproduction
 
-The 18 ground-truth renders are stored, unchanged, in `build/ground-truth/dataset/` (ignored by Git, 436 MB): `truth-<environment>-<camera>.npz/.json`, the fixture-gate report they were validated with, and `dataset.json`, which records for each view the scene and environment file hashes, the camera matrix and the engine's captured environment cube. Engine captures are regenerated for the current build by [ground_truth_sweep.py](../../tools/ground_truth_sweep.py), which refuses a capture that no longer matches its render:
+The eighteen corrected ground-truth renders are stored in `build/ground-truth/dataset-p4-corrected/` (ignored by Git): `truth-<environment>-<camera>.npz/.json`, the fixture-gate report they were validated with, and `dataset.json`, which records each view's scene/environment hashes, camera matrix and captured environment cube. The original `build/ground-truth/dataset/` is preserved for the historical tables above. Engine captures are regenerated by [ground_truth_sweep.py](../../tools/ground_truth_sweep.py), which refuses a capture that no longer matches its render:
 
 ```powershell
-python tools/ground_truth_sweep.py --exe build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe --scene PATH/TO/Sponza/glTF/Sponza.gltf --output build/ground-truth/runs/NAME
+python tools/ground_truth_sweep.py --exe build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe --scene PATH/TO/Sponza/glTF/Sponza.gltf --dataset build/ground-truth/dataset-p4-corrected --output build/ground-truth/runs/NAME
 ```
 
 It captures all nine environments and both cameras (72 captures, about 12 minutes) and writes `report.json` and `summary.md`; the tables above come from `build/ground-truth/runs/2026-10-10/report.json`. New views need `--render-missing` and a passing `--fixture-gate`; see [P4.md](P4.md#reproduction).

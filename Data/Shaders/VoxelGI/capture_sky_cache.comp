@@ -1,0 +1,17 @@
+#version 450
+layout(local_size_x=64) in;
+layout(set=1,binding=0) uniform sampler3D sourceSkyCache;
+layout(set=1,binding=1,std430) writeonly buffer SkyCacheCapture { uvec2 counts[]; };
+void main()
+{
+    int z=int(gl_GlobalInvocationID.x);
+    ivec3 size=textureSize(sourceSkyCache,0);
+    if(z>=size.z) return;
+    uvec2 total=uvec2(0);
+    for(int y=0;y<size.y;++y) for(int x=0;x<size.x;++x)
+    {
+        float kind=texelFetch(sourceSkyCache,ivec3(x,y,z),0).a;
+        total+=uvec2(kind>0.0 ? 1u:0u,kind>1.5 ? 1u:0u);
+    }
+    counts[z]=total;
+}

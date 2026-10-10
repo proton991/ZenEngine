@@ -129,6 +129,12 @@ public:
         return m_radiance;
     }
 
+    // RGB is irradiance. Alpha records 0 inactive, 1 owner surface, 2 center fallback.
+    RHITexture* GetSkyIrradianceTexture() const
+    {
+        return m_skyIrradiance;
+    }
+
 private:
     void LoadSettings();
 

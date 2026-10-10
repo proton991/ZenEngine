@@ -71,8 +71,8 @@ protected:
 
     RHIBuffer* Buffer(uint32_t                         size,
                       BitField<RHIBufferUsageFlagBits> usage,
-                      const void*                      data = nullptr,
-                      RHIBufferAllocateType allocation      = RHIBufferAllocateType::eCPUWriteGPURead)
+                      const void*                      data       = nullptr,
+                      RHIBufferAllocateType            allocation = RHIBufferAllocateType::eCPUWriteGPURead)
     {
         RHIBufferCreateInfo info;
         info.size         = size;
@@ -152,10 +152,10 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
         const uint32_t indices[] = {0, 1, 2, 3, 4, 5};
         for (uint32_t i = 0; i < 6; ++i)
         {
-            vertices[i].pos = Vec4(i % 3 == 0   ? -0.5f
-                                   : i % 3 == 1 ? 0.5f
-                                                : 0.0f,
-                                   i % 3 == 2 ? 0.5f : -0.5f, i < 3 ? 0.0f : 0.5f, 1);
+            vertices[i].pos    = Vec4(i % 3 == 0   ? -0.5f
+                                      : i % 3 == 1 ? 0.5f
+                                                   : 0.0f,
+                                      i % 3 == 2 ? 0.5f : -0.5f, i < 3 ? 0.0f : 0.5f, 1);
             vertices[i].normal = Vec4(0, 0, 1, 0);
             vertices[i].color  = Vec4(1);
         }
@@ -173,14 +173,15 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
         ASSERT_TRUE(scene.SetVoxelBounds(sg::AABB(Vec3(-0.1f), Vec3(0.1f))));
         SceneRayQuery queries(device);
         // Frame 2 makes the masked material single-sided; its back face still blocks.
-        const float      expected[] = {1.5f, 1.0f, 1.0f, 1.25f, -1.0f, -1.0f, 1.25f};
-        const uint32_t   built[]    = {1, 0, 0, 0, 0, 0, 1};
-        const uint32_t   updated[]  = {0, 0, 0, 1, 0, 0, 0};
-        const uint32_t   reused[]   = {0, 1, 1, 0, 1, 0, 0};
+        const float      expected[] = {1.5f, 1.0f, 1.0f, 1.25f, -1.0f, -1.0f, 1.25f, 1.25f, 1.25f, 1.25f};
+        const uint32_t   built[]    = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0};
+        const uint32_t   updated[]  = {0, 0, 0, 1, 0, 0, 0, 0, 0, 0};
+        const uint32_t   reused[]   = {0, 1, 1, 0, 1, 0, 0, 1, 1, 1};
         sg::MaterialData material   = source.GetComponents<sg::Material>()[0]->data;
-        for (uint32_t frame = 0; frame < 7; ++frame)
+        for (uint32_t frame = 0; frame < 10; ++frame)
         {
             SCOPED_TRACE(frame);
+            Vec4 queryOffset(0);
             if (frame == 1)
             {
                 material.baseColorFactor.a = 1;
@@ -215,6 +216,15 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
                 ASSERT_TRUE(scene.SetInstanceEnabled(0, true));
                 ASSERT_TRUE(scene.SetInstanceTransform(0, Mat4(1)));
             }
+            if (frame >= 7)
+            {
+                // Move geometry and rays together. Keep the small voxel bounds at the
+                // origin, exercising both distant AS coordinates and out-of-volume hits.
+                const float distance = frame == 7 ? 100.0f : frame == 8 ? 10000.0f : 0.0f;
+                queryOffset          = Vec4(Vec3(distance), 0);
+                ASSERT_TRUE(scene.SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(queryOffset))));
+                ASSERT_TRUE(scene.SetInstanceTransform(1, glm::translate(Mat4(1), Vec3(queryOffset) + Vec3(2, 0, 0))));
+            }
             ASSERT_TRUE(scene.Update());
             if (frame == 6)
             {
@@ -240,7 +250,8 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
             pass.BindValue("uGISettings", gi, sizeof(gi));
             pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
             queries.BindInputs(pass, scene);
-            graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+            graph.AddComputePass(std::move(pass)).RecordPassCommands([queryOffset](RDGPassCmdEncoder& encoder) {
+                encoder.SetPushConstants(queryOffset);
                 encoder.Dispatch(4, 1, 1);
             });
             graph.AddTransferPass("ReadSceneQueries").CopyBuffer(output, readback, {0, 0, 4 * sizeof(Vec4)});
@@ -264,7 +275,7 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
                 EXPECT_EQ(result[0].y, frame == 0 ? 1.0f : 0.0f);
             }
             EXPECT_EQ(result[0].w, float(queries.GetGeneration()));
-            EXPECT_EQ(queries.GetGeneration(), frame == 6 ? 1u : frame + 1u);
+            EXPECT_EQ(queries.GetGeneration(), frame >= 6 ? frame - 5u : frame + 1u);
             readback->Unmap();
         }
         EXPECT_FALSE(queries.BuildRenderGraph(scene, 1));
@@ -314,10 +325,10 @@ TEST_P(RayQueryIntegrationTest, DeformingOneMeshRefitsOnlyItInPlaceAndRebuildsAf
     const uint32_t indices[] = {0, 1, 2, 3, 4, 5};
     for (uint32_t i = 0; i < 6; ++i)
     {
-        vertices[i].pos = Vec4(i % 3 == 0   ? -0.5f
-                               : i % 3 == 1 ? 0.5f
-                                            : 0.0f,
-                               i % 3 == 2 ? 0.5f : -0.5f, i < 3 ? 0.0f : 0.5f, 1);
+        vertices[i].pos    = Vec4(i % 3 == 0   ? -0.5f
+                                  : i % 3 == 1 ? 0.5f
+                                               : 0.0f,
+                                  i % 3 == 2 ? 0.5f : -0.5f, i < 3 ? 0.0f : 0.5f, 1);
         vertices[i].normal = Vec4(0, 0, 1, 0);
         vertices[i].color  = Vec4(1);
     }
@@ -369,7 +380,10 @@ TEST_P(RayQueryIntegrationTest, DeformingOneMeshRefitsOnlyItInPlaceAndRebuildsAf
         pass.BindValue("uGISettings", gi, sizeof(gi));
         pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
         queries.BindInputs(pass, scene);
-        graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(4, 1, 1); });
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+            encoder.SetPushConstants(Vec4(0));
+            encoder.Dispatch(4, 1, 1);
+        });
         graph.AddTransferPass("ReadSceneQueries").CopyBuffer(output, readback, {0, 0, 4 * sizeof(Vec4)});
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
         const bool succeeded = device->ExecuteRenderGraph(graph);

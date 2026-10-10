@@ -147,9 +147,9 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
         const uint32_t resolution = m_renderDevice->GetRendererServer()->RequestVoxelizer()->GetVoxelTexResolution();
 
         const float halfExtent    = 0.005f * static_cast<float>(calibrationGridPercent) * static_cast<float>(resolution - 2)
-                               / static_cast<float>(resolution);
+                                  / static_cast<float>(resolution);
 
-        prepared = m_renderScene->SetVoxelBounds(sg::AABB(Vec3(-halfExtent), Vec3(halfExtent)));
+        prepared                  = m_renderScene->SetVoxelBounds(sg::AABB(Vec3(-halfExtent), Vec3(halfExtent)));
     }
 
     if (prepared && captureVoxels)
@@ -988,6 +988,9 @@ struct DemoOptions
     std::string frameTimesPath;
 
     std::string capturePath;
+    std::string providerSwitchCapturePath;
+    std::string originStressCapturePath;
+    std::string stabilityCapturePath;
     std::string lightingCapturePath;
     std::string voxelCapturePath;
     bool        voxelReference{false};
@@ -1071,6 +1074,21 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
             options.voxelCapturePath = argument.substr(17);
 
             valid                    = !options.voxelCapturePath.empty();
+        }
+        else if (argument.starts_with("--capture-provider-switching="))
+        {
+            options.providerSwitchCapturePath = argument.substr(29);
+            valid                             = !options.providerSwitchCapturePath.empty();
+        }
+        else if (argument.starts_with("--capture-origin-stress="))
+        {
+            options.originStressCapturePath = argument.substr(24);
+            valid                           = !options.originStressCapturePath.empty();
+        }
+        else if (argument.starts_with("--capture-stability="))
+        {
+            options.stabilityCapturePath = argument.substr(20);
+            valid                        = !options.stabilityCapturePath.empty();
         }
         else if (argument.starts_with("--capture-lighting="))
         {
@@ -1316,12 +1334,12 @@ int main(int argc, char** pArgv)
                              || pDemo->Run(options.warmup, false, options.initialMode, {}, options.fixedStep, 0,
                                            options.motionFixture, true));
 
-        result = warmed
-                      && pDemo->Run(options.frames, options.smokeTest, options.initialMode, options.frameTimesPath,
-                                    options.fixedStep, options.giStartFrame, options.motionFixture, false,
-                                    options.backgroundTestSeconds)
-                   ? 0
-                   : 1;
+        result            = warmed
+                                 && pDemo->Run(options.frames, options.smokeTest, options.initialMode, options.frameTimesPath,
+                                               options.fixedStep, options.giStartFrame, options.motionFixture, false,
+                                               options.backgroundTestSeconds)
+                              ? 0
+                              : 1;
 
         // Extra diagnostic capture graphs are outside the requested profiling workload.
         pDemo->StopProfiling();
@@ -1331,6 +1349,18 @@ int main(int argc, char** pArgv)
             result = pDemo->CaptureLighting(options.lightingCapturePath) ? 0 : 1;
         }
 
+        if (result == 0 && !options.providerSwitchCapturePath.empty())
+        {
+            result = pDemo->CaptureProviderSwitching(options.providerSwitchCapturePath) ? 0 : 1;
+        }
+        if (result == 0 && !options.originStressCapturePath.empty())
+        {
+            result = pDemo->CaptureOriginStress(options.originStressCapturePath) ? 0 : 1;
+        }
+        if (result == 0 && !options.stabilityCapturePath.empty())
+        {
+            result = pDemo->CaptureStability(options.stabilityCapturePath) ? 0 : 1;
+        }
         if (result == 0 && !options.capturePath.empty())
         {
             result = pDemo->CaptureFrame(options.capturePath) ? 0 : 1;
@@ -1377,7 +1407,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-provider-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

@@ -26,12 +26,14 @@
     "frame": 16.7
   },
   "platforms": {
-    "Windows RTX 5080 RT enabled": "explicit hardware request reports voxel fallback; RT query tier unimplemented",
-    "Windows RTX 5080 RT disabled": "compute path tested; partial acceptance, see verification.json",
+    "Windows RTX 5080 RT enabled": "hardware query tier implemented; 13 hardware fixtures and 12 query tests pass; image acceptance fails, see P4Execution.md",
+    "Windows RTX 5080 RT disabled": "10 voxel fixtures pass; partial image acceptance",
     "Windows RX 7900 XT RT enabled": "unverified; hardware unavailable",
     "Windows RX 7900 XT RT disabled": "unverified; hardware unavailable",
     "Apple Silicon MoltenVK": "unverified; hardware unavailable",
-    "non-RT GPU": "unverified; hardware unavailable"
+    "non-RT GPU": "unverified; hardware unavailable",
+    "Windows AMD Radeon iGPU RT enabled": "13 hardware fixtures and 12 query tests pass; not a substitute for RX 7900 XT",
+    "Windows AMD Radeon iGPU RT disabled": "10 voxel fixtures pass; known compact non-hybrid derivative and cone-bounce differences remain"
   },
   "configurations": {
     "viewport": [
@@ -563,6 +565,11 @@
       "date": "2026-10-10",
       "change": "Environment sets, ground-truth dataset and noise rule",
       "record": "Doc/HybridGI/P4Gaps.md#decisions-2026-10-10"
+    },
+    {
+      "date": "2026-10-10",
+      "change": "FP32 receiver precision and corrected independent references",
+      "record": "Doc/HybridGI/P4Execution.md"
     }
   ],
   "environments": {
@@ -632,7 +639,7 @@
   "ground_truth": {
     "renderer": "tools/ground_truth_mitsuba.py",
     "sweep": "tools/ground_truth_sweep.py",
-    "dataset": "build/ground-truth/dataset",
+    "dataset": "build/ground-truth/dataset-p4-corrected",
     "samples": 32768,
     "seed": 1,
     "cameras": [
@@ -641,6 +648,38 @@
     ],
     "strip_normal_maps": true,
     "far_split": 0.3,
-    "noise_rule": "A per-pixel or 8x8-block excess above the limit fails. Where the per-pixel excess is within the limit but the ground truth per-pixel noise exceeds it, the 8x8-block result decides; the per-pixel result is reported."
+    "noise_rule": "A per-pixel or 8x8-block excess above the limit fails. Where the per-pixel excess is within the limit but the ground truth per-pixel noise exceeds it, the 8x8-block result decides; the per-pixel result is reported.",
+    "normal_mapped_coverage": {
+      "dataset": "build/ground-truth/dataset-p4-normal-mapped",
+      "views": [
+        "papermill-top",
+        "papermill-hall"
+      ],
+      "shading_normals": "captured engine normals, unit-renormalized and fingerprinted; independent primary geometry and visibility"
+    }
+  },
+  "p4_execution": {
+    "record": "Doc/HybridGI/P4Execution.md",
+    "results": "Doc/HybridGI/p4-gap-results.json",
+    "accepted": false,
+    "gbuffer_bytes_per_pixel": 64,
+    "extra_bias_transient_bytes_per_pixel_before_reuse": 112,
+    "failed_converged_views": [
+      "hotel-hall"
+    ],
+    "failed_shipping_gating_views": [
+      "papermill-hall",
+      "hotel-top",
+      "hotel-hall",
+      "kloppenheim-hall",
+      "qwantani-top",
+      "qwantani-hall",
+      "carpentry-hall"
+    ],
+    "max_shipping_full_or_floor_bias": 0.004559504799544811,
+    "failed_converged_views_before_flat_normal_fix": [
+      "hotel-hall",
+      "qwantani-hall"
+    ]
   }
 }

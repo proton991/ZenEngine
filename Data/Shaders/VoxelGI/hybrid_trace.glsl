@@ -17,14 +17,7 @@ void main()
     if(texelFetch(receiverDepth,p,0).r<1.0 && texelFetch(receiverSurface,p,0).g!=0u)
     {
         vec3 position=HybridPosition(p), n=HybridNormal(p), ng=HybridGeometricNormal(p);
-        float error=0.0;
-#ifdef HYBRID_HARDWARE_PROVIDER
-        float depth=texelFetch(receiverDepth,p,0).r;
-        float adjacent=uintBitsToFloat(floatBitsToUint(depth)+2u);
-        vec3 shifted=ReconstructGBufferPosition(vec2(p)+0.5,textureSize(receiverDepth,0),adjacent,hybrid.inverseViewProjection)+hybrid.worldOrigin.xyz;
-        error=length(shifted-position);
-#endif
-        vec3 origin=HybridTraceOrigin(position,ng,error);
+        vec3 origin=HybridTraceOrigin(position,ng,0.0);
         for(uint i=0u;i<hybrid.sampling.y;++i)
         {
             float pdf;

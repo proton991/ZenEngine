@@ -68,15 +68,18 @@ class Environment:
         self.constant = np.asarray(constant, dtype=float)
         self.cube = cube
         self.rotation, self.orientation, self.intensity = rotation, np.asarray(orientation), intensity
+        self.probabilities = None
 
-    def sample(self, directions):
+    def local_directions(self, directions):
         d = np.asarray(directions, dtype=float).copy()
         c, s = np.cos(self.rotation), np.sin(self.rotation)
         d[:, 0], d[:, 2] = c*d[:, 0]-s*d[:, 2], s*d[:, 0]+c*d[:, 2]
         q = self.orientation
         d += 2*np.cross(q[:3], np.cross(q[:3], d)+q[3]*d)
-        if self.cube is None:
-            return np.broadcast_to(self.constant*self.intensity, d.shape).copy()
+        return d
+
+    @staticmethod
+    def coordinates(d):
         axis = np.argmax(np.abs(d), axis=1)
         faces = axis*2+(d[np.arange(len(d)), axis] < 0)
         # Vulkan cube selection, including the Y-face orientation.
@@ -87,6 +90,13 @@ class Environment:
             major = np.abs(d[mask, axis[mask]])
             sc, tc = ((-z, -y), (z, -y), (x, z), (x, -z), (x, -y), (-x, -y))[face]
             uv[mask] = np.stack((sc/major, tc/major), axis=-1)*.5+.5
+        return faces, uv
+
+    def sample(self, directions):
+        d = self.local_directions(directions)
+        if self.cube is None:
+            return np.broadcast_to(self.constant*self.intensity, d.shape).copy()
+        faces, uv = self.coordinates(d)
         size = self.cube.shape[1]
         pixel = uv*size-.5
         low = np.floor(pixel).astype(int)
@@ -97,6 +107,60 @@ class Environment:
             weight = (f[:,0] if dx else 1-f[:,0])*(f[:,1] if dy else 1-f[:,1])
             result += self.cube[faces, xy[:,1], xy[:,0], :3]*weight[:,None]
         return result*self.intensity
+
+    def prepare_sampling(self):
+        """Independent discrete cube proposal, with the face-to-solid-angle Jacobian.
+
+        Radiance remains the bilinear cube lookup. A uniform mixture gives the proposal
+        support even where bilinear filtering brings light into a black texel.
+        """
+        if self.probabilities is None and self.cube is not None:
+            size = self.cube.shape[1]
+            u, v = np.meshgrid((np.arange(size) + .5) * 2 / size - 1,
+                               (np.arange(size) + .5) * 2 / size - 1)
+            solid = (1 + u*u + v*v) ** -1.5
+            weights = np.maximum(self.cube[..., :3] @ [.2126, .7152, .0722], 0) * solid
+            uniform = np.broadcast_to(solid, weights.shape)
+            uniform = uniform / uniform.sum()
+            self.probabilities = (.99 * weights / weights.sum() + .01 * uniform
+                                  if weights.sum() > 0 else uniform)
+            self.cdf = np.cumsum(self.probabilities.ravel())
+            self.cdf[-1] = 1
+
+    def pdf(self, directions):
+        self.prepare_sampling()
+        density = np.full(len(directions), 1 / (4*np.pi))
+        if self.cube is not None:
+            local = self.local_directions(directions)
+            faces, uv = self.coordinates(local)
+            size = self.cube.shape[1]
+            xy = np.clip((uv * size).astype(int), 0, size - 1)
+            density = self.probabilities[faces, xy[:, 1], xy[:, 0]] * size**2 / (4 * np.abs(local).max(1)**3)
+        return density
+
+    def importance_directions(self, count, rng):
+        self.prepare_sampling()
+        if self.cube is None:
+            z = 1 - 2*rng.random(count)
+            phi = 2*np.pi*rng.random(count)
+            directions = np.c_[np.sqrt(1-z*z)*np.cos(phi), np.sqrt(1-z*z)*np.sin(phi), z]
+        else:
+            size = self.cube.shape[1]
+            indices = np.searchsorted(self.cdf, (np.arange(count) + rng.random(count)) / count)
+            face, pixel = np.divmod(indices, size**2)
+            y, x = np.divmod(pixel, size)
+            u = (x + rng.random(count))*2/size - 1
+            v = (y + rng.random(count))*2/size - 1
+            one = np.ones(count)
+            candidates = (np.c_[one, -v, -u], np.c_[-one, -v, u], np.c_[u, one, v],
+                          np.c_[u, -one, -v], np.c_[u, -v, one], np.c_[-u, -v, -one])
+            local = normalize(np.stack(candidates)[face, np.arange(count)])
+            # Undo quaternion orientation, then the Y rotation used by sample().
+            q = self.orientation
+            local += 2*np.cross(-q[:3], np.cross(-q[:3], local)+q[3]*local)
+            c, s = np.cos(self.rotation), np.sin(self.rotation)
+            directions = np.c_[c*local[:, 0]+s*local[:, 2], local[:, 1], -s*local[:, 0]+c*local[:, 2]]
+        return directions
 
 
 class TriangleOracle:
@@ -277,11 +341,24 @@ def load_gltf(path):
     return TriangleOracle(triangles,accept), dict(center=((lo+hi)/2).tolist(),scale=1/extent)
 
 
-def sky_reference(oracle, position, shading, geometric, environment, samples=4096):
-    directions = cosine_directions(shading,samples)
-    ids,_,_ = oracle.intersect(position+geometric*1e-5,directions)
-    visible = (ids < 0) & (directions@geometric > 0)
-    return np.mean(environment.sample(directions)*visible[:,None],axis=0), np.mean(visible)
+def sky_reference(oracle, position, shading, geometric, environment, samples=4096, seed=0, origin=None):
+    """Equal-count environment/cosine MIS; 'samples' is the count per proposal.
+
+    An explicit origin permits an identical-origin tracer cross-check. nu uses only
+    cosine samples, retaining its original cosine-weighted visibility definition.
+    """
+    origin = position + geometric*1e-5 if origin is None else origin
+    cosine = cosine_directions(shading, samples, seed)
+    directions = (cosine if environment.cube is None else
+                  np.concatenate((cosine, environment.importance_directions(samples, np.random.default_rng(seed)))))
+    cos = np.maximum(directions @ shading, 0)
+    eligible = (cos > 0) & (directions @ geometric > 0)
+    visible = np.zeros(len(directions), bool)
+    ids, _, _ = oracle.intersect(origin, directions[eligible])
+    visible[eligible] = ids < 0
+    density = cos/np.pi + (environment.pdf(directions) if environment.cube is not None else 0)
+    value = environment.sample(directions) * (visible*cos/(np.pi*density))[:, None]
+    return value.sum(axis=0)/samples, np.mean(visible[:samples])
 
 
 def smith_g1(cosine, roughness):
@@ -323,6 +400,29 @@ def self_test():
     empty = TriangleOracle([])
     value,nu = sky_reference(empty,np.zeros(3),n,n,env)
     np.testing.assert_allclose(value,1,atol=1e-10); assert nu==1
+    # A constant cube must integrate to one under rotated cube importance sampling.
+    cube = Environment(cube=np.ones((6, 16, 16, 3)), rotation=.7,
+                       orientation=(np.sin(.2), 0, 0, np.cos(.2)))
+    value, _ = sky_reference(empty, np.zeros(3), n, n, cube, 65536, seed=13)
+    np.testing.assert_allclose(value, 1, atol=.006)
+    # A concentrated source in a mostly black cube exercises MIS support and the
+    # face Jacobian. Compare with deterministic sphere quadrature, not another sampler.
+    bright = np.full((6, 16, 16, 3), .01)
+    bright[2, 7, 8] = [1000, 200, 80]
+    source = Environment(cube=bright, rotation=.4,
+                         orientation=(np.sin(.2), 0, 0, np.cos(.2)))
+    side = 256
+    u, v = np.meshgrid((np.arange(side)+.5)*2/side-1, (np.arange(side)+.5)*2/side-1)
+    u, v = u.ravel(), v.ravel()
+    one = np.ones_like(u)
+    vectors = np.concatenate((np.c_[one,-v,-u], np.c_[-one,-v,u], np.c_[u,one,v],
+                              np.c_[u,-one,-v], np.c_[u,-v,one], np.c_[-u,-v,-one]))
+    length = np.linalg.norm(vectors, axis=1)
+    directions = vectors/length[:,None]
+    weights = np.maximum(directions@n, 0)*4/(np.pi*side**2*length**3)
+    expected = np.sum(source.sample(directions)*weights[:,None], axis=0)
+    value, _ = sky_reference(empty, np.zeros(3), n, n, source, 65536, seed=31)
+    np.testing.assert_allclose(value, expected, rtol=.005)
     # Huge wall through the receiver partitions the hemisphere into equal halves.
     wall = TriangleOracle([[[0,-100,-100],[0,100,-100],[0,100,100]],[[0,-100,-100],[0,100,100],[0,-100,100]]])
     value,_ = sky_reference(wall,np.array([-1e-5,0,0]),n,n,env)
@@ -353,7 +453,7 @@ def self_test():
     assert ids[0]>=2 and abs(d[0]-2)<1e-5
     return dict(open_plane='pass',half_wall='pass',closed_hemisphere='pass',ggx_normal_incidence='pass',
                 empty_bounce='pass',uniform_bounce='pass',ggx_lobe_fraction='pass',open_closed_specular='pass',
-                mask_continue='pass')
+                mask_continue='pass', environment_mis='pass')
 
 
 def main():

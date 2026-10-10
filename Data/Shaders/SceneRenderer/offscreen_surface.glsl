@@ -8,6 +8,7 @@ layout(location=3) out vec4 outEmissiveOcclusion;
 #ifdef HYBRID_RECEIVER
 layout(location=4) out uvec2 outReceiver;
 layout(location=5) out vec4 outMotion;
+layout(location=6) out vec4 outPosition;
 layout(location=16) in vec4 inPreviousClip;
 layout(location=17) in vec4 inCurrentClip;
 #endif
@@ -43,6 +44,7 @@ void main()
     // NDC motion (previous - current) and the previous w; w <= 0 lay behind the previous camera.
     outMotion=inPreviousClip.w>0.0 ? vec4(inPreviousClip.xy/inPreviousClip.w-inCurrentClip.xy/inCurrentClip.w,inPreviousClip.w,0)
                                    : vec4(0,0,inPreviousClip.w,0);
+    outPosition=vec4(inWorldPos,1);
 #endif
     outNormal=EncodeGBufferNormal(normal);
     outAlbedo=vec4(albedo.rgb,1);

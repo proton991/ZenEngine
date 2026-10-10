@@ -16,8 +16,9 @@ Primary rays follow rasterization: back faces of single-sided materials and alph
 texels are skipped. Visibility rays follow the contract: both faces of every surface
 block; masked texels are transparent. Alpha masks use the engine's rule per hit (factor *
 bilinear texture alpha at level zero * interpolated vertex alpha >= cutoff). Shading normals
-are interpolated vertex normals, so compare against captures made with --strip-normal-maps
-unless studying normal maps.
+default to interpolated vertex normals, so compare against captures made with
+--strip-normal-maps. --shading-normals engine instead uses captured shading normals
+to check the normal-mapped path while keeping primary geometry and visibility independent.
 
 Each sample combines one environment-importance sample (Mitsuba's envmap) and one cosine
 sample with the balance heuristic. Radiance always comes from a bilinear lookup of the captured
@@ -258,8 +259,15 @@ def camera_rays(metadata, capture):
     the choice is asserted to land on pixel centers.
     """
     width, height = metadata['width'], metadata['height']
-    pv = np.array(metadata['projection_view_column_major'], float).reshape(4, 4).T
-    eye = np.array(metadata['camera_position'], float)
+    # Metadata prints enough decimal digits to round-trip float32. Restore those
+    # exact matrix values before inverting in float64. The separately stored eye
+    # differs slightly from the eye implied by the rounded projection-view matrix;
+    # subtracting it from a near-plane point amplifies that difference with distance.
+    pv = np.array(metadata['projection_view_column_major'], np.float32).astype(np.float64).reshape(4, 4).T
+    inverse = np.linalg.inv(pv)
+    if abs(inverse[3, 2]) < 1e-12:
+        raise ValueError('Ground-truth primary rays currently require a perspective projection')
+    eye = inverse[:3, 2]/inverse[3, 2]
     valid = capture[:, :, 8, 3] > 0
     ys, xs = np.nonzero(valid)
     pick = np.linspace(0, len(xs) - 1, min(len(xs), 2000)).astype(int)
@@ -277,7 +285,7 @@ def camera_rays(metadata, capture):
     sign = best[1]
     gx, gy = np.meshgrid((np.arange(width) + .5) / width * 2 - 1, (np.arange(height) + .5) / height * 2 - 1)
     ndc = np.stack([gx, sign * gy, np.full_like(gx, .5), np.ones_like(gx)], -1).reshape(-1, 4)
-    world = ndc @ np.linalg.inv(pv).T
+    world = ndc @ inverse.T
     world = world[:, :3] / world[:, 3:4]
     directions = world - eye
     directions /= np.linalg.norm(directions, axis=1, keepdims=True)
@@ -297,11 +305,13 @@ def primary_hits(mi, dr, scene, eye, directions, max_layers=64):
         culled = back & ~mi.has_flag(bsdf.flags(), mi.BSDFFlags.BackSide)
         hit = active & si.is_valid()
         skip = hit & (culled | transparent(mi, si, bsdf, hit))
-        ray = dr.select(skip, si.spawn_ray(ray.d), ray)
+        ray = dr.select(skip, continue_ray(mi, si, ray.d), ray)
         active = skip
         dr.eval(ray, active)
         if not dr.any(active):
             break
+    if dr.any(active):
+        raise RuntimeError('Primary alpha/back-face traversal exhausted max_layers')
     si = scene.ray_intersect(ray)
     toward = dr.dot(si.n, ray.d) < 0
     n_g = dr.select(toward, si.n, -si.n)
@@ -311,7 +321,15 @@ def primary_hits(mi, dr, scene, eye, directions, max_layers=64):
     return valid, np.array(si.p).T, np.array(n_g).T, np.array(n_s).T, primitive
 
 
-def visible(mi, dr, scene, origin_interaction, directions, valid, max_layers=64):
+def continue_ray(mi, interaction, direction):
+    """A rejected alpha candidate is not a new reflecting surface. Keep the line of
+    sight; spawn_ray's normal offset can jump across foliage and thin nearby walls.
+    Match the independent Embree oracle's one-micro-unit forward progress.
+    """
+    return mi.Ray3f(interaction.p + direction * 1e-6, direction)
+
+
+def visible(mi, dr, scene, origin_interaction, directions, valid, max_layers=64, ray_origin=None):
     """Visibility toward the environment for valid lanes (others are blocked); masked texels
     are transparent and both faces of every surface block."""
     # Start a few float ULPs above the surface. Mitsuba's spawn_ray offsets by ~1e-4 of the
@@ -319,19 +337,25 @@ def visible(mi, dr, scene, origin_interaction, directions, valid, max_layers=64)
     # ledges; the engine and the Embree reference both use offsets of order 1e-6.
     p = origin_interaction.p
     offset = 4e-6 * (1 + dr.maximum(dr.maximum(dr.abs(p.x), dr.abs(p.y)), dr.abs(p.z)))
-    ray = mi.Ray3f(p + origin_interaction.n * offset, directions)
+    ray = mi.Ray3f(p + origin_interaction.n * offset if ray_origin is None else ray_origin, directions)
     open_ = mi.Bool(valid)
     active = mi.Bool(valid)
-    for _ in range(max_layers):
-        si = scene.ray_intersect(ray, active)
-        hit = active & si.is_valid()
-        passes = transparent(mi, si, si.bsdf(ray), hit)
-        open_ = open_ & ~(hit & ~passes)
-        active = passes
-        ray = dr.select(active, si.spawn_ray(ray.d), ray)
-        dr.eval(open_, active, ray)
-        if not dr.any(active):
-            break
+    def step(current, open_mask, pending, iteration):
+        si = scene.ray_intersect(current, pending)
+        hit = pending & si.is_valid()
+        passes = transparent(mi, si, si.bsdf(current), hit)
+        open_mask = open_mask & ~(hit & ~passes)
+        current = dr.select(passes, continue_ray(mi, si, current.d), current)
+        return current, open_mask, passes, iteration + 1
+
+    # Run alpha continuation on the device. Host-side reductions at every layer
+    # otherwise dominate the high-sample sweep without adding independent samples.
+    ray, open_, active, _ = dr.while_loop(
+        state=(ray, open_, active, mi.UInt32(0)),
+        cond=lambda current, open_mask, pending, iteration: pending & (iteration < max_layers),
+        body=step, mode='symbolic', label='sky visibility')
+    if dr.any(active):
+        raise RuntimeError('Visibility alpha traversal exhausted max_layers')
     return open_
 
 
@@ -376,7 +400,7 @@ class CubeRadiance:
         return result * self.intensity
 
 
-def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube):
+def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube, origins=None):
     """Per-pixel D_sky and nu (cosine-weighted unblocked fraction) with environment+cosine MIS."""
     count = len(points)
     lanes = count * batch
@@ -388,6 +412,7 @@ def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube):
     it.p = mi.Point3f(*[repeat(points[:, i]) for i in range(3)])
     it.n = mi.Normal3f(*[repeat(n_g[:, i]) for i in range(3)])
     shading = mi.Normal3f(*[repeat(n_s[:, i]) for i in range(3)])
+    ray_origin = None if origins is None else mi.Point3f(*[repeat(origins[:, i]) for i in range(3)])
     it.sh_frame = mi.Frame3f(shading)
     halves = [dr.zeros(mi.Color3f, lanes), dr.zeros(mi.Color3f, lanes)]
     unblocked = dr.zeros(mi.Float, lanes)
@@ -399,7 +424,7 @@ def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube):
         ok_e = (cos_e > 0) & (dr.dot(it.n, ds.d) > 0) & (ds.pdf > 0)
         pdf_bsdf_e = dr.maximum(cos_e, 0) / dr.pi
         mis_e = ds.pdf / (ds.pdf + pdf_bsdf_e)
-        vis_e = visible(mi, dr, scene, it, ds.d, ok_e)
+        vis_e = visible(mi, dr, scene, it, ds.d, ok_e, ray_origin=ray_origin)
         contribution = dr.select(vis_e, cube.eval(ds.d) / ds.pdf * cos_e / dr.pi * mis_e, 0)
         # Cosine sample.
         local = mi.warp.square_to_cosine_hemisphere(sampler.next_2d())
@@ -411,7 +436,7 @@ def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube):
         sample.d = direction
         pdf_env = environment.pdf_direction(it, sample)
         mis_b = (cos_b / dr.pi) / (cos_b / dr.pi + pdf_env)
-        vis_b = visible(mi, dr, scene, it, direction, ok_b)
+        vis_b = visible(mi, dr, scene, it, direction, ok_b, ray_origin=ray_origin)
         contribution += dr.select(vis_b, radiance * mis_b, 0)
         halves[index % 2] += contribution
         unblocked += dr.select(vis_b, 1.0, 0.0)
@@ -424,7 +449,7 @@ def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube):
 
 
 def render_capture(mi, capture, output, scene_path=None, samples=1024, batch=8, seed=1, environment_resolution=2048,
-                   engine_receivers=False):
+                   engine_receivers=False, engine_normals=False):
     metadata, data = load_capture(capture)
     e = metadata['environment_intensity_rotation_enabled_visible']
     size = metadata['environment_cube_size']
@@ -438,18 +463,26 @@ def render_capture(mi, capture, output, scene_path=None, samples=1024, batch=8, 
     height, width = directions.shape[:2]
     covered = data[:, :, 8, 3].reshape(-1) > 0
     valid, points, n_g, n_s, primitive = primary_hits(mi, dr, scene, eye, directions.reshape(-1, 3)[covered])
+    origins = None
+    if engine_normals:
+        # Test the actual normal-mapped shading path without substituting Mitsuba's
+        # tangent convention. Geometry, alpha, origins and visibility remain independent.
+        n_s = data[:, :, 9, :3].reshape(-1, 3)[covered].copy()
     if engine_receivers:
-        # Diagnostic: shade the engine's depth-reconstructed receivers instead of the exact hits,
+        # Diagnostic: shade the engine's receivers instead of the exact hits,
         # separating receiver-reconstruction error from sky-integral error.
         flat = data.reshape(-1, data.shape[2], 4)[covered]
         points, n_s, n_g = flat[:, 8, :3].astype(float), flat[:, 9, :3].astype(float), flat[:, 10, :3].astype(float)
-        # Start where the engine starts: its receiver plus a normal offset of two depth steps.
-        points = points + n_g * (2 * depth_quantization_error(metadata, points) + 1e-6)[:, None]
+        origins = engine_origins(metadata, data).reshape(-1, 3)[covered][valid]
+    if engine_normals or engine_receivers:
+        # The capture stores normals in half precision. Restore unit length before
+        # building the cosine frame and evaluating its solid-angle density.
+        n_s /= np.maximum(np.linalg.norm(n_s, axis=1, keepdims=True), 1e-20)
     sky, nu, halves = np.zeros((height * width, 3)), np.zeros(height * width), np.zeros((2, height * width, 3))
     lit = np.nonzero(covered)[0][valid]
     if len(lit) and not black:
         s, n, h = render_sky(mi, dr, scene, points[valid], n_g[valid], n_s[valid], samples, batch, seed,
-                             CubeRadiance(mi, dr, environment))
+                             CubeRadiance(mi, dr, environment), origins=origins)
         sky[lit], nu[lit], halves[:, lit] = s, n, h
     position = np.zeros((height * width, 4), np.float32)
     position[lit, :3], position[lit, 3] = points[valid], 1
@@ -466,10 +499,44 @@ def render_capture(mi, capture, output, scene_path=None, samples=1024, batch=8, 
                         position=position.reshape(height, width, 4), normal=normal.reshape(height, width, 3), geometric=geometric.reshape(height, width, 3),
                         primitive=primitive_index.reshape(height, width))
     manifest = dict(capture=str(capture), scene=str(scene_path), samples=samples, seed=seed,
+                    shading_normals='engine' if engine_normals or engine_receivers else 'vertex',
+                    captured_normal_policy='unit_renormalized' if engine_normals or engine_receivers else 'not_applicable',
+                    receivers='engine' if engine_receivers else 'exact',
+                    alpha_continuation='direction_1e-6',
+                    primary_rays='inverse_float32_projection_view',
                     environment_resolution=environment_resolution, normalization=normalization, primitives=len(primitives),
                     covered=int(covered.sum()), primary_hits=int(len(lit)), mitsuba=mi.__version__, variant=mi.variant())
     Path(str(output) + '.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return Path(str(output) + '.npz')
+
+
+def engine_origins(metadata, data, project_error=False, policy='auto'):
+    if policy == 'auto':
+        policy = 'plane' if metadata.get('receiver_position') == 'raster_fp32' else 'depth'
+    position, normal = data[:, :, 8, :3], data[:, :, 10, :3]
+    if policy == 'truth-offset':
+        return position + normal * np.float32(4e-6) * (1 + np.abs(position).max(-1))[..., None]
+    # Reconstruct the two-adjacent-depth displacement with float32 shader arithmetic.
+    pv = np.array(metadata['projection_view_column_major'], np.float32).astype(np.float64).reshape(4, 4).T
+    inverse = np.linalg.inv(pv)
+    world_origin = (inverse[:3, 3]/inverse[3, 3]).astype(np.float32)
+    inverse[:3] -= world_origin[:, None]*inverse[3]
+    inverse = inverse.astype(np.float32)
+    height, width = position.shape[:2]
+    x, y = np.meshgrid((np.arange(width, dtype=np.float32)+.5)*2/width-1,
+                       (np.arange(height, dtype=np.float32)+.5)*2/height-1)
+    depth = data[:, :, 10, 3].copy()
+    adjacent = (depth.view(np.uint32)+2).view(np.float32)
+    shifted = np.stack((x, y, adjacent, np.ones_like(x)), -1) @ inverse.T
+    shifted = shifted[..., :3]/shifted[..., 3:4] + world_origin
+    delta = shifted-position
+    error = abs(np.sum(delta*normal, axis=-1)) if project_error else np.linalg.norm(delta, axis=-1)
+    if policy == 'plane':
+        error = np.zeros_like(error)
+    origin = (position + normal*(error+1e-6)[..., None]).astype(np.float32)
+    bits = origin.view(np.int32)
+    offset = (normal*32).astype(np.int32)
+    return (bits + np.where(origin < 0, -offset, offset)).view(np.float32)
 
 
 def depth_quantization_error(metadata, positions):
@@ -484,7 +551,16 @@ def depth_quantization_error(metadata, positions):
     return np.linalg.norm(moved - flat, axis=1).reshape(positions.shape[:-1])
 
 
-def compare(truth_path, capture, component=1, far=0.3):
+def receiver_agreement(truth, metadata, data):
+    engine = data[:, :, 8, :3]
+    covered = data[:, :, 8, 3] > 0
+    hit = truth['position'][..., 3] > 0
+    tolerance = 4 * depth_quantization_error(metadata, engine) + 1e-6 * (1 + np.abs(engine).max(-1))
+    agree = covered & hit & (np.linalg.norm(truth['position'][..., :3] - engine, axis=-1) <= tolerance)
+    return covered, hit, agree
+
+
+def compare(truth_path, capture, component=1, far=0.3, additional_regions=None):
     """Error of a capture's sky component against the ground truth, per region, normalized by the region mean.
 
     Pixels whose primary hit differs from the engine's receiver by more than four times the
@@ -498,14 +574,15 @@ def compare(truth_path, capture, component=1, far=0.3):
     eye = np.array(metadata['camera_position'])
     engine = data[:, :, 8, :3]
     distance = np.linalg.norm(engine - eye, axis=-1)
-    covered = data[:, :, 8, 3] > 0
-    hit = truth['position'][..., 3] > 0
-    tolerance = 4 * depth_quantization_error(metadata, engine) + 1e-6 * (1 + np.abs(engine).max(-1))
-    agree = covered & hit & (np.linalg.norm(truth['position'][..., :3] - engine, axis=-1) <= tolerance)
+    covered, hit, agree = receiver_agreement(truth, metadata, data)
     normal_agree = np.sum(truth['normal'] * data[:, :, 9, :3], axis=-1) >= .99
-    regions = {'all_receivers': agree, 'sponza_floor': agree & (data[:, :, 10, 1] > .99) & (data[:, :, 8, 1] < -.12)}
+    regions = {'all_receivers': agree, 'sponza_floor': agree & (data[:, :, 10, 1] > .99) & (data[:, :, 8, 1] < -.12),
+               'primary_mismatch_receivers': covered & hit & ~agree}
+    if additional_regions:
+        regions.update({name: agree & mask for name, mask in additional_regions.items()})
     expected, actual = truth['sky'], data[:, :, component, :3]
     report = dict(covered=int(covered.sum()), primary_mismatch=int((covered & ~agree).sum()),
+                  primary_missing=int((covered & ~hit).sum()),
                   shading_normal_mismatch=int((agree & ~normal_agree).sum()))
     # Half the difference of the two independent half estimates has the full estimate's variance.
     noise = (truth['halves'][0] - truth['halves'][1]) / 2
@@ -580,20 +657,78 @@ ANALYTIC = ('open_plane', 'forward_open_plane', 'closed_box', 'forward_closed_bo
 CONSISTENCY = ('narrow_slot', 'thin_pole', 'alpha_mask', 'mirrored_two_sided')
 
 
-def validate_fixtures(mi, folder, output, samples):
+def validate_alpha_continuation(mi):
+    """A transparent sheet must not teleport a ray past an opaque sheet 20 um behind it.
+    Test both primary and secondary traversal, independently of image-noise tolerances.
+    """
+    primitives = []
+    for index, z in enumerate((.1, .10002)):
+        positions = np.array([[-1, -1, z], [1, -1, z], [1, 1, z], [-1, 1, z]])
+        primitives.append(dict(positions=positions, faces=np.array([[0, 1, 2], [0, 2, 3]]),
+                               normals=None, uv=np.zeros((4, 2)), double_sided=True, masked=index == 0,
+                               cutoff=.5, alpha=0, vertex_alpha=np.ones(4), texture=None))
+    scene, dr, _ = build_scene(mi, primitives, None, Environment(constant=(0, 0, 0)), 16)
+    directions = np.array([[0., 0., 1.]])
+    valid, points, _, _, _ = primary_hits(mi, dr, scene, [0., 0., 0.], directions)
+    assert valid.all() and np.allclose(points[:, 2], .10002, atol=1e-7)
+    origin = dr.zeros(mi.SurfaceInteraction3f, 1)
+    origin.p, origin.n = mi.Point3f(0), mi.Normal3f(0, 0, 1)
+    assert not dr.any(visible(mi, dr, scene, origin, mi.Vector3f(0, 0, 1), mi.Bool(True)))
+    return dict(passed=True, opaque_distance=float(points[0, 2]))
+
+
+def validate_shadow_edge(mi, path):
+    """Closed-form box shadow for the bright-edge fixture, independent of its triangles."""
+    primitives, alpha, _ = load_gltf_primitives(path)
+    scene, dr, _ = build_scene(mi, primitives, alpha, Environment(constant=(0, 0, 0)), 16)
+    floor, wall = primitives[0]['positions'], primitives[1]['positions']
+    lo, hi = wall.min(0), wall.max(0)
+    count = 513
+    x = np.linspace(floor[:, 0].min(), floor[:, 0].max(), count, dtype=np.float32)
+    y = float(floor[:, 1].min())
+    interaction = dr.zeros(mi.SurfaceInteraction3f, count)
+    interaction.p, interaction.n = mi.Point3f(mi.Float(x), y, 0), mi.Normal3f(0, 1, 0)
+    direction = np.array([.6, .8, 0], np.float32)
+    actual = np.array(visible(mi, dr, scene, interaction, mi.Vector3f(*direction.tolist()), mi.Bool(True)))
+    offset_y = y + 4e-6 * (1 + np.maximum(abs(x), abs(y)))
+    entry = np.maximum((lo[0]-x)/direction[0], 0)
+    leave = np.minimum((hi[0]-x)/direction[0], (hi[1]-offset_y)/direction[1])
+    expected = leave <= entry
+    return dict(rays=count, different=int(np.sum(actual != expected)),
+                shadow_edge_x=float(lo[0]-(hi[1]-y)*direction[0]/direction[1]))
+
+
+def validate_fixtures(mi, folder, output, samples, fixture_set='base'):
     """Gate: the ground truth must reproduce the analytic fixtures before it is used (plan P0)."""
     from validate_hybrid_gi import environment_integral
-    results, failures = {}, []
-    for name in ANALYTIC + CONSISTENCY:
+    from hybrid_gi_fixtures import ALPHA_MATRIX, BRIGHT_EDGES
+    names = {'base': ANALYTIC + CONSISTENCY, 'materials': ALPHA_MATRIX,
+             'normals': ('normal_map_plane',), 'edges': BRIGHT_EDGES}[fixture_set]
+    missing = [name for name in names if not Path(str(folder / name) + '.lighting.json').exists()]
+    if missing:
+        raise RuntimeError(f'Incomplete ground-truth fixture gate: missing {", ".join(missing)}')
+    results, failures = {'alpha_continuation': validate_alpha_continuation(mi)}, []
+    for name in names:
         capture = folder / name
-        if not Path(str(capture) + '.lighting.json').exists():
-            continue
-        truth = np.load(render_capture(mi, capture, output / name, folder / 'fixtures' / (name + '.gltf'), samples))
+        truth = np.load(render_capture(mi, capture, output / name, folder / 'fixtures' / (name + '.gltf'), samples,
+                                      engine_normals=fixture_set == 'normals'))
         metadata, data = load_capture(capture)
         mask = (data[:, :, 8, 3] > 0) & (truth['position'][..., 3] > 0)
         sky = truth['sky'][mask]
         entry = dict(pixels=int(mask.sum()), mean=sky.mean(0).tolist(), max=float(sky.max()))
-        if name in ('open_plane', 'forward_open_plane'):
+        if fixture_set == 'edges':
+            entry['analytic_shadow'] = validate_shadow_edge(mi, folder / 'fixtures' / (name + '.gltf'))
+            entry['engine'] = compare(Path(str(output / name) + '.npz'), capture)
+            a = entry['engine']['all_receivers']
+            entry['engine_passed'] = abs(a['bias']) <= .01 and a['excess_rms'] <= .03 and a['blocks']['excess_rms'] <= .03
+            ok = entry['analytic_shadow']['different'] == 0
+        elif name == 'normal_map_plane':
+            expected = (1 + np.sum(data[:, :, 9, :3][mask]*data[:, :, 10, :3][mask], axis=-1))/2
+            entry['expected'] = float(expected.mean())
+            entry['error'] = float(abs(sky.mean() - expected.mean()))
+            entry['engine'] = compare(Path(str(output / name) + '.npz'), capture)
+            ok = entry['error'] <= .005 and abs(entry['engine']['all_receivers']['bias']) <= .02
+        elif name in ('open_plane', 'forward_open_plane'):
             entry['error'] = float(abs(sky.mean() - 1))
             ok = entry['error'] <= .005
         elif name in ('closed_box', 'forward_closed_box', 'single_sided_closed_box', 'black_environment_plane'):
@@ -607,6 +742,8 @@ def validate_fixtures(mi, folder, output, samples):
             # No closed form: the engine's shipping capture must agree within its bias limit.
             entry['engine'] = compare(Path(str(output / name) + '.npz'), capture)
             ok = abs(entry['engine']['all_receivers']['bias']) <= .02
+            if fixture_set == 'materials':
+                ok = ok and entry['engine']['primary_mismatch']/max(entry['engine']['covered'],1) <= .005
         entry['passed'] = bool(ok)
         results[name] = entry
         failures += [] if ok else [name]
@@ -629,10 +766,13 @@ def main():
     parser.add_argument('--compare', type=Path, nargs='*', default=[],
                         help='Captures of the same view to compare (sky component 1); defaults to the input capture')
     parser.add_argument('--fixtures', type=Path, help='validate_hybrid_gi.py output folder: validate against analytic fixtures')
+    parser.add_argument('--fixture-set', choices=('base', 'materials', 'normals', 'edges'), default='base')
     parser.add_argument('--compare-only', action='store_true', help='Reuse <output>.npz instead of rendering')
     parser.add_argument('--cross-check', type=int, default=256, help='Receivers for the Embree visibility cross-check (0 disables)')
     parser.add_argument('--receivers', choices=('exact', 'engine'), default='exact',
                         help='Shade exact primary hits (ground truth) or the engine receivers (diagnostic)')
+    parser.add_argument('--shading-normals', choices=('vertex', 'engine'), default='vertex',
+                        help='Use captured shading normals to check normal mapping with independent geometry and visibility')
     parser.add_argument('--backend', choices=('auto', 'cuda', 'llvm'), default='auto',
                         help='Mitsuba backend: CUDA when an NVIDIA GPU is available (auto), else the CPU LLVM backend')
     args = parser.parse_args()
@@ -642,11 +782,11 @@ def main():
         mi = setup_mitsuba(args.backend)
         if args.fixtures:
             args.output.mkdir(parents=True, exist_ok=True)
-            validate_fixtures(mi, args.fixtures, args.output, args.samples)
+            validate_fixtures(mi, args.fixtures, args.output, args.samples, args.fixture_set)
             return
         assert args.capture, 'A capture prefix is required unless --fixtures is given'
         truth = render_capture(mi, args.capture, args.output, args.scene, args.samples, args.batch, args.seed,
-                               args.environment_resolution, args.receivers == 'engine')
+                               args.environment_resolution, args.receivers == 'engine', args.shading_normals == 'engine')
     reports = {}
     for index, capture in enumerate(args.compare or [args.capture]):
         reports[str(capture)] = compare(truth, capture)

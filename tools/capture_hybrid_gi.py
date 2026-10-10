@@ -48,6 +48,12 @@ def main():
     parser.add_argument('--rt', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--strip-normal-maps', action='store_true',
                         help='Remove normal textures from the captured scene copy, for ground-truth comparisons with vertex normals')
+    parser.add_argument('--provider-switching', action='store_true',
+                        help='Also capture hardware/voxel/hardware at frames 1 and 32 under <output>-switch')
+    parser.add_argument('--origin-stress', action='store_true',
+                        help='Also translate scene and camera by 0, 100 and 10000 normalized X units; capture each after 64 frames')
+    parser.add_argument('--stability', action='store_true',
+                        help='Capture camera motion/cut, vertex deformation and alpha edits at frames 1/4/8/32 and fresh 1024-sample references')
     args = parser.parse_args()
     assert args.frames >= 2
     assert args.as_budget_mb >= 0
@@ -100,6 +106,12 @@ def main():
                f'--capture={prefix}.ppm', f'--capture-lighting={prefix}', f'--profile={prefix}']
     if not args.rt:
         command.append('--disable-rt')
+    if args.provider_switching:
+        command.append(f'--capture-provider-switching={prefix}-switch')
+    if args.origin_stress:
+        command.append(f'--capture-origin-stress={prefix}-origin')
+    if args.stability:
+        command.append(f'--capture-stability={prefix}-stability')
     try:
         config.write_bytes(changed)
         with Path(str(prefix) + '.log').open('w') as log:

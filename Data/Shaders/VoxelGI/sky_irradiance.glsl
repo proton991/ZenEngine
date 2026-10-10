@@ -19,8 +19,10 @@ void main()
     ivec3 p=ivec3(gl_GlobalInvocationID);
     if(any(greaterThanEqual(p,imageSize(skyIrradiance)))) return;
     vec3 irradiance=vec3(0);
+    float receiverKind=0.0;
     if(texelFetch(voxelAlbedo,p,0).a>0.5 && sceneUbo.environment.z>0 && gi.lighting.y>0)
     {
+        receiverKind=2.0; // Evaluated voxel-center fallback; 1 denotes a valid owner surface.
         vec3 normal=normalize(texelFetch(voxelNormal,p,0).rgb*2.0-1.0);
         vec3 position=gi.gridMinVoxelSize.xyz+(vec3(p)+0.5)*gi.gridMinVoxelSize.w;
         // Averaged reflectance uses the deterministic owner as its representative surface.
@@ -32,6 +34,7 @@ void main()
             vec3 face=cross(pb-pa,pc-pa);
             if(dot(face,face)>1e-20)
             {
+                receiverKind=1.0;
                 vec3 reference=mat3(nodesData[triangles[owner].y].normalMatrix)*a.normal.xyz;
                 normal=normalize(face);
                 if(dot(normal,reference)<0.0) normal=-normal;
@@ -55,5 +58,5 @@ void main()
         }
         irradiance*=3.14159265359*sceneUbo.environment.x;
     }
-    imageStore(skyIrradiance,p,vec4(ClampHDRStorage(irradiance),0));
+    imageStore(skyIrradiance,p,vec4(ClampHDRStorage(irradiance),receiverKind));
 }

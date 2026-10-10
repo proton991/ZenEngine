@@ -10,12 +10,18 @@ def load(prefix):
     return m,np.fromfile(str(prefix)+'.hybrid.bin','<f4').reshape(m['height'],m['width'],13,4)
 
 
-def compare(candidate,reference):
+def compare(candidate,reference,additional_regions=None):
     cm,c=load(candidate);rm,r=load(reference)
     assert cm['projection_view_column_major']==rm['projection_view_column_major']
     assert cm['voxel_resolution']==rm['voxel_resolution']
+    return compare_data(c,r,rm,additional_regions)
+
+
+def compare_data(c,r,rm,additional_regions=None):
     valid=r[:,:,8,3]>0
     regions={'all_receivers':valid,'sponza_floor':valid&(r[:,:,10,1]>.99)&(r[:,:,8,1]<-.12)}
+    if additional_regions:
+        regions.update({name: valid & mask for name,mask in additional_regions.items()})
     report={}
     for name,mask in regions.items():
         if not mask.any():continue

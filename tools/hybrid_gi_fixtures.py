@@ -1,10 +1,15 @@
 """Generate the P0 geometry/camera fixtures; binary assets stay in the requested directory."""
 import argparse
+import base64
 import copy
 import json
 import math
 from pathlib import Path
-from voxelization_fixtures import Fixture
+from voxelization_fixtures import Fixture, rgba_png
+
+ALPHA_MATRIX = ('alpha_uv1', 'alpha_transform', 'alpha_vertex', 'alpha_specgloss',
+                'alpha_repeat', 'alpha_clamp', 'alpha_mirror')
+BRIGHT_EDGES = ('bright_edge_near', 'bright_edge_middle', 'bright_edge_far')
 
 
 def quad(a,b,c,d):
@@ -28,7 +33,7 @@ def generate(folder):
     names=['open_plane','closed_box','half_wall','narrow_slot','thin_pole','alpha_mask','mirrored_two_sided',
            'outside_volume','point_light_room','thin_wall_light','glossy_floor','moving_occluder_light',
            'forward_open_plane','forward_closed_box','single_sided_closed_box','bright_environment_plane',
-           'rotated_environment_plane','black_environment_plane']
+           'rotated_environment_plane','black_environment_plane','normal_map_plane'] + list(ALPHA_MATRIX) + list(BRIGHT_EDGES)
     manifest={}
     for name in names:
         f=Fixture()
@@ -39,6 +44,14 @@ def generate(folder):
         if name == 'rotated_environment_plane':
             angle = math.radians(25)
             f.document['nodes'][0]['rotation'] = [0, 0, math.sin(angle/2), math.cos(angle/2)]
+        if name == 'normal_map_plane':
+            f.document['images'] = [dict(uri='data:image/png;base64,'+base64.b64encode(
+                rgba_png(2,2,[[218,128,218,255]]*4)).decode())]
+            f.document['textures'] = [dict(source=0)]
+            f.document['materials'][0]['normalTexture'] = dict(index=0)
+            attributes = f.document['meshes'][0]['primitives'][0]['attributes']
+            attributes['TEXCOORD_0'] = f.attribute([[0,0],[0,1],[1,1],[0,0],[1,1],[1,0]], 'VEC2')
+            attributes['TANGENT'] = f.attribute([[1,0,0,-1]]*6, 'VEC4')
         if name=='single_sided_closed_box':
             # box() winds opposite faces alike, so half the walls and the ceiling face
             # outward: receivers inside see their back faces, which must still block.
@@ -51,11 +64,39 @@ def generate(folder):
             f.mesh(box([-2,1,-2],[-.1,1.0625,2])+box([.1,1,-2],[2,1.0625,2]))
         elif name=='thin_pole':
             f.mesh(box([-.02,1,-1],[.02,1.04,1]))
+        elif name in BRIGHT_EDGES:
+            f.mesh(box([-.05,0,-2],[.05,1,2]))
         elif name=='alpha_mask':
             material=copy.deepcopy(f.document['materials'][0]);material.update(alphaMode='MASK',alphaCutoff=.5)
             f.document['materials'].append(material)
             f.mesh(quad([-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]),material=1,
                    colors=[[1,1,1,0],[1,1,1,1],[1,1,1,1],[1,1,1,0],[1,1,1,1],[1,1,1,0]])
+        elif name in ALPHA_MATRIX:
+            texture = dict(index=0, texCoord=1 if name in ('alpha_uv1', 'alpha_specgloss') else 0)
+            if name == 'alpha_transform':
+                texture['extensions'] = {'KHR_texture_transform': dict(texCoord=1, offset=[.17,.31], scale=[1.4,.7], rotation=.63)}
+                f.document['extensionsUsed'] = ['KHR_texture_transform']
+            material = copy.deepcopy(f.document['materials'][0])
+            material.update(alphaMode='MASK', alphaCutoff=.43)
+            material['pbrMetallicRoughness'].update(baseColorTexture=texture, baseColorFactor=[.5,.5,.5,.8])
+            if name == 'alpha_specgloss':
+                material['extensions'] = {'KHR_materials_pbrSpecularGlossiness': dict(
+                    diffuseTexture=texture, diffuseFactor=[.5,.5,.5,.8], specularFactor=[0,0,0], glossinessFactor=.5)}
+                material['pbrMetallicRoughness'].pop('baseColorTexture')
+                material['pbrMetallicRoughness']['baseColorFactor'][3] = .1
+                f.document['extensionsUsed'] = ['KHR_materials_pbrSpecularGlossiness']
+            f.document['materials'].append(material)
+            pixels = [[255,255,255,255 if (x//2+y//2)%2 else 0] for y in range(8) for x in range(8)]
+            f.document['images'] = [dict(uri='data:image/png;base64,'+base64.b64encode(rgba_png(8,8,pixels)).decode())]
+            wrap = {'alpha_clamp':33071, 'alpha_mirror':33648}.get(name,10497)
+            f.document['samplers'] = [dict(wrapS=wrap, wrapT=wrap, minFilter=9729, magFilter=9729)]
+            f.document['textures'] = [dict(source=0,sampler=0)]
+            order = (0,1,2,0,2,3)
+            corners = [(-.4,-.3),(1.7,-.3),(1.7,1.6),(-.4,1.6)]
+            uv0 = [corners[i] for i in order]
+            uv1 = [(v*.8+.11,u*1.2-.19) for u,v in uv0]
+            colors = [[1,1,1,([.2,1,.8,.4][i] if name=='alpha_vertex' else 1)] for i in order]
+            f.mesh(quad([-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]),material=1,uv0=uv0,uv1=uv1,colors=colors)
         elif name=='mirrored_two_sided':
             f.mesh(box([-.2,.5,-.2],[.2,1,.2]),transform=dict(scale=[-1,1,1]))
         elif name=='outside_volume':
@@ -86,6 +127,11 @@ def generate(folder):
         angle=math.radians(-35)
         camera=dict(camera=0,translation=[0,1.4,1.8],rotation=[math.sin(angle/2),0,0,math.cos(angle/2)])
         f.document['cameras']=[dict(type='perspective',perspective=dict(yfov=math.radians(60),znear=.001,zfar=20))]
+        if name in BRIGHT_EDGES:
+            distance = dict(zip(BRIGHT_EDGES, (3, 10, 30)))[name]
+            angle = -math.atan2(1.4, distance)
+            camera.update(translation=[0,1.4,distance], rotation=[math.sin(angle/2),0,0,math.cos(angle/2)])
+            f.document['cameras'][0]['perspective'].update(yfov=2*math.atan2(2,distance), zfar=100)
         f.document['scenes'][0]['nodes'].append(len(f.document['nodes']))
         f.document['nodes'].append(camera)
         path=f.save(folder,name)

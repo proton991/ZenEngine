@@ -6,6 +6,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"},
           {"HybridFilterSP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridBiasSP", "VoxelGI/hybrid_bias.comp.spv"},
           {"VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv"},
           {"VoxelFilterRadianceSP", "VoxelGI/filter_radiance.comp.spv"},
           {"VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv"},

@@ -47,19 +47,25 @@ public:
     bool RequestRuntimeModel(const std::string& path) override;
 #endif
 
-    bool Run(uint32_t frameLimit               = 0,
-             bool smokeTest                    = false,
-             uint32_t initialMode              = 1,
-             const std::string& frameTimesPath = {},
-             bool fixedStep                    = false,
-             uint32_t giStartFrame             = 0,
-             bool motionFixture                = false,
-             bool profileWarmup                = false,
-             uint32_t backgroundTestSeconds    = 0);
+    bool Run(uint32_t           frameLimit            = 0,
+             bool               smokeTest             = false,
+             uint32_t           initialMode           = 1,
+             const std::string& frameTimesPath        = {},
+             bool               fixedStep             = false,
+             uint32_t           giStartFrame          = 0,
+             bool               motionFixture         = false,
+             bool               profileWarmup         = false,
+             uint32_t           backgroundTestSeconds = 0);
 
     bool CaptureFrame(const std::string& path);
 
     bool CaptureLighting(const std::string& path);
+
+    bool CaptureProviderSwitching(const std::string& path);
+
+    bool CaptureOriginStress(const std::string& path);
+
+    bool CaptureStability(const std::string& path);
 
     bool CaptureVoxelVolume(const std::string& path);
 

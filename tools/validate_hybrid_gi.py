@@ -34,7 +34,7 @@ def environment_integral(prefix, metadata, normal):
     return np.sum(cube[...,:3]*weight[...,None],axis=(0,1,2))
 
 
-def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0):
+def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0):
     fixtures=folder/'fixtures'
     generate(fixtures)
     config=ROOT/'Data/engine.cfg'
@@ -49,11 +49,12 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                           environment_lighting='true',environment_intensity=1,skybox_visible='false',
                           scene_lighting_override='true',light_count=0,voxel_resolution=64,voxel_gi_indirect_intensity=indirect,
                           voxel_gi_shadow_enabled='false',voxel_gi_ray_provider=provider,voxel_gi_samples=samples,
+                          voxel_gi_reference_samples=reference_samples,
                           voxel_gi_temporal='true',voxel_gi_filter='true',voxel_gi_specular_occlusion='true',
                           async_compute='auto')
             settings.update({'dynamic_light.enabled':'false','light_markers.enabled':'false'})
             settings['environment_rotation_degrees'] = 0
-            if name in ('bright_environment_plane','rotated_environment_plane','black_environment_plane'):
+            if name in ('bright_environment_plane','rotated_environment_plane','black_environment_plane') or name.startswith('bright_edge_'):
                 settings['environment_texture'] = (fixtures/('black.hdr' if name=='black_environment_plane' else 'bright.hdr')).as_posix()
                 settings['environment_rotation_degrees'] = 73 if name=='rotated_environment_plane' else 0
             if name in ('point_light_room','thin_wall_light','glossy_floor','moving_occluder_light'):
@@ -66,6 +67,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             command=[str(exe),'--no-ui','--fixed-step',f'--frames={frames-1}',
                      '--mode=3','--width=320','--height=180',f'--capture-lighting={prefix}',f'--profile={prefix}']
             if not rt: command.append('--disable-rt')
+            if gpu: command.append('--gpu='+gpu)
             with prefix.with_suffix('.log').open('w') as log:
                 result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,timeout=180)
             log=prefix.with_suffix('.log').read_text(errors='replace')
@@ -103,6 +105,9 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             if name in ('open_plane','forward_open_plane'):
                 assert abs(sky.mean()-1) <= .005,report
                 assert np.min(capture[:,:,10,1][mask]) > .9999
+                # No normal map: shading uses the vertex normal. The 8-bit default normal texel
+                # once tilted it by 0.0039 in x and z (0.32 degrees); G-buffer encoding error is ~1e-5.
+                assert np.abs(capture[:,:,9,[0,2]][mask]).max() < 1e-4,('shading normal tilted',float(np.abs(capture[:,:,9,[0,2]][mask]).max()))
                 # Below-horizon lobe directions are outside the specular integral, so S stays at 1.
                 assert abs(specular.mean()-1) <= .005,report
             if name in ('closed_box','forward_closed_box','single_sided_closed_box'):
@@ -128,7 +133,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
     return results
 
 
-def sky_cache_check(exe,folder,frames=64,allow_present_baseline=False):
+def sky_cache_check(exe,folder,frames=64,allow_present_baseline=False,gpu=None):
     """Compare the hardware voxel sky cache with the voxel-provider cache through cone bounce.
 
     The sky cache only reaches the image through injected radiance, so floor receivers
@@ -137,7 +142,7 @@ def sky_cache_check(exe,folder,frames=64,allow_present_baseline=False):
     darker, so the accepted ratio is asymmetric."""
     bounce={}
     for provider in ('voxel','hardware'):
-        run(exe,folder/provider,['half_wall'],frames,provider,allow_present_baseline,provider=='hardware',indirect=1)
+        run(exe,folder/provider,['half_wall'],frames,provider,allow_present_baseline,provider=='hardware',indirect=1,gpu=gpu)
         prefix=folder/provider/'half_wall'
         metadata=json.loads(Path(str(prefix)+'.lighting.json').read_text())
         capture=np.fromfile(str(prefix)+'.hybrid.bin','<f4').reshape(metadata['height'],metadata['width'],13,4)
@@ -161,11 +166,13 @@ if __name__=='__main__':
     parser.add_argument('--samples',type=int,choices=(1,2,4),default=4)
     parser.add_argument('--provider',choices=['voxel','legacy','hardware','auto'],default='voxel')
     parser.add_argument('--rt',action='store_true')
+    parser.add_argument('--gpu',help='Device name substring passed to the native demo')
+    parser.add_argument('--reference-samples',type=int,choices=(0,1024,4096),default=0)
     parser.add_argument('--sky-cache-check',action='store_true',help='Compare hardware and voxel sky caches through half-wall bounce (needs RT)')
     parser.add_argument('--allow-present-baseline',action='store_true',help='Report the separately reproduced legacy presentation hazard without blocking image checks')
     args=parser.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
     if args.sky_cache_check:
-        sky_cache_check(args.exe.resolve(),args.output.resolve(),args.frames,args.allow_present_baseline)
+        sky_cache_check(args.exe.resolve(),args.output.resolve(),args.frames,args.allow_present_baseline,args.gpu)
     else:
-        run(args.exe.resolve(),args.output.resolve(),args.fixtures,args.frames,args.provider,args.allow_present_baseline,args.rt,args.samples)
+        run(args.exe.resolve(),args.output.resolve(),args.fixtures,args.frames,args.provider,args.allow_present_baseline,args.rt,args.samples,gpu=args.gpu,reference_samples=args.reference_samples)

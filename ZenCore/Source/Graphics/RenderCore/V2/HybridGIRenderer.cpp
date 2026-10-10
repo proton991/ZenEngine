@@ -122,6 +122,7 @@ void HybridGIRenderer::BindGuides(RDGPassDescBase& pass) const
     pass.BindSampledTexture("receiverRoughness", m_sampler, "offscreen_roughness");
     pass.BindSampledTexture("receiverSurface", m_sampler, "offscreen_receiver");
     pass.BindSampledTexture("receiverMotion", m_sampler, "offscreen_motion");
+    pass.BindSampledTexture("receiverPosition", m_sampler, "offscreen_position");
 }
 
 void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
@@ -175,8 +176,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
         m_uniforms.provider = glm::uvec4(m_previousHardware ? 1u : 0u, 0, 0, 0);
         m_uniforms.rejection          = Vec4(0.001f, settings.specularOcclusion ? 1.0f : 0.0f,
-                                    settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
-                                    settings.referenceSamples != 0 ? 1.0f : 0.0f);
+                                             settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
+                                             settings.referenceSamples != 0 ? 1.0f : 0.0f);
         RenderGraph*        graph     = m_device->GetCurrentFrameRDG();
         RDGResourceManager* resources = graph->GetResourceManager();
         RDGTextureDesc      desc;
@@ -267,6 +268,34 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 encoder.SetPushConstants(1u << iteration);
                 encoder.Dispatch(groups.x, groups.y, 1);
             });
+        }
+        if (iterations != 0 && m_previousHardware)
+        {
+            const RDGTexture filtered   = m_outputSky;
+            RDGTexture       correction = filtered;
+            for (uint32_t stage = 0; stage < 7; ++stage)
+            {
+                desc.name                 = NameID(fmt::format("hybrid_bias_{}", stage));
+                desc.texFormat.format     = DataFormat::eR32G32B32A32SFloat;
+                const RDGTexture   output = resources->CreateTexture(desc);
+                RDGComputePassDesc bias;
+                bias.SetShaderProgramName("HybridBiasSP");
+                bias.SetPassTag(NameID(fmt::format("HybridBias{}", stage)));
+                BindGuides(bias);
+                bias.BindSampledTexture("temporalSky", m_sampler, m_history[m_current][Sky]->GetDefaultView());
+                bias.BindSampledTexture("filteredSky", m_sampler, filtered);
+                bias.BindSampledTexture("skyGuide", m_sampler, skyGuide);
+                bias.BindSampledTexture("inputCorrection", m_sampler, correction);
+                bias.BindStorageImage("outputSky", output, RDGContentGuarantee::eFullWrite);
+                const glm::uvec2 groups = (m_extent + glm::uvec2(7)) / 8u;
+                const uint32_t   step   = stage == 0 ? 0u : 1u << (stage - 1);
+                graph->AddComputePass(std::move(bias)).RecordPassCommands([groups, step](RDGPassCmdEncoder& encoder) {
+                    encoder.SetPushConstants(step);
+                    encoder.Dispatch(groups.x, groups.y, 1);
+                });
+                correction = output;
+            }
+            m_outputSky = correction;
         }
         if (m_captureOutput != nullptr && m_captureReadback != nullptr)
         {

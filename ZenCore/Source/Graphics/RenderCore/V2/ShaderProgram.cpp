@@ -265,6 +265,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv",
                                          volumeConstants));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureHybridEnvironmentSP", "VoxelGI/capture_environment.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureSkyCacheSP", "VoxelGI/capture_sky_cache.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridCaptureSP", "VoxelGI/hybrid_capture.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"));
@@ -277,6 +278,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     }
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridFilterSP", "VoxelGI/hybrid_filter.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridBiasSP", "VoxelGI/hybrid_bias.comp.spv"));
 
 
     if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)

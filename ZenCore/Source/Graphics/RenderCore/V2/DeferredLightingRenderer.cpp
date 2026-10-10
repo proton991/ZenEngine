@@ -144,7 +144,7 @@ void DeferredLightingRenderer::Init()
     float markerSize                     = 0.02f;
 
     const bool valid                     = config.ReadBool("light_markers.enabled", markersEnabled)
-                    && config.ReadNumber("light_markers.size", markerSize) && std::isfinite(markerSize) && markerSize > 0.0f;
+                                        && config.ReadNumber("light_markers.size", markerSize) && std::isfinite(markerSize) && markerSize > 0.0f;
 
     SetLightMarkers(valid && markersEnabled, valid ? markerSize : 0.02f);
 
@@ -228,9 +228,9 @@ bool DeferredLightingRenderer::BuildLightingCaptureClear(const RenderView& view)
     const RHIGPUInfo& gpu = m_pRenderDevice->GetGPUInfo();
 
     bool valid            = pixels != 0 && gpu.supportFragmentStoresAndAtomics
-              && ValidateGIStorageBuffer(pixels, ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL, gpu, bytes) == GIResourceStatus::eSuccess
-              && m_captureOutput != nullptr && m_captureReadback != nullptr && m_captureOutput->GetRequiredSize() == bytes
-              && m_captureReadback->GetRequiredSize() == bytes;
+                         && ValidateGIStorageBuffer(pixels, ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL, gpu, bytes) == GIResourceStatus::eSuccess
+                         && m_captureOutput != nullptr && m_captureReadback != nullptr && m_captureOutput->GetRequiredSize() == bytes
+                         && m_captureReadback->GetRequiredSize() == bytes;
 
     HeapVector<ComputeDispatchChunk> chunks;
 
@@ -334,7 +334,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
 
         pso.multiSampleState            = {};
 
-        pso.colorBlendState.AddAttachments(hybrid ? 6 : 4);
+        pso.colorBlendState.AddAttachments(hybrid ? 7 : 4);
 
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
@@ -354,6 +354,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
         {
             offscreen.AddColorOutput(DataFormat::eR32G32UInt, width, height, "offscreen_receiver");
             offscreen.AddColorOutput(DataFormat::eR32G32B32A32SFloat, width, height, "offscreen_motion");
+            offscreen.AddColorOutput(DataFormat::eR32G32B32A32SFloat, width, height, "offscreen_position");
             m_hybrid->BindReceiverInputs(offscreen);
         }
 
@@ -630,7 +631,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
     const glm::uvec2 captureExtent = capture ? glm::uvec2(width, height) : glm::uvec2(0);
 
 
-    bool displayTransparency      = false;
+    bool displayTransparency       = false;
 
     for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
     {
