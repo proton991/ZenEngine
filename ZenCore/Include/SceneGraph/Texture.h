@@ -60,13 +60,18 @@ public:
     std::vector<uint8_t> bytesData;
     // Authored image levels, including level zero; empty means generate from bytesData.
     HeapVector<HeapVector<uint8_t>> mipBytes;
+    // The scene's stand-in for a missing normal map. Eight bits cannot store a flat
+    // normal exactly (127/255 decodes to -0.0039, tilting it 0.32 degrees), so
+    // materials bound to it publish no normal map and shade with the vertex normal.
+    bool flatNormal{false};
 };
 
 inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
     bool equal = lhs.index == rhs.index && lhs.linearSourceIndex == rhs.linearSourceIndex
               && lhs.samplerIndex == rhs.samplerIndex && lhs.width == rhs.width && lhs.height == rhs.height
-              && lhs.format == rhs.format && lhs.bytesData == rhs.bytesData && lhs.mipBytes.size() == rhs.mipBytes.size();
+              && lhs.format == rhs.format && lhs.bytesData == rhs.bytesData && lhs.mipBytes.size() == rhs.mipBytes.size()
+              && lhs.flatNormal == rhs.flatNormal;
 
     for (size_t level = 0; equal && level < lhs.mipBytes.size(); ++level)
     {

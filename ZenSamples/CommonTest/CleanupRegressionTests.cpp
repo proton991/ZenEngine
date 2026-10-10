@@ -783,4 +783,10 @@ TEST(FastGLTFLoaderRegression, SeparatesLinearAndColorUsesOfSharedImagesAndTextu
     EXPECT_EQ(materials.back()->m_pBaseColorTexture, scene.GetDefaultTextures().pBaseColor);
 
     EXPECT_EQ(materials.back()->data.bcTexIndex, scene.GetDefaultTextures().pBaseColor->index);
+
+    // The 8-bit stand-in cannot encode a flat normal; without an authored map the material
+    // publishes none, so shading keeps the vertex normal instead of tilting it 0.32 degrees.
+    EXPECT_EQ(materials.back()->m_pNormalTexture, scene.GetDefaultTextures().pNormal);
+
+    EXPECT_EQ(materials.back()->data.normalTexIndex, -1);
 }

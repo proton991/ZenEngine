@@ -171,11 +171,13 @@ void Scene::LoadDefaultTextures(uint32_t startIndex)
     m_defaultTextures.pMetallicRoughness =
         CreateDefaultTexture("DefaultMetallicRoughness", startIndex + 1, {255, 255, 255, 255});
 
-    m_defaultTextures.pNormal    = CreateDefaultTexture("DefaultNormal", startIndex + 2, {127, 127, 255, 255});
+    m_defaultTextures.pNormal             = CreateDefaultTexture("DefaultNormal", startIndex + 2, {127, 127, 255, 255});
 
-    m_defaultTextures.pEmissive  = CreateDefaultTexture("DefaultEmissive", startIndex + 3, {255, 255, 255, 255});
+    m_defaultTextures.pNormal->flatNormal = true;
 
-    m_defaultTextures.pOcclusion = CreateDefaultTexture("DefaultOcclusion", startIndex + 4, {255, 0, 0, 255});
+    m_defaultTextures.pEmissive           = CreateDefaultTexture("DefaultEmissive", startIndex + 3, {255, 255, 255, 255});
+
+    m_defaultTextures.pOcclusion          = CreateDefaultTexture("DefaultOcclusion", startIndex + 4, {255, 0, 0, 255});
 }
 
 Scene::DefaultTextures Scene::GetDefaultTextures() const

@@ -81,7 +81,7 @@ public:
 
         data.bcTexIndex         = static_cast<int>(m_pBaseColorTexture->index);
         data.mrTexIndex         = static_cast<int>(m_pMetallicRoughnessTexture->index);
-        data.normalTexIndex     = static_cast<int>(m_pNormalTexture->index);
+        data.normalTexIndex     = m_pNormalTexture->flatNormal ? -1 : static_cast<int>(m_pNormalTexture->index);
         data.occlusionTexIndex  = static_cast<int>(m_pOcclusionTexture->index);
         data.emissiveTexIndex   = static_cast<int>(m_pEmissiveTexture->index);
 
