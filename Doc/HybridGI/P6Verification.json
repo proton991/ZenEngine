@@ -1,0 +1,527 @@
+{
+ "date": "2026-10-10",
+ "device": "NVIDIA GeForce RTX 5080",
+ "build": "MSVC Debug",
+ "gate": "tools/validate_hybrid_reflections.py",
+ "configuration": "128^3 fixtures at 960x540, one specular ray per shipping pixel, 64 frames; references 64x1024 samples; cells are bias, RMS and P99 relative to the reference mean, and unexpected zeros",
+ "tests": {
+  "RenderCoreTest": 576,
+  "ConeVoxelGIIntegrationTest": 20,
+  "CommonTest": 112,
+  "RayQueryIntegrationTest": 12
+ },
+ "default": "voxel_gi_reflections=auto: on with the hardware provider, occlusion only on the compute tier until P8",
+ "review_changes": [
+  "Independent S/hit-fraction and reflected-emission checks moved from Embree CPU spot checks to the CUDA lobe reference",
+  "Light-change and continuous-motion limits extended to C on the glossy floor before measurement",
+  "One-ray reflections skip the neighbourhood clamp after cache changes (it emptied valid dim history)",
+  "Reflections default to auto like the P5 bounce source"
+ ],
+ "providers": {
+  "hardware": {
+   "passed": true,
+   "lobe_reference": {
+    "tool": "tools/ground_truth_specular.py",
+    "variant": "cuda_ad_rgb",
+    "receivers": 93088,
+    "samples_per_receiver": 65536,
+    "S_maximum_absolute": 0.0149,
+    "S_mean_absolute": 0.00206,
+    "S_mean_signed": -0.00202,
+    "passed": true
+   },
+   "reflected_emission": {
+    "receivers": 80494,
+    "bias": -0.01433,
+    "rms": 0.37197,
+    "limit": "none frozen; reported per cause"
+   },
+   "static": {
+    "glossy_floor": {
+     "all_receivers": {
+      "bias": 0.0005,
+      "rms": 0.01898,
+      "p99": 0.08409,
+      "zeros": 0,
+      "passed": true
+     },
+     "sponza_floor": {
+      "bias": -0.00205,
+      "rms": 0.02478,
+      "p99": 0.11831,
+      "zeros": 0,
+      "passed": true
+     }
+    },
+    "glossy_smooth": {
+     "all_receivers": {
+      "bias": 0.00227,
+      "rms": 0.04359,
+      "p99": 0.17602,
+      "zeros": 0,
+      "passed": true
+     },
+     "sponza_floor": {
+      "bias": 0.00131,
+      "rms": 0.07352,
+      "p99": 0.31166,
+      "zeros": 0,
+      "passed": false
+     }
+    },
+    "glossy_closed": {
+     "all_receivers": {
+      "bias": -0.00098,
+      "rms": 0.01101,
+      "p99": 0.04389,
+      "zeros": 0,
+      "passed": true
+     },
+     "sponza_floor": {
+      "bias": -0.00075,
+      "rms": 0.01105,
+      "p99": 0.04795,
+      "zeros": 0,
+      "passed": true
+     }
+    }
+   },
+   "enclosed": {
+    "glossy_closed": {
+     "sky_max": 0.0,
+     "S_max": 0.0,
+     "reflected_mean": 0.0389,
+     "passed": true
+    },
+    "forward_glossy_closed": {
+     "sky_max": 0.0,
+     "S_max": 0.0,
+     "reflected_mean": 0.0389,
+     "passed": true
+    }
+   },
+   "open_pbr": {
+    "bias": -0.00016,
+    "rms": 0.00038,
+    "p99": 0.00149,
+    "reflected_max": 0.0,
+    "passed": true
+   },
+   "zero_indirect": {
+    "reflected_max": 0.0,
+    "passed": true
+   },
+   "motion": {
+    "glossy_floor": {
+     "8": {
+      "lag_pixels": 0,
+      "rms": 0.094,
+      "floor_history_max": 8.0,
+      "passed": true
+     },
+     "16": {
+      "lag_pixels": 0,
+      "rms": 0.09663,
+      "floor_history_max": 8.0,
+      "passed": true
+     },
+     "24": {
+      "lag_pixels": 0,
+      "rms": 0.097,
+      "floor_history_max": 8.0,
+      "passed": true
+     },
+     "32": {
+      "lag_pixels": 0,
+      "rms": 0.09404,
+      "floor_history_max": 8.0,
+      "passed": true
+     }
+    },
+    "glossy_smooth": {
+     "8": {
+      "lag_pixels": 0,
+      "rms": 0.07216,
+      "floor_history_max": 4.0,
+      "passed": true
+     },
+     "16": {
+      "lag_pixels": 0,
+      "rms": 0.07226,
+      "floor_history_max": 4.0,
+      "passed": true
+     },
+     "24": {
+      "lag_pixels": 0,
+      "rms": 0.07219,
+      "floor_history_max": 4.0,
+      "passed": true
+     },
+     "32": {
+      "lag_pixels": 0,
+      "rms": 0.07159,
+      "floor_history_max": 4.0,
+      "passed": true
+     }
+    }
+   },
+   "light_changes": {
+    "move_frame8": {
+     "all": {
+      "bias": 0.00245,
+      "rms": 0.02385,
+      "p99": 0.10437,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.00048,
+      "rms": 0.03071,
+      "p99": 0.14615,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "off_frame8": {
+     "all": {
+      "bias": 0.00283,
+      "rms": 0.02371,
+      "p99": 0.09939,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": 0.00049,
+      "rms": 0.03073,
+      "p99": 0.13395,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "emissive_on_frame8": {
+     "all": {
+      "bias": 0.00223,
+      "rms": 0.02302,
+      "p99": 0.10299,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.00078,
+      "rms": 0.03039,
+      "p99": 0.13803,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "emissive_off_frame8": {
+     "all": {
+      "bias": 0.00217,
+      "rms": 0.02485,
+      "p99": 0.10411,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.00027,
+      "rms": 0.03277,
+      "p99": 0.1446,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "orbit_frame64": {
+     "all": {
+      "bias": 0.00275,
+      "rms": 0.02347,
+      "p99": 0.10147,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": 0.00013,
+      "rms": 0.03065,
+      "p99": 0.1329,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    }
+   },
+   "pass_median_ms": {
+    "glossy_floor": {
+     "shipping": 4.24099,
+     "occlusion": 3.93453
+    },
+    "glossy_closed": {
+     "shipping": 4.3852,
+     "occlusion": 4.1083
+    }
+   }
+  },
+  "compute": {
+   "passed": "reported (compute tier)",
+   "lobe_reference": {
+    "tool": "tools/ground_truth_specular.py",
+    "variant": "cuda_ad_rgb",
+    "receivers": 93088,
+    "samples_per_receiver": 65536,
+    "S_maximum_absolute": 0.99954,
+    "S_mean_absolute": 0.06501,
+    "S_mean_signed": 0.05673,
+    "passed": false
+   },
+   "reflected_emission": {
+    "receivers": 80494,
+    "bias": 0.16004,
+    "rms": 1.56317,
+    "limit": "none frozen; reported per cause"
+   },
+   "static": {
+    "glossy_floor": {
+     "all_receivers": {
+      "bias": 0.00046,
+      "rms": 0.01784,
+      "p99": 0.081,
+      "zeros": 0,
+      "passed": true
+     },
+     "sponza_floor": {
+      "bias": -0.00211,
+      "rms": 0.02275,
+      "p99": 0.11527,
+      "zeros": 0,
+      "passed": true
+     }
+    },
+    "glossy_smooth": {
+     "all_receivers": {
+      "bias": 0.00218,
+      "rms": 0.04319,
+      "p99": 0.17136,
+      "zeros": 0,
+      "passed": true
+     },
+     "sponza_floor": {
+      "bias": 0.00111,
+      "rms": 0.0722,
+      "p99": 0.30696,
+      "zeros": 0,
+      "passed": false
+     }
+    },
+    "glossy_closed": {
+     "all_receivers": {
+      "bias": -0.00195,
+      "rms": 0.00904,
+      "p99": 0.04057,
+      "zeros": 0,
+      "passed": true
+     },
+     "sponza_floor": {
+      "bias": -0.00196,
+      "rms": 0.00896,
+      "p99": 0.04242,
+      "zeros": 0,
+      "passed": true
+     }
+    }
+   },
+   "enclosed": {
+    "glossy_closed": {
+     "sky_max": 0.0,
+     "S_max": 0.0,
+     "reflected_mean": 0.03904,
+     "passed": true
+    },
+    "forward_glossy_closed": {
+     "sky_max": 0.0,
+     "S_max": 0.0,
+     "reflected_mean": 0.03904,
+     "passed": true
+    }
+   },
+   "open_pbr": {
+    "bias": -0.00016,
+    "rms": 0.00038,
+    "p99": 0.00149,
+    "reflected_max": 0.0,
+    "passed": true
+   },
+   "zero_indirect": {
+    "reflected_max": 0.0,
+    "passed": true
+   },
+   "motion": {
+    "glossy_floor": {
+     "8": {
+      "lag_pixels": 0,
+      "rms": 0.09217,
+      "floor_history_max": 8.0,
+      "passed": true
+     },
+     "16": {
+      "lag_pixels": 0,
+      "rms": 0.09599,
+      "floor_history_max": 8.0,
+      "passed": true
+     },
+     "24": {
+      "lag_pixels": 0,
+      "rms": 0.09579,
+      "floor_history_max": 8.0,
+      "passed": true
+     },
+     "32": {
+      "lag_pixels": 0,
+      "rms": 0.09342,
+      "floor_history_max": 8.0,
+      "passed": true
+     }
+    },
+    "glossy_smooth": {
+     "8": {
+      "lag_pixels": 0,
+      "rms": 0.07063,
+      "floor_history_max": 4.0,
+      "passed": true
+     },
+     "16": {
+      "lag_pixels": 0,
+      "rms": 0.072,
+      "floor_history_max": 4.0,
+      "passed": true
+     },
+     "24": {
+      "lag_pixels": 0,
+      "rms": 0.07157,
+      "floor_history_max": 4.0,
+      "passed": true
+     },
+     "32": {
+      "lag_pixels": 0,
+      "rms": 0.07096,
+      "floor_history_max": 4.0,
+      "passed": true
+     }
+    }
+   },
+   "light_changes": {
+    "move_frame8": {
+     "all": {
+      "bias": 0.00243,
+      "rms": 0.02189,
+      "p99": 0.10106,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.00051,
+      "rms": 0.02728,
+      "p99": 0.13333,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "off_frame8": {
+     "all": {
+      "bias": 0.00271,
+      "rms": 0.02183,
+      "p99": 0.09832,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": 0.00035,
+      "rms": 0.02652,
+      "p99": 0.12259,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "emissive_on_frame8": {
+     "all": {
+      "bias": 0.00226,
+      "rms": 0.02171,
+      "p99": 0.1008,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.00074,
+      "rms": 0.02734,
+      "p99": 0.13128,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "emissive_off_frame8": {
+     "all": {
+      "bias": 0.00202,
+      "rms": 0.02192,
+      "p99": 0.09879,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.00048,
+      "rms": 0.02758,
+      "p99": 0.13128,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    },
+    "orbit_frame64": {
+     "all": {
+      "bias": 0.00269,
+      "rms": 0.02147,
+      "p99": 0.09594,
+      "zeros": 0,
+      "passed": true
+     },
+     "floor": {
+      "bias": -0.0001,
+      "rms": 0.02615,
+      "p99": 0.1186,
+      "zeros": 0,
+      "passed": true
+     },
+     "sky_history_retained": true,
+     "passed": true
+    }
+   },
+   "pass_median_ms": {
+    "glossy_floor": {
+     "shipping": 6.10774,
+     "occlusion": 6.15842
+    },
+    "glossy_closed": {
+     "shipping": 7.14435,
+     "occlusion": 6.90264
+    }
+   }
+  }
+ },
+ "provenance": {
+  "static_and_motion_captures": "build/p6/{tier}: shaders sha256 digest cd85446e577028f2684ef73a900a7248589803a72a5eeaba1f46f434b52d7600; precede the clamp change, which acts only within eight frames of a cache change with a still camera",
+  "light_change_captures": "build/p6/{tier}/lights: final shaders",
+  "superseded_record": "build/p6/P6Verification-implementation-2026-10-10.json"
+ }
+}

@@ -36,7 +36,7 @@ def environment_integral(prefix, metadata, normal):
 
 def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0,
         bounce_source='cone',resolution=64,environment_lighting=True,shadows=False,light_changes=False,spatial_filter=True,
-        width=320,height=180):
+        width=320,height=180,reflections=True,reflection_motion=False,mode=3):
     exe=exe.resolve();folder=folder.resolve()
     fixtures=folder/'fixtures'
     generate(fixtures)
@@ -56,13 +56,14 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                           voxel_gi_temporal='true',voxel_gi_filter=str(spatial_filter).lower(),voxel_gi_specular_occlusion='true',
                           async_compute='auto')
             settings.update(voxel_gi_bounce_source=bounce_source,environment_lighting=str(environment_lighting).lower(),
-                            voxel_gi_shadow_enabled=str(shadows).lower())
+                            voxel_gi_shadow_enabled=str(shadows).lower(),voxel_gi_reflections=str(reflections).lower())
             settings.update({'dynamic_light.enabled':'false','light_markers.enabled':'false'})
             settings['environment_rotation_degrees'] = 0
             if name in ('bright_environment_plane','rotated_environment_plane','black_environment_plane') or name.startswith('bright_edge_'):
                 settings['environment_texture'] = (fixtures/('black.hdr' if name=='black_environment_plane' else 'bright.hdr')).as_posix()
                 settings['environment_rotation_degrees'] = 73 if name=='rotated_environment_plane' else 0
-            if name in ('point_light_room','thin_wall_light','glossy_floor','moving_occluder_light'):
+            if name in ('point_light_room','thin_wall_light','moving_occluder_light','glossy_floor','glossy_smooth',
+                        'glossy_closed','forward_glossy_closed'):
                 settings['scene_lighting_override']='false'
             assert config.read_bytes()==active,'External config edit; aborting'
             active=original+b'\n'+''.join(f'{key}={value}\n' for key,value in settings.items()).encode()
@@ -70,12 +71,14 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             prefix=folder/name
             assert frames >= 2
             command=[str(exe),'--no-ui','--fixed-step',f'--frames={frames-1}',
-                     '--mode=3',f'--width={width}',f'--height={height}',f'--capture-lighting={prefix}',f'--profile={prefix}']
+                     f'--mode={mode}',f'--width={width}',f'--height={height}',f'--capture-lighting={prefix}',f'--profile={prefix}']
             if not rt: command.append('--disable-rt')
             if gpu: command.append('--gpu='+gpu)
             if light_changes: command.append('--capture-bounce-lights='+str(prefix)+'-lights')
+            if reflection_motion: command.append('--capture-reflection-motion='+str(prefix)+'-motion')
             with prefix.with_suffix('.log').open('w') as log:
-                result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,timeout=1800 if light_changes else 300)
+                result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,
+                                      timeout=1800 if light_changes or reflection_motion else 300)
             log=prefix.with_suffix('.log').read_text(errors='replace')
             errors=[line for line in log.splitlines() if '[error]' in line or 'VUID-' in line or 'SYNC-HAZARD' in line]
             baseline=[line for line in errors if 'SYNC-HAZARD-PRESENT-AFTER-WRITE' in line]
@@ -83,11 +86,11 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                 errors=[line for line in errors if line not in baseline]
             assert result.returncode==0 and not errors,(name,result.returncode,errors[:5])
             metadata=json.loads(Path(str(prefix)+'.lighting.json').read_text())
-            expected_provider = 'hardware' if rt and provider in ('hardware','auto') else 'legacy' if provider == 'legacy' else 'voxel'
+            expected_provider = 'legacy' if mode!=3 or provider=='legacy' else 'hardware' if rt and provider in ('hardware','auto') else 'voxel'
             assert metadata['ray_provider'] == expected_provider, metadata
             if expected_provider == 'hardware':
                 assert metadata['ray_scene_ready'] and metadata['ray_scene_generation'] > 0, metadata
-            if provider == 'legacy':
+            if expected_provider == 'legacy':
                 results[name] = {'legacy':True}
                 continue
             capture=np.fromfile(str(prefix)+'.hybrid.bin','<f4').reshape(height,width,13,4)

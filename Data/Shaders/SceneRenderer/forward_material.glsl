@@ -29,13 +29,15 @@ layout(location=0) out vec4 outColor;
 #ifdef HYBRID_GI
 #include "../VoxelGI/hybrid_composition.glsl"
 float hybridSpecularVisibility=1.0;
+vec3 hybridReflectedRadiance=vec3(0);
 #else
 const float hybridSpecularVisibility=1.0;
+const vec3 hybridReflectedRadiance=vec3(0);
 #endif
 
 vec3 Prefiltered(vec3 direction, float roughness)
 {
-    return textureLod(envPrefilteredMap, EnvironmentDirection(direction), roughness * float(textureQueryLevels(envPrefilteredMap) - 1)).rgb * sceneUbo.environment.x * sceneUbo.environment.z * hybridSpecularVisibility;
+    return textureLod(envPrefilteredMap, EnvironmentDirection(direction), roughness * float(textureQueryLevels(envPrefilteredMap) - 1)).rgb * sceneUbo.environment.x * sceneUbo.environment.z * hybridSpecularVisibility+hybridReflectedRadiance;
 }
 
 vec3 SheenEnvironment(MaterialSurface s, vec3 N, vec3 V)
@@ -58,11 +60,11 @@ vec3 SheenEnvironment(MaterialSurface s, vec3 N, vec3 V)
             vec3 L = reflect(-V, H);
             float nl = max(dot(N, L), 0.0);
             if (nl > 0.0 && vh > 0.0)
-                result += textureLod(envSourceMap, EnvironmentSourceDirection(L), 0.0).rgb * V_Sheen(nl, nv, s.sheenRoughness) * nl * 4.0 * vh / max(cosTheta, 1e-5);
+                result += (textureLod(envSourceMap, EnvironmentSourceDirection(L), 0.0).rgb * sceneUbo.environment.x * sceneUbo.environment.z * hybridSpecularVisibility+hybridReflectedRadiance) * V_Sheen(nl, nv, s.sheenRoughness) * nl * 4.0 * vh / max(cosTheta, 1e-5);
         }
-        result *= s.sheenColor * sceneUbo.environment.x * sceneUbo.environment.z / 64.0;
+        result *= s.sheenColor / 64.0;
     }
-    return result * hybridSpecularVisibility;
+    return result;
 }
 
 vec3 Refraction(MaterialSurface s, vec3 N, vec3 V)
@@ -173,6 +175,7 @@ void main()
             captureDiffuseBounced=irradiance-captureDiffuseEscaped;
 #endif
             hybridSpecularVisibility=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).a;
+            hybridReflectedRadiance=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).rgb;
         }
 #else
         irradiance = DiffuseVoxelLighting(inWorldPos, N);

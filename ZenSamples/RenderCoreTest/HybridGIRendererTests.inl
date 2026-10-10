@@ -44,13 +44,15 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     ASSERT_TRUE(gi.Init());
     VoxelGISettings bounceSettings = gi.GetSettings();
     bounceSettings.bounceSource    = VoxelGISettings::BounceSource::Rays;
+    // The test device has no hardware queries, so automatic reflections would resolve to off.
+    bounceSettings.reflections = VoxelGISettings::Reflections::On;
     ASSERT_TRUE(gi.SetSettings(bounceSettings));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
     renderer.SetRenderScene(&scene);
     RenderView        view  = RenderView::FromViewport(viewport);
     HybridGIRenderer* first = nullptr;
-    for (uint32_t frame = 0; frame < 13; ++frame)
+    for (uint32_t frame = 0; frame < 16; ++frame)
     {
         SCOPED_TRACE(frame);
         RenderGraph* graph = device->GetCurrentFrameRDG();
@@ -106,6 +108,13 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
             changed.bounceSource    = VoxelGISettings::BounceSource::Cone;
             ASSERT_TRUE(gi.SetSettings(changed));
         }
+        if (frame == 13 || frame == 14)
+        {
+            VoxelGISettings changed  = gi.GetSettings();
+            changed.reflections      = frame == 14 ? VoxelGISettings::Reflections::On : VoxelGISettings::Reflections::Off;
+            changed.analyticLighting = frame == 14;
+            ASSERT_TRUE(gi.SetSettings(changed));
+        }
         renderer.BuildGBufferGraph(view, true);
         HybridGIRenderer* hybrid = renderer.GetHybridGI();
         if (frame == 0)
@@ -120,7 +129,14 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         {
             EXPECT_EQ(first, hybrid);
         }
+        if (frame == 14)
+        {
+            // Re-enabling reflections expands the cache snapshot; fail just that allocation.
+            rhi->failTextureCreationAt = rhi->textureCreations + 1;
+        }
         gi.BuildRenderGraph();
+        rhi->failTextureCreationAt = 0;
+        EXPECT_EQ(gi.HasPreviousRadiance(), frame != 14);
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
         EXPECT_EQ(hybrid->IsHistoryValid(), frame == 1 || frame == 5 || frame >= 9);
         if (frame == 2 || frame == 6)
@@ -149,16 +165,19 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
                     // Only steady history and a settings reset after a successful frame can reuse the guide.
                     // Startup, failed-frame recovery, a new view, resize, environment and scene resets cannot.
                     EXPECT_EQ(uniforms.provider.y, frame == 5 || frame == 6 || frame >= 9 ? 1u : 0u);
-                    EXPECT_EQ(uniforms.bounce.x, frame == 12 ? 0u : 1u);
+                    EXPECT_EQ(uniforms.bounce.x, frame >= 12 ? 0u : 1u);
+                    EXPECT_EQ(uniforms.reflection.x, frame == 13 ? 0u : 1u);
                     if (frame >= 9)
                     {
                         // An injection change keeps bounce history for the temporal pass to test; intensity
                         // and source changes reset it. None of them touches sky.
                         EXPECT_EQ(uniforms.sampling.w, 1u);
-                        EXPECT_EQ(uniforms.bounce.y, frame == 11 || frame == 12 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.bounce.y, frame == 11 || frame == 12 || frame == 14 ? 0u : 1u);
                         EXPECT_EQ(uniforms.bounce.z, 1u);
                         // Only the injection frame measures the change between the caches.
                         EXPECT_EQ(uniforms.bounce.w, frame == 9 ? 1u : 0u);
+                        EXPECT_EQ(uniforms.reflection.y, frame == 11 || frame == 13 || frame == 14 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.reflection.w, frame == 9 ? 1u : 0u);
                     }
                     foundUniforms = true;
                 }

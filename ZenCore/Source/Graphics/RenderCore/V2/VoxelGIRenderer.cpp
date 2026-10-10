@@ -60,6 +60,7 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && (settings.referenceSamples == 0 || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
         && settings.historyFrames >= 1 && settings.historyFrames <= 256
         && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
+        && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
         && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Legacy);
 }
 
@@ -122,6 +123,11 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid      &= config.ReadBool("voxel_gi_temporal", settings.temporal);
     valid      &= config.ReadBool("voxel_gi_filter", settings.filter);
     valid      &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
+    const std::string reflections  = config.GetString("voxel_gi_reflections", "auto");
+    valid                         &= reflections == "auto" || reflections == "true" || reflections == "false";
+    settings.reflections           = reflections == "true"  ? VoxelGISettings::Reflections::On
+                                   : reflections == "false" ? VoxelGISettings::Reflections::Off
+                                                            : VoxelGISettings::Reflections::Auto;
     const std::string provider  = config.GetString("voxel_gi_ray_provider", "auto");
     const std::string bounce    = config.GetString("voxel_gi_bounce_source", "auto");
     valid                      &= bounce == "auto" || bounce == "cone" || bounce == "rays";
@@ -345,8 +351,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
                                      m_settings.shadows ? 1.0f : 0.0f, 0.0f);
 
         m_uniforms.lighting   = Vec4(m_settings.analyticLighting ? 1.0f : 0.0f, m_settings.environmentLighting ? 1.0f : 0.0f,
-                                     m_settings.emissiveLighting ? 1.0f : 0.0f,
-                                     UsesRayBounce() ? 1.0f : 0.0f);
+                                     m_settings.emissiveLighting ? 1.0f : 0.0f, UsesRayBounce() ? 1.0f : 0.0f);
 
         m_recordedGeometry    = m_voxelizer->GetRecordedGeometryRevision();
 
@@ -421,9 +426,8 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             });
         }
 
-        // Ray-hit bounce reads the base level from before each injection, so its history can follow the
-        // change that the same rays see (hybrid_temporal.comp). Cone bounce keeps a 1x1x1 placeholder.
-        const bool     rays     = UsesRayBounce();
+        // Stochastic hit radiance reads both generations along the same rays to update lighting history.
+        const bool     rays     = UsesRayBounce() || UsesReflections();
         const uint32_t previous = rays ? m_voxelizer->GetVoxelTexResolution() : 1u;
         if (m_previousRadiance != nullptr && m_previousRadiance->GetWidth() != previous)
         {

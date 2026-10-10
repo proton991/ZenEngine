@@ -397,9 +397,14 @@ private:
                 changed       = true;
             }
 
-            rc::VoxelGISettings& cone    = settings.cone;
+            rc::VoxelGISettings& cone  = settings.cone;
+            changed                   |= ImGui::Checkbox(PropertyLabel("Specular occlusion").c_str(), &cone.specularOcclusion);
+            int         reflections    = static_cast<int>(cone.reflections);
+            const char* reflectionModes[] = {"Auto", "Off", "On"};
+            changed            |= ImGui::Combo(PropertyLabel("Reflections").c_str(), &reflections, reflectionModes, 3);
+            cone.reflections    = static_cast<rc::VoxelGISettings::Reflections>(reflections);
 
-            int         bounce           = static_cast<int>(cone.bounceSource);
+            int         bounce  = static_cast<int>(cone.bounceSource);
             const char* bounceSources[]  = {"Auto", "Cones", "Ray hits"};
             changed                     |= ImGui::Combo(PropertyLabel("Bounce source").c_str(), &bounce, bounceSources, 3);
             cone.bounceSource            = static_cast<rc::VoxelGISettings::BounceSource>(bounce);

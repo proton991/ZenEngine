@@ -145,7 +145,8 @@ void main() {
     vec3 sky=texelFetch(hybridSky,ivec2(gl_FragCoord.xy),0).rgb;
     vec3 bounce=gi.lighting.w>0.5 ? texelFetch(hybridBounce,ivec2(gl_FragCoord.xy),0).rgb : DiffuseVoxelLighting(worldPos,N,false);
     vec3 diffuseIBL=(bounce+sky)*albedo;
-    prefilteredColor*=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0).a;
+    vec4 reflected=texelFetch(hybridSpecular,ivec2(gl_FragCoord.xy),0);
+    prefilteredColor=prefilteredColor*reflected.a+reflected.rgb;
 #ifdef LIGHTING_CAPTURE
     captureDiffuseEscaped=sky;
     captureDiffuseBounced=bounce;

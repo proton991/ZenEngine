@@ -10,6 +10,7 @@ layout(std140,set=1,binding=0) uniform uHybridData
     uvec4 provider;
     vec4 rejection;
     uvec4 bounce;
+    uvec4 reflection;
 } hybrid;
 layout(set=1,binding=1) uniform sampler2D receiverDepth;
 layout(set=1,binding=2) uniform sampler2D receiverNormal;

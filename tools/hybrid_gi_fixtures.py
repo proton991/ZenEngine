@@ -10,6 +10,7 @@ from voxelization_fixtures import Fixture, rgba_png
 ALPHA_MATRIX = ('alpha_uv1', 'alpha_transform', 'alpha_vertex', 'alpha_specgloss',
                 'alpha_repeat', 'alpha_clamp', 'alpha_mirror')
 BRIGHT_EDGES = ('bright_edge_near', 'bright_edge_middle', 'bright_edge_far')
+GLOSSY = ('glossy_floor','glossy_smooth','glossy_open','glossy_closed','forward_glossy_closed','glossy_emissive')
 
 
 def quad(a,b,c,d):
@@ -33,7 +34,7 @@ def generate(folder):
     names=['open_plane','closed_box','half_wall','narrow_slot','thin_pole','alpha_mask','mirrored_two_sided',
            'outside_volume','point_light_room','thin_wall_light','glossy_floor','moving_occluder_light',
            'forward_open_plane','forward_closed_box','single_sided_closed_box','bright_environment_plane',
-           'rotated_environment_plane','black_environment_plane','normal_map_plane'] + list(ALPHA_MATRIX) + list(BRIGHT_EDGES)
+           'rotated_environment_plane','black_environment_plane','normal_map_plane'] + list(ALPHA_MATRIX) + list(BRIGHT_EDGES) + list(GLOSSY[1:])
     manifest={}
     for name in names:
         f=Fixture()
@@ -56,9 +57,9 @@ def generate(folder):
             # box() winds opposite faces alike, so half the walls and the ceiling face
             # outward: receivers inside see their back faces, which must still block.
             f.document['materials'][0]['doubleSided']=False
-        if name in ('closed_box','point_light_room','forward_closed_box','single_sided_closed_box'):
+        if name in ('closed_box','point_light_room','forward_closed_box','single_sided_closed_box','glossy_closed','forward_glossy_closed'):
             walls=box([-2,0,-2],[2,3,2])
-            if name=='point_light_room':
+            if name in ('point_light_room','glossy_closed','forward_glossy_closed'):
                 # The one-value radiance cache stores the authored owner side. This
                 # room's receiver and emitter surfaces face inward; avoid duplicating
                 # the floor and do not rely on raster double-sided normal flipping.
@@ -70,7 +71,18 @@ def generate(folder):
                     inward=[-sum(p[k] for p in t)/3+(1.5 if k==1 else 0) for k in range(3)]
                     if sum(n[k]*inward[k] for k in range(3))<0:t[1],t[2]=t[2],t[1]
             f.mesh(walls)
-        elif name in ('half_wall','thin_wall_light','glossy_floor'):
+        elif name in ('glossy_floor','glossy_smooth','glossy_emissive'):
+            # A finite coloured wall faces the point light and camera; its reflection has both
+            # a lit interior and disocclusion edges. The previous placeholder lay through the camera.
+            wall_material=copy.deepcopy(f.document['materials'][0])
+            wall_material['pbrMetallicRoughness']['baseColorFactor']=[.7,.12,.03,1]
+            if name=='glossy_emissive':
+                wall_material['emissiveFactor']=[1,.1,.025]
+                wall_material['extensions']={'KHR_materials_emissive_strength':dict(emissiveStrength=2)}
+                f.document['extensionsUsed']=['KHR_materials_emissive_strength']
+            f.document['materials'].append(wall_material)
+            f.mesh(quad([-1,0,-1.5],[1,0,-1.5],[1,2.5,-1.5],[-1,2.5,-1.5]),material=1)
+        elif name in ('half_wall','thin_wall_light'):
             wall=quad([0,0,-2],[0,3,-2],[0,3,2],[0,0,2])
             if name=='thin_wall_light':
                 for t in wall:t[1],t[2]=t[2],t[1] # Face the light at negative X.
@@ -122,7 +134,7 @@ def generate(folder):
             values=f.attribute([[-1,0,0],[1,0,0],[-1,0,0]],'VEC3')
             f.document['animations']=[dict(samplers=[dict(input=times,output=values,interpolation='LINEAR')],
                                           channels=[dict(sampler=0,target=dict(node=1,path='translation'))])]
-        if name in ('point_light_room','thin_wall_light','glossy_floor','moving_occluder_light'):
+        if name in ('point_light_room','thin_wall_light','moving_occluder_light') or name in GLOSSY and name not in ('glossy_open','glossy_emissive'):
             f.document['extensionsUsed']=['KHR_lights_punctual']
             f.document['extensions']={'KHR_lights_punctual':dict(lights=[dict(type='point',color=[1,.25,.1],intensity=4)])}
             light=len(f.document['nodes'])
@@ -133,10 +145,10 @@ def generate(folder):
                 animation=f.document['animations'][0]
                 animation['samplers'].append(dict(input=times,output=values,interpolation='LINEAR'))
                 animation['channels'].append(dict(sampler=1,target=dict(node=light,path='translation')))
-        if name=='glossy_floor':
-            f.document['materials'][0]['pbrMetallicRoughness']['roughnessFactor']=.2
+        if name in GLOSSY:
+            f.document['materials'][0]['pbrMetallicRoughness']['roughnessFactor']=.1 if name=='glossy_smooth' else .2
         if name.startswith('forward_'):
-            f.document['extensionsUsed']=['KHR_materials_clearcoat']
+            f.document.setdefault('extensionsUsed',[]).append('KHR_materials_clearcoat')
             f.document['materials'][0]['extensions']={'KHR_materials_clearcoat':dict(clearcoatFactor=.5,clearcoatRoughnessFactor=.2)}
         # Fixed camera inside the box, looking obliquely down onto its floor.
         angle=math.radians(-35)

@@ -9,12 +9,13 @@ namespace zen::rc
 {
 namespace
 {
-const char* const kHistoryNames[]   = {"Sky",    "Specular", "Moments", "Length",       "Position",
-                                       "Normal", "Receiver", "Bounce",  "BounceMoments"};
-const DataFormat  kHistoryFormats[] = {
-    DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat,
-    DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
-    DataFormat::eR32G32UInt,         DataFormat::eR32G32B32A32SFloat, DataFormat::eR32G32SFloat};
+const char* const kHistoryNames[]   = {"Sky",    "Specular", "Moments", "Length",        "Position",
+                                       "Normal", "Receiver", "Bounce",  "BounceMoments", "Reflection"};
+const DataFormat  kHistoryFormats[] = {DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
+                                       DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
+                                       DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
+                                       DataFormat::eR32G32UInt,         DataFormat::eR32G32B32A32SFloat,
+                                       DataFormat::eR32G32SFloat,       DataFormat::eR32G32B32A32SFloat};
 // The trace pass learns and reads the visibility guide per workgroup of this many pixels squared.
 constexpr uint32_t kGuideTile = 16;
 } // namespace
@@ -78,7 +79,7 @@ HybridReceiverDraw HybridGIRenderer::ReceiverDraw(uint32_t node, uint32_t materi
     return result;
 }
 
-bool HybridGIRenderer::PrepareHistory(uint32_t width, uint32_t height, bool bounce)
+bool HybridGIRenderer::PrepareHistory(uint32_t width, uint32_t height, bool bounce, bool reflections)
 {
     if (m_extent != glm::uvec2(width, height))
     {
@@ -91,9 +92,10 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width, uint32_t height, bool boun
     {
         for (uint32_t texture = 0; texture < Count && valid; ++texture)
         {
-            // Bounce histories are 1x1 placeholders unless ray-hit bounce is selected; switching the
-            // bounce source resets bounce history anyway.
-            const bool       full    = bounce || (texture != Bounce && texture != BounceMoments);
+            // Disabled signals use 1x1 placeholders. Enabling them resets their own histories.
+            const bool       full    = texture == Reflection                         ? reflections
+                                     : texture == Bounce || texture == BounceMoments ? bounce
+                                                                                     : true;
             const glm::uvec2 extent  = full ? glm::uvec2(width, height) : glm::uvec2(1);
             RHITexture*&     history = m_history[side][texture];
             if (history != nullptr && (history->GetWidth() != extent.x || history->GetHeight() != extent.y))
@@ -161,10 +163,11 @@ void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
 
 bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI)
 {
-    const VoxelGISettings& settings = voxelGI.GetSettings();
-    const bool             rays     = voxelGI.UsesRayBounce();
-    const bool             ready    = m_prepared && settings.rayProvider != VoxelGISettings::RayProvider::Legacy
-                         && PrepareHistory(view.width, view.height, rays);
+    const VoxelGISettings& settings    = voxelGI.GetSettings();
+    const bool             rays        = voxelGI.UsesRayBounce();
+    const bool             reflections = voxelGI.UsesReflections();
+    const bool             ready       = m_prepared && settings.rayProvider != VoxelGISettings::RayProvider::Legacy
+                                      && PrepareHistory(view.width, view.height, rays, reflections);
     if (ready)
     {
         const bool hadValidHistory = m_valid;
@@ -204,17 +207,27 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         // it, so a light that moves every frame still accumulates. A new bounce source or intensity, or
         // several injections in between, make the old history incomparable.
         const uint64_t radianceSteps = m_recordedRadianceGeneration - m_radianceGeneration;
-        const bool     bounceReset   = rays != m_previousRayBounce
-                                || settings.indirectIntensity != m_previousSettings.indirectIntensity || radianceSteps > 1;
-        if (bounceReset || radianceSteps != 0)
+        // A failed snapshot allocation binds the current cache as a safe descriptor fallback.
+        // It cannot measure a lighting change: restart hit-radiance histories on that frame.
+        const bool missingPrevious = radianceSteps != 0 && !voxelGI.HasPreviousRadiance();
+        const bool radianceReset =
+            settings.indirectIntensity != m_previousSettings.indirectIntensity || radianceSteps > 1 || missingPrevious;
+        const bool bounceReset     = rays != m_previousRayBounce || radianceReset;
+        const bool reflectionReset = reflections != m_previousReflections || radianceReset;
+        if (bounceReset || reflectionReset || radianceSteps != 0)
         {
             m_bounceResponsiveFrames = 8;
         }
-        m_uniforms.bounce   = glm::uvec4(rays ? 1u : 0u, m_valid && !bounceReset ? 1u : 0u,
-                                         m_bounceResponsiveFrames != 0 ? 1u : 0u, radianceSteps == 1 ? 1u : 0u);
-        m_previousHardware  = voxelGI.UsesHardwareQueries();
-        m_previousSettings  = settings;
-        m_previousRayBounce = rays;
+        m_uniforms.bounce =
+            glm::uvec4(rays ? 1u : 0u, m_valid && !bounceReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
+                       radianceSteps == 1 && !missingPrevious ? 1u : 0u);
+        m_uniforms.reflection =
+            glm::uvec4(reflections ? 1u : 0u, m_valid && !reflectionReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
+                       radianceSteps == 1 && !missingPrevious ? 1u : 0u);
+        m_previousReflections = reflections;
+        m_previousHardware    = voxelGI.UsesHardwareQueries();
+        m_previousSettings    = settings;
+        m_previousRayBounce   = rays;
         m_uniforms.sampling = glm::uvec4(m_frame, settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples,
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
         // A guide from a successful frame can survive geometry, opacity, settings and provider resets.
@@ -242,15 +255,25 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         desc.name                    = "hybrid_raw_specular";
         const RDGTexture rawSpecular = resources->CreateTexture(desc);
         // Bounce textures are 1x1 placeholders for cone bounce; the passes skip them.
-        RDGTextureDesc bounceDesc    = desc;
+        RDGTextureDesc bounceDesc = desc;
         if (!rays)
         {
             bounceDesc.texFormat.width = bounceDesc.texFormat.height = 1;
         }
-        bounceDesc.name              = "hybrid_raw_bounce";
-        const RDGTexture rawBounce   = resources->CreateTexture(bounceDesc);
-        bounceDesc.name              = "hybrid_raw_bounce_previous";
-        const RDGTexture   previous  = resources->CreateTexture(bounceDesc);
+        bounceDesc.name                 = "hybrid_raw_bounce";
+        const RDGTexture rawBounce      = resources->CreateTexture(bounceDesc);
+        bounceDesc.name                 = "hybrid_raw_bounce_previous";
+        const RDGTexture previous       = resources->CreateTexture(bounceDesc);
+        RDGTextureDesc   reflectionDesc = desc;
+        if (!reflections)
+        {
+            reflectionDesc.texFormat.width = reflectionDesc.texFormat.height = 1;
+        }
+        reflectionDesc.name                 = "hybrid_raw_reflection_previous";
+        const RDGTexture previousReflection = resources->CreateTexture(reflectionDesc);
+        reflectionDesc.name                 = "hybrid_raw_reflection";
+        reflectionDesc.texFormat.format     = DataFormat::eR32G32SFloat;
+        const RDGTexture   rawReflection    = resources->CreateTexture(reflectionDesc);
         RDGComputePassDesc trace;
         trace.SetShaderProgramName(m_previousHardware ? "HybridTraceHardwareSP" : "HybridTraceSP");
         trace.SetPassTag("HybridTrace");
@@ -270,6 +293,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         trace.BindStorageImage("rawSpecular", rawSpecular, RDGContentGuarantee::eFullWrite);
         trace.BindStorageImage("rawBounce", rawBounce, RDGContentGuarantee::eFullWrite);
         trace.BindStorageImage("rawBouncePrevious", previous, RDGContentGuarantee::eFullWrite);
+        trace.BindStorageImage("rawReflection", rawReflection, RDGContentGuarantee::eFullWrite);
+        trace.BindStorageImage("rawReflectionPrevious", previousReflection, RDGContentGuarantee::eFullWrite);
         trace.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
         trace.BindStorageBuffer("HybridGuideNext", m_guide[m_current], RDGContentGuarantee::eFullWrite);
         const glm::uvec2 guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
@@ -289,6 +314,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         temporal.BindSampledTexture("rawSpecular", m_sampler, rawSpecular);
         temporal.BindSampledTexture("rawBounce", m_sampler, rawBounce);
         temporal.BindSampledTexture("rawBouncePrevious", m_sampler, previous);
+        temporal.BindSampledTexture("rawReflection", m_sampler, rawReflection);
+        temporal.BindSampledTexture("rawReflectionPrevious", m_sampler, previousReflection);
         voxelGI.BindEnvironmentHarmonics(temporal);
         temporal.BindStorageImage("skyGuide", skyGuide, RDGContentGuarantee::eFullWrite);
         for (uint32_t texture = 0; texture < Count; ++texture)
@@ -332,6 +359,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             filter.BindSampledTexture("inputBounce", m_sampler, m_outputBounce);
             filter.BindSampledTexture("bounceMoments", m_sampler, m_history[m_current][BounceMoments]->GetDefaultView());
             filter.BindSampledTexture("bounceHistory", m_sampler, m_history[m_current][Bounce]->GetDefaultView());
+            filter.BindSampledTexture("reflectionHistory", m_sampler, m_history[m_current][Reflection]->GetDefaultView());
             filter.BindStorageImage("filteredBounce", bounce, RDGContentGuarantee::eFullWrite);
             m_outputBounce   = bounce;
             m_outputSky      = sky;
@@ -362,6 +390,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             capture.BindSampledTexture("reconstructedBounce", m_sampler, m_outputBounce);
             capture.BindSampledTexture("moments", m_sampler, m_history[m_current][Moments]->GetDefaultView());
             capture.BindSampledTexture("historyLength", m_sampler, m_history[m_current][Length]->GetDefaultView());
+            capture.BindSampledTexture("rawReflection", m_sampler, rawReflection);
+            capture.BindSampledTexture("reflectionHistory", m_sampler, m_history[m_current][Reflection]->GetDefaultView());
             capture.BindStorageBuffer("HybridCapture", m_captureOutput, RDGContentGuarantee::eFullWrite);
             Dispatch(std::move(capture));
             graph->AddTransferPass("ReadHybridCapture")

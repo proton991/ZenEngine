@@ -102,7 +102,7 @@ bool WriteLightingMetadata(const std::string&        path,
     std::ofstream output(path + ".lighting.json");
 
     output
-        << std::setprecision(std::numeric_limits<float>::max_digits10) << "{\"version\":2,\"width\":" << width
+        << std::setprecision(std::numeric_limits<float>::max_digits10) << "{\"version\":3,\"width\":" << width
         << ",\"height\":" << height << ",\"format\":\"little-endian float32, pixel-interleaved float4 components, x fastest\""
         << ",\"bytes_per_pixel\":" << ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL
         << ",\"components\":[\"combined\",\"analytic_direct\",\"diffuse_outgoing\",\"specular_ibl\",\"visible_emission\",\"escaped_environment_diffuse\",\"bounced_diffuse\"]"
@@ -156,6 +156,9 @@ bool WriteLightingMetadata(const std::string&        path,
         << (reconstructed && server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone")
         << "\",\"sample_seed\":0,\"radiance_generation\":" << server.RequestVoxelGI()->GetRadianceGeneration()
         << ",\"bounce_diagnostics\":\"raw alpha: rejected lookups; reconstructed alpha: history length\""
+        << ",\"reflections\":" << (reconstructed && server.RequestVoxelGI()->UsesReflections() ? "true" : "false")
+        << ",\"reflection_roughness_cutoff\":0.2,\"reflection_radiance\":\"RGB stores (1-S)*H; alpha stores S\""
+        << ",\"reflection_diagnostics\":\"component 12: identity bits, raw mean hit distance, rejected lookups, history length\""
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
         << ",\"frame\":" << (hybrid != nullptr ? hybrid->GetFrame() : 0)
         << ",\"environment_generation\":" << scene.GetEnvironmentRevision()
@@ -167,7 +170,7 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"filter_iterations\":" << (settings.filter && settings.referenceSamples == 0 ? 5 : 0) << ",\"reset_reason\":\""
         << (hybrid != nullptr ? hybrid->GetResetReason() : "inactive") << "\""
         << ",\"hybrid_bytes_per_pixel\":" << (reconstructed ? ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL : 0)
-        << ",\"hybrid_components\":[\"raw_sky_nu\",\"sky_nu\",\"raw_bounce\",\"bounce\",\"raw_H_S\",\"H_S\",\"moments\",\"length_rejection\",\"position_valid\",\"normal_roughness\",\"geometric_depth\",\"motion_ndc_previous_w\",\"identity_bits_reserved\"]"
+        << ",\"hybrid_components\":[\"raw_sky_nu\",\"sky_nu\",\"raw_bounce\",\"bounce\",\"raw_weighted_H_S\",\"weighted_H_S\",\"moments\",\"length_rejection\",\"position_valid\",\"normal_roughness\",\"geometric_depth\",\"motion_ndc_previous_w\",\"identity_hit_distance_rejected_history\"]"
         << ",\"receiver_coverage\":\"opaque_and_mask_triangles; transmission_and_scattering_use_per_surface\"";
     output << ",\"environment_cube_size\":" << scene.GetEnvTexture().pPrefiltered->GetWidth();
     output << ",\"sky_cache_evaluated\":" << skyCacheCounts.x << ",\"sky_cache_center_fallback\":" << skyCacheCounts.y;
@@ -369,6 +372,42 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     return succeeded;
 }
 
+bool SceneRendererDemo::CaptureReflectionMotion(const std::string& path)
+{
+    rc::VoxelGIRenderer*      gi          = m_renderDevice->GetRendererServer()->RequestVoxelGI();
+    const rc::VoxelGISettings settings    = gi->GetSettings();
+    const Vec3                camera      = m_camera->GetPos();
+    const Mat4                inverseView = glm::inverse(m_camera->GetViewMatrix());
+    const Vec3                front       = -Vec3(inverseView[2]);
+    const Vec3                right       = Vec3(inverseView[0]);
+    bool                      succeeded   = settings.referenceSamples == 0 && gi->UsesReflections();
+    // Capture while moving, before any static settling frame. The matching static references run
+    // afterward so their settings/history changes cannot interrupt the motion sequence.
+    for (uint32_t frame = 1; frame <= 32 && succeeded; ++frame)
+    {
+        const Vec3 eye = camera + right * (0.003f * static_cast<float>(frame));
+        m_camera->SetPose(eye, eye + front);
+        succeeded = frame % 8 == 0 ? CaptureLighting(fmt::format("{}-frame{}", path, frame)) : Run(1, false, 3, {}, true);
+    }
+    rc::VoxelGISettings reference = settings;
+    reference.referenceSamples    = 1024;
+    succeeded                     = succeeded && gi->SetSettings(reference);
+    for (uint32_t frame = 8; frame <= 32 && succeeded; frame += 8)
+    {
+        const Vec3 eye = camera + right * (0.003f * static_cast<float>(frame));
+        m_camera->SetPose(eye, eye + front);
+        succeeded = Run(63, false, 3, {}, true) && CaptureLighting(fmt::format("{}-frame{}-reference", path, frame));
+    }
+    const bool restored = gi->SetSettings(settings);
+    m_camera->SetPose(camera, camera + front);
+    succeeded = succeeded && restored;
+    if (!succeeded)
+    {
+        LOGE("Reflection-motion capture or settings restoration failed");
+    }
+    return succeeded;
+}
+
 bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
 {
     rc::VoxelGIRenderer*             gi               = m_renderDevice->GetRendererServer()->RequestVoxelGI();
@@ -380,8 +419,9 @@ bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
     sg::MaterialData                 emissiveMaterial = originalMaterial;
     emissiveMaterial.emissiveFactor                   = Vec4(.4f, .2f, .1f, 1.0f);
     emissiveMaterial.emissiveTexIndex                 = -1;
+    // Light changes exercise either hit-radiance history: ray bounce, reflections or both.
     bool        succeeded = !original.empty() && !materials.empty() && settings.referenceSamples == 0
-                         && gi->UsesRayBounce();
+                         && (gi->UsesRayBounce() || gi->UsesReflections());
     const char* stages[]  = {"move", "off", "emissive_on", "emissive_off", "orbit"};
     for (uint32_t stage = 0; stage < 5 && succeeded; ++stage)
     {
@@ -399,10 +439,10 @@ bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
             // captured one; the reference below keeps it where that frame left it.
             for (uint32_t frame = 1; frame <= 64 && succeeded; ++frame)
             {
-                const float angle         = glm::radians(45.0f) * static_cast<float>(frame) / 60.0f;
-                changed[0].light.position = original[0].light.position
-                                          + 0.5f * Vec3(std::cos(angle) - 1.0f, 0.0f, std::sin(angle));
-                succeeded                 = m_renderScene->ReplaceLights(changed)
+                const float angle = glm::radians(45.0f) * static_cast<float>(frame) / 60.0f;
+                changed[0].light.position =
+                    original[0].light.position + 0.5f * Vec3(std::cos(angle) - 1.0f, 0.0f, std::sin(angle));
+                succeeded = m_renderScene->ReplaceLights(changed)
                          && (frame < 64 ? Run(1, false, 3, {}, true) : CaptureLighting(fmt::format("{}-orbit-frame64", path)));
             }
         }
@@ -446,7 +486,7 @@ bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
     }
     if (!succeeded)
     {
-        LOGE("Bounce light capture requires ray bounce and an authored light; capture or restoration failed");
+        LOGE("Light-change capture requires ray bounce or reflections and an authored light; capture or restoration failed");
     }
     return succeeded;
 }

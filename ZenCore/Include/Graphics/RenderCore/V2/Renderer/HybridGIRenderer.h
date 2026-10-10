@@ -23,12 +23,13 @@ struct HybridGIUniformData
     Mat4               previousProjectionView{1.0f};
     Vec4               previousViewPosition{0};
     Vec4               previousViewDirection{0, 0, 1, 0};
-    glm::uvec4         sampling{0};  // frame, sample count, history limit, history valid
-    glm::uvec4         provider{0};  // hardware provider, guide valid, reserved, reserved
-    Vec4               rejection{0}; // plane threshold, specular enabled, temporal enabled, static reference
-    glm::uvec4         bounce{0};    // ray bounce enabled, bounce history valid, responsive reconstruction, cache changed
+    glm::uvec4         sampling{0};   // frame, sample count, history limit, history valid
+    glm::uvec4         provider{0};   // hardware provider, guide valid, reserved, reserved
+    Vec4               rejection{0};  // plane threshold, specular enabled, temporal enabled, static reference
+    glm::uvec4         bounce{0};     // ray bounce enabled, bounce history valid, responsive reconstruction, cache changed
+    glm::uvec4         reflection{0}; // reflections enabled, history valid, responsive reconstruction, cache changed
 };
-static_assert(sizeof(HybridGIUniformData) == 240);
+static_assert(sizeof(HybridGIUniformData) == 256);
 
 // One instance owns histories for one view. Imported textures use RenderDevice's
 // submission history (including all outstanding readers), not CPU frame parity.
@@ -68,7 +69,7 @@ public:
     }
 
 private:
-    bool PrepareHistory(uint32_t width, uint32_t height, bool bounce);
+    bool PrepareHistory(uint32_t width, uint32_t height, bool bounce, bool reflections);
     void BindGuides(RDGPassDescBase& pass) const;
     void Dispatch(RDGComputePassDesc&& pass);
 
@@ -83,6 +84,7 @@ private:
         Receiver,
         Bounce,
         BounceMoments,
+        Reflection, // Hit distance, luminance moments, history length; radiance is in Specular.rgb.
         Count
     };
     RenderDevice* m_device;
@@ -105,10 +107,11 @@ private:
     VoxelGISettings     m_previousSettings;
     bool                m_previousHardware{false};
     bool                m_previousRayBounce{false};
+    bool                m_previousReflections{false};
     glm::uvec2          m_extent{0};
     uint64_t            m_geometry{0}, m_environment{0};
     uint64_t            m_radianceGeneration{0}, m_recordedRadianceGeneration{0};
-    uint32_t            m_bounceResponsiveFrames{0};
+    uint32_t            m_bounceResponsiveFrames{0}; // Shared responsive window for both hit-radiance signals.
     uint32_t            m_frame{0}, m_current{0};
     bool                m_valid{false}, m_prepared{false}, m_recorded{false};
     const char*         m_resetReason{"initial"};

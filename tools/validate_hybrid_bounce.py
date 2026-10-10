@@ -75,16 +75,17 @@ def thin_wall(prefix):
                 rejected_lookups=float(c[:,:,2,3][floor].sum()),passed=a>0 and b<=.01*a)
 
 
-def light_changes(prefix):
+def light_changes(prefix, channel='bounce'):
     report={}
     for stage,frames in STAGES.items():
         base=str(prefix)+'-lights-'+stage
         before_meta,before=load(base+'-before')
         for frame in frames:
             current_meta,current=load(f'{base}-frame{frame}')
-            metrics=compare(f'{base}-frame{frame}',base+'-reference',channel='bounce')
+            metrics=compare(f'{base}-frame{frame}',base+'-reference',channel=channel)
             mask=current[:,:,8,3]>0
-            history=current[:,:,3,3][mask]
+            # History length of the compared channel: bounce alpha, or component 12's w for reflections.
+            history=(current[:,:,12,3] if channel=='reflection' else current[:,:,3,3])[mask]
             sky_retained=bool(np.all(current[:,:,7,0][mask]==before[:,:,7,0][mask]))
             radiance_changed=current_meta['radiance_generation']>before_meta['radiance_generation']
             report[f'{stage}_frame{frame}']=dict(metrics=metrics,gated=frame==GATED[stage],sky_history_retained=sky_retained,

@@ -27,4 +27,10 @@ void main()
     results[1]=vec4(entry.normal,grazing/4096.0);
     HybridRayResult oblique=HybridTraceRay(opacity,vec3(-1,1,1.5),vec3(.8,.6,0),1e20);
     results[2]=vec4(oblique.normal,oblique.hit ? 1.0:0.0);
+    // At roughness 1 and normal incidence the accepted lobe's z density is
+    // proportional to 2*z/(1+z). Its mass above z=.5 has a closed-form integral.
+    float cap=0.0;
+    for(uint i=0u;i<65536u;++i)
+        cap+=dot(n,HybridSpecularDirection(n,n,1.0,uvec2(13,47),i,0x1234u))>0.5 ? 1.0 : 0.0;
+    results[3]=vec4(cap/65536.0,0,0,0);
 }

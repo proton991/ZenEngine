@@ -69,8 +69,8 @@ TEST_P(ConeVoxelGIIntegrationTest, HybridEstimatorNormalizesAndClosedGeometryBlo
     RHITexture* occupancy = device->CreateTexture(info);
     textures.push_back(occupancy);
     RHISampler* sampler  = device->CreateSampler({});
-    RHIBuffer*  output   = Buffer(3 * sizeof(Vec4), RHIBufferAllocateType::eGPU);
-    RHIBuffer*  readback = Buffer(3 * sizeof(Vec4), RHIBufferAllocateType::eCPURead);
+    RHIBuffer*  output   = Buffer(4 * sizeof(Vec4), RHIBufferAllocateType::eGPU);
+    RHIBuffer*  readback = Buffer(4 * sizeof(Vec4), RHIBufferAllocateType::eCPURead);
     for (uint32_t scenario = 0; scenario < 3; ++scenario)
     {
         HeapVector<uint32_t> voxels(64, 0);
@@ -107,13 +107,15 @@ TEST_P(ConeVoxelGIIntegrationTest, HybridEstimatorNormalizesAndClosedGeometryBlo
         pass.BindSampledTexture("opacity", sampler, occupancy->GetDefaultView());
         pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
         graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
-        graph.AddTransferPass("ReadHybridCheck").CopyBuffer(output, readback, {0, 0, 3 * sizeof(Vec4)}).NeverCull();
+        graph.AddTransferPass("ReadHybridCheck").CopyBuffer(output, readback, {0, 0, 4 * sizeof(Vec4)}).NeverCull();
         ASSERT_TRUE(graph.End());
         ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
         device->FlushRHIThread();
         device->WaitForIdle();
         const HeapVector<Vec4> result = ReadStaticBuffer<Vec4>(readback);
-        ASSERT_EQ(result.size(), 3u);
+        ASSERT_EQ(result.size(), 4u);
+        const float capIntegral = (0.5f - std::log(4.0f / 3.0f)) / (1.0f - std::log(2.0f));
+        EXPECT_NEAR(result[3].x, capIntegral, 0.005f);
         if (scenario == 0)
         {
             EXPECT_EQ(result[0].x, 1.0f);

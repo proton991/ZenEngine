@@ -92,10 +92,17 @@ vec3 HybridSpecularDirection(vec3 normal, vec3 view, float roughness, uvec2 pixe
     bool found = false;
     for(uint k = 0u; k < HYBRID_SPECULAR_CANDIDATES; ++k)
     {
-        direction = HybridGGXSample(normal, view, roughness, HybridSample(pixel, sampleIndex, dimension + k));
+        // Rejection requires independent dimensions. Two rotated R2 sequences have the same
+        // per-frame increment, so using another rotation's x for acceptance correlates it with
+        // the candidate and biases the lobe. Preserve the stratified first candidate, then use
+        // independent counter hashes for acceptance and retries.
+        uint seed=HybridHash(HybridMorton(pixel)^HybridHash(sampleIndex)^HybridHash(dimension+k));
+        vec2 u=k==0u ? HybridSample(pixel,sampleIndex,dimension)
+                     : vec2(uvec2(HybridHash(seed^0x68bc21ebu),HybridHash(seed^0x02e5be93u))>>8)/16777216.0;
+        direction = HybridGGXSample(normal, view, roughness, u);
         float cosine = dot(normal, direction);
         if(cosine <= 0.0) continue;
-        if(HybridSample(pixel, sampleIndex, dimension + k + 0x9e3779b9u).x < HybridSmithG1(cosine, alpha)) return direction;
+        if(float(HybridHash(seed^0x9e3779b9u)>>8)/16777216.0 < HybridSmithG1(cosine, alpha)) return direction;
         fallback = found ? fallback : direction;
         found = true;
     }

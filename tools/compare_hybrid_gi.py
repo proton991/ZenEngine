@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 # Capture components holding each signal: raw at the offset, reconstructed one after it.
-CHANNELS={'sky':(0,),'bounce':(2,),'diffuse':(0,2)}
+CHANNELS={'sky':(0,),'bounce':(2,),'diffuse':(0,2),'reflection':(4,)}
 
 
 def load(prefix):

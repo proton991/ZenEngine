@@ -18,6 +18,8 @@ layout(set=1,binding=14) uniform sampler3D hitNormal;
 // it (meaningful only when the cache changed; hybrid_temporal.comp).
 layout(set=1,binding=15) uniform sampler3D hitRadiancePrevious;
 layout(set=1,binding=16,rgba16f) uniform writeonly image2D rawBouncePrevious;
+layout(set=1,binding=17,rg32f) uniform writeonly image2D rawReflection;
+layout(set=1,binding=18,rgba16f) uniform writeonly image2D rawReflectionPrevious;
 // Visibility guide: per screen tile, the visible residual radiance (without the receiver's cosine)
 // over the environment's tiles, learned from this pass's rays, followed by the frames it averages.
 // Each receiver weights it by its own cosine toward the tile centres and draws guided rays from it,
@@ -134,6 +136,8 @@ void main()
     barrier();
 
     vec4 sky=vec4(0), specular=vec4(0,0,0,1), bounce=vec4(0), previous=vec4(0);
+    vec2 reflection=vec2(0);
+    vec3 reflectionPrevious=vec3(0);
     if(HybridInView(p) && texelFetch(receiverDepth,p,0).r<1.0 && texelFetch(receiverSurface,p,0).g!=0u)
     {
         atomicAdd(guideReceivers,1u);
@@ -228,18 +232,43 @@ void main()
             float roughness=clamp(texelFetch(receiverRoughness,p,0).g,0.04,1.0);
             uint specularSamples=hybrid.sampling.y>4u ? hybrid.sampling.y : 1u;
             specular.a=0.0;
+            float hitCount=0.0;
             for(uint i=0u;i<specularSamples;++i)
             {
                 vec3 w=HybridSpecularDirection(n,view,roughness,uvec2(p),hybrid.sampling.x*specularSamples+i,0x1234u);
-                specular.a+=dot(ng,w)>0.0 && !HybridTraceRay(voxelOpacity,origin,w,1e20).hit ? 1.0 : 0.0;
+                if(dot(ng,w)>0.0)
+                {
+                    HybridRayResult hit=hybrid.reflection.x!=0u ? HybridTraceClosestRay(voxelOpacity,origin,w,1e20)
+                                                              : HybridTraceRay(voxelOpacity,origin,w,1e20);
+                    if(!hit.hit) specular.a+=1.0;
+                    else if(hybrid.reflection.x!=0u)
+                    {
+                        bool rejected;
+                        // Store the unconditional hit integral C=(1-S)*H. Averaging conditional H
+                        // separately from the hit fraction would multiply two noisy estimates.
+                        specular.rgb+=HitRadiance(hitRadiance,hitNormal,hit,w,rejected);
+                        reflection.y+=rejected ? 1.0 : 0.0;
+                        reflection.x+=length(hit.position-position);
+                        hitCount+=1.0;
+                        if(hybrid.reflection.w!=0u)
+                            reflectionPrevious+=HitRadiance(hitRadiancePrevious,hitNormal,hit,w,rejected);
+                    }
+                }
             }
-            specular.a/=float(specularSamples);
+            specular/=float(specularSamples);
+            reflectionPrevious/=float(specularSamples);
+            reflection.x/=max(hitCount,1.0);
         }
     }
     if(HybridInView(p))
     {
         imageStore(rawSky,p,sky);
         imageStore(rawSpecular,p,specular);
+        if(hybrid.reflection.x!=0u)
+        {
+            imageStore(rawReflection,p,vec4(reflection,0,0));
+            imageStore(rawReflectionPrevious,p,vec4(reflectionPrevious,0));
+        }
         if(hybrid.bounce.x!=0u) // 1x1 placeholders for cone bounce
         {
             imageStore(rawBounce,p,bounce);

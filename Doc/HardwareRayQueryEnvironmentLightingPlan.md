@@ -147,7 +147,7 @@ Metallic/Fresnel, albedo and material AO are applied exactly once. Material AO r
 `specular = (S * prefiltered(R, roughness) + (1 - S) * H) * (F * A + B) * AO`
 
 - `S` is the fraction of the specular lobe `f * cos` whose rays escape, over the upper hemisphere of the shading normal: the domain of the prefiltered map and the split-sum terms. Lobe directions below the shading normal are outside that integral and are excluded, not counted as blocked; otherwise an unoccluded rough surface gets `S < 1` (0.5 at roughness 1 and normal incidence). Directions above the shading normal but below `n_g` are blocked. Visible-normal samples carry the weight `G1(l)` (separable Smith, Fresnel excluded).
-- `H` is the mean radiance-cache value of the lobe rays that hit, with indirect intensity applied; it is zero until P6.
+- `H` is the mean radiance-cache value of the lobe rays that hit, with indirect intensity applied. P6 reconstructs the weighted contribution `(1 - S) * H` directly; see [P6 implementation and measurements](HybridGI/P6.md).
 - Keeping the environment part on the prefiltered map leaves only the hit part noisy.
 - In forward materials with extra lobes (clearcoat, sheen), apply the base-lobe `S` and `H` to every environment-specular lobe and document the approximation.
 - Below the roughness cutoff fixed in P0 (initially 0.2), reflected scene detail is limited by voxel resolution; it is still occluded correctly. Analytic specular is unchanged.
@@ -229,6 +229,7 @@ Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in 
 | Moving occluder over a static floor | No frame shows the old shadow position; within the shipping-preset limits within 32 frames after it stops |
 | Light moved or switched | Bounce channel within the shipping-preset limits within 8 frames; sky channel unaffected |
 | Light moving continuously (added 2026-10-10, before measurement; [P5 review decisions](#p5-review-decisions-2026-10-10)) | After 64 frames of continuous motion, bounce channel within the shipping-preset limits versus the converged reference with the light frozen at its current position; sky channel unaffected |
+| Reflections under light changes (added 2026-10-10, before measurement; P6 review) | The light-moved, light-off and continuous-motion rows above also apply to the reflection channel `C = (1 - S) H` on the roughness-0.2 glossy-floor fixture, whose reflected wall is lit by the moving light |
 | Glossy floor fixture, RT tier, converged, versus CPU specular reference | `S` and hit fraction within 2% absolute |
 
 8. **Performance targets** (engineering targets proposed by this revision; confirm before the P0 freeze). All GI passes combined, including reflections and reconstruction, at 1920×1080, Release build, frozen presets:
@@ -288,7 +289,7 @@ Exit: render-graph tests cover history ordering across frames in flight, resize 
 | `voxel_gi_ray_provider=auto\|voxel\|hardware` | Ray source for every query in this plan; `auto` follows the tier selection |
 | `voxel_gi_samples=1\|2\|4` | Diffuse samples per pixel |
 | `voxel_gi_bounce_source=cone\|rays` | Diagnostic override of the preset's bounce source |
-| `voxel_gi_reflections`, `voxel_gi_specular_occlusion` | Enable `H` and `S` |
+| `voxel_gi_reflections` (`auto`, `true`, `false`; `auto` follows the hardware provider), `voxel_gi_specular_occlusion` | Enable `H` and `S` |
 | `voxel_gi_temporal`, `voxel_gi_filter` | Disable reprojection or spatial filtering, for tests and reference captures |
 | `voxel_gi_history_frames` | Upper bound on accumulated frames (default 32) |
 | `voxel_gi_rt_shadows` | P7, only if adopted |
@@ -315,7 +316,7 @@ Exit:
   Below a total valid weight of 0.01, treat the pixel as disoccluded with history length zero.
 - Accumulate with `alpha = max(1 / historyLength, 1 / historyLimit)`, including first and second luminance moments per channel.
 - **Sky channel:** no neighborhood clamping in steady state, because clamping biases the estimate. Resets follow the P1 table.
-- **Responsive policy** (bounce channel and `H`): a lower history limit, and clamping to the current neighborhood's variance box for a bounded number of frames after a lighting, emissive or radiance-cache generation change. Such a change keeps the history (amended 2026-10-10, [P5 review decisions](#p5-review-decisions-2026-10-10)). On the frame of the change, the bounce rays also read the radiance cache as it was before the injection. Over the same-surface neighborhood, the ratio of the new to the previous results scales the history, and the relative size of the change shortens it, down to a restart when a light goes out or comes on. The two lookups share rays and hits, so the ratio is nearly exact for small changes. Discarding the history at every change leaves one frame of samples while a light moves; a test of the old history against new samples alone cannot separate a moderate change from four-ray noise.
+- **Responsive policy** (bounce channel and `H`): a lower history limit, and clamping to the current neighborhood's variance box for a bounded number of frames after a lighting, emissive or radiance-cache generation change. Such a change keeps the history (amended 2026-10-10, [P5 review decisions](#p5-review-decisions-2026-10-10)). On the frame of the change, the bounce rays also read the radiance cache as it was before the injection. Over the same-surface neighborhood, the ratio of the new to the previous results scales the history, and the relative size of the change shortens it, down to a restart when a light goes out or comes on. The two lookups share rays and hits, so the ratio is nearly exact for small changes. Discarding the history at every change leaves one frame of samples while a light moves; a test of the old history against new samples alone cannot separate a moderate change from four-ray noise. For reflections (amended 2026-10-10, P6 review), the neighborhood clamp applies only during camera motion. With one ray per pixel, dim reflections often leave a whole neighborhood without a hit; the clamp then collapses to zero and empties valid history. Over eight frames it lowered the glossy floor's dark-region `C` by 85% even where `C` had not changed. After a cache change, the correlated update alone empties history where the light went out.
 - **`S` and `H`:** shorten history at low roughness and reject it when the view direction changes by more than a roughness-dependent angle.
 
 ### Spatial filtering
@@ -431,6 +432,13 @@ Exit: the one-bounce, thin-wall and light-change limits pass on the RT tier, and
 2. **Static frozen cameras with ray-hit bounce.** The shipping-preset limits apply to the composed diffuse irradiance `D_sky + D_bounce`, the signal that is shaded, against the converged reference of the tier. Bounce-channel errors are reported, not gated. The P5 contract asks for a noise comparison with the cone bounce on frozen cameras, not for a bounce-channel limit. In the Sponza top view bounce is 0.5% of diffuse irradiance, so a bounce-channel limit judges a signal the image barely contains. The fixture limits, the light-change limits and the new continuous-motion limit remain on the bounce channel. This decision was recorded after the 2026-10-10 Sponza captures had been evaluated; the bounce-only results stay in the [P5 record](HybridGI/P5.md).
 
 ## P6 Glossy reflections from the radiance cache
+
+Status (2026-10-10): **exit met** on the RTX 5080 ([P6 record](HybridGI/P6.md)).
+- The RT tier passes `S` and hit fraction against the full CUDA lobe reference (`tools/ground_truth_specular.py`; max 1.49 pp over 93,088 receivers), the enclosed and open glossy checks, and the camera-motion check (no trails).
+- It also passes the light-change and continuous-motion limits extended to `C` by the P6 review. Those exposed a responsive-clamp defect for one-ray reflections, now fixed.
+- The default `voxel_gi_reflections=auto` enables reflections with the hardware provider and keeps occlusion only on the compute tier until P8 chooses.
+- Reflected emission differs from the triangle reference by −1.43%. No frozen limit covers it, and it is reported per cause.
+- Below-cutoff noise, compute-tier voxel-geometry errors and untested platforms remain limitations.
 
 - Use the specular lobe rays' hits for `H` through the hit-radiance contract, and compose specular as defined in the lighting contract.
 - For low roughness, reproject `H` with hit distance (reflection parallax), not only surface motion. Keep history short below the roughness cutoff.
@@ -580,7 +588,7 @@ These are not required for done and are each assessed against the P0 limits and 
 - [x] P4d scene query service passes. (2026-10-10, on the tested devices)
 - [ ] P4e hardware provider passes the CPU-reference and shipping-preset limits.
 - [x] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured. (2026-10-10, RTX 5080; ray-hit bounce is the RT-tier default)
-- [ ] P6 glossy reflections pass on the RT tier; compute-tier choice measured.
+- [x] P6 glossy reflections pass on the RT tier; compute-tier choice measured. (2026-10-10, RTX 5080; [results and limits](HybridGI/P6.md))
 - [ ] P7 hardware shadows evaluated and the adoption decision recorded (optional).
 - [ ] P8 performance and memory reports per tier, preset and platform; presets and automatic selection documented.
 - [ ] Functional report records correctness evidence and limitations per tier.

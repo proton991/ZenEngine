@@ -27,6 +27,101 @@ layout(set=1,binding=27) uniform sampler2D previousBounceMoments;
 layout(set=1,binding=28,rgba32f) uniform writeonly image2D nextBounce;
 layout(set=1,binding=29,rg32f) uniform writeonly image2D nextBounceMoments;
 layout(set=1,binding=30) uniform sampler2D rawBouncePrevious;
+layout(set=1,binding=31) uniform sampler2D rawReflection;
+layout(set=1,binding=32) uniform sampler2D rawReflectionPrevious;
+layout(set=1,binding=33) uniform sampler2D previousReflection;
+layout(set=1,binding=34,rgba32f) uniform writeonly image2D nextReflection;
+#include "hybrid_radiance_history.glsl"
+
+// C=(1-S)*H uses its own reprojection, luminance moments and history length. S keeps surface motion.
+// For a locally planar mirror, x-view*hitDistance is the virtual image behind the receiver.
+// Projecting that point accounts for reflection parallax as the camera moves along the surface.
+vec4 ReconstructReflection(ivec2 p, vec3 position, vec3 n, vec3 ng, vec3 view, uint identity,
+    float roughness, vec2 surfacePixel, inout vec3 radiance)
+{
+    float distance=texelFetch(rawReflection,p,0).x;
+    // A stochastic miss must still average its zero radiance with preceding hits. Borrow a current
+    // same-surface distance for parallax when a neighbour hit; never infer radiance from this guide.
+    if(distance<=0.0 && roughness<0.4)
+    {
+        float count=0.0;
+        for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x)
+        {
+            ivec2 q=p+ivec2(x,y);
+            if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity
+                || dot(HybridGeometricNormal(q),ng)<0.99
+                || abs(dot(HybridPosition(q)-position,ng))>hybrid.rejection.x) continue;
+            float sampleDistance=texelFetch(rawReflection,q,0).x;
+            if(sampleDistance>0.0) { distance+=sampleDistance; count+=1.0; }
+        }
+        distance/=max(count,1.0);
+    }
+    float luminance=HybridLuminance(radiance);
+    vec2 moments=vec2(luminance,luminance*luminance);
+    vec4 oldValue=vec4(0); vec2 oldMoments=vec2(0);
+    float weight=0.0;
+    bool reference=hybrid.rejection.w>0.5;
+    bool moving=length(surfacePixel-vec2(p))>0.01 || hybrid.previousViewPosition!=sceneUbo.viewPosition;
+    bool parallax=roughness<0.4 && !reference && moving;
+    vec2 previousPixel=surfacePixel;
+    vec3 virtualPosition=position-view*distance;
+    vec4 virtualClip=hybrid.previousProjectionView*vec4(virtualPosition,1);
+    bool valid=hybrid.reflection.y!=0u && hybrid.rejection.z>0.0 && identity!=0u && texelFetch(receiverMotion,p,0).z>0.0;
+    if(parallax)
+    {
+        valid=valid && distance>0.0 && virtualClip.w>0.0;
+        previousPixel=(virtualClip.xy/max(virtualClip.w,1e-20)*0.5+0.5)*vec2(textureSize(receiverDepth,0))-0.5;
+    }
+    if(valid)
+    {
+        ivec2 base=ivec2(floor(previousPixel)); vec2 f=fract(previousPixel);
+        for(int y=0;y<2;++y) for(int x=0;x<2;++x)
+        {
+            ivec2 q=base+ivec2(x,y);
+            if(!HybridInView(q) || texelFetch(previousReceiver,q,0).g!=identity) continue;
+            vec3 oldPosition=texelFetch(previousPosition,q,0).xyz;
+            vec4 normals=texelFetch(previousNormal,q,0);
+            if(abs(dot(oldPosition-position,ng))>hybrid.rejection.x*max(1.0,length(position-sceneUbo.viewPosition.xyz))
+                || dot(DecodeGBufferNormal(normals.rg),n)<0.99 || dot(DecodeGBufferNormal(normals.ba),ng)<0.99
+                || abs(texelFetch(previousLength,q,0).a-roughness)>0.02) continue;
+            vec3 oldView=sceneUbo.viewPosition.w<0.5 ? hybrid.previousViewDirection.xyz
+                : normalize(hybrid.previousViewPosition.xyz-oldPosition);
+            vec4 data=texelFetch(previousReflection,q,0);
+            if(parallax)
+            {
+                // Reject another reflected surface, including disocclusions, rather than reusing its colour.
+                vec3 oldVirtual=oldPosition-oldView*data.x;
+                if(data.x<=0.0 || length(oldVirtual-virtualPosition)>max(0.005,0.1*distance)) continue;
+            }
+            else if(dot(oldView,view)<mix(0.9995,0.9,roughness*roughness)) continue;
+            float w=(x==0 ? 1.0-f.x:f.x)*(y==0 ? 1.0-f.y:f.y);
+            oldValue+=vec4(texelFetch(previousSpecular,q,0).rgb,data.w)*w;
+            oldMoments+=data.yz*w;
+            weight+=w;
+        }
+    }
+    float length=1.0;
+    if(weight>=0.01)
+    {
+        oldValue/=weight; oldMoments/=weight;
+        float limit=reference ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z),roughness<0.2 ? 4.0 : 16.0);
+        if(!reference && (hybrid.reflection.z!=0u || moving))
+        {
+            // The box guards camera motion only. With one ray per pixel, dim reflections often leave a
+            // whole 9x9 neighbourhood without a hit; after a cache change the box then emptied valid
+            // history frame after frame (dark floor C fell 85% by frame 8 with C unchanged, P6 review).
+            HybridUpdateRadianceHistory(p,identity,position,ng,rawSpecular,rawReflectionPrevious,
+                hybrid.reflection.w!=0u,moving,oldValue,oldMoments);
+            limit=min(limit,8.0);
+        }
+        length=min(oldValue.a+1.0,limit);
+        radiance=mix(oldValue.rgb,radiance,1.0/length);
+        moments=mix(oldMoments,moments,1.0/length);
+    }
+    if(identity==0u) { radiance=vec3(0); moments=vec2(0); length=0.0; }
+    return vec4(distance,moments,length);
+}
+
 void main()
 {
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
@@ -93,7 +188,7 @@ void main()
     if(specWeight>=0.01)
     {
         lengths.y=min(oldLength.y/specWeight+1.0,(hybrid.rejection.w>0.5 ? float(hybrid.sampling.z) : mix(4.0,float(hybrid.sampling.z),smoothstep(0.04,0.4,roughness))));
-        spec=mix(oldSpec/specWeight,spec,1.0/lengths.y);
+        spec.a=mix(oldSpec.a/specWeight,spec.a,1.0/lengths.y);
         moments.ba=mix(oldMoments.ba/specWeight,moments.ba,1.0/lengths.y);
     }
     if(identity.g==0u) { lengths=vec2(0); sky=vec4(0); spec=vec4(0); moments=vec4(0); }
@@ -106,50 +201,8 @@ void main()
         float limit=hybrid.rejection.w>0.5 ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z),16.0);
         if(hybrid.bounce.z!=0u && hybrid.rejection.w<0.5)
         {
-            vec3 mean=vec3(0), second=vec3(0), previous=vec3(0); float count=0.0;
-            vec2 products=vec2(0); // luminance: previous squared, previous times new
-            for(int y=-4;y<=4;++y) for(int x=-4;x<=4;++x)
-            {
-                ivec2 q=p+ivec2(x,y);
-                if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity.g) continue;
-                if(dot(HybridGeometricNormal(q),ng)<0.9 || abs(dot(HybridPosition(q)-position,ng))>hybrid.rejection.x) continue;
-                vec3 value=texelFetch(rawBounce,q,0).rgb;
-                mean+=value; second+=value*value; count+=1.0;
-                if(hybrid.bounce.w!=0u)
-                {
-                    vec3 old=texelFetch(rawBouncePrevious,q,0).rgb;
-                    previous+=old;
-                    products+=HybridLuminance(old)*vec2(HybridLuminance(old),HybridLuminance(value));
-                }
-            }
-            mean/=max(count,1.0); second/=max(count,1.0); previous/=max(count,1.0);
-            if(hybrid.bounce.w!=0u)
-            {
-                // This frame's rays read both the previous and the new radiance cache. Over the
-                // neighbourhood, the ratio of the two results scales the history: the lookups are
-                // correlated, so it is nearly exact for a light that moves a little, and the history
-                // keeps accumulating while it moves. The relative size of the change shortens the
-                // history, down to a restart when a light goes out or comes on.
-                float before=HybridLuminance(previous), after=HybridLuminance(mean);
-                // Beale's correction removes the ratio's first-order bias, which sparse hits make
-                // about one percent when the change is largest where hits are brightest.
-                float beale=1.0;
-                if(before>0.0 && after>0.0 && count>1.0)
-                {
-                    vec2 covariance=(products/count-before*vec2(before,after))*count/(count-1.0);
-                    beale=(1.0+covariance.y/(count*before*after))/(1.0+covariance.x/(count*before*before));
-                }
-                oldBounce.rgb=mix(oldBounce.rgb+mean,oldBounce.rgb*mean/max(previous,vec3(1e-30))*beale,greaterThan(previous,vec3(0)));
-                float ratio=before>0.0 ? after/before*beale : 1.0;
-                float spread=max(oldBounceMoments.y-oldBounceMoments.x*oldBounceMoments.x,0.0)*ratio*ratio;
-                oldBounceMoments.x=HybridLuminance(oldBounce.rgb);
-                oldBounceMoments.y=spread+oldBounceMoments.x*oldBounceMoments.x;
-                oldBounce.a*=1.0-abs(after-before)/max(max(after,before),1e-30);
-            }
-            // Four-ray hit radiance has sparse bright samples; a 3x3, three-sigma box clipped valid
-            // point-light energy. This wide box still empties history where the light went out.
-            vec3 deviation=10.0*sqrt(max(second-mean*mean,vec3(0)));
-            oldBounce.rgb=clamp(oldBounce.rgb,max(mean-deviation,vec3(0)),mean+deviation);
+            HybridUpdateRadianceHistory(p,identity.g,position,ng,rawBounce,rawBouncePrevious,
+                hybrid.bounce.w!=0u,true,oldBounce,oldBounceMoments);
             limit=min(limit,8.0);
         }
         bounce.a=min(oldBounce.a+1.0,limit);
@@ -161,6 +214,11 @@ void main()
     {
         imageStore(nextBounce,p,bounce);
         imageStore(nextBounceMoments,p,vec4(bounceMoments,0,0));
+    }
+    if(hybrid.reflection.x!=0u)
+    {
+        vec4 reflection=ReconstructReflection(p,position,n,ng,view,identity.g,roughness,previousPixel,spec.rgb);
+        imageStore(nextReflection,p,reflection);
     }
     imageStore(nextSky,p,sky); imageStore(nextSpecular,p,spec);
     imageStore(nextMoments,p,moments); imageStore(nextLength,p,vec4(lengths,reason,roughness));

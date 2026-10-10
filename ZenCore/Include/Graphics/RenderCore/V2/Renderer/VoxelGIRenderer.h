@@ -40,6 +40,13 @@ struct VoxelGISettings
     bool         temporal{true};
     bool         filter{true};
     bool         specularOcclusion{true};
+    enum class Reflections : uint32_t
+    {
+        Auto, // Radiance-cache reflections with hardware queries; occlusion only on the compute tier until P8.
+        Off,
+        On
+    };
+    Reflections  reflections{Reflections::Auto};
     float        indirectIntensity{1.0f};
     float        coneAngleDegrees{60.0f};
     float        stepScale{1.0f};
@@ -112,6 +119,11 @@ public:
         return m_radianceGeneration + (m_recordedRadiance ? 1 : 0);
     }
 
+    bool HasPreviousRadiance() const
+    {
+        return m_previousRadiance != nullptr;
+    }
+
     bool UsesHardwareQueries() const
     {
         return m_hardwareQueries;
@@ -121,6 +133,13 @@ public:
     {
         return m_settings.bounceSource == VoxelGISettings::BounceSource::Rays
             || (m_settings.bounceSource == VoxelGISettings::BounceSource::Auto && m_hardwareQueries);
+    }
+    // Resolved reflection enablement; reflections need the specular-occlusion rays they reuse.
+    bool UsesReflections() const
+    {
+        return m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy && m_settings.specularOcclusion
+            && (m_settings.reflections == VoxelGISettings::Reflections::On
+                || (m_settings.reflections == VoxelGISettings::Reflections::Auto && m_hardwareQueries));
     }
     const char* GetProviderReason() const
     {
@@ -167,14 +186,14 @@ private:
 
     void BuildEnvironmentDistribution();
 
-    SceneRayQuery               m_rayQuery;
-    bool                        m_hardwareQueries{false};
-    const char*                 m_providerReason{"voxel_selected"};
-    RenderDevice*               m_device{nullptr};
-    RenderScene*                m_scene{nullptr};
-    VoxelizerBase*              m_voxelizer{nullptr};
-    RHITexture*                 m_radiance{nullptr};
-    // Base level as it was before the latest injection, for ray-hit bounce history; 1x1x1 otherwise.
+    SceneRayQuery  m_rayQuery;
+    bool           m_hardwareQueries{false};
+    const char*    m_providerReason{"voxel_selected"};
+    RenderDevice*  m_device{nullptr};
+    RenderScene*   m_scene{nullptr};
+    VoxelizerBase* m_voxelizer{nullptr};
+    RHITexture*    m_radiance{nullptr};
+    // Base level before the latest injection, for ray-hit bounce/reflection history; 1x1x1 otherwise.
     RHITexture*                 m_previousRadiance{nullptr};
     RHITexture*                 m_skyIrradiance{nullptr};
     RHIBuffer*                  m_environmentColumns{nullptr};

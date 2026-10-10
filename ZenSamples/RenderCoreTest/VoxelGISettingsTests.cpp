@@ -85,7 +85,8 @@ TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
 TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
 {
     std::istringstream     stream("voxel_gi_samples=4\nvoxel_gi_history_frames=64\nvoxel_gi_ray_provider=hardware\n"
-                                  "voxel_gi_temporal=false\nvoxel_gi_filter=false\nvoxel_gi_specular_occlusion=false\n");
+                                  "voxel_gi_temporal=false\nvoxel_gi_filter=false\nvoxel_gi_specular_occlusion=false\n"
+                                  "voxel_gi_reflections=false\n");
     platform::ConfigLoader config(stream);
     VoxelGIRuntimeSettings settings;
     ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
@@ -95,12 +96,15 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
     EXPECT_FALSE(settings.cone.temporal);
     EXPECT_FALSE(settings.cone.filter);
     EXPECT_FALSE(settings.cone.specularOcclusion);
+    EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::Off);
     // Ray-hit bounce with hardware queries, cones otherwise (P5 passed on the RT tier only).
     EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Auto);
     std::istringstream     bounceStream("voxel_gi_bounce_source=rays\n");
     platform::ConfigLoader bounceConfig(bounceStream);
     ASSERT_TRUE(LoadVoxelGIRuntimeSettings(bounceConfig, settings));
     EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Rays);
+    // Reflections with hardware queries, occlusion only otherwise (P6 measured; P8 chooses the compute tier).
+    EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::Auto);
     std::istringstream     invalidStream("voxel_gi_bounce_source=invalid\n");
     platform::ConfigLoader invalidConfig(invalidStream);
     EXPECT_FALSE(LoadVoxelGIRuntimeSettings(invalidConfig, settings));

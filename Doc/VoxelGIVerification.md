@@ -2,7 +2,9 @@
 
 Date: 2026-09-21. Implementation follows [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md), with execution refinements recorded there.
 
-Latest hybrid extension (2026-10-10): [P5 ray-hit bounce](HybridGI/P5.md) records the implementation and its gate. Ray-hit bounce passes the RT-tier limits, including a continuously moving light, and is the default with the hardware provider; cone bounce remains the compute-tier default until P8.
+Latest hybrid extension (2026-10-10): [P6 radiance-cache reflections](HybridGI/P6.md) passes the RT glossy-fixture gate on the RTX 5080. It adds closest-hit radiance, independent reflection history, hit-distance camera reprojection, forward/deferred composition and a GGX sampling correction. The compute path is measured with RT disabled; its voxel-geometry errors and below-cutoff noise are recorded. Validation: 576 RenderCore tests, 20 native GI tests, 121 shader variants, and 14 final allocation/settings regressions pass, with clean native fixture validation. P8 retains preset, performance and memory qualification.
+
+[P5 ray-hit bounce](HybridGI/P5.md) passes the RT-tier limits, including a continuously moving light, and is the default with the hardware provider; cone bounce remains the compute-tier default until P8.
 
 ## Hybrid environment lighting P0–P3 (2026-10-07)
 
