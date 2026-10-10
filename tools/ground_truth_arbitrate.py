@@ -13,17 +13,15 @@ import numpy as np
 
 from compare_hybrid_gi import load
 from environment_reference import Environment, load_gltf, sky_reference
-from ground_truth_mitsuba import depth_quantization_error, engine_origins
+from ground_truth_mitsuba import engine_origins, receiver_agreement
 
 
 def run(args):
     metadata, data = load(args.capture)
     truth = np.load(args.truth)
     position = data[:, :, 8, :3]
-    tolerance = 4*depth_quantization_error(metadata, position) + 1e-6*(1+np.abs(position).max(-1))
-    valid = ((data[:, :, 8, 3] > 0) & (truth['position'][..., 3] > 0)
-             & (np.linalg.norm(truth['position'][..., :3]-position, axis=-1) <= tolerance)
-             & (np.linalg.norm(position-np.array(metadata['camera_position']), axis=-1) >= args.far))
+    _, _, agree = receiver_agreement(truth, metadata, data)
+    valid = agree & (np.linalg.norm(position-np.array(metadata['camera_position']), axis=-1) >= args.far)
     error = np.mean((data[:, :, 1, :3]-truth['sky'])**2, axis=-1)
     candidates = np.flatnonzero(valid)
     picks = candidates[np.argsort(error.ravel()[candidates])[-args.count:][::-1]]

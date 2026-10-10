@@ -551,12 +551,26 @@ def depth_quantization_error(metadata, positions):
     return np.linalg.norm(moved - flat, axis=1).reshape(positions.shape[:-1])
 
 
+# Receivers on the same surface have geometric normals within 0.05 degrees (G-buffer encoding and
+# derivative error, measured on Sponza at 960x540); verdicts are unchanged from 0.1 to 2 degrees.
+# Where two faces meet, positions agree but the rasterizer, with its fixed-point vertex snapping,
+# and the ray may take different faces at the pixel center.
+SAME_SURFACE_NORMAL_DEGREES = 0.5
+
+
 def receiver_agreement(truth, metadata, data):
+    """Pixels where the engine's receiver and the ground truth's primary hit are the same surface:
+    within four depth-quantization steps of each other and, where the truth has geometric normals,
+    with geometric normals within SAME_SURFACE_NORMAL_DEGREES (either orientation)."""
     engine = data[:, :, 8, :3]
     covered = data[:, :, 8, 3] > 0
     hit = truth['position'][..., 3] > 0
     tolerance = 4 * depth_quantization_error(metadata, engine) + 1e-6 * (1 + np.abs(engine).max(-1))
     agree = covered & hit & (np.linalg.norm(truth['position'][..., :3] - engine, axis=-1) <= tolerance)
+    if 'geometric' in truth.files:
+        a, b = data[:, :, 10, :3], truth['geometric']
+        cosine = np.abs(np.sum(a * b, axis=-1)) / np.maximum(np.linalg.norm(a, axis=-1) * np.linalg.norm(b, axis=-1), 1e-20)
+        agree &= cosine >= np.cos(np.radians(SAME_SURFACE_NORMAL_DEGREES))
     return covered, hit, agree
 
 
@@ -564,10 +578,11 @@ def compare(truth_path, capture, component=1, far=0.3, additional_regions=None):
     """Error of a capture's sky component against the ground truth, per region, normalized by the region mean.
 
     Pixels whose primary hit differs from the engine's receiver by more than four times the
-    receiver's depth-quantization error (one float32 step of its stored depth, unprojected) are
-    excluded and counted. They measure where rasterization and rays see different surfaces,
-    chiefly alpha masks tested at a mip level by the rasterizer and at level zero by rays, not
-    sky error. All receivers are also split at 'far' renderer units from the camera.
+    receiver's depth-quantization error (one float32 step of its stored depth, unprojected), or
+    lies on a face with a different geometric normal, are excluded and counted. They measure
+    where rasterization and rays see different surfaces, chiefly alpha masks tested at a mip
+    level by the rasterizer and at level zero by rays, and faces meeting at the pixel center,
+    not sky error. All receivers are also split at 'far' renderer units from the camera.
     """
     truth = np.load(truth_path)
     metadata, data = load_capture(capture)
