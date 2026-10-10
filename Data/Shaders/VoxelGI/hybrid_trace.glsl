@@ -98,8 +98,9 @@ void main()
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
     uint lane=gl_LocalInvocationIndex;
     uint guideBase=(gl_WorkGroupID.y*gl_NumWorkGroups.x+gl_WorkGroupID.x)*(ZEN_ENVIRONMENT_TILES+1u);
-    // A reset history also resets the guide; source tiles have their own rays.
-    bool guideValid=hybrid.sampling.w!=0u;
+    // The guide survives resets that keep the screen and environment (HybridGIRenderer); source
+    // tiles have their own rays.
+    bool guideValid=hybrid.provider.y!=0u;
     for(uint t=lane;t<ZEN_ENVIRONMENT_TILES;t+=gl_WorkGroupSize.x*gl_WorkGroupSize.y)
     {
         uint perFace=ZEN_ENVIRONMENT_TILES_PER_FACE*ZEN_ENVIRONMENT_TILES_PER_FACE;

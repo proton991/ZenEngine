@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/Shared/EnvironmentSampling.h"
+#include <string_view>
 
 namespace zen::rc
 {
@@ -188,7 +189,13 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         m_previousSettings  = settings;
         m_uniforms.sampling = glm::uvec4(m_frame, settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples,
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
-        m_uniforms.provider = glm::uvec4(m_previousHardware ? 1u : 0u, 0, 0, 0);
+        // The visibility guide only steers sampling, so the estimate stays unbiased whatever it holds. It
+        // survives resets that leave the screen and the environment in place (geometry, opacity, settings
+        // and provider changes); a cut, resize, new scene or new environment starts it again.
+        const std::string_view reason = m_resetReason;
+        const bool             guideValid =
+            m_valid || reason == "geometry_or_opacity" || reason == "settings" || reason == "provider_changed";
+        m_uniforms.provider           = glm::uvec4(m_previousHardware ? 1u : 0u, guideValid ? 1u : 0u, 0, 0);
         m_uniforms.rejection          = Vec4(0.001f, settings.specularOcclusion ? 1.0f : 0.0f,
                                              settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
                                              settings.referenceSamples != 0 ? 1.0f : 0.0f);
