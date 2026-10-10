@@ -1205,9 +1205,9 @@ void RenderDevice::DestroyTexture(RHITexture* texture)
     }
 }
 
-void RenderDevice::UpdateBuffer(RHIBuffer* buffer, uint32_t size, const uint8_t* data, uint32_t offset)
+bool RenderDevice::UpdateBuffer(RHIBuffer* buffer, uint32_t size, const uint8_t* data, uint32_t offset)
 {
-    UpdateBufferInternal(buffer, offset, size, data);
+    return UpdateBufferInternal(buffer, offset, size, data);
 }
 
 void RenderDevice::UpdateTexture(RHITexture*                            texture,
@@ -2260,6 +2260,10 @@ RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pD
     usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    if (GetGPUInfo().rayQuery.IsUsable())
+    {
+        usages.SetFlags(RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIBufferUsageFlagBits::eDeviceAddress);
+    }
 
     RHIBufferCreateInfo createInfo{};
 
@@ -2281,6 +2285,10 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
     usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    if (GetGPUInfo().rayQuery.IsUsable())
+    {
+        usages.SetFlags(RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIBufferUsageFlagBits::eDeviceAddress);
+    }
 
     RHIBufferCreateInfo createInfo{};
 

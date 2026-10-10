@@ -2,6 +2,8 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
 {
     for (const std::array<const char*, 2>& shader :
          {std::array<const char*, 2>{"HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"},
+          {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
+          {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"},
           {"HybridFilterSP", "VoxelGI/hybrid_filter.comp.spv"},
           {"VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv"},

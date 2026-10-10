@@ -13,6 +13,8 @@ layout(set=1,binding=10,rgba16f) uniform writeonly image2D filteredSky;
 layout(set=1,binding=11,rgba16f) uniform writeonly image2D filteredSpecular;
 layout(set=1,binding=12) uniform sampler2D inputVariance;
 layout(set=1,binding=13,rg32f) uniform writeonly image2D filteredVariance;
+// Unoccluded irradiance guide from the temporal pass (hybrid_sky_guide.glsl).
+layout(set=1,binding=14) uniform sampler2D skyGuide;
 layout(push_constant) uniform FilterConstants { uint stepWidth; } atrous;
 vec2 ReadVariance(ivec2 p)
 {
@@ -20,8 +22,10 @@ vec2 ReadVariance(ivec2 p)
     vec2 v=max(vec2(m.g-m.r*m.r,m.a-m.b*m.b),vec2(0));
     return atrous.stepWidth==1u ? v/max(texelFetch(historyLength,p,0).rg,vec2(1)) : texelFetch(inputVariance,p,0).rg;
 }
+vec3 SkyGuide(ivec2 p) { return texelFetch(skyGuide,p,0).rgb; }
 bool OccupiedStart(ivec2 p)
 {
+    if(hybrid.provider.x!=0u) return false;
     vec3 uv=WorldToVoxelUV(TraceOrigin(HybridPosition(p),HybridGeometricNormal(p)));
     return InsideVoxelVolume(uv) && texelFetch(voxelOpacity,ivec3(floor(uv*gi.volume.x)),0).a>0.5;
 }
@@ -32,23 +36,26 @@ void main()
     vec4 center=texelFetch(inputSky,p,0), centerSpec=texelFetch(inputSpecular,p,0);
     uint identity=texelFetch(receiverSurface,p,0).g;
     vec3 position=HybridPosition(p), normal=HybridNormal(p), geometric=HybridGeometricNormal(p);
+    vec3 guide=SkyGuide(p);
+    // Sky luminance and its variance are compared as ratios to the guide luminance.
+    vec2 scale=vec2(1.0/HybridLuminance(guide),1.0);
     vec2 mean=vec2(0), second=vec2(0); float count=0.0;
     // A local variance estimate is also used during the first four frames.
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x)
     {
         ivec2 q=p+ivec2(x,y)*int(atrous.stepWidth);
         if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity) continue;
-        vec2 value=vec2(HybridLuminance(texelFetch(inputSky,q,0).rgb),texelFetch(inputSpecular,q,0).a);
+        vec2 value=vec2(HybridLuminance(texelFetch(inputSky,q,0).rgb)/HybridLuminance(SkyGuide(q)),texelFetch(inputSpecular,q,0).a);
         mean+=value; second+=value*value; count+=1.0;
     }
     mean/=max(count,1.0); second/=max(count,1.0);
     vec2 lengths=texelFetch(historyLength,p,0).rg;
-    vec2 variance=ReadVariance(p);
+    vec2 variance=ReadVariance(p)*scale*scale;
     if(atrous.stepWidth==1u)
         variance=mix(variance,max(second-mean*mean,vec2(0)),lessThan(lengths,vec2(4)));
     const float kernel[5]=float[5](1,4,6,4,1);
     vec4 sky=vec4(0), spec=vec4(0); vec2 total=vec2(0), varianceOut=vec2(0);
-    float centerLuminance=HybridLuminance(center.rgb);
+    vec2 centerValue=vec2(HybridLuminance(center.rgb)*scale.x,centerSpec.a);
     bool occupiedStart=OccupiedStart(p);
     for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x)
     {
@@ -62,14 +69,17 @@ void main()
         float normalWeight=pow(max(dot(normal,HybridNormal(q)),0.0),32.0);
         if(dot(geometric,HybridGeometricNormal(q))<0.9) continue;
         vec4 sampleSky=texelFetch(inputSky,q,0), sampleSpec=texelFetch(inputSpecular,q,0);
-        vec2 difference=abs(vec2(HybridLuminance(sampleSky.rgb)-centerLuminance,sampleSpec.a-centerSpec.a));
-        vec2 neighborVariance=ReadVariance(q);
-        vec2 sigma=4.0*sqrt(max(variance+neighborVariance,vec2(0)))+vec2(1e-4);
+        vec3 sampleGuide=SkyGuide(q);
+        vec2 sampleScale=vec2(1.0/HybridLuminance(sampleGuide),1.0);
+        vec2 difference=abs(vec2(HybridLuminance(sampleSky.rgb)*sampleScale.x,sampleSpec.a)-centerValue);
+        vec2 neighborVariance=ReadVariance(q)*sampleScale*sampleScale;
+        // Diffuse lighting must preserve the sharp visibility edges of small HDR sources.
+        vec2 sigma=vec2(1.0,4.0)*sqrt(max(variance+neighborVariance,vec2(0)))+vec2(1e-4)*vec2(scale.x,1.0);
         vec2 w=kernel[x+2]*kernel[y+2]*normalWeight*exp(-difference/sigma);
         varianceOut+=w*w*neighborVariance;
-        sky+=w.x*sampleSky; spec+=w.y*sampleSpec; total+=w;
+        sky+=w.x*vec4(sampleSky.rgb/sampleGuide,sampleSky.a); spec+=w.y*sampleSpec; total+=w;
     }
-    imageStore(filteredVariance,p,vec4(varianceOut/max(total*total,vec2(1e-20)),0,0));
-    imageStore(filteredSky,p,total.x>0.0 ? sky/total.x : center);
+    imageStore(filteredVariance,p,vec4(varianceOut/max(total*total,vec2(1e-20))/(scale*scale),0,0));
+    imageStore(filteredSky,p,total.x>0.0 ? vec4(sky.rgb*guide,sky.a)/total.x : center);
     imageStore(filteredSpecular,p,total.y>0.0 ? spec/total.y : centerSpec);
 }

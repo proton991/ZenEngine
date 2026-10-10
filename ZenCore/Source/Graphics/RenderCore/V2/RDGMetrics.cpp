@@ -21,15 +21,15 @@ int64_t ExpandStages(int64_t stages)
     if (stages & int64_t(RHIPipelineStageFlagBits::eAllCommands))
     {
         // Host accesses are outside command execution and need an explicit host stage.
-        stages |= (1 << 14) - 1;
+        stages |= kRHICommandPipelineStageMask;
     }
 
     if (stages & int64_t(RHIPipelineStageFlagBits::eAllGraphics))
     {
-        stages |= ((1 << 11) - 1) & ~1;
+        stages |= kRHIGraphicsPipelineStageMask;
     }
 
-    return stages & ((1 << 15) - 1);
+    return stages & kRHIIndividualPipelineStageMask;
 }
 
 bool Covers(int64_t mask, int64_t required)
@@ -42,7 +42,8 @@ int64_t WriteAccess(int64_t access)
     constexpr int64_t writes = int64_t(RHIAccessFlagBits::eShaderWrite) | int64_t(RHIAccessFlagBits::eColorAttachmentWrite)
                              | int64_t(RHIAccessFlagBits::eDepthStencilAttachmentWrite)
                              | int64_t(RHIAccessFlagBits::eTransferWrite) | int64_t(RHIAccessFlagBits::eHostWrite)
-                             | int64_t(RHIAccessFlagBits::eMemoryWrite);
+                             | int64_t(RHIAccessFlagBits::eMemoryWrite)
+                             | int64_t(RHIAccessFlagBits::eAccelerationStructureWrite);
 
     return access & writes;
 }
@@ -56,7 +57,7 @@ int64_t ExpandAccess(int64_t access)
 
     if (access & int64_t(RHIAccessFlagBits::eMemoryRead))
     {
-        access |= ((1 << 17) - 1) & ~WriteAccess(~int64_t(0));
+        access |= kRHIAccessMask & ~WriteAccess(~int64_t(0));
     }
 
     return access;
@@ -72,13 +73,9 @@ static void IncludeAccessStages(int64_t access, int64_t accesses, int64_t suppor
 
 int64_t AccessStages(int64_t access, int64_t candidates)
 {
-    using Stage               = RHIPipelineStageFlagBits;
+    using Stage    = RHIPipelineStageFlagBits;
 
-    using Access              = RHIAccessFlagBits;
-
-    constexpr int64_t shaders = int64_t(Stage::eVertexShader) | int64_t(Stage::eTessellationControlShader)
-                              | int64_t(Stage::eTessellationEvaluationShader) | int64_t(Stage::eGeometryShader)
-                              | int64_t(Stage::eFragmentShader) | int64_t(Stage::eComputeShader);
+    using Access   = RHIAccessFlagBits;
 
     int64_t stages = 0;
 
@@ -87,8 +84,10 @@ int64_t AccessStages(int64_t access, int64_t candidates)
     IncludeAccessStages(access, int64_t(Access::eIndexRead) | int64_t(Access::eVertexAttributeRead),
                         int64_t(Stage::eVertexInput), stages);
 
-    IncludeAccessStages(access, int64_t(Access::eUniformRead) | int64_t(Access::eShaderRead) | int64_t(Access::eShaderWrite),
-                        shaders, stages);
+    IncludeAccessStages(access, int64_t(Access::eUniformRead) | int64_t(Access::eShaderWrite), kRHIShaderPipelineStageMask,
+                        stages);
+    IncludeAccessStages(access, int64_t(Access::eShaderRead),
+                        kRHIShaderPipelineStageMask | int64_t(Stage::eAccelerationStructureBuild), stages);
 
     IncludeAccessStages(access, int64_t(Access::eInputAttachmentRead), int64_t(Stage::eFragmentShader), stages);
 
@@ -105,6 +104,10 @@ int64_t AccessStages(int64_t access, int64_t candidates)
 
     IncludeAccessStages(access, int64_t(Access::eMemoryRead) | int64_t(Access::eMemoryWrite), ~int64_t(0), stages);
 
+    IncludeAccessStages(access, int64_t(Access::eAccelerationStructureRead),
+                        kRHIShaderPipelineStageMask | int64_t(Stage::eAccelerationStructureBuild), stages);
+    IncludeAccessStages(access, int64_t(Access::eAccelerationStructureWrite), int64_t(Stage::eAccelerationStructureBuild),
+                        stages);
     return ExpandStages(candidates) & (access == 0 ? ~int64_t(0) : stages);
 }
 
@@ -167,21 +170,6 @@ bool Contains(const RHITextureSubResourceRange& outer, const RHITextureSubResour
         && uint64_t(outer.baseMipLevel) + outer.levelCount >= uint64_t(inner.baseMipLevel) + inner.levelCount
         && outer.baseArrayLayer <= inner.baseArrayLayer
         && uint64_t(outer.baseArrayLayer) + outer.layerCount >= uint64_t(inner.baseArrayLayer) + inner.layerCount;
-}
-
-int64_t BufferAccess(BitField<RHIBufferUsageFlagBits> usage, RHIAccessMode mode)
-{
-    int64_t flags = 0;
-
-    for (uint32_t i = 0; i < 9; ++i)
-    {
-        if (int64_t(usage) & (1u << i))
-        {
-            flags |= RHIBufferUsageToAccessFlagBits(static_cast<RHIBufferUsage>(i + 1), mode);
-        }
-    }
-
-    return flags;
 }
 
 template <typename Resource> uint64_t StableId(const Resource& resource)
@@ -292,13 +280,13 @@ void RDGBarrierValidator::Check(int32_t                           node,
 
     bool found = false, layoutOK = false, rangeOK = false;
 
-    std::array<int64_t, 17> executionCoverage{};
+    std::array<int64_t, kRHIPipelineStageBitCount> executionCoverage{};
 
-    std::array<std::array<int64_t, 17>, 17> sourceCoverage{};
+    std::array<std::array<int64_t, kRHIAccessBitCount>, kRHIPipelineStageBitCount> sourceCoverage{};
 
-    std::array<int64_t, 17> destinationCoverage{};
+    std::array<int64_t, kRHIPipelineStageBitCount> destinationCoverage{};
 
-    std::array<std::array<int64_t, 17>, 17> writerCoverage{};
+    std::array<std::array<int64_t, kRHIAccessBitCount>, kRHIPipelineStageBitCount> writerCoverage{};
 
     const bool memoryHazard = prior.mode == RHIAccessMode::eReadWrite || layoutChange;
 
@@ -335,13 +323,13 @@ void RDGBarrierValidator::Check(int32_t                           node,
             && (WriteAccess(prior.access) == 0
                 || Covers(ExpandStages(barrier.srcStages), AccessStages(WriteAccess(prior.access), prior.stages))))
         {
-            for (uint32_t bit = 0; bit < 17; ++bit)
+            for (uint32_t bit = 0; bit < kRHIAccessBitCount; ++bit)
             {
                 if (ExpandAccess(barrier.dstAccess) & (int64_t(1) << bit))
                 {
                     const int64_t destinations = AccessStages(int64_t(1) << bit, barrier.dstStages);
 
-                    for (uint32_t dst = 0; dst < 17; ++dst)
+                    for (uint32_t dst = 0; dst < kRHIPipelineStageBitCount; ++dst)
                     {
                         if (destinations & (int64_t(1) << dst))
                         {
@@ -368,7 +356,7 @@ void RDGBarrierValidator::Check(int32_t                           node,
             {
                 if (destinations & (int64_t(1) << bit))
                 {
-                    for (uint32_t accessBit = 0; accessBit < sourceCoverage.size(); ++accessBit)
+                    for (uint32_t accessBit = 0; accessBit < kRHIAccessBitCount; ++accessBit)
                     {
                         if ((ExpandAccess(barrier.dstAccess) & (int64_t(1) << accessBit))
                             && (AccessStages(int64_t(1) << accessBit, destinations) & (int64_t(1) << bit)))
@@ -391,7 +379,7 @@ void RDGBarrierValidator::Check(int32_t                           node,
         }
     }
 
-    for (uint32_t bit = 0; bit < sourceCoverage.size(); ++bit)
+    for (uint32_t bit = 0; bit < kRHIAccessBitCount; ++bit)
     {
         for (uint32_t stage = 0; stage < state.visibleAccess.size(); ++stage)
         {
@@ -449,7 +437,7 @@ void RDGBarrierValidator::Check(int32_t                           node,
         {
             int64_t requiredAccess = 0;
 
-            for (uint32_t accessBit = 0; accessBit < 17; ++accessBit)
+            for (uint32_t accessBit = 0; accessBit < kRHIAccessBitCount; ++accessBit)
             {
                 if ((next.access & (int64_t(1) << accessBit))
                     && (AccessStages(int64_t(1) << accessBit, stages) & (int64_t(1) << bit)))
@@ -780,9 +768,9 @@ void RDGMetrics::BeginGroups(const RenderGraph&                      graph,
 
                 initial.mode                       = state.accessMode;
 
-                initial.access                     = BufferAccess(state.usage, state.accessMode);
+                initial.access = RHIBufferUsageToAccessFlagBits(state.usage, state.accessMode, state.pipelineStages);
 
-                initial.stages                     = state.pipelineStages;
+                initial.stages = state.pipelineStages;
             }
 
             bool supplied = false;
@@ -1335,11 +1323,13 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
 
             barrier.dstStages    = dstStages;
 
-            barrier.srcAccess    = RHIBufferUsageToAccessFlagBits(buffer.oldUsage, buffer.oldAccessMode);
+            barrier.srcAccess    = RHIBufferUsageToAccessFlagBits(buffer.oldUsage, buffer.oldAccessMode,
+                                                                  BitField<RHIPipelineStageFlagBits>(srcStages));
 
             barrier.srcAccess   |= int64_t(buffer.additionalSrcAccess);
 
-            barrier.dstAccess    = RHIBufferUsageToAccessFlagBits(buffer.newUsage, buffer.newAccessMode);
+            barrier.dstAccess    = RHIBufferUsageToAccessFlagBits(buffer.newUsage, buffer.newAccessMode,
+                                                                  BitField<RHIPipelineStageFlagBits>(dstStages));
 
             barrier.wholeBuffer  = buffer.offset == 0
                                && (buffer.size == ZEN_BUFFER_WHOLE_SIZE || buffer.size >= buffer.pBuffer->GetRequiredSize());
@@ -1431,7 +1421,8 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
 
                     initial.stages                        = previous.pipelineStages;
 
-                    initial.access                        = BufferAccess(previous.usage, previous.accessMode);
+                    initial.access =
+                        RHIBufferUsageToAccessFlagBits(previous.usage, previous.accessMode, previous.pipelineStages);
                 }
 
                 if (m_grouped)

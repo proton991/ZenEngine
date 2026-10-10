@@ -6,12 +6,41 @@ uint HybridHash(uint x)
     x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
     return x;
 }
+// Burley, "Practical Hash-based Owen Scrambling" (JCGT 2020).
+uint HybridOwenScramble(uint x, uint seed)
+{
+    x = bitfieldReverse(x);
+    x += seed; x ^= x * 0x6c50b47cu; x ^= x * 0xb82f1e52u; x ^= x * 0xc7afe638u; x ^= x * 0x8d22f6e6u;
+    return bitfieldReverse(x);
+}
+uint HybridMorton(uvec2 p)
+{
+    p &= 0xffffu;
+    p = (p | (p << 8)) & 0x00ff00ffu; p = (p | (p << 4)) & 0x0f0f0f0fu;
+    p = (p | (p << 2)) & 0x33333333u; p = (p | (p << 1)) & 0x55555555u;
+    return p.x | (p.y << 1);
+}
+uint HybridSobol1(uint index)
+{
+    uint result = 0u;
+    for(uint v = 1u << 31; index != 0u; index >>= 1, v ^= v >> 1)
+        if((index & 1u) != 0u) result ^= v;
+    return result;
+}
 vec2 HybridSample(uvec2 pixel, uint sampleIndex, uint dimension)
 {
-    uint seed = HybridHash(pixel.x ^ HybridHash(pixel.y + 0x9e3779b9u) ^ dimension);
-    // Integer phase accumulation avoids loss of the fractional sequence after
-    // many successful frames (float(index)*increment eventually repeats rays).
-    uvec2 phase=uvec2(seed<<16,seed&0xffff0000u)+uvec2(0x80000000u)+sampleIndex*uvec2(3242174889u,2447445414u);
+    // Per-pixel rotations are Owen-scrambled Sobol points in Morton order: every aligned
+    // 2^k x 2^k pixel block holds a (0,2k,2)-net, so neighbors' samples stratify the
+    // domain and the spatial filter averages blue-noise rather than white-noise error
+    // (Ahmed and Wonka, "Screen-space blue-noise diffusion of Monte Carlo sampling error
+    // via hierarchical ordering of pixels", 2020).
+    uint seed = HybridHash(dimension ^ 0x9e3779b9u);
+    uint index = HybridOwenScramble(HybridMorton(pixel), seed);
+    uvec2 rotation = uvec2(HybridOwenScramble(bitfieldReverse(index), HybridHash(seed ^ 0x68bc21ebu)),
+                           HybridOwenScramble(HybridSobol1(index), HybridHash(seed ^ 0x02e5be93u)));
+    // Each pixel then follows the R2 sequence. Integer phase accumulation avoids loss of
+    // the fractional sequence after many successful frames.
+    uvec2 phase=rotation+sampleIndex*uvec2(3242174889u,2447445414u);
     return vec2(phase>>8)/16777216.0;
 }
 mat3 HybridBasis(vec3 n)

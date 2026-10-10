@@ -261,12 +261,15 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
     {
         const sg::MaterialData& previous = m_materialsData[material];
 
-        const bool coverageChanged       = previous.baseColorFactor.a != data.baseColorFactor.a
-                                  || previous.bcTexIndex != data.bcTexIndex || previous.bcTexSet != data.bcTexSet
-                                  || previous.sheenColorTransmission.w != data.sheenColorTransmission.w
-                                  || glm::vec2(previous.surfaceProperties) != glm::vec2(data.surfaceProperties)
-                                  || previous.textureTransforms[0].row0 != data.textureTransforms[0].row0
-                                  || previous.textureTransforms[0].row1 != data.textureTransforms[0].row1;
+        const bool coverageChanged =
+            previous.baseColorFactor.a != data.baseColorFactor.a || previous.bcTexIndex != data.bcTexIndex
+            || previous.bcTexSet != data.bcTexSet || previous.sheenColorTransmission.w != data.sheenColorTransmission.w
+            || previous.materialProperties.z != data.materialProperties.z
+            || previous.surfaceProperties.w != data.surfaceProperties.w || previous.diffuseFactor.a != data.diffuseFactor.a
+            || std::memcmp(&previous.featureTextures[2], &data.featureTextures[2], sizeof(data.featureTextures[2])) != 0
+            || glm::vec2(previous.surfaceProperties) != glm::vec2(data.surfaceProperties)
+            || previous.textureTransforms[0].row0 != data.textureTransforms[0].row0
+            || previous.textureTransforms[0].row1 != data.textureTransforms[0].row1;
 
         for (const sg::Node* node : m_pScene->GetRenderableNodes())
         {

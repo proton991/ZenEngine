@@ -4,12 +4,14 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/Shared/EnvironmentSampling.h"
 #include <cmath>
 #include <bit>
 
 namespace zen::rc
 {
-VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) : m_device(device), m_voxelizer(voxelizer)
+VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) :
+    m_rayQuery(device), m_device(device), m_voxelizer(voxelizer)
 {
     LoadSettings();
 }
@@ -112,12 +114,13 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
 
     valid      &= config.ReadBool("voxel_gi_emissive_lighting", settings.emissiveLighting);
 
-    valid                      &= config.ReadNumber("voxel_gi_samples", settings.samples);
-    valid                      &= config.ReadNumber("voxel_gi_reference_samples", settings.referenceSamples);
-    valid                      &= config.ReadNumber("voxel_gi_history_frames", settings.historyFrames);
-    valid                      &= config.ReadBool("voxel_gi_temporal", settings.temporal);
-    valid                      &= config.ReadBool("voxel_gi_filter", settings.filter);
-    valid                      &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
+    valid      &= config.ReadNumber("voxel_gi_samples", settings.samples);
+    valid      &= config.ReadNumber("voxel_gi_acceleration_structure_budget_mb", settings.accelerationStructureBudgetMB);
+    valid      &= config.ReadNumber("voxel_gi_reference_samples", settings.referenceSamples);
+    valid      &= config.ReadNumber("voxel_gi_history_frames", settings.historyFrames);
+    valid      &= config.ReadBool("voxel_gi_temporal", settings.temporal);
+    valid      &= config.ReadBool("voxel_gi_filter", settings.filter);
+    valid      &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
     const std::string provider  = config.GetString("voxel_gi_ray_provider", "auto");
     valid                      &= provider == "auto" || provider == "voxel" || provider == "hardware" || provider == "legacy";
     settings.rayProvider        = provider == "legacy"   ? VoxelGISettings::RayProvider::Legacy
@@ -125,7 +128,7 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
                                 : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
                                                          : VoxelGISettings::RayProvider::Auto;
 
-    valid       = valid && ValidateVoxelGISettings(settings);
+    valid                       = valid && ValidateVoxelGISettings(settings);
 
     if (valid)
     {
@@ -201,6 +204,18 @@ bool VoxelGIRenderer::Init()
             m_skyIrradiance = m_device->CreateTextureStorage(format, {.copyUsage = true}, "voxel_sky_irradiance");
         }
 
+        if (m_skyIrradiance != nullptr)
+        {
+            m_environmentColumns = m_device->CreateStorageBuffer(ZEN_ENVIRONMENT_IMPORTANCE_ROWS
+                                                                     * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u) * sizeof(float),
+                                                                 nullptr, "environment_columns");
+            m_environmentRows = m_device->CreateStorageBuffer((ZEN_ENVIRONMENT_IMPORTANCE_ROWS + 1u) * sizeof(float), nullptr,
+                                                              "environment_rows");
+            m_environmentHarmonics = m_device->CreateStorageBuffer((ZEN_ENVIRONMENT_HARMONIC_GROUPS + 1u)
+                                                                       * ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS * sizeof(Vec4),
+                                                                   nullptr, "environment_harmonics");
+        }
+
         valid = IsInitialized() && PrepareMipViews(m_radiance, m_radianceMips)
              && PrepareMipViews(m_voxelizer->GetVoxelTextures().pAlbedo, m_albedoMips) && m_voxelizer->EnableRadianceInputs();
 
@@ -217,6 +232,8 @@ bool VoxelGIRenderer::Init()
 
 void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
 {
+    m_rayQuery.Destroy();
+    m_hardwareQueries     = false;
     m_scene               = scene;
 
     m_geometryRevision    = 0;
@@ -264,6 +281,32 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 {
     if (IsInitialized() && m_scene != nullptr)
     {
+        const bool  previousHardware = m_hardwareQueries;
+        const char* previousReason   = m_providerReason;
+        const bool  requestHardware  = m_settings.rayProvider == VoxelGISettings::RayProvider::Auto
+                                  || m_settings.rayProvider == VoxelGISettings::RayProvider::Hardware;
+        m_hardwareQueries =
+            requestHardware
+            && m_rayQuery.BuildRenderGraph(*m_scene, uint64_t(m_settings.accelerationStructureBudgetMB) * 1024 * 1024);
+        m_providerReason = requestHardware                                                ? m_rayQuery.GetReason()
+                         : m_settings.rayProvider == VoxelGISettings::RayProvider::Legacy ? "legacy_selected"
+                                                                                          : "voxel_selected";
+        if (!requestHardware && previousHardware)
+        {
+            m_rayQuery.Destroy();
+        }
+        if (previousHardware != m_hardwareQueries)
+        {
+            m_environmentRevision = 0;
+        }
+        if (previousHardware != m_hardwareQueries || previousReason != m_providerReason)
+        {
+            LOGI("Hybrid GI selected {}: {}",
+                 m_hardwareQueries                                                ? "hardware"
+                 : m_settings.rayProvider == VoxelGISettings::RayProvider::Legacy ? "legacy"
+                                                                                  : "voxel",
+                 m_providerReason);
+        }
         m_uniforms.gridMinVoxelSize = Vec4(m_voxelizer->GetSceneMinPoint(), m_voxelizer->GetVoxelSize());
 
         // Scene bounds include committed instance transforms and vertex deformation,
@@ -306,25 +349,39 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             BuildMipChain(m_albedoMips, "VoxelFilterAlbedoSP", "VoxelOpacityMip");
         }
 
+        if (m_environmentRevision != m_recordedEnvironment && m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy)
+        {
+            BuildEnvironmentDistribution();
+        }
+
         if (skyChanged)
         {
             RDGComputePassDesc sky;
 
             const bool surfaceSky =
                 m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy && m_scene->GetVoxelTriangleCount() != 0;
-            sky.SetShaderProgramName(surfaceSky ? "VoxelSkyIrradianceSP" : "VoxelSkyIrradianceLegacySP");
+            sky.SetShaderProgramName(surfaceSky ? (m_hardwareQueries ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceSP")
+                                                : "VoxelSkyIrradianceLegacySP");
             if (surfaceSky)
             {
+                BindEnvironmentSamplingInputs(sky);
                 sky.BindStorageImage("voxelOwner", textures.pOwner->GetDefaultView());
-                sky.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
-                sky.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
-                sky.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+                if (m_hardwareQueries)
+                {
+                    m_rayQuery.BindInputs(sky, *m_scene);
+                }
+                else
+                {
+                    sky.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
+                    sky.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
+                    sky.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+                }
                 sky.BindStorageBuffer("TriangleRecords", m_scene->GetVoxelTriangleBuffer());
             }
 
             sky.SetPassTag("VoxelSkyIrradiance");
 
-            sky.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
+            sky.SetQueuePreference(m_hardwareQueries ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
 
             BindFrameData(sky);
 
@@ -333,7 +390,6 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             sky.BindSampledTexture("voxelNormal", sampler, textures.pNormalView);
 
             const EnvTexture& env = m_scene->GetEnvTexture();
-
             sky.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
 
             sky.BindStorageImage("skyIrradiance", m_skyIrradiance->GetDefaultView(), RDGContentGuarantee::eFullWrite);
@@ -416,12 +472,55 @@ void VoxelGIRenderer::BindRayInputs(RDGPassDescBase& pass) const
                             m_voxelizer->GetVoxelTextures().pAlbedo->GetDefaultView());
 
     const EnvTexture& env = m_scene->GetEnvTexture();
-
     pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
+}
+
+void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass) const
+{
+    pass.BindValue("uGISettings", m_uniforms);
+    const EnvTexture& env = m_scene->GetEnvTexture();
+    pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
+    m_rayQuery.BindInputs(pass, *m_scene);
+}
+
+void VoxelGIRenderer::BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const
+{
+    pass.BindStorageBuffer("EnvironmentColumns", m_environmentColumns);
+    pass.BindStorageBuffer("EnvironmentRows", m_environmentRows);
+}
+
+void VoxelGIRenderer::BindEnvironmentHarmonics(RDGPassDescBase& pass) const
+{
+    pass.BindStorageBuffer("EnvironmentHarmonics", m_environmentHarmonics);
+}
+
+void VoxelGIRenderer::BuildEnvironmentDistribution()
+{
+    RenderGraph*      graph = m_device->GetCurrentFrameRDG();
+    const EnvTexture& env   = m_scene->GetEnvTexture();
+
+    RDGComputePassDesc columns;
+    columns.SetShaderProgramName("EnvironmentColumnsSP");
+    columns.SetPassTag("EnvironmentColumns");
+    columns.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
+    columns.BindStorageBuffer("EnvironmentColumns", m_environmentColumns, RDGContentGuarantee::eFullWrite);
+    columns.BindStorageBuffer("EnvironmentHarmonics", m_environmentHarmonics, RDGContentGuarantee::eFullWrite);
+    graph->AddComputePass(std::move(columns)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+        encoder.Dispatch((ZEN_ENVIRONMENT_IMPORTANCE_ROWS + 63u) / 64u, 1, 1);
+    });
+
+    RDGComputePassDesc rows;
+    rows.SetShaderProgramName("EnvironmentRowsSP");
+    rows.SetPassTag("EnvironmentRows");
+    rows.BindStorageBuffer("EnvironmentColumns", m_environmentColumns);
+    rows.BindStorageBuffer("EnvironmentRows", m_environmentRows, RDGContentGuarantee::eFullWrite);
+    rows.BindStorageBuffer("EnvironmentHarmonics", m_environmentHarmonics);
+    graph->AddComputePass(std::move(rows)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
 }
 
 void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)
 {
+    m_rayQuery.OnRenderGraphExecuted(succeeded);
     m_geometryRevision    = succeeded ? m_recordedGeometry : 0;
 
     m_lightingRevision    = succeeded ? m_recordedLighting : 0;
@@ -431,13 +530,22 @@ void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)
 
 void VoxelGIRenderer::Destroy()
 {
+    m_rayQuery.Destroy();
+    m_hardwareQueries = false;
     m_device->DestroyTexture(m_radiance);
 
     m_device->DestroyTexture(m_skyIrradiance);
 
-    m_radiance      = nullptr;
+    m_device->DestroyBuffer(m_environmentColumns);
+    m_device->DestroyBuffer(m_environmentRows);
+    m_device->DestroyBuffer(m_environmentHarmonics);
+    m_environmentColumns   = nullptr;
+    m_environmentRows      = nullptr;
+    m_environmentHarmonics = nullptr;
 
-    m_skyIrradiance = nullptr;
+    m_radiance             = nullptr;
+
+    m_skyIrradiance        = nullptr;
 
     m_radianceMips.clear();
 

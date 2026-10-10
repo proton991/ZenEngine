@@ -9,6 +9,7 @@ layout(location=3) out vec4 outEmissiveOcclusion;
 layout(location=4) out uvec2 outReceiver;
 layout(location=5) out vec4 outMotion;
 layout(location=16) in vec4 inPreviousClip;
+layout(location=17) in vec4 inCurrentClip;
 #endif
 layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
 layout(push_constant) uniform Constants { uint uNodeIndex; uint uMaterialIndex;
@@ -31,11 +32,17 @@ void main()
     // Exclude layers that must retain per-surface lighting in the forward renderer.
     if(material.surfaceProperties.y==2.0 || material.sheenColorTransmission.w>0.0 ||
        material.diffuseTransmissionColorFactor.w>0.0) discard;
-    vec3 geometric=SafeNormalize(cross(dFdx(inWorldPos),dFdy(inWorldPos)),normal);
+    // Degeneracy is judged relative to the pixel footprint. An absolute threshold rejected
+    // nearly every pixel of the unit-normalized scene (|dFdx x dFdy| ~ 4e-7 at 960x540) and
+    // silently substituted the shading normal for the geometric one.
+    vec3 dx=dFdx(inWorldPos), dy=dFdy(inWorldPos), face=cross(dx,dy);
+    vec3 geometric=dot(face,face)>1e-12*dot(dx,dx)*dot(dy,dy) ? normalize(face) : normal;
     if(dot(geometric,normal)<0.0) geometric=-geometric;
     bool facing=gl_FrontFacing == (inOrientation>=0.0);
     outReceiver=uvec2(packUnorm2x16(EncodeGBufferNormal(geometric)),(uNodeIndex+1u)*2u+(facing ? 1u:0u));
-    outMotion=inPreviousClip;
+    // NDC motion (previous - current) and the previous w; w <= 0 lay behind the previous camera.
+    outMotion=inPreviousClip.w>0.0 ? vec4(inPreviousClip.xy/inPreviousClip.w-inCurrentClip.xy/inCurrentClip.w,inPreviousClip.w,0)
+                                   : vec4(0,0,inPreviousClip.w,0);
 #endif
     outNormal=EncodeGBufferNormal(normal);
     outAlbedo=vec4(albedo.rgb,1);

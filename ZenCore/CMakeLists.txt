@@ -183,6 +183,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/GeometryVoxelizer.cpp
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
+    Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
     Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
     Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     Source/Graphics/RenderCore/V2/ShadowMapRenderer.cpp
@@ -220,6 +221,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanPipeline.cpp
     Source/Graphics/VulkanRHI/VulkanTexture.cpp
     Source/Graphics/VulkanRHI/VulkanBuffer.cpp
+    Source/Graphics/VulkanRHI/VulkanAccelerationStructure.cpp
     Source/Graphics/VulkanRHI/VulkanMemory.cpp
     Source/Graphics/VulkanRHI/VulkanSynchronization.cpp
     Source/Graphics/VulkanRHI/VulkanDescriptorPool.cpp

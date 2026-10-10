@@ -33,6 +33,8 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shad
             type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             break;
 
+        case RHIShaderResourceType::eAccelerationStructure: type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR; break;
+
         case RHIShaderResourceType::eStorageBuffer:
             //
             type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -252,58 +254,6 @@ VkImageUsageFlags ToVkImageUsageFlags(BitField<RHITextureUsageFlagBits> flagBits
     return flags;
 }
 
-VkBufferUsageFlags ToVkBufferUsageFlags(BitField<RHIBufferUsageFlagBits> flags)
-{
-    VkBufferUsageFlags vkFlags{};
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eTransferDstBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eTextureBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eImageBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eUniformBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eStorageBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eIndexBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eVertexBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    }
-
-    if (flags.HasFlag(RHIBufferUsageFlagBits::eIndirectBuffer))
-    {
-        vkFlags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-    }
-
-    return vkFlags;
-}
-
 VkFormat ToVkFormat(DataFormat format)
 {
     return static_cast<VkFormat>(format);
@@ -336,11 +286,6 @@ VkImageLayout ToVkImageLayout(RHITextureLayout layout)
     }
 
     return result;
-}
-
-VkAccessFlags ToVkAccessFlags(BitField<RHIAccessFlagBits> access)
-{
-    return static_cast<VkAccessFlags>(access);
 }
 
 VkImageAspectFlags ToVkAspectFlags(BitField<RHITextureAspectFlagBits> aspect)

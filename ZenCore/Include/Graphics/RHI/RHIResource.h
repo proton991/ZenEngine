@@ -14,16 +14,17 @@ class RHICommandList;
 
 enum class RHIResourceType : uint32_t
 {
-    eNone          = 0,
-    eViewport      = 1,
-    eBuffer        = 2,
-    eTexture       = 3,
-    eTextureView   = 4,
-    eSampler       = 5,
-    eShader        = 6,
-    ePipeline      = 7,
-    eDescriptorSet = 8,
-    eMax           = 9
+    eNone                  = 0,
+    eViewport              = 1,
+    eBuffer                = 2,
+    eTexture               = 3,
+    eTextureView           = 4,
+    eSampler               = 5,
+    eShader                = 6,
+    ePipeline              = 7,
+    eDescriptorSet         = 8,
+    eAccelerationStructure = 9,
+    eMax                   = 10
 };
 
 // Raw RHI callers own resource lifetime: retain resources until every recorded use
@@ -295,6 +296,11 @@ class RHIBuffer : public RHIResource
 {
 public:
     ~RHIBuffer() {}
+
+    virtual uint64_t GetDeviceAddress() const
+    {
+        return 0;
+    }
 
     virtual uint8_t* Map() = 0;
 
@@ -874,10 +880,18 @@ protected:
     RHIGfxPipelineStates m_gfxStates;
 };
 
+class RHIAccelerationStructure;
+struct RHIAccelerationStructureCreateInfo;
+
 class RHIResourceFactory
 {
 public:
-    virtual ~RHIResourceFactory()                                                       = default;
+    virtual ~RHIResourceFactory() = default;
+
+    virtual RHIAccelerationStructure* CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info)
+    {
+        return nullptr;
+    }
 
     virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo)              = 0;
 

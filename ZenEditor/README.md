@@ -238,9 +238,16 @@ capture run, without reaching the scripted navigation actions.
 
 ### Environment and skybox
 
+PBR + voxel GI uses hardware ray queries for environment visibility only when the
+selected device supports the required features and dependencies. Unsupported
+devices use voxel visibility, which can produce block-shaped occlusion at coarse
+grid resolutions. Set `voxel_gi_ray_provider=voxel` in `Data/engine.cfg` to use
+voxel visibility on any device, and `ZEN_VULKAN_DEVICE` to a substring of an
+adapter name to select that GPU.
+
 Open **Rendering → Environment** to select a skybox and image-based lighting
 texture together. The repository includes the papermill cubemap. An optional
-[starter set](../Data/Textures/Environments/README.md) of two outdoor skies and five
+[starter set](../Data/Textures/Environments/README.md) of three outdoor skies and five
 indoor HDRs (studio, rooms, corridor and workshop) from Poly Haven (CC0) is not
 stored in the repository; `python tools/fetch_environments.py` downloads it.
 **Browse** accepts a 2:1 Radiance `.hdr` panorama up to 8K or a floating-point

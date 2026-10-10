@@ -30,7 +30,9 @@ VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 {
     VulkanBuffer* pBuffer = nullptr;
 
-    if (createInfo.size > 0 && !createInfo.usageFlags.IsEmpty())
+    if (createInfo.size > 0 && !createInfo.usageFlags.IsEmpty()
+        && (!createInfo.usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress)
+            || GVulkanRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress))
     {
         pBuffer = VersatileResource::AllocMem<VulkanBuffer>(GVulkanRHI->GetResourceAllocator());
 
@@ -59,7 +61,7 @@ void VulkanBuffer::Init()
 
     bufferCI.sharingMode               = VK_SHARING_MODE_EXCLUSIVE;
 
-    bufferCI.usage                     = ToVkBufferUsageFlags(m_usageFlags);
+    bufferCI.usage                     = m_usageFlags;
 
     const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
 
@@ -72,6 +74,12 @@ void VulkanBuffer::Init()
         (bufferCI.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) != 0, [this, &bufferCI] {
             GVkMemAllocator->AllocBuffer(m_requiredSize, &bufferCI, m_allocateType, &m_vkBuffer, &m_memAlloc);
         });
+    if (m_vkBuffer != VK_NULL_HANDLE && m_usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress))
+    {
+        VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+        addressInfo.buffer = m_vkBuffer;
+        m_deviceAddress    = vkGetBufferDeviceAddress(GVulkanRHI->GetVkDevice(), &addressInfo);
+    }
 }
 
 void VulkanBuffer::Destroy()

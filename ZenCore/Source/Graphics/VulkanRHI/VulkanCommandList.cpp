@@ -1931,7 +1931,7 @@ void FVulkanCommandListContext::RHIAddTransitions(BitField<RHIPipelineStageFlagB
 
         for (RHIMemoryTransition const& memoryTransition : memoryTransitions)
         {
-            barrier.AddMemoryBarrier(ToVkAccessFlags(memoryTransition.srcAccess), ToVkAccessFlags(memoryTransition.dstAccess));
+            barrier.AddMemoryBarrier(memoryTransition.srcAccess, memoryTransition.dstAccess);
 
             hasBarrier = true;
         }
@@ -1940,11 +1940,13 @@ void FVulkanCommandListContext::RHIAddTransitions(BitField<RHIPipelineStageFlagB
         {
             VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
 
-            VkAccessFlags srcAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode);
+            VkAccessFlags srcAccess =
+                RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode, srcStages);
 
-            VkAccessFlags dstAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode);
+            VkAccessFlags dstAccess =
+                RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode, dstStages);
 
-            srcAccess |= ToVkAccessFlags(bufferTransition.additionalSrcAccess);
+            srcAccess |= bufferTransition.additionalSrcAccess;
 
             barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset, bufferTransition.size, srcAccess,
                                      dstAccess);
@@ -1956,10 +1958,10 @@ void FVulkanCommandListContext::RHIAddTransitions(BitField<RHIPipelineStageFlagB
         {
             VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(textureTransition.pTexture);
 
-            VkAccessFlags srcAccess       = ToVkAccessFlags(textureTransition.GetSourceAccess());
+            VkAccessFlags srcAccess       = textureTransition.GetSourceAccess();
 
             VkAccessFlags dstAccess =
-                ToVkAccessFlags(RHITextureUsageToAccessFlagBits(textureTransition.newUsage, textureTransition.newAccessMode));
+                RHITextureUsageToAccessFlagBits(textureTransition.newUsage, textureTransition.newAccessMode);
 
             VkImageLayout oldLayout = ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
 

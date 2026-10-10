@@ -11,6 +11,8 @@ add_executable(VulkanRHITest
 )
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
 # Explicit integration target: requires a Vulkan device and validation layer.
+add_executable(RayQueryIntegrationTest CommonTest/RayQueryIntegrationTests.cpp)
+target_link_libraries(RayQueryIntegrationTest PRIVATE ZenCore gtest_main)
 add_executable(VulkanRHIIntegrationTest
     CommonTest/RHIProgressIntegrationTests.cpp
     CommonTest/RHIWindowThreadingTests.cpp
@@ -86,6 +88,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp

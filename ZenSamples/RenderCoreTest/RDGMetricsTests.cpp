@@ -150,6 +150,52 @@ TEST(RDGBarrierValidator, DetectsMissingStagesAndAccessWithoutRejectingValidBarr
     EXPECT_TRUE(check.issues.empty());
 }
 
+TEST(RDGBarrierValidator, AccelerationStructureWriteRequiresDestinationAccessCoverage)
+{
+    BarrierCheck    check;
+    RDGMetricAccess build = check.Writer();
+    build.stages          = int64_t(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+    build.access          = int64_t(RHIAccessFlagBits::eAccelerationStructureWrite);
+    RDGMetricBarrier barrier{1, transfer, build.stages, transferWrite, 0};
+
+    check.Check(build, {&barrier, 1});
+    EXPECT_TRUE(check.Has(RDGMetricIssue::eAccessCoverage));
+
+    check.Writer();
+    barrier.dstAccess = build.access;
+    check.Check(build, {&barrier, 1});
+    EXPECT_TRUE(check.issues.empty());
+
+    check.Writer();
+    barrier.dstStages = int64_t(RHIPipelineStageFlagBits::eAllCommands);
+    barrier.dstAccess = int64_t(RHIAccessFlagBits::eMemoryWrite);
+    check.Check(build, {&barrier, 1});
+    EXPECT_TRUE(check.issues.empty());
+}
+
+TEST(RDGBarrierValidator, AccelerationStructureVisibilitySurvivesAcrossGraphs)
+{
+    BarrierCheck    check;
+    RDGMetricAccess writer = check.Writer();
+    writer.stages          = int64_t(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+    writer.access          = int64_t(RHIAccessFlagBits::eAccelerationStructureWrite);
+    check.validator.Seed(writer);
+    RDGMetricAccess query = writer;
+    query.mode            = RHIAccessMode::eRead;
+    query.stages          = compute;
+    query.access          = int64_t(RHIAccessFlagBits::eAccelerationStructureRead);
+    RDGMetricBarrier barrier{1, writer.stages, query.stages, writer.access, query.access};
+    check.Check(query, {&barrier, 1});
+    EXPECT_TRUE(check.issues.empty());
+
+    check.validator.BeginGraph();
+    check.Check(query, {});
+    EXPECT_TRUE(check.issues.empty());
+    query.stages = fragment;
+    check.Check(query, {});
+    EXPECT_TRUE(check.Has(RDGMetricIssue::eMissingBarrier));
+}
+
 TEST(RDGBarrierValidator, RemembersWriterVisibilityAcrossDifferentReaderStages)
 {
     BarrierCheck check;

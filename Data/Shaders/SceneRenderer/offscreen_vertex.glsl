@@ -52,6 +52,7 @@ out gl_PerVertex { vec4 gl_Position; float gl_PointSize; };
 #ifdef HYBRID_RECEIVER
 layout(set=1,binding=4) uniform uPreviousCamera { mat4 previousProjectionView; };
 layout(location=16) out vec4 outPreviousClip;
+layout(location=17) out vec4 outCurrentClip;
 #endif
 void main()
 {
@@ -60,7 +61,10 @@ void main()
     gl_Position = uProjViewMatrix * vec4(locPos.xyz, 1.0);
     gl_PointSize = 1.0;
 #ifdef HYBRID_RECEIVER
+    // Both positions use the same arithmetic and interpolation. Their difference cancels
+    // interpolation rounding that dividing the previous position alone amplifies near the camera.
     outPreviousClip = previousProjectionView * previousModel * vec4(inPos.xyz,1.0);
+    outCurrentClip  = uProjViewMatrix * nodesData[uNodeIndex].modelMatrix * vec4(inPos.xyz,1.0);
 #endif
 
     // Vertex position in world space

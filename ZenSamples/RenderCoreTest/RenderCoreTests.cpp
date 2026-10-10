@@ -85,6 +85,11 @@ public:
 
     void Unmap() override {}
 
+    uint64_t GetDeviceAddress() const override
+    {
+        return GetUsageFlags().HasFlag(RHIBufferUsageFlagBits::eDeviceAddress) ? GetStableId() * 4096 : 0;
+    }
+
     bool SetTexelFormat(DataFormat) override
     {
         return true;
@@ -101,6 +106,36 @@ private:
 
         ZEN_DELETE(this);
     }
+};
+
+class TestAccelerationStructure : public RHIAccelerationStructure
+{
+public:
+    explicit TestAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) : RHIAccelerationStructure(info)
+    {
+        RHIBufferCreateInfo storage;
+        storage.size = info.size;
+        storage.usageFlags.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
+        buffer = ZEN_NEW() TestBuffer(storage);
+    }
+    uint64_t GetDeviceAddress() const override
+    {
+        return GetStableId() * 4096;
+    }
+    RHIBuffer* GetStorageBuffer() const override
+    {
+        return buffer;
+    }
+
+private:
+    void Init() override {}
+    void Destroy() override
+    {
+        destroyed.insert(GetStableId());
+        buffer->ReleaseReference();
+        ZEN_DELETE(this);
+    }
+    RHIBuffer* buffer;
 };
 
 class TestTextureView : public RHITextureView
@@ -654,6 +689,14 @@ public:
         clearSize   = size;
     }
 
+    HeapVector<uint32_t> accelerationStructureBuildCounts;
+    void                 RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info) override
+    {
+        accelerationStructureBuildCounts.push_back(info.description.type == RHIAccelerationStructureType::eTopLevel
+                                                       ? info.description.instanceCount
+                                                       : info.description.geometries[0].indexCount);
+    }
+
     void RHICopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region) override
     {
         TestBuffer* source      = static_cast<TestBuffer*>(pSrcBuffer);
@@ -726,6 +769,11 @@ public:
     }
 
     TestContext& log;
+
+    void RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info) override
+    {
+        log.RHIBuildAccelerationStructure(info);
+    }
 
     RHICommandContextType GetContextType() override
     {
@@ -1178,6 +1226,17 @@ public:
         }
 
         return result;
+    }
+
+    RHIAccelerationStructureBuildSizes GetAccelerationStructureBuildSizes(const RHIAccelerationStructureBuildDesc&) override
+    {
+        return info.rayQuery.IsUsable() ? RHIAccelerationStructureBuildSizes{4096, 1024, 512}
+                                        : RHIAccelerationStructureBuildSizes{};
+    }
+
+    RHIAccelerationStructure* CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) override
+    {
+        return ZEN_NEW() TestAccelerationStructure(info);
     }
 
     void DestroyBuffer(RHIBuffer* buffer) override
@@ -4882,6 +4941,7 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 #include "SceneShadowRendererTests.inl"
 #include "SceneTextureImportTests.inl"
 #include "SceneResourceLifetimeTests.inl"
+#include "SceneRayQueryTests.inl"
 
 TEST_F(RenderCoreTest, StagingBlocksWaitForBothQueuesAndUnsubmittedAllocations)
 {

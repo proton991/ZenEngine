@@ -400,7 +400,7 @@ void VulkanDevice::Init()
     }
 
     // Optional ray-tracing features require the complete enabled dependency chain.
-    m_extensionFlags.hasAccelerationStructure &= RHIOptions::GetInstance().RayTracingEnabled();
+    m_extensionFlags.hasAccelerationStructure &= !RHIOptions::GetInstance().RayTracingDisabled();
 
     m_extensionFlags.hasAccelerationStructure &=
         m_extensionFlags.hasBufferDeviceAddress && m_extensionFlags.hasDeferredHostOperation;

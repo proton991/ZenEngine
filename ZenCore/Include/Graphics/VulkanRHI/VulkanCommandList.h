@@ -679,6 +679,8 @@ public:
 
     void RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size) override;
 
+    void RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info) override;
+
     void RHICopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region) override;
 
     void RHIClearTexture(RHITexture* pTexture, const Color& color, const RHITextureSubResourceRange& range) override;

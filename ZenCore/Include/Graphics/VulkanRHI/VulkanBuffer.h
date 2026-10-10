@@ -15,6 +15,11 @@ public:
         return true; // Engine allocation sharing includes graphics and compute families.
     }
 
+    uint64_t GetDeviceAddress() const override
+    {
+        return m_deviceAddress;
+    }
+
     uint8_t* Map() override;
 
     void Unmap() override;
@@ -46,6 +51,7 @@ private:
 
     bool SetTexelFormatOnRHIThread(DataFormat format);
 
+    uint64_t               m_deviceAddress{0};
     VkBuffer               m_vkBuffer{VK_NULL_HANDLE};
     VkBufferView           m_bufferView{VK_NULL_HANDLE};
     DataFormat             m_texelFormat{DataFormat::eUndefined};

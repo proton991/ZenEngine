@@ -557,5 +557,90 @@
       "bytes": 951,
       "sha256": "e2ab2939dda535ad28779e41c20c98368f630f29c5824a0a5a430f47b3b6da12"
     }
-  ]
+  ],
+  "amended": [
+    {
+      "date": "2026-10-10",
+      "change": "Environment sets, ground-truth dataset and noise rule",
+      "record": "Doc/HybridGI/P4Gaps.md#decisions-2026-10-10"
+    }
+  ],
+  "environments": {
+    "ground_truth": [
+      "papermill",
+      "hotel",
+      "kloppenheim",
+      "kloofendal",
+      "qwantani",
+      "studio",
+      "emptyroom",
+      "corridor",
+      "carpentry"
+    ],
+    "shipping_gate": [
+      "papermill",
+      "kloppenheim",
+      "qwantani",
+      "hotel",
+      "carpentry"
+    ],
+    "tracked": [
+      "studio",
+      "emptyroom",
+      "corridor",
+      "kloofendal"
+    ],
+    "files": {
+      "papermill": {
+        "path": "Data/Textures/papermill.ktx",
+        "sha256": "2ad269b9e81e8cb9489dba6a2c61f2063b46b450146e2344e6d6e1da2ce60626"
+      },
+      "hotel": {
+        "path": "Data/Textures/Environments/hotel_room_1k.hdr",
+        "sha256": "a9cbe87f526df3a70041edcdbef86c95dda1cde961c5c69b1c84633d2f703fa7"
+      },
+      "kloppenheim": {
+        "path": "Data/Textures/Environments/kloppenheim_06_puresky_1k.hdr",
+        "sha256": "206c67e3a1b992282821cf06662bdd69bbb4915c1c4444a66338a40d6a7d4e34"
+      },
+      "kloofendal": {
+        "path": "Data/Textures/Environments/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+        "sha256": "fd94c84997b8a3c353b62c2125a9b44e19509956986a126e472684432a02d798"
+      },
+      "qwantani": {
+        "path": "Data/Textures/Environments/qwantani_noon_puresky_2k.hdr",
+        "sha256": "d070d48c8e802c92027b0f7b1965b5bd820b0d25afca225503abfec67e00ad07"
+      },
+      "studio": {
+        "path": "Data/Textures/Environments/studio_small_09_1k.hdr",
+        "sha256": "e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45"
+      },
+      "emptyroom": {
+        "path": "Data/Textures/Environments/small_empty_room_1_1k.hdr",
+        "sha256": "b3e042c4a650370c383699f61f65fcca4f037af32660994dafa61fbb257a4b52"
+      },
+      "corridor": {
+        "path": "Data/Textures/Environments/large_corridor_1k.hdr",
+        "sha256": "5de5e2bf0e20505e83c072cd2861f4b4d83ad84790a9e17d5001416449115f4f"
+      },
+      "carpentry": {
+        "path": "Data/Textures/Environments/carpentry_shop_01_1k.hdr",
+        "sha256": "c2bf31836a7ef304f672068887cd6d9e73e2971ad41e84fd234a027d98755ea7"
+      }
+    }
+  },
+  "ground_truth": {
+    "renderer": "tools/ground_truth_mitsuba.py",
+    "sweep": "tools/ground_truth_sweep.py",
+    "dataset": "build/ground-truth/dataset",
+    "samples": 32768,
+    "seed": 1,
+    "cameras": [
+      "top",
+      "hall"
+    ],
+    "strip_normal_maps": true,
+    "far_split": 0.3,
+    "noise_rule": "A per-pixel or 8x8-block excess above the limit fails. Where the per-pixel excess is within the limit but the ground truth per-pixel noise exceeds it, the 8x8-block result decides; the per-pixel result is reported."
+  }
 }

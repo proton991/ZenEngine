@@ -392,6 +392,22 @@ struct RDGPassCompiler::ShaderParameterBuilder
         return allValid;
     }
 
+    bool BindAccelerationStructures()
+    {
+        bool valid = true;
+        for (const RDGAccelerationStructureBinding& binding : pDesc->accelerationStructureBindings)
+        {
+            const RHIShaderResourceDescriptor* descriptor =
+                Descriptor(binding.glslName, RHIShaderResourceType::eAccelerationStructure);
+            valid &= descriptor != nullptr;
+            if (descriptor != nullptr)
+            {
+                parameters.AddResourceParam(*descriptor, binding.pStructure, nullptr, 0);
+            }
+        }
+        return valid;
+    }
+
     bool BindBuffers()
     {
         bool allValid = true;
@@ -541,7 +557,7 @@ bool RDGPassCompiler::BuildShaderParameters(ShaderProgram*              pShaderP
 
         ShaderParameterBuilder builder{*this, m_pRDG, pShaderProgram, pDesc, parameters};
 
-        valid = builder.BindValues() && builder.BindBuffers()
+        valid = builder.BindValues() && builder.BindBuffers() && builder.BindAccelerationStructures()
              && builder.BindTextures(pDesc->sampledTexBindings, RHIShaderResourceType::eSamplerWithTexture)
              && builder.BindTextures(pDesc->UAVTexBindings, RHIShaderResourceType::eImage)
              && builder.BindTextures(pDesc->separateTexBindings, RHIShaderResourceType::eTexture) && builder.BindSamplers()
@@ -878,6 +894,15 @@ void RDGPassCmdEncoder::CopyTexture(RHITexture*                            pSrcT
     }
 }
 
+void RDGPassCmdEncoder::BuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info)
+{
+    if (RequirePass(RDGCompiledPassType::eTransfer, "BuildAccelerationStructure")
+        && Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Missing build command list"))
+    {
+        m_pCmdList->BuildAccelerationStructure(info);
+    }
+}
+
 void RDGPassCmdEncoder::CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region)
 {
     if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyBuffer")))
@@ -995,6 +1020,11 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::SetQueuePreference(RDGQu
 
 RDGTransferPassCmdRecorder::~RDGTransferPassCmdRecorder()
 {
+    if (m_pNode != nullptr && m_generation == m_pRDG->m_buildGeneration
+        && m_pNode->selfStages.HasFlag(RHIPipelineStageFlagBits::eAccelerationStructureBuild))
+    {
+        Check(m_ops.size() == 1, RDGErrorCode::eBinding, "An AS build requires its own pass");
+    }
     if (m_pNode != nullptr && m_generation == m_pRDG->m_buildGeneration)
     {
         --m_pRDG->m_openTransferRecorders;
@@ -1052,6 +1082,77 @@ void RDGTransferPassCmdRecorder::RestrictTransferQueues(bool graphicsOnly)
     queues.transfer  = false;
 
     queues.compute  &= compute.graphics || (!graphicsOnly && compute.compute);
+}
+
+bool RDGTransferPassCmdRecorder::DeclareBuildBuffer(RHIBuffer*             buffer,
+                                                    RHIBufferUsageFlagBits usage,
+                                                    RHIAccessMode          mode,
+                                                    RDGContentEffect       contents)
+{
+    return Check(buffer != nullptr, RDGErrorCode::eBinding, "Null AS build buffer")
+        && m_pRDG->DeclareBufferAccessForPass(
+            m_pNode, m_pRDG->m_resourceManager.ImportBufferAllocation(buffer), BitField<RHIBufferUsageFlagBits>(usage), mode,
+            BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild), contents);
+}
+
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructure(
+    const RHIAccelerationStructureBuildInfo& info)
+{
+    bool valid = m_pRDG->CheckRecorder(m_pNode, m_generation)
+              && Check(info.pDestination != nullptr && info.pScratchBuffer != nullptr && m_ops.empty(), RDGErrorCode::eBinding,
+                       "An AS build requires destination/scratch and its own pass");
+    if (valid)
+    {
+        RDGResourceManager& resources = m_pRDG->m_resourceManager;
+        resources.Retain(info.pDestination);
+        resources.Retain(info.pSource);
+        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities = {false, false};
+        m_pNode->selfStages = BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+        // An in-place update reads the structure it rewrites, so its prior contents are live.
+        const bool inPlace = info.pSource == info.pDestination;
+        valid =
+            DeclareBuildBuffer(info.pDestination->GetStorageBuffer(), RHIBufferUsageFlagBits::eAccelerationStructureStorage,
+                               RHIAccessMode::eReadWrite, inPlace ? RDGContentEffect::eReadWrite : RDGContentEffect::eFullWrite)
+            && DeclareBuildBuffer(info.pScratchBuffer, RHIBufferUsageFlagBits::eStorageBuffer, RHIAccessMode::eReadWrite,
+                                  RDGContentEffect::eFullWrite);
+        if (info.pSource != nullptr && !inPlace)
+        {
+            valid = valid
+                 && DeclareBuildBuffer(info.pSource->GetStorageBuffer(), RHIBufferUsageFlagBits::eAccelerationStructureStorage,
+                                       RHIAccessMode::eRead);
+        }
+        for (RHIAccelerationStructure* dependency : info.pDestination->GetReferencedStructures())
+        {
+            valid = valid
+                 && DeclareBuildBuffer(dependency->GetStorageBuffer(), RHIBufferUsageFlagBits::eAccelerationStructureStorage,
+                                       RHIAccessMode::eRead);
+        }
+        if (info.description.type == RHIAccelerationStructureType::eTopLevel)
+        {
+            valid = valid
+                 && DeclareBuildBuffer(info.description.pInstanceBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
+                                       RHIAccessMode::eRead);
+        }
+        for (const RHIAccelerationStructureGeometry& geometry : info.description.geometries)
+        {
+            valid = valid
+                 && DeclareBuildBuffer(geometry.pVertexBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
+                                       RHIAccessMode::eRead)
+                 && DeclareBuildBuffer(geometry.pIndexBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
+                                       RHIAccessMode::eRead);
+        }
+        if (valid)
+        {
+            HeapVector<RHIAccelerationStructureGeometry> geometries(info.description.geometries.size());
+            std::ranges::copy(info.description.geometries, geometries.begin());
+            m_ops.push_back([info, geometries = std::move(geometries)](RDGPassCmdEncoder& encoder) {
+                RHIAccelerationStructureBuildInfo owned = info;
+                owned.description.geometries            = MakeVecView(geometries.data(), geometries.size());
+                encoder.BuildAccelerationStructure(owned);
+            });
+        }
+    }
+    return *this;
 }
 
 RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITexture* pTexture)

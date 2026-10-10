@@ -56,6 +56,7 @@ inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,
 
 inline void ClearPassResourceBindings(RDGPassDescBase& desc)
 {
+    desc.accelerationStructureBindings.clear();
     desc.UAVBufferBindings.clear();
     desc.sampledTexBindings.clear();
     desc.separateTexBindings.clear();
@@ -83,7 +84,10 @@ inline void BindSceneTextureArray(RDGPassDescBase&               desc,
     }
 
     // Slot zero is the fallback; glTF sampler indices begin at slot one.
-    desc.BindSeparateTexture("uTexture2DHeap", views);
+    if (!views.empty())
+    {
+        desc.BindSeparateTexture("uTexture2DHeap", views);
+    }
     desc.BindSampler("uSamplerHeap", pSampler);
 
     for (uint32_t index = 0; index < samplers.size(); ++index)

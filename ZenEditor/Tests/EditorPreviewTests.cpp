@@ -86,7 +86,7 @@ TEST_P(EditorPreview, SceneSwitchRetiresPreviewsWithoutRequestingAnotherThumbnai
 
     EditorWindowChrome chrome(window);
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     RHIOptions::GetInstance().SetValidationEnabled(true);
 
@@ -158,7 +158,7 @@ TEST_P(EditorPreview, SceneViewportStaysStableAcrossProfilingAndLightPresetChang
 {
     platform::NativeWindow window({"Scene layout test", false, 900, 700, 0, false});
     EditorWindowChrome     chrome(window);
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
     RHIOptions::GetInstance().SetValidationEnabled(true);
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
     InitializePreviewDevice(device);
@@ -247,7 +247,7 @@ TEST_P(EditorPreview, SelectionRevealsDockedInspectorWithoutOverridingManualTabC
 
     EditorWindowChrome chrome(window);
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     RHIOptions::GetInstance().SetValidationEnabled(true);
 
@@ -395,7 +395,7 @@ TEST_P(EditorPreview, OutputRowsCoverMultiLineEntriesAndFollowNewEntries)
 
     EditorWindowChrome chrome(window);
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     RHIOptions::GetInstance().SetValidationEnabled(true);
 

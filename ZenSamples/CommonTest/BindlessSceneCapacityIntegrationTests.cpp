@@ -66,7 +66,7 @@ protected:
     {
         m_previous = RHIOptions::GetInstance().BindlessHeapCapacities();
 
-        RHIOptions::GetInstance().SetRayTracingEnabled(false);
+        RHIOptions::GetInstance().SetRayTracingDisabled(true);
     }
 
     void TearDown() override
@@ -75,7 +75,7 @@ protected:
 
         RHIOptions::GetInstance().SetBindlessHeapCapacities(m_previous);
 
-        RHIOptions::GetInstance().SetRayTracingEnabled(true);
+        RHIOptions::GetInstance().SetRayTracingDisabled(false);
     }
 
     void CreateDevice(const RHIBindlessHeapCapacities& capacities)

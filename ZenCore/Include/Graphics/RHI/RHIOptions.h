@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include "RHICommon.h"
 
@@ -65,15 +66,28 @@ public:
         return instance;
     }
 
-    // Startup capability switch used by non-RT conformance runs. Set before device creation.
-    void SetRayTracingEnabled(bool enabled)
+    // Diagnostic opt-out, set before device creation. Otherwise RT follows device capabilities.
+    void SetRayTracingDisabled(bool disabled)
     {
-        m_rayTracingEnabled = enabled;
+        m_rayTracingDisabled = disabled;
     }
 
-    bool RayTracingEnabled() const
+    bool RayTracingDisabled() const
     {
-        return m_rayTracingEnabled;
+        return m_rayTracingDisabled;
+    }
+
+    // Diagnostic adapter choice, set before device creation. A valid device whose name
+    // contains this text wins over the scored choice; empty falls back to the
+    // ZEN_VULKAN_DEVICE environment variable, then to scoring.
+    void SetPreferredDevice(std::string_view name)
+    {
+        m_preferredDevice = name;
+    }
+
+    const std::string& PreferredDevice() const
+    {
+        return m_preferredDevice;
     }
 
     void SetGPUProfilerMarkers(bool enabled)
@@ -202,14 +216,15 @@ private:
 #else
     bool m_strictTeardownChecks{true};
 #endif
-    bool m_executionCountersEnabled{true};
-    bool m_debugPrintfEnabled{false};
-    bool m_robustBufferAccessEnabled{false};
-    bool m_rayTracingEnabled{true};
-    bool m_gpuProfilerMarkers{false};
-    bool m_gpuMemoryStats{false};
-    bool m_deviceLossDiagnostics{false};
-    bool m_validationEnabled{true};
+    bool        m_executionCountersEnabled{true};
+    bool        m_debugPrintfEnabled{false};
+    bool        m_robustBufferAccessEnabled{false};
+    bool        m_rayTracingDisabled{false};
+    std::string m_preferredDevice;
+    bool        m_gpuProfilerMarkers{false};
+    bool        m_gpuMemoryStats{false};
+    bool        m_deviceLossDiagnostics{false};
+    bool        m_validationEnabled{true};
     RHIOptions() = default;
 };
 } // namespace zen

@@ -42,7 +42,7 @@ protected:
 
     void SetUp() override
     {
-        RHIOptions::GetInstance().SetRayTracingEnabled(false);
+        RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
         RHIOptions::GetInstance().SetGPUProfilerMarkers(true);
 
@@ -97,7 +97,7 @@ protected:
 
         ZEN_DELETE(device);
 
-        RHIOptions::GetInstance().SetRayTracingEnabled(true);
+        RHIOptions::GetInstance().SetRayTracingDisabled(false);
 
         RHIOptions::GetInstance().SetGPUProfilerMarkers(false);
     }

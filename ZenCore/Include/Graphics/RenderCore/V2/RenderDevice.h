@@ -210,7 +210,7 @@ public:
 
     RHIBuffer* CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData, NameID bufferName);
 
-    void UpdateBuffer(RHIBuffer* pBufferHandle, uint32_t dataSize, const uint8_t* pData, uint32_t offset = 0);
+    bool UpdateBuffer(RHIBuffer* pBufferHandle, uint32_t dataSize, const uint8_t* pData, uint32_t offset = 0);
 
     void DestroyBuffer(RHIBuffer* pBufferHandle);
 

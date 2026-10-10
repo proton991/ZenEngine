@@ -165,17 +165,18 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         {
             InvalidateHistory("settings");
         }
-        if (settings.rayProvider == VoxelGISettings::RayProvider::Hardware
-            && m_previousSettings.rayProvider != settings.rayProvider)
+        if (m_previousHardware != voxelGI.UsesHardwareQueries())
         {
-            LOGW("Hybrid GI requested hardware; selected voxel: hardware query provider is not implemented (P4)");
+            InvalidateHistory("provider_changed");
         }
+        m_previousHardware  = voxelGI.UsesHardwareQueries();
         m_previousSettings  = settings;
         m_uniforms.sampling = glm::uvec4(m_frame, settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples,
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
+        m_uniforms.provider = glm::uvec4(m_previousHardware ? 1u : 0u, 0, 0, 0);
         m_uniforms.rejection          = Vec4(0.001f, settings.specularOcclusion ? 1.0f : 0.0f,
-                                             settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
-                                             settings.referenceSamples != 0 ? 1.0f : 0.0f);
+                                    settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
+                                    settings.referenceSamples != 0 ? 1.0f : 0.0f);
         RenderGraph*        graph     = m_device->GetCurrentFrameRDG();
         RDGResourceManager* resources = graph->GetResourceManager();
         RDGTextureDesc      desc;
@@ -191,15 +192,25 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         desc.name                      = "hybrid_raw_specular";
         const RDGTexture   rawSpecular = resources->CreateTexture(desc);
         RDGComputePassDesc trace;
-        trace.SetShaderProgramName("HybridTraceSP");
+        trace.SetShaderProgramName(m_previousHardware ? "HybridTraceHardwareSP" : "HybridTraceSP");
         trace.SetPassTag("HybridTrace");
         BindGuides(trace);
-        voxelGI.BindRayInputs(trace);
+        voxelGI.BindEnvironmentSamplingInputs(trace);
+        if (m_previousHardware)
+        {
+            voxelGI.BindHardwareRayInputs(trace);
+        }
+        else
+        {
+            voxelGI.BindRayInputs(trace);
+        }
         trace.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
         trace.BindStorageImage("rawSky", rawSky, RDGContentGuarantee::eFullWrite);
         trace.BindStorageImage("rawSpecular", rawSpecular, RDGContentGuarantee::eFullWrite);
         Dispatch(std::move(trace));
 
+        desc.name                   = "hybrid_sky_guide";
+        const RDGTexture   skyGuide = resources->CreateTexture(desc);
         RDGComputePassDesc temporal;
         temporal.SetShaderProgramName("HybridTemporalSP");
         temporal.SetPassTag("HybridTemporal");
@@ -208,6 +219,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         temporal.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
         temporal.BindSampledTexture("rawSky", m_sampler, rawSky);
         temporal.BindSampledTexture("rawSpecular", m_sampler, rawSpecular);
+        voxelGI.BindEnvironmentHarmonics(temporal);
+        temporal.BindStorageImage("skyGuide", skyGuide, RDGContentGuarantee::eFullWrite);
         for (uint32_t texture = 0; texture < Count; ++texture)
         {
             temporal.BindSampledTexture(NameID(fmt::format("previous{}", kHistoryNames[texture])), m_sampler,
@@ -237,6 +250,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             BindGuides(filter);
             voxelGI.BindRayInputs(filter);
             filter.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+            filter.BindSampledTexture("skyGuide", m_sampler, skyGuide);
             filter.BindSampledTexture("inputVariance", m_sampler, previousVariance);
             filter.BindStorageImage("filteredVariance", variance, RDGContentGuarantee::eFullWrite);
             previousVariance = variance;

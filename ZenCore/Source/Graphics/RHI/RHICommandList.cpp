@@ -299,6 +299,24 @@ void RHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t s
     ALLOC_CMD(RHICommandClearBuffer)(pBuffer, offset, size);
 }
 
+void RHICommandList::BuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info)
+{
+    RetainResource(info.pDestination);
+    RetainResource(info.pSource);
+    RetainResource(info.pScratchBuffer);
+    RetainResource(info.description.pInstanceBuffer);
+    RHICommandBuildAccelerationStructure* command    = ALLOC_CMD(RHICommandBuildAccelerationStructure)(info);
+    const size_t                          count      = info.description.geometries.size();
+    RHIAccelerationStructureGeometry*     geometries = AllocateCmdData<RHIAccelerationStructureGeometry>(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        geometries[i] = info.description.geometries[i];
+        RetainResource(geometries[i].pVertexBuffer);
+        RetainResource(geometries[i].pIndexBuffer);
+    }
+    command->info.description.geometries = MakeVecView(geometries, count);
+}
+
 void RHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region)
 {
     RetainResource(pSrcBuffer);

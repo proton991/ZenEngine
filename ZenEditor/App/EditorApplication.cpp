@@ -234,8 +234,6 @@ public:
 
         spdlog::default_logger()->sinks().push_back(m_sink);
 
-        RHIOptions::GetInstance().SetRayTracingEnabled(false);
-
         RHIOptions::GetInstance().SetValidationEnabled(true);
 
         RHIOptions::GetInstance().SetGPUMemoryStats(true);
@@ -243,7 +241,7 @@ public:
         // Hidden until initialization completes; a pending maximize applies when shown.
         const platform::WindowConfig config{"ZenEditor", true, 1440, 900, 0, false};
 
-        m_window       = MakeUnique<platform::NativeWindow>(config);
+        m_window = MakeUnique<platform::NativeWindow>(config);
 
 #if defined(ZEN_MACOS)
         if (!InitializeEditorApplicationIcon())
@@ -263,7 +261,7 @@ public:
             m_window->Maximize();
         }
 
-        m_device = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
+        m_device                                 = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
                                                 m_options.threaded ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline);
 
         int framebufferWidth                     = 0;
@@ -325,8 +323,9 @@ public:
             constexpr const char* quitLabel = "Exit";
 #endif
 
-            m_controller->GetActions().Register(
-                {actions::Exit, quitLabel, quitShortcut, "", nullptr, [this]() { m_exitRequested = true; }});
+            m_controller->GetActions().Register({actions::Exit, quitLabel, quitShortcut, "", nullptr, [this]() {
+                                                     m_exitRequested = true;
+                                                 }});
 
             m_workspace   = MakeUnique<EditorWorkspace>(m_settings);
 

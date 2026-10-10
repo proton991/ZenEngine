@@ -115,6 +115,12 @@ public:
         return m_vertices;
     }
 
+    // True while GetVertices() holds edits not yet committed to GetVertexBuffer().
+    bool HasUncommittedVertices() const
+    {
+        return m_verticesDirty;
+    }
+
     const HeapVector<uint32_t>& GetIndices() const
     {
         return m_indices;

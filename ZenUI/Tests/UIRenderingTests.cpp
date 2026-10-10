@@ -53,7 +53,7 @@ class UIRenderingNative : public testing::TestWithParam<RHIExecutionMode>
 
 TEST_P(UIRenderingNative, TextureGenerationsAndQueuedResourcesWithoutImGuiOrWindow)
 {
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, GetParam());
 
@@ -139,7 +139,7 @@ TEST_P(UIRenderingNative, TextureGenerationsAndQueuedResourcesWithoutImGuiOrWind
 // texture slots, instead of starting a pass for every change of image.
 TEST_P(UIRenderingNative, BatchesDrawsAcrossImagesWithinTextureSlots)
 {
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, GetParam());
 

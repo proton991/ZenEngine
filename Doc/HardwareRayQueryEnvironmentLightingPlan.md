@@ -15,7 +15,7 @@ This plan carries forward the hardware infrastructure requirements of [DynamicVo
 
 Evaluated on the frozen scenes, presets and limits of [P0](#p0-baseline-references-limits-and-targets):
 
-1. **Diffuse GI.** Sky light and one bounce at opaque and alpha-tested receivers, in deferred and forward rendering, converge on the RT tier to independent CPU triangle references. Fully enclosed receivers get no sky light, and no contribution is counted twice. On the compute tier they converge to the voxel reference, with documented voxel-geometry limits.
+1. **Diffuse GI.** Sky light and one bounce at opaque and alpha-tested receivers, in deferred and forward rendering, converge on the RT tier to independent CPU triangle references and the full-image [ground truth](#ground-truth). Fully enclosed receivers get no sky light, and no contribution is counted twice. On the compute tier they converge to the voxel reference, with documented voxel-geometry limits.
 2. **Image stability.** At the shipping presets, there are no voxel-aligned steps. Settling after cuts is bounded, and camera, receiver, occluder and light motion produce no ghost trails or cross-surface leaks.
 3. **Specular.** The scene occludes environment specular. Glossy surfaces above the roughness cutoff reflect scene light from the radiance cache. Behavior below the cutoff is documented.
 4. **Radiance cache.** The voxel sky cache and light injection follow the same lighting contract from valid surface points.
@@ -107,7 +107,7 @@ D1 requires distributed per-pixel sampling with temporal and spatial reconstruct
 | P4 | Hardware ray-query provider: RHI, render graph, scene acceleration structures | P0; P4a–P4c may run in parallel with P1–P3; P4e after P3 |
 | P5 | Diffuse bounce from ray hits | P3; P4 for the RT tier |
 | P6 | Glossy reflections from the radiance cache | P3, P5 |
-| P7 | Hardware shadow rays (optional; adopted only if P8 measures a benefit) | P4 |
+| P7 | Hardware shadow rays (optional; adopted only if P8 measures a benefit). Shadow rays for bright sources extracted from the environment are pulled into P4 (2026-10-10) | P4 |
 | P8 | Compute-tier and RT-tier performance, presets, memory, platform validation, automatic selection | P5, P6; P7 if implemented |
 
 Each phase leaves the renderer usable, with focused tests and a short verification record in [VoxelGIVerification.md](VoxelGIVerification.md).
@@ -126,8 +126,9 @@ For a receiver at `x` with shading normal `n_s` and geometric normal `n_g`, and 
 - `L_env(w)` is level 0 of the prefiltered environment map, looked up with `EnvironmentDirection(w)` and multiplied by environment intensity and enablement. Level 0 is generated at roughness 0, and the prefiltered maps share their orientation with specular IBL. `EnvironmentSourceDirection` applies only to the raw skybox texture.
 - `L_hit` is the radiance-cache value at the first hit (see [Hit radiance](#hit-radiance)), multiplied by indirect intensity.
 - Directions with `dot(n_g, w) <= 0` lie below the actual surface and count as blocked with zero radiance.
-- A ray escapes only when no accepted opaque hit occurs before it leaves the scene bounds (triangle provider) or the voxel volume (voxel provider). Alpha-mask candidates that fail the material's cutoff are rejected and traversal continues. Blend and transmissive surfaces count as opaque occluders; this is a documented limitation.
-- Estimate with cosine-weighted hemisphere samples around `n_s`. A miss adds `L_env` to the sky channel; a hit adds `L_hit` to the bounce channel. Keep the sample PDF explicit in the shader interface so later importance sampling cannot silently change the scale.
+- A ray escapes only when no accepted opaque hit occurs before it leaves the scene bounds (triangle provider) or the voxel volume (voxel provider). Alpha-mask candidates that fail the material's cutoff are rejected and traversal continues. Blend and transmissive surfaces count as opaque occluders; this is a documented limitation. Both faces of every surface occlude, whatever its raster sidedness.
+- Sky sampling combines environment-luminance samples (three quarters) with cosine-weighted hemisphere samples around `n_s` (one quarter). Sample counts that are multiples of four split deterministically; one and two samples choose each proposal with those probabilities. A miss adds `L_env * max(dot(n_s, w), 0) / (pi * p_mixture(w))`, where `p_mixture = 0.75 * p_env + 0.25 * p_cos`; the explicit mixture PDF preserves the scale. A black environment falls back to cosine sampling. The same estimator is used by the diagnostic reference mode. See the [hotel-room noise investigation](HybridGI/P4.md#hotel-room-noise-2026-10-08), which introduced equal proportions, and the [hall reconstruction follow-up](HybridGI/P4.md#hall-full-image-reconstruction-2026-10-09), which measured the three-to-one split.
+- P5 hit radiance must likewise use its actual sample PDF when adding `L_hit` to the bounce channel. Hit-radiance sampling is still deferred; the current cone bounce is unchanged.
 - Also accumulate `nu`, the cosine-weighted unblocked fraction, for diagnostics and filter guidance.
 - Sky and bounce are reconstructed as separate channels: bounce must respond to light changes that leave sky history valid.
 
@@ -166,14 +167,14 @@ Shared by P5 and P6:
 
 ### Sampling sequence
 
-Use a per-pixel decorrelated low-discrepancy sequence, for example blue-noise or R2 points rotated per pixel by a hash. Advance it once per successfully executed frame. Captures use a fixed seed and frame index. Diffuse samples per pixel are 1, 2 or 4; specular uses one lobe sample per pixel initially. A reference mode accumulates many frames with reprojection and filtering disabled; it is the converged estimate used by acceptance tests.
+Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in Morton pixel order, so every aligned 2^k × 2^k pixel block holds a stratified set of rotations and the spatial filter averages blue-noise rather than white-noise error. Each proposal and dimension uses its own scramble. Advance the sequence once per successfully executed frame. Captures use a fixed seed and frame index. Diffuse samples per pixel are 1, 2 or 4; specular uses one lobe sample per pixel initially. A reference mode accumulates many frames with reprojection and filtering disabled; it is the converged estimate used by acceptance tests.
 
 ### Voxel sky cache
 
 - Evaluate each occupied voxel at the owner-triangle surface point with that triangle's geometric normal, using the reconstruction analytic injection already uses. Define a representative point for the averaged-reflectance policy. Fall back to the voxel center only when no owner exists, and count those voxels.
-- Use a deterministic stratified cosine sample set (initially 64 directions) with the active provider. Never use camera-space history for voxels.
+- Use a deterministic stratified sample set with the active provider: 48 environment-luminance directions and 16 cosine directions, the per-pixel proposal shares, with the same mixture PDF as per-pixel sky sampling. Never use camera-space history for voxels.
 - Updates may complete progressively over several frames. Consumers keep using the last complete generation; a partial generation is never published.
-- Units are unchanged: irradiance is `pi * mean(L_env * V) * intensity`, and injection multiplies by albedo/π.
+- Units are unchanged: irradiance is `pi * mean(L_env * V * max(dot(n, w), 0) / (pi * p_mixture(w))) * intensity`, and injection multiplies by albedo/π.
 
 ## P0 Baseline, references, limits and targets
 
@@ -185,10 +186,12 @@ Use a per-pixel decorrelated low-discrepancy sequence, for example blue-noise or
 
    Store them as glTF camera nodes or capture metadata.
 2. **Configurations.** Environment light only; analytic lights only; both. Bounce intensity 0 and 1. Voxel resolutions 64, 128 and 256. Viewports of 960×540 and 1920×1080. Record scene and shader hashes, device and driver.
+   - **Environments** (added 2026-10-10; see the [decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10)). The ground truth (rung 3) covers nine: `papermill.ktx` and the eight Poly Haven panoramas in `Data/Textures/Environments`. The shipping-preset limits gate five of them, one per lighting type: Papermill (soft interior daylight), kloppenheim 06 (soft sky), qwantani noon (hard sun), hotel room (interior with small lamps) and carpentry shop 01 (artificial lights with daylight). Studio small 09, small empty room 1, large corridor and kloofendal 48d are tracked and reported but do not gate: they repeat those types or, like the studio's softboxes, are extreme cases kept as stress tests. A wrong converged answer is a defect under any environment, so correctness is checked on all nine; the shipping limits are a noise budget, so they apply to a representative set. File hashes are in `baseline.json`.
 3. **CPU references** in `tools/environment_reference.py`, using the Embree binding from `tools/requirements-gi-quality.txt`:
    - **Sky.** Load the glTF scene with the renderer's normalization and take receiver positions and normals from a capture. Trace at least 4096 cosine samples per receiver against all triangles with material alpha cutoffs, and sample the same environment cubemap with the same rotation and orientation. Output `D_sky` and `nu`.
    - **One bounce.** For uniform-albedo fixtures, compute one-bounce diffuse light at the same receivers from analytic lights and sky, with triangle-accurate visibility at both the receiver and the hit point.
    - **Specular.** Sample the GGX lobe and output `S` and the hit fraction.
+   - **Full-image sky** (added 2026-10-09) in `tools/ground_truth_mitsuba.py`, using Mitsuba 3 from the same requirements file: `D_sky` and `nu` at every pixel center, with independent primary visibility. See [Ground truth](#ground-truth).
 
    Validate each reference against analytic fixtures before using it.
 4. **Fixtures**, for the GPU tests and the CPU references:
@@ -199,13 +202,14 @@ Use a per-pixel decorrelated low-discrepancy sequence, for example blue-noise or
    - thin pole above a plane;
    - alpha-masked blocker;
    - mirrored and two-sided meshes;
+   - a closed box of single-sided, outward-facing walls (back faces must occlude; added 2026-10-08);
    - an occluder outside the voxel volume;
    - a uniform-albedo room lit by one point light (bounce);
    - a one-voxel wall lit on one side only (thin-wall leak);
    - a glossy floor beside a lit colored wall (reflections);
    - a moving occluder and a moving light over a static floor.
 5. **Capture extensions.** Add raw and reconstructed sky, bounce, `nu`, `S` and `H` as debug outputs. Also add history length, rejection reason, hit-or-miss masks, rejected-lookup counts, receiver position and geometric normal. None of these may be permanent production allocations. Keep the seven existing components compatible and add a format version to the metadata.
-6. **Platform matrix.** Windows RTX 5080 and RX 7900 XT, each with RT enabled and with `--disable-rt`; macOS on Apple Silicon through MoltenVK (record ray-query availability); one GPU without ray queries if available. Untested platforms are reported as unverified.
+6. **Platform matrix.** Windows RTX 5080 and RX 7900 XT, each with RT enabled and with `--disable-rt`; macOS on Apple Silicon through MoltenVK (record ray-query availability); one GPU without ray queries if available. Untested platforms are reported as unverified. Per the [decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10), P4 can close with the RX 7900 XT and a GPU without ray queries reported as unverified; MoltenVK remains an open P4a item that is recorded but does not block P4.
 7. **Frozen limits.** These initial limits are frozen by this revision. Changing one requires a written rationale recorded before any candidate result is evaluated.
 
 | Check | Limit |
@@ -238,9 +242,9 @@ Exit: references, fixtures, cameras, limits, targets and the platform matrix are
 
 ### Receiver data
 
-- Add a receiver target to the G-buffer pass with the geometric normal and a stable surface identity (node index plus a facing bit). Encode the geometric normal with the existing `EncodeGBufferNormal`. Compute it from `dFdx`/`dFdy` of the interpolated world position in the G-buffer pass, where the 2×2 quad lies on one triangle, and orient it like the shading normal. Replace the composition pass's derivative reconstruction with it, which also fixes the silhouette error noted above.
+- Add a receiver target to the G-buffer pass with the geometric normal and a stable surface identity (node index plus a facing bit). Encode the geometric normal with the existing `EncodeGBufferNormal`. Compute it from `dFdx`/`dFdy` of the interpolated world position in the G-buffer pass, where the 2×2 quad lies on one triangle, and orient it like the shading normal. Judge degeneracy relative to the derivative lengths, never with an absolute threshold: until 2026-10-09 an absolute test rejected nearly every pixel of the unit-normalized scene and silently stored the shading normal instead (the geometric normal matched the true triangle normal on 40% of Sponza hall pixels; 99.96% after the fix). Replace the composition pass's derivative reconstruction with it, which also fixes the silhouette error noted above.
 - Review the receiver and motion targets together with the compact layout (24 bytes per pixel today), as [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) Phase 3 requires, and record the new size and G-buffer pass time against the Phase 3 measurements.
-- Add motion as the previous clip-space position. Keep previous world matrices per node and the previous projection-view. For CPU-skinned or morphed meshes, keep previous deformed positions, or mark those pixels as deforming and reset their history.
+- Add motion as the NDC difference between the interpolated previous and current clip positions, plus the previous w (2026-10-08: storing only the previous clip position exceeded the 0.01-pixel limit near the camera on an AMD iGPU, because dividing one interpolated position amplifies interpolation rounding). Keep previous world matrices per node and the previous projection-view. For CPU-skinned or morphed meshes, keep previous deformed positions, or mark those pixels as deforming and reset their history.
 - Publish previous camera, node and deformation state only after a frame executes successfully.
 
 ### Forward receiver prepass
@@ -319,6 +323,8 @@ Apply an edge-avoiding à-trous filter (SVGF style, five iterations of a 5×5 ke
 
 When history length is below 4, estimate variance spatially. Thin walls and foreground/background boundaries must not exchange values.
 
+The sky is filtered as a ratio to the receiver's unoccluded environment irradiance, evaluated for its shading normal from an order-2 spherical-harmonic projection of the sampled environment, and the result is remodulated by the center's value. Luminance differences and variances are compared in that ratio. This keeps normal-map shading detail that normal weights alone would blur, while neighbors with different normals still average their visibility. Pixels sharing a normal are filtered exactly as without the guide. The projection is built with the environment sampling distribution; an aliased Riemann-sum irradiance cube was rejected as the guide because small, very bright sources alias in it (see [P4](HybridGI/P4.md#hall-full-image-reconstruction-2026-10-09)).
+
 ### Specular occlusion
 
 Trace one visible-normal GGX sample per pixel with the active provider for `S`, reconstruct it, and apply it as defined in the lighting contract with `H = 0`.
@@ -330,6 +336,8 @@ Exit:
 - The closed box stays dark after filtering, and glossy surfaces inside it show no environment specular.
 
 ## P4 Hardware ray-query provider
+
+Implementation status, 2026-10-09: the hardware path is implemented and tested on RTX 5080 and an AMD Radeon iGPU; see [P4 implementation and verification](HybridGI/P4.md). The checklist remains open where the full acceptance matrix has not passed. The hall's full-image shipping reconstruction now passes bias and RMS but still misses the 99th-percentile and exact-zero limits at four samples per pixel (21.65% against 20%, ten zeros); eight samples per pixel pass. Against the full-image [ground truth](#ground-truth), the converged tier reference passes on three of four frozen views; the hotel-room hall misses the per-pixel limit on distant lamp-lit receivers. A nine-environment sweep on 2026-10-10 widens both findings: the shipping preset fails in every hall view, and the tier reference misses the ground truth per pixel in four of nine hall views, all with small bright sources. Gaps and fix steps are in [P4 gaps](HybridGI/P4Gaps.md), together with the decisions recorded on 2026-10-10: the environment sets, the ground-truth noise rule, unverified platforms, bright-source handling, deferred preset changes and texture LOD for alpha.
 
 ### P4a Capabilities and shader variants
 
@@ -372,8 +380,8 @@ Exit: graph-driven triangle hit, miss, distance, barycentrics, and instance, pri
   - rigid motion updates instance data;
   - CPU-skinned and morphed meshes update or rebuild their BLAS from the deformed positions of the raster snapshot;
   - topology changes rebuild.
-- Handedness, two-sidedness, alpha acceptance and material identity must match rasterization.
-- Alpha-mask candidates reconstruct UVs, apply texture transforms and cutoff with an explicit texture LOD (compute shaders have no derivatives), and continue traversal when rejected. Never mark masked geometry opaque.
+- Handedness, alpha acceptance and material identity must match rasterization. Sidedness does not: raster back-face culling is view-dependent, and visibility queries treat both faces of single-sided surfaces as occluders, as the voxel provider and the CPU reference do. Otherwise a closed single-sided shell admits sky light (measured 2026-10-08: 61% of the environment inside a closed box). Closest hits report their raster facing for hit-radiance consumers.
+- Alpha-mask candidates reconstruct UVs, apply texture transforms and cutoff with an explicit texture LOD (compute shaders have no derivatives), and continue traversal when rejected. Never mark masked geometry opaque. The contract evaluates alpha at texture level zero; rasterization tests it at its own mip level, and the pixels where the two see different surfaces are reported as primary mismatches rather than matched by LOD ([decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10); revisited only if those pixels break a limit).
 - Expose any-hit visibility, and closest-hit queries with versioned hit metadata (instance, primitive, barycentrics, material, geometric normal) for hit radiance and later consumers.
 
 Exit: moving and deforming geometry, opacity edits, instance removal, scene replacement and geometry outside the voxel volume all affect visibility, without stale addresses or mixed generations.
@@ -423,6 +431,8 @@ Exit: the glossy-floor fixture passes its limit on the RT tier. Enclosed glossy 
 
 Exit: hardware shadows match a CPU shadow reference on the fixtures, and the adoption decision is recorded.
 
+Per the [decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10), shadow rays for the compact bright sources extracted from the environment (sun, lamps, softboxes) are prototyped in P4 as the first fix for the shipping variance in high-contrast views ([G1](HybridGI/P4Gaps.md#g1-shipping-variance-in-high-contrast-views)). If adopted, the lighting contract splits `D_sky` into the extracted sources and the residual environment, and that change is written into the contract before results are evaluated. Analytic-light shadow rays remain optional as above.
+
 ## P8 Tiers, performance, memory and automatic selection
 
 ### Measurement
@@ -458,6 +468,32 @@ BLAS update-versus-rebuild policy, compaction, scratch pooling, and async-comput
 
 Exit: reproducible performance and memory reports per tier, preset and platform; post-optimization correctness results; the P0 targets met or the shortfall documented with the preset decision; and an explicit automatic-selection decision. Missing hardware evidence cannot be marked passed.
 
+## Ground truth
+
+A tier's converged reference is computed by that tier's own estimator, so it can only show that reconstruction converges; it cannot show that the converged answer is right. A defect shared by the estimator and its reference passes every shipping-limit comparison. This happened on 2026-10-08: single-sided back faces let sky into a closed shell, and both the shipping output and the hardware reference agreed; the analytic fixtures and the CPU reference caught it. Shipping-limit results are therefore meaningful only while the tier reference itself matches an independent ground truth.
+
+Two different claims need two kinds of evidence:
+- **Verification**: the renderer computes the lighting contract. Checked exactly, against references that implement the same definitions independently.
+- **Validation**: the contract is close enough to physical light transport. Checked against a general path tracer and reported per approximation; it never has to match exactly.
+
+| Rung | Reference | Shows | Blind spots |
+| --- | --- | --- | --- |
+| 1. Analytic fixtures | Closed forms: open plane `D_sky = L`, closed boxes `0`, wall base `L/2`, cube-quadrature of unoccluded bright and rotated environments, open and enclosed `S` | Exact values; environment scale and rotation | Simple geometry |
+| 2. CPU triangle reference | `tools/environment_reference.py` (Embree): sky, `S` and one bounce on the real triangles and alpha masks | Ray visibility on production scenes | Sparse receivers taken from the engine's G-buffer; cosine sampling, too noisy for small bright sources |
+| 3. Full-image ground truth | `tools/ground_truth_mitsuba.py` (Mitsuba 3; CUDA backend where available, CPU LLVM backend otherwise): `D_sky` at every pixel center | Primary visibility, receiver reconstruction and sky over the whole frame | Normal maps (compared with normal textures stripped); per-pixel noise of indoor receivers that see sky through small openings |
+| 4. Tier reference | The tier's reference mode (1024 samples × 64 frames, no reconstruction) | Reconstruction error: the shipping-preset limits | Every defect it shares with the shipping estimator |
+
+Rules:
+- Every reference passes the rung-1 fixtures before it is used, and the fixture report is archived with its results.
+- References are cross-checked against each other where they overlap, because fixtures do not cover every failure. The rung-3 tool recomputes its visibility with the rung-2 tracer at sampled receivers and reports the difference against its own sampling noise. On 2026-10-09 this exposed a rung-3 defect that the fixtures passed: Mitsuba's default ray-start offset (about 1e-4 of the position) closed centimeter gaps under Sponza's gallery floor and made the engine appear to leak sky. When two references disagree, a third decides; neither is assumed right.
+- The rung-3 tool shares only the scene file, the capture's camera matrix and the captured level-zero environment cube with the engine. glTF parsing, primary visibility (raster culling and alpha rules), the BVH, environment importance sampling and the estimator are independent. Both faces of every surface occlude and masked texels are transparent, as in the contract. Radiance is evaluated from the captured cube itself with the engine's bilinear lookup; a resampled copy only guides sampling. Small, very bright sources make this matter: evaluating a 2048×1024 resampled map widened the hotel room's 0.36° lamps by 5% and doubled the per-pixel floor discrepancy.
+- Like-for-like comparisons use captures made with `capture_hybrid_gi.py --strip-normal-maps`, so both sides shade with vertex normals. Normal-mapped comparisons are a separate validation measurement.
+- Pixels whose primary hit differs from the engine's receiver by more than four times the receiver's depth-quantization error are excluded and counted; a large count is itself a primary-visibility finding. A fixed distance tolerance is not used: it either rejects every pixel of a scene with a coarse depth buffer or accepts a neighboring leaf of alpha-masked foliage as the same surface.
+- Each tier reference must match rung 3 within the RT-tier converged limits of P0 (absolute mean bias ≤ 1%, RMS ≤ 3%) on every frozen camera and environment. Indoor receivers that see the sky through small openings stay noisy even at tens of thousands of samples per pixel, so report the ground truth's own noise and judge RMS with that noise removed (`excess_rms`), per pixel and on 8×8 pixel blocks. A per-pixel or 8×8 excess above the limit fails, since the excess is already corrected for the ground truth's noise. Where the per-pixel excess is within the limit but the ground truth's per-pixel noise exceeds it, the per-pixel pass cannot be confirmed; the 8×8-block result then decides and the per-pixel result is reported ([decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10): blocks still expose systematic error and misplaced shadows at low noise, while resolving the studio hall per pixel would take about 14× the samples). Pixels under diagnosis get targeted high-sample renders instead.
+- Rung-3 renders are stored once per frozen view and environment and never replaced, together with what they depend on (scene and environment file hashes, camera matrix, captured environment cube) and their fixture-gate report. Engine captures are regenerated for each build by `tools/ground_truth_sweep.py`, which refuses a capture that no longer matches its render; a changed input needs a new render.
+- Run rungs 1–3 before tuning reconstruction against a tier reference, after any change to the estimator, visibility, environment handling or receiver reconstruction, and for every acceptance claim.
+- The rung-3 scope grows with the plan: sky now; one bounce with uniform albedo for P5 (a validation comparison of the radiance-cache approximation, with differences reported per cause); and the composed final image with real materials as a report-only validation of the whole model (split-sum specular, specular occlusion, single bounce).
+
 ## Validation and acceptance
 
 Tolerances, regions, seeds and comparison inputs are those frozen in P0. Store raw linear HDR data as well as display images.
@@ -465,6 +501,7 @@ Tolerances, regions, seeds and comparison inputs are those frozen in P0. Store r
 | Test group | Required evidence |
 | --- | --- |
 | CPU references | Analytic fixtures pass before each reference is used; reference inputs and outputs archived |
+| Ground truth | [Ground truth](#ground-truth) rungs 1–3 for every frozen camera and environment; the tier reference within the RT-tier converged limits of rung 3, with the ground truth's noise reported |
 | Triangle-query oracle | Hit, miss, distance, barycentrics, normal and identity match an independent CPU reference; rejected mask candidates continue to later blockers |
 | Voxel traversal oracle | Base and hierarchical traversal return identical first occupied cells and entered faces on a frozen ray set |
 | Open and enclosed geometry | Constant-environment normalization; no sky in enclosed receivers before or after filtering; no filter leakage through thin walls |
@@ -517,6 +554,7 @@ These are not required for done and are each assessed against the P0 limits and 
 ## Delivery checklist
 
 - [ ] P0 cameras, configurations, CPU references, fixtures, limits, performance targets and platform matrix archived.
+- [ ] [Ground truth](#ground-truth): each tier reference matches the independent full-image ground truth on every frozen camera and environment.
 - [ ] P1 receiver data, motion, previous-frame state, history resources and forward receiver prepass pass.
 - [ ] P2 voxel-provider sky estimator, composition, sky-cache update and settings pass.
 - [ ] P3 temporal accumulation, spatial filtering and specular occlusion pass on all frozen cameras.

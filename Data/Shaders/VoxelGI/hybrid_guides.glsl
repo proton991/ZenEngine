@@ -7,6 +7,7 @@ layout(std140,set=1,binding=0) uniform uHybridData
     vec4 previousViewPosition;
     vec4 previousViewDirection;
     uvec4 sampling;
+    uvec4 provider;
     vec4 rejection;
 } hybrid;
 layout(set=1,binding=1) uniform sampler2D receiverDepth;

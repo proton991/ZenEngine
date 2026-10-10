@@ -317,8 +317,8 @@ RDGBuffer RDGResourceManager::ImportBuffer(RHIBuffer* buffer, const RDGBufferImp
     {
         Allocation* resource = const_cast<Allocation*>(Resolve(value));
 
-        if (state.stages.IsEmpty() || (int64_t(state.usage) & ~0x1ff) != 0 || state.accessMode < RHIAccessMode::eNone
-            || state.accessMode > RHIAccessMode::eReadWrite
+        if (state.stages.IsEmpty() || (int64_t(state.usage) & ~int64_t(kRHIBufferAccessUsageMask)) != 0
+            || state.accessMode < RHIAccessMode::eNone || state.accessMode > RHIAccessMode::eReadWrite
             || (state.accessMode != RHIAccessMode::eNone && state.usage.IsEmpty()))
         {
             Reject("Invalid external buffer state");

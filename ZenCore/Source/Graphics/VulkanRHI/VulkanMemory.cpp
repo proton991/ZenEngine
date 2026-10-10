@@ -286,8 +286,13 @@ bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
 
     *pAllocation = {};
 
-    const VkResult result =
-        vmaCreateBuffer(m_vmaAllocator, pBufferCI, &vmaAllocationCI, pBuffer, &pAllocation->handle, &pAllocation->info);
+    // AS build inputs need 16-byte device addresses (instance data); the memory
+    // requirements alone do not guarantee it, e.g. for small buffers on AMD.
+    const VkDeviceSize minimumAlignment =
+        (pBufferCI->usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR) != 0 ? 16 : 0;
+
+    const VkResult result = vmaCreateBufferWithAlignment(m_vmaAllocator, pBufferCI, &vmaAllocationCI, minimumAlignment, pBuffer,
+                                                         &pAllocation->handle, &pAllocation->info);
 
     const bool mappedRequired = (vmaAllocationCI.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) != 0;
 

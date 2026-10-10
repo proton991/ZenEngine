@@ -1,0 +1,45 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "environment_distribution.glsl"
+layout(local_size_x=64) in;
+layout(set=1,binding=0) uniform samplerCube coneEnvironmentMap;
+layout(std430,set=1,binding=1) writeonly buffer EnvironmentColumns { float environmentColumns[]; };
+layout(std430,set=1,binding=2) writeonly buffer EnvironmentHarmonics { vec4 environmentHarmonics[]; };
+shared vec3 groupHarmonics[64][ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS];
+void main()
+{
+    uint row = gl_GlobalInvocationID.x;
+    vec3 harmonics[ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS];
+    for(uint k = 0u; k < ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS; ++k) harmonics[k] = vec3(0);
+    if(row < ZEN_ENVIRONMENT_IMPORTANCE_ROWS)
+    {
+        uint offset = row * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u);
+        float sum = 0.0;
+        environmentColumns[offset] = 0.0;
+        // Texel solid angle is the face-area element times the cube Jacobian.
+        float texelArea = 4.0 / float(ZEN_ENVIRONMENT_IMPORTANCE_SIZE * ZEN_ENVIRONMENT_IMPORTANCE_SIZE);
+        for(uint x = 0u; x < ZEN_ENVIRONMENT_IMPORTANCE_SIZE; ++x)
+        {
+            vec2 uv = (vec2(x, row % ZEN_ENVIRONMENT_IMPORTANCE_SIZE) + 0.5)
+                * (2.0 / float(ZEN_ENVIRONMENT_IMPORTANCE_SIZE)) - 1.0;
+            vec3 direction = EnvironmentCubeDirection(row / ZEN_ENVIRONMENT_IMPORTANCE_SIZE, uv);
+            vec3 radiance = textureLod(coneEnvironmentMap, direction, 0).rgb;
+            float jacobian = EnvironmentCubeJacobian(uv);
+            sum += max(dot(radiance, vec3(0.2126, 0.7152, 0.0722)), 0.0) * jacobian;
+            environmentColumns[offset + x + 1u] = sum;
+            float basis[ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS];
+            EnvironmentHarmonicBasis(direction, basis);
+            for(uint k = 0u; k < ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS; ++k)
+                harmonics[k] += radiance * (basis[k] * jacobian * texelArea);
+        }
+    }
+    for(uint k = 0u; k < ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS; ++k)
+        groupHarmonics[gl_LocalInvocationID.x][k] = harmonics[k];
+    barrier();
+    if(gl_LocalInvocationID.x < ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS)
+    {
+        vec3 total = vec3(0);
+        for(uint i = 0u; i < 64u; ++i) total += groupHarmonics[i][gl_LocalInvocationID.x];
+        environmentHarmonics[gl_WorkGroupID.x * ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS + gl_LocalInvocationID.x] = vec4(total, 0);
+    }
+}

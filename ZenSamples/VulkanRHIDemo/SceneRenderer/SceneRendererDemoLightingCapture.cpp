@@ -85,18 +85,18 @@ bool WriteLightingMetadata(const std::string&        path,
                            uint32_t                  width,
                            uint32_t                  height)
 {
-    const rc::SceneUniformData& data    = *reinterpret_cast<const rc::SceneUniformData*>(scene.GetSceneUniformData());
+    const rc::SceneUniformData& data          = *reinterpret_cast<const rc::SceneUniformData*>(scene.GetSceneUniformData());
 
-    const sg::CameraUniformData& camera = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
+    const sg::CameraUniformData& camera       = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
 
-    const rc::VoxelizerBase& voxelizer  = *server.RequestVoxelizer();
+    const rc::VoxelizerBase& voxelizer        = *server.RequestVoxelizer();
 
-    const glm::uvec2 gbuffer            = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
+    const glm::uvec2 gbuffer                  = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
 
-    const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
-    const rc::VoxelGISettings&  settings = server.RequestVoxelGI()->GetSettings();
-    const bool    reconstructed          = server.GetRenderOption() == rc::RenderOption::eVoxelGI
-                                        && settings.rayProvider != rc::VoxelGISettings::RayProvider::Legacy && hybrid != nullptr;
+    const rc::HybridGIRenderer* hybrid        = server.RequestDeferredLightingRenderer()->GetHybridGI();
+    const rc::VoxelGISettings&  settings      = server.RequestVoxelGI()->GetSettings();
+    const bool                  reconstructed = server.GetRenderOption() == rc::RenderOption::eVoxelGI
+                            && settings.rayProvider != rc::VoxelGISettings::RayProvider::Legacy && hybrid != nullptr;
     std::ofstream output(path + ".lighting.json");
 
     output
@@ -132,10 +132,22 @@ bool WriteLightingMetadata(const std::string&        path,
     WriteFloatArray(output, &data.environment.x, 4);
 
     output
-        << ",\"tier\":\"" << (server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "compute" : "minimum")
-        << "\",\"ray_provider\":\"" << (reconstructed ? "voxel" : "legacy")
-        << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider)
-        << ",\"provider_reason\":\"Hardware queries arrive in P4; compute provider selected\""
+        << ",\"tier\":\""
+        << (server.GetRenderOption() == rc::RenderOption::eVoxelGI
+                ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "compute")
+                : "minimum")
+        << "\",\"ray_provider\":\""
+        << (reconstructed ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "voxel") : "legacy")
+        << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider) << ",\"provider_reason\":\""
+        << server.RequestVoxelGI()->GetProviderReason() << "\""
+        << ",\"ray_scene_ready\":" << (server.RequestVoxelGI()->GetSceneRayQuery().IsReady() ? "true" : "false")
+        << ",\"ray_scene_generation\":" << server.RequestVoxelGI()->GetSceneRayQuery().GetGeneration()
+        << ",\"ray_scene_bytes\":" << server.RequestVoxelGI()->GetSceneRayQuery().GetMemoryBytes()
+        << ",\"ray_query_enabled\":" << (GDynamicRHI->QueryGPUInfo().rayQuery.rayQuery ? "true" : "false")
+        << ",\"acceleration_structure_enabled\":"
+        << (GDynamicRHI->QueryGPUInfo().rayQuery.accelerationStructure ? "true" : "false")
+        << ",\"buffer_device_address_enabled\":"
+        << (GDynamicRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress ? "true" : "false")
         << ",\"preset\":\"custom\",\"bounce_source\":\"cone\",\"sample_seed\":0"
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
         << ",\"frame\":" << (hybrid != nullptr ? hybrid->GetFrame() : 0)
@@ -148,7 +160,7 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"filter_iterations\":" << (settings.filter && settings.referenceSamples == 0 ? 5 : 0) << ",\"reset_reason\":\""
         << (hybrid != nullptr ? hybrid->GetResetReason() : "inactive") << "\""
         << ",\"hybrid_bytes_per_pixel\":" << (reconstructed ? ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL : 0)
-        << ",\"hybrid_components\":[\"raw_sky_nu\",\"sky_nu\",\"raw_bounce\",\"bounce\",\"raw_H_S\",\"H_S\",\"moments\",\"length_rejection\",\"position_valid\",\"normal_roughness\",\"geometric_depth\",\"previous_clip\",\"identity_bits_reserved\"]"
+        << ",\"hybrid_components\":[\"raw_sky_nu\",\"sky_nu\",\"raw_bounce\",\"bounce\",\"raw_H_S\",\"H_S\",\"moments\",\"length_rejection\",\"position_valid\",\"normal_roughness\",\"geometric_depth\",\"motion_ndc_previous_w\",\"identity_bits_reserved\"]"
         << ",\"receiver_coverage\":\"opaque_and_mask_triangles; transmission_and_scattering_use_per_surface\"";
     output << ",\"environment_cube_size\":" << scene.GetEnvTexture().pPrefiltered->GetWidth();
     output << ",\"environment_orientation\":";
@@ -208,13 +220,13 @@ bool SceneRendererDemo::CaptureLighting(const std::string& path)
                          == rc::GIResourceStatus::eSuccess
                   && !m_renderDevice->AreSubmissionsBlocked();
 
-    RHIBuffer* output   = nullptr;
+    RHIBuffer* output         = nullptr;
 
-    RHIBuffer* readback = nullptr;
+    RHIBuffer* readback       = nullptr;
     RHIBuffer* hybridOutput   = nullptr;
     RHIBuffer* hybridReadback = nullptr;
     const bool captureHybrid  = option == rc::RenderOption::eVoxelGI
-                             && server->RequestVoxelGI()->GetSettings().rayProvider != rc::VoxelGISettings::RayProvider::Legacy;
+                            && server->RequestVoxelGI()->GetSettings().rayProvider != rc::VoxelGISettings::RayProvider::Legacy;
 
     if (succeeded)
     {

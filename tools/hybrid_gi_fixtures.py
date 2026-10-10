@@ -27,7 +27,8 @@ def generate(folder):
     folder.mkdir(parents=True,exist_ok=True)
     names=['open_plane','closed_box','half_wall','narrow_slot','thin_pole','alpha_mask','mirrored_two_sided',
            'outside_volume','point_light_room','thin_wall_light','glossy_floor','moving_occluder_light',
-           'forward_open_plane','forward_closed_box']
+           'forward_open_plane','forward_closed_box','single_sided_closed_box','bright_environment_plane',
+           'rotated_environment_plane','black_environment_plane']
     manifest={}
     for name in names:
         f=Fixture()
@@ -35,7 +36,14 @@ def generate(folder):
         f.document.pop('extensionsUsed',None)
         floor=quad([-2,0,-2],[-2,0,2],[2,0,2],[2,0,-2])
         f.mesh(floor)
-        if name in ('closed_box','point_light_room','forward_closed_box'):
+        if name == 'rotated_environment_plane':
+            angle = math.radians(25)
+            f.document['nodes'][0]['rotation'] = [0, 0, math.sin(angle/2), math.cos(angle/2)]
+        if name=='single_sided_closed_box':
+            # box() winds opposite faces alike, so half the walls and the ceiling face
+            # outward: receivers inside see their back faces, which must still block.
+            f.document['materials'][0]['doubleSided']=False
+        if name in ('closed_box','point_light_room','forward_closed_box','single_sided_closed_box'):
             f.mesh(box([-2,0,-2],[2,3,2]))
         elif name in ('half_wall','thin_wall_light','glossy_floor'):
             f.mesh(quad([0,0,-2],[0,3,-2],[0,3,2],[0,0,2]))
@@ -84,6 +92,12 @@ def generate(folder):
         manifest[name]=dict(scene=path.name,camera=camera,voxel_resolutions=[64,128,256])
     # A portable constant linear radiance panorama, avoiding an environment preprocessing dependency.
     (folder/'constant.hdr').write_bytes(b'#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 4\n'+bytes([128,128,128,129])*8)
+    (folder/'black.hdr').write_bytes(b'#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 4\n'+bytes(32))
+    # A tiny, intense source exposes rare-sample noise that a constant sky cannot.
+    bright = bytearray(bytes([128,128,128,124]) * (512*256))
+    offset = (52*512+77)*4
+    bright[offset:offset+4] = bytes([250,200,125,144])
+    (folder/'bright.hdr').write_bytes(b'#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 256 +X 512\n'+bright)
     (folder/'manifest.json').write_text(json.dumps(manifest,indent=2))
     return manifest
 

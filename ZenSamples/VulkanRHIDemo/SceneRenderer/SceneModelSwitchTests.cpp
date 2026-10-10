@@ -166,9 +166,9 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
 
     config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRTDisabled       = RHIOptions::GetInstance().RayTracingDisabled();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     SceneRendererDemo demo({"Model switch integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
@@ -237,7 +237,7 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
 
     config.rhiExecutionMode = previousMode;
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(previousRayTracing);
+    RHIOptions::GetInstance().SetRayTracingDisabled(previousRTDisabled);
 }
 
 TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenRemovedAndAdded)
@@ -252,9 +252,9 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
     config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRTDisabled       = RHIOptions::GetInstance().RayTracingDisabled();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     SceneRendererDemo demo({"Preset light integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
@@ -413,7 +413,7 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
     config.rhiExecutionMode = previousMode;
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(previousRayTracing);
+    RHIOptions::GetInstance().SetRayTracingDisabled(previousRTDisabled);
 }
 
 TEST_P(SceneModelSwitchTest, ConfiguredLightSlotsRetainIdsAndAnimationWhenAnotherLightIsEdited)
@@ -428,9 +428,9 @@ TEST_P(SceneModelSwitchTest, ConfiguredLightSlotsRetainIdsAndAnimationWhenAnothe
 
     config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRTDisabled       = RHIOptions::GetInstance().RayTracingDisabled();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     SceneRendererDemo demo({"Configured light integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
@@ -511,7 +511,7 @@ TEST_P(SceneModelSwitchTest, ConfiguredLightSlotsRetainIdsAndAnimationWhenAnothe
 
     config.rhiExecutionMode = previousMode;
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(previousRayTracing);
+    RHIOptions::GetInstance().SetRayTracingDisabled(previousRTDisabled);
 }
 
 TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduceEditableCapacity)
@@ -526,9 +526,9 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
     config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRTDisabled       = RHIOptions::GetInstance().RayTracingDisabled();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     SceneRendererDemo demo({"Authored light integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
@@ -606,7 +606,7 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
     config.rhiExecutionMode = previousMode;
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(previousRayTracing);
+    RHIOptions::GetInstance().SetRayTracingDisabled(previousRTDisabled);
 }
 
 INSTANTIATE_TEST_SUITE_P(SubmissionModes,

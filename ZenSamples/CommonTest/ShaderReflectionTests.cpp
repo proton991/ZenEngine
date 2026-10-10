@@ -716,8 +716,7 @@ TEST(ShaderReflectionTests, UnsupportedMetadataFailsBeforePublication)
     EXPECT_TRUE(info.specializationConstants.empty());
 
     for (SpvReflectDescriptorType unsupported :
-         {SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
-          SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR})
+         {SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC})
     {
         SpvReflectDescriptorBinding binding{};
 
@@ -727,4 +726,21 @@ TEST(ShaderReflectionTests, UnsupportedMetadataFailsBeforePublication)
 
         EXPECT_FALSE(ParseSpvReflectDescriptorBinding(binding, descriptor));
     }
+}
+
+TEST(ShaderReflectionTests, AccelerationStructureUsesAnOrdinaryReadOnlyDescriptor)
+{
+    SpvReflectDescriptorBinding binding{};
+    binding.descriptor_type = SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    binding.set             = 6;
+    binding.binding         = 2;
+    RHIShaderResourceDescriptor descriptor{};
+    ASSERT_TRUE(ParseSpvReflectDescriptorBinding(binding, descriptor));
+    EXPECT_EQ(descriptor.type, RHIShaderResourceType::eAccelerationStructure);
+    EXPECT_EQ(descriptor.set, 6u);
+    EXPECT_EQ(descriptor.binding, 2u);
+    EXPECT_EQ(descriptor.arraySize, 1u);
+    EXPECT_TRUE(descriptor.readable);
+    EXPECT_FALSE(descriptor.writable);
+    EXPECT_FALSE(descriptor.bindless);
 }

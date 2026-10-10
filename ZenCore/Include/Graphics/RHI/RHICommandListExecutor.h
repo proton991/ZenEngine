@@ -297,6 +297,13 @@ public:
 
     void DestroyTexture(RHITexture* texture) override;
 
+    RHIAccelerationStructureBuildSizes GetAccelerationStructureBuildSizes(
+        const RHIAccelerationStructureBuildDesc& desc) override;
+
+    RHIAccelerationStructure* CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) override;
+
+    void DestroyAccelerationStructure(RHIAccelerationStructure* structure) override;
+
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& info) override;
 
     void DestroyBuffer(RHIBuffer* buffer) override;

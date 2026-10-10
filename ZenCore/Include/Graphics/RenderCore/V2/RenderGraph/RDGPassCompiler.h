@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHICommon.h"
 #include "RDGDefs.h"
 #include "Graphics/RHI/RHIResource.h"
+#include "Graphics/RHI/RHIAccelerationStructure.h"
 #include "Templates/HeapVector.h"
 // #include "Graphics/RHI/RHIResource.h"
 // #include "Graphics/RHI/RHICommon.h"
@@ -28,6 +29,12 @@ struct RDGBindingSlice
 {
     uint32_t offset{0};
     uint32_t count{0};
+};
+
+struct RDGAccelerationStructureBinding
+{
+    NameID                    glslName;
+    RHIAccelerationStructure* pStructure{nullptr};
 };
 
 struct RDGBufferBinding
@@ -102,6 +109,13 @@ struct RDGPassDescBase
         {
             validationResult = {code, message};
         }
+    }
+
+    HeapVector<RDGAccelerationStructureBinding> accelerationStructureBindings;
+
+    void BindAccelerationStructure(NameID name, RHIAccelerationStructure* structure)
+    {
+        accelerationStructureBindings.push_back({name, structure});
     }
 
     // external bindings
@@ -839,6 +853,8 @@ public:
 
     void CopyTexture(RHITexture* pSrcTexture, RHITexture* pDstTexure, VectorView<const RHITextureCopyRegion> regions);
 
+    void BuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info);
+
     void CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region);
 
     void CopyBufferToTexture(RHIBuffer* pSrcBuffer, RHITexture* pDstTexure, const RHIBufferTextureCopyRegion& region);
@@ -903,6 +919,8 @@ public:
 
     RDGTransferPassCmdRecorder& GenerateMipmaps(RHITexture* pTexture);
 
+    RDGTransferPassCmdRecorder& BuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info);
+
     RDGTransferPassCmdRecorder& NeverCull();
 
     RDGTransferPassCmdRecorder& SetQueuePreference(RDGQueuePreference preference);
@@ -940,6 +958,11 @@ private:
     RDGPassNode*                                        m_pNode{nullptr};
     uint64_t                                            m_generation{0};
     HeapVector<std::function<void(RDGPassCmdEncoder&)>> m_ops;
+
+    bool DeclareBuildBuffer(RHIBuffer*             buffer,
+                            RHIBufferUsageFlagBits usage,
+                            RHIAccessMode          mode,
+                            RDGContentEffect       contents = RDGContentEffect::eRead);
 
     void RestrictTransferQueues(bool graphicsOnly);
 

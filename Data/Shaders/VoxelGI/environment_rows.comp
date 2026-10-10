@@ -1,0 +1,24 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "Graphics/Shared/EnvironmentSampling.h"
+layout(local_size_x=1) in;
+layout(std430,set=1,binding=0) readonly buffer EnvironmentColumns { float environmentColumns[]; };
+layout(std430,set=1,binding=1) writeonly buffer EnvironmentRows { float environmentRows[]; };
+layout(std430,set=1,binding=2) buffer EnvironmentHarmonics { vec4 environmentHarmonics[]; };
+void main()
+{
+    float sum = 0.0;
+    environmentRows[0] = 0.0;
+    for(uint row = 0u; row < ZEN_ENVIRONMENT_IMPORTANCE_ROWS; ++row)
+    {
+        sum += environmentColumns[(row + 1u) * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u) - 1u];
+        environmentRows[row + 1u] = sum;
+    }
+    for(uint k = 0u; k < ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS; ++k)
+    {
+        vec4 total = vec4(0);
+        for(uint group = 0u; group < ZEN_ENVIRONMENT_HARMONIC_GROUPS; ++group)
+            total += environmentHarmonics[group * ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS + k];
+        environmentHarmonics[ZEN_ENVIRONMENT_HARMONIC_GROUPS * ZEN_ENVIRONMENT_HARMONIC_COEFFICIENTS + k] = total;
+    }
+}

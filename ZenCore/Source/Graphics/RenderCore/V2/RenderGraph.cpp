@@ -17,11 +17,6 @@ namespace zen::rc
 {
 namespace
 {
-constexpr int64_t kShaderStages =
-    int64_t(RHIPipelineStageFlagBits::eVertexShader) | int64_t(RHIPipelineStageFlagBits::eTessellationControlShader)
-    | int64_t(RHIPipelineStageFlagBits::eTessellationEvaluationShader) | int64_t(RHIPipelineStageFlagBits::eGeometryShader)
-    | int64_t(RHIPipelineStageFlagBits::eFragmentShader) | int64_t(RHIPipelineStageFlagBits::eComputeShader);
-
 bool ValidContentGuarantee(const RHIShaderResourceDescriptor& descriptor, RDGContentGuarantee contents)
 {
     const bool buffer = descriptor.type == RHIShaderResourceType::eStorageBuffer;
@@ -258,14 +253,18 @@ BitField<RHIPipelineStageFlagBits> ResourceStages(const RDGPassNode*            
 {
     int64_t stages = usageStages;
 
-    if (stages & kShaderStages)
+    if (stages & kRHIShaderPipelineStageMask)
     {
         // Older/custom shader metadata may omit reflection stages; restrict the fallback to
         // shader stages in this pass, never its attachments or indirect arguments.
-        stages = (stages & ~kShaderStages)
-               | (shaderStages.IsEmpty() ? int64_t(node->selfStages) & kShaderStages : int64_t(shaderStages));
+        stages = (stages & ~kRHIShaderPipelineStageMask)
+               | (shaderStages.IsEmpty() ? int64_t(node->selfStages) & kRHIShaderPipelineStageMask : int64_t(shaderStages));
     }
 
+    if ((stages & int64_t(RHIPipelineStageFlagBits::eAccelerationStructureBuild)) && !shaderStages.IsEmpty())
+    {
+        stages = (stages & ~int64_t(RHIPipelineStageFlagBits::eAccelerationStructureBuild)) | int64_t(shaderStages);
+    }
     return BitField<RHIPipelineStageFlagBits>(stages);
 }
 
@@ -286,12 +285,12 @@ int64_t MemoryStages(int64_t access, int64_t candidates)
 
     if (candidates & int64_t(Stage::eAllCommands))
     {
-        candidates |= (1 << 14) - 1;
+        candidates |= kRHICommandPipelineStageMask;
     }
 
     if (candidates & int64_t(Stage::eAllGraphics))
     {
-        candidates |= ((1 << 11) - 1) & ~1;
+        candidates |= kRHIGraphicsPipelineStageMask;
     }
 
     int64_t supported = 0;
@@ -301,8 +300,10 @@ int64_t MemoryStages(int64_t access, int64_t candidates)
     IncludeMemoryStages(access, int64_t(Access::eIndexRead) | int64_t(Access::eVertexAttributeRead),
                         int64_t(Stage::eVertexInput), supported);
 
-    IncludeMemoryStages(access, int64_t(Access::eUniformRead) | int64_t(Access::eShaderRead) | int64_t(Access::eShaderWrite),
-                        kShaderStages, supported);
+    IncludeMemoryStages(access, int64_t(Access::eUniformRead) | int64_t(Access::eShaderWrite), kRHIShaderPipelineStageMask,
+                        supported);
+    IncludeMemoryStages(access, int64_t(Access::eShaderRead),
+                        kRHIShaderPipelineStageMask | int64_t(Stage::eAccelerationStructureBuild), supported);
 
     IncludeMemoryStages(access, int64_t(Access::eInputAttachmentRead), int64_t(Stage::eFragmentShader), supported);
 
@@ -319,7 +320,11 @@ int64_t MemoryStages(int64_t access, int64_t candidates)
 
     IncludeMemoryStages(access, int64_t(Access::eMemoryRead) | int64_t(Access::eMemoryWrite), ~int64_t(0), supported);
 
-    return candidates & ((1 << 15) - 1) & supported;
+    IncludeMemoryStages(access, int64_t(Access::eAccelerationStructureRead),
+                        kRHIShaderPipelineStageMask | int64_t(Stage::eAccelerationStructureBuild), supported);
+    IncludeMemoryStages(access, int64_t(Access::eAccelerationStructureWrite), int64_t(Stage::eAccelerationStructureBuild),
+                        supported);
+    return candidates & kRHIIndividualPipelineStageMask & supported;
 }
 
 RDGWriterVisibility NewWriter(int64_t access, int64_t stages)
@@ -328,7 +333,8 @@ RDGWriterVisibility NewWriter(int64_t access, int64_t stages)
 
     constexpr int64_t writes = int64_t(Access::eShaderWrite) | int64_t(Access::eColorAttachmentWrite)
                              | int64_t(Access::eDepthStencilAttachmentWrite) | int64_t(Access::eTransferWrite)
-                             | int64_t(Access::eHostWrite) | int64_t(Access::eMemoryWrite);
+                             | int64_t(Access::eHostWrite) | int64_t(Access::eMemoryWrite)
+                             | int64_t(Access::eAccelerationStructureWrite);
 
     RDGWriterVisibility writer{};
 
@@ -379,19 +385,11 @@ RDGBufferResourceState InitialBufferState(const Allocation* resource, const Reso
 
         RDGBufferResourceState result{initial.accessMode, initial.usage, initial.stages};
 
-        int64_t accesses = 0;
+        const int64_t accesses = RHIBufferUsageToAccessFlagBits(initial.usage, initial.accessMode, initial.stages);
 
-        for (uint32_t bit = 0; bit < 9; ++bit)
-        {
-            if (int64_t(initial.usage) & (1u << bit))
-            {
-                accesses |= int64_t(RHIBufferUsageToAccessFlagBits(static_cast<RHIBufferUsage>(bit + 1), initial.accessMode));
-            }
-        }
+        result.writer          = NewWriter(accesses, initial.stages);
 
-        result.writer = NewWriter(accesses, initial.stages);
-
-        returnValue   = result;
+        returnValue            = result;
     }
 
     return returnValue;
@@ -533,16 +531,16 @@ void AddBufferTransitions(HeapVector<RHIBufferTransition>& transitions,
                           BitField<RHIBufferUsageFlagBits> newUsage,
                           BitField<RHIAccessFlagBits>      earlierWrites)
 {
-    for (uint32_t source = 0; source < 10; ++source)
+    for (uint32_t source = 0; source < ToUnderlying(RHIBufferUsage::eMax); ++source)
     {
-        if (source == 0 ? !oldUsage.IsEmpty() : !(int64_t(oldUsage) & (1u << (source - 1))))
+        if (source == 0 ? !oldUsage.IsEmpty() : !oldUsage.HasFlag(kRHIBufferUsageFlags[source]))
         {
             continue;
         }
 
-        for (uint32_t destination = 0; destination < 10; ++destination)
+        for (uint32_t destination = 0; destination < ToUnderlying(RHIBufferUsage::eMax); ++destination)
         {
-            if (destination == 0 ? !newUsage.IsEmpty() : !(int64_t(newUsage) & (1u << (destination - 1))))
+            if (destination == 0 ? !newUsage.IsEmpty() : !newUsage.HasFlag(kRHIBufferUsageFlags[destination]))
             {
                 continue;
             }
@@ -668,17 +666,9 @@ void ResourceStateTracker::UpdateBufferState(const RHIBuffer*                   
 
     RDGBufferResourceState state{mode, usage, stages};
 
-    int64_t accesses = 0;
+    const int64_t accesses = RHIBufferUsageToAccessFlagBits(usage, mode, stages);
 
-    for (uint32_t bit = 0; bit < 9; ++bit)
-    {
-        if (int64_t(usage) & (1 << bit))
-        {
-            accesses |= int64_t(RHIBufferUsageToAccessFlagBits(static_cast<RHIBufferUsage>(bit + 1), mode));
-        }
-    }
-
-    state.writer = NewWriter(accesses, stages);
+    state.writer           = NewWriter(accesses, stages);
 
     SetBufferState(buffer, state);
 }
@@ -1970,6 +1960,21 @@ struct RenderGraph::PassBindingValidator
         return allValid;
     }
 
+    bool ValidateAccelerationStructures()
+    {
+        bool valid = true;
+        for (const RDGAccelerationStructureBinding& binding : desc.accelerationStructureBindings)
+        {
+            const RHIShaderResourceDescriptor* srd =
+                Descriptor(binding.glslName, RHIShaderResourceType::eAccelerationStructure, 1);
+            valid = valid && srd != nullptr
+                 && Check(binding.pStructure != nullptr
+                              && binding.pStructure->GetType() == RHIAccelerationStructureType::eTopLevel,
+                          RDGErrorCode::eBinding, prefix + "Query binding requires a top-level acceleration structure");
+        }
+        return valid;
+    }
+
     bool ValidateBuffers()
     {
         bool allValid = true;
@@ -2223,7 +2228,7 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
     {
         PassBindingValidator validator{*this, program, desc, prefix, {}};
 
-        valid = validator.ValidateValues() && validator.ValidateBuffers()
+        valid = validator.ValidateValues() && validator.ValidateBuffers() && validator.ValidateAccelerationStructures()
              && validator.ValidateTextures(desc.sampledTexBindings, RHIShaderResourceType::eSamplerWithTexture)
              && validator.ValidateTextures(desc.separateTexBindings, RHIShaderResourceType::eTexture)
              && validator.ValidateSamplers() && validator.ValidateTextures(desc.UAVTexBindings, RHIShaderResourceType::eImage)
@@ -2884,7 +2889,8 @@ bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                 
     {
         const uint32_t required = uint32_t(int64_t(usage));
 
-        if (Check(required != 0 && (required & ~0x1ffu) == 0, RDGErrorCode::eBinding, "Invalid buffer usage"))
+        if (Check(required != 0 && (required & ~kRHIBufferAccessUsageMask) == 0, RDGErrorCode::eBinding,
+                  "Invalid buffer usage"))
         {
             if (Check(!resource->imported || (int64_t(resource->usageFlags) & required) == required, RDGErrorCode::eBinding,
                       "Resource '" + resource->name.ToString() + "' lacks required creation usage"))
@@ -2910,19 +2916,12 @@ bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                 
 
                     access.pipelineStages  = ResourceStages(node, RHIBufferUsageToPipelineStageFlags(usage), shaderStages);
 
-                    for (uint32_t i = 0; i < 9; ++i)
-                    {
-                        if (int64_t(usage) & (1u << i))
-                        {
-                            access.accessFlags.SetFlag(
-                                RHIBufferUsageToAccessFlagBits(static_cast<RHIBufferUsage>(i + 1), mode));
-                        }
-                    }
+                    access.accessFlags     = RHIBufferUsageToAccessFlagBits(usage, mode, access.pipelineStages);
 
                     if (AddResourceAccess(const_cast<RDGPassNode*>(node), const_cast<RDGResourceManager::Allocation*>(resource),
                                           access))
                     {
-                        SetPipelineStatesForPassNode(const_cast<RDGPassNode*>(node), RHIBufferUsageToPipelineStageFlags(usage));
+                        SetPipelineStatesForPassNode(const_cast<RDGPassNode*>(node), access.pipelineStages);
 
                         if (intent == RDGContentEffect::eAutomatic)
                         {
@@ -3351,6 +3350,26 @@ bool RenderGraph::DeclareTextureBindings(RDGPassNode*                         no
 bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* shader, RDGPassDescBase* desc)
 {
     bool valid = true;
+
+    for (const RDGAccelerationStructureBinding& binding : desc->accelerationStructureBindings)
+    {
+        const RHIShaderResourceDescriptor* descriptor = shader->GetShaderResourceDescriptor(binding.glslName);
+        m_resourceManager.Retain(binding.pStructure);
+        HeapVector<RHIAccelerationStructure*> structures;
+        structures.push_back(binding.pStructure);
+        for (RHIAccelerationStructure* dependency : binding.pStructure->GetReferencedStructures())
+        {
+            structures.push_back(dependency);
+        }
+        for (RHIAccelerationStructure* structure : structures)
+        {
+            valid = valid
+                 && DeclareBufferAccessForPass(
+                        node, m_resourceManager.ImportBufferAllocation(structure->GetStorageBuffer()),
+                        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eAccelerationStructureStorage),
+                        RHIAccessMode::eRead, ShaderPipelineStages(descriptor->stageFlags), RDGContentEffect::eRead);
+        }
+    }
 
     for (RDGBuffer const buffer : desc->logicalIndirectBuffers)
     {
@@ -4324,14 +4343,7 @@ RDGAccess RenderGraph::GetInitialScheduleAccess(RDG_ID id, const ResourceStateTr
 
         result.accessFlags                 = state.writer.access;
 
-        for (uint32_t bit = 0; bit < 9; ++bit)
-        {
-            if (int64_t(state.usage) & (1u << bit))
-            {
-                result.accessFlags.SetFlag(
-                    RHIBufferUsageToAccessFlagBits(static_cast<RHIBufferUsage>(bit + 1), state.accessMode));
-            }
-        }
+        result.accessFlags.SetFlag(RHIBufferUsageToAccessFlagBits(state.usage, state.accessMode, state.pipelineStages));
     }
 
     return result;

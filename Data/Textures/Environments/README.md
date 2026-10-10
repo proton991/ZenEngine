@@ -1,6 +1,7 @@
 # Environment starter set
 
-Seven 1024 × 512 Radiance HDR panoramas from Poly Haven, about 10.7 MB in total.
+Eight Radiance HDR panoramas from Poly Haven, about 14.9 MB in total: seven
+1024 × 512 images and one 2048 × 1024 clear-noon sky for sun-shadow comparisons.
 They are optional and not stored in the repository. Download them into this folder,
 verified against `sources.json`, with:
 
@@ -15,6 +16,7 @@ generate small panoramas at runtime.
 | --- | --- | --- |
 | `kloppenheim_06_puresky_1k.hdr` | Soft sunrise sky | [Greg Zaal; sky edits by Jarod Guest](https://polyhaven.com/a/kloppenheim_06_puresky) |
 | `kloofendal_48d_partly_cloudy_puresky_1k.hdr` | Midday sun with scattered clouds | [Greg Zaal; sky edits by Jarod Guest](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) |
+| `qwantani_noon_puresky_2k.hdr` | Clear midday sky with a bright sun and high contrast | [Greg Zaal; processing by Jarod Guest](https://polyhaven.com/a/qwantani_noon_puresky) |
 | `studio_small_09_1k.hdr` | Indoor studio softboxes | [Sergej Majboroda](https://polyhaven.com/a/studio_small_09) |
 | `small_empty_room_1_1k.hdr` | Soft window daylight in an empty room | [Sergej Majboroda](https://polyhaven.com/a/small_empty_room_1) |
 | `hotel_room_1k.hdr` | Hotel bedroom with window light and warm lamps | [Greg Zaal](https://polyhaven.com/a/hotel_room) |

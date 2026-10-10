@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
+#include "Graphics/RenderCore/V2/SceneRayQuery.h"
 #include "SceneGraph/AABB.h"
 
 namespace zen::platform
@@ -26,22 +27,23 @@ struct VoxelGISettings
     };
     RayProvider rayProvider{RayProvider::Auto};
     uint32_t    samples{4};
-    uint32_t    referenceSamples{0}; // Diagnostic: 0, 1024 or 4096; static running mean, no spatial filter.
+    uint32_t    accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
+    uint32_t    referenceSamples{0};              // Diagnostic: 0, 1024 or 4096; static running mean, no spatial filter.
     uint32_t    historyFrames{32};
     bool        temporal{true};
     bool        filter{true};
     bool        specularOcclusion{true};
-    float    indirectIntensity{1.0f};
-    float    coneAngleDegrees{60.0f};
-    float    stepScale{1.0f};
-    float    normalBiasVoxels{1.5f};
-    float    maxDistanceGridLengths{1.7321f};
-    uint32_t coneCount{6};
-    uint32_t maxSteps{128};
-    bool     shadows{true};
-    bool     analyticLighting{true};
-    bool     environmentLighting{true};
-    bool     emissiveLighting{true};
+    float       indirectIntensity{1.0f};
+    float       coneAngleDegrees{60.0f};
+    float       stepScale{1.0f};
+    float       normalBiasVoxels{1.5f};
+    float       maxDistanceGridLengths{1.7321f};
+    uint32_t    coneCount{6};
+    uint32_t    maxSteps{128};
+    bool        shadows{true};
+    bool        analyticLighting{true};
+    bool        environmentLighting{true};
+    bool        emissiveLighting{true};
 
     bool operator==(const VoxelGISettings&) const = default;
 };
@@ -97,9 +99,29 @@ public:
     void BindLightingInputs(RDGPassDescBase& pass) const;
     void BindRayInputs(RDGPassDescBase& pass) const;
 
+    bool UsesHardwareQueries() const
+    {
+        return m_hardwareQueries;
+    }
+    const char* GetProviderReason() const
+    {
+        return m_providerReason;
+    }
+    const SceneRayQuery& GetSceneRayQuery() const
+    {
+        return m_rayQuery;
+    }
+    void BindHardwareRayInputs(RDGPassDescBase& pass) const;
+
+    void BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const;
+
+    // Order-2 spherical-harmonic projection of the sampled environment (EnvironmentSampling.h).
+    void BindEnvironmentHarmonics(RDGPassDescBase& pass) const;
+
     bool IsInitialized() const
     {
-        return m_radiance != nullptr && m_skyIrradiance != nullptr;
+        return m_radiance != nullptr && m_skyIrradiance != nullptr && m_environmentColumns != nullptr
+            && m_environmentRows != nullptr && m_environmentHarmonics != nullptr;
     }
 
     RHITexture* GetRadianceTexture() const
@@ -116,11 +138,19 @@ private:
 
     void BindFrameData(RDGPassDescBase& pass) const;
 
+    void BuildEnvironmentDistribution();
+
+    SceneRayQuery               m_rayQuery;
+    bool                        m_hardwareQueries{false};
+    const char*                 m_providerReason{"voxel_selected"};
     RenderDevice*               m_device{nullptr};
     RenderScene*                m_scene{nullptr};
     VoxelizerBase*              m_voxelizer{nullptr};
     RHITexture*                 m_radiance{nullptr};
     RHITexture*                 m_skyIrradiance{nullptr};
+    RHIBuffer*                  m_environmentColumns{nullptr};
+    RHIBuffer*                  m_environmentRows{nullptr};
+    RHIBuffer*                  m_environmentHarmonics{nullptr};
     HeapVector<RHITextureView*> m_radianceMips;
     HeapVector<RHITextureView*> m_albedoMips;
     VoxelGISettings             m_settings;

@@ -9,6 +9,7 @@
 #include "Graphics/VulkanRHI/VulkanMemory.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
+#include <cstdlib>
 
 namespace zen
 {
@@ -633,6 +634,16 @@ void VulkanRHI::SelectGPU()
 
     std::string rejectionReasons;
 
+    // Diagnostic override for cross-vendor runs; executables without options use the environment.
+    std::string preferredDevice = RHIOptions::GetInstance().PreferredDevice();
+
+    if (const char* environment = std::getenv("ZEN_VULKAN_DEVICE"); preferredDevice.empty() && environment != nullptr)
+    {
+        preferredDevice = environment;
+    }
+
+    bool selectedPreferred = false;
+
     for (uint32_t i = 0; i < physicalDevices.size(); i++)
     {
         const VulkanPhysicalDeviceCandidateInfo candidateInfo = EvaluatePhysicalDeviceCandidate(physicalDevices[i]);
@@ -658,9 +669,16 @@ void VulkanRHI::SelectGPU()
             candidateInfo.hasBufferDeviceAddress, candidateInfo.hasRayTracingPipeline, candidateInfo.hasRayQuery,
             candidateInfo.hasGeometryShader);
 
-        const bool isBetterCandidate = !foundValidCandidate || candidateInfo.score > selectedCandidateInfo.score
-                                    || (candidateInfo.score == selectedCandidateInfo.score
-                                        && candidateInfo.deviceLocalMemoryBytes > selectedCandidateInfo.deviceLocalMemoryBytes);
+        const bool preferred =
+            !preferredDevice.empty()
+            && std::string_view(candidateInfo.properties.deviceName).find(preferredDevice) != std::string_view::npos;
+
+        const bool isBetterCandidate =
+            !foundValidCandidate || (preferred && !selectedPreferred)
+            || (preferred == selectedPreferred
+                && (candidateInfo.score > selectedCandidateInfo.score
+                    || (candidateInfo.score == selectedCandidateInfo.score
+                        && candidateInfo.deviceLocalMemoryBytes > selectedCandidateInfo.deviceLocalMemoryBytes)));
 
         if (isBetterCandidate)
         {
@@ -669,6 +687,8 @@ void VulkanRHI::SelectGPU()
             selectedCandidateInfo = candidateInfo;
 
             foundValidCandidate   = true;
+
+            selectedPreferred     = preferred;
         }
     }
 
@@ -677,6 +697,11 @@ void VulkanRHI::SelectGPU()
         VERIFY_EXPR_MSG_F(
             false, "No Vulkan device satisfies the required Vulkan 1.2, dynamic rendering and descriptor indexing profile.\n{}",
             rejectionReasons);
+    }
+
+    if (!preferredDevice.empty() && !selectedPreferred)
+    {
+        LOGW("No valid Vulkan GPU name contains '{}'; using the highest-scoring device", preferredDevice);
     }
 
     LOGI("Selected Vulkan GPU: {} ({}, score={}, localMemory={} MiB)", selectedCandidateInfo.properties.deviceName,
@@ -825,6 +850,29 @@ void VulkanRHI::Init()
         m_gpuInfo.maxComputeWorkGroupSize[axis]  = limits.maxComputeWorkGroupSize[axis];
 
         m_gpuInfo.maxComputeWorkGroupCount[axis] = limits.maxComputeWorkGroupCount[axis];
+    }
+
+    RHIRayQueryCapabilities&    rayQuery   = m_gpuInfo.rayQuery;
+    const DeviceExtensionFlags& extensions = m_pDevice->GetExtensionFlags();
+    rayQuery.bufferDeviceAddress           = extensions.hasBufferDeviceAddress != 0;
+    rayQuery.accelerationStructure         = extensions.hasAccelerationStructure != 0;
+    rayQuery.rayQuery                      = extensions.hasRayQuery != 0;
+    rayQuery.graphicsBuild                 = GetQueueCopyCapabilities(RHICommandContextType::eGraphics).compute;
+    if (rayQuery.accelerationStructure)
+    {
+        VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationProperties{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties.pNext = &accelerationProperties;
+        vkGetPhysicalDeviceProperties2(m_pDevice->GetPhysicalDeviceHandle(), &properties);
+        rayQuery.scratchAlignment = accelerationProperties.minAccelerationStructureScratchOffsetAlignment;
+        rayQuery.maxGeometries    = accelerationProperties.maxGeometryCount;
+        rayQuery.maxPrimitives    = accelerationProperties.maxPrimitiveCount;
+        rayQuery.maxInstances     = accelerationProperties.maxInstanceCount;
+        VkFormatProperties formats{};
+        vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), VK_FORMAT_R32G32B32_SFLOAT, &formats);
+        rayQuery.triangleFloat3 =
+            (formats.bufferFeatures & VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR) != 0;
     }
 
     GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(), m_pDevice->GetVkHandle(),

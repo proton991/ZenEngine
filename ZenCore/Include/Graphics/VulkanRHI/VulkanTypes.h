@@ -48,8 +48,6 @@ VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType                  
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<RHITextureUsageFlagBits> flags);
 
-VkBufferUsageFlags ToVkBufferUsageFlags(BitField<RHIBufferUsageFlagBits> flags);
-
 VkFormat ToVkFormat(DataFormat format);
 
 VkAttachmentLoadOp ToVkAttachmentLoadOp(RHIRenderTargetLoadOp loadOp);
@@ -57,8 +55,6 @@ VkAttachmentLoadOp ToVkAttachmentLoadOp(RHIRenderTargetLoadOp loadOp);
 VkAttachmentStoreOp ToVkAttachmentStoreOp(RHIRenderTargetStoreOp storeOp);
 
 VkImageLayout ToVkImageLayout(RHITextureLayout layout);
-
-VkAccessFlags ToVkAccessFlags(BitField<RHIAccessFlagBits> access);
 
 VkImageAspectFlags ToVkAspectFlags(BitField<RHITextureAspectFlagBits> aspect);
 

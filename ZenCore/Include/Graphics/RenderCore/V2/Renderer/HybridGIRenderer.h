@@ -24,9 +24,10 @@ struct HybridGIUniformData
     Vec4               previousViewPosition{0};
     Vec4               previousViewDirection{0, 0, 1, 0};
     glm::uvec4         sampling{0};  // frame, sample count, history limit, history valid
+    glm::uvec4         provider{0};  // Hardware provider, reserved.
     Vec4               rejection{0}; // plane threshold, specular enabled, temporal enabled, static reference
 };
-static_assert(sizeof(HybridGIUniformData) == 208);
+static_assert(sizeof(HybridGIUniformData) == 224);
 
 // One instance owns histories for one view. Imported textures use RenderDevice's
 // submission history (including all outstanding readers), not CPU frame parity.
@@ -97,6 +98,7 @@ private:
     Vec4                m_recordedViewDirection{0, 0, 1, 0};
     HybridGIUniformData m_uniforms;
     VoxelGISettings     m_previousSettings;
+    bool                m_previousHardware{false};
     glm::uvec2          m_extent{0};
     uint64_t            m_geometry{0}, m_environment{0};
     uint32_t            m_frame{0}, m_current{0};

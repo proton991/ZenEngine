@@ -1314,6 +1314,26 @@ void RHICommandListExecutor::DestroyTexture(RHITexture* texture)
     GetRHIThread().Invoke(&DynamicRHI::DestroyTexture, m_backend, texture);
 }
 
+RHIAccelerationStructureBuildSizes RHICommandListExecutor::GetAccelerationStructureBuildSizes(
+    const RHIAccelerationStructureBuildDesc& desc)
+{
+    RHIResult<RHIAccelerationStructureBuildSizes> result =
+        GetRHIThread().InvokeChecked(&DynamicRHI::GetAccelerationStructureBuildSizes, m_backend, std::cref(desc));
+    return result ? result.GetValue() : RHIAccelerationStructureBuildSizes{};
+}
+
+RHIAccelerationStructure* RHICommandListExecutor::CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info)
+{
+    RHIResult<RHIAccelerationStructure*> result =
+        GetRHIThread().InvokeChecked(&DynamicRHI::CreateAccelerationStructure, m_backend, std::cref(info));
+    return result ? result.GetValue() : nullptr;
+}
+
+void RHICommandListExecutor::DestroyAccelerationStructure(RHIAccelerationStructure* structure)
+{
+    GetRHIThread().Invoke(&DynamicRHI::DestroyAccelerationStructure, m_backend, structure);
+}
+
 RHIBuffer* RHICommandListExecutor::CreateBuffer(const RHIBufferCreateInfo& info)
 {
     RHIResult<RHIBuffer*> result = GetRHIThread().InvokeChecked(&DynamicRHI::CreateBuffer, m_backend, std::cref(info));

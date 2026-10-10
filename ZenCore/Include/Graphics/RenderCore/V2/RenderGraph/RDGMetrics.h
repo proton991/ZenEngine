@@ -137,7 +137,7 @@ private:
         int64_t         writerAccess{0};
 
         // Visibility is tracked per destination stage, not just a union of masks.
-        std::array<int64_t, 17> visibleAccess{};
+        std::array<int64_t, kRHIPipelineStageBitCount> visibleAccess{};
     };
     std::unordered_map<uint64_t, State> m_states;
     uint64_t                            m_execution{0};

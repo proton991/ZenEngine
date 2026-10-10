@@ -160,9 +160,27 @@ public:
 
     virtual void DestroyTexture(RHITexture* pTexture)                                                               = 0;
 
-    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo)                                          = 0;
+    virtual RHIAccelerationStructureBuildSizes GetAccelerationStructureBuildSizes(const RHIAccelerationStructureBuildDesc& desc)
+    {
+        return {};
+    }
 
-    virtual void DestroyBuffer(RHIBuffer* pBuffer)                                                                  = 0;
+    virtual RHIAccelerationStructure* CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info)
+    {
+        return nullptr;
+    }
+
+    virtual void DestroyAccelerationStructure(RHIAccelerationStructure* structure)
+    {
+        if (structure != nullptr)
+        {
+            structure->ReleaseReference();
+        }
+    }
+
+    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
+
+    virtual void DestroyBuffer(RHIBuffer* pBuffer)                         = 0;
 
     bool PrepareCommandListDependencies(VectorView<RHICommandList*> lists)
     {

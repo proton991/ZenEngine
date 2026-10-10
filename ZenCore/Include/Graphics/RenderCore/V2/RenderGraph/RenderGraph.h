@@ -35,7 +35,7 @@ struct RDGWriterVisibility
     BitField<RHIPipelineStageFlagBits> stages;
 
     // Visibility is a set of (access, stage) pairs, not two independent mask unions.
-    std::array<int64_t, 17> visibleStages{};
+    std::array<int64_t, kRHIAccessBitCount> visibleStages{};
 };
 
 struct RDGTextureResourceState

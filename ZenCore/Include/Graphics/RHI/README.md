@@ -32,6 +32,25 @@ Descriptor-pool retention is independent of resource retention. The shared Vulka
 
 `RHIBuffer::SetTexelFormat(format)` creates one buffer-owned texel view over the buffer's declared byte size, excluding allocation padding. The buffer must have the appropriate texel-buffer usage, and its size and format must meet the device's texel-view requirements. Repeating the same format after successful creation is a no-op; changing it returns false and preserves the existing view, including recorded descriptors that reference it. Native creation failure returns false without publishing a view or fixing its format, so the caller may retry. Successful creation and an identical-format no-op return true. The buffer destroys its view when released under the ordinary resource lifetime contract.
 
+## Acceleration structures
+
+RT features are selected from the physical device's advertised extensions, feature
+bits and dependencies. `RHIOptions::SetRayTracingDisabled` is only a diagnostic
+opt-out before device creation; it cannot force support. Read actual enabled
+ray-query capabilities from `QueryGPUInfo().rayQuery`, not from startup options.
+
+`RHIOptions::SetPreferredDevice(name)` (demo: `--gpu=NAME`) or the `ZEN_VULKAN_DEVICE`
+environment variable selects the first valid adapter whose name contains the text, for
+cross-vendor runs on multi-GPU machines; otherwise the highest-scoring device is used.
+
+`QueryGPUInfo().rayQuery` reports enabled query capabilities, including the graphics build queue and float3 vertex support. `GetAccelerationStructureBuildSizes` returns invalid/zero sizes for unsupported descriptions. Creation returns null on rejection or failure. AS resources follow the ordinary resource factory, stable identity and reference conventions; their storage buffers are borrowed. A TLAS owns immutable references to its listed BLAS dependencies. A replacement with different dependencies is a new TLAS object.
+
+Build descriptions and geometry arrays are copied by recorded commands. Input buffers require AS-input and device-address usage; the Vulkan allocator places AS-input buffers at 16-byte-aligned device addresses, as instance data requires; memory requirements alone did not guarantee it on an AMD Radeon iGPU. An update may name the destination as its own source (in-place refit); the graph then declares the storage read-write with preserved contents. Scratch requires storage-buffer and device-address usage and an aligned address plus offset. Storage-buffer accesses at the AS-build stage use AS-read/write access masks; shader-stage storage accesses retain shader-read/write masks. Storage is allocated by the AS object. Build commands use the graphics context. Native validation failures enter the existing recording-error/submission-failure path. Query descriptors require a TLAS and use ordinary descriptor sets, separate from material bindless heaps.
+
+An update requires a previously recorded compatible build with update enabled. Index storage/ranges/counts and geometry formats/flags must remain compatible; index values and active primitive state must remain unchanged. The caller validates GPU input contents (including indices, finite vertices and instance fields), retains the current scene snapshot, and must discard an AS recorded by failed/unsubmitted work. RenderCore publishes its snapshot after graph handoff and invalidates readiness when submission failure blocks the backend. Resource retirement still follows the existing completion contract.
+
+Stage/access flags, buffer creation flags, AS types and instance flags use their Vulkan numeric values and convert directly. Graph access roles remain compact indices and explicitly map to buffer creation flags; bit-indexed synchronization arrays include gaps in native flag values. Instance flags occupy the low bits of their enum and are shifted into the high byte of `offsetAndFlags` when packing the instance payload.
+
 ## Vulkan queue sharing
 
 RHI-created buffers and textures permit use on both graphics and async-compute queue families. Resources with transfer-source or transfer-destination usage also permit the transfer family. Creation uses concurrent sharing across distinct families, or exclusive sharing when every permitted queue belongs to the same family. Texture views inherit the base image's sharing. This policy does not apply to native swapchain images or externally created Vulkan resources.

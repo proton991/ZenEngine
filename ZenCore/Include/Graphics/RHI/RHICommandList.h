@@ -1,6 +1,7 @@
 #pragma once
 #include "RHIError.h"
 #include "RHIResource.h"
+#include "RHIAccelerationStructure.h"
 #include "RHIShaderParameters.h"
 #include "RHIGPUTiming.h"
 #include "Memory/PoolAllocator.h"
@@ -264,11 +265,11 @@ public:
     // Scoped by command execution; the recorded command keeps this epoch alive.
     virtual void RHISetRecordedBindlessEpoch(uint64_t epoch) {}
 
-    virtual void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers, VectorView<uint64_t> offsets)                        = 0;
+    virtual void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers, VectorView<uint64_t> offsets)                 = 0;
 
-    virtual void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)                                                   = 0;
+    virtual void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)                                            = 0;
 
-    virtual void RHIDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)        = 0;
+    virtual void RHIDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) = 0;
 
     virtual void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
@@ -277,7 +278,7 @@ public:
                                 uint32_t   instanceCount,
                                 uint32_t   firstIndex,
                                 int32_t    vertexOffset,
-                                uint32_t   firstInstance)                                                                     = 0;
+                                uint32_t   firstInstance)                                                              = 0;
 
     virtual void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                         RHIBuffer* pIndexBuffer,
@@ -285,19 +286,24 @@ public:
                                         uint64_t   indexBufferOffset,
                                         uint64_t   offset,
                                         uint32_t   drawCount,
-                                        uint32_t   stride)                                                                    = 0;
+                                        uint32_t   stride)                                                             = 0;
 
-    virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)                              = 0;
+    virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)                       = 0;
 
-    virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)                                           = 0;
+    virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)                                    = 0;
 
-    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0)           = 0;
+    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0)    = 0;
 
     virtual void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
                                    BitField<RHIPipelineStageFlagBits> dstStages,
                                    VectorView<RHIMemoryTransition>    memoryTransitions,
                                    VectorView<RHIBufferTransition>    bufferTransitions,
-                                   VectorView<RHITextureTransition>   textureTransitions)                                     = 0;
+                                   VectorView<RHITextureTransition>   textureTransitions)                              = 0;
+
+    virtual void RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info)
+    {
+        VERIFY_EXPR_MSG(false, "Acceleration structure builds are unsupported by this context");
+    }
 
     virtual void RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size)                                         = 0;
 
@@ -521,6 +527,18 @@ struct RHICommandClearBuffer : public RHICommand
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIClearBuffer(pBuffer, offset, size);
+    }
+};
+
+struct RHICommandBuildAccelerationStructure : public RHICommand
+{
+    RHIAccelerationStructureBuildInfo info;
+
+    explicit RHICommandBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& buildInfo) : info(buildInfo) {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIBuildAccelerationStructure(info);
     }
 };
 
@@ -1043,6 +1061,8 @@ public:
     void ResetForReuse();
 
     void ClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size);
+
+    void BuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info);
 
     void CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region);
 

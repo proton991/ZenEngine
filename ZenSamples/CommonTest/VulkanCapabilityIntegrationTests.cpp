@@ -25,6 +25,7 @@ struct CapabilityDriver
     static inline bool                                         oldAPI{}, noQueue{}, lowLimits{}, optionalDisabled{};
     static inline bool                                         maintenanceDisabled{};
     static inline uint32_t                                     missingFeature{};
+    static inline VkStructureType                              missingRayFeature{VK_STRUCTURE_TYPE_MAX_ENUM};
     static inline HeapVector<std::string>                      hiddenExtensions, enabledExtensions;
     static inline HeapVector<VkStructureType>                  enabledStructures;
     static inline uint32_t                                     createCalls{};
@@ -39,6 +40,8 @@ struct CapabilityDriver
         maintenanceDisabled                             = false;
 
         missingFeature = createCalls = 0;
+
+        missingRayFeature            = VK_STRUCTURE_TYPE_MAX_ENUM;
 
         forcedGraphicsFamily         = UINT32_MAX;
 
@@ -97,7 +100,7 @@ struct CapabilityDriver
                     }
                     break;
                 case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES:
-                    if (optionalDisabled)
+                    if (optionalDisabled || missingRayFeature == node->sType)
                     {
                         VkPhysicalDeviceBufferDeviceAddressFeatures* address =
                             reinterpret_cast<VkPhysicalDeviceBufferDeviceAddressFeatures*>(node);
@@ -107,6 +110,25 @@ struct CapabilityDriver
                         address->bufferDeviceAddressCaptureReplay = VK_FALSE;
 
                         address->bufferDeviceAddressMultiDevice   = VK_FALSE;
+                    }
+                    break;
+                case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR:
+                    if (missingRayFeature == node->sType)
+                    {
+                        reinterpret_cast<VkPhysicalDeviceAccelerationStructureFeaturesKHR*>(node)->accelerationStructure =
+                            VK_FALSE;
+                    }
+                    break;
+                case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR:
+                    if (missingRayFeature == node->sType)
+                    {
+                        reinterpret_cast<VkPhysicalDeviceRayTracingPipelineFeaturesKHR*>(node)->rayTracingPipeline = VK_FALSE;
+                    }
+                    break;
+                case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR:
+                    if (missingRayFeature == node->sType)
+                    {
+                        reinterpret_cast<VkPhysicalDeviceRayQueryFeaturesKHR*>(node)->rayQuery = VK_FALSE;
                     }
                     break;
                 default: break;
@@ -846,6 +868,90 @@ TEST_F(VulkanCapabilityIntegrationTest, PromotedCoreFeaturesDoNotRequireFormerEx
     device.WaitForIdle();
 
     device.Destroy();
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, RayTracingFollowsDeviceCapabilitiesAndDependencies)
+{
+    struct CapabilityCase
+    {
+        VkStructureType missingFeature;
+        const char*     missingExtension;
+        bool            disableRayTracing{false};
+    };
+    const CapabilityCase cases[] = {
+        {VK_STRUCTURE_TYPE_MAX_ENUM, ""},
+        {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES, ""},
+        {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR, ""},
+        {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR, ""},
+        {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR, ""},
+        {VK_STRUCTURE_TYPE_MAX_ENUM, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME},
+        {VK_STRUCTURE_TYPE_MAX_ENUM, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME},
+        {VK_STRUCTURE_TYPE_MAX_ENUM, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME},
+        {VK_STRUCTURE_TYPE_MAX_ENUM, VK_KHR_RAY_QUERY_EXTENSION_NAME},
+        {VK_STRUCTURE_TYPE_MAX_ENUM, "", true},
+    };
+    const bool previousDisabled = RHIOptions::GetInstance().RayTracingDisabled();
+    RHIOptions::GetInstance().SetRayTracingDisabled(false);
+    DeviceExtensionFlags supported{};
+    {
+        ScopedTopologyDevice baseline(session->rhi.GetPhysicalDevice());
+        supported = baseline.device.GetExtensionFlags();
+    }
+
+    for (const CapabilityCase& scenario : cases)
+    {
+        SCOPED_TRACE(scenario.missingFeature);
+        SCOPED_TRACE(scenario.missingExtension);
+        SCOPED_TRACE(scenario.disableRayTracing);
+        CapabilityDriver::Reset();
+        CapabilityDriver::missingRayFeature = scenario.missingFeature;
+        if (scenario.missingExtension[0] != '\0')
+        {
+            CapabilityDriver::hiddenExtensions.emplace_back(scenario.missingExtension);
+        }
+        RHIOptions::GetInstance().SetRayTracingDisabled(scenario.disableRayTracing);
+        ScopedTopologyDevice        device(session->rhi.GetPhysicalDevice());
+        const DeviceExtensionFlags& enabled = device.device.GetExtensionFlags();
+        const std::string_view      missing(scenario.missingExtension);
+        const bool                  address = supported.hasBufferDeviceAddress
+                          && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+        const bool acceleration =
+            supported.hasAccelerationStructure && address && !scenario.disableRayTracing
+            && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR
+            && missing != VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
+            && missing != VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
+        const bool pipeline = supported.hasRaytracingPipeline && acceleration
+                           && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR
+                           && missing != VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME;
+        const bool query = supported.hasRayQuery && acceleration
+                        && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+                        && missing != VK_KHR_RAY_QUERY_EXTENSION_NAME;
+        EXPECT_EQ(enabled.hasBufferDeviceAddress != 0, address);
+        EXPECT_EQ(enabled.hasAccelerationStructure != 0, acceleration);
+        EXPECT_EQ(enabled.hasRaytracingPipeline != 0, pipeline);
+        EXPECT_EQ(enabled.hasRayQuery != 0, query);
+
+        const VkStructureType structures[] = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
+                                              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+                                              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+                                              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
+        const char* extensions[] = {VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+                                    VK_KHR_RAY_QUERY_EXTENSION_NAME};
+        const bool  expected[]   = {address, acceleration, pipeline, query};
+        for (uint32_t i = 0; i < std::size(structures); ++i)
+        {
+            EXPECT_EQ(std::count(CapabilityDriver::enabledStructures.begin(), CapabilityDriver::enabledStructures.end(),
+                                 structures[i]),
+                      expected[i] ? 1 : 0);
+        }
+        for (uint32_t i = 0; i < std::size(extensions); ++i)
+        {
+            EXPECT_EQ(std::count(CapabilityDriver::enabledExtensions.begin(), CapabilityDriver::enabledExtensions.end(),
+                                 extensions[i]),
+                      expected[i + 1] ? 1 : 0);
+        }
+    }
+    RHIOptions::GetInstance().SetRayTracingDisabled(previousDisabled);
 }
 
 TEST_F(VulkanCapabilityIntegrationTest, OptionalFeaturesDisableTheirDependentsAndVMAAddressFlag)

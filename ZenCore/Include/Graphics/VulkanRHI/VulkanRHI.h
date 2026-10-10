@@ -31,6 +31,7 @@ class VulkanShader;
 class VulkanTexture;
 class VulkanTextureView;
 class VulkanBuffer;
+class VulkanAccelerationStructure;
 class VulkanSampler;
 class VulkanPipeline;
 class VulkanCommandBuffer;
@@ -44,7 +45,8 @@ using VersatileResource = VersatileResourceTemplate<VulkanShader,
                                                     VulkanSampler,
                                                     VulkanBuffer,
                                                     VulkanPipeline,
-                                                    VulkanViewport>;
+                                                    VulkanViewport,
+                                                    VulkanAccelerationStructure>;
 
 class VulkanRHI : public DynamicRHI
 {
@@ -136,6 +138,11 @@ public:
     RHITextureView* CreateTextureView(RHITexture* pBaseTexture, const RHITextureViewCreateInfo& createInfo) final;
 
     void DestroyTexture(RHITexture* pTexture) final;
+
+    RHIAccelerationStructureBuildSizes GetAccelerationStructureBuildSizes(
+        const RHIAccelerationStructureBuildDesc& desc) override;
+
+    RHIAccelerationStructure* CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) override;
 
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
 
@@ -297,6 +304,8 @@ private:
 class VulkanResourceFactory : public RHIResourceFactory
 {
 public:
+    RHIAccelerationStructure* CreateAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) override;
+
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
 
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;

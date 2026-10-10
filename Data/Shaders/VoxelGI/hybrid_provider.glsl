@@ -8,6 +8,12 @@ struct HybridRayResult
     vec3 normal;
     ivec3 cell;
 };
+#ifdef HYBRID_HARDWARE_PROVIDER
+#include "hardware_ray_query.glsl"
+// Keep call sites provider-independent; occupancy is absent in the RT variant.
+#define HybridTraceRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,false)
+#else
+vec3 HybridTraceOrigin(vec3 position,vec3 normal,float error) { return TraceOrigin(position,normal); }
 // The starting cell is tested. Do not skip occupied starts: that leaks at wall bases.
 // Slab entry also handles rays starting outside the voxel volume.
 HybridRayResult HybridTraceRay(sampler3D occupancy, vec3 origin, vec3 direction, float maximumDistance)
@@ -58,4 +64,5 @@ HybridRayResult HybridTraceRay(sampler3D occupancy, vec3 origin, vec3 direction,
     }
     return result;
 }
+#endif
 #endif

@@ -36,15 +36,21 @@ def main():
     parser.add_argument('--height', type=int, default=540)
     parser.add_argument('--resolution', type=int, choices=(64, 128, 256), default=64)
     parser.add_argument('--provider', choices=('auto', 'voxel', 'hardware', 'legacy'), default='voxel')
+    parser.add_argument('--as-budget-mb', type=int, default=0, help='Acceleration-structure preflight cap; zero leaves it unset')
     parser.add_argument('--samples', type=int, choices=(1, 2, 4), default=4)
     parser.add_argument('--reference-samples', type=int, choices=(0, 1024, 4096), default=0)
     parser.add_argument('--bounce', type=float, default=0)
     parser.add_argument('--environment', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--environment-texture', default='papermill.ktx',
+                        help='Environment path, relative to Data/Textures or absolute')
     parser.add_argument('--temporal', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--filter', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--rt', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--strip-normal-maps', action='store_true',
+                        help='Remove normal textures from the captured scene copy, for ground-truth comparisons with vertex normals')
     args = parser.parse_args()
     assert args.frames >= 2
+    assert args.as_budget_mb >= 0
     prefix = args.output.resolve()
     prefix.parent.mkdir(parents=True, exist_ok=True)
     source = args.scene.resolve()
@@ -57,6 +63,9 @@ def main():
                           else source.parent / unquote(uri)).resolve()
             inputs.append(fingerprint(dependency))
             entry['uri'] = dependency.as_uri()
+    if args.strip_normal_maps:
+        for material in document.get('materials', []):
+            material.pop('normalTexture', None)
     camera = len(document.setdefault('cameras', []))
     document['cameras'].append(dict(type='perspective', perspective=dict(
         yfov=1.0471975511965976, znear=.05, zfar=100)))
@@ -67,11 +76,16 @@ def main():
     document['nodes'].append(dict(camera=camera, matrix=CAMERAS[args.camera]))
     scene = Path(str(prefix) + '.gltf')
     scene.write_text(json.dumps(document))
-    settings = dict(default_model_path=scene.as_posix(), environment_texture='papermill.ktx',
+    environment_texture = Path(args.environment_texture)
+    if not environment_texture.is_absolute():
+        environment_texture = ROOT / 'Data/Textures' / environment_texture
+    inputs.append(fingerprint(environment_texture.resolve()))
+    settings = dict(default_model_path=scene.as_posix(), environment_texture=args.environment_texture,
                     environment_lighting=str(args.environment).lower(), environment_intensity=1,
                     environment_rotation_degrees=0, skybox_visible='false', scene_lighting_override='true',
                     light_count=0, voxel_resolution=args.resolution, voxel_gi_indirect_intensity=args.bounce,
                     voxel_gi_shadow_enabled='false', voxel_gi_ray_provider=args.provider,
+                    voxel_gi_acceleration_structure_budget_mb=args.as_budget_mb,
                     voxel_gi_samples=args.samples, voxel_gi_reference_samples=args.reference_samples,
                     voxel_gi_history_frames=32, voxel_gi_temporal=str(args.temporal).lower(),
                     voxel_gi_filter=str(args.filter).lower(), voxel_gi_specular_occlusion='true')

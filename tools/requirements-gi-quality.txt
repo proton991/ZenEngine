@@ -1,3 +1,4 @@
 numpy==2.5.3
 embreex==4.4.0
 pillow==12.3.0
+mitsuba==3.9.1

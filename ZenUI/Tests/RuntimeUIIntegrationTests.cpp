@@ -319,7 +319,7 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
     window.Hide();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2);
 
@@ -491,7 +491,7 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
     device.Destroy();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(true);
+    RHIOptions::GetInstance().SetRayTracingDisabled(false);
 }
 
 TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits)
@@ -500,7 +500,7 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
 
     window.Hide();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2);
 
@@ -666,7 +666,7 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
 
     device.Destroy();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(true);
+    RHIOptions::GetInstance().SetRayTracingDisabled(false);
 }
 
 TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupportsManualMode)
@@ -675,7 +675,7 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
     window.Hide();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2);
 
@@ -907,7 +907,7 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
     device.Destroy();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(true);
+    RHIOptions::GetInstance().SetRayTracingDisabled(false);
 }
 
 bool ExecuteVoxelGeneration(rc::RenderDevice& device, rc::RendererServer& server)
@@ -943,7 +943,7 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
     window.Hide();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, (GetParam() & 1) ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
                             platform::AsyncComputeMode::eAuto);
@@ -1079,7 +1079,7 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
     device.Destroy();
 
-    RHIOptions::GetInstance().SetRayTracingEnabled(true);
+    RHIOptions::GetInstance().SetRayTracingDisabled(false);
 }
 
 INSTANTIATE_TEST_SUITE_P(SubmissionModes, ReflectanceRuntimeIntegration, testing::Values(0u, 1u, 2u, 3u));

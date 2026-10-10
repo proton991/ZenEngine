@@ -1041,7 +1041,10 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
             << ",\"vsync_requested\":" << state.options.vsync
             << ",\"vsync_note\":\"VSync chooses the existing platform present-mode policy; compositor behavior is not measured\""
             << ",\"validation_enabled\":" << RHIOptions::GetInstance().ValidationEnabled()
-            << ",\"ray_tracing_enabled\":" << RHIOptions::GetInstance().RayTracingEnabled()
+            << ",\"ray_query_enabled\":" << device.GetGPUInfo().rayQuery.rayQuery
+            << ",\"acceleration_structure_enabled\":" << device.GetGPUInfo().rayQuery.accelerationStructure
+            << ",\"buffer_device_address_enabled\":" << device.GetGPUInfo().rayQuery.bufferDeviceAddress
+            << ",\"ray_tracing_disabled\":" << RHIOptions::GetInstance().RayTracingDisabled()
             << ",\"gpu_markers\":" << RHIOptions::GetInstance().GPUProfilerMarkers() << ",\"voxelizer\":";
 
         JSONString(output, rc::ResolveVoxelizerMode(config.GetVoxelizerMode(), device.GetGPUInfo())

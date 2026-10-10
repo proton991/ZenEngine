@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanBuffer.h"
+#include "VulkanAccelerationStructure.h"
 #include "VulkanTexture.h"
 #include "VulkanPipeline.h"
 #include "VulkanViewport.h"

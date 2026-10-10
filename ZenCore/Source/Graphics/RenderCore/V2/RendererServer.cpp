@@ -125,14 +125,6 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
             }
             else
             {
-                if (m_frameRenderOption == RenderOption::eVoxelGI
-                    && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
-                {
-                    m_frameRenderOption     = RenderOption::ePBR;
-
-                    m_status.fallbackReason = "The scene has incomplete voxel coverage.";
-                }
-
                 if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->Init())
                 {
                     m_frameRenderOption     = RenderOption::ePBR;
@@ -161,9 +153,18 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                     m_pVoxelGI->BuildRenderGraph(m_pSceneShadows);
 
-                    m_pDeferredLightingRenderer->BuildCompositionGraph(view, m_pVoxelGI, m_pSceneShadows);
+                    // The hardware visibility provider covers the full raster scene,
+                    // including occluders outside the radiance-cache volume.
+                    if (!m_pVoxelGI->UsesHardwareQueries()
+                        && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
+                    {
+                        m_frameRenderOption     = RenderOption::ePBR;
+                        m_status.fallbackReason = "The scene has incomplete voxel coverage.";
+                    }
+                    m_pDeferredLightingRenderer->BuildCompositionGraph(
+                        view, m_frameRenderOption == RenderOption::eVoxelGI ? m_pVoxelGI : nullptr, m_pSceneShadows);
 
-                    if (m_pDeferredLightingRenderer->GetHybridGI() != nullptr
+                    if (m_frameRenderOption == RenderOption::eVoxelGI && m_pDeferredLightingRenderer->GetHybridGI() != nullptr
                         && !m_pDeferredLightingRenderer->GetHybridGI()->IsActive())
                     {
                         m_frameRenderOption     = RenderOption::ePBR;

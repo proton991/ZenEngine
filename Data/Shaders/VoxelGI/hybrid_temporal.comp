@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "hybrid_guides.glsl"
 #include "../Common/scene_lighting.glsl"
+#include "hybrid_sky_guide.glsl"
 layout(local_size_x=8,local_size_y=8) in;
 layout(set=1,binding=6) uniform sampler2D rawSky;
 layout(set=1,binding=7) uniform sampler2D rawSpecular;
@@ -19,6 +20,7 @@ layout(set=1,binding=18,rgba16f) uniform writeonly image2D nextLength;
 layout(set=1,binding=19,rgba32f) uniform writeonly image2D nextPosition;
 layout(set=1,binding=20,rgba16f) uniform writeonly image2D nextNormal;
 layout(set=1,binding=21,rg32ui) uniform writeonly uimage2D nextReceiver;
+layout(set=1,binding=23,rgba16f) uniform writeonly image2D skyGuide;
 void main()
 {
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
@@ -27,8 +29,8 @@ void main()
     vec3 position=HybridPosition(p), n=HybridNormal(p), ng=HybridGeometricNormal(p);
     uvec2 identity=texelFetch(receiverSurface,p,0).rg;
     if(texelFetch(receiverDepth,p,0).r>=1.0) identity=uvec2(0);
-    vec4 clip=texelFetch(receiverMotion,p,0);
-    vec2 previousPixel=(clip.xy/max(clip.w,1e-8)*0.5+0.5)*vec2(textureSize(receiverDepth,0))-0.5;
+    vec4 motion=texelFetch(receiverMotion,p,0);
+    vec2 previousPixel=vec2(p)+motion.xy*0.5*vec2(textureSize(receiverDepth,0));
     if(hybrid.rejection.w>0.5) previousPixel=vec2(p);
     ivec2 base=ivec2(floor(previousPixel)); vec2 f=fract(previousPixel);
     vec4 oldSky=vec4(0), oldSpec=vec4(0), oldMoments=vec4(0);
@@ -36,7 +38,7 @@ void main()
     float reason=hybrid.sampling.w==0u ? 1.0 : 2.0;
     float roughness=texelFetch(receiverRoughness,p,0).g;
     vec3 view=sceneUbo.viewPosition.w<0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz-position);
-    if(hybrid.sampling.w!=0u && hybrid.rejection.z>0.0 && clip.w>0.0 && identity.g!=0u)
+    if(hybrid.sampling.w!=0u && hybrid.rejection.z>0.0 && motion.z>0.0 && identity.g!=0u)
     {
         for(int y=0;y<2;++y) for(int x=0;x<2;++x)
         {
@@ -85,4 +87,5 @@ void main()
     imageStore(nextPosition,p,vec4(position,texelFetch(receiverDepth,p,0).r));
     imageStore(nextNormal,p,vec4(EncodeGBufferNormal(n),EncodeGBufferNormal(ng)));
     imageStore(nextReceiver,p,uvec4(identity,0,0));
+    imageStore(skyGuide,p,vec4(HybridSkyGuide(n),0));
 }

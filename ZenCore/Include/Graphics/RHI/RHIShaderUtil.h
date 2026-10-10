@@ -328,12 +328,15 @@ static bool ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         }
         break;
 
-        default:
         case SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
         {
-            LOGE("Acceleration structure not supported.");
+            srd.type      = RHIShaderResourceType::eAccelerationStructure;
+            needArrayDims = true;
+            readable      = true;
+            writable      = false;
         }
         break;
+        default: break;
     }
 
     // Contradictory or incomplete restrictions must not suppress both capabilities.

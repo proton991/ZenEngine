@@ -65,8 +65,29 @@ struct RHIBindlessHeapCapacities
     }
 };
 
+struct RHIRayQueryCapabilities
+{
+    bool     bufferDeviceAddress{false};
+    bool     accelerationStructure{false};
+    bool     rayQuery{false};
+    bool     graphicsBuild{false};
+    bool     triangleFloat3{false};
+    uint32_t scratchAlignment{0};
+    uint64_t maxGeometries{0};
+    uint64_t maxPrimitives{0};
+    uint64_t maxInstances{0};
+
+    bool IsUsable() const
+    {
+        return bufferDeviceAddress && accelerationStructure && rayQuery && graphicsBuild && triangleFloat3
+            && scratchAlignment != 0;
+    }
+};
+
 struct RHIGPUInfo
 {
+    RHIRayQueryCapabilities rayQuery;
+
     // Backend-reported identity. Driver version encoding is vendor-specific.
     std::array<char, 256> deviceName{};
     uint32_t              vendorID{0};
@@ -279,8 +300,9 @@ enum class RHIShaderResourceType : uint32_t
     // Storage buffer ("buffer" qualifier) like UBO, but supports storage, for compute mostly.
     eStorageBuffer = 8,
     // Used for sub-pass read/write, for mobile mostly.
-    eInputAttachment = 9,
-    eMax             = 10
+    eInputAttachment       = 9,
+    eAccelerationStructure = 10,
+    eMax                   = 11
 };
 
 struct RHIShaderResourceDescriptor
@@ -679,32 +701,59 @@ struct RHIGfxPipelineStates
 /*****************************/
 enum class RHIBufferUsageFlagBits : uint32_t
 {
-    eTransferSrcBuffer = 1 << 0,
-    eTransferDstBuffer = 1 << 1,
-    eTextureBuffer     = 1 << 2,
-    eImageBuffer       = 1 << 3,
-    eUniformBuffer     = 1 << 4,
-    eStorageBuffer     = 1 << 5,
-    eIndexBuffer       = 1 << 6,
-    eVertexBuffer      = 1 << 7,
-    eIndirectBuffer    = 1 << 8,
-    eMax               = 0x7FFFFFFF
+    eTransferSrcBuffer            = 1 << 0,
+    eTransferDstBuffer            = 1 << 1,
+    eTextureBuffer                = 1 << 2,
+    eImageBuffer                  = 1 << 3,
+    eUniformBuffer                = 1 << 4,
+    eStorageBuffer                = 1 << 5,
+    eIndexBuffer                  = 1 << 6,
+    eVertexBuffer                 = 1 << 7,
+    eIndirectBuffer               = 1 << 8,
+    eDeviceAddress                = 1 << 17,
+    eAccelerationStructureInput   = 1 << 19,
+    eAccelerationStructureStorage = 1 << 20,
+    eMax                          = 0x7FFFFFFF
 };
 
 enum class RHIBufferUsage : uint32_t
 {
-    eNone           = 0,
-    eTransferSrc    = 1,
-    eTransferDst    = 2,
-    eTextureBuffer  = 3,
-    eImageBuffer    = 4,
-    eUniformBuffer  = 5,
-    eStorageBuffer  = 6,
-    eIndexBuffer    = 7,
-    eVertexBuffer   = 8,
-    eIndirectBuffer = 9,
-    eMax            = 10
+    eNone                         = 0,
+    eTransferSrc                  = 1,
+    eTransferDst                  = 2,
+    eTextureBuffer                = 3,
+    eImageBuffer                  = 4,
+    eUniformBuffer                = 5,
+    eStorageBuffer                = 6,
+    eIndexBuffer                  = 7,
+    eVertexBuffer                 = 8,
+    eIndirectBuffer               = 9,
+    eAccelerationStructureInput   = 10,
+    eAccelerationStructureStorage = 11,
+    eMax                          = 12
 };
+
+// Access roles are compact indices; creation flags keep their native bit values.
+inline constexpr RHIBufferUsageFlagBits kRHIBufferUsageFlags[] = {
+    RHIBufferUsageFlagBits(0),
+    RHIBufferUsageFlagBits::eTransferSrcBuffer,
+    RHIBufferUsageFlagBits::eTransferDstBuffer,
+    RHIBufferUsageFlagBits::eTextureBuffer,
+    RHIBufferUsageFlagBits::eImageBuffer,
+    RHIBufferUsageFlagBits::eUniformBuffer,
+    RHIBufferUsageFlagBits::eStorageBuffer,
+    RHIBufferUsageFlagBits::eIndexBuffer,
+    RHIBufferUsageFlagBits::eVertexBuffer,
+    RHIBufferUsageFlagBits::eIndirectBuffer,
+    RHIBufferUsageFlagBits::eAccelerationStructureInput,
+    RHIBufferUsageFlagBits::eAccelerationStructureStorage,
+};
+static_assert(std::size(kRHIBufferUsageFlags) == ToUnderlying(RHIBufferUsage::eMax));
+
+// Device address is an allocation capability, not a graph access.
+inline constexpr uint32_t kRHIBufferAccessUsageMask = ((ToUnderlying(RHIBufferUsageFlagBits::eIndirectBuffer) << 1) - 1)
+                                                    | ToUnderlying(RHIBufferUsageFlagBits::eAccelerationStructureInput)
+                                                    | ToUnderlying(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
 
 struct RHIBufferCopyRegion
 {
@@ -1118,6 +1167,8 @@ enum class RHIAccessFlagBits : uint32_t
     eHostWrite                   = 1 << 14,
     eMemoryRead                  = 1 << 15,
     eMemoryWrite                 = 1 << 16,
+    eAccelerationStructureRead   = 1 << 21,
+    eAccelerationStructureWrite  = 1 << 22,
     eMax                         = 0x7FFFFFFF
 };
 
@@ -1141,8 +1192,31 @@ enum class RHIPipelineStageFlagBits : uint32_t
     eHost                         = 1 << 14,
     eAllGraphics                  = 1 << 15,
     eAllCommands                  = 1 << 16,
+    eAccelerationStructureBuild   = 1 << 25,
     eMax                          = 0x7FFFFFFF
 };
+
+inline constexpr uint32_t kRHIAccessMask = ((ToUnderlying(RHIAccessFlagBits::eMemoryWrite) << 1) - 1)
+                                         | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureRead)
+                                         | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureWrite);
+inline constexpr uint32_t kRHIPipelineStageMask = ((ToUnderlying(RHIPipelineStageFlagBits::eAllCommands) << 1) - 1)
+                                                | ToUnderlying(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+inline constexpr uint32_t kRHIIndividualPipelineStageMask =
+    kRHIPipelineStageMask
+    & ~(ToUnderlying(RHIPipelineStageFlagBits::eAllCommands) | ToUnderlying(RHIPipelineStageFlagBits::eAllGraphics));
+inline constexpr uint32_t kRHICommandPipelineStageMask =
+    kRHIIndividualPipelineStageMask & ~ToUnderlying(RHIPipelineStageFlagBits::eHost);
+inline constexpr uint32_t kRHIGraphicsPipelineStageMask =
+    ((ToUnderlying(RHIPipelineStageFlagBits::eColorAttachmentOutput) << 1) - 1)
+    & ~ToUnderlying(RHIPipelineStageFlagBits::eTopOfPipe);
+inline constexpr uint32_t kRHIShaderPipelineStageMask =
+    ToUnderlying(RHIPipelineStageFlagBits::eVertexShader) | ToUnderlying(RHIPipelineStageFlagBits::eTessellationControlShader)
+    | ToUnderlying(RHIPipelineStageFlagBits::eTessellationEvaluationShader)
+    | ToUnderlying(RHIPipelineStageFlagBits::eGeometryShader) | ToUnderlying(RHIPipelineStageFlagBits::eFragmentShader)
+    | ToUnderlying(RHIPipelineStageFlagBits::eComputeShader);
+// Arrays indexed by bit position include the holes between native flags.
+inline constexpr uint32_t kRHIAccessBitCount        = std::bit_width(kRHIAccessMask);
+inline constexpr uint32_t kRHIPipelineStageBitCount = std::bit_width(kRHIPipelineStageMask);
 
 inline bool RHIQueueSupportsStages(const RHIQueueCopyCapabilities& queue, BitField<RHIPipelineStageFlagBits> stages)
 {
@@ -1151,11 +1225,11 @@ inline bool RHIQueueSupportsStages(const RHIQueueCopyCapabilities& queue, BitFie
                     | int64_t(Stage::eAllCommands) | int64_t(Stage::eTransfer);
     if (queue.compute)
     {
-        allowed |= int64_t(Stage::eComputeShader) | int64_t(Stage::eDrawIndirect);
+        allowed |= int64_t(Stage::eComputeShader) | int64_t(Stage::eDrawIndirect) | int64_t(Stage::eAccelerationStructureBuild);
     }
     if (queue.graphics)
     {
-        allowed |= ((int64_t(1) << 11) - 1) | int64_t(Stage::eAllGraphics);
+        allowed |= kRHIGraphicsPipelineStageMask | int64_t(Stage::eAllGraphics);
     }
     return (int64_t(stages) & ~allowed) == 0;
 }
@@ -1265,6 +1339,12 @@ inline BitField<RHIPipelineStageFlagBits> RHIBufferUsageToPipelineStageFlags(Bit
                             RHIPipelineStageFlagBits::eComputeShader);
         }
 
+        if (usage.HasFlag(RHIBufferUsageFlagBits::eAccelerationStructureInput)
+            || usage.HasFlag(RHIBufferUsageFlagBits::eAccelerationStructureStorage))
+        {
+            result.SetFlag(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+        }
+
         if (usage.HasFlag(RHIBufferUsageFlagBits::eIndirectBuffer))
         {
             result.SetFlag(RHIPipelineStageFlagBits::eDrawIndirect);
@@ -1279,7 +1359,9 @@ inline BitField<RHIPipelineStageFlagBits> RHIBufferUsageToPipelineStageFlags(Bit
     return result;
 }
 
-inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(RHIBufferUsage usage, RHIAccessMode mode)
+inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(RHIBufferUsage                     usage,
+                                                                  RHIAccessMode                      mode,
+                                                                  BitField<RHIPipelineStageFlagBits> stages = {})
 {
     BitField<RHIAccessFlagBits> result;
 
@@ -1294,21 +1376,59 @@ inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(RHIBufferUsage
         case RHIBufferUsage::eStorageBuffer:
         case RHIBufferUsage::eImageBuffer:
         {
-            result.SetFlag(RHIAccessFlagBits::eShaderRead);
-
-            if (mode == RHIAccessMode::eReadWrite)
+            // Scratch is ordinary storage memory accessed by an AS build.
+            const bool build = usage == RHIBufferUsage::eStorageBuffer
+                            && stages.HasFlag(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+            if (build)
             {
-                result.SetFlag(RHIAccessFlagBits::eShaderWrite);
+                result.SetFlag(RHIAccessFlagBits::eAccelerationStructureRead);
+                if (mode == RHIAccessMode::eReadWrite)
+                {
+                    result.SetFlag(RHIAccessFlagBits::eAccelerationStructureWrite);
+                }
+            }
+            const int64_t shaderStages = kRHIShaderPipelineStageMask | int64_t(RHIPipelineStageFlagBits::eAllGraphics)
+                                       | int64_t(RHIPipelineStageFlagBits::eAllCommands);
+            if (!build || (int64_t(stages) & shaderStages) != 0)
+            {
+                result.SetFlag(RHIAccessFlagBits::eShaderRead);
+                if (mode == RHIAccessMode::eReadWrite)
+                {
+                    result.SetFlag(RHIAccessFlagBits::eShaderWrite);
+                }
             }
         }
         break;
 
+        case RHIBufferUsage::eAccelerationStructureInput: result.SetFlag(RHIAccessFlagBits::eShaderRead); break;
+        case RHIBufferUsage::eAccelerationStructureStorage:
+            result.SetFlag(RHIAccessFlagBits::eAccelerationStructureRead);
+            if (mode == RHIAccessMode::eReadWrite)
+            {
+                result.SetFlag(RHIAccessFlagBits::eAccelerationStructureWrite);
+            }
+            break;
         case RHIBufferUsage::eIndexBuffer: result.SetFlag(RHIAccessFlagBits::eIndexRead); break;
         case RHIBufferUsage::eVertexBuffer: result.SetFlag(RHIAccessFlagBits::eVertexAttributeRead); break;
         case RHIBufferUsage::eIndirectBuffer: result.SetFlag(RHIAccessFlagBits::eIndirectCommandRead); break;
         default: break;
     }
 
+    return result;
+}
+
+inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(BitField<RHIBufferUsageFlagBits>   usages,
+                                                                  RHIAccessMode                      mode,
+                                                                  BitField<RHIPipelineStageFlagBits> stages = {})
+{
+    BitField<RHIAccessFlagBits> result;
+    for (uint32_t i = 1; i < std::size(kRHIBufferUsageFlags); ++i)
+    {
+        if (usages.HasFlag(kRHIBufferUsageFlags[i]))
+        {
+            result.SetFlag(RHIBufferUsageToAccessFlagBits(static_cast<RHIBufferUsage>(i), mode, stages));
+        }
+    }
     return result;
 }
 

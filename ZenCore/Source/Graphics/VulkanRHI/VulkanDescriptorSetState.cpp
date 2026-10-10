@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanDescriptorPool.h"
 #include "Graphics/VulkanRHI/VulkanDescriptorState.h"
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
+#include "Graphics/VulkanRHI/VulkanAccelerationStructure.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
@@ -55,17 +56,22 @@ struct DescriptorWriteBatch
         writes(maxDescriptorCount),
         imageInfos(maxDescriptorCount),
         bufferInfos(maxDescriptorCount),
-        bufferViews(maxDescriptorCount)
+        bufferViews(maxDescriptorCount),
+        accelerationInfos(maxDescriptorCount),
+        accelerationStructures(maxDescriptorCount)
     {}
 
-    HeapVector<VkWriteDescriptorSet>   writes;
-    HeapVector<VkDescriptorImageInfo>  imageInfos;
-    HeapVector<VkDescriptorBufferInfo> bufferInfos;
-    HeapVector<VkBufferView>           bufferViews;
-    uint32_t                           numWrites{0};
-    uint32_t                           numImageInfos{0};
-    uint32_t                           numBufferInfos{0};
-    uint32_t                           numBufferViews{0};
+    HeapVector<VkWriteDescriptorSet>                         writes;
+    HeapVector<VkDescriptorImageInfo>                        imageInfos;
+    HeapVector<VkDescriptorBufferInfo>                       bufferInfos;
+    HeapVector<VkBufferView>                                 bufferViews;
+    HeapVector<VkWriteDescriptorSetAccelerationStructureKHR> accelerationInfos;
+    HeapVector<VkAccelerationStructureKHR>                   accelerationStructures;
+    uint32_t                                                 numAccelerationStructures{0};
+    uint32_t                                                 numWrites{0};
+    uint32_t                                                 numImageInfos{0};
+    uint32_t                                                 numBufferInfos{0};
+    uint32_t                                                 numBufferViews{0};
 };
 
 bool AppendDescriptorBindingWrites(VkDescriptorSet                 descriptorSet,
@@ -115,6 +121,24 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet                 descriptorSet
 
                 switch (binding.type)
                 {
+                    case RHIShaderResourceType::eAccelerationStructure:
+                    {
+                        descriptorIsValid =
+                            pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eAccelerationStructure;
+                        if (descriptorIsValid)
+                        {
+                            const uint32_t index = batch.numAccelerationStructures++;
+                            batch.accelerationStructures[index] =
+                                static_cast<VulkanAccelerationStructure*>(pResource)->GetVkHandle();
+                            VkWriteDescriptorSetAccelerationStructureKHR& accelerationInfo = batch.accelerationInfos[index];
+                            accelerationInfo = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
+                            accelerationInfo.accelerationStructureCount = 1;
+                            accelerationInfo.pAccelerationStructures    = &batch.accelerationStructures[index];
+                            write.pNext                                 = &accelerationInfo;
+                            write.descriptorType                        = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+                        }
+                        break;
+                    }
                     case RHIShaderResourceType::eSampler:
                     {
                         VulkanSampler* pSampler          = TryVulkanSampler(pResource);
@@ -764,6 +788,12 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
 
             switch (binding.type)
             {
+                case RHIShaderResourceType::eAccelerationStructure:
+                    valid &= resource != nullptr && resource->GetResourceType() == RHIResourceType::eAccelerationStructure
+                          && static_cast<VulkanAccelerationStructure*>(resource)->GetType()
+                                 == RHIAccelerationStructureType::eTopLevel
+                          && static_cast<VulkanAccelerationStructure*>(resource)->GetVkHandle() != VK_NULL_HANDLE;
+                    break;
                 case RHIShaderResourceType::eSampler: valid &= TryVulkanSampler(resource) != nullptr; break;
                 case RHIShaderResourceType::eTexture:
                 case RHIShaderResourceType::eImage:
