@@ -7,7 +7,8 @@ target_include_directories(ZenUI PUBLIC Renderer/Include)
 target_link_libraries(ZenUI PUBLIC ZenCore)
 
 # ImGui adapter: context, platform bridge, fonts and draw-packet conversion.
-add_library(ZenImGui STATIC ImGui/Source/UIContext.cpp ImGui/Source/ImGuiDrawPacket.cpp ImGui/Source/ImGuiRenderer.cpp)
+add_library(ZenImGui STATIC ImGui/Source/UIContext.cpp ImGui/Source/ImGuiDrawPacket.cpp ImGui/Source/ImGuiRenderer.cpp
+  ImGui/Source/LightingBackendControls.cpp)
 target_include_directories(ZenImGui PUBLIC ImGui/Include)
 target_link_libraries(ZenImGui PUBLIC ZenUI zen_imgui PRIVATE ZenWindowBackendInternal)
 

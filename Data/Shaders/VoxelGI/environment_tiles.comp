@@ -30,6 +30,21 @@ const float BRIGHT_RATIO = 8.0;
 void main()
 {
     uint tile = gl_LocalInvocationID.x;
+    for(uint fine=tile;fine<ZEN_HYBRID_GUIDE_TILES;fine+=ZEN_ENVIRONMENT_TILES)
+    {
+        uint perFace=ZEN_HYBRID_GUIDE_PER_FACE*ZEN_HYBRID_GUIDE_PER_FACE;
+        uint face=fine/perFace, ty=(fine%perFace)/ZEN_HYBRID_GUIDE_PER_FACE, tx=fine%ZEN_HYBRID_GUIDE_PER_FACE;
+        uint base=ZEN_HYBRID_GUIDE_CDF_OFFSET+fine*(ZEN_HYBRID_GUIDE_CELL_SIZE+1u);
+        float sum=0.0;
+        environmentTiles[base]=0.0;
+        for(uint y=0u;y<ZEN_HYBRID_GUIDE_CELL_SIZE;++y)
+        {
+            uint row=face*ZEN_ENVIRONMENT_IMPORTANCE_SIZE+ty*ZEN_HYBRID_GUIDE_CELL_SIZE+y;
+            uint offset=row*(ZEN_ENVIRONMENT_IMPORTANCE_SIZE+1u)+tx*ZEN_HYBRID_GUIDE_CELL_SIZE;
+            sum+=max(environmentColumns[offset+ZEN_HYBRID_GUIDE_CELL_SIZE]-environmentColumns[offset],0.0);
+            environmentTiles[base+y+1u]=sum;
+        }
+    }
     uint perFace = ZEN_ENVIRONMENT_TILES_PER_FACE * ZEN_ENVIRONMENT_TILES_PER_FACE;
     uint face = tile / perFace, ty = (tile % perFace) / ZEN_ENVIRONMENT_TILES_PER_FACE, tx = tile % ZEN_ENVIRONMENT_TILES_PER_FACE;
     uint x0 = tx * ZEN_ENVIRONMENT_TILE_SIZE, x1 = x0 + ZEN_ENVIRONMENT_TILE_SIZE;

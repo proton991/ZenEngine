@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import numpy as np
 from hybrid_gi_fixtures import generate
+from capture_hybrid_gi import fingerprint
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -36,10 +37,25 @@ def environment_integral(prefix, metadata, normal):
 
 def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0,
         bounce_source='cone',resolution=64,environment_lighting=True,shadows=False,light_changes=False,spatial_filter=True,
-        width=320,height=180,reflections=True,reflection_motion=False,mode=3,rt_shadows=False):
+        width=320,height=180,reflections=True,reflection_motion=False,mode=3,rt_shadows=False,
+        geometry_motion=False,independent_views=False,analytic_lighting=None,voxelizer=None):
     exe=exe.resolve();folder=folder.resolve()
     fixtures=folder/'fixtures'
     generate(fixtures)
+    if analytic_lighting is False:
+        # The demo preserves authored lights even when configured-light overrides are
+        # enabled. Remove them from the generated fixture copy for environment-only runs.
+        for name in names:
+            path=fixtures/(name+'.gltf')
+            document=json.loads(path.read_text())
+            document.get('extensions',{}).pop('KHR_lights_punctual',None)
+            document['extensionsUsed']=[value for value in document.get('extensionsUsed',[])
+                                        if value!='KHR_lights_punctual']
+            if not document['extensionsUsed']:
+                document.pop('extensionsUsed')
+            for node in document.get('nodes',[]):
+                node.get('extensions',{}).pop('KHR_lights_punctual',None)
+            path.write_text(json.dumps(document))
     config=ROOT/'Data/engine.cfg'
     original=config.read_bytes()
     active=original
@@ -66,6 +82,10 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             if name in ('point_light_room','thin_wall_light','moving_occluder_light','glossy_floor','glossy_smooth',
                         'glossy_closed','forward_glossy_closed'):
                 settings['scene_lighting_override']='false'
+            if analytic_lighting is not None:
+                settings['scene_lighting_override']=str(not analytic_lighting).lower()
+            if voxelizer is not None:
+                settings['voxelizer']=voxelizer
             assert config.read_bytes()==active,'External config edit; aborting'
             active=original+b'\n'+''.join(f'{key}={value}\n' for key,value in settings.items()).encode()
             config.write_bytes(active)
@@ -77,9 +97,16 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             if gpu: command.append('--gpu='+gpu)
             if light_changes: command.append('--capture-bounce-lights='+str(prefix)+'-lights')
             if reflection_motion: command.append('--capture-reflection-motion='+str(prefix)+'-motion')
+            if geometry_motion: command.append('--capture-geometry-motion='+str(prefix)+'-geometry')
+            if independent_views: command.append('--capture-independent-views='+str(prefix)+'-views')
+            inputs=dict(executable=fingerprint(exe),command=command,settings=settings,
+                        source_inputs=[fingerprint(fixtures/(name+'.gltf')),fingerprint(Path(settings['environment_texture']))],
+                        shaders=[fingerprint(path) for path in sorted((ROOT/'Data/SpvShaders').rglob('*.spv'))],
+                        config=fingerprint(config))
+            Path(str(prefix)+'.inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
             with prefix.with_suffix('.log').open('w') as log:
                 result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,
-                                      timeout=1800 if light_changes or reflection_motion else 300)
+                                      timeout=1800 if light_changes or reflection_motion or geometry_motion or independent_views else 300)
             log=prefix.with_suffix('.log').read_text(errors='replace')
             errors=[line for line in log.splitlines() if '[error]' in line or 'VUID-' in line or 'SYNC-HAZARD' in line]
             baseline=[line for line in errors if 'SYNC-HAZARD-PRESENT-AFTER-WRITE' in line]
@@ -87,7 +114,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                 errors=[line for line in errors if line not in baseline]
             assert result.returncode==0 and not errors,(name,result.returncode,errors[:5])
             metadata=json.loads(Path(str(prefix)+'.lighting.json').read_text())
-            expected_provider = 'legacy' if mode!=3 or provider=='legacy' else 'hardware' if rt and provider in ('hardware','auto') else 'voxel'
+            expected_provider = 'legacy' if mode!=3 else 'hardware' if rt and provider in ('hardware','auto') else 'voxel'
             assert metadata['ray_provider'] == expected_provider, metadata
             if expected_provider == 'hardware':
                 assert metadata['ray_scene_ready'] and metadata['ray_scene_generation'] > 0, metadata
@@ -120,7 +147,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                 assert np.abs(capture[:,:,9,[0,2]][mask]).max() < 1e-4,('shading normal tilted',float(np.abs(capture[:,:,9,[0,2]][mask]).max()))
                 # Below-horizon lobe directions are outside the specular integral, so S stays at 1.
                 assert abs(specular.mean()-1) <= .005,report
-            if name in ('closed_box','forward_closed_box','single_sided_closed_box'):
+            if name in ('closed_box','forward_closed_box','single_sided_closed_box','blend_closed_box','transmission_closed_box'):
                 assert sky.max()<=1e-6 and specular.max()==0,report
             if name in ('bright_environment_plane','rotated_environment_plane'):
                 expected = environment_integral(prefix,metadata,capture[:,:,9,:3][mask][0])
@@ -174,7 +201,7 @@ if __name__=='__main__':
     parser.add_argument('--fixtures',nargs='+',default=['open_plane','closed_box','single_sided_closed_box','narrow_slot','thin_pole','alpha_mask','mirrored_two_sided'])
     parser.add_argument('--frames',type=int,default=64)
     parser.add_argument('--samples',type=int,choices=(1,2,4),default=4)
-    parser.add_argument('--provider',choices=['voxel','legacy','hardware','auto'],default='voxel')
+    parser.add_argument('--provider',choices=['voxel','hardware','auto'],default='voxel')
     parser.add_argument('--rt',action='store_true')
     parser.add_argument('--gpu',help='Device name substring passed to the native demo')
     parser.add_argument('--reference-samples',type=int,choices=(0,1024,4096),default=0)

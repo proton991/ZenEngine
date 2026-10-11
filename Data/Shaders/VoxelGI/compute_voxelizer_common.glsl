@@ -1,14 +1,4 @@
-struct Vertex
-{
-    vec4 position;
-    vec4 normal;
-    vec4 tangent;
-    vec2 texcoord;
-    vec2 uv1;
-    vec4 joint0;
-    vec4 weight0;
-    vec4 color;
-};
+#include "../Common/scene_vertex.glsl"
 
 layout(set = 1, binding = 0, rgba8) uniform writeonly image3D voxelTexture;
 

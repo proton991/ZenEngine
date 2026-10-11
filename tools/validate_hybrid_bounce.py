@@ -105,10 +105,12 @@ def capture_fixtures(args, root):
         folder=root/('reference' if reference else source)
         run(args.exe,folder,FIXTURES,provider=args.provider,rt=args.provider=='hardware',indirect=1,gpu=args.gpu,
             reference_samples=reference,bounce_source=source,resolution=128,environment_lighting=False,shadows=True,
-            light_changes=source=='rays' and reference==0,width=args.width,height=args.height)
+            light_changes=source=='rays' and reference==0,width=args.width,height=args.height,
+            allow_present_baseline=args.allow_present_baseline)
     # Forward composition of ray bounce: finite output and exact component sums (asserted by run).
     run(args.exe,root/'forward',['forward_closed_box'],provider=args.provider,rt=args.provider=='hardware',indirect=1,
-        gpu=args.gpu,bounce_source='rays',resolution=128,width=args.width,height=args.height)
+        gpu=args.gpu,bounce_source='rays',resolution=128,width=args.width,height=args.height,
+        allow_present_baseline=args.allow_present_baseline)
 
 
 def capture_sponza(args, root):
@@ -161,6 +163,8 @@ def main():
     parser.add_argument('--provider',choices=('hardware','voxel'),required=True)
     parser.add_argument('--gpu')
     parser.add_argument('--capture',action='store_true',help='Generate captures before analysis; otherwise inspect saved captures')
+    parser.add_argument('--allow-present-baseline',action='store_true',
+                        help='Report the previously reproduced PRESENT_AFTER_WRITE hazard separately; other errors still fail')
     parser.add_argument('--sponza',type=Path,help='glTF Sample Assets Sponza/glTF/Sponza.gltf; adds the frozen cameras')
     parser.add_argument('--width',type=int,default=960)
     parser.add_argument('--height',type=int,default=540)

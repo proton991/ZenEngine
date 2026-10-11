@@ -1,0 +1,984 @@
+{
+  "date": "2026-10-11",
+  "checkpoint": "4076f15add204213b550b6bd3f58e86955cf4355",
+  "record": "Doc/HybridGI/P0P4Acceptance.md",
+  "overall_acceptance_passed": false,
+  "latest_checkpoint": {
+    "date": "2026-10-11",
+    "status": "Implementation checkpoint; further image qualification deferred at user request",
+    "scope": "Historical capture metrics below identify their original candidates. Subsequent independent-backend controls and legacy retirement have build and focused routing coverage, not full mixed-provider image qualification.",
+    "recorded_candidate": {
+      "hardware_shipping": {"passed": 10, "required": 10, "artifact": "build/p0-p4-resolution/final-hardware-reset/static-results.json"},
+      "compute_shipping": {"passed": 10, "required": 10, "artifact": "build/p0-p4-resolution/final-voxel/static-results.json"},
+      "reset_settling": {"passed": 16, "required": 16, "artifact": "build/p0-p4-resolution/final-hardware-reset/settling-results.json"},
+      "independent_rt": {"passed": 18, "required": 18, "artifact": "build/p0-p4-resolution/independent-rt/report.json"}
+    },
+    "explicit_feature_backends": {
+      "implemented": true,
+      "features": ["sky", "specular_occlusion", "sky_cache", "bounce", "reflections", "shadows"],
+      "choices": ["compute", "hardware"],
+      "overall_selector": true,
+      "mixed_selection": true,
+      "old_controls_removed": true,
+      "build_targets_passed": ["zen_editor", "scene_renderer_demo", "RenderCoreTest", "EditorRenderingTest", "SpvShaders"],
+      "settings_history_tests": {"passed": 9, "artifact": "build/lighting-backends/settings-tests.json"},
+      "native_editor_tests": {"passed": 4, "artifact": "build/lighting-backends/editor-tests.json"},
+      "trace_filter_spirv_modules_validated": 3
+    },
+    "legacy_selector_retirement_built": true,
+    "remaining": [
+      "All-environment compute convergence",
+      "Latest candidate flagpole-region comparison",
+      "Current mixed-provider image acceptance; focused tests establish routing and submission only",
+      "P8 performance, memory and platform qualification"
+    ],
+    "report_only_limits": ["Compute Studio top-floor P99 20.28%", "Compute Studio hall RMS 24.88%"],
+    "active_rendering_sweeps": false
+  },
+  "configuration": {
+    "device": "NVIDIA GeForce RTX 5080",
+    "driver_version_raw": 2588573696,
+    "build": "MSVC 19.51 Debug",
+    "viewport": [
+      960,
+      540
+    ],
+    "voxel_resolution": 64,
+    "shipping_rays": 4,
+    "history_frames": 32,
+    "filter_iterations": 5,
+    "static_frames": 64,
+    "reset_frames": 32,
+    "fixed_step_hz": 60,
+    "limitations": "Native motion fixtures use 320x180; the 72-row component matrix covers 960x540 and 1920x1080 at64/128/256 voxels. Independent transport and frozen Sponza image gates are separate. Other devices remain unverified under decision3."
+  },
+  "phase_exit_met": {
+    "P0": true,
+    "P1": true,
+    "P2": false,
+    "P3": false,
+    "P4e": false
+  },
+  "limits": {
+    "analytic_relative_error": 0.005,
+    "closed_filtered_relative_max": 1e-06,
+    "converged_mean_bias": 0.01,
+    "converged_rms": 0.03,
+    "shipping_mean_bias": 0.02,
+    "shipping_rms": 0.08,
+    "shipping_p99": 0.2,
+    "cut_settle_frames": 32,
+    "light_settle_frames": 8,
+    "bounce_bias": 0.1,
+    "thin_wall_leak": 0.01
+  },
+  "shader_change": {
+    "path": "Data/Shaders/VoxelGI/hybrid_temporal.comp",
+    "sha256": "aabfd77ad56d5535c5d8200bf1976338b752a4a8ddace306b400dec5957fccdb",
+    "change": "Use configured steady diffuse bounce history (32 at frozen preset), replacing cap16; responsive limit8 remains.",
+    "validation": "spirv-val --target-env vulkan1.2 passed",
+    "independent_sky_scope": "Isolated-sky RT sweep preceded this patch; the changed ray-bounce branch was inactive in those captures."
+  },
+  "executable": {
+    "path": "E:\\Dev\\ZenEngine\\build\\x64-windows-msvc-debug\\bin\\scene_renderer_demo.exe",
+    "bytes": 22778368,
+    "sha256": "0f1df493d4b7762a489eb50f95b5136b85e1c09cdff87d5119b31bd1cebe986d"
+  },
+  "baseline_inputs": {
+    "verified": 71,
+    "hash_mismatches": 0,
+    "original_report_camera": "Only position archived; exact orientation/projection unavailable"
+  },
+  "cpu_analytic_fixtures": {
+    "open_plane": "pass",
+    "half_wall": "pass",
+    "closed_hemisphere": "pass",
+    "ggx_normal_incidence": "pass",
+    "empty_bounce": "pass",
+    "uniform_bounce": "pass",
+    "ggx_lobe_fraction": "pass",
+    "open_closed_specular": "pass",
+    "mask_continue": "pass",
+    "environment_mis": "pass"
+  },
+  "flagpoles": {
+    "regions": 15,
+    "shipping_passed": 15,
+    "max_converged_excess_rms": 0.01335839992278901
+  },
+  "independent_rt_sky": {
+    "views": 18,
+    "verdicts": {
+      "corridor-top": "Pass",
+      "corridor-hall": "Pass on 8x8 blocks (per-pixel noise 4.35%)",
+      "hotel-top": "Pass",
+      "qwantani-top": "Pass",
+      "qwantani-hall": "Pass",
+      "hotel-hall": "Pass on 8x8 blocks (per-pixel noise 4.14%)",
+      "carpentry-top": "Pass",
+      "kloofendal-top": "Pass",
+      "carpentry-hall": "Pass on 8x8 blocks (per-pixel noise 5.40%)",
+      "kloofendal-hall": "Pass",
+      "papermill-hall": "Pass",
+      "papermill-top": "Pass",
+      "kloppenheim-top": "Pass",
+      "kloppenheim-hall": "Pass on 8x8 blocks (per-pixel noise 3.37%)",
+      "studio-top": "Pass",
+      "studio-hall": "Pass on 8x8 blocks (per-pixel noise 11.14%)",
+      "emptyroom-top": "Pass",
+      "emptyroom-hall": "Pass on 8x8 blocks (per-pixel noise 3.11%)"
+    },
+    "max_full_image_abs_bias": 0.001043050899170339,
+    "max_full_image_excess_rms": 0.01815701051529519
+  },
+  "rt_isolated_sky_shipping": {
+    "views": 18,
+    "passed": 13,
+    "floor_passed": 18,
+    "failed": {
+      "kloppenheim-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.01578667014837265,
+        "bias": -0.0014485582942143083,
+        "rms": 0.06154995039105415,
+        "p99": 0.2689439058303833,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "hotel-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.031102148815989494,
+        "bias": -0.0015117881121113896,
+        "rms": 0.045714981853961945,
+        "p99": 0.1930539757013321,
+        "unexpected_zeros": 3,
+        "passed": false
+      },
+      "studio-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.003681108122691512,
+        "bias": -0.0014677152503281832,
+        "rms": 0.1955365687608719,
+        "p99": 0.4036397933959961,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "emptyroom-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.015056539326906204,
+        "bias": -0.0010519367642700672,
+        "rms": 0.05422758683562279,
+        "p99": 0.20379473268985748,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "corridor-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.0059173619374632835,
+        "bias": -0.001207349356263876,
+        "rms": 0.07373334467411041,
+        "p99": 0.2286434769630432,
+        "unexpected_zeros": 0,
+        "passed": false
+      }
+    }
+  },
+  "voxel_isolated_sky_shipping": {
+    "views": 10,
+    "passed": 6,
+    "floor_passed": 10,
+    "failed": {
+      "papermill-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.027051903307437897,
+        "bias": -0.002613555872812867,
+        "rms": 0.05546433851122856,
+        "p99": 0.21816633641719818,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "kloppenheim-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.008440417237579823,
+        "bias": -0.0020054448395967484,
+        "rms": 0.07975836098194122,
+        "p99": 0.32970190048217773,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "hotel-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.017079956829547882,
+        "bias": -0.0017887384165078402,
+        "rms": 0.07222133874893188,
+        "p99": 0.2586352825164795,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "carpentry-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.012658894062042236,
+        "bias": -0.0018164258217439055,
+        "rms": 0.056064311414957047,
+        "p99": 0.2401721477508545,
+        "unexpected_zeros": 0,
+        "passed": false
+      }
+    }
+  },
+  "compute_triangle_comparison": "Report-only voxel-geometry differences; see baseline-voxel/report.json.",
+  "composed_hardware_before": {
+    "views": 10,
+    "passed": 8,
+    "floor_passed": 10,
+    "failed": {
+      "kloppenheim-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.017652057111263275,
+        "bias": -0.0014422050444409251,
+        "rms": 0.0576055608689785,
+        "p99": 0.2513619661331177,
+        "unexpected_zeros": 0,
+        "passed": false
+      },
+      "hotel-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.03550859913229942,
+        "bias": -0.0016403798945248127,
+        "rms": 0.04840514063835144,
+        "p99": 0.20390772819519043,
+        "unexpected_zeros": 0,
+        "passed": false
+      }
+    },
+    "hotel_hall": {
+      "pixels": 518400,
+      "reference_mean": 0.03550859913229942,
+      "bias": -0.0016403798945248127,
+      "rms": 0.04840514063835144,
+      "p99": 0.20390772819519043,
+      "unexpected_zeros": 0,
+      "passed": false
+    }
+  },
+  "composed_hardware_after": {
+    "views": 10,
+    "passed": 9,
+    "floor_passed": 10,
+    "failed": {
+      "kloppenheim-hall": {
+        "pixels": 518400,
+        "reference_mean": 0.017652057111263275,
+        "bias": -0.0013982085511088371,
+        "rms": 0.057229913771152496,
+        "p99": 0.2500225305557251,
+        "unexpected_zeros": 0,
+        "passed": false
+      }
+    },
+    "hotel_hall": {
+      "pixels": 518400,
+      "reference_mean": 0.035508595407009125,
+      "bias": -0.001541813719086349,
+      "rms": 0.04659154638648033,
+      "p99": 0.19591422379016876,
+      "unexpected_zeros": 0,
+      "passed": true
+    }
+  },
+  "motion": {
+    "papermill-top": {
+      "poses": 4,
+      "passed": true,
+      "max_reprojection_pixels": 0.00278513292882493,
+      "identity_mismatches": 0
+    },
+    "papermill-hall": {
+      "poses": 4,
+      "passed": true,
+      "max_reprojection_pixels": 0.002871797757170492,
+      "identity_mismatches": 0
+    }
+  },
+  "settling_sky_frame32": {
+    "papermill-top": {
+      "events": 6,
+      "passed": 6,
+      "floor_passed": 6,
+      "failed": {}
+    },
+    "papermill-hall": {
+      "events": 6,
+      "passed": 1,
+      "floor_passed": 6,
+      "failed": {
+        "cut-32": {
+          "pixels": 518400,
+          "reference_mean": 0.06599214673042297,
+          "bias": -0.0030717093031853437,
+          "rms": 0.055550266057252884,
+          "p99": 0.20835906267166138,
+          "unexpected_zeros": 0,
+          "passed": false
+        },
+        "deform-32": {
+          "pixels": 518400,
+          "reference_mean": 0.046220920979976654,
+          "bias": -0.001743982662446797,
+          "rms": 0.05890236049890518,
+          "p99": 0.23240947723388672,
+          "unexpected_zeros": 1,
+          "passed": false
+        },
+        "alpha-32": {
+          "pixels": 518400,
+          "reference_mean": 0.04749590903520584,
+          "bias": -0.0020911453757435083,
+          "rms": 0.058242615312337875,
+          "p99": 0.2271345853805542,
+          "unexpected_zeros": 0,
+          "passed": false
+        },
+        "switch-voxel-32": {
+          "pixels": 518400,
+          "reference_mean": 0.027051901444792747,
+          "bias": -0.002837932435795665,
+          "rms": 0.08334650099277496,
+          "p99": 0.3223227858543396,
+          "unexpected_zeros": 3,
+          "passed": false
+        },
+        "switch-hardware-32": {
+          "pixels": 518400,
+          "reference_mean": 0.04736052826046944,
+          "bias": -0.002083336701616645,
+          "rms": 0.05881505832076073,
+          "p99": 0.23269715905189514,
+          "unexpected_zeros": 2,
+          "passed": false
+        }
+      }
+    }
+  },
+  "fixtures": {
+    "hardware": {
+      "shipping_fixture_names": [
+        "open_plane",
+        "closed_box",
+        "single_sided_closed_box",
+        "narrow_slot",
+        "thin_pole",
+        "alpha_mask",
+        "mirrored_two_sided",
+        "forward_open_plane",
+        "forward_closed_box",
+        "bright_environment_plane",
+        "rotated_environment_plane",
+        "black_environment_plane",
+        "normal_map_plane",
+        "bright_edge_near",
+        "bright_edge_middle",
+        "bright_edge_far",
+        "moving_occluder_light"
+      ],
+      "raw_analytic_relative_errors": {
+        "open_plane": 0.0003547979902581707,
+        "closed_box": 0.0,
+        "single_sided_closed_box": 0.0,
+        "forward_open_plane": 0.00035455953870105187,
+        "forward_closed_box": 0.0,
+        "bright_environment_plane": 0.0006944683485221739,
+        "rotated_environment_plane": 0.0003656146784814791,
+        "normal_map_plane": 0.0004221308045089245
+      },
+      "all_raw_analytic_passed": true,
+      "max_composition_error": 1.1920928955078125e-07,
+      "max_diffuse_split_error": 2.9802322387695312e-08
+    },
+    "voxel": {
+      "shipping_fixture_names": [
+        "open_plane",
+        "closed_box",
+        "single_sided_closed_box",
+        "narrow_slot",
+        "thin_pole",
+        "alpha_mask",
+        "mirrored_two_sided",
+        "forward_open_plane",
+        "forward_closed_box",
+        "bright_environment_plane",
+        "rotated_environment_plane",
+        "black_environment_plane",
+        "normal_map_plane",
+        "bright_edge_near",
+        "bright_edge_middle",
+        "bright_edge_far",
+        "moving_occluder_light"
+      ],
+      "raw_analytic_relative_errors": {
+        "open_plane": 0.0003547979902581707,
+        "closed_box": 0.0,
+        "single_sided_closed_box": 0.0,
+        "forward_open_plane": 0.0003547979902581707,
+        "forward_closed_box": 0.0,
+        "bright_environment_plane": 0.0006944683485221739,
+        "rotated_environment_plane": 0.0003656146784814791,
+        "normal_map_plane": 0.0004203850112389773
+      },
+      "all_raw_analytic_passed": true,
+      "max_composition_error": 1.1920928955078125e-07,
+      "max_diffuse_split_error": 2.9802322387695312e-08
+    }
+  },
+  "sky_cache": {
+    "voxel": 0.11415667831897736,
+    "hardware": 0.11871776729822159,
+    "ratio": 1.0399546399423045
+  },
+  "legacy": {
+    "top": {
+      "camera_matches": true,
+      "byte_identical": true
+    },
+    "hall": {
+      "camera_matches": true,
+      "byte_identical": true
+    }
+  },
+  "voxel_converged_vs_1024_reference": {
+    "top": {
+      "all_receivers": {
+        "pixels": 518400,
+        "reference_mean": 0.7303877472877502,
+        "bias": -2.0125667106185574e-06,
+        "rms": 0.001761161140166223,
+        "p99": 0.005389969330281019,
+        "unexpected_zeros": 0,
+        "passed": true
+      },
+      "sponza_floor": {
+        "pixels": 52404,
+        "reference_mean": 0.07373519986867905,
+        "bias": -2.3364944354398176e-05,
+        "rms": 0.0056975544430315495,
+        "p99": 0.01943955011665821,
+        "unexpected_zeros": 0,
+        "passed": true
+      }
+    },
+    "hall": {
+      "all_receivers": {
+        "pixels": 518400,
+        "reference_mean": 0.027051903307437897,
+        "bias": 1.4915666724846233e-05,
+        "rms": 0.008729326538741589,
+        "p99": 0.038708895444869995,
+        "unexpected_zeros": 0,
+        "passed": true
+      },
+      "sponza_floor": {
+        "pixels": 110395,
+        "reference_mean": 0.08079508692026138,
+        "bias": 1.982615140150301e-05,
+        "rms": 0.005610890686511993,
+        "p99": 0.018484922125935555,
+        "unexpected_zeros": 0,
+        "passed": true
+      }
+    }
+  },
+  "bounce_regression": {
+    "passed": true,
+    "fixtures": {
+      "point_light_room": {
+        "passed": true,
+        "independent_reference_bias": -0.045170361411899305,
+        "light_changes": {
+          "move_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "off_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "emissive_on_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "emissive_off_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "orbit_frame64": {
+            "passed": true,
+            "sky_history_retained": true
+          }
+        }
+      },
+      "thin_wall_light": {
+        "passed": true,
+        "independent_reference_bias": -0.047744837298220086,
+        "light_changes": {
+          "move_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "off_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "emissive_on_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "emissive_off_frame8": {
+            "passed": true,
+            "sky_history_retained": true
+          },
+          "orbit_frame64": {
+            "passed": true,
+            "sky_history_retained": true
+          }
+        },
+        "thin_wall": {
+          "lit_mean": 0.018631935119628906,
+          "unlit_mean": 1.5150538956731907e-06,
+          "ratio": 8.131489756407901e-05,
+          "lit_pixels": 163879,
+          "unlit_pixels": 163879,
+          "rejected_lookups": 204325.0,
+          "passed": true
+        },
+        "thin_wall_cone": {
+          "lit_mean": 0.010494831018149853,
+          "unlit_mean": 0.0024911530781537294,
+          "ratio": 0.2373695273268819,
+          "lit_pixels": 163879,
+          "unlit_pixels": 163879,
+          "rejected_lookups": 0.0,
+          "passed": false
+        }
+      }
+    }
+  },
+  "tests": {
+    "common-tests.json": {
+      "tests": 113,
+      "passed": 112,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    "config-tests.json": {
+      "tests": 21,
+      "passed": 21,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    },
+    "rendercore-tests-fixed.json": {
+      "tests": 51,
+      "passed": 51,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    },
+    "query-tests.json": {
+      "tests": 12,
+      "passed": 12,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    },
+    "voxel-tests.json": {
+      "tests": 20,
+      "passed": 20,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    }
+  },
+  "validation": {
+    "captures": 221,
+    "known_present_hazard_reports": 2210,
+    "unexpected_errors": []
+  },
+  "artifacts": [
+    {
+      "path": "build/acceptance-p0-p4/converged-truth.json",
+      "sha256": "187f8cc1a55f1d98f56e188f860ce5fccee9e82b26675aa6bedfc802e44d6141"
+    },
+    {
+      "path": "build/acceptance-p0-p4/flagpoles/report.json",
+      "sha256": "af5b9a1b9f39de639c41845da3842fcc13a27ff5b14521f6c7e13cdbad9f6f88"
+    },
+    {
+      "path": "build/acceptance-p0-p4/baseline-rt/report.json",
+      "sha256": "34fd58323602362b2a16289409931645cb658658ca214b274f527e198ff6d0ba"
+    },
+    {
+      "path": "build/acceptance-p0-p4/baseline-voxel/report.json",
+      "sha256": "bdb1a3daab3e592e6ac268aab7cd4228352e939038096d70a2ca7f56ec19938f"
+    },
+    {
+      "path": "build/acceptance-p0-p4/hardware/static-results.json",
+      "sha256": "a95c4ee282d78e9d4f22f6859c5926dc1cffc74708bc04c4f630f46947c86a29"
+    },
+    {
+      "path": "build/acceptance-p0-p4/hardware-steady32/static-results.json",
+      "sha256": "e67ced524be9eff46715997c53ce582c50e85478155680ea726866a5fa214b97"
+    },
+    {
+      "path": "build/acceptance-p0-p4/hardware-steady32/motion-results.json",
+      "sha256": "6609c09b2bc1e2621c0180ff587393c8dbb481c2ae8479aecd77eb34ac3e7376"
+    },
+    {
+      "path": "build/acceptance-p0-p4/hardware-steady32/settling-results.json",
+      "sha256": "3af87f93da5e450fd74d5db306a2c7efe25bcd743159f8cb4ebeabfad0503a2e"
+    },
+    {
+      "path": "build/acceptance-p0-p4/fixtures/summary.json",
+      "sha256": "25e4d317d30c6df12bd53bc85cbe749bf6a9940e55752006da9e05459af68e90"
+    },
+    {
+      "path": "build/acceptance-p0-p4/legacy/comparison.json",
+      "sha256": "e18139aebc6f6cbd382586dd93afcf903086768ab758ed096fc8bcb201dcb441"
+    },
+    {
+      "path": "build/acceptance-p0-p4/voxel-convergence/comparison.json",
+      "sha256": "67f68d30cb320806c201399e41439adbc07097d27005c2b4eddcf8c7398d384d"
+    },
+    {
+      "path": "build/acceptance-p0-p4/bounce-regression/bounce-results.json",
+      "sha256": "20ac58b7773a7c42b4ceaca560d192719348cb11f07b8c885ca91de0781d1a5a"
+    },
+    {
+      "path": "build/acceptance-p0-p4/native_checks.py",
+      "sha256": "c532add88e627410080e902e6a62ca425d5ebbd54d2b41ef1d7a0e2cc491349f"
+    },
+    {
+      "path": "build/acceptance-p0-p4/check_legacy.py",
+      "sha256": "229a231398f9e78c801441b423489b809179b7978d21543bc6426d75de773960"
+    },
+    {
+      "path": "build/acceptance-p0-p4/check_voxel_convergence.py",
+      "sha256": "6c19f57de683c44fec7edf48cde90b505989557b03648336581e2b4e7c035fcd"
+    }
+  ],
+  "camera_amendment": {
+    "date": "2026-10-11",
+    "approval": "Use the frozen views and flagpole regions",
+    "replaces": "Missing October 2 original camera orientation/projection",
+    "unchanged": [
+      "frozen top/hall matrices",
+      "flagpole-shadow regions",
+      "numerical limits"
+    ]
+  },
+  "gap_resolution": {
+    "matrix_rows": 72,
+    "matrix_passed": 72,
+    "motion_passed_both_providers": true,
+    "motion_max_pixels": 0.000347675,
+    "artifacts": [
+      {
+        "path": "build/p0-p4-resolution/configuration-matrix/configurations.json",
+        "sha256": "ed264274be38c8fba08a02eac499b7b773d9a2a9693ba446bcd253fd3e2ea3dc"
+      },
+      {
+        "path": "build/p0-p4-resolution/configuration-matrix/matrix-results.json",
+        "sha256": "4cb498d8147ef8131be51c9318c72f725eaa3b512463f4a6aa167697da98d5b7"
+      },
+      {
+        "path": "build/p0-p4-resolution/motion-fixed-hardware/motion-results.json",
+        "sha256": "95e571d8e69b9e8523188adf9cf7e30ce052ebe0fb8aaf787b6df25976d3c702"
+      },
+      {
+        "path": "build/p0-p4-resolution/motion-fixed-voxel/motion-results.json",
+        "sha256": "0b858b401f64ded363aea0e8b84d16a60b8335cdf4622a1eda3dc0b48ecdd9b8"
+      },
+      {
+        "path": "build/p0-p4-resolution/qualification/static-results.json",
+        "sha256": "d905eda524b870cf0d00facb696db0610ef4e54e1c98ea5d183a2fc8f91b5a6e"
+      },
+      {
+        "path": "build/p0-p4-resolution/coverage/coverage-results.json",
+        "sha256": "11182d7c79d42205cc5efc2f00b2c7468e8976b315d701222184f3dc6d93ebac"
+      },
+      {
+        "path": "build/p0-p4-resolution/common-tests.json",
+        "sha256": "6635a543a3f1116812f67aae41a0a76b56148adc93f82de843917dd95adfa41c"
+      },
+      {
+        "path": "build/p0-p4-resolution/config-tests.json",
+        "sha256": "24cd3d8d86e94a757a490aadbd3bea6d38a522939b4894ebadd8b5be0b21e653"
+      },
+      {
+        "path": "build/p0-p4-resolution/rendercore-tests.json",
+        "sha256": "2572fea57c988c783aa0f8e7305d23121b9120c154ba43883ca317ff989a6837"
+      },
+      {
+        "path": "build/p0-p4-resolution/qualification/settling-results.json",
+        "sha256": "73e38d818a98e278257798af8fa83bdc3df887e096e30b1b31257223c1875bac"
+      },
+      {
+        "path": "build/p0-p4-resolution/independent-rt/report.json",
+        "sha256": "ae6b706a682fb33b320b9e06e41e7956460df1db15ad310510576f3ddae7829e"
+      },
+      {
+        "path": "build/p0-p4-resolution/rgb-gaussian/results.json",
+        "sha256": "02415590dfe3327c269ebefdb343a40c50e95613a491cc763450cde4223af326"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-rendercore-tests.json",
+        "sha256": "8341e147f3f73d7e2eda4769bc92bae303c03a8b1ff22adb3cacf3827e71a74f"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-hardware-reset/static-results.json",
+        "sha256": "4a7a199cf13810cf0819a4bb5e3e88bddd5cbd2d83df3ffbbc3f1b1a8e5d0300"
+      },
+      {
+        "path": "build/p0-p4-resolution/provider-reset-probe/results.json",
+        "sha256": "60e15da435e66b3097c5b85825ea9e0afd6515c8937e00a39d539959f6dd8374"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-legacy/comparison.json",
+        "sha256": "e18139aebc6f6cbd382586dd93afcf903086768ab758ed096fc8bcb201dcb441"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-rayquery-tests.json",
+        "sha256": "fe5c0273c7e890a1ddf3751cb9ff64f9e7e3a08b0d681e74ca173f082675d66f"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-voxel-tests.json",
+        "sha256": "4d5b7a740c1b6f41c067f42e748c80c6f2d9a928a12f08e2346c471780a5fbf4"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-shader-validation.json",
+        "sha256": "b1710ab399c6974afda63e959259620f8f5e59d3b5e77d3fee3e82e745a06042"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-profile-tests.log",
+        "sha256": "9838d4d978c3041f7464d95b3fbc272cb66f4bd0a2fed15caf21c7c6edecb4f5"
+      },
+      {
+        "path": "build/p0-p4-resolution/final-hardware-reset/settling-results.json",
+        "sha256": "cc68be2480a489362fab222aaaa49154b091a5ada067a1a014c715665c9814e9"
+      }
+    ],
+    "image_candidates": "Final candidate passes all 10 hardware static views, all 16 reset cases and all 18 independent RT views. Compute and regression qualification continues.",
+    "hardware_static": {
+      "views": 10,
+      "passed": 10,
+      "complete": true,
+      "current_candidate": true,
+      "all_floors_passed": true,
+      "max_all_receivers_p99": 0.1745203286409378,
+      "max_floor_p99": 0.08643229305744171,
+      "max_bias": 0.002267043339088559,
+      "max_rms": 0.0419858954846859
+    },
+    "coverage": {
+      "hardware": {
+        "functional": 19,
+        "analytic": 10,
+        "max_raw_relative_error": 0.0006840890635995767,
+        "geometry_voxelizer_materials": 2,
+        "emission_cases": 2,
+        "passed": true
+      },
+      "voxel": {
+        "functional": 19,
+        "analytic": 10,
+        "max_raw_relative_error": 0.0006841960665369231,
+        "geometry_voxelizer_materials": 2,
+        "emission_cases": 2,
+        "passed": true
+      },
+      "sky_cache": {
+        "voxel": 0.11415667831897736,
+        "hardware": 0.11871776729822159,
+        "ratio": 1.0399546399423045
+      }
+    },
+    "regression_tests": {
+      "common": {
+        "tests": 113,
+        "failures": 0,
+        "disabled": 0,
+        "errors": 0
+      },
+      "config": {
+        "tests": 21,
+        "failures": 0,
+        "disabled": 0,
+        "errors": 0
+      },
+      "rendercore": {
+        "tests": 584,
+        "failures": 0,
+        "disabled": 7,
+        "errors": 0
+      }
+    },
+    "hardware_reset_candidate": {
+      "gated_cases": 16,
+      "passed": 16,
+      "remaining": null,
+      "artifact": "build/p0-p4-resolution/final-hardware-reset/settling-results.json"
+    },
+    "independent_current_estimator": {
+      "views": 18,
+      "passed": 18,
+      "block_decisions": 6,
+      "max_absolute_bias": 0.0010426099179312587,
+      "max_excess_rms": 0.017875335033639264,
+      "executable": {
+        "path": "E:\\Dev\\ZenEngine\\build\\x64-windows-msvc-debug\\bin\\scene_renderer_demo.exe",
+        "sha256": "7034cacdfa17ede31feee038645247cc88dbde5f92ba45f6630d4e0222e16952"
+      },
+      "applicability": "Current raw estimator. Subsequent edits change only spatial filtering, capture-only rotation/resize stages and comments/formatting; unfiltered reference arithmetic is unchanged."
+    },
+    "provider_guide_reset": {
+      "1": {
+        "all_receivers": {
+          "pixels": 518400,
+          "reference_mean": 0.027052273973822594,
+          "bias": -0.0033856744412332773,
+          "rms": 0.051671747118234634,
+          "p99": 0.16988429427146912,
+          "unexpected_zeros": 0,
+          "passed": true
+        },
+        "sponza_floor": {
+          "pixels": 110395,
+          "reference_mean": 0.08079585433006287,
+          "bias": -0.0026332943234592676,
+          "rms": 0.01875617727637291,
+          "p99": 0.06877920776605606,
+          "unexpected_zeros": 0,
+          "passed": true
+        }
+      },
+      "2": {
+        "all_receivers": {
+          "pixels": 518400,
+          "reference_mean": 0.04736045375466347,
+          "bias": -0.0023592039942741394,
+          "rms": 0.034155867993831635,
+          "p99": 0.11685217916965485,
+          "unexpected_zeros": 0,
+          "passed": true
+        },
+        "sponza_floor": {
+          "pixels": 110395,
+          "reference_mean": 0.14689266681671143,
+          "bias": -0.0025077443569898605,
+          "rms": 0.012535474263131618,
+          "p99": 0.044264644384384155,
+          "unexpected_zeros": 0,
+          "passed": true
+        }
+      }
+    },
+    "legacy_final_comparison": {
+      "top": {
+        "camera_matches": true,
+        "byte_identical": true,
+        "channels": {
+          "combined": {
+            "mean_before": 0.1025228351354599,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "analytic_direct": {
+            "mean_before": 0.0,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "diffuse_outgoing": {
+            "mean_before": 0.06470593065023422,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "specular_ibl": {
+            "mean_before": 0.03781690448522568,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "visible_emission": {
+            "mean_before": 0.0,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "escaped_environment_diffuse": {
+            "mean_before": 0.06470593065023422,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "bounced_diffuse": {
+            "mean_before": 0.0,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          }
+        }
+      },
+      "hall": {
+        "camera_matches": true,
+        "byte_identical": true,
+        "channels": {
+          "combined": {
+            "mean_before": 0.05015236511826515,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "analytic_direct": {
+            "mean_before": 0.0,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "diffuse_outgoing": {
+            "mean_before": 0.002819959307089448,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "specular_ibl": {
+            "mean_before": 0.04733240604400635,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "visible_emission": {
+            "mean_before": 0.0,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "escaped_environment_diffuse": {
+            "mean_before": 0.002819959307089448,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          },
+          "bounced_diffuse": {
+            "mean_before": 0.0,
+            "max_absolute_error": 0.0,
+            "bias": 0.0,
+            "rms": 0.0
+          }
+        }
+      }
+    }
+  }
+}

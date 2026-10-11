@@ -24,7 +24,7 @@ struct HybridGIUniformData
     Vec4               previousViewPosition{0};
     Vec4               previousViewDirection{0, 0, 1, 0};
     glm::uvec4         sampling{0};   // frame, sample count, history limit, history valid
-    glm::uvec4         provider{0};   // hardware provider, guide valid, reserved, reserved
+    glm::uvec4         provider{0};   // hardware trace variant, guide valid, hardware feature mask, reserved
     Vec4               rejection{0};  // plane threshold, specular enabled, temporal enabled, static reference
     glm::uvec4         bounce{0};     // ray bounce enabled, bounce history valid, responsive reconstruction, cache changed
     glm::uvec4         reflection{0}; // reflections enabled, history valid, responsive reconstruction, cache changed
@@ -94,26 +94,30 @@ private:
     RHIBuffer*    m_captureReadback{nullptr};
     RHITexture*   m_history[2][Count]{};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
-    RHIBuffer*          m_guide[2]{};
-    RDGTexture          m_outputSky, m_outputSpecular, m_outputBounce;
-    HeapVector<Mat4>    m_previousModels;
-    HeapVector<Mat4>    m_recordedModels;
-    Mat4                m_previousProjection{1};
-    Mat4                m_recordedProjection{1};
-    Mat4                m_recordedProjectionView{1};
-    Vec4                m_recordedViewPosition{0};
-    Vec4                m_recordedViewDirection{0, 0, 1, 0};
-    HybridGIUniformData m_uniforms;
-    VoxelGISettings     m_previousSettings;
-    bool                m_previousHardware{false};
-    bool                m_previousRayBounce{false};
-    bool                m_previousReflections{false};
-    glm::uvec2          m_extent{0};
-    uint64_t            m_geometry{0}, m_environment{0};
-    uint64_t            m_radianceGeneration{0}, m_recordedRadianceGeneration{0};
-    uint32_t            m_bounceResponsiveFrames{0}; // Shared responsive window for both hit-radiance signals.
-    uint32_t            m_frame{0}, m_current{0};
-    bool                m_valid{false}, m_prepared{false}, m_recorded{false};
-    const char*         m_resetReason{"initial"};
+    RHIBuffer*       m_guide[2]{};
+    RDGTexture       m_outputSky, m_outputSpecular, m_outputBounce;
+    HeapVector<Mat4> m_previousModels;
+    HeapVector<Mat4> m_recordedModels;
+    // Scene vertex uploads are immutable generations. Each view retains its last
+    // successfully rendered generation, including while other views advance.
+    RHIResourcePtr<RHIBuffer> m_previousVertices;
+    RHIResourcePtr<RHIBuffer> m_recordedVertices;
+    Mat4                      m_previousProjection{1};
+    Mat4                      m_recordedProjection{1};
+    Mat4                      m_recordedProjectionView{1};
+    Vec4                      m_recordedViewPosition{0};
+    Vec4                      m_recordedViewDirection{0, 0, 1, 0};
+    HybridGIUniformData       m_uniforms;
+    VoxelGISettings           m_previousSettings;
+    bool                      m_previousHardware{false};
+    bool                      m_previousRayBounce{false};
+    bool                      m_previousReflections{false};
+    glm::uvec2                m_extent{0};
+    uint64_t                  m_geometry{0}, m_environment{0};
+    uint64_t                  m_radianceGeneration{0}, m_recordedRadianceGeneration{0};
+    uint32_t                  m_bounceResponsiveFrames{0}; // Shared responsive window for both hit-radiance signals.
+    uint32_t                  m_frame{0}, m_current{0};
+    bool                      m_valid{false}, m_prepared{false}, m_recorded{false};
+    const char*               m_resetReason{"initial"};
 };
 } // namespace zen::rc

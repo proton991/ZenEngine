@@ -41,10 +41,12 @@ void HybridGIRenderer::Prepare(const RenderView& view, RenderScene& scene)
         m_scene = &scene;
         m_valid = false;
         m_previousModels.clear();
-        m_resetReason = "scene";
+        m_previousVertices = nullptr;
+        m_resetReason      = "scene";
     }
     const sg::CameraUniformData& camera = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
     m_recordedProjection                = camera.proj;
+    m_recordedVertices                  = scene.GetVertexBuffer();
     m_recordedProjectionView            = camera.projViewMatrix;
     const SceneUniformData& lighting    = *reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
     m_recordedViewPosition              = lighting.viewPos;
@@ -69,6 +71,8 @@ void HybridGIRenderer::Prepare(const RenderView& view, RenderScene& scene)
 void HybridGIRenderer::BindReceiverInputs(RDGPassDescBase& pass) const
 {
     pass.BindValue("uPreviousCamera", m_uniforms.previousProjectionView);
+    pass.BindStorageBuffer("PreviousVertices",
+                           m_valid && m_previousVertices ? m_previousVertices.Get() : m_recordedVertices.Get());
 }
 
 HybridReceiverDraw HybridGIRenderer::ReceiverDraw(uint32_t node, uint32_t material) const
@@ -83,9 +87,12 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width, uint32_t height, bool boun
 {
     if (m_extent != glm::uvec2(width, height))
     {
+        // The current receiver pass has already captured this frame's immutable generation.
+        RHIResourcePtr<RHIBuffer> recordedVertices = m_recordedVertices;
         Destroy();
-        m_extent      = glm::uvec2(width, height);
-        m_resetReason = "resize";
+        m_recordedVertices = std::move(recordedVertices);
+        m_extent           = glm::uvec2(width, height);
+        m_resetReason      = "resize";
     }
     bool valid = true;
     for (uint32_t side = 0; side < 2 && valid; ++side)
@@ -130,7 +137,7 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width, uint32_t height, bool boun
         if (m_guide[side] == nullptr)
         {
             // Per tile: the environment-tile weights and the number of frames they average.
-            m_guide[side] = m_device->CreateStorageBuffer(tiles.x * tiles.y * (ZEN_ENVIRONMENT_TILES + 1u) * sizeof(float),
+            m_guide[side] = m_device->CreateStorageBuffer(tiles.x * tiles.y * (ZEN_HYBRID_GUIDE_TILES + 1u) * sizeof(float),
                                                           nullptr, NameID(fmt::format("hybrid_guide_{}", side)));
             valid         = m_guide[side] != nullptr;
         }
@@ -163,11 +170,11 @@ void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
 
 bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI)
 {
-    const VoxelGISettings& settings    = voxelGI.GetSettings();
-    const bool             rays        = voxelGI.UsesRayBounce();
-    const bool             reflections = voxelGI.UsesReflections();
-    const bool             ready       = m_prepared && settings.rayProvider != VoxelGISettings::RayProvider::Legacy
-                                      && PrepareHistory(view.width, view.height, rays, reflections);
+    const VoxelGISettings& settings     = voxelGI.GetSettings();
+    const bool             rays         = voxelGI.UsesRayBounce();
+    const bool             reflections  = voxelGI.UsesReflections();
+    const uint32_t         hardwareMask = voxelGI.GetHardwareFeatureMask();
+    const bool             ready        = m_prepared && PrepareHistory(view.width, view.height, rays, reflections);
     if (ready)
     {
         const bool hadValidHistory = m_valid;
@@ -190,6 +197,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         }
         else if (settings.referenceSamples != m_previousSettings.referenceSamples
                  || settings.samples != m_previousSettings.samples || settings.rayProvider != m_previousSettings.rayProvider
+                 || settings.featureProviders != m_previousSettings.featureProviders
                  || settings.normalBiasVoxels != m_previousSettings.normalBiasVoxels
                  || settings.temporal != m_previousSettings.temporal
                  || settings.historyFrames != m_previousSettings.historyFrames
@@ -197,7 +205,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         {
             InvalidateHistory("settings");
         }
-        if (m_previousHardware != voxelGI.UsesHardwareQueries())
+        if (m_uniforms.provider.z != hardwareMask)
         {
             InvalidateHistory("provider_changed");
         }
@@ -225,18 +233,18 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             glm::uvec4(reflections ? 1u : 0u, m_valid && !reflectionReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
                        radianceSteps == 1 && !missingPrevious ? 1u : 0u);
         m_previousReflections = reflections;
-        m_previousHardware    = voxelGI.UsesHardwareQueries();
-        m_previousSettings    = settings;
-        m_previousRayBounce   = rays;
+        // Sky, specular occlusion, ray bounce and reflections share this dispatch.
+        m_previousHardware  = (hardwareMask & 27u) != 0;
+        m_previousSettings  = settings;
+        m_previousRayBounce = rays;
         m_uniforms.sampling = glm::uvec4(m_frame, settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples,
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
-        // A guide from a successful frame can survive geometry, opacity, settings and provider resets.
+        // A guide from a successful frame can survive geometry, opacity and sampling-setting resets.
+        // Provider changes use different visibility geometry and must relearn the proposal.
         // A reset reason alone cannot make a fresh or failed-frame guide safe to read.
         const std::string_view reason = m_resetReason;
-        const bool             guideValid =
-            hadValidHistory
-            && (m_valid || reason == "geometry_or_opacity" || reason == "settings" || reason == "provider_changed");
-        m_uniforms.provider           = glm::uvec4(m_previousHardware ? 1u : 0u, guideValid ? 1u : 0u, 0, 0);
+        const bool guideValid         = hadValidHistory && (m_valid || reason == "geometry_or_opacity" || reason == "settings");
+        m_uniforms.provider           = glm::uvec4(m_previousHardware ? 1u : 0u, guideValid ? 1u : 0u, hardwareMask, 0);
         m_uniforms.rejection          = Vec4(0.001f, settings.specularOcclusion ? 1.0f : 0.0f,
                                              settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
                                              settings.referenceSamples != 0 ? 1.0f : 0.0f);
@@ -273,12 +281,16 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const RDGTexture previousReflection = resources->CreateTexture(reflectionDesc);
         reflectionDesc.name                 = "hybrid_raw_reflection";
         reflectionDesc.texFormat.format     = DataFormat::eR32G32SFloat;
-        const RDGTexture   rawReflection    = resources->CreateTexture(reflectionDesc);
+        const RDGTexture rawReflection      = resources->CreateTexture(reflectionDesc);
+        desc.name                           = "hybrid_sky_guide";
+        const RDGTexture   skyGuide         = resources->CreateTexture(desc);
         RDGComputePassDesc trace;
         trace.SetShaderProgramName(m_previousHardware ? "HybridTraceHardwareSP" : "HybridTraceSP");
         trace.SetPassTag("HybridTrace");
         BindGuides(trace);
         voxelGI.BindEnvironmentSamplingInputs(trace);
+        voxelGI.BindEnvironmentHarmonics(trace);
+        trace.BindStorageImage("skyGuide", skyGuide, RDGContentGuarantee::eFullWrite);
         voxelGI.BindHitRadianceInputs(trace);
         if (m_previousHardware)
         {
@@ -302,8 +314,6 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
         });
 
-        desc.name                   = "hybrid_sky_guide";
-        const RDGTexture   skyGuide = resources->CreateTexture(desc);
         RDGComputePassDesc temporal;
         temporal.SetShaderProgramName("HybridTemporalSP");
         temporal.SetPassTag("HybridTemporal");
@@ -316,8 +326,6 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         temporal.BindSampledTexture("rawBouncePrevious", m_sampler, previous);
         temporal.BindSampledTexture("rawReflection", m_sampler, rawReflection);
         temporal.BindSampledTexture("rawReflectionPrevious", m_sampler, previousReflection);
-        voxelGI.BindEnvironmentHarmonics(temporal);
-        temporal.BindStorageImage("skyGuide", skyGuide, RDGContentGuarantee::eFullWrite);
         for (uint32_t texture = 0; texture < Count; ++texture)
         {
             temporal.BindSampledTexture(NameID(fmt::format("previous{}", kHistoryNames[texture])), m_sampler,
@@ -420,6 +428,7 @@ void HybridGIRenderer::OnRenderGraphExecuted(bool succeeded)
         m_valid   = true;
         ++m_frame;
         m_previousModels                  = m_recordedModels;
+        m_previousVertices                = m_recordedVertices;
         m_previousProjection              = m_recordedProjection;
         m_uniforms.previousProjectionView = m_recordedProjectionView;
         m_uniforms.previousViewPosition   = m_recordedViewPosition;
@@ -441,12 +450,15 @@ void HybridGIRenderer::OnRenderGraphExecuted(bool succeeded)
         m_valid       = false;
         m_resetReason = succeeded ? "inactive" : "failed_frame";
     }
-    m_recorded = false;
-    m_prepared = false;
+    m_recorded         = false;
+    m_prepared         = false;
+    m_recordedVertices = nullptr;
 }
 
 void HybridGIRenderer::Destroy()
 {
+    m_previousVertices = nullptr;
+    m_recordedVertices = nullptr;
     for (uint32_t side = 0; side < 2; ++side)
     {
         for (uint32_t texture = 0; texture < Count; ++texture)

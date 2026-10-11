@@ -7,6 +7,7 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/Shared/LightingCapture.h"
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
+#include "Platform/ConfigLoader.h"
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -87,19 +88,18 @@ bool WriteLightingMetadata(const std::string&        path,
                            uint32_t                  height,
                            const glm::uvec2&         skyCacheCounts)
 {
-    const rc::SceneUniformData& data     = *reinterpret_cast<const rc::SceneUniformData*>(scene.GetSceneUniformData());
+    const rc::SceneUniformData& data          = *reinterpret_cast<const rc::SceneUniformData*>(scene.GetSceneUniformData());
 
-    const sg::CameraUniformData& camera  = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
+    const sg::CameraUniformData& camera       = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
 
-    const rc::VoxelizerBase& voxelizer   = *server.RequestVoxelizer();
+    const rc::VoxelizerBase& voxelizer        = *server.RequestVoxelizer();
 
-    const glm::uvec2 gbuffer             = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
+    const glm::uvec2 gbuffer                  = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
 
-    const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
-    const rc::VoxelGISettings&  settings = server.RequestVoxelGI()->GetSettings();
-    const bool    reconstructed          = server.GetRenderOption() == rc::RenderOption::eVoxelGI
-                                        && settings.rayProvider != rc::VoxelGISettings::RayProvider::Legacy && hybrid != nullptr;
-    std::ofstream output(path + ".lighting.json");
+    const rc::HybridGIRenderer* hybrid        = server.RequestDeferredLightingRenderer()->GetHybridGI();
+    const rc::VoxelGISettings&  settings      = server.RequestVoxelGI()->GetSettings();
+    const bool                  reconstructed = server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr;
+    std::ofstream               output(path + ".lighting.json");
 
     output
         << std::setprecision(std::numeric_limits<float>::max_digits10) << "{\"version\":3,\"width\":" << width
@@ -221,8 +221,8 @@ bool SceneRendererDemo::CaptureProviderSwitching(const std::string& path)
     for (uint32_t stage = 0; stage < 3 && succeeded; ++stage)
     {
         rc::VoxelGISettings settings = original;
-        settings.rayProvider =
-            stage == 1 ? rc::VoxelGISettings::RayProvider::Voxel : rc::VoxelGISettings::RayProvider::Hardware;
+        settings.SetAllFeatureProviders(stage == 1 ? rc::VoxelGISettings::RayProvider::Voxel
+                                                   : rc::VoxelGISettings::RayProvider::Hardware);
         const std::string prefix = fmt::format("{}-{}", path, stage);
         succeeded = gi->SetSettings(settings) && CaptureLighting(prefix + "-frame1") && Run(30, false, 3, {}, true)
                  && CaptureLighting(prefix + "-frame32");
@@ -279,14 +279,23 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     {
         originalMaterials.push_back(material->data);
     }
-    const Vec3     camera      = m_camera->GetPos();
-    const Mat4     inverseView = glm::inverse(m_camera->GetViewMatrix());
-    const Vec3     front       = -Vec3(inverseView[2]);
-    const Vec3     right       = Vec3(inverseView[0]);
-    const char*    stages[]    = {"motion", "cut", "deform", "alpha"};
-    const uint32_t frames[]    = {1, 4, 8, 32};
-    bool           succeeded   = settings.referenceSamples == 0 && gi->UsesHardwareQueries() && !vertices.empty();
-    for (uint32_t stage = 0; stage < 4 && succeeded; ++stage)
+    const Vec3                   camera      = m_camera->GetPos();
+    const Mat4                   inverseView = glm::inverse(m_camera->GetViewMatrix());
+    const Vec3                   front       = -Vec3(inverseView[2]);
+    const Vec3                   right       = Vec3(inverseView[0]);
+    const char*                  stages[]    = {"motion", "cut", "deform", "alpha", "rotation", "resize"};
+    const uint32_t               frames[]    = {1, 4, 8, 32};
+    bool                         succeeded   = settings.referenceSamples == 0 && gi->UsesHardwareQueries() && !vertices.empty();
+    const platform::WindowExtent extent      = m_pWindow->GetExtent2D();
+    platform::ConfigLoader&      config      = platform::ConfigLoader::GetInstance();
+    float                        intensity   = 1.0f;
+    float                        rotation    = 0.0f;
+    bool                         enabled     = true;
+    bool                         visible     = true;
+    succeeded                                = succeeded && config.ReadNumber("environment_intensity", intensity)
+                                            && config.ReadNumber("environment_rotation_degrees", rotation) && config.ReadBool("environment_lighting", enabled)
+                                            && config.ReadBool("skybox_visible", visible);
+    for (uint32_t stage = 0; stage < 6 && succeeded; ++stage)
     {
         // Begin each event with a settled original scene. Captures after the event
         // are compared with a fresh static reference of that same altered scene.
@@ -322,7 +331,7 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
             }
             succeeded = succeeded && m_renderScene->UpdateVertices(0, deformed);
         }
-        else
+        else if (stage == 3)
         {
             uint32_t edited = 0;
             for (uint32_t index = 0; index < originalMaterials.size() && succeeded; ++index)
@@ -337,6 +346,19 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
                 }
             }
             succeeded = succeeded && edited != 0;
+        }
+        else if (stage == 4)
+        {
+            succeeded = succeeded && m_renderScene->SetEnvironmentLighting(intensity, rotation + 90.0f, enabled, visible);
+        }
+        else
+        {
+            // Execute a different extent before restoring it so the native history resources
+            // really are recreated. Frame one below is the first draw at the original extent.
+            m_pWindow->SetSize(extent.width / 2, extent.height / 2);
+            succeeded = succeeded && Run(1, false, 3, {}, true);
+            m_pWindow->SetSize(extent.width, extent.height);
+            m_pWindow->Update(false);
         }
         uint32_t previous = 0;
         for (uint32_t frame : frames)
@@ -366,6 +388,10 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
                 const bool restored = m_renderScene->UpdateMaterial(index, originalMaterials[index]);
                 restoredScene       = restored && restoredScene;
             }
+        }
+        else if (stage == 4)
+        {
+            restoredScene = m_renderScene->SetEnvironmentLighting(intensity, rotation, enabled, visible);
         }
         succeeded = succeeded && restoredSettings && restoredScene;
     }
@@ -408,6 +434,116 @@ bool SceneRendererDemo::CaptureReflectionMotion(const std::string& path)
     if (!succeeded)
     {
         LOGE("Reflection-motion capture or settings restoration failed");
+    }
+    return succeeded;
+}
+
+bool SceneRendererDemo::CaptureGeometryMotion(const std::string& path)
+{
+    rc::VoxelGIRenderer*            gi       = m_renderDevice->GetRendererServer()->RequestVoxelGI();
+    const rc::VoxelGISettings       settings = gi->GetSettings();
+    const HeapVector<asset::Vertex> vertices = m_renderScene->GetVertices();
+    const HeapVector<sg::Node*>&    nodes    = m_scene->GetRenderableNodes();
+    // The diagnostic fixture is an immutable floor followed by a six-vertex movable roof.
+    bool succeeded = nodes.size() == 2 && vertices.size() == 12 && settings.referenceSamples == 0;
+    if (succeeded)
+    {
+        const uint32_t moving   = nodes[1]->GetRenderableIndex();
+        const Mat4     original = nodes[1]->GetData().modelMatrix;
+        const char*    stages[] = {"transform", "deform"};
+        for (uint32_t stage = 0; stage < 2 && succeeded; ++stage)
+        {
+            succeeded = Run(63, false, 3, {}, true);
+            // Capture every moving frame before stopping, then repeat exactly those poses as
+            // converged references. No reference render interrupts the moving history sequence.
+            for (uint32_t referencePass = 0; referencePass < 2 && succeeded; ++referencePass)
+            {
+                rc::VoxelGISettings current = settings;
+                current.referenceSamples    = referencePass == 0 ? 0 : 1024;
+                succeeded                   = gi->SetSettings(current);
+                for (uint32_t frame = 1; frame <= 16 && succeeded; ++frame)
+                {
+                    const float displacement = (static_cast<float>(frame) - 8.0f) * 0.025f;
+                    if (stage == 0)
+                    {
+                        succeeded = m_renderScene->SetInstanceTransform(
+                            moving, glm::translate(Mat4(1.0f), Vec3(displacement, 0, 0)) * original);
+                    }
+                    else
+                    {
+                        HeapVector<asset::Vertex> deformed    = vertices;
+                        const Vec3                localOffset = Vec3(glm::inverse(original) * Vec4(displacement, 0, 0, 0));
+                        for (uint32_t vertex = 6; vertex < 12; ++vertex)
+                        {
+                            deformed[vertex].pos += Vec4(localOffset, 0.0f);
+                        }
+                        succeeded = m_renderScene->UpdateVertices(0, deformed);
+                    }
+                    if (referencePass != 0)
+                    {
+                        succeeded = succeeded && Run(63, false, 3, {}, true);
+                    }
+                    succeeded = succeeded
+                             && CaptureLighting(fmt::format("{}-{}-frame{}{}", path, stages[stage], frame,
+                                                            referencePass != 0 ? "-reference" : ""));
+                }
+                if (referencePass == 0)
+                {
+                    succeeded = succeeded && Run(31, false, 3, {}, true)
+                             && CaptureLighting(fmt::format("{}-{}-settled32", path, stages[stage]));
+                }
+            }
+            const bool restoredSettings  = gi->SetSettings(settings);
+            const bool restoredTransform = m_renderScene->SetInstanceTransform(moving, original);
+            const bool restoredVertices  = m_renderScene->UpdateVertices(0, vertices);
+            succeeded                    = succeeded && restoredSettings && restoredTransform && restoredVertices;
+        }
+    }
+    if (!succeeded)
+    {
+        LOGE("Geometry-motion capture requires the two-plane fixture; capture or restoration failed");
+    }
+    return succeeded;
+}
+
+bool SceneRendererDemo::CaptureIndependentViews(const std::string& path)
+{
+    rc::VoxelGIRenderer*      gi          = m_renderDevice->GetRendererServer()->RequestVoxelGI();
+    const rc::VoxelGISettings settings    = gi->GetSettings();
+    const Vec3                camera      = m_camera->GetPos();
+    const Mat4                inverseView = glm::inverse(m_camera->GetViewMatrix());
+    const Vec3                front       = -Vec3(inverseView[2]);
+    const Vec3                right       = Vec3(inverseView[0]);
+    bool                      succeeded   = settings.referenceSamples == 0;
+    for (uint32_t frame = 1; frame <= 32 && succeeded; ++frame)
+    {
+        for (uint32_t view = 1; view <= 2 && succeeded; ++view)
+        {
+            m_captureHistoryId = view;
+            const Vec3 eye     = camera + right * (view == 1 ? -.03f : .03f);
+            m_camera->SetPose(eye, eye + front);
+            succeeded = frame == 1 || frame == 2 || frame == 32
+                          ? CaptureLighting(fmt::format("{}-view{}-frame{}", path, view, frame))
+                          : Run(1, false, 3, {}, true);
+        }
+    }
+    rc::VoxelGISettings reference = settings;
+    reference.referenceSamples    = 1024;
+    succeeded                     = succeeded && gi->SetSettings(reference);
+    for (uint32_t view = 1; view <= 2 && succeeded; ++view)
+    {
+        m_captureHistoryId = view;
+        const Vec3 eye     = camera + right * (view == 1 ? -.03f : .03f);
+        m_camera->SetPose(eye, eye + front);
+        succeeded = Run(63, false, 3, {}, true) && CaptureLighting(fmt::format("{}-view{}-reference", path, view));
+    }
+    const bool restored = gi->SetSettings(settings);
+    m_captureHistoryId  = 0;
+    m_camera->SetPose(camera, camera + front);
+    succeeded = succeeded && restored;
+    if (!succeeded)
+    {
+        LOGE("Independent-view capture or settings restoration failed");
     }
     return succeeded;
 }
@@ -523,8 +659,7 @@ bool SceneRendererDemo::CaptureLighting(const std::string& path)
     RHIBuffer* hybridOutput   = nullptr;
     RHIBuffer* hybridReadback = nullptr;
     glm::uvec2 skyCacheCounts(0);
-    const bool captureHybrid = option == rc::RenderOption::eVoxelGI
-                            && server->RequestVoxelGI()->GetSettings().rayProvider != rc::VoxelGISettings::RayProvider::Legacy;
+    const bool captureHybrid = option == rc::RenderOption::eVoxelGI;
 
     if (succeeded)
     {

@@ -31,10 +31,11 @@ def box(lo,hi):
 
 def generate(folder):
     folder.mkdir(parents=True,exist_ok=True)
-    names=['open_plane','closed_box','half_wall','narrow_slot','thin_pole','alpha_mask','mirrored_two_sided',
+    names=['open_plane','closed_box','half_wall','narrow_slot','thin_pole','alpha_mask','mirrored_two_sided','motion_roof',
            'outside_volume','point_light_room','thin_wall_light','glossy_floor','moving_occluder_light',
            'forward_open_plane','forward_closed_box','single_sided_closed_box','bright_environment_plane',
-           'rotated_environment_plane','black_environment_plane','normal_map_plane'] + list(ALPHA_MATRIX) + list(BRIGHT_EDGES) + list(GLOSSY[1:])
+           'rotated_environment_plane','black_environment_plane','normal_map_plane',
+           'blend_closed_box','transmission_closed_box'] + list(ALPHA_MATRIX) + list(BRIGHT_EDGES) + list(GLOSSY[1:])
     manifest={}
     for name in names:
         f=Fixture()
@@ -57,7 +58,8 @@ def generate(folder):
             # box() winds opposite faces alike, so half the walls and the ceiling face
             # outward: receivers inside see their back faces, which must still block.
             f.document['materials'][0]['doubleSided']=False
-        if name in ('closed_box','point_light_room','forward_closed_box','single_sided_closed_box','glossy_closed','forward_glossy_closed'):
+        if name in ('closed_box','point_light_room','forward_closed_box','single_sided_closed_box','glossy_closed','forward_glossy_closed',
+                    'blend_closed_box','transmission_closed_box'):
             walls=box([-2,0,-2],[2,3,2])
             if name in ('point_light_room','glossy_closed','forward_glossy_closed'):
                 # The one-value radiance cache stores the authored owner side. This
@@ -70,7 +72,21 @@ def generate(folder):
                     n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]
                     inward=[-sum(p[k] for p in t)/3+(1.5 if k==1 else 0) for k in range(3)]
                     if sum(n[k]*inward[k] for k in range(3))<0:t[1],t[2]=t[2],t[1]
-            f.mesh(walls)
+            if name in ('blend_closed_box','transmission_closed_box'):
+                # Keep the opaque floor as the receiver; every enclosing wall is a separate
+                # material that the GI visibility contract treats as an opaque occluder.
+                walls=[t for t in walls if not all(p[1]==0 for p in t)]
+                material=copy.deepcopy(f.document['materials'][0])
+                if name=='blend_closed_box':
+                    material['alphaMode']='BLEND'
+                    material['pbrMetallicRoughness']['baseColorFactor'][3]=.25
+                else:
+                    material['extensions']={'KHR_materials_transmission':dict(transmissionFactor=1)}
+                    f.document['extensionsUsed']=['KHR_materials_transmission']
+                f.document['materials'].append(material)
+                f.mesh(walls,material=1)
+            else:
+                f.mesh(walls)
         elif name in ('glossy_floor','glossy_smooth','glossy_emissive'):
             # A finite coloured wall faces the point light and camera; its reflection has both
             # a lit interior and disocclusion edges. The previous placeholder lay through the camera.
@@ -128,6 +144,8 @@ def generate(folder):
             f.mesh(box([-.2,.5,-.2],[.2,1,.2]),transform=dict(scale=[-1,1,1]))
         elif name=='outside_volume':
             f.mesh(box([-2,5,-2],[2,5.1,2]))
+        elif name=='motion_roof':
+            f.mesh(quad([-.6,1,-.8],[.6,1,-.8],[.6,1,.8],[-.6,1,.8]))
         elif name=='moving_occluder_light':
             f.mesh(box([-.2,.8,-.2],[.2,1,.2]))
             times=f.attribute([0,1,2],'SCALAR')

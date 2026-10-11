@@ -3,6 +3,7 @@
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
 #include "SceneGraph/AABB.h"
+#include <array>
 
 namespace zen::platform
 {
@@ -22,10 +23,25 @@ struct VoxelGISettings
     {
         Auto,
         Voxel,
-        Hardware,
-        Legacy
+        Hardware
     };
     RayProvider rayProvider{RayProvider::Auto};
+    // Auto is retained for old configs/capture tools only; feature controls resolve to Compute or HW RT.
+    enum class Feature : uint32_t
+    {
+        Sky,
+        SpecularOcclusion,
+        SkyCache,
+        Bounce,
+        Reflections,
+        Shadows,
+        Count
+    };
+    std::array<RayProvider, static_cast<size_t>(Feature::Count)> featureProviders{};
+    RayProvider                                                  GetFeatureProvider(Feature feature) const;
+    uint32_t                                                     GetHardwareFeatureMask() const;
+    void                                                         SetFeatureProvider(Feature feature, RayProvider provider);
+    void                                                         SetAllFeatureProviders(RayProvider provider);
     enum class BounceSource : uint32_t
     {
         Auto, // Ray hits with hardware queries (P5 passed on the RT tier); cones on the compute tier until P8.
@@ -46,7 +62,7 @@ struct VoxelGISettings
         Off,
         On
     };
-    Reflections reflections{Reflections::Auto};
+    Reflections reflections{Reflections::On};
     float       indirectIntensity{1.0f};
     float       coneAngleDegrees{60.0f};
     float       stepScale{1.0f};
@@ -132,22 +148,32 @@ public:
     {
         return m_hardwareQueries;
     }
+    bool UsesHardwareQueries(VoxelGISettings::Feature feature) const
+    {
+        return m_hardwareQueries && m_settings.GetFeatureProvider(feature) == VoxelGISettings::RayProvider::Hardware;
+    }
+    uint32_t GetHardwareFeatureMask() const
+    {
+        return m_hardwareQueries ? m_settings.GetHardwareFeatureMask() : 0;
+    }
     bool UsesHardwareShadows() const
     {
-        return m_settings.shadows && m_settings.rtShadows && m_hardwareQueries;
+        return m_settings.shadows && m_settings.rtShadows && UsesHardwareQueries(VoxelGISettings::Feature::Shadows);
     }
     // The resolved bounce source; valid once BuildRayQueryGraph has selected the provider.
     bool UsesRayBounce() const
     {
         return m_settings.bounceSource == VoxelGISettings::BounceSource::Rays
-            || (m_settings.bounceSource == VoxelGISettings::BounceSource::Auto && m_hardwareQueries);
+            || (m_settings.bounceSource == VoxelGISettings::BounceSource::Auto
+                && UsesHardwareQueries(VoxelGISettings::Feature::Bounce));
     }
     // Resolved reflection enablement; reflections need the specular-occlusion rays they reuse.
     bool UsesReflections() const
     {
-        return m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy && m_settings.specularOcclusion
+        return m_settings.specularOcclusion
             && (m_settings.reflections == VoxelGISettings::Reflections::On
-                || (m_settings.reflections == VoxelGISettings::Reflections::Auto && m_hardwareQueries));
+                || (m_settings.reflections == VoxelGISettings::Reflections::Auto
+                    && UsesHardwareQueries(VoxelGISettings::Feature::Reflections)));
     }
     const char* GetProviderReason() const
     {

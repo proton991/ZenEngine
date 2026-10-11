@@ -10,6 +10,55 @@
 
 namespace zen::rc
 {
+VoxelGISettings::RayProvider VoxelGISettings::GetFeatureProvider(Feature feature) const
+{
+    const RayProvider selected  = featureProviders[static_cast<size_t>(feature)];
+    const RayProvider inherited = selected == RayProvider::Auto ? rayProvider : selected;
+    return inherited == RayProvider::Voxel ? RayProvider::Voxel : RayProvider::Hardware;
+}
+
+uint32_t VoxelGISettings::GetHardwareFeatureMask() const
+{
+    uint32_t mask = 0;
+    for (uint32_t index = 0; index < static_cast<uint32_t>(Feature::Count); ++index)
+    {
+        if (GetFeatureProvider(static_cast<Feature>(index)) == RayProvider::Hardware)
+        {
+            mask |= 1u << index;
+        }
+    }
+    return mask;
+}
+
+void VoxelGISettings::SetFeatureProvider(Feature feature, RayProvider provider)
+{
+    featureProviders[static_cast<size_t>(feature)] = provider;
+    // Explicit feature selection supersedes the old algorithm/enable overrides.
+    switch (feature)
+    {
+        case Feature::Bounce: bounceSource = BounceSource::Auto; break;
+        case Feature::Reflections:
+            reflections       = Reflections::On;
+            specularOcclusion = true;
+            break;
+        case Feature::SpecularOcclusion: specularOcclusion = true; break;
+        case Feature::Shadows:
+            shadows   = true;
+            rtShadows = true;
+            break;
+        default: break;
+    }
+}
+
+void VoxelGISettings::SetAllFeatureProviders(RayProvider provider)
+{
+    rayProvider = provider;
+    for (uint32_t index = 0; index < static_cast<uint32_t>(Feature::Count); ++index)
+    {
+        SetFeatureProvider(static_cast<Feature>(index), provider);
+    }
+}
+
 VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) :
     m_rayQuery(device), m_device(device), m_voxelizer(voxelizer)
 {
@@ -49,19 +98,25 @@ VoxelGIVisibilityBounds BuildVoxelGIVisibilityBounds(const sg::AABB& geometryBou
 
 bool ValidateVoxelGISettings(const VoxelGISettings& settings)
 {
-    return std::isfinite(settings.indirectIntensity) && settings.indirectIntensity >= 0 && settings.indirectIntensity <= 10
-        && std::isfinite(settings.coneAngleDegrees) && settings.coneAngleDegrees >= 10 && settings.coneAngleDegrees <= 90
-        && std::isfinite(settings.stepScale) && settings.stepScale >= 0.25f && settings.stepScale <= 2
-        && std::isfinite(settings.normalBiasVoxels) && settings.normalBiasVoxels >= 0.5f && settings.normalBiasVoxels <= 4
-        && std::isfinite(settings.maxDistanceGridLengths) && settings.maxDistanceGridLengths > 0
-        && settings.maxDistanceGridLengths <= 2 && (settings.coneCount == 4 || settings.coneCount == 6)
-        && settings.maxSteps >= 8 && settings.maxSteps <= 512
+    bool providersValid = true;
+    for (VoxelGISettings::RayProvider provider : settings.featureProviders)
+    {
+        providersValid =
+            providersValid && static_cast<uint32_t>(provider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Hardware);
+    }
+    return providersValid && std::isfinite(settings.indirectIntensity) && settings.indirectIntensity >= 0
+        && settings.indirectIntensity <= 10 && std::isfinite(settings.coneAngleDegrees) && settings.coneAngleDegrees >= 10
+        && settings.coneAngleDegrees <= 90 && std::isfinite(settings.stepScale) && settings.stepScale >= 0.25f
+        && settings.stepScale <= 2 && std::isfinite(settings.normalBiasVoxels) && settings.normalBiasVoxels >= 0.5f
+        && settings.normalBiasVoxels <= 4 && std::isfinite(settings.maxDistanceGridLengths)
+        && settings.maxDistanceGridLengths > 0 && settings.maxDistanceGridLengths <= 2
+        && (settings.coneCount == 4 || settings.coneCount == 6) && settings.maxSteps >= 8 && settings.maxSteps <= 512
         && (settings.samples == 1 || settings.samples == 2 || settings.samples == 4)
         && (settings.referenceSamples == 0 || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
         && settings.historyFrames >= 1 && settings.historyFrames <= 256
         && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
-        && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Legacy);
+        && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Hardware);
 }
 
 bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
@@ -72,12 +127,16 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
     {
         if (settings.coneCount != m_settings.coneCount || settings.normalBiasVoxels != m_settings.normalBiasVoxels
             || settings.environmentLighting != m_settings.environmentLighting
-            || settings.coneAngleDegrees != m_settings.coneAngleDegrees || settings.rayProvider != m_settings.rayProvider)
+            || settings.coneAngleDegrees != m_settings.coneAngleDegrees
+            || settings.GetFeatureProvider(VoxelGISettings::Feature::SkyCache)
+                   != m_settings.GetFeatureProvider(VoxelGISettings::Feature::SkyCache))
         {
             m_environmentRevision = 0;
         }
 
         if (settings.shadows != m_settings.shadows || settings.rtShadows != m_settings.rtShadows
+            || settings.GetFeatureProvider(VoxelGISettings::Feature::Shadows)
+                   != m_settings.GetFeatureProvider(VoxelGISettings::Feature::Shadows)
             || settings.analyticLighting != m_settings.analyticLighting
             || settings.emissiveLighting != m_settings.emissiveLighting
             || settings.normalBiasVoxels != m_settings.normalBiasVoxels)
@@ -125,24 +184,43 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid      &= config.ReadBool("voxel_gi_temporal", settings.temporal);
     valid      &= config.ReadBool("voxel_gi_filter", settings.filter);
     valid      &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
-    const std::string reflections  = config.GetString("voxel_gi_reflections", "auto");
-    valid                         &= reflections == "auto" || reflections == "true" || reflections == "false";
-    settings.reflections           = reflections == "true"  ? VoxelGISettings::Reflections::On
-                                   : reflections == "false" ? VoxelGISettings::Reflections::Off
-                                                            : VoxelGISettings::Reflections::Auto;
-    const std::string provider     = config.GetString("voxel_gi_ray_provider", "auto");
-    const std::string bounce       = config.GetString("voxel_gi_bounce_source", "auto");
-    valid                         &= bounce == "auto" || bounce == "cone" || bounce == "rays";
-    settings.bounceSource          = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
-                                   : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
-                                                      : VoxelGISettings::BounceSource::Auto;
-    valid                &= provider == "auto" || provider == "voxel" || provider == "hardware" || provider == "legacy";
-    settings.rayProvider  = provider == "legacy"   ? VoxelGISettings::RayProvider::Legacy
-                          : provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
-                          : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
-                                                   : VoxelGISettings::RayProvider::Auto;
+    const std::string reflections    = config.GetString("voxel_gi_reflections", "true");
+    valid                           &= reflections == "auto" || reflections == "true" || reflections == "false";
+    settings.reflections             = reflections == "true"  ? VoxelGISettings::Reflections::On
+                                     : reflections == "false" ? VoxelGISettings::Reflections::Off
+                                                              : VoxelGISettings::Reflections::Auto;
+    const std::string provider       = config.GetString("voxel_gi_ray_provider", "auto");
+    const std::string bounce         = config.GetString("voxel_gi_bounce_source", "auto");
+    valid                           &= bounce == "auto" || bounce == "cone" || bounce == "rays";
+    settings.bounceSource            = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
+                                     : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
+                                                        : VoxelGISettings::BounceSource::Auto;
+    valid                           &= provider == "auto" || provider == "voxel" || provider == "hardware";
+    settings.rayProvider             = provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
+                                     : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
+                                                              : VoxelGISettings::RayProvider::Auto;
 
-    valid                 = valid && ValidateVoxelGISettings(settings);
+    const char*       featureKeys[]  = {"voxel_gi_sky_backend",    "voxel_gi_specular_backend",    "voxel_gi_sky_cache_backend",
+                                        "voxel_gi_bounce_backend", "voxel_gi_reflections_backend", "voxel_gi_shadows_backend"};
+    const std::string backend        = config.GetString("voxel_gi_backend", "");
+    valid                           &= backend.empty() || backend == "compute" || backend == "hardware";
+    if (!backend.empty())
+    {
+        settings.SetAllFeatureProviders(backend == "compute" ? VoxelGISettings::RayProvider::Voxel
+                                                             : VoxelGISettings::RayProvider::Hardware);
+    }
+    for (uint32_t index = 0; index < static_cast<uint32_t>(VoxelGISettings::Feature::Count); ++index)
+    {
+        const std::string value  = config.GetString(featureKeys[index], "");
+        valid                   &= value.empty() || value == "compute" || value == "hardware";
+        if (!value.empty())
+        {
+            settings.SetFeatureProvider(static_cast<VoxelGISettings::Feature>(index),
+                                        value == "compute" ? VoxelGISettings::RayProvider::Voxel
+                                                           : VoxelGISettings::RayProvider::Hardware);
+        }
+    }
+    valid = valid && ValidateVoxelGISettings(settings);
 
     if (valid)
     {
@@ -231,8 +309,8 @@ bool VoxelGIRenderer::Init()
             m_environmentLuminance =
                 m_device->CreateStorageBuffer(ZEN_ENVIRONMENT_IMPORTANCE_ROWS * ZEN_ENVIRONMENT_IMPORTANCE_SIZE * sizeof(float),
                                               nullptr, "environment_luminance");
-            m_environmentTiles = m_device->CreateStorageBuffer(
-                ZEN_ENVIRONMENT_TILES * (ZEN_ENVIRONMENT_TILE_SIZE + 1u) * sizeof(float), nullptr, "environment_tiles");
+            m_environmentTiles =
+                m_device->CreateStorageBuffer(ZEN_ENVIRONMENT_TILE_CDF_SIZE * sizeof(float), nullptr, "environment_tiles");
             // Source count, source tiles and the residual tile prefix sums (environment_tiles.comp).
             m_environmentSources = m_device->CreateStorageBuffer((1u + ZEN_ENVIRONMENT_MAX_SOURCES + ZEN_ENVIRONMENT_TILES + 1u)
                                                                      * sizeof(uint32_t),
@@ -311,14 +389,11 @@ void VoxelGIRenderer::BuildRayQueryGraph()
     {
         const bool  previousHardware = m_hardwareQueries;
         const char* previousReason   = m_providerReason;
-        const bool  requestHardware  = m_settings.rayProvider == VoxelGISettings::RayProvider::Auto
-                                    || m_settings.rayProvider == VoxelGISettings::RayProvider::Hardware;
+        const bool  requestHardware  = m_settings.GetHardwareFeatureMask() != 0;
         m_hardwareQueries =
             requestHardware
             && m_rayQuery.BuildRenderGraph(*m_scene, uint64_t(m_settings.accelerationStructureBudgetMB) * 1024 * 1024);
-        m_providerReason = requestHardware                                                ? m_rayQuery.GetReason()
-                         : m_settings.rayProvider == VoxelGISettings::RayProvider::Legacy ? "legacy_selected"
-                                                                                          : "voxel_selected";
+        m_providerReason = requestHardware ? m_rayQuery.GetReason() : "voxel_selected";
         if (!requestHardware && previousHardware)
         {
             m_rayQuery.Destroy();
@@ -330,11 +405,7 @@ void VoxelGIRenderer::BuildRayQueryGraph()
         }
         if (previousHardware != m_hardwareQueries || previousReason != m_providerReason)
         {
-            LOGI("Hybrid GI selected {}: {}",
-                 m_hardwareQueries                                                ? "hardware"
-                 : m_settings.rayProvider == VoxelGISettings::RayProvider::Legacy ? "legacy"
-                                                                                  : "voxel",
-                 m_providerReason);
+            LOGI("Hybrid GI selected {}: {}", m_hardwareQueries ? "hardware" : "voxel", m_providerReason);
         }
     }
 }
@@ -386,7 +457,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             BuildMipChain(m_albedoMips, "VoxelFilterAlbedoSP", "VoxelOpacityMip");
         }
 
-        if (m_environmentRevision != m_recordedEnvironment && m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy)
+        if (m_environmentRevision != m_recordedEnvironment)
         {
             BuildEnvironmentDistribution();
         }
@@ -395,15 +466,15 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
         {
             RDGComputePassDesc sky;
 
-            const bool surfaceSky =
-                m_settings.rayProvider != VoxelGISettings::RayProvider::Legacy && m_scene->GetVoxelTriangleCount() != 0;
-            sky.SetShaderProgramName(surfaceSky ? (m_hardwareQueries ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceSP")
+            const bool surfaceSky  = m_scene->GetVoxelTriangleCount() != 0;
+            const bool hardwareSky = UsesHardwareQueries(VoxelGISettings::Feature::SkyCache);
+            sky.SetShaderProgramName(surfaceSky ? (hardwareSky ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceSP")
                                                 : "VoxelSkyIrradianceLegacySP");
             if (surfaceSky)
             {
                 BindEnvironmentSamplingInputs(sky);
                 sky.BindStorageImage("voxelOwner", textures.pOwner->GetDefaultView());
-                if (m_hardwareQueries)
+                if (hardwareSky)
                 {
                     m_rayQuery.BindInputs(sky, *m_scene);
                 }
@@ -418,7 +489,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             sky.SetPassTag("VoxelSkyIrradiance");
 
-            sky.SetQueuePreference(m_hardwareQueries ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
+            sky.SetQueuePreference(hardwareSky ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
 
             BindFrameData(sky);
 
@@ -555,9 +626,7 @@ void VoxelGIRenderer::BindRayInputs(RDGPassDescBase& pass) const
 
 void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass) const
 {
-    pass.BindValue("uGISettings", m_uniforms);
-    const EnvTexture& env = m_scene->GetEnvTexture();
-    pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
+    BindRayInputs(pass);
     m_rayQuery.BindInputs(pass, *m_scene);
 }
 

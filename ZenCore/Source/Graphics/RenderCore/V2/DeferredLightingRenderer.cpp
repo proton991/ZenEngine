@@ -273,7 +273,7 @@ bool DeferredLightingRenderer::BuildLightingCaptureClear(const RenderView& view)
 
 void DeferredLightingRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
 {
-    BuildGBufferGraph(view, voxelGI != nullptr && voxelGI->GetSettings().rayProvider != VoxelGISettings::RayProvider::Legacy);
+    BuildGBufferGraph(view, voxelGI != nullptr);
 
     BuildCompositionGraph(view, voxelGI, shadows);
 }

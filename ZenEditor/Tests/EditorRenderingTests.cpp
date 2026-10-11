@@ -1877,6 +1877,49 @@ uint64_t PixelEnergy(const HeapVector<uint8_t>& pixels)
     return sum;
 }
 
+TEST_P(EditorRendering, LightingBackendsSwitchIndependently)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), true);
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("shadow_toggle.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+    rc::RendererServer&   server    = *device->GetRendererServer();
+    rc::RenderingSettings settings  = editor.GetRenderingState().GetDraft();
+    settings.algorithm              = rc::RenderAlgorithm::eVoxelGI;
+    settings.debug.output           = rc::DebugOutput::eFinal;
+    settings.gi.resolution          = 64;
+    settings.gi.shadowMapResolution = 128;
+    settings.gi.cone                = rc::VoxelGISettings{};
+    const bool     hardware         = device->GetGPUInfo().rayQuery.IsUsable();
+    const uint32_t featureCount     = static_cast<uint32_t>(rc::VoxelGISettings::Feature::Count);
+    // All compute, each feature alone on hardware, all hardware, then back to compute.
+    for (uint32_t frame = 0; frame < featureCount + 3; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+        if (frame >= 1 && frame <= featureCount)
+        {
+            settings.gi.cone.SetFeatureProvider(static_cast<rc::VoxelGISettings::Feature>(frame - 1),
+                                                rc::VoxelGISettings::RayProvider::Hardware);
+        }
+        else if (frame == featureCount + 1)
+        {
+            settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
+        }
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+        ASSERT_TRUE(Frame(*device, editor));
+        const rc::VoxelGIRenderer& gi = *server.RequestVoxelGI();
+        EXPECT_EQ(server.GetRenderOption(), rc::RenderOption::eVoxelGI);
+        EXPECT_EQ(gi.GetHardwareFeatureMask(), hardware ? settings.gi.cone.GetHardwareFeatureMask() : 0u);
+        EXPECT_EQ(gi.UsesHardwareShadows(), hardware && (frame == featureCount || frame == featureCount + 1));
+        EXPECT_EQ(gi.UsesRayBounce(), hardware && (frame == 4 || frame == featureCount + 1));
+        EXPECT_TRUE(gi.UsesReflections());
+    }
+    DestroyDevice(*device, editor);
+}
+
 TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelection)
 {
     UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), true);
@@ -1920,8 +1963,8 @@ TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelect
     EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.rtShadows = true;
     for (rc::VoxelGISettings::RayProvider provider :
-         {rc::VoxelGISettings::RayProvider::Voxel, rc::VoxelGISettings::RayProvider::Legacy,
-          rc::VoxelGISettings::RayProvider::Hardware, rc::VoxelGISettings::RayProvider::Auto})
+         {rc::VoxelGISettings::RayProvider::Voxel, rc::VoxelGISettings::RayProvider::Hardware,
+          rc::VoxelGISettings::RayProvider::Auto})
     {
         settings.gi.cone.rayProvider = provider;
         EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces),
@@ -1929,6 +1972,12 @@ TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelect
                       && (provider == rc::VoxelGISettings::RayProvider::Hardware
                           || provider == rc::VoxelGISettings::RayProvider::Auto));
     }
+    settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
+    settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Voxel);
+    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+    settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Hardware);
+    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
     settings.debug.output = rc::DebugOutput::eShadow;
     EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.shadows = false;

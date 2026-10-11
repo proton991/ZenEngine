@@ -66,7 +66,7 @@ void GeometryVoxelizer::BuildVoxelizationGraph()
             desc.BindIndexBuffer(m_pScene->GetIndexBuffer());
 
             pRDG->AddGraphicsPass(std::move(desc))
-                .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene, GI_ALL),
+                .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene, GI_ALL, true, false),
                                      dimension = m_voxelTexResolution](RDGPassCmdEncoder& encoder) {
                     VoxelizationSP::PushConstantsData constants{};
 

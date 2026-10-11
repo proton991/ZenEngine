@@ -35,7 +35,7 @@ def main():
     parser.add_argument('--width', type=int, default=960)
     parser.add_argument('--height', type=int, default=540)
     parser.add_argument('--resolution', type=int, choices=(64, 128, 256), default=64)
-    parser.add_argument('--provider', choices=('auto', 'voxel', 'hardware', 'legacy'), default='voxel')
+    parser.add_argument('--provider', choices=('auto', 'voxel', 'hardware'), default='voxel')
     parser.add_argument('--as-budget-mb', type=int, default=0, help='Acceleration-structure preflight cap; zero leaves it unset')
     parser.add_argument('--samples', type=int, choices=(1, 2, 4), default=4)
     parser.add_argument('--reference-samples', type=int, choices=(0, 1024, 4096), default=0)
@@ -56,7 +56,9 @@ def main():
     parser.add_argument('--origin-stress', action='store_true',
                         help='Also translate scene and camera by 0, 100 and 10000 normalized X units; capture each after 64 frames')
     parser.add_argument('--stability', action='store_true',
-                        help='Capture camera motion/cut, vertex deformation and alpha edits at frames 1/4/8/32 and fresh 1024-sample references')
+                        help='Capture camera motion/cut, deformation, alpha edits, environment rotation and resize at frames 1/4/8/32 with fresh references')
+    parser.add_argument('--camera-motion', action='store_true',
+                        help='Capture while moving at frames 8/16/24/32 and matching static references; requires reflections enabled')
     args = parser.parse_args()
     assert args.frames >= 2
     assert args.as_budget_mb >= 0
@@ -98,7 +100,8 @@ def main():
                     voxel_gi_acceleration_structure_budget_mb=args.as_budget_mb,
                     voxel_gi_samples=args.samples, voxel_gi_reference_samples=args.reference_samples,
                     voxel_gi_history_frames=args.history_frames, voxel_gi_temporal=str(args.temporal).lower(),
-                    voxel_gi_filter=str(args.filter).lower(), voxel_gi_specular_occlusion='true')
+                    voxel_gi_filter=str(args.filter).lower(), voxel_gi_specular_occlusion='true',
+                    voxel_gi_reflections='auto')
     settings.update({'dynamic_light.enabled': 'false', 'light_markers.enabled': 'false'})
     config = ROOT / 'Data/engine.cfg'
     original = config.read_bytes()
@@ -116,11 +119,13 @@ def main():
         command.append(f'--capture-origin-stress={prefix}-origin')
     if args.stability:
         command.append(f'--capture-stability={prefix}-stability')
+    if args.camera_motion:
+        command.append(f'--capture-reflection-motion={prefix}-motion')
     try:
         config.write_bytes(changed)
         with Path(str(prefix) + '.log').open('w') as log:
             result = subprocess.run(command, cwd=ROOT, env=environment, stdout=log,
-                                    stderr=subprocess.STDOUT, timeout=600)
+                                    stderr=subprocess.STDOUT, timeout=1200 if args.stability else 600)
         assert result.returncode == 0, f'Capture failed; inspect {prefix}.log'
     finally:
         if config.read_bytes() != changed:

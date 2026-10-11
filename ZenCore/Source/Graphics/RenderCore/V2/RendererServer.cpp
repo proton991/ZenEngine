@@ -150,8 +150,7 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                 if (m_frameRenderOption == RenderOption::eVoxelGI)
                 {
-                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, m_pVoxelGI->GetSettings().rayProvider
-                                                                             != VoxelGISettings::RayProvider::Legacy);
+                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, true);
 
                     m_pVoxelizer->BuildVoxelizationGraph();
 
@@ -169,7 +168,9 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                     // The hardware visibility provider covers the full raster scene,
                     // including occluders outside the radiance-cache volume.
-                    if (!m_pVoxelGI->UsesHardwareQueries()
+                    if ((!m_pVoxelGI->UsesHardwareQueries(VoxelGISettings::Feature::Sky)
+                         || !m_pVoxelGI->UsesHardwareQueries(VoxelGISettings::Feature::SpecularOcclusion)
+                         || !m_pVoxelGI->UsesHardwareQueries(VoxelGISettings::Feature::SkyCache))
                         && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
                     {
                         m_frameRenderOption     = RenderOption::ePBR;

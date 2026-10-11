@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "imgui.h"
+#include "ImGui/LightingBackendControls.h"
 #include <algorithm>
 
 namespace zen::ui
@@ -172,8 +173,9 @@ void RuntimeDebugUI::BuildSettings()
     MarkGIEdit(
         ImGui::SliderFloat("Indirect intensity", &m_draft.cone.indirectIntensity, 0, 10, "%.2f", ImGuiSliderFlags_AlwaysClamp));
 
-    MarkGIEdit(ImGui::Checkbox("Shadows", &m_draft.cone.shadows));
-    MarkGIEdit(ImGui::Checkbox("Hardware shadow rays", &m_draft.cone.rtShadows));
+    const rc::VoxelGIRenderer* gi = m_device.GetRendererServer()->RequestVoxelGI();
+    MarkGIEdit(DrawLightingBackendControls(m_draft.cone, gi != nullptr && gi->UsesHardwareQueries(),
+                                           gi != nullptr ? gi->GetProviderReason() : "GI inactive"));
 
     if (ImGui::CollapsingHeader("Voxel resources"))
     {
@@ -244,14 +246,8 @@ void RuntimeDebugUI::BuildSettings()
         }
     }
 
-    if (ImGui::CollapsingHeader("Hybrid sky and specular"))
+    if (ImGui::CollapsingHeader("Sampling and reconstruction"))
     {
-        int provider = static_cast<int>(m_draft.cone.rayProvider);
-        if (ImGui::Combo("Ray provider", &provider, "Auto\0Voxel\0Hardware (falls back to voxel)\0Legacy comparison\0"))
-        {
-            m_draft.cone.rayProvider = static_cast<rc::VoxelGISettings::RayProvider>(provider);
-            MarkGIEdit(true);
-        }
         int samples = m_draft.cone.samples == 1 ? 0 : m_draft.cone.samples == 2 ? 1 : 2;
         if (ImGui::Combo("Diffuse samples", &samples, "1\0 2\0 4\0"))
         {
@@ -260,9 +256,7 @@ void RuntimeDebugUI::BuildSettings()
         }
         MarkGIEdit(ImGui::Checkbox("Temporal accumulation", &m_draft.cone.temporal));
         MarkGIEdit(ImGui::Checkbox("Spatial filter", &m_draft.cone.filter));
-        MarkGIEdit(ImGui::Checkbox("Specular occlusion", &m_draft.cone.specularOcclusion));
         MarkGIEdit(UIntSlider("History frames", m_draft.cone.historyFrames, 1, 256));
-        ImGui::TextUnformatted("Provider: voxel. Bounce: cones. Reflected scene radiance: unavailable.");
     }
 
     if (ImGui::CollapsingHeader("Cone tracing"))

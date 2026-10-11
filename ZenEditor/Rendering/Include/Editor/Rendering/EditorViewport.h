@@ -18,6 +18,8 @@ struct EditorRenderSnapshot
     rc::DebugOutputDescription debug;
     bool                       lightMarkers{false};
     float                      lightMarkerSize{0.02f};
+    bool                       hardwareQueries{false};
+    std::string                rayQueryReason;
 };
 
 // A completed GPU surface pick. The stamp is the one supplied with the request; the

@@ -1,3 +1,42 @@
+TEST_F(RenderCoreTest, VoxelDrawRecordsIncludeBlendAndTransmissionWithoutChangingReceiverCoverage)
+{
+    sg::Scene                           source;
+    HeapVector<UniquePtr<sg::Material>> materials;
+    HeapVector<UniquePtr<sg::SubMesh>>  primitives;
+    sg::Mesh                            mesh("occluders");
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        UniquePtr<sg::Material> material        = MakeUnique<sg::Material>("surface");
+        material->index                         = i;
+        material->data.surfaceProperties.y      = i == 0 ? static_cast<float>(sg::AlphaMode::Blend)
+                                                : i == 2 ? static_cast<float>(sg::AlphaMode::Mask)
+                                                         : static_cast<float>(sg::AlphaMode::Opaque);
+        material->data.sheenColorTransmission.w = i == 1 ? 1.0f : 0.0f;
+        UniquePtr<sg::SubMesh> primitive        = MakeUnique<sg::SubMesh>("triangle", i * 3, 3, 3);
+        primitive->SetMaterial(i, material.Get());
+        mesh.AddSubMesh(primitive.Get());
+        primitives.push_back(std::move(primitive));
+        materials.push_back(std::move(material));
+    }
+    sg::Node node(0, "occluders");
+    node.AddComponent(&mesh);
+    source.AddRenderableNode(&node);
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene                     scene(device, data);
+    const HeapVector<SceneMeshDraw> occluders = SnapshotSceneDraws(scene, GI_ALL, true, false);
+    ASSERT_EQ(occluders.size(), 4u);
+    for (uint32_t i = 0; i < occluders.size(); ++i)
+    {
+        EXPECT_EQ(occluders[i].firstTriangle, i);
+        EXPECT_EQ(occluders[i].materialIndex, i);
+    }
+    const HeapVector<SceneMeshDraw> receivers = SnapshotSceneDraws(scene);
+    ASSERT_EQ(receivers.size(), 2u);
+    EXPECT_EQ(receivers[0].firstTriangle, 2u);
+    EXPECT_EQ(receivers[1].firstTriangle, 3u);
+}
+
 TEST_F(RenderCoreTest, VoxelRevisionPublishesOnlyAfterSuccessfulHandoff)
 {
     TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);

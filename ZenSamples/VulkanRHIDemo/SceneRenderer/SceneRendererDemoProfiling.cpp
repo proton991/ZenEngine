@@ -982,11 +982,7 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device, RHIViewport& 
 
         frame.resolvedMode  = static_cast<uint32_t>(server.GetRenderOption()) + 1;
 
-        frame.method =
-            server.GetRenderOption() == rc::RenderOption::eVoxelGI
-                ? (server.RequestVoxelGI()->GetSettings().rayProvider == rc::VoxelGISettings::RayProvider::Legacy ? "cone"
-                                                                                                                  : "hybrid")
-                : "none";
+        frame.method        = server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "hybrid" : "none";
 
         state.RetainCurrentFrame();
 
@@ -1056,13 +1052,9 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
 
         JSONString(output, voxels.UsesAveragedReflectance() ? "averaged" : "owner");
 
-        output << ",\"gi_method\":\"" << (cone.rayProvider == rc::VoxelGISettings::RayProvider::Legacy ? "cone" : "hybrid")
-               << "\""
+        output << ",\"gi_method\":\"hybrid\""
                << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider) << ",\"bounce_source\":\""
-               << (cone.rayProvider != rc::VoxelGISettings::RayProvider::Legacy && server.RequestVoxelGI()->UsesRayBounce()
-                       ? "rays"
-                       : "cone")
-               << "\""
+               << (server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone") << "\""
                << ",\"diffuse_samples\":" << cone.samples << ",\"reference_samples\":" << cone.referenceSamples
                << ",\"history_frames\":" << cone.historyFrames << ",\"temporal\":" << cone.temporal
                << ",\"filter\":" << cone.filter << ",\"specular_occlusion\":" << cone.specularOcclusion

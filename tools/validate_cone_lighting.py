@@ -1,4 +1,8 @@
-"""Validate Cone contribution isolation and mesh-shadow injection on a Vulkan device.
+"""Historical pre-hybrid cone contribution and mesh-shadow injection checker.
+
+Requires an archived executable that still accepts voxel_gi_ray_provider=legacy.
+The current renderer retired that comparison option after P3; use
+validate_hybrid_matrix.py and validate_hybrid_coverage.py for current composition.
 
 Run with --exe pointing to scene_renderer_demo. Uses scene-linear HDR captures,
 checks both voxelizers and reflectance policies, and restores engine.cfg exactly.

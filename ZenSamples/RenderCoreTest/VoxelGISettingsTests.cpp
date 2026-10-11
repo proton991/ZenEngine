@@ -22,7 +22,11 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
                               "voxel_gi_temporal=1",
                               "voxel_gi_filter=invalid",
                               "voxel_gi_ray_provider=invalid",
+                              "voxel_gi_ray_provider=legacy",
                               "voxel_gi_rt_shadows=invalid",
+                              "voxel_gi_backend=auto",
+                              "voxel_gi_sky_backend=auto",
+                              "voxel_gi_shadows_backend=invalid",
                               "shadow_map_resolution=0",
                               "voxel_reflectance_policy=invalid",
                               "voxel_reflectance_policy=averaged",
@@ -49,6 +53,30 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
 
         EXPECT_EQ(settings.cone.indirectIntensity, 1.0f);
     }
+}
+
+TEST(VoxelGIRuntimeSettings, ExplicitBackendsOverrideLegacyControlsAndRemainIndependent)
+{
+    std::istringstream     stream("voxel_gi_backend=compute\nvoxel_gi_sky_backend=hardware\n"
+                                  "voxel_gi_reflections_backend=hardware\nvoxel_gi_bounce_source=rays\n"
+                                  "voxel_gi_rt_shadows=false\nvoxel_gi_reflections=false\n");
+    platform::ConfigLoader config(stream);
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 17u);
+    EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Auto);
+    EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::On);
+    EXPECT_TRUE(settings.cone.rtShadows);
+    const VoxelGIRuntimeSettings previous = settings;
+    settings.cone.SetFeatureProvider(VoxelGISettings::Feature::Shadows, VoxelGISettings::RayProvider::Hardware);
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 49u);
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
+    settings.cone.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 0u);
+    settings.cone.SetAllFeatureProviders(VoxelGISettings::RayProvider::Hardware);
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 63u);
+    settings.cone.featureProviders[0] = static_cast<VoxelGISettings::RayProvider>(99);
+    EXPECT_FALSE(ValidateVoxelGISettings(settings.cone));
 }
 
 TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
@@ -106,8 +134,8 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
     ASSERT_TRUE(LoadVoxelGIRuntimeSettings(bounceConfig, settings));
     EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Rays);
     EXPECT_TRUE(settings.cone.rtShadows);
-    // Reflections with hardware queries, occlusion only otherwise (P6 measured; P8 chooses the compute tier).
-    EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::Auto);
+    // Explicit backends support reflections on both providers.
+    EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::On);
     std::istringstream     invalidStream("voxel_gi_bounce_source=invalid\n");
     platform::ConfigLoader invalidConfig(invalidStream);
     EXPECT_FALSE(LoadVoxelGIRuntimeSettings(invalidConfig, settings));

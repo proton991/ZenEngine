@@ -13,7 +13,7 @@ layout(set=1,binding=10,rgba16f) uniform writeonly image2D filteredSky;
 layout(set=1,binding=11,rgba16f) uniform writeonly image2D filteredSpecular;
 layout(set=1,binding=12) uniform sampler2D inputVariance;
 layout(set=1,binding=13,rgba32f) uniform writeonly image2D filteredVariance;
-// Unoccluded irradiance guide from the temporal pass (hybrid_sky_guide.glsl).
+// Visible irradiance guide from the trace pass, including the learned angular visibility.
 layout(set=1,binding=14) uniform sampler2D skyGuide;
 layout(set=1,binding=15) uniform sampler2D inputBounce;
 layout(set=1,binding=16) uniform sampler2D bounceMoments;
@@ -37,7 +37,6 @@ vec4 ReadVariance(ivec2 p)
 vec3 SkyGuide(ivec2 p) { return texelFetch(skyGuide,p,0).rgb; }
 bool OccupiedStart(ivec2 p)
 {
-    if(hybrid.provider.x!=0u) return false;
     vec3 uv=WorldToVoxelUV(TraceOrigin(HybridPosition(p),HybridGeometricNormal(p)));
     return InsideVoxelVolume(uv) && texelFetch(voxelOpacity,ivec3(floor(uv*gi.volume.x)),0).a>0.5;
 }
@@ -76,8 +75,8 @@ void main()
     {
         ivec2 q=p+ivec2(x,y)*int(atrous.stepWidth);
         if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity) continue;
-        // Preserve exact D2 start-cell occlusion; filtering it away leaks at wall bases.
-        if(occupiedStart!=OccupiedStart(q)) continue;
+        // Apply the occupied-start boundary only to channels using voxel visibility.
+        bool differentStart=occupiedStart!=OccupiedStart(q);
         vec3 delta=HybridPosition(q)-position;
         float plane=abs(dot(delta,geometric));
         if(plane>hybrid.rejection.x*max(1.0,length(delta))) continue;
@@ -90,8 +89,18 @@ void main()
         vec4 difference=abs(vec4(HybridLuminance(sampleSky.rgb)*sampleScale.x,sampleSpec.a,HybridLuminance(sampleBounce),HybridLuminance(sampleSpec.rgb))-centerValue);
         vec4 neighborVariance=ReadVariance(q)*sampleScale*sampleScale;
         // Diffuse lighting must preserve the sharp visibility edges of small HDR sources.
-        vec4 sigma=vec4(1,4,4,4)*sqrt(max(variance+neighborVariance,vec4(0)))+vec4(1e-4)*scale;
+        vec4 sigma=vec4(1.5,4,4,4)*sqrt(max(variance+neighborVariance,vec4(0)))+vec4(1e-4)*scale;
         vec4 w=kernel[x+2]*kernel[y+2]*normalWeight*exp(-difference/sigma);
+        vec3 skyDifference=sampleSky.rgb/sampleGuide-center.rgb/guide;
+        float skyDistance=dot(skyDifference,skyDifference)/(3.0*sigma.x*sigma.x);
+        w.x=kernel[x+2]*kernel[y+2]*normalWeight*exp(-0.5*skyDistance);
+        if(differentStart)
+        {
+            if((hybrid.provider.z&1u)==0u) w.x=0.0;
+            if((hybrid.provider.z&2u)==0u) w.y=0.0;
+            if((hybrid.provider.z&8u)==0u) w.z=0.0;
+            if((hybrid.provider.z&16u)==0u) w.w=0.0;
+        }
         // Smooth reflections keep a small footprint; roughness boundaries must not exchange lobes.
         if(abs(roughness-texelFetch(receiverRoughness,q,0).g)>0.02
             || (float(atrous.stepWidth)>max(1.0,roughness*roughness*128.0) && any(notEqual(q,p)))) w.a=0.0;

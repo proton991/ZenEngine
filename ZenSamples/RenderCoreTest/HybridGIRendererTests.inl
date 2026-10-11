@@ -42,16 +42,19 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     VoxelGIRenderer gi(device, &volumes);
     gi.SetRenderScene(&scene);
     ASSERT_TRUE(gi.Init());
-    VoxelGISettings bounceSettings = gi.GetSettings();
-    bounceSettings.bounceSource    = VoxelGISettings::BounceSource::Rays;
+    // Establish the test's starting state independently of engine.cfg and earlier config tests.
+    VoxelGISettings bounceSettings;
+    bounceSettings.bounceSource = VoxelGISettings::BounceSource::Rays;
     // The test device has no hardware queries, so automatic reflections would resolve to off.
     bounceSettings.reflections = VoxelGISettings::Reflections::On;
     ASSERT_TRUE(gi.SetSettings(bounceSettings));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
     renderer.SetRenderScene(&scene);
-    RenderView        view  = RenderView::FromViewport(viewport);
-    HybridGIRenderer* first = nullptr;
+    RenderView             view  = RenderView::FromViewport(viewport);
+    HybridGIRenderer*      first = nullptr;
+    HeapVector<RHIBuffer*> vertexGenerations;
+    vertexGenerations.push_back(sceneInputs.vertices);
     for (uint32_t frame = 0; frame < 16; ++frame)
     {
         SCOPED_TRACE(frame);
@@ -115,8 +118,26 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
             changed.analyticLighting = frame == 14;
             ASSERT_TRUE(gi.SetSettings(changed));
         }
+        if (frame >= 1 && frame <= 3)
+        {
+            // Replace the immutable vertex generation without replacing the scene facade.
+            sceneInputs.vertices = Buffer();
+            ownedBuffers.push_back(sceneInputs.vertices);
+            vertexGenerations.push_back(sceneInputs.vertices);
+            scene.PrepareBuffers();
+        }
         renderer.BuildGBufferGraph(view, true);
         HybridGIRenderer* hybrid = renderer.GetHybridGI();
+        if (frame <= 4)
+        {
+            // Frame 1 fails, so frame 2 must restart from its current vertices. The second
+            // view at frame 3 must not replace the first view's successful frame-2 state.
+            const uint32_t  previousGeneration[5] = {0, 0, 2, 3, 2};
+            RDGPassDescBase receiver;
+            hybrid->BindReceiverInputs(receiver);
+            ASSERT_EQ(receiver.bufferStorage.size(), 1u);
+            EXPECT_EQ(receiver.bufferStorage[0], vertexGenerations[previousGeneration[frame]]);
+        }
         if (frame == 0)
         {
             first = hybrid;

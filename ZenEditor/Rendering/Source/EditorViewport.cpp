@@ -237,8 +237,8 @@ bool EditorViewport::PrepareScene(const LoadedScene& candidate, std::string& err
         m_pendingScene           = MakeUnique<rc::RenderScene>(&m_device, data);
 
         valid                    = m_pendingScene->Init()
-             && m_pendingScene->SetEnvironmentLighting(m_environment.intensity, m_environment.rotationDegrees,
-                                                       m_environment.lighting, m_environment.skybox);
+                                && m_pendingScene->SetEnvironmentLighting(m_environment.intensity, m_environment.rotationDegrees,
+                                                                          m_environment.lighting, m_environment.skybox);
     }
 
     // Finish candidate uploads without resetting the active scene's bindings. The
@@ -490,7 +490,9 @@ EditorRenderSnapshot EditorViewport::GetSnapshot() const
             server.GetEffectiveVoxelizer(),
             server.GetDebugOutputDescription(),
             server.RequestDeferredLightingRenderer()->GetLightMarkersEnabled(),
-            server.RequestDeferredLightingRenderer()->GetLightMarkerSize()};
+            server.RequestDeferredLightingRenderer()->GetLightMarkerSize(),
+            server.RequestVoxelGI() != nullptr && server.RequestVoxelGI()->UsesHardwareQueries(),
+            server.RequestVoxelGI() != nullptr ? server.RequestVoxelGI()->GetProviderReason() : "GI inactive"};
 }
 
 bool EditorViewport::ApplyRenderingSettings(const rc::RenderingSettings& settings, bool retryResources, std::string& error)

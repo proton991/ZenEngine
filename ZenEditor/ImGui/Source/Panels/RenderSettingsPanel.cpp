@@ -1,5 +1,6 @@
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
+#include "ImGui/LightingBackendControls.h"
 
 namespace zen::editor
 {
@@ -345,6 +346,8 @@ private:
 
         bool changed                         = false;
 
+        changed |= ui::DrawLightingBackendControls(settings.cone, snapshot.hardwareQueries, snapshot.rayQueryReason.c_str());
+
         if (ImGui::CollapsingHeader("Shadows"))
         {
             if (ImGui::Button("Reset shadows"))
@@ -353,16 +356,15 @@ private:
 
                 settings.cone.shadows        = editor.GetRenderingDefaults().gi.cone.shadows;
                 settings.cone.rtShadows      = editor.GetRenderingDefaults().gi.cone.rtShadows;
+                settings.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)] =
+                    editor.GetRenderingDefaults().gi.cone.GetFeatureProvider(rc::VoxelGISettings::Feature::Shadows);
 
-                changed                      = true;
+                changed = true;
             }
 
             DrawHint(
                 "Mesh shadows affect direct lights in PBR + voxel GI and update immediately. Environment lighting and voxel occlusion are independent.");
 
-            changed |= ImGui::Checkbox("Mesh shadows", &settings.cone.shadows);
-            changed |= ImGui::Checkbox("Hardware shadow rays", &settings.cone.rtShadows);
-            DrawHint("Hard shadows with the hardware GI provider; shadow maps are used when hardware queries are unavailable.");
 
             int resolution                = static_cast<int>(settings.shadowMapResolution);
 
@@ -401,30 +403,20 @@ private:
             }
 
             rc::VoxelGISettings& cone  = settings.cone;
-            changed                   |= ImGui::Checkbox(PropertyLabel("Specular occlusion").c_str(), &cone.specularOcclusion);
-            int         reflections    = static_cast<int>(cone.reflections);
-            const char* reflectionModes[] = {"Auto", "Off", "On"};
-            changed                     |= ImGui::Combo(PropertyLabel("Reflections").c_str(), &reflections, reflectionModes, 3);
-            cone.reflections             = static_cast<rc::VoxelGISettings::Reflections>(reflections);
 
-            int         bounce           = static_cast<int>(cone.bounceSource);
-            const char* bounceSources[]  = {"Auto", "Cones", "Ray hits"};
-            changed                     |= ImGui::Combo(PropertyLabel("Bounce source").c_str(), &bounce, bounceSources, 3);
-            cone.bounceSource            = static_cast<rc::VoxelGISettings::BounceSource>(bounce);
+            int count                  = cone.coneCount == 4 ? 0 : 1;
 
-            int count                    = cone.coneCount == 4 ? 0 : 1;
+            const char* counts[]       = {"4", "6"};
 
-            const char* counts[]         = {"4", "6"};
+            changed                   |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
 
-            changed                     |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
+            cone.coneCount             = count == 0 ? 4 : 6;
 
-            cone.coneCount               = count == 0 ? 4 : 6;
+            int steps                  = static_cast<int>(cone.maxSteps);
 
-            int steps                    = static_cast<int>(cone.maxSteps);
+            changed                   |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
 
-            changed                     |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
-
-            cone.maxSteps                = static_cast<uint32_t>(steps);
+            cone.maxSteps              = static_cast<uint32_t>(steps);
 
             changed |= ImGui::SliderFloat(PropertyLabel("Cone angle").c_str(), &cone.coneAngleDegrees, 10.0f, 90.0f);
 

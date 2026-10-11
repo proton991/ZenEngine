@@ -11,7 +11,7 @@ bool RendererServer::ValidateShadowResources(const RenderingSettings& settings, 
     const VoxelGISettings& gi = settings.gi.cone;
 
     const bool hardwareProvider =
-        gi.rayProvider == VoxelGISettings::RayProvider::Auto || gi.rayProvider == VoxelGISettings::RayProvider::Hardware;
+        gi.GetFeatureProvider(VoxelGISettings::Feature::Shadows) == VoxelGISettings::RayProvider::Hardware;
 
     const uint64_t budget = uint64_t(gi.accelerationStructureBudgetMB) * 1024 * 1024;
 

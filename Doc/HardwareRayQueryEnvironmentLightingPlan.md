@@ -1,6 +1,6 @@
 # Hybrid Voxel GI Implementation Plan
 
-Date: 2026-10-01. Updated 2026-10-02 with the user-confirmed reproduction. Revised 2026-10-07 against the current code and new Sponza measurements, and widened from environment lighting to the complete hybrid voxel GI. Status: P0–P3 core implementation is present; acceptance and remaining requirements are recorded in [HybridGI/README.md](HybridGI/README.md). The unchecked phase gates below are not claimed complete. The file name is kept because other documents link to it; earlier revisions were titled *Hardware Ray Query Environment Lighting Implementation Plan*.
+Date: 2026-10-01. Updated 2026-10-11. P0–P7 implementation is present, including the P0–P4 gap fixes and explicit per-feature Compute / HW RT controls. P0, P1, P4a–P4d and P5–P7 are accepted within their recorded device/scope limits; P2/P3/P4e retain the verification gaps below. P8 remains open. The file name is kept because other documents link to it; earlier revisions were titled *Hardware Ray Query Environment Lighting Implementation Plan*.
 
 **Goal:** a hybrid voxel GI in mode 3 (PBR + voxel GI).
 - Rasterization draws the visible surfaces and builds the voxel scene.
@@ -10,6 +10,14 @@ Date: 2026-10-01. Updated 2026-10-02 with the user-confirmed reproduction. Revis
 Every ray-traced feature has a non-RT path, and the renderer selects the best tier the device can run. The result must converge to independent references, look stable, and meet measured per-tier performance and memory targets.
 
 This plan carries forward the hardware infrastructure requirements of [DynamicVoxelGIImplementationPlan.md](DynamicVoxelGIImplementationPlan.md) (Section 4.3 and H0–H2) for the current cone renderer. That older directional-irradiance pipeline was removed on 2026-09-30 and must not be assumed to exist.
+
+## Progress checkpoint, 2026-10-11
+
+- **Gap fixes delivered:** blend/transmission occluders participate in visibility, deformation uses the last successfully submitted vertex generation, sky sampling/filtering is corrected, and provider changes discard incompatible visibility guides. The approved frozen views replace the missing original camera.
+- **Recorded image evidence:** the tested candidate passes 10/10 hardware and 10/10 compute shipping views, 16/16 reset-settling cases and 18/18 independent RT comparisons. The 72 configuration/component cases and native motion checks also pass. These captures predate the subsequent independent-backend controls; they are evidence for that candidate, not fresh image qualification of every mixed configuration.
+- **Controls complete:** editor and runtime panels expose six Compute / HW RT selectors and an All features selector, with Mixed state and visible fallback. The old controls and legacy provider selector are removed. Editor/demo/shader builds, nine focused settings/history tests, four native editor tests and validation of the three changed trace/filter SPIR-V modules pass. Legacy cleanup is now built.
+- **Remaining acceptance:** all-environment compute convergence is incomplete, the latest candidate's flagpole-region comparison has not been completed, and the new mixed-provider controls have routing/submission coverage rather than full image-quality qualification. The compute Studio stress views exceed report-only noise limits (top-floor P99 20.28%, hall RMS 24.88%); they are retained as limitations rather than shipping-gate failures. P8 performance/memory/platform qualification remains separate.
+- **Work state:** the long qualification runs were stopped at the user's request. No further rendering sweeps are running or scheduled. See [the acceptance record](HybridGI/P0P4Acceptance.md) for artifacts and historical results.
 
 ## Definition of done
 
@@ -128,7 +136,7 @@ For a receiver at `x` with shading normal `n_s` and geometric normal `n_g`, and 
 - `L_hit` is the radiance-cache value at the first hit (see [Hit radiance](#hit-radiance)), multiplied by indirect intensity.
 - Directions with `dot(n_g, w) <= 0` lie below the actual surface and count as blocked with zero radiance.
 - A ray escapes only when no accepted opaque hit occurs before it leaves the scene bounds (triangle provider) or the voxel volume (voxel provider). Alpha-mask candidates that fail the material's cutoff are rejected and traversal continues. Blend and transmissive surfaces count as opaque occluders; this is a documented limitation. Both faces of every surface occlude, whatever its raster sidedness.
-- Sky sampling, amended 2026-10-10 by decision 4 ([G1 sky estimator](HybridGI/P4Execution.md#g1-sky-estimator-2026-10-10)): `D_sky` is the sum of the source tiles' integrals and the residual environment's. Source tiles are tiles of the importance map dominated by a compact bright source; each gets its own rays (half the diffuse count, two at the shipping preset), drawn within the tile. Each ray slot follows its own scrambled R2 sequence, advanced once per frame. The residual is estimated by the mixture of guided samples (one half: a per-screen-tile visibility guide over the environment tiles, weighted by the receiver's cosine), residual-environment samples (one quarter) and cosine samples (one quarter), with the mixture density as the PDF; without a learned guide its share goes to the environment. Environment densities follow the bilinear radiance within each texel. The original estimator, kept for the voxel sky cache, follows.
+- Sky sampling, amended 2026-10-11 during P0–P4 gap resolution: `D_sky` is the sum of the source tiles' integrals and the residual environment's. Source extraction remains an 8×8 grid per cube face, with at most four source tiles and two rays per source at the shipping preset. Residual rays use three guided samples and one cosine sample when a guide is available; otherwise they use two environment and two cosine samples. The actual mixture density is the PDF. Each 16×16-pixel screen tile learns a 16×16-per-face angular distribution, pooled with a 5×5 binomial kernel across screen tiles. Source rays also train the reconstruction guide, while source cells stay excluded from the residual proposal. Proposal statistics average up to 64 frames; lighting history remains limited to 32. Environment densities follow the bilinear radiance within each texel. The original estimator, kept for the voxel sky cache, follows.
 - Original sky sampling: environment-luminance samples (three quarters) with cosine-weighted hemisphere samples around `n_s` (one quarter). Sample counts that are multiples of four split deterministically; one and two samples choose each proposal with those probabilities. A miss adds `L_env * max(dot(n_s, w), 0) / (pi * p_mixture(w))`, where `p_mixture = 0.75 * p_env + 0.25 * p_cos`; the explicit mixture PDF preserves the scale. A black environment falls back to cosine sampling. The same estimator is used by the diagnostic reference mode. See the [hotel-room noise investigation](HybridGI/P4.md#hotel-room-noise-2026-10-08), which introduced equal proportions, and the [hall reconstruction follow-up](HybridGI/P4.md#hall-full-image-reconstruction-2026-10-09), which measured the three-to-one split.
 - P5 hit radiance likewise uses its actual sample PDF, the residual rays' mixture density, when adding `L_hit` to the bounce channel; source-tile rays do not add bounce.
 - Also accumulate `nu`, the cosine-weighted unblocked fraction, for diagnostics and filter guidance.
@@ -169,7 +177,7 @@ Shared by P5 and P6:
 
 ### Sampling sequence
 
-Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in Morton pixel order, so every aligned 2^k × 2^k pixel block holds a stratified set of rotations and the spatial filter averages blue-noise rather than white-noise error. Each proposal and dimension uses its own scramble. Advance the sequence once per successfully executed frame. Captures use a fixed seed and frame index. Diffuse samples per pixel are 1, 2 or 4; specular uses one lobe sample per pixel initially. A reference mode accumulates many frames with reprojection and filtering disabled; it is the converged estimate used by acceptance tests.
+Diffuse rays use temporal Sobol points digitally shifted by Owen-scrambled spatial Sobol points in Morton pixel order. Each proposal advances by its own number of rays, preserving temporal stratification for its sample group. Specular rays retain the R2 sequence with the same spatial shifts. Each proposal and dimension uses its own scramble, and sequences advance only on successfully executed frames. Captures use a fixed seed and frame index. Diffuse samples per pixel are 1, 2 or 4; specular uses one lobe sample per pixel initially. A reference mode accumulates many frames with reprojection and filtering disabled; it is the converged estimate used by acceptance tests.
 
 ### Voxel sky cache
 
@@ -180,13 +188,17 @@ Each pixel follows the R2 sequence, rotated by an Owen-scrambled Sobol point in 
 
 ## P0 Baseline, references, limits and targets
 
+Status (2026-10-11): **exit met**. Frozen source hashes, analytic-validated references, fixture cameras, limits, targets and platform matrix are archived. The user approved the frozen top/hall views and flagpole-shadow regions as the replacement for the missing original camera. All 72 configuration/component checks pass on RTX 5080; other platforms remain unverified under decision 3. See the [acceptance record](HybridGI/P0P4Acceptance.md).
+
 1. **Cameras.** Freeze full camera matrices, not only positions, for:
-   - the original report view;
+   - the original report view, replaced by the approved frozen views/regions below;
    - a top-down atrium view (camera at (0, 16, 0) in glTF space looking down, screen-up = −X, 60° vertical FOV, as in the archived `probe.py`);
    - the hall view from the 2026-10-07 analysis;
    - a fixture view for each fixture below.
 
    Store them as glTF camera nodes or capture metadata.
+
+   **Camera amendment, approved by the user on 2026-10-11:** the archived top/hall views and verified flagpole-shadow regions replace the original October 2 view for acceptance. Only that view's position and screenshot survived; its orientation and projection are unavailable. The replacement uses the existing frozen matrices and regions, with no change to image limits. The original screenshot remains historical evidence, not a claimed exact reproduction.
 
    Receiver positions were amended on 2026-10-10 (FP32 raster positions on the RT tier); see [Ray starts and ranges](#ray-starts-and-ranges). Ray count, 32-frame history, five edge-stopping iterations, camera matrices and error limits are unchanged.
 2. **Configurations.** Environment light only; analytic lights only; both. Bounce intensity 0 and 1. Voxel resolutions 64, 128 and 256. Viewports of 960×540 and 1920×1080. Record scene and shader hashes, device and driver.
@@ -246,6 +258,8 @@ Exit: references, fixtures, cameras, limits, targets and the platform matrix are
 
 ## P1 Receiver data and history infrastructure
 
+Status (2026-10-11): **exit met on the tested RTX 5080**. Moving-camera reprojection is within 0.002872 pixels on both frozen views, with zero identity mismatches across eight moving/static pose pairs. Continuous transform/vertex motion and two alternating native view histories pass on both providers; exact-plane reprojection error is at most 0.000348 pixels. Failed-frame publication and resize are covered by the graph/history regression. See the [acceptance record](HybridGI/P0P4Acceptance.md).
+
 ### Receiver data
 
 - Add a receiver target to the G-buffer pass with the geometric normal and a stable surface identity (node index plus a facing bit). Encode the geometric normal with the existing `EncodeGBufferNormal`. Compute it from `dFdx`/`dFdy` of the interpolated world position in the G-buffer pass, where the 2×2 quad lies on one triangle, and orient it like the shading normal. Judge degeneracy relative to the derivative lengths, never with an absolute threshold: until 2026-10-09 an absolute test rejected nearly every pixel of the unit-normalized scene and silently stored the shading normal instead (the geometric normal matched the true triangle normal on 40% of Sponza hall pixels; 99.96% after the fix). Replace the composition pass's derivative reconstruction with it, which also fixes the silhouette error noted above.
@@ -277,6 +291,8 @@ Exit: render-graph tests cover history ordering across frames in flight, resize 
 
 ## P2 Sky estimator with the voxel provider
 
+Status (2026-10-11): both providers pass 19 functional fixtures, 10 converged analytic fixtures, emission isolation and the sky-cache check. Blend/transmission occluders are covered by both voxelizers. All 72 configuration/component cases and all 10 required compute shipping views pass on the recorded candidate; both legacy comparisons were byte-identical before selector retirement. All-environment compute convergence remains incomplete and is deferred. See the [acceptance record](HybridGI/P0P4Acceptance.md).
+
 - Add a GI compute pass (provisional name `HybridGIRenderer`) after `VoxelGIRenderer` and before composition. It reads receiver data, the voxel occupancy volume and the prefiltered environment, and writes raw sky and `nu`.
 - Define one shader-side provider interface returning visibility, and on request the hit point and normal, for an origin, direction and maximum distance. The voxel provider wraps the existing traversal.
 - Deferred and forward opaque receivers read the sky signal from this pass. Their per-cone sky branch is disabled; receivers on the per-surface path keep it. Lighting-capture component 5 reports the sky term actually used.
@@ -286,7 +302,8 @@ Exit: render-graph tests cover history ordering across frames in flight, resize 
 | Setting | Behavior |
 | --- | --- |
 | `voxel_gi_quality=low\|medium\|high\|ultra` | Preset from P8: voxel resolution, tracing resolution, samples, reflections, bounce source, provider preference |
-| `voxel_gi_ray_provider=auto\|voxel\|hardware` | Ray source for every query in this plan; `auto` follows the tier selection |
+| `voxel_gi_backend=compute\|hardware` | Explicit selection for all six features; per-feature `*_backend` settings override it |
+| `voxel_gi_ray_provider=auto\|voxel\|hardware` | Compatibility input for archived tools; replaced in the editor by explicit backend selectors |
 | `voxel_gi_samples=1\|2\|4` | Diffuse samples per pixel |
 | `voxel_gi_bounce_source=cone\|rays` | Diagnostic override of the preset's bounce source |
 | `voxel_gi_reflections` (`auto`, `true`, `false`; `auto` follows the hardware provider), `voxel_gi_specular_occlusion` | Enable `H` and `S` |
@@ -295,7 +312,9 @@ Exit: render-graph tests cover history ordering across frames in flight, resize 
 | `voxel_gi_rt_shadows` | P7 hard shadows with the hardware provider, default `true`; shadow maps on fallback or explicit `false` |
 | `voxel_gi_memory_budget_mb` | Pre-allocation cap covering voxel volumes, acceleration structures, scratch, histories and retired generations |
 
-During the transition, a `legacy` value of `voxel_gi_ray_provider` selects the current per-cone sky path for comparison. It is removed when P3 passes.
+Editor controls amended 2026-10-11: **Lighting backends** provides **Compute / HW RT** for environment lighting, specular occlusion, sky-cache visibility, diffuse bounce, glossy reflections and direct-light shadows. **All features** sets every feature; individual overrides display **Mixed**. These replace the old provider, bounce-source, reflection-mode and hardware-shadow controls. Hardware requests fall back visibly to Compute when unavailable. Compute reflections can now be explicitly selected. See [the configuration and control contract](HybridGI/README.md#explicit-lighting-backends-2026-10-11); old configuration keys above remain accepted for archived tools.
+
+During the transition, a `legacy` value of `voxel_gi_ray_provider` selected the per-cone sky path for comparison. The legacy selector has been retired; archived baselines retain the comparison evidence.
 
 Exit:
 - The analytic fixtures pass the converged raw limits.
@@ -304,6 +323,8 @@ Exit:
 - With `legacy`, images match the pre-change baselines.
 
 ## P3 Reconstruction and specular occlusion
+
+Status (2026-10-11): all 16 recorded reset-settling gates and all 10 required compute static views pass. Resetting the visibility guide on a provider change removes the last isolated compute-switch zero. Continuous native motion and independent-view checks pass on both providers. The later independent-backend controls pass focused history and native routing checks; their full image qualification is not claimed. Further sweeps are deferred. See the [acceptance record](HybridGI/P0P4Acceptance.md).
 
 ### Temporal accumulation
 
@@ -316,6 +337,7 @@ Exit:
   Below a total valid weight of 0.01, treat the pixel as disoccluded with history length zero.
 - Accumulate with `alpha = max(1 / historyLength, 1 / historyLimit)`, including first and second luminance moments per channel.
 - **Sky channel:** no neighborhood clamping in steady state, because clamping biases the estimate. Resets follow the P1 table.
+- **Steady diffuse bounce** (amended 2026-10-11): use the configured history limit, 32 frames at the frozen preset. The earlier hard-coded 16-frame cap made hotel hall's composed diffuse fail at 20.39% P99; using 32 steady frames gives 19.59%. The eight-frame responsive limit below is unchanged and its light-change gates pass. See the [acceptance record](HybridGI/P0P4Acceptance.md).
 - **Responsive policy** (bounce channel and `H`): a lower history limit, and clamping to the current neighborhood's variance box for a bounded number of frames after a lighting, emissive or radiance-cache generation change. Such a change keeps the history (amended 2026-10-10, [P5 review decisions](#p5-review-decisions-2026-10-10)). On the frame of the change, the bounce rays also read the radiance cache as it was before the injection. Over the same-surface neighborhood, the ratio of the new to the previous results scales the history, and the relative size of the change shortens it, down to a restart when a light goes out or comes on. The two lookups share rays and hits, so the ratio is nearly exact for small changes. Discarding the history at every change leaves one frame of samples while a light moves; a test of the old history against new samples alone cannot separate a moderate change from four-ray noise. For reflections (amended 2026-10-10, P6 review), the neighborhood clamp applies only during camera motion. With one ray per pixel, dim reflections often leave a whole neighborhood without a hit; the clamp then collapses to zero and empties valid history. Over eight frames it lowered the glossy floor's dark-region `C` by 85% even where `C` had not changed. After a cache change, the correlated update alone empties history where the light went out.
 - **`S` and `H`:** shorten history at low roughness and reject it when the view direction changes by more than a roughness-dependent angle.
 
@@ -325,11 +347,11 @@ Apply an edge-avoiding à-trous filter (SVGF style, five iterations of a 5×5 ke
 - plane distance along `n_g`;
 - shading-normal similarity;
 - identity match (hard);
-- luminance difference scaled by the filtered variance.
+- signal difference scaled by the filtered variance: RGB distance for the sky ratio, luminance distance for the other channels.
 
 When history length is below 4, estimate variance spatially. Thin walls and foreground/background boundaries must not exchange values.
 
-The sky is filtered as a ratio to the receiver's unoccluded environment irradiance, evaluated for its shading normal from an order-2 spherical-harmonic projection of the sampled environment, and the result is remodulated by the center's value. Luminance differences and variances are compared in that ratio. This keeps normal-map shading detail that normal weights alone would blur, while neighbors with different normals still average their visibility. Pixels sharing a normal are filtered exactly as without the guide. The projection is built with the environment sampling distribution; an aliased Riemann-sum irradiance cube was rejected as the guide because small, very bright sources alias in it (see [P4](HybridGI/P4.md#hall-full-image-reconstruction-2026-10-09)).
+The sky is filtered as a ratio to a normal-dependent guide, then remodulated by the center's guide. Before visibility has been learned, the guide is the order-2 spherical-harmonic environment irradiance. Afterward its luminance comes from the cosine-weighted learned visible angular distribution, normalized by total visible power; its RGB proportions come from the spherical harmonics. A 0.001 guide floor bounds division without clamping the lighting estimate. Sky range weights use a Gaussian of squared RGB ratio distance, with sigma 1.5 times the propagated luminance standard deviation. This also controls chromatic noise that a luminance-only difference missed. All channels retain shading-normal exponent 32 and the existing hard identity, geometric-plane and occupied-start boundaries. The five 5×5 filter iterations and unclamped temporal sky mean are unchanged. See the [acceptance record](HybridGI/P0P4Acceptance.md) for the final qualification and retained failed experiments.
 
 ### Specular occlusion
 
@@ -343,7 +365,7 @@ Exit:
 
 ## P4 Hardware ray-query provider
 
-Implementation status, 2026-10-10: the hardware path is implemented and tested on an RTX 5080 and an AMD Radeon iGPU ([P4](HybridGI/P4.md), [gaps](HybridGI/P4Gaps.md), [execution](HybridGI/P4Execution.md)). P4a–P4d pass on the tested devices, with the platforms of decision 3 unverified. For P4e, the converged RT sky matches the full-image ground truth on all 18 frozen views (nine environments), D2 is gone, and switching behaves as specified. The shipping preset passes 8 of the 10 gating views with the amended sky estimator; kloppenheim hall (P99), hotel hall (three exact zeros) and the hall's frame-32 settling after resets still fail and are re-measured after the later phases (decision 9). Scenes far from the world origin moved to the [camera-relative rendering plan](CameraRelativeRenderingPlan.md) (decision 8).
+Implementation status, 2026-10-11: P4a–P4d pass on the tested RTX 5080 and AMD Radeon iGPU, with the platforms of decision 3 unverified. The recorded RTX 5080 candidate passes independent converged sky on all 18 frozen views, all 10 shipping composed-diffuse views (maximum P99 17.45%) and all 16 reset-settling cases (maximum P99 16.98%). P4e remains open for the latest flagpole comparison and current-revision image acceptance. The later per-feature backends are built and pass focused routing tests. Further qualification is deferred; see the [acceptance record](HybridGI/P0P4Acceptance.md). Scenes far from the world origin remain in the separate [camera-relative rendering plan](CameraRelativeRenderingPlan.md) (decision 8).
 
 ### P4a Capabilities and shader variants
 
@@ -581,16 +603,18 @@ These are not required for done and are each assessed against the P0 limits and 
 
 ## Delivery checklist
 
-- [ ] P0 cameras, configurations, CPU references, fixtures, limits, performance targets and platform matrix archived.
+- [x] P0 cameras, configurations, CPU references, fixtures, limits, performance targets and platform matrix archived; original-camera replacement approved and 72 configuration/component checks pass ([evidence](HybridGI/P0P4Acceptance.md)).
 - [ ] [Ground truth](#ground-truth): each tier reference matches the independent full-image ground truth on every frozen camera and environment.
-- [ ] P1 receiver data, motion, previous-frame state, history resources and forward receiver prepass pass.
-- [ ] P2 voxel-provider sky estimator, composition, sky-cache update and settings pass.
-- [ ] P3 temporal accumulation, spatial filtering and specular occlusion pass on all frozen cameras.
+- [x] P1 receiver data, motion, previous-frame state, history resources and forward receiver prepass pass on the tested RTX 5080 ([acceptance evidence](HybridGI/P0P4Acceptance.md)).
+- [ ] P2 full acceptance: implementation, fixtures, composition and required compute shipping views pass; all-environment compute convergence remains incomplete.
+- [ ] P3 full acceptance: required compute static and 16 reset-settling cases pass on the recorded candidate; current mixed-provider revision has focused routing/history coverage only.
 - [x] P4a capabilities and shader variants pass. (2026-10-10, RTX 5080 and AMD Radeon iGPU; RX 7900 XT, a GPU without ray queries and MoltenVK unverified by decision 3)
 - [x] P4b acceleration-structure resources, commands, reflection and descriptors pass. (2026-10-10, on the tested devices)
 - [x] P4c render-graph dependencies, lifetime, retirement and failure tests pass. (2026-10-10, on the tested devices)
 - [x] P4d scene query service passes. (2026-10-10, on the tested devices)
-- [ ] P4e hardware provider passes the CPU-reference and shipping-preset limits.
+- [ ] P4e full acceptance: 18 independent RT, 10 hardware shipping and 16 reset cases pass on the recorded candidate; latest flagpole comparison and current-revision image acceptance remain open.
+- [x] Explicit per-feature Compute / HW RT controls and All features selector delivered in editor/runtime panels; old controls retired; editor/demo/shaders build and 13 focused tests pass (2026-10-11).
+- [x] Legacy provider selector retired and cleanup built; archived comparisons retained (2026-10-11).
 - [x] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured. (2026-10-10, RTX 5080; ray-hit bounce is the RT-tier default)
 - [x] P6 glossy reflections pass on the RT tier; compute-tier choice measured. (2026-10-10, RTX 5080; [results and limits](HybridGI/P6.md))
 - [x] P7 hardware shadows evaluated and the adoption decision recorded (optional). (2026-10-11, RTX 5080; enabled by default when supported, shadow-map fallback; [results and limits](HybridGI/P7.md))

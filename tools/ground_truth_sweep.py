@@ -72,8 +72,10 @@ def log(text):
 
 def capture(args, prefix, environment, camera, strip, reference):
     command = [sys.executable, str(ROOT / 'tools/capture_hybrid_gi.py'), '--exe', str(args.exe), '--scene', str(args.scene),
-               '--output', str(prefix), '--camera', camera, '--provider', 'hardware', '--rt',
+               '--output', str(prefix), '--camera', camera, '--provider', args.provider,
                '--environment-texture', ENVIRONMENTS[environment]]
+    if args.provider == 'hardware':
+        command.append('--rt')
     if strip:
         command.append('--strip-normal-maps')
     if reference:
@@ -92,14 +94,14 @@ def capture(args, prefix, environment, camera, strip, reference):
         expected_normals = not strip and any('normalTexture' in material for material in source.get('materials', []))
         settings = inputs['settings']
         expected = dict(environment_texture=ENVIRONMENTS[environment], voxel_gi_reference_samples=1024 if reference else 0,
-                        voxel_gi_ray_provider='hardware', voxel_gi_samples=4, voxel_gi_history_frames=32,
+                        voxel_gi_ray_provider=args.provider, voxel_gi_samples=4, voxel_gi_history_frames=32,
                         voxel_gi_indirect_intensity=0, voxel_resolution=64, voxel_gi_temporal='true', voxel_gi_filter='true')
         nodes = scene.get('nodes', [])
         wrong_settings = (any(settings.get(key) != value for key, value in expected.items())
                           or has_normals != expected_normals
                           or not nodes or nodes[-1].get('matrix') != CAMERA_MATRICES[camera]
                           or any(metadata.get(key) != value for key, value in
-                                 dict(width=960, height=540, frame=64, ray_provider='hardware').items())
+                                 dict(width=960, height=540, frame=64, ray_provider=args.provider).items())
                           or sha256(args.scene) not in {entry['sha256'] for entry in inputs['source_inputs']}
                           or inputs['executable']['sha256'] != sha256(args.exe))
         if stale or missing or wrong_settings:
@@ -282,10 +284,13 @@ def tier_verdict(reference):
 
 
 def summary(report):
+    hardware = report.get('provider', 'hardware') == 'hardware'
     lines = ['# Ground-truth sweep', '', f'Build: {report["executable"]["path"]}', '',
              '## Tier reference and shipping against the ground truth', '',
              'Excess is RMS error with the ground truth\'s own noise removed; limits for the tier reference: '
-             f'|bias| <= {100 * TIER_BIAS:.0f}%, excess <= {100 * TIER_EXCESS:.0f}% per pixel and on 8x8 blocks.', '',
+             f'|bias| <= {100 * TIER_BIAS:.0f}%, excess <= {100 * TIER_EXCESS:.0f}% per pixel and on 8x8 blocks. '
+             + ('' if hardware else 'Compute versus triangle ground truth is report-only under P0; '
+                'voxel geometry differences do not use the hardware correctness gate.'), '',
              '| View | Ground-truth noise | Tier reference: bias / excess / 8x8 excess | Floor: bias / excess | '
              'Near / far excess | Shipping: bias / excess | Tier reference |',
              '| --- | ---: | --- | --- | --- | --- | --- |']
@@ -297,7 +302,7 @@ def summary(report):
         lines.append(f'| {view} | {percent(a["truth_noise_rms"])} | {percent(a["bias"], True)} / {percent(a["excess_rms"])} / '
                      f'{percent(a["blocks"]["excess_rms"])} | {floor} | {bands} | '
                      f'{percent(ship["all_receivers"]["bias"], True)} / {percent(ship["all_receivers"]["excess_rms"])} | '
-                     f'{tier_verdict(ref)} |')
+                     f'{tier_verdict(ref) if hardware else "Reported (voxel geometry)"} |')
     gated = {view: result for view, result in report['views'].items() if 'shipping_gate' in result}
     if gated:
         lines += ['', '## Shipping gate (normal maps on, against the tier reference)', '',
@@ -340,6 +345,8 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT / 'build/ground-truth/runs/latest', help='Captures and reports of this run')
     parser.add_argument('--environments', nargs='+', choices=ENVIRONMENTS, default=list(ENVIRONMENTS))
     parser.add_argument('--cameras', nargs='+', choices=CAMERAS, default=list(CAMERAS))
+    parser.add_argument('--provider', choices=('hardware', 'voxel'), default='hardware',
+                        help='Compute versus triangle ground truth is report-only; shipping still gates against its own tier')
     parser.add_argument('--skip-shipping-gate', action='store_true', help='Only the normal-map-free ground-truth comparison')
     parser.add_argument('--reuse-captures', action='store_true', help='Keep captures already in --output (same build only)')
     parser.add_argument('--render-missing', action='store_true', help='Render ground truth for requested views not in the dataset')
@@ -388,7 +395,8 @@ def main():
         for view, future in futures.items():
             register(args.dataset, dataset, view, future.result(), gate)
 
-    report = dict(executable=dict(path=str(args.exe.resolve()), sha256=sha256(args.exe)), dataset=str(args.dataset), views={})
+    report = dict(executable=dict(path=str(args.exe.resolve()), sha256=sha256(args.exe)),
+                  provider=args.provider, dataset=str(args.dataset), views={})
     for view in views:
         report['views'][view] = compare_view(args, dataset, view)
         log(f'compared {view}')

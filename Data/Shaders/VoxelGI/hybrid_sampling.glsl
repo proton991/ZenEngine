@@ -27,7 +27,7 @@ uint HybridSobol1(uint index)
         if((index & 1u) != 0u) result ^= v;
     return result;
 }
-vec2 HybridSample(uvec2 pixel, uint sampleIndex, uint dimension)
+uvec2 HybridPixelRotation(uvec2 pixel, uint dimension)
 {
     // Per-pixel rotations are Owen-scrambled Sobol points in Morton order: every aligned
     // 2^k x 2^k pixel block holds a (0,2k,2)-net, so neighbors' samples stratify the
@@ -36,11 +36,20 @@ vec2 HybridSample(uvec2 pixel, uint sampleIndex, uint dimension)
     // via hierarchical ordering of pixels", 2020).
     uint seed = HybridHash(dimension ^ 0x9e3779b9u);
     uint index = HybridOwenScramble(HybridMorton(pixel), seed);
-    uvec2 rotation = uvec2(HybridOwenScramble(bitfieldReverse(index), HybridHash(seed ^ 0x68bc21ebu)),
+    return uvec2(HybridOwenScramble(bitfieldReverse(index), HybridHash(seed ^ 0x68bc21ebu)),
                            HybridOwenScramble(HybridSobol1(index), HybridHash(seed ^ 0x02e5be93u)));
+}
+vec2 HybridSample(uvec2 pixel, uint sampleIndex, uint dimension)
+{
     // Each pixel then follows the R2 sequence. Integer phase accumulation avoids loss of
     // the fractional sequence after many successful frames.
-    uvec2 phase=rotation+sampleIndex*uvec2(3242174889u,2447445414u);
+    uvec2 phase=HybridPixelRotation(pixel,dimension)+sampleIndex*uvec2(3242174889u,2447445414u);
+    return vec2(phase>>8)/16777216.0;
+}
+vec2 HybridSkySample(uvec2 pixel, uint sampleIndex, uint dimension)
+{
+    // A digital shift preserves the spatial net and stratifies every power-of-two temporal block.
+    uvec2 phase=HybridPixelRotation(pixel,dimension)^uvec2(bitfieldReverse(sampleIndex),HybridSobol1(sampleIndex));
     return vec2(phase>>8)/16777216.0;
 }
 mat3 HybridBasis(vec3 n)

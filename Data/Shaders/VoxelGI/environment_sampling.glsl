@@ -197,14 +197,14 @@ uint EnvironmentTileOf(uint face, uvec2 cell)
 
 // Density of a position in a texel conditional on its tile: the tile's row interval, the column
 // interval within the row segment, the texel-to-solid-angle factor and the bilinear shape.
-float EnvironmentTileTexelPDF(uint tile, uint row, uint column, vec2 uv, vec2 st)
+float EnvironmentCellInTilePDF(uint tile, uint row, uint column, vec2 uv, vec2 st, uint size, uint cdfOffset)
 {
-    uint base = tile * (ZEN_ENVIRONMENT_TILE_SIZE + 1u);
-    uint r = row % ZEN_ENVIRONMENT_TILE_SIZE;
+    uint base = cdfOffset + tile * (size + 1u);
+    uint r = row % size;
     uint offset = row * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u);
-    uint x0 = column - column % ZEN_ENVIRONMENT_TILE_SIZE;
-    float mass = environmentTiles[base + ZEN_ENVIRONMENT_TILE_SIZE];
-    float segment = environmentColumns[offset + x0 + ZEN_ENVIRONMENT_TILE_SIZE] - environmentColumns[offset + x0];
+    uint x0 = column - column % size;
+    float mass = environmentTiles[base + size];
+    float segment = environmentColumns[offset + x0 + size] - environmentColumns[offset + x0];
     if(mass <= 0.0 || segment <= 0.0)
         return 0.0;
     float rowProbability = (environmentTiles[base + r + 1u] - environmentTiles[base + r]) / mass;
@@ -214,14 +214,15 @@ float EnvironmentTileTexelPDF(uint tile, uint row, uint column, vec2 uv, vec2 st
 }
 
 // A direction within one tile, with its density conditional on the tile.
-vec3 SampleEnvironmentTile(uint tile, vec2 u, out float pdf)
+vec3 SampleEnvironmentTileGrid(uint tile, vec2 u, uint perSide, uint cdfOffset, out float pdf)
 {
-    uint perFace = ZEN_ENVIRONMENT_TILES_PER_FACE * ZEN_ENVIRONMENT_TILES_PER_FACE;
-    uint face = tile / perFace, ty = (tile % perFace) / ZEN_ENVIRONMENT_TILES_PER_FACE, tx = tile % ZEN_ENVIRONMENT_TILES_PER_FACE;
-    uint base = tile * (ZEN_ENVIRONMENT_TILE_SIZE + 1u);
-    float mass = environmentTiles[base + ZEN_ENVIRONMENT_TILE_SIZE];
+    uint size=ZEN_ENVIRONMENT_IMPORTANCE_SIZE/perSide;
+    uint perFace = perSide * perSide;
+    uint face = tile / perFace, ty = (tile % perFace) / perSide, tx = tile % perSide;
+    uint base = cdfOffset + tile * (size + 1u);
+    float mass = environmentTiles[base + size];
     float target = min(u.y * mass, uintBitsToFloat(floatBitsToUint(mass) - 1u));
-    uint low = 0u, high = ZEN_ENVIRONMENT_TILE_SIZE;
+    uint low = 0u, high = size;
     while(low + 1u < high)
     {
         uint middle = (low + high) / 2u;
@@ -229,13 +230,13 @@ vec3 SampleEnvironmentTile(uint tile, vec2 u, out float pdf)
         else high = middle;
     }
     float y = (target - environmentTiles[base + low]) / max(environmentTiles[base + low + 1u] - environmentTiles[base + low], 1e-30);
-    uint row = face * ZEN_ENVIRONMENT_IMPORTANCE_SIZE + ty * ZEN_ENVIRONMENT_TILE_SIZE + low;
+    uint row = face * ZEN_ENVIRONMENT_IMPORTANCE_SIZE + ty * size + low;
     uint offset = row * (ZEN_ENVIRONMENT_IMPORTANCE_SIZE + 1u);
-    uint x0 = tx * ZEN_ENVIRONMENT_TILE_SIZE;
+    uint x0 = tx * size;
     float start = environmentColumns[offset + x0];
-    float segment = environmentColumns[offset + x0 + ZEN_ENVIRONMENT_TILE_SIZE] - start;
+    float segment = environmentColumns[offset + x0 + size] - start;
     target = start + min(u.x * segment, uintBitsToFloat(floatBitsToUint(max(segment, 1e-30)) - 1u));
-    low = x0; high = x0 + ZEN_ENVIRONMENT_TILE_SIZE;
+    low = x0; high = x0 + size;
     while(low + 1u < high)
     {
         uint middle = (low + high) / 2u;
@@ -247,8 +248,17 @@ vec3 SampleEnvironmentTile(uint tile, vec2 u, out float pdf)
     EnvironmentTexel texel = EnvironmentTexelNodes(row, low);
     vec2 st = min(EnvironmentTexelSample(texel, clamp(vec2(x, y), 0.0, 1.0)), vec2(0.99999994));
     vec2 uv = (vec2(low, row % ZEN_ENVIRONMENT_IMPORTANCE_SIZE) + st) * (2.0 / float(ZEN_ENVIRONMENT_IMPORTANCE_SIZE)) - 1.0;
-    pdf = EnvironmentTileTexelPDF(tile, row, low, uv, st);
+    pdf = EnvironmentCellInTilePDF(tile, row, low, uv, st, size, cdfOffset);
     return EnvironmentWorldDirection(face, uv);
+}
+
+float EnvironmentTileTexelPDF(uint tile, uint row, uint column, vec2 uv, vec2 st)
+{
+    return EnvironmentCellInTilePDF(tile,row,column,uv,st,ZEN_ENVIRONMENT_TILE_SIZE,0u);
+}
+vec3 SampleEnvironmentTile(uint tile,vec2 u,out float pdf)
+{
+    return SampleEnvironmentTileGrid(tile,u,ZEN_ENVIRONMENT_TILES_PER_FACE,0u,pdf);
 }
 
 // The tile of a direction and its density conditional on that tile.

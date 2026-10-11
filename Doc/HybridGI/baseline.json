@@ -189,7 +189,7 @@
       "lighting_sha256": "1b08c5a535975c8e123872ef28688aab432647fcce10dfa1ff081de4d4c92ae4"
     }
   },
-  "original_report_camera": "Position only was archived. Exact original view is not recoverable; not claimed reproduced.",
+  "original_report_camera": "Position and screenshot only were archived. On 2026-10-11 the user approved the existing frozen top/hall views and verified flagpole-shadow regions as the acceptance replacement. Matrices, regions and numerical limits are unchanged; exact original-view reproduction is not claimed.",
   "baseline_archive": "build/sponza-environment-analysis-20261007/out/p0-before-{top,hall}.{lighting.json,lighting.bin,ppm}",
   "floor_region": {
     "valid": "position_valid.w > 0",
@@ -726,5 +726,22 @@
     ],
     "superseded_record": "build/p5/P5Verification-full-2026-10-10.json",
     "independent_reference": "tools/ground_truth_bounce.py on Mitsuba cuda_ad_rgb, every pixel, 4096 samples; bias RT room -0.0452, thin wall -0.0477; compute room -0.0396, thin wall -0.0305"
+  },
+  "acceptance_2026_10_11": {
+    "record": "Doc/HybridGI/P0P4Acceptance.md",
+    "results": "Doc/HybridGI/P0P4Verification.json",
+    "checkpoint": "4076f15add204213b550b6bd3f58e86955cf4355",
+    "phase_exit_met": {
+      "P0": false,
+      "P1": true,
+      "P2": false,
+      "P3": false,
+      "P4e": false
+    },
+    "rt_converged_sky": "18/18 views pass",
+    "rt_composed_shipping": "9/10 views pass; kloppenheim hall P99 25.002%",
+    "compute_sky_shipping": "6/10 views pass; all ten floors pass",
+    "hall_reset_settling": "Cut, deformation, alpha edit and both provider switches fail at frame32",
+    "steady_bounce": "Configured history32 instead of cap16; responsive8 unchanged; bounce regression passes"
   }
 }

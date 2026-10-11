@@ -68,6 +68,8 @@ public:
     bool CaptureStability(const std::string& path);
     bool CaptureBounceLightChanges(const std::string& path);
     bool CaptureReflectionMotion(const std::string& path);
+    bool CaptureGeometryMotion(const std::string& path);
+    bool CaptureIndependentViews(const std::string& path);
 
     bool CaptureVoxelVolume(const std::string& path);
 
@@ -129,6 +131,7 @@ private:
     float                                          m_orbitSpeedDegrees{45.0f};
     double                                         m_lightAngle{0.0};
     uint64_t                                       m_motionFrame{0};
+    uint64_t                                       m_captureHistoryId{0};
     UniquePtr<SceneRendererProfiling>              m_profiling;
 
 #if defined(ZEN_RUNTIME_UI)

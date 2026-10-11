@@ -2,7 +2,6 @@
 #extension GL_GOOGLE_include_directive : require
 #include "hybrid_guides.glsl"
 #include "../Common/scene_lighting.glsl"
-#include "hybrid_sky_guide.glsl"
 layout(local_size_x=8,local_size_y=8) in;
 layout(set=1,binding=6) uniform sampler2D rawSky;
 layout(set=1,binding=7) uniform sampler2D rawSpecular;
@@ -20,7 +19,6 @@ layout(set=1,binding=18,rgba16f) uniform writeonly image2D nextLength;
 layout(set=1,binding=19,rgba32f) uniform writeonly image2D nextPosition;
 layout(set=1,binding=20,rgba16f) uniform writeonly image2D nextNormal;
 layout(set=1,binding=21,rg32ui) uniform writeonly uimage2D nextReceiver;
-layout(set=1,binding=23,rgba16f) uniform writeonly image2D skyGuide;
 layout(set=1,binding=25) uniform sampler2D rawBounce;
 layout(set=1,binding=26) uniform sampler2D previousBounce;
 layout(set=1,binding=27) uniform sampler2D previousBounceMoments;
@@ -198,7 +196,8 @@ void main()
     {
         oldBounce/=weight;
         oldBounceMoments/=weight;
-        float limit=hybrid.rejection.w>0.5 ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z),16.0);
+        // Steady diffuse bounce uses the configured history; cache changes still respond within eight frames.
+        float limit=float(hybrid.sampling.z);
         if(hybrid.bounce.z!=0u && hybrid.rejection.w<0.5)
         {
             HybridUpdateRadianceHistory(p,identity.g,position,ng,rawBounce,rawBouncePrevious,
@@ -225,5 +224,4 @@ void main()
     imageStore(nextPosition,p,vec4(position,texelFetch(receiverDepth,p,0).r));
     imageStore(nextNormal,p,vec4(EncodeGBufferNormal(n),EncodeGBufferNormal(ng)));
     imageStore(nextReceiver,p,uvec4(identity,0,0));
-    imageStore(skyGuide,p,vec4(HybridSkyGuide(n),0));
 }
