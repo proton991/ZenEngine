@@ -46,18 +46,19 @@ struct VoxelGISettings
         Off,
         On
     };
-    Reflections  reflections{Reflections::Auto};
-    float        indirectIntensity{1.0f};
-    float        coneAngleDegrees{60.0f};
-    float        stepScale{1.0f};
-    float        normalBiasVoxels{1.5f};
-    float        maxDistanceGridLengths{1.7321f};
-    uint32_t     coneCount{6};
-    uint32_t     maxSteps{128};
-    bool         shadows{true};
-    bool         analyticLighting{true};
-    bool         environmentLighting{true};
-    bool         emissiveLighting{true};
+    Reflections reflections{Reflections::Auto};
+    float       indirectIntensity{1.0f};
+    float       coneAngleDegrees{60.0f};
+    float       stepScale{1.0f};
+    float       normalBiasVoxels{1.5f};
+    float       maxDistanceGridLengths{1.7321f};
+    uint32_t    coneCount{6};
+    uint32_t    maxSteps{128};
+    bool        shadows{true};
+    bool        rtShadows{true}; // Use hardware queries when available; maps remain the fallback.
+    bool        analyticLighting{true};
+    bool        environmentLighting{true};
+    bool        emissiveLighting{true};
 
     bool operator==(const VoxelGISettings&) const = default;
 };
@@ -95,6 +96,9 @@ public:
 
     bool Init();
 
+    // Select/build the provider before shadow-map preparation; call once per frame before BuildRenderGraph.
+    void BuildRayQueryGraph();
+
     void BuildRenderGraph(SceneShadowRenderer* shadows = nullptr);
 
     void OnRenderGraphExecuted(bool succeeded);
@@ -128,7 +132,11 @@ public:
     {
         return m_hardwareQueries;
     }
-    // The resolved bounce source; valid once BuildRenderGraph has selected the provider.
+    bool UsesHardwareShadows() const
+    {
+        return m_settings.shadows && m_settings.rtShadows && m_hardwareQueries;
+    }
+    // The resolved bounce source; valid once BuildRayQueryGraph has selected the provider.
     bool UsesRayBounce() const
     {
         return m_settings.bounceSource == VoxelGISettings::BounceSource::Rays
@@ -150,6 +158,7 @@ public:
         return m_rayQuery;
     }
     void BindHardwareRayInputs(RDGPassDescBase& pass) const;
+    void BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound = false) const;
 
     void BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const;
 

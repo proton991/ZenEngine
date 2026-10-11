@@ -23,7 +23,7 @@ public:
     explicit SceneRayQuery(RenderDevice* device) : m_device(device) {}
 
     bool BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes = 0);
-    void BindInputs(RDGPassDescBase& pass, RenderScene& scene) const;
+    void BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound = false) const;
     void OnRenderGraphExecuted(bool succeeded);
     void Destroy();
 

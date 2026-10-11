@@ -259,7 +259,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     float environmentRotation  = 0.0f;
     bool  environmentEnabled   = true;
     bool  skyboxVisible        = true;
-    for (uint32_t frame = 0; frame < 32; ++frame)
+    for (uint32_t frame = 0; frame < 36; ++frame)
     {
         SCOPED_TRACE(frame);
         switch (frame)
@@ -306,6 +306,9 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
             case 28: settings.analyticLighting = true; break;
             case 29: settings.environmentLighting = true; break;
             case 30: settings.emissiveLighting = true; break;
+            case 32: settings.rtShadows = false; break;
+            case 33: settings.rtShadows = true; break;
+            case 34: settings.rtShadows = false; break;
             default: break;
         }
         EXPECT_TRUE(gi.SetSettings(settings)); // Also covers repeated unchanged settings.
@@ -330,7 +333,14 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         {
             graph->AddTransferPass("InitializeSky").ClearTexture(sceneInputs.environment.pPrefiltered, Color(0));
         }
-        gi.BuildRenderGraph();
+        gi.BuildRayQueryGraph();
+        EXPECT_FALSE(gi.UsesHardwareShadows()); // This device has no queries: an explicit request must still fall back.
+        // A successful query-only frame (for example shadow-map preparation falling
+        // back to PBR) must not publish an invalidated but unrecorded radiance cache.
+        if (frame != 34)
+        {
+            gi.BuildRenderGraph();
+        }
         graph->AddComputePass(IntentPass("keepalive"));
         metrics.RequestCapture();
         ASSERT_TRUE(graph->End());
@@ -339,8 +349,8 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         volumes.OnRenderGraphExecuted(true);
         const bool skyChanged =
             geometryChanged || environmentChanged || frame == 3 || frame == 8 || frame == 9 || frame == 25 || frame == 29;
-        const bool radianceChanged =
-            skyChanged || frame == 7 || frame == 11 || frame == 24 || frame == 26 || frame == 28 || frame == 30;
+        const bool radianceChanged = skyChanged || frame == 7 || frame == 11 || frame == 24 || frame == 26 || frame == 28
+                                  || frame == 30 || (frame >= 32 && frame != 34);
         const RDGMetricsSnapshot& snapshot = metrics.GetLastSnapshot();
         EXPECT_EQ(CountGIPasses(snapshot, "VoxelOpacityMip"), geometryChanged ? 3u : 0u);
         EXPECT_EQ(CountGIPasses(snapshot, "VoxelSkyIrradiance"), skyChanged ? 1u : 0u);

@@ -134,6 +134,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
             // Re-enabling reflections expands the cache snapshot; fail just that allocation.
             rhi->failTextureCreationAt = rhi->textureCreations + 1;
         }
+        gi.BuildRayQueryGraph();
         gi.BuildRenderGraph();
         rhi->failTextureCreationAt = 0;
         EXPECT_EQ(gi.HasPreviousRadiance(), frame != 14);

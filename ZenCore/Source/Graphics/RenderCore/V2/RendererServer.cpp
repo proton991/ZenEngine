@@ -132,7 +132,13 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
                     m_status.fallbackReason = "Voxelizer or GI resource initialization failed.";
                 }
 
-                if (m_frameRenderOption == RenderOption::eVoxelGI
+                if (m_frameRenderOption == RenderOption::eVoxelGI)
+                {
+                    m_pVoxelGI->BuildRayQueryGraph();
+                    m_frameGI = true;
+                }
+
+                if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->UsesHardwareShadows()
                     && !m_pSceneShadows->Prepare(*m_pScene, m_pVoxelGI->GetSettings().shadows, false))
                 {
                     m_frameRenderOption     = RenderOption::ePBR;
@@ -149,9 +155,17 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                     m_pVoxelizer->BuildVoxelizationGraph();
 
-                    m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pVoxelizer->GetRecordedGeometryRevision());
+                    if (m_pVoxelGI->UsesHardwareShadows())
+                    {
+                        m_pSceneShadows->Destroy();
+                    }
+                    else
+                    {
+                        m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pVoxelizer->GetRecordedGeometryRevision());
+                        m_frameShadows = true;
+                    }
 
-                    m_pVoxelGI->BuildRenderGraph(m_pSceneShadows);
+                    m_pVoxelGI->BuildRenderGraph(m_frameShadows ? m_pSceneShadows : nullptr);
 
                     // The hardware visibility provider covers the full raster scene,
                     // including occluders outside the radiance-cache volume.
@@ -170,8 +184,6 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
                         m_frameRenderOption     = RenderOption::ePBR;
                         m_status.fallbackReason = "Hybrid GI history allocation failed.";
                     }
-
-                    m_frameShadows = m_frameGI = true;
                 }
                 else
                 {

@@ -111,10 +111,10 @@ void RuntimeDebugUI::ApplyPendingSettings(bool manual)
     const rc::VoxelGIRuntimeSettings current = server.GetVoxelGISettings();
 
     const bool resourceChange                = rc::RequiresVoxelGIRebuild(current, next)
-                             || current.shadowMapResolution != next.shadowMapResolution
-                             || m_sceneDraft.lightCount != m_sceneBaseline.lightCount;
+                                            || current.shadowMapResolution != next.shadowMapResolution
+                                            || m_sceneDraft.lightCount != m_sceneBaseline.lightCount;
 
-    const bool pending = m_dirty || m_sceneDirty;
+    const bool pending                       = m_dirty || m_sceneDirty;
 
     const bool shouldApply =
         pending && (manual || (m_autoApply && !m_applyFailed && (!resourceChange || !ImGui::IsAnyItemActive())));
@@ -173,6 +173,7 @@ void RuntimeDebugUI::BuildSettings()
         ImGui::SliderFloat("Indirect intensity", &m_draft.cone.indirectIntensity, 0, 10, "%.2f", ImGuiSliderFlags_AlwaysClamp));
 
     MarkGIEdit(ImGui::Checkbox("Shadows", &m_draft.cone.shadows));
+    MarkGIEdit(ImGui::Checkbox("Hardware shadow rays", &m_draft.cone.rtShadows));
 
     if (ImGui::CollapsingHeader("Voxel resources"))
     {

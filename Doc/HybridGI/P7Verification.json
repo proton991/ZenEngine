@@ -1,0 +1,1846 @@
+{
+  "date": "2026-10-11",
+  "adoption": "User decision (2026-10-11): default true with a ready hardware provider; shadow maps otherwise. Explicit false requests maps. P8 retains performance qualification and preset tuning.",
+  "correctness": {
+    "executable_sha256": "f74aa8a2c7af075a18f8ff859ce8ffc20b47f8cc3406c42ee044c5c3944cec3e",
+    "shader_bundle_sha256": "e0a574f265171b917a27e46cba753fcb65df22318868d9de0553880a4b5fa943",
+    "cpu_reference_fixtures": {
+      "open_plane": "pass",
+      "half_wall": "pass",
+      "closed_hemisphere": "pass",
+      "ggx_normal_incidence": "pass",
+      "empty_bounce": "pass",
+      "uniform_bounce": "pass",
+      "ggx_lobe_fraction": "pass",
+      "open_closed_specular": "pass",
+      "mask_continue": "pass",
+      "environment_mis": "pass"
+    },
+    "fixtures": {
+      "point-opaque": {
+        "receivers": 15466,
+        "blocked": 4212,
+        "visible": 11254,
+        "visibility_mismatches": 0,
+        "rms": 0.00013187208969611675,
+        "maximum_error": 0.0019333473173901439,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.0005540785037510481,
+          "maximum_error": 0.005610735351730476,
+          "passed": true
+        }
+      },
+      "point-beyond": {
+        "receivers": 15406,
+        "blocked": 0,
+        "visible": 14750,
+        "visibility_mismatches": 0,
+        "rms": 0.00017002660024445504,
+        "maximum_error": 0.0006228225538507104,
+        "preexisting_present_hazards": 4,
+        "passed": true
+      },
+      "spot-opaque": {
+        "receivers": 15466,
+        "blocked": 4212,
+        "visible": 9934,
+        "visibility_mismatches": 0,
+        "rms": 0.0003412750957068056,
+        "maximum_error": 0.007418691646307707,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.0006947599735843593,
+          "maximum_error": 0.008023094091928225,
+          "passed": true
+        }
+      },
+      "directional-opaque": {
+        "receivers": 15466,
+        "blocked": 1094,
+        "visible": 14372,
+        "visibility_mismatches": 0,
+        "rms": 3.628066167493671e-07,
+        "maximum_error": 1.3029853107582312e-06,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.000297440743279395,
+          "maximum_error": 0.0005369304248683351,
+          "passed": true
+        }
+      },
+      "point-mask": {
+        "receivers": 15187,
+        "blocked": 2559,
+        "visible": 12628,
+        "visibility_mismatches": 0,
+        "rms": 0.0001157423248514533,
+        "maximum_error": 0.0019514496671035886,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4340,
+          "visibility_mismatches": 0,
+          "rms": 0.0005147446361286288,
+          "maximum_error": 0.006105854459243695,
+          "passed": true
+        }
+      },
+      "point-opaque-forward": {
+        "receivers": 15466,
+        "blocked": 4212,
+        "visible": 11254,
+        "visibility_mismatches": 0,
+        "rms": 0.0,
+        "maximum_error": 0.0,
+        "preexisting_present_hazards": 4,
+        "passed": true
+      },
+      "point-mask-forward": {
+        "receivers": 15187,
+        "blocked": 2559,
+        "visible": 12628,
+        "visibility_mismatches": 0,
+        "rms": 0.0,
+        "maximum_error": 0.0,
+        "preexisting_present_hazards": 4,
+        "passed": true
+      },
+      "moving-24": {
+        "receivers": 15465,
+        "blocked": 4213,
+        "visible": 11252,
+        "visibility_mismatches": 0,
+        "rms": 0.00013199416571296751,
+        "maximum_error": 0.0019347260240465403,
+        "preexisting_present_hazards": 10,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.0005493248639955372,
+          "maximum_error": 0.0055196527434180085,
+          "passed": true
+        }
+      },
+      "moving-80": {
+        "receivers": 15464,
+        "blocked": 4212,
+        "visible": 11252,
+        "visibility_mismatches": 0,
+        "rms": 0.00014184076280798763,
+        "maximum_error": 0.001936521497555077,
+        "preexisting_present_hazards": 10,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.0005438157096237606,
+          "maximum_error": 0.005609938781840839,
+          "passed": true
+        }
+      }
+    },
+    "fallback_identical": true,
+    "scatter_pass_executed": true,
+    "passed": true
+  },
+  "release_correctness": {
+    "executable_sha256": "f396fb6b838feeb5dc73ebdee48727348f014775f8fbca2112328845bbd1b55b",
+    "shader_bundle_sha256": "e0a574f265171b917a27e46cba753fcb65df22318868d9de0553880a4b5fa943",
+    "cpu_reference_fixtures": {
+      "open_plane": "pass",
+      "half_wall": "pass",
+      "closed_hemisphere": "pass",
+      "ggx_normal_incidence": "pass",
+      "empty_bounce": "pass",
+      "uniform_bounce": "pass",
+      "ggx_lobe_fraction": "pass",
+      "open_closed_specular": "pass",
+      "mask_continue": "pass",
+      "environment_mis": "pass"
+    },
+    "fixtures": {
+      "point-opaque": {
+        "receivers": 15466,
+        "blocked": 4212,
+        "visible": 11254,
+        "visibility_mismatches": 0,
+        "rms": 0.00013187208969611675,
+        "maximum_error": 0.0019333473173901439,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.0005540785037510481,
+          "maximum_error": 0.005610735351730476,
+          "passed": true
+        }
+      },
+      "point-beyond": {
+        "receivers": 15406,
+        "blocked": 0,
+        "visible": 14750,
+        "visibility_mismatches": 0,
+        "rms": 0.00017002660024445504,
+        "maximum_error": 0.0006228225538507104,
+        "preexisting_present_hazards": 4,
+        "passed": true
+      },
+      "spot-opaque": {
+        "receivers": 15466,
+        "blocked": 4212,
+        "visible": 9934,
+        "visibility_mismatches": 0,
+        "rms": 0.0003412750957068056,
+        "maximum_error": 0.007418691646307707,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.0006947599735843593,
+          "maximum_error": 0.008023094091928225,
+          "passed": true
+        }
+      },
+      "directional-opaque": {
+        "receivers": 15466,
+        "blocked": 1094,
+        "visible": 14372,
+        "visibility_mismatches": 0,
+        "rms": 3.628066167493671e-07,
+        "maximum_error": 1.3029853107582312e-06,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4492,
+          "visibility_mismatches": 0,
+          "rms": 0.000297440743279395,
+          "maximum_error": 0.0005369304248683351,
+          "passed": true
+        }
+      },
+      "point-mask": {
+        "receivers": 15187,
+        "blocked": 2559,
+        "visible": 12628,
+        "visibility_mismatches": 0,
+        "rms": 0.0001157423248514533,
+        "maximum_error": 0.0019514496671035886,
+        "preexisting_present_hazards": 4,
+        "passed": true,
+        "injection": {
+          "voxels": 4340,
+          "visibility_mismatches": 0,
+          "rms": 0.0005147446361286288,
+          "maximum_error": 0.006105854459243695,
+          "passed": true
+        }
+      },
+      "point-opaque-forward": {
+        "receivers": 15466,
+        "blocked": 4212,
+        "visible": 11254,
+        "visibility_mismatches": 0,
+        "rms": 0.0,
+        "maximum_error": 0.0,
+        "preexisting_present_hazards": 4,
+        "passed": true
+      },
+      "point-mask-forward": {
+        "receivers": 15187,
+        "blocked": 2559,
+        "visible": 12628,
+        "visibility_mismatches": 0,
+        "rms": 0.0,
+        "maximum_error": 0.0,
+        "preexisting_present_hazards": 4,
+        "passed": true
+      },
+      "moving-24": {
+        "receivers": 15465,
+        "blocked": 4212,
+        "visible": 11253,
+        "visibility_mismatches": 0,
+        "rms": 0.00013430320541374385,
+        "maximum_error": 0.001935364562086761,
+        "preexisting_present_hazards": 10,
+        "passed": true,
+        "injection": {
+          "voxels": 4510,
+          "visibility_mismatches": 0,
+          "rms": 0.0005412954028002026,
+          "maximum_error": 0.0055645660957742695,
+          "passed": true
+        }
+      },
+      "moving-80": {
+        "receivers": 15465,
+        "blocked": 4213,
+        "visible": 11252,
+        "visibility_mismatches": 0,
+        "rms": 0.0001326383644482121,
+        "maximum_error": 0.0019429917447268963,
+        "preexisting_present_hazards": 10,
+        "passed": true,
+        "injection": {
+          "voxels": 4510,
+          "visibility_mismatches": 0,
+          "rms": 0.0005476500558423661,
+          "maximum_error": 0.005520279653646476,
+          "passed": true
+        }
+      }
+    },
+    "fallback_identical": true,
+    "scatter_pass_executed": true,
+    "passed": true
+  },
+  "tests": {
+    "RenderCoreTest": 576,
+    "RayQueryIntegrationTest": 12,
+    "ConeVoxelGIIntegrationTest": 20,
+    "spirv_variants": 128,
+    "native_offscreen_validation_errors": 0
+  },
+  "profiles": {
+    "lights-1-static-maps": {
+      "source": "build/p7/release/lights-1-static-maps.profile.json",
+      "sha256": "bee966c8b1a51e206eb2eb8129e0d9876ea0fce3aaf730225dc66c192a14ea5c",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 69.84403200000001,
+          "max": 69.84403200000001,
+          "mean": 69.84403200000001,
+          "median": 69.84403200000001,
+          "p95": 69.84403200000001
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.645472,
+          "max": 2.520096,
+          "mean": 1.9428330666666662,
+          "median": 1.908384,
+          "p95": 2.520096
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.64912,
+          "max": 2.842688,
+          "mean": 1.9414362947368413,
+          "median": 1.9039359999999999,
+          "p95": 2.6319679999999996
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 33.4104,
+          "max": 33.4104,
+          "mean": 33.4104,
+          "median": 33.4104,
+          "p95": 33.4104
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.4904000000000002,
+          "max": 44.288599999999995,
+          "mean": 6.421246666666665,
+          "median": 2.0002,
+          "p95": 44.288599999999995
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.6005,
+          "max": 2.8596999999999997,
+          "mean": 1.9825989473684213,
+          "median": 1.95,
+          "p95": 2.6753
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 341.312,
+          "max": 1251.2,
+          "mean": 389.19410526315784,
+          "median": 345.216,
+          "p95": 612.416
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-1-static-rays": {
+      "source": "build/p7/release/lights-1-static-rays.profile.json",
+      "sha256": "8fdeec63d77072541eecca2eeffd59bb79fa490c4c1285a590a99a9e54518e67",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 70.266048,
+          "max": 70.266048,
+          "mean": 70.266048,
+          "median": 70.266048,
+          "p95": 70.266048
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.636896,
+          "max": 2.961568,
+          "mean": 1.9470826666666663,
+          "median": 1.893472,
+          "p95": 2.961568
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.640192,
+          "max": 2.8324160000000003,
+          "mean": 1.9339193263157899,
+          "median": 1.901248,
+          "p95": 2.7010880000000004
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 35.589800000000004,
+          "max": 35.589800000000004,
+          "mean": 35.589800000000004,
+          "median": 35.589800000000004,
+          "p95": 35.589800000000004
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.4566,
+          "max": 45.774800000000006,
+          "mean": 6.531866666666668,
+          "median": 1.9867000000000001,
+          "p95": 45.774800000000006
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.5671,
+          "max": 2.8803,
+          "mean": 1.9658736842105258,
+          "median": 1.9483,
+          "p95": 2.6437
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 337.472,
+          "max": 1244.832,
+          "mean": 399.8470736842106,
+          "median": 342.912,
+          "p95": 607.072
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-1-moving-maps": {
+      "source": "build/p7/release/lights-1-moving-maps.profile.json",
+      "sha256": "aa5ae405672fff516c90fe507d6d81c93272e74e426e49c1ea4b602f6d5dbca2",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 72.54844800000001,
+          "max": 72.54844800000001,
+          "mean": 72.54844800000001,
+          "median": 72.54844800000001,
+          "p95": 72.54844800000001
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.90544,
+          "max": 3.092416,
+          "mean": 2.288917333333333,
+          "median": 2.212032,
+          "p95": 3.092416
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.90176,
+          "max": 3.5823359999999997,
+          "mean": 2.304722526315789,
+          "median": 2.248096,
+          "p95": 3.191232
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 36.8431,
+          "max": 36.8431,
+          "mean": 36.8431,
+          "median": 36.8431,
+          "p95": 36.8431
+        },
+        "warmup": {
+          "count": 15,
+          "min": 3.2822,
+          "max": 44.0246,
+          "mean": 8.195366666666667,
+          "median": 3.5876,
+          "p95": 44.0246
+        },
+        "measured": {
+          "count": 95,
+          "min": 3.0867,
+          "max": 4.1469,
+          "mean": 3.3882094736842103,
+          "median": 3.3268,
+          "p95": 3.8101
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.976,
+          "max": 273.408,
+          "mean": 33.122021052631574,
+          "median": 24.736,
+          "p95": 27.36
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 343.616,
+          "max": 890.368,
+          "mean": 412.2782315789473,
+          "median": 346.656,
+          "p95": 620.032
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 8.672,
+          "max": 10.592,
+          "mean": 9.357810526315784,
+          "median": 9.312,
+          "p95": 10.048
+        }
+      },
+      "shadow_map_pass_median_sum_us": 75.488,
+      "scene_geometry_revision": 112
+    },
+    "lights-1-moving-rays": {
+      "source": "build/p7/release/lights-1-moving-rays.profile.json",
+      "sha256": "2e9e8861f8590559ab7f5faadb2aec4226f341298acd7d1bcdc592d2f9d994aa",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 71.709824,
+          "max": 71.709824,
+          "mean": 71.709824,
+          "median": 71.709824,
+          "p95": 71.709824
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.861408,
+          "max": 2.6046080000000003,
+          "mean": 2.1967509333333335,
+          "median": 2.251808,
+          "p95": 2.6046080000000003
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.865248,
+          "max": 3.469792,
+          "mean": 2.297671410526317,
+          "median": 2.275776,
+          "p95": 3.03504
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 32.4165,
+          "max": 32.4165,
+          "mean": 32.4165,
+          "median": 32.4165,
+          "p95": 32.4165
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.8623000000000003,
+          "max": 43.172,
+          "mean": 7.70608,
+          "median": 3.198,
+          "p95": 43.172
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.8075,
+          "max": 3.8181,
+          "mean": 3.113115789473684,
+          "median": 3.061,
+          "p95": 3.5251
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.912,
+          "max": 505.92,
+          "mean": 37.23789473684211,
+          "median": 24.352,
+          "p95": 26.112
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 337.824,
+          "max": 686.464,
+          "mean": 382.15141052631583,
+          "median": 343.872,
+          "p95": 601.088
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 14.208,
+          "max": 15.872,
+          "mean": 15.168000000000003,
+          "median": 15.2,
+          "p95": 15.744
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 112
+    },
+    "lights-4-static-maps": {
+      "source": "build/p7/release/lights-4-static-maps.profile.json",
+      "sha256": "a88a0fdd8abd3a9341aed0f57689a533304bff82c8a2c015692d6a136b7d5772",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 72.040288,
+          "max": 72.040288,
+          "mean": 72.040288,
+          "median": 72.040288,
+          "p95": 72.040288
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.6828800000000002,
+          "max": 2.856192,
+          "mean": 1.9656853333333335,
+          "median": 1.93632,
+          "p95": 2.856192
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.681568,
+          "max": 2.8312,
+          "mean": 1.9796082526315797,
+          "median": 1.9404480000000002,
+          "p95": 2.618368
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 35.863699999999994,
+          "max": 35.863699999999994,
+          "mean": 35.863699999999994,
+          "median": 35.863699999999994,
+          "p95": 35.863699999999994
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.4002999999999999,
+          "max": 43.773300000000006,
+          "mean": 6.645840000000001,
+          "median": 1.9678,
+          "p95": 43.773300000000006
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.6581,
+          "max": 2.8966,
+          "mean": 2.0123210526315782,
+          "median": 1.9803,
+          "p95": 2.6468000000000003
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 374.176,
+          "max": 1237.312,
+          "mean": 409.76033684210546,
+          "median": 377.696,
+          "p95": 633.536
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-4-static-rays": {
+      "source": "build/p7/release/lights-4-static-rays.profile.json",
+      "sha256": "e6b8d9956fd3e293a4321d8298694c81640bc38fc3ef10b79c8eb0ebb33d0223",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 70.083488,
+          "max": 70.083488,
+          "mean": 70.083488,
+          "median": 70.083488,
+          "p95": 70.083488
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.656032,
+          "max": 2.686112,
+          "mean": 1.9593087999999999,
+          "median": 1.89584,
+          "p95": 2.686112
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.658048,
+          "max": 2.837344,
+          "mean": 1.9554206315789477,
+          "median": 1.917376,
+          "p95": 2.584736
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 34.6136,
+          "max": 34.6136,
+          "mean": 34.6136,
+          "median": 34.6136,
+          "p95": 34.6136
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.3929,
+          "max": 44.9176,
+          "mean": 6.5115799999999995,
+          "median": 1.9397,
+          "p95": 44.9176
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.6105999999999998,
+          "max": 2.8531,
+          "mean": 1.979798947368421,
+          "median": 1.9557,
+          "p95": 2.5783
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 352.064,
+          "max": 854.336,
+          "mean": 398.62837894736845,
+          "median": 356.704,
+          "p95": 619.264
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-4-moving-maps": {
+      "source": "build/p7/release/lights-4-moving-maps.profile.json",
+      "sha256": "dd4db7e24c82cbc9f09e6e2c7f548caf8baead443d101e670ecf826588a37e45",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 71.784576,
+          "max": 71.784576,
+          "mean": 71.784576,
+          "median": 71.784576,
+          "p95": 71.784576
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.1656,
+          "max": 3.444608,
+          "mean": 2.5654250666666667,
+          "median": 2.48048,
+          "p95": 3.444608
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.15408,
+          "max": 4.031616,
+          "mean": 2.547056505263158,
+          "median": 2.457216,
+          "p95": 3.552928
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 36.5687,
+          "max": 36.5687,
+          "mean": 36.5687,
+          "median": 36.5687,
+          "p95": 36.5687
+        },
+        "warmup": {
+          "count": 15,
+          "min": 4.1107,
+          "max": 42.0912,
+          "mean": 8.947473333333335,
+          "median": 4.7898000000000005,
+          "p95": 42.0912
+        },
+        "measured": {
+          "count": 95,
+          "min": 3.9911,
+          "max": 5.402399999999999,
+          "mean": 4.309151578947367,
+          "median": 4.2554,
+          "p95": 4.6857
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.464,
+          "max": 26.976,
+          "mean": 24.432505263157907,
+          "median": 24.64,
+          "p95": 25.536
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 375.168,
+          "max": 652.8,
+          "mean": 407.89726315789494,
+          "median": 378.72,
+          "p95": 637.888
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 21.792,
+          "max": 25.728,
+          "mean": 22.79006315789473,
+          "median": 22.688,
+          "p95": 23.808
+        }
+      },
+      "shadow_map_pass_median_sum_us": 270.688,
+      "scene_geometry_revision": 112
+    },
+    "lights-4-moving-rays": {
+      "source": "build/p7/release/lights-4-moving-rays.profile.json",
+      "sha256": "1cafaa91b6300a4ea6a2da66478bf22b8f335daae6afe8fc33cf307ccb4b4111",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 70.79104,
+          "max": 70.79104,
+          "mean": 70.79104,
+          "median": 70.79104,
+          "p95": 70.79104
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.894112,
+          "max": 2.532096,
+          "mean": 2.2092522666666667,
+          "median": 2.198944,
+          "p95": 2.532096
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.894272,
+          "max": 3.3433919999999997,
+          "mean": 2.2745091368421058,
+          "median": 2.264448,
+          "p95": 3.028288
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 32.312200000000004,
+          "max": 32.312200000000004,
+          "mean": 32.312200000000004,
+          "median": 32.312200000000004,
+          "p95": 32.312200000000004
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.8566,
+          "max": 42.1624,
+          "mean": 7.7234533333333335,
+          "median": 3.2802,
+          "p95": 42.1624
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.78,
+          "max": 4.0593,
+          "mean": 3.108583157894737,
+          "median": 3.0736999999999997,
+          "p95": 3.5065999999999997
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.88,
+          "max": 432.544,
+          "mean": 28.753178947368433,
+          "median": 24.576,
+          "p95": 25.376
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 352.864,
+          "max": 872.512,
+          "mean": 393.3978947368422,
+          "median": 359.36,
+          "p95": 616.064
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 17.568,
+          "max": 19.68,
+          "mean": 18.655999999999995,
+          "median": 18.624,
+          "p95": 19.296
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 112
+    },
+    "lights-16-static-maps": {
+      "source": "build/p7/release/lights-16-static-maps.profile.json",
+      "sha256": "c616c5b48635d1490a7963f071a6b1885f48c2d137a2919eccbc65a127d45cc0",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 72.409952,
+          "max": 72.409952,
+          "mean": 72.409952,
+          "median": 72.409952,
+          "p95": 72.409952
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.811744,
+          "max": 2.893312,
+          "mean": 2.1330666666666662,
+          "median": 2.072032,
+          "p95": 2.893312
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.8152000000000001,
+          "max": 3.300224,
+          "mean": 2.1570701473684206,
+          "median": 2.08016,
+          "p95": 2.8847359999999997
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 38.3784,
+          "max": 38.3784,
+          "mean": 38.3784,
+          "median": 38.3784,
+          "p95": 38.3784
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.5258,
+          "max": 45.052099999999996,
+          "mean": 6.782573333333333,
+          "median": 2.1183,
+          "p95": 45.052099999999996
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.8472,
+          "max": 3.3076,
+          "mean": 2.1899873684210522,
+          "median": 2.1191,
+          "p95": 2.9479
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 512.352,
+          "max": 1422.56,
+          "mean": 585.6192,
+          "median": 522.848,
+          "p95": 774.816
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-16-static-rays": {
+      "source": "build/p7/release/lights-16-static-rays.profile.json",
+      "sha256": "e762d33886a503242082b31872b4d6b2d1076c4381978a3405fbb67fc6b88006",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 72.35353599999999,
+          "max": 72.35353599999999,
+          "mean": 72.35353599999999,
+          "median": 72.35353599999999,
+          "p95": 72.35353599999999
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.72128,
+          "max": 2.829024,
+          "mean": 2.2050047999999998,
+          "median": 2.13952,
+          "p95": 2.829024
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.7247999999999999,
+          "max": 2.982656,
+          "mean": 2.102342399999999,
+          "median": 1.995936,
+          "p95": 2.8040320000000003
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 35.661199999999994,
+          "max": 35.661199999999994,
+          "mean": 35.661199999999994,
+          "median": 35.661199999999994,
+          "p95": 35.661199999999994
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.7254,
+          "max": 46.3452,
+          "mean": 6.905033333333333,
+          "median": 2.0603000000000002,
+          "p95": 46.3452
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.7114,
+          "max": 3.0615,
+          "mean": 2.123227368421052,
+          "median": 2.047,
+          "p95": 2.9295
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 417.12,
+          "max": 1364.32,
+          "mean": 495.33237894736834,
+          "median": 425.504,
+          "p95": 759.072
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-16-moving-maps": {
+      "source": "build/p7/release/lights-16-moving-maps.profile.json",
+      "sha256": "dc0bfc2f96aa0105a7e26274d98c24a8b22eb52d6c85cc2a270313b7a7202449",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 72.02752000000001,
+          "max": 72.02752000000001,
+          "mean": 72.02752000000001,
+          "median": 72.02752000000001,
+          "p95": 72.02752000000001
+        },
+        "warmup": {
+          "count": 15,
+          "min": 3.410528,
+          "max": 5.32416,
+          "mean": 4.078323200000001,
+          "median": 4.075296,
+          "p95": 5.32416
+        },
+        "measured": {
+          "count": 95,
+          "min": 3.3777600000000003,
+          "max": 5.201792,
+          "mean": 3.9348112842105265,
+          "median": 3.90416,
+          "p95": 4.620928
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 40.8318,
+          "max": 40.8318,
+          "mean": 40.8318,
+          "median": 40.8318,
+          "p95": 40.8318
+        },
+        "warmup": {
+          "count": 15,
+          "min": 7.748399999999999,
+          "max": 38.3146,
+          "mean": 12.084713333333331,
+          "median": 8.3184,
+          "p95": 38.3146
+        },
+        "measured": {
+          "count": 95,
+          "min": 7.6802,
+          "max": 9.045,
+          "mean": 8.252188421052633,
+          "median": 8.1653,
+          "p95": 8.909
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.848,
+          "max": 258.208,
+          "mean": 29.49456842105263,
+          "median": 24.8,
+          "p95": 25.568
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 509.728,
+          "max": 1182.56,
+          "mean": 571.672589473684,
+          "median": 521.088,
+          "p95": 776.128
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 72.448,
+          "max": 334.368,
+          "mean": 83.5051789473684,
+          "median": 76.256,
+          "p95": 78.976
+        }
+      },
+      "shadow_map_pass_median_sum_us": 1042.176,
+      "scene_geometry_revision": 112
+    },
+    "lights-16-moving-rays": {
+      "source": "build/p7/release/lights-16-moving-rays.profile.json",
+      "sha256": "96d63a8fc84412c4d4401ab1fc77d8bc41901f67c418a3decec2e44abf5fd3d6",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 69.85488000000001,
+          "max": 69.85488000000001,
+          "mean": 69.85488000000001,
+          "median": 69.85488000000001,
+          "p95": 69.85488000000001
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.968288,
+          "max": 3.0012800000000004,
+          "mean": 2.178784,
+          "median": 2.0215039999999997,
+          "p95": 3.0012800000000004
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.97152,
+          "max": 3.4122559999999997,
+          "mean": 2.342420547368421,
+          "median": 2.308544,
+          "p95": 3.325312
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 33.6207,
+          "max": 33.6207,
+          "mean": 33.6207,
+          "median": 33.6207,
+          "p95": 33.6207
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.8261999999999996,
+          "max": 41.1885,
+          "mean": 7.546026666666667,
+          "median": 3.0528000000000004,
+          "p95": 41.1885
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.7784,
+          "max": 3.6127,
+          "mean": 3.0880873684210544,
+          "median": 3.0677,
+          "p95": 3.4901999999999997
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 23.264,
+          "max": 282.048,
+          "mean": 36.339536842105275,
+          "median": 24.384,
+          "p95": 182.496
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 415.872,
+          "max": 1328.128,
+          "mean": 478.98677894736835,
+          "median": 423.232,
+          "p95": 711.776
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 27.648,
+          "max": 30.112,
+          "mean": 28.607326315789486,
+          "median": 28.544,
+          "p95": 29.728
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 112
+    },
+    "lights-32-static-maps": {
+      "source": "build/p7/release/lights-32-static-maps.profile.json",
+      "sha256": "a82c7e08063d0d6a84866c497cd1e46dc182f20ae46b90d14caebabe94151be5",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 74.87766400000001,
+          "max": 74.87766400000001,
+          "mean": 74.87766400000001,
+          "median": 74.87766400000001,
+          "p95": 74.87766400000001
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.01952,
+          "max": 3.1144000000000003,
+          "mean": 2.491620266666667,
+          "median": 2.527392,
+          "p95": 3.1144000000000003
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.009344,
+          "max": 3.331744,
+          "mean": 2.3576501894736834,
+          "median": 2.2843519999999997,
+          "p95": 3.059232
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 52.198800000000006,
+          "max": 52.198800000000006,
+          "mean": 52.198800000000006,
+          "median": 52.198800000000006,
+          "p95": 52.198800000000006
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.4955999999999998,
+          "max": 48.589,
+          "mean": 7.2972,
+          "median": 2.5128000000000004,
+          "p95": 48.589
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.9872999999999998,
+          "max": 3.315,
+          "mean": 2.401948421052632,
+          "median": 2.3238000000000003,
+          "p95": 3.1281
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 697.504,
+          "max": 1570.976,
+          "mean": 772.0303157894738,
+          "median": 718.592,
+          "p95": 1005.184
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-32-static-rays": {
+      "source": "build/p7/release/lights-32-static-rays.profile.json",
+      "sha256": "44b90fdd5d6ab5fbbd203308570542b04ce4a568ff5d51e6ae920b614f9de43c",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 71.05961599999999,
+          "max": 71.05961599999999,
+          "mean": 71.05961599999999,
+          "median": 71.05961599999999,
+          "p95": 71.05961599999999
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.8112000000000001,
+          "max": 2.88048,
+          "mean": 2.1308906666666667,
+          "median": 2.071872,
+          "p95": 2.88048
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.809056,
+          "max": 3.147936,
+          "mean": 2.1578432,
+          "median": 2.075136,
+          "p95": 2.909568
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 31.979200000000002,
+          "max": 31.979200000000002,
+          "mean": 31.979200000000002,
+          "median": 31.979200000000002,
+          "p95": 31.979200000000002
+        },
+        "warmup": {
+          "count": 15,
+          "min": 1.6621,
+          "max": 43.8273,
+          "mean": 6.6959800000000005,
+          "median": 2.1355999999999997,
+          "p95": 43.8273
+        },
+        "measured": {
+          "count": 95,
+          "min": 1.7818,
+          "max": 3.1488,
+          "mean": 2.1790421052631577,
+          "median": 2.136,
+          "p95": 2.8849
+        }
+      },
+      "passes_gpu_us": {
+        "SceneLighting": {
+          "count": 95,
+          "min": 503.84,
+          "max": 877.376,
+          "mean": 558.9783578947369,
+          "median": 515.84,
+          "p95": 775.232
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 1
+    },
+    "lights-32-moving-maps": {
+      "source": "build/p7/release/lights-32-moving-maps.profile.json",
+      "sha256": "c0dd56d1fdda6e3117112c3cc04062eac5cb88471005f4f9640b24979bb5c2f3",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 73.136832,
+          "max": 73.136832,
+          "mean": 73.136832,
+          "median": 73.136832,
+          "p95": 73.136832
+        },
+        "warmup": {
+          "count": 15,
+          "min": 5.087104,
+          "max": 6.634848,
+          "mean": 5.816324266666667,
+          "median": 5.880768,
+          "p95": 6.634848
+        },
+        "measured": {
+          "count": 95,
+          "min": 4.572192,
+          "max": 7.24192,
+          "mean": 5.597832084210529,
+          "median": 5.59488,
+          "p95": 6.620704
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 46.491699999999994,
+          "max": 46.491699999999994,
+          "mean": 46.491699999999994,
+          "median": 46.491699999999994,
+          "p95": 46.491699999999994
+        },
+        "warmup": {
+          "count": 15,
+          "min": 12.9337,
+          "max": 39.1241,
+          "mean": 16.814793333333334,
+          "median": 13.5964,
+          "p95": 39.1241
+        },
+        "measured": {
+          "count": 95,
+          "min": 12.0914,
+          "max": 14.6171,
+          "mean": 13.193624210526314,
+          "median": 13.0404,
+          "p95": 14.3644
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.976,
+          "max": 27.36,
+          "mean": 24.62753684210527,
+          "median": 24.768,
+          "p95": 25.536
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 692.864,
+          "max": 1614.176,
+          "mean": 739.8315789473684,
+          "median": 714.304,
+          "p95": 954.368
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 139.136,
+          "max": 374.784,
+          "mean": 152.78450526315783,
+          "median": 150.144,
+          "p95": 154.88
+        }
+      },
+      "shadow_map_pass_median_sum_us": 2065.5679999999998,
+      "scene_geometry_revision": 112
+    },
+    "lights-32-moving-rays": {
+      "source": "build/p7/release/lights-32-moving-rays.profile.json",
+      "sha256": "5bfe37d5f34f9a2c23db871921333dee608032161e8660a9042419a47e055f8a",
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 71.388672,
+          "max": 71.388672,
+          "mean": 71.388672,
+          "median": 71.388672,
+          "p95": 71.388672
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.074304,
+          "max": 3.271808,
+          "mean": 2.453152,
+          "median": 2.472288,
+          "p95": 3.271808
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.0727040000000003,
+          "max": 3.5376,
+          "mean": 2.520790231578947,
+          "median": 2.451264,
+          "p95": 3.319136
+        }
+      },
+      "cpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 36.5904,
+          "max": 36.5904,
+          "mean": 36.5904,
+          "median": 36.5904,
+          "p95": 36.5904
+        },
+        "warmup": {
+          "count": 15,
+          "min": 2.9414000000000002,
+          "max": 42.6737,
+          "mean": 7.780626666666667,
+          "median": 3.2861,
+          "p95": 42.6737
+        },
+        "measured": {
+          "count": 95,
+          "min": 2.8229,
+          "max": 3.4244,
+          "mean": 3.0311378947368417,
+          "median": 3.0108,
+          "p95": 3.3495999999999997
+        }
+      },
+      "passes_gpu_us": {
+        "BuildSceneTLAS": {
+          "count": 95,
+          "min": 22.528,
+          "max": 277.984,
+          "mean": 26.90762105263159,
+          "median": 24.192,
+          "p95": 25.376
+        },
+        "SceneLighting": {
+          "count": 95,
+          "min": 506.848,
+          "max": 940.704,
+          "mean": 564.0774736842104,
+          "median": 518.784,
+          "p95": 780.576
+        },
+        "VoxelInjectRadiance": {
+          "count": 95,
+          "min": 41.472,
+          "max": 344.224,
+          "mean": 50.75705263157893,
+          "median": 42.336,
+          "p95": 43.584
+        }
+      },
+      "shadow_map_pass_median_sum_us": 0,
+      "scene_geometry_revision": 112
+    }
+  },
+  "device": {
+    "name": "NVIDIA GeForce RTX 5080",
+    "vendor_id": 4318,
+    "device_id": 11266,
+    "api_version_raw": 4211039,
+    "driver_version_raw": 2588573696
+  },
+  "build": {
+    "compiler": "MSVC 1951",
+    "ndebug": true
+  },
+  "gpu_frame_scope": "elapsed earliest TOP to latest BOTTOM across native graphics/compute-capable command buffers begun during the application render workload, including graph preparation GPU work and the graphics swapchain copy; excludes dedicated transfer-only buffers, asset startup outside the frame, and screenshot readback; does not directly measure host acquire/present calls or compositor/display latency; dependency waits and submission gaps may be included; requires a common device timestamp domain; this is not GPU-active time or occupancy",
+  "benchmark_settings": {
+    "viewport_width": 960,
+    "viewport_height": 540,
+    "gbuffer_size": [
+      960,
+      540
+    ],
+    "frames_in_flight": 3,
+    "rhi_threaded": true,
+    "async_compute_status": "available",
+    "vsync_requested": false,
+    "vsync_note": "VSync chooses the existing platform present-mode policy; compositor behavior is not measured",
+    "validation_enabled": false,
+    "ray_query_enabled": true,
+    "acceleration_structure_enabled": true,
+    "buffer_device_address_enabled": true,
+    "ray_tracing_disabled": false,
+    "gpu_markers": false,
+    "voxelizer": "comp",
+    "voxel_resolution": 64,
+    "reflectance_policy": "owner",
+    "gi_method": "hybrid",
+    "requested_ray_provider": 0,
+    "bounce_source": "cone",
+    "diffuse_samples": 1,
+    "reference_samples": 0,
+    "history_frames": 32,
+    "temporal": true,
+    "filter": true,
+    "specular_occlusion": true,
+    "reflections": false,
+    "analytic_lighting": true,
+    "environment_lighting": false,
+    "emissive_lighting": false,
+    "indirect_intensity": 0,
+    "shadows": true,
+    "cone_count": 6,
+    "cone_max_steps": 128,
+    "cone_angle_degrees": 60,
+    "cone_step_scale": 1,
+    "cone_normal_bias_voxels": 1.5,
+    "cone_max_distance_grid_lengths": 1.732100009918213,
+    "final_camera_position": [
+      0,
+      0.550000011920929,
+      1,
+      1
+    ],
+    "environment_intensity_rotation_enabled_visible": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "shadow_map_resolution": 1024,
+    "warmup_frames": 16,
+    "measured_frames": 95
+  },
+  "default_policy_verification": {
+    "executable_sha256": "bf33b61f09e0cd27380a51aeb0626a2bb2fd346f5042f6ff729b47d569fa0fa2",
+    "cases": {
+      "default": {
+        "setting_omitted": true,
+        "requested": true,
+        "hardware_shadows": true,
+        "shadow_map_passes": false,
+        "preexisting_present_diagnostics": 4,
+        "passed": true
+      },
+      "disabled-rt": {
+        "setting_omitted": true,
+        "requested": true,
+        "hardware_shadows": false,
+        "shadow_map_passes": true,
+        "preexisting_present_diagnostics": 4,
+        "passed": true
+      },
+      "explicit-maps": {
+        "setting_omitted": false,
+        "requested": false,
+        "hardware_shadows": false,
+        "shadow_map_passes": true,
+        "preexisting_present_diagnostics": 4,
+        "passed": true
+      }
+    }
+  },
+  "review_fix_verification": {
+    "date": "2026-10-11",
+    "raw_output": "build/p7-fixes",
+    "forward_tilted_normal_mismatches_before": 12662,
+    "tilted_scatter_unshadowed_image_identical_before": false,
+    "correctness": {
+      "executable_sha256": "3ac695bbb89edb54a510807753d90651091861f87c0c24af13abf6c26b00da84",
+      "shader_bundle_sha256": "ce95d5baab03dbfd298a7b4f31c34115fc54fe6445514e154e968d228d47858a",
+      "cpu_reference_fixtures": {
+        "open_plane": "pass",
+        "half_wall": "pass",
+        "closed_hemisphere": "pass",
+        "ggx_normal_incidence": "pass",
+        "empty_bounce": "pass",
+        "uniform_bounce": "pass",
+        "ggx_lobe_fraction": "pass",
+        "open_closed_specular": "pass",
+        "mask_continue": "pass",
+        "environment_mis": "pass"
+      },
+      "fixtures": {
+        "point-opaque": {
+          "receivers": 15466,
+          "blocked": 4212,
+          "visible": 11254,
+          "visibility_mismatches": 0,
+          "rms": 0.00013187208969611675,
+          "maximum_error": 0.0019333473173901439,
+          "preexisting_present_hazards": 4,
+          "passed": true,
+          "injection": {
+            "voxels": 4492,
+            "visibility_mismatches": 0,
+            "rms": 0.0005540785037510481,
+            "maximum_error": 0.005610735351730476,
+            "passed": true
+          }
+        },
+        "point-beyond": {
+          "receivers": 15406,
+          "blocked": 0,
+          "visible": 14750,
+          "visibility_mismatches": 0,
+          "rms": 0.00017002660024445504,
+          "maximum_error": 0.0006228225538507104,
+          "preexisting_present_hazards": 4,
+          "passed": true
+        },
+        "spot-opaque": {
+          "receivers": 15466,
+          "blocked": 4212,
+          "visible": 9934,
+          "visibility_mismatches": 0,
+          "rms": 0.0003412750957068056,
+          "maximum_error": 0.007418691646307707,
+          "preexisting_present_hazards": 4,
+          "passed": true,
+          "injection": {
+            "voxels": 4492,
+            "visibility_mismatches": 0,
+            "rms": 0.0006947599735843593,
+            "maximum_error": 0.008023094091928225,
+            "passed": true
+          }
+        },
+        "directional-opaque": {
+          "receivers": 15466,
+          "blocked": 1094,
+          "visible": 14372,
+          "visibility_mismatches": 0,
+          "rms": 3.628066167493671e-07,
+          "maximum_error": 1.3029853107582312e-06,
+          "preexisting_present_hazards": 4,
+          "passed": true,
+          "injection": {
+            "voxels": 4492,
+            "visibility_mismatches": 0,
+            "rms": 0.000297440743279395,
+            "maximum_error": 0.0005369304248683351,
+            "passed": true
+          }
+        },
+        "point-mask": {
+          "receivers": 15187,
+          "blocked": 2559,
+          "visible": 12628,
+          "visibility_mismatches": 0,
+          "rms": 0.0001157423248514533,
+          "maximum_error": 0.0019514496671035886,
+          "preexisting_present_hazards": 4,
+          "passed": true,
+          "injection": {
+            "voxels": 4340,
+            "visibility_mismatches": 0,
+            "rms": 0.0005147446361286288,
+            "maximum_error": 0.006105854459243695,
+            "passed": true
+          }
+        },
+        "point-opaque-forward": {
+          "receivers": 15466,
+          "blocked": 4212,
+          "visible": 11254,
+          "visibility_mismatches": 0,
+          "rms": 0.0,
+          "maximum_error": 0.0,
+          "preexisting_present_hazards": 4,
+          "passed": true
+        },
+        "point-mask-forward": {
+          "receivers": 15187,
+          "blocked": 2559,
+          "visible": 12628,
+          "visibility_mismatches": 0,
+          "rms": 0.0,
+          "maximum_error": 0.0,
+          "preexisting_present_hazards": 4,
+          "passed": true
+        },
+        "tilted-deferred": {
+          "receivers": 15466,
+          "blocked": 0,
+          "visible": 12625,
+          "visibility_mismatches": 0,
+          "rms": 0.0005843854742124677,
+          "maximum_error": 0.023287158459424973,
+          "preexisting_present_hazards": 4,
+          "passed": true
+        },
+        "tilted-forward": {
+          "receivers": 15466,
+          "blocked": 0,
+          "visible": 12662,
+          "visibility_mismatches": 0,
+          "rms": 0.0,
+          "maximum_error": 0.0,
+          "preexisting_present_hazards": 4,
+          "passed": true
+        },
+        "moving-24": {
+          "receivers": 15465,
+          "blocked": 4214,
+          "visible": 11251,
+          "visibility_mismatches": 0,
+          "rms": 0.0001336908171651885,
+          "maximum_error": 0.0019379510777071118,
+          "preexisting_present_hazards": 10,
+          "passed": true,
+          "injection": {
+            "voxels": 4492,
+            "visibility_mismatches": 0,
+            "rms": 0.0005416447162916373,
+            "maximum_error": 0.005525784502495063,
+            "passed": true
+          }
+        },
+        "moving-80": {
+          "receivers": 15464,
+          "blocked": 4212,
+          "visible": 11252,
+          "visibility_mismatches": 0,
+          "rms": 0.00013194404891692102,
+          "maximum_error": 0.0019354342948645353,
+          "preexisting_present_hazards": 10,
+          "passed": true,
+          "injection": {
+            "voxels": 4492,
+            "visibility_mismatches": 0,
+            "rms": 0.0005385744827535718,
+            "maximum_error": 0.005531989012233622,
+            "passed": true
+          }
+        }
+      },
+      "profiles": {},
+      "fallback_identical": true,
+      "scatter_pass_executed": true,
+      "tilted_scatter": {
+        "scatter_pass_executed": true,
+        "unshadowed_image_identical": true
+      },
+      "passed": true
+    },
+    "rendercore_tests": {
+      "passed": 583,
+      "failures": 0
+    },
+    "editor_tests": {
+      "passed": 6,
+      "failures": 0,
+      "execution_modes": [
+        "inline",
+        "threaded"
+      ],
+      "validation_errors": 0,
+      "scope": "Hardware-ready selection; RT opt-out; voxel/legacy providers; shadow diagnostics; scene replacement; settings and light edits. An impossible map-array size forces map preflight rejection without exhausting physical VRAM."
+    },
+    "spirv_validation": {
+      "modules": 44,
+      "target": "vulkan1.2",
+      "directories": [
+        "SceneRenderer",
+        "Editor"
+      ]
+    },
+    "final_binaries_sha256": {
+      "scene_renderer_demo.exe": "0f1df493d4b7762a489eb50f95b5136b85e1c09cdff87d5119b31bd1cebe986d",
+      "zen_editor.exe": "0431d3f631df585a2ba5b5807bf9c969bcd4201688305336f3e64bcaad2ca309",
+      "EditorRenderingTest.exe": "5ad80a1fe0aa2170f90e183cd0b77fbac702242f3842c1a767fecbf95aad2b8c"
+    },
+    "notes": "Correctness captures were made before the final editor-only readiness refinement; their executed demo hash is retained in correctness. Windowed captures permit only the existing PRESENT-AFTER-WRITE diagnostic. Original Release benchmark data is unchanged."
+  }
+}

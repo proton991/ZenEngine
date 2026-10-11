@@ -6,9 +6,11 @@
 #include "../ShadowMapping/scene_shadows.glsl"
 #endif
 layout(set=1,binding=0) uniform uCameraData { mat4 uProjViewMatrix; mat4 uProjMatrix; mat4 uViewMatrix; };
+#ifndef HARDWARE_SHADOWS
 struct NodeData { mat4 modelMatrix; mat4 normalMatrix; vec4 surfaceScale; };
 layout(std140,set=1,binding=1) readonly buffer NodeBuffer { NodeData nodesData[]; };
 layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
+#endif
 layout(set=3,binding=1) uniform samplerCube envIrradianceMap;
 layout(push_constant) uniform Constants { uint uNodeIndex; uint uMaterialIndex; uint uTopology; };
 layout(location=0) out vec4 outScatterLighting;
@@ -19,6 +21,12 @@ void main()
     MaterialSurface s = ReadMaterialSurface(material);
     s.modelScale = nodesData[uNodeIndex].surfaceScale.xyz;
     vec3 N = SurfaceNormal(material);
+#ifdef VOXEL_GI
+    vec3 shadowNormal = GeometricNormal(material);
+#ifdef HARDWARE_SHADOWS
+    shadowNormal = TriangleNormal(shadowNormal);
+#endif
+#endif
     if (!MaterialVisible(material, s.baseColor.a) || (uTopology == 2 &&
         (material.materialProperties.z < 0.5 || material.volumeIridescence.x > 0.0) && !(gl_FrontFacing == (inOrientation >= 0.0)))) discard;
     vec3 V = uProjMatrix[3][3] > 0.5 ? normalize(transpose(mat3(uViewMatrix))[2]) : SafeNormalize(sceneUbo.viewPosition.xyz - inWorldPos, N);
@@ -44,7 +52,7 @@ void main()
             vec3 H = SafeNormalize(V + mirrorL, N);
             float visibility = 1.0;
 #ifdef VOXEL_GI
-            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, GeometricNormal(material));
+            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, shadowNormal);
 #endif
             color += radiance * abs(nl) / M_PI * weighting * s.diffuseTransmissionColor * s.diffuseTransmission *
                 (vec3(1.0) - SurfaceFresnel(s, max(dot(V, H), 0.0))) * visibility;

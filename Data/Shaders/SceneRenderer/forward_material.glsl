@@ -6,9 +6,11 @@
 #include "../ShadowMapping/scene_shadows.glsl"
 #endif
 layout(set=1,binding=0) uniform uCameraData { mat4 uProjViewMatrix; mat4 uProjMatrix; mat4 uViewMatrix; };
+#ifndef HARDWARE_SHADOWS
 struct NodeData { mat4 modelMatrix; mat4 normalMatrix; vec4 surfaceScale; };
 layout(std140,set=1,binding=1) readonly buffer NodeBuffer { NodeData nodesData[]; };
 layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
+#endif
 layout(set=3,binding=1) uniform samplerCube envIrradianceMap;
 layout(set=3,binding=2) uniform samplerCube envPrefilteredMap;
 layout(set=3,binding=3) uniform sampler2D lutBRDFMap;
@@ -135,6 +137,12 @@ void main()
     bool displayLinear = (uTopology & 4u) != 0u;
     Material material = materialData[uMaterialIndex];
     vec3 N = SurfaceNormal(material);
+#ifdef VOXEL_GI
+    vec3 shadowNormal = GeometricNormal(material);
+#ifdef HARDWARE_SHADOWS
+    shadowNormal = TriangleNormal(shadowNormal);
+#endif
+#endif
     vec3 coatN = ClearcoatNormal(material);
     bool backface = material.materialProperties.z > 0.5 && !(gl_FrontFacing == (inOrientation >= 0.0));
     // Missing mesh tangents use the normal texture's authored tangent space.
@@ -238,7 +246,7 @@ void main()
             vec3 radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i], inWorldPos, L, distanceToLight);
             float visibility = 1.0;
 #ifdef VOXEL_GI
-            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, GeometricNormal(material));
+            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, shadowNormal);
 #endif
             vec3 direct=SurfaceDirect(s, N, coatN, T, B, V, L) * radiance * visibility;
             color += direct;

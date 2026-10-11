@@ -547,12 +547,9 @@ bool EditorViewport::ApplyRenderingSettings(const rc::RenderingSettings& setting
                       || !rc::EqualSceneLight(light.light, m_appliedLights[index].light);
     }
 
-    const bool shadows = (settings.algorithm == rc::RenderAlgorithm::eVoxelGI && settings.gi.cone.shadows)
-                      || settings.debug.output == rc::DebugOutput::eShadow;
-
     const uint32_t shadowFaces = rc::CountShadowFaces(lights) + rc::CameraLightShadowFaces(settings.cameraLight);
 
-    if (valid && shadows && !server.ValidateShadowResources(settings.gi.shadowMapResolution, shadowFaces))
+    if (valid && !server.ValidateShadowResources(settings, shadowFaces))
     {
         error = "Shadow memory preflight rejected the edit. Reduce resolution or the number of shadow-casting lights.";
 

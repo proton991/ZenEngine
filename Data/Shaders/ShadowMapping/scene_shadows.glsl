@@ -1,6 +1,36 @@
 #ifndef ZEN_SCENE_SHADOWS
 #define ZEN_SCENE_SHADOWS
 #include "../Common/scene_lighting.glsl"
+#ifdef HARDWARE_SHADOWS
+#include "../VoxelGI/hybrid_provider.glsl"
+
+float SceneLightVisibility(int lightIndex,vec3 position,vec3 normal)
+{
+    SceneLight light=lightIndex==MAX_SCENE_LIGHTS ? sceneUbo.cameraLight : sceneUbo.lights[lightIndex];
+    float visibility=1.0;
+    if(gi.limits.z>0.5 && (lightIndex==MAX_SCENE_LIGHTS || light.coneShadow.z>0.0))
+    {
+        vec3 direction; float distanceToLight;
+        vec3 incoming=EvaluateLight(light,position,direction,distanceToLight);
+        if(any(greaterThan(incoming,vec3(0))))
+        {
+            // Offset toward the ray's hemisphere, also for diffuse-transmission receivers.
+            vec3 origin=HybridTraceOrigin(position,dot(normal,direction)>=0.0 ? normal : -normal,0.0);
+            if(int(light.directionType.w)!=0)
+            {
+                vec3 delta=light.positionRange.xyz-origin;
+                distanceToLight=length(delta);
+                direction=delta/max(distanceToLight,1e-20);
+                // Exclude the endpoint itself, without dropping a finite interval before it.
+                distanceToLight=uintBitsToFloat(floatBitsToUint(distanceToLight)-uint(distanceToLight>0.0));
+            }
+            if(distanceToLight>0.0)
+                visibility=HardwareTraceRay(origin,direction,distanceToLight,false).hit ? 0.0 : 1.0;
+        }
+    }
+    return visibility;
+}
+#else
 layout(std140,set=4,binding=0) uniform uSceneShadows
 {
     mat4 viewProjection[(MAX_SCENE_LIGHTS+1)*6];
@@ -89,4 +119,5 @@ float SceneLightVisibility(int lightIndex,vec3 position,vec3 normal)
     }
     return visibility;
 }
+#endif
 #endif

@@ -131,7 +131,8 @@ public:
     // voxelizer whose allocation failed; cone-only edits keep it.
     bool ApplyVoxelGISettings(const VoxelGIRuntimeSettings& settings, bool retryFailedResources = false);
 
-    bool ValidateShadowResources(uint32_t resolution, uint32_t faces) const;
+    // Preflight the proposed selection; active hardware shadows do not require map memory.
+    bool ValidateShadowResources(const RenderingSettings& settings, uint32_t faces) const;
 
 private:
     void BuildDiagnosticFrame(const RenderView& view);

@@ -352,6 +352,7 @@ private:
                 settings.shadowMapResolution = editor.GetRenderingDefaults().gi.shadowMapResolution;
 
                 settings.cone.shadows        = editor.GetRenderingDefaults().gi.cone.shadows;
+                settings.cone.rtShadows      = editor.GetRenderingDefaults().gi.cone.rtShadows;
 
                 changed                      = true;
             }
@@ -359,7 +360,9 @@ private:
             DrawHint(
                 "Mesh shadows affect direct lights in PBR + voxel GI and update immediately. Environment lighting and voxel occlusion are independent.");
 
-            changed                      |= ImGui::Checkbox("Mesh shadows", &settings.cone.shadows);
+            changed |= ImGui::Checkbox("Mesh shadows", &settings.cone.shadows);
+            changed |= ImGui::Checkbox("Hardware shadow rays", &settings.cone.rtShadows);
+            DrawHint("Hard shadows with the hardware GI provider; shadow maps are used when hardware queries are unavailable.");
 
             int resolution                = static_cast<int>(settings.shadowMapResolution);
 
@@ -401,10 +404,10 @@ private:
             changed                   |= ImGui::Checkbox(PropertyLabel("Specular occlusion").c_str(), &cone.specularOcclusion);
             int         reflections    = static_cast<int>(cone.reflections);
             const char* reflectionModes[] = {"Auto", "Off", "On"};
-            changed            |= ImGui::Combo(PropertyLabel("Reflections").c_str(), &reflections, reflectionModes, 3);
-            cone.reflections    = static_cast<rc::VoxelGISettings::Reflections>(reflections);
+            changed                     |= ImGui::Combo(PropertyLabel("Reflections").c_str(), &reflections, reflectionModes, 3);
+            cone.reflections             = static_cast<rc::VoxelGISettings::Reflections>(reflections);
 
-            int         bounce  = static_cast<int>(cone.bounceSource);
+            int         bounce           = static_cast<int>(cone.bounceSource);
             const char* bounceSources[]  = {"Auto", "Cones", "Ray hits"};
             changed                     |= ImGui::Combo(PropertyLabel("Bounce source").c_str(), &bounce, bounceSources, 3);
             cone.bounceSource            = static_cast<rc::VoxelGISettings::BounceSource>(bounce);

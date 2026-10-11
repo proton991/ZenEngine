@@ -1067,6 +1067,8 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
                << ",\"history_frames\":" << cone.historyFrames << ",\"temporal\":" << cone.temporal
                << ",\"filter\":" << cone.filter << ",\"specular_occlusion\":" << cone.specularOcclusion
                << ",\"reflections\":" << server.RequestVoxelGI()->UsesReflections()
+               << ",\"rt_shadows_requested\":" << cone.rtShadows
+               << ",\"hardware_shadows\":" << server.RequestVoxelGI()->UsesHardwareShadows()
                << ",\"analytic_lighting\":" << cone.analyticLighting << ",\"environment_lighting\":" << cone.environmentLighting
                << ",\"emissive_lighting\":" << cone.emissiveLighting << ",\"indirect_intensity\":" << cone.indirectIntensity
                << ",\"shadows\":" << cone.shadows << ",\"cone_count\":" << cone.coneCount

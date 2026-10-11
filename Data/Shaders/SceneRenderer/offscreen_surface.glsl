@@ -21,6 +21,9 @@ void main()
 {
     Material material=materialData[uMaterialIndex];
     vec3 normal=SurfaceNormal(material);
+#ifdef HYBRID_RECEIVER
+    vec3 geometric=TriangleNormal(normal);
+#endif
     vec4 albedo=MaterialAlbedo(material,inUV,inUV1,inColor);
     if(!MaterialVisible(material,albedo.a) || (material.materialProperties.z < 0.5 && !(gl_FrontFacing == (inOrientation >= 0.0)))) discard;
     vec4 mr=MaterialSlotTexture(material, 1, material.mrTexIndex,MaterialTransformedUV(material, 1, material.mrTexSet,inUV,inUV1));
@@ -33,12 +36,6 @@ void main()
     // Exclude layers that must retain per-surface lighting in the forward renderer.
     if(material.surfaceProperties.y==2.0 || material.sheenColorTransmission.w>0.0 ||
        material.diffuseTransmissionColorFactor.w>0.0) discard;
-    // Degeneracy is judged relative to the pixel footprint. An absolute threshold rejected
-    // nearly every pixel of the unit-normalized scene (|dFdx x dFdy| ~ 4e-7 at 960x540) and
-    // silently substituted the shading normal for the geometric one.
-    vec3 dx=dFdx(inWorldPos), dy=dFdy(inWorldPos), face=cross(dx,dy);
-    vec3 geometric=dot(face,face)>1e-12*dot(dx,dx)*dot(dy,dy) ? normalize(face) : normal;
-    if(dot(geometric,normal)<0.0) geometric=-geometric;
     bool facing=gl_FrontFacing == (inOrientation>=0.0);
     outReceiver=uvec2(packUnorm2x16(EncodeGBufferNormal(geometric)),(uNodeIndex+1u)*2u+(facing ? 1u:0u));
     // NDC motion (previous - current) and the previous w; w <= 0 lay behind the previous camera.

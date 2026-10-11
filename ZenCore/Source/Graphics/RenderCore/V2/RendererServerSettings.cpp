@@ -6,9 +6,25 @@
 
 namespace zen::rc
 {
-bool RendererServer::ValidateShadowResources(uint32_t resolution, uint32_t faces) const
+bool RendererServer::ValidateShadowResources(const RenderingSettings& settings, uint32_t faces) const
 {
-    return m_pSceneShadows != nullptr && m_pSceneShadows->Preflight(resolution, faces);
+    const VoxelGISettings& gi = settings.gi.cone;
+
+    const bool hardwareProvider =
+        gi.rayProvider == VoxelGISettings::RayProvider::Auto || gi.rayProvider == VoxelGISettings::RayProvider::Hardware;
+
+    const uint64_t budget = uint64_t(gi.accelerationStructureBudgetMB) * 1024 * 1024;
+
+    // Readiness matters: supported devices can still fall back after a scene/build failure.
+    // Recheck the proposed provider and budget so edits which select maps are preflighted.
+    const bool hardwareShadows = gi.rtShadows && hardwareProvider && m_pVoxelGI != nullptr && m_pVoxelGI->UsesHardwareQueries()
+                              && m_pVoxelGI->GetSceneRayQuery().IsReady()
+                              && (budget == 0 || m_pVoxelGI->GetSceneRayQuery().GetMemoryBytes() <= budget);
+
+    const bool maps            = settings.debug.output == DebugOutput::eShadow
+                              || (settings.algorithm == RenderAlgorithm::eVoxelGI && gi.shadows && !hardwareShadows);
+
+    return !maps || (m_pSceneShadows != nullptr && m_pSceneShadows->Preflight(settings.gi.shadowMapResolution, faces));
 }
 
 VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const

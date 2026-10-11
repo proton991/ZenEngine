@@ -477,7 +477,7 @@ bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
     return ready && IsReady();
 }
 
-void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene) const
+void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound) const
 {
     const Generation& generation = Current();
     pass.BindAccelerationStructure("sceneAccelerationStructure", generation.tlas);
@@ -485,11 +485,14 @@ void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene) const
     pass.BindStorageBuffer("RayInstanceMetadata", generation.instanceMetadata);
     pass.BindStorageBuffer("VertexBuffer", scene.GetVertexBuffer());
     pass.BindStorageBuffer("IndexBuffer", scene.GetIndexBuffer());
-    pass.BindStorageBuffer("NodeBuffer", scene.GetNodesDataSSBO());
-    pass.BindStorageBuffer("MaterialBuffer", scene.GetMaterialsDataSSBO());
-    pass.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
-    const RHISamplerCreateInfo samplerInfo = RHISamplerCreateInfo::CreateLinearRepeat();
-    BindSceneTextureArray(pass, m_device->CreateSampler(samplerInfo), scene.GetSceneTextures(), scene.GetSceneSamplers());
+    if (!forwardMaterialBound)
+    {
+        pass.BindStorageBuffer("NodeBuffer", scene.GetNodesDataSSBO());
+        pass.BindStorageBuffer("MaterialBuffer", scene.GetMaterialsDataSSBO());
+        pass.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
+        const RHISamplerCreateInfo samplerInfo = RHISamplerCreateInfo::CreateLinearRepeat();
+        BindSceneTextureArray(pass, m_device->CreateSampler(samplerInfo), scene.GetSceneTextures(), scene.GetSceneSamplers());
+    }
     struct QueryUniforms
     {
         Vec4       minimum;

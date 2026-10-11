@@ -113,7 +113,9 @@ bool WriteLightingMetadata(const std::string&        path,
         << (reconstructed                                            ? "hybrid"
             : server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone"
                                                                      : "pbr")
-        << "\",\"analytic_visibility\":\"mesh_shadow_maps\""
+        << "\",\"analytic_visibility\":\""
+        << (reconstructed && server.RequestVoxelGI()->UsesHardwareShadows() ? "hardware_shadow_rays" : "mesh_shadow_maps")
+        << "\""
         << ",\"reflectance_policy\":\"" << (voxelizer.UsesAveragedReflectance() ? "averaged" : "owner")
         << "\",\"voxel_resolution\":" << voxelizer.GetVoxelTexResolution()
         << ",\"voxel_geometry_generation\":" << voxelizer.GetGeometryRevision()
@@ -157,6 +159,8 @@ bool WriteLightingMetadata(const std::string&        path,
         << "\",\"sample_seed\":0,\"radiance_generation\":" << server.RequestVoxelGI()->GetRadianceGeneration()
         << ",\"bounce_diagnostics\":\"raw alpha: rejected lookups; reconstructed alpha: history length\""
         << ",\"reflections\":" << (reconstructed && server.RequestVoxelGI()->UsesReflections() ? "true" : "false")
+        << ",\"rt_shadows_requested\":" << (settings.rtShadows ? "true" : "false")
+        << ",\"hardware_shadows\":" << (reconstructed && server.RequestVoxelGI()->UsesHardwareShadows() ? "true" : "false")
         << ",\"reflection_roughness_cutoff\":0.2,\"reflection_radiance\":\"RGB stores (1-S)*H; alpha stores S\""
         << ",\"reflection_diagnostics\":\"component 12: identity bits, raw mean hit distance, rejected lookups, history length\""
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)

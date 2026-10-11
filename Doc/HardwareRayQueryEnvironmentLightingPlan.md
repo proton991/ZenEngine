@@ -46,7 +46,7 @@ Principles:
 | Diffuse sky | Hardware rays + reconstruction | Voxel rays + reconstruction | PBR irradiance map, unoccluded |
 | Diffuse bounce | Same rays; hits read the radiance cache (P5) | Cone march, or voxel-ray hits if P8 measures them better | None |
 | Specular (environment and glossy) | Lobe rays: misses use the environment, hits read the radiance cache (P6) | Same with voxel rays, or occlusion only if P8 measures reflections too costly | PBR prefiltered environment |
-| Analytic shadows (pixels and injection) | Shadow maps; hardware shadow rays if P7 is adopted | Shadow maps | Shadow maps |
+| Analytic shadows (pixels and injection) | Hardware shadow rays by default; shadow maps on fallback or explicit opt-out | Shadow maps | Shadow maps |
 | Voxel sky cache | Hardware rays | Voxel rays | — |
 | Translucent and scattering layers | Per-surface cone path | Same | PBR |
 
@@ -108,7 +108,7 @@ D1 requires distributed per-pixel sampling with temporal and spatial reconstruct
 | P4 | Hardware ray-query provider: RHI, render graph, scene acceleration structures | P0; P4a–P4c may run in parallel with P1–P3; P4e after P3 |
 | P5 | Diffuse bounce from ray hits | P3; P4 for the RT tier |
 | P6 | Glossy reflections from the radiance cache | P3, P5 |
-| P7 | Hardware shadow rays (optional; adopted only if P8 measures a benefit). Shadow rays for bright sources extracted from the environment are pulled into P4 (2026-10-10) | P4 |
+| P7 | Hardware shadow rays (supported-device default by user decision, 2026-10-11; P8 measures preset costs). Shadow rays for bright sources extracted from the environment are pulled into P4 (2026-10-10) | P4 |
 | P8 | Compute-tier and RT-tier performance, presets, memory, platform validation, automatic selection | P5, P6; P7 if implemented |
 
 Each phase leaves the renderer usable, with focused tests and a short verification record in [VoxelGIVerification.md](VoxelGIVerification.md).
@@ -292,7 +292,7 @@ Exit: render-graph tests cover history ordering across frames in flight, resize 
 | `voxel_gi_reflections` (`auto`, `true`, `false`; `auto` follows the hardware provider), `voxel_gi_specular_occlusion` | Enable `H` and `S` |
 | `voxel_gi_temporal`, `voxel_gi_filter` | Disable reprojection or spatial filtering, for tests and reference captures |
 | `voxel_gi_history_frames` | Upper bound on accumulated frames (default 32) |
-| `voxel_gi_rt_shadows` | P7, only if adopted |
+| `voxel_gi_rt_shadows` | P7 hard shadows with the hardware provider, default `true`; shadow maps on fallback or explicit `false` |
 | `voxel_gi_memory_budget_mb` | Pre-allocation cap covering voxel volumes, acceleration structures, scratch, histories and retired generations |
 
 During the transition, a `legacy` value of `voxel_gi_ray_provider` selects the current per-cone sky path for comparison. It is removed when P3 passes.
@@ -449,9 +449,13 @@ Exit: the glossy-floor fixture passes its limit on the RT tier. Enclosed glossy 
 
 ## P7 Hardware shadow rays (optional)
 
+Implemented and evaluated 2026-10-11 on RTX 5080; [results, reproduction and adoption decision](HybridGI/P7.md). The CPU fixture gate passes for receiver and owner-surface injection visibility, including masked blockers and moving lights/geometry. Deferred, forward and scattering shaders share the scene query service. Disabled RT falls back to shadow maps.
+
+**User decision (2026-10-11):** default to `voxel_gi_rt_shadows=true`, using hardware shadows when the hardware provider is ready and shadow maps otherwise; explicit `false` requests maps. This supersedes the initial opt-in decision. The 1/4/16/32-light static and moving fixture measurements support further evaluation, especially for many moving lights; they do not establish production-scene or cross-device preset costs. P8 owns performance qualification and preset tuning.
+
 - Trace one shadow ray per shadowed light per pixel at receivers, and one per lit voxel per light during injection from the owner-surface point, against the full-scene TLAS with the same alpha rules. Hard shadows first; soft shadows from light radius need their own reconstruction and are a later option.
 - Shadow maps remain the fallback and the compute-tier path.
-- P8 measures both paths with 1, 4, 16 and 32 lights. P7 is adopted per tier and preset only if it matches or beats shadow-map cost there, or improves quality at an accepted cost.
+- P8 measures both paths with 1, 4, 16 and 32 lights. The supported-device default follows the user decision above; measurements of cost and quality guide subsequent preset tuning.
 
 Exit: hardware shadows match a CPU shadow reference on the fixtures, and the adoption decision is recorded.
 
@@ -589,7 +593,7 @@ These are not required for done and are each assessed against the P0 limits and 
 - [ ] P4e hardware provider passes the CPU-reference and shipping-preset limits.
 - [x] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured. (2026-10-10, RTX 5080; ray-hit bounce is the RT-tier default)
 - [x] P6 glossy reflections pass on the RT tier; compute-tier choice measured. (2026-10-10, RTX 5080; [results and limits](HybridGI/P6.md))
-- [ ] P7 hardware shadows evaluated and the adoption decision recorded (optional).
+- [x] P7 hardware shadows evaluated and the adoption decision recorded (optional). (2026-10-11, RTX 5080; enabled by default when supported, shadow-map fallback; [results and limits](HybridGI/P7.md))
 - [ ] P8 performance and memory reports per tier, preset and platform; presets and automatic selection documented.
 - [ ] Functional report records correctness evidence and limitations per tier.
 

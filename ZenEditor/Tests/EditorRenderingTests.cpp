@@ -173,9 +173,9 @@ Vec2 Project(const EditorCamera& camera, Vec3 world)
 }
 
 // Headless device setup leaves scene rendering uninitialized until explicitly requested.
-UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode mode)
+UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode mode, bool rayTracing = false)
 {
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    RHIOptions::GetInstance().SetRayTracingDisabled(!rayTracing);
 
     RHIOptions::GetInstance().SetValidationEnabled(true);
 
@@ -1875,6 +1875,74 @@ uint64_t PixelEnergy(const HeapVector<uint8_t>& pixels)
     }
 
     return sum;
+}
+
+TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelection)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), true);
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("shadow_toggle.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+
+    rc::RendererServer&   server    = *device->GetRendererServer();
+    rc::RenderingSettings settings  = editor.GetRenderingState().GetDraft();
+    settings.algorithm              = rc::RenderAlgorithm::eVoxelGI;
+    settings.debug.output           = rc::DebugOutput::eFinal;
+    settings.gi.resolution          = 64;
+    settings.gi.shadowMapResolution = 128;
+    settings.gi.cone                = rc::VoxelGISettings{};
+
+    // An impossible map-array size makes the map preflight fail deterministically,
+    // without exhausting physical VRAM. Hardware visibility needs no map array.
+    constexpr uint32_t rejectedFaces = (rc::MaxSceneLights + 1) * 6 + 1;
+    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+    ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+    ASSERT_TRUE(Frame(*device, editor));
+    const bool hardware = device->GetGPUInfo().rayQuery.IsUsable();
+    ASSERT_EQ(server.RequestVoxelGI()->UsesHardwareShadows(), hardware);
+    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
+
+    // A settings edit and a light-count edit both use the viewport's preflight path.
+    settings.gi.cone.indirectIntensity = 0.5f;
+    rc::RenderingLight light;
+    light.id             = rc::MaxSceneLights + 1;
+    light.light.type     = rc::SceneLightType::ePoint;
+    light.light.position = Vec3(0, 0, 1);
+    settings.lights.push_back(light);
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+    ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+    ASSERT_TRUE(Frame(*device, editor));
+    EXPECT_EQ(server.RequestVoxelGI()->UsesHardwareShadows(), hardware);
+
+    settings.gi.cone.rtShadows = false;
+    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    settings.gi.cone.rtShadows = true;
+    for (rc::VoxelGISettings::RayProvider provider :
+         {rc::VoxelGISettings::RayProvider::Voxel, rc::VoxelGISettings::RayProvider::Legacy,
+          rc::VoxelGISettings::RayProvider::Hardware, rc::VoxelGISettings::RayProvider::Auto})
+    {
+        settings.gi.cone.rayProvider = provider;
+        EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces),
+                  hardware
+                      && (provider == rc::VoxelGISettings::RayProvider::Hardware
+                          || provider == rc::VoxelGISettings::RayProvider::Auto));
+    }
+    settings.debug.output = rc::DebugOutput::eShadow;
+    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    settings.gi.cone.shadows = false;
+    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    settings.debug.output = rc::DebugOutput::eFinal;
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+    settings.gi.cone.shadows = true;
+
+    // Scene replacement removes readiness until queries for the new scene are built.
+    server.RequestVoxelGI()->SetRenderScene(nullptr);
+    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    settings.algorithm = rc::RenderAlgorithm::ePBR;
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+    DestroyDevice(*device, editor);
 }
 
 // A small occluder casts a visible offset shadow on the larger receiver. Compare

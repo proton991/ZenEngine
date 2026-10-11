@@ -77,7 +77,8 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
             m_environmentRevision = 0;
         }
 
-        if (settings.shadows != m_settings.shadows || settings.analyticLighting != m_settings.analyticLighting
+        if (settings.shadows != m_settings.shadows || settings.rtShadows != m_settings.rtShadows
+            || settings.analyticLighting != m_settings.analyticLighting
             || settings.emissiveLighting != m_settings.emissiveLighting
             || settings.normalBiasVoxels != m_settings.normalBiasVoxels)
         {
@@ -109,6 +110,7 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid      &= config.ReadNumber("voxel_gi_max_steps", settings.maxSteps);
 
     valid      &= config.ReadBool("voxel_gi_shadow_enabled", settings.shadows);
+    valid      &= config.ReadBool("voxel_gi_rt_shadows", settings.rtShadows);
 
     valid      &= config.ReadBool("voxel_gi_analytic_lighting", settings.analyticLighting);
 
@@ -128,19 +130,19 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     settings.reflections           = reflections == "true"  ? VoxelGISettings::Reflections::On
                                    : reflections == "false" ? VoxelGISettings::Reflections::Off
                                                             : VoxelGISettings::Reflections::Auto;
-    const std::string provider  = config.GetString("voxel_gi_ray_provider", "auto");
-    const std::string bounce    = config.GetString("voxel_gi_bounce_source", "auto");
-    valid                      &= bounce == "auto" || bounce == "cone" || bounce == "rays";
-    settings.bounceSource       = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
-                                : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
-                                                   : VoxelGISettings::BounceSource::Auto;
-    valid                      &= provider == "auto" || provider == "voxel" || provider == "hardware" || provider == "legacy";
-    settings.rayProvider        = provider == "legacy"   ? VoxelGISettings::RayProvider::Legacy
-                                : provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
-                                : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
-                                                         : VoxelGISettings::RayProvider::Auto;
+    const std::string provider     = config.GetString("voxel_gi_ray_provider", "auto");
+    const std::string bounce       = config.GetString("voxel_gi_bounce_source", "auto");
+    valid                         &= bounce == "auto" || bounce == "cone" || bounce == "rays";
+    settings.bounceSource          = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
+                                   : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
+                                                      : VoxelGISettings::BounceSource::Auto;
+    valid                &= provider == "auto" || provider == "voxel" || provider == "hardware" || provider == "legacy";
+    settings.rayProvider  = provider == "legacy"   ? VoxelGISettings::RayProvider::Legacy
+                          : provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
+                          : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
+                                                   : VoxelGISettings::RayProvider::Auto;
 
-    valid                       = valid && ValidateVoxelGISettings(settings);
+    valid                 = valid && ValidateVoxelGISettings(settings);
 
     if (valid)
     {
@@ -303,9 +305,8 @@ void VoxelGIRenderer::BuildMipChain(const HeapVector<RHITextureView*>& views, Na
     }
 }
 
-void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
+void VoxelGIRenderer::BuildRayQueryGraph()
 {
-    m_recordedRadiance = false;
     if (IsInitialized() && m_scene != nullptr)
     {
         const bool  previousHardware = m_hardwareQueries;
@@ -325,6 +326,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
         if (previousHardware != m_hardwareQueries)
         {
             m_environmentRevision = 0;
+            m_lightingRevision    = 0;
         }
         if (previousHardware != m_hardwareQueries || previousReason != m_providerReason)
         {
@@ -334,6 +336,14 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
                                                                                   : "voxel",
                  m_providerReason);
         }
+    }
+}
+
+void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
+{
+    m_recordedRadiance = false;
+    if (IsInitialized() && m_scene != nullptr)
+    {
         m_uniforms.gridMinVoxelSize = Vec4(m_voxelizer->GetSceneMinPoint(), m_voxelizer->GetVoxelSize());
 
         // Scene bounds include committed instance transforms and vertex deformation,
@@ -464,17 +474,23 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             }
             RDGComputePassDesc inject;
 
-            const bool meshShadows = shadows != nullptr && m_scene->GetVoxelTriangleCount() != 0;
+            const bool hardwareShadows = UsesHardwareShadows();
+            const bool meshShadows     = (shadows != nullptr || hardwareShadows) && m_scene->GetVoxelTriangleCount() != 0;
 
             inject.SetShaderProgramName(meshShadows
                                             ? (m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectMeshRadianceAveragedSP"
                                                                                       : "VoxelInjectMeshRadianceSP")
                                         : m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectRadianceAveragedSP"
                                                                                  : "VoxelInjectRadianceSP");
+            if (hardwareShadows && meshShadows)
+            {
+                inject.SetShaderProgramName(m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectHardwareRadianceAveragedSP"
+                                                                                   : "VoxelInjectHardwareRadianceSP");
+            }
 
             inject.SetPassTag("VoxelInjectRadiance");
 
-            inject.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
+            inject.SetQueuePreference(hardwareShadows ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
 
             BindFrameData(inject);
 
@@ -486,15 +502,16 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             if (meshShadows)
             {
-                shadows->BindLightingInputs(inject);
+                BindShadowInputs(inject, shadows);
 
                 inject.BindStorageImage("voxelOwner", textures.pOwner->GetDefaultView());
 
-                inject.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
-
-                inject.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
-
-                inject.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+                if (!hardwareShadows)
+                {
+                    inject.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
+                    inject.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
+                    inject.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+                }
 
                 inject.BindStorageBuffer("TriangleRecords", m_scene->GetVoxelTriangleBuffer());
             }
@@ -542,6 +559,19 @@ void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass) const
     const EnvTexture& env = m_scene->GetEnvTexture();
     pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
     m_rayQuery.BindInputs(pass, *m_scene);
+}
+
+void VoxelGIRenderer::BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound) const
+{
+    if (UsesHardwareShadows())
+    {
+        m_rayQuery.BindInputs(pass, *m_scene, forwardMaterialBound);
+    }
+    else
+    {
+        VERIFY_EXPR(shadows != nullptr);
+        shadows->BindLightingInputs(pass);
+    }
 }
 
 void VoxelGIRenderer::BindHitRadianceInputs(RDGPassDescBase& pass) const
@@ -611,14 +641,20 @@ void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)
     if (succeeded && m_recordedRadiance)
     {
         ++m_radianceGeneration;
+        m_geometryRevision    = m_recordedGeometry;
+        m_lightingRevision    = m_recordedLighting;
+        m_environmentRevision = m_recordedEnvironment;
     }
+    else if (!succeeded)
+    {
+        m_geometryRevision    = 0;
+        m_lightingRevision    = 0;
+        m_environmentRevision = 0;
+    }
+    // Query preparation may execute in a frame which falls back before injection.
+    // Publish cache revisions only when their radiance was actually recorded.
     m_recordedRadiance = false;
     m_rayQuery.OnRenderGraphExecuted(succeeded);
-    m_geometryRevision    = succeeded ? m_recordedGeometry : 0;
-
-    m_lightingRevision    = succeeded ? m_recordedLighting : 0;
-
-    m_environmentRevision = succeeded ? m_recordedEnvironment : 0;
 }
 
 void VoxelGIRenderer::Destroy()

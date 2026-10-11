@@ -36,7 +36,7 @@ def environment_integral(prefix, metadata, normal):
 
 def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0,
         bounce_source='cone',resolution=64,environment_lighting=True,shadows=False,light_changes=False,spatial_filter=True,
-        width=320,height=180,reflections=True,reflection_motion=False,mode=3):
+        width=320,height=180,reflections=True,reflection_motion=False,mode=3,rt_shadows=False):
     exe=exe.resolve();folder=folder.resolve()
     fixtures=folder/'fixtures'
     generate(fixtures)
@@ -56,6 +56,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                           voxel_gi_temporal='true',voxel_gi_filter=str(spatial_filter).lower(),voxel_gi_specular_occlusion='true',
                           async_compute='auto')
             settings.update(voxel_gi_bounce_source=bounce_source,environment_lighting=str(environment_lighting).lower(),
+                            voxel_gi_rt_shadows=str(rt_shadows).lower(),
                             voxel_gi_shadow_enabled=str(shadows).lower(),voxel_gi_reflections=str(reflections).lower())
             settings.update({'dynamic_light.enabled':'false','light_markers.enabled':'false'})
             settings['environment_rotation_degrees'] = 0

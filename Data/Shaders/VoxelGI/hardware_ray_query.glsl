@@ -6,8 +6,14 @@
 layout(set=6,binding=0) uniform accelerationStructureEXT sceneAccelerationStructure;
 layout(std430,set=6,binding=1) readonly buffer RayGeometryMetadata { uvec4 rayGeometries[]; };
 layout(std430,set=6,binding=2) readonly buffer RayInstanceMetadata { uvec4 rayInstances[]; };
+#ifdef RAY_FORWARD_MATERIAL
+// Match the forward vertex stage's bindings, shared by raster and ray-hit material evaluation.
+layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
+layout(std430,set=1,binding=3) readonly buffer UVBuffer { vec4 uvValues[]; };
+#else
 layout(std140,set=6,binding=3) readonly buffer MaterialBuffer { Material materialData[]; };
 layout(std430,set=6,binding=4) readonly buffer UVBuffer { vec4 uvValues[]; };
+#endif
 layout(std140,set=6,binding=5) uniform uRayQueryData { vec4 minimum; vec4 maximum; uvec4 generation; } rayScene;
 
 // A few ULPs cover surface transform arithmetic; the receiver additionally
@@ -55,9 +61,15 @@ bool RayCandidateAccepted(uvec4 triangle,vec2 barycentric)
             if(set<stride) uv+=weights[corner]*uvValues[1u+vertex*stride+set].xy;
             alpha+=weights[corner]*vertices[vertex].color.a;
         }
-        alpha*=specularGlossiness ? material.diffuseFactor.a*MaterialFeatureTexture(material,2,uv,uv).a :
-            material.baseColorFactor.a*MaterialSlotTexture(material,0,material.bcTexIndex,
-                MaterialTransformedUV(material,0,0,uv,uv)).a;
+        // Ray hits have neither the current fragment's interpolated UVs nor its derivatives.
+        // Always apply the hit's transform and level-zero alpha, including in fragment shaders.
+        TextureTransform transform=specularGlossiness ? material.featureTextures[2].transform : material.textureTransforms[0];
+        int textureIndex=specularGlossiness ? int(material.featureTextures[2].properties.x) : material.bcTexIndex;
+        vec2 transformed=vec2(dot(transform.row0.xyz,vec3(uv,1)),dot(transform.row1.xyz,vec3(uv,1)));
+        alpha*=specularGlossiness ? material.diffuseFactor.a : material.baseColorFactor.a;
+        if(textureIndex>=0)
+            alpha*=textureLod(sampler2D(uTexture2DHeap[nonuniformEXT(textureIndex)],
+                uSamplerHeap[nonuniformEXT(int(transform.row0.w))]),transformed,0.0).a;
         accepted=MaterialVisible(material,alpha);
     }
     // Blend/transmission are opaque blockers under the query lighting contract.
@@ -103,7 +115,8 @@ HardwareRayHit HardwareQuery(vec3 origin,vec3 direction,float maximumDistance,bo
     {
         rayQueryEXT query;
         uint flags=closest ? 0u : gl_RayFlagsTerminateOnFirstHitEXT;
-        rayQueryInitializeEXT(query,sceneAccelerationStructure,flags,0xffu,origin,0.0,direction,leave+1e-5);
+        // Pad the scene bound, but never trace beyond a finite caller-supplied endpoint (a light).
+        rayQueryInitializeEXT(query,sceneAccelerationStructure,flags,0xffu,origin,0.0,direction,min(leave+1e-5,maximumDistance));
         while(rayQueryProceedEXT(query))
         {
             if(rayQueryGetIntersectionTypeEXT(query,false)==gl_RayQueryCandidateIntersectionTriangleEXT)

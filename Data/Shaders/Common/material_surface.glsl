@@ -24,6 +24,15 @@ vec3 GeometricNormal(Material material)
     return normal;
 }
 
+// Ray origins need the triangle plane, independent of interpolated or mapped normals.
+// Test degeneracy relative to the pixel footprint, since world derivatives can be tiny.
+vec3 TriangleNormal(vec3 fallback)
+{
+    vec3 dx=dFdx(inWorldPos), dy=dFdy(inWorldPos), face=cross(dx,dy);
+    vec3 normal=dot(face,face)>1e-12*dot(dx,dx)*dot(dy,dy) ? normalize(face) : fallback;
+    return dot(normal,fallback)<0.0 ? -normal : normal;
+}
+
 mat3 SurfaceBasis(vec3 normal, vec2 uv, bool useAuthoredTangent, bool flipTangent)
 {
     vec3 T = useAuthoredTangent ? inTangent.xyz - normal * dot(normal, inTangent.xyz) : vec3(0.0);

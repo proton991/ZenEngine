@@ -518,6 +518,11 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
                 lighting.SetShaderProgramName(capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP");
                 m_hybrid->BindLightingInputs(lighting);
             }
+            if (voxelGI != nullptr && voxelGI->UsesHardwareShadows())
+            {
+                lighting.SetShaderProgramName(capture ? "DeferredHardwareShadowsCaptureSP" : "DeferredHardwareShadowsSP");
+                lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
+            }
 
             lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
@@ -564,9 +569,7 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
             {
                 voxelGI->BindLightingInputs(lighting);
 
-                VERIFY_EXPR(shadows != nullptr);
-
-                shadows->BindLightingInputs(lighting);
+                voxelGI->BindShadowInputs(lighting, shadows);
             }
 
             pRDG->AddGraphicsPass(std::move(lighting))
@@ -835,6 +838,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 RDGGraphicsPassDesc source;
 
                 source.SetShaderProgramName(voxelGI == nullptr ? "ForwardScatterSP" : "ForwardScatterVoxelGISP");
+                if (voxelGI != nullptr && voxelGI->UsesHardwareShadows())
+                {
+                    source.SetShaderProgramName("ForwardScatterHardwareShadowsSP");
+                }
 
                 source.SetPassTag("ForwardScatterSource");
 
@@ -871,9 +878,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 {
                     voxelGI->BindLightingInputs(source);
 
-                    VERIFY_EXPR(shadows != nullptr);
-
-                    shadows->BindLightingInputs(source);
+                    voxelGI->BindShadowInputs(source, shadows, true);
                 }
 
                 graph->AddGraphicsPass(std::move(source))
@@ -1007,6 +1012,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 }
                 m_hybrid->BindLightingInputs(forward);
             }
+            if (voxelGI != nullptr && voxelGI->UsesHardwareShadows())
+            {
+                forward.SetShaderProgramName(capture ? "ForwardHardwareShadowsCaptureSP" : "ForwardHardwareShadowsSP");
+            }
 
             forward.SetPassTag(stage < 3 ? "ForwardOpaque" : "ForwardTranslucent");
 
@@ -1052,9 +1061,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             {
                 voxelGI->BindLightingInputs(forward);
 
-                VERIFY_EXPR(shadows != nullptr);
-
-                shadows->BindLightingInputs(forward);
+                voxelGI->BindShadowInputs(forward, shadows, true);
             }
 
             graph->AddGraphicsPass(std::move(forward))
