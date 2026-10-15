@@ -3,10 +3,14 @@
 #include "Component.h"
 #include "Math/Math.h"
 #include "Templates/HeapVector.h"
+#include "Templates/SmallVector.h"
 #include "AssetLib/Types.h"
 
 namespace zen::sg
 {
+// Common meshes use one or two UV sets. Additional sets still grow dynamically.
+using VertexTextureCoordinates = SmallVector<Vec2, 2>;
+
 // Camera instances belong to scene nodes; interactive Camera objects consume this data.
 class SceneCamera : public Component
 {
@@ -168,11 +172,11 @@ struct SceneAssetData
     HeapVector<AnimationAsset>            animations;
     HeapVector<MorphPrimitiveAsset>       morphPrimitives;
     HeapVector<DeformationPrimitiveAsset> deformations;
-    HeapVector<HeapVector<Vec2>>          vertexTexCoords;
+    HeapVector<VertexTextureCoordinates>  vertexTexCoords;
     // Original TEXCOORD_n semantic IDs for compact coordinate slots in vertexTexCoords.
     HeapVector<uint64_t>                      vertexTexCoordSets;
     HeapVector<asset::Vertex>                 bindVertices;
-    HeapVector<HeapVector<Vec2>>              bindVertexTexCoords;
+    HeapVector<VertexTextureCoordinates>      bindVertexTexCoords;
     HeapVector<std::string>                   materialVariants;
     HeapVector<MaterialVariantPrimitiveAsset> variantPrimitives;
     HeapVector<VertexAttributeAsset>          extraVertexAttributes;

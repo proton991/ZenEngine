@@ -222,7 +222,8 @@ if __name__ == '__main__':
     parser.add_argument('--scene', type=Path, help='Source fixture glTF when it is not beside the capture')
     parser.add_argument('--samples', type=int, default=4096)
     parser.add_argument('--batch', type=int, default=4)
-    parser.add_argument('--backend', choices=('auto', 'cuda', 'llvm'), default='auto')
+    parser.add_argument('--backend', choices=('cuda',), default='cuda',
+                        help='Mitsuba backend; references run only on CUDA and fail without it')
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     renderer = setup_mitsuba(args.backend)

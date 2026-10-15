@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "../hybrid_sampling.glsl"
+#define HYBRID_VOXEL_REFERENCE
 #include "../hybrid_provider.glsl"
 layout(local_size_x=1) in;
 layout(set=1,binding=0) uniform sampler3D opacity;

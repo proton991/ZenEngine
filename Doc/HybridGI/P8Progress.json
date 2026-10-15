@@ -1,0 +1,1511 @@
+{
+  "date": "2026-10-14",
+  "status": "in_progress",
+  "goal_complete": false,
+  "frame_target_fps": 60,
+  "hardware_must_be_faster": true,
+  "device": "NVIDIA GeForce RTX 5080",
+  "driver": "617.42",
+  "profiles": {
+    "compute": {
+      "frames": 1200,
+      "warmup": 120,
+      "fps": 62.505841366206425,
+      "mean_frame_ms": 15.99850475,
+      "median_frame_ms": 15.6876,
+      "p95_frame_ms": 17.1635,
+      "gpu_activity_percent_mean": 100.0,
+      "gpu_activity_percent_median": 100.0,
+      "memory_activity_percent_mean": 12.511904761904763,
+      "graphics_clock_mhz_mean": 2957.589285714286,
+      "power_watts_mean": 356.9167261904762,
+      "gpu_samples": 168,
+      "resolved_method": "hybrid",
+      "backend": "compute",
+      "configuration_sha256": "0c272b359ad5ab5cd1601e339ae0a9ff155f9202e69058a032826c5b2120fbf0",
+      "metric_note": "CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. Animation advances 1/60 second per frame. Configuration and shader hashes identify the workload; configured sample counts do not establish the number of rays actually issued.",
+      "vma_peak_committed_bytes": 2493120512,
+      "vma_peak_device_local_bytes": 2392457216,
+      "vma_remaining_bytes": 0,
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 82.16054399999999,
+          "max": 82.16054399999999,
+          "mean": 82.16054399999999,
+          "median": 82.16054399999999,
+          "p95": 82.16054399999999
+        },
+        "warmup": {
+          "count": 119,
+          "min": 15.338239999999999,
+          "max": 18.24032,
+          "mean": 16.18992591596639,
+          "median": 16.089952,
+          "p95": 17.72032
+        },
+        "measured": {
+          "count": 1200,
+          "min": 14.801024,
+          "max": 30.97344,
+          "mean": 15.969547120000032,
+          "median": 15.669616000000001,
+          "p95": 17.102592
+        }
+      },
+      "resolved_settings": {
+        "viewport_width": 1920,
+        "viewport_height": 1080,
+        "gbuffer_size": [
+          1920,
+          1080
+        ],
+        "frames_in_flight": 3,
+        "rhi_threaded": true,
+        "async_compute_status": "available",
+        "vsync_requested": false,
+        "vsync_note": "VSync chooses the existing platform present-mode policy; compositor behavior is not measured",
+        "validation_enabled": false,
+        "ray_query_enabled": false,
+        "acceleration_structure_enabled": false,
+        "buffer_device_address_enabled": true,
+        "ray_tracing_disabled": true,
+        "gpu_markers": false,
+        "voxelizer": "comp",
+        "voxel_resolution": 64,
+        "reflectance_policy": "owner",
+        "gi_method": "hybrid",
+        "requested_ray_provider": 1,
+        "bounce_source": "cone",
+        "diffuse_samples": 4,
+        "reference_samples": 0,
+        "adaptive_sampling": true,
+        "diffuse_samples_max": 6,
+        "angular_guide_resolution": 8,
+        "history_frames": 32,
+        "temporal": true,
+        "filter": true,
+        "specular_occlusion": true,
+        "reflections": true,
+        "rt_shadows_requested": true,
+        "hardware_shadows": false,
+        "analytic_lighting": true,
+        "environment_lighting": true,
+        "emissive_lighting": true,
+        "indirect_intensity": 1,
+        "shadows": true,
+        "cone_count": 6,
+        "cone_max_steps": 128,
+        "cone_angle_degrees": 60,
+        "cone_step_scale": 1,
+        "cone_normal_bias_voxels": 1.5,
+        "cone_max_distance_grid_lengths": 1.732100009918213,
+        "scene_geometry_revision": 1,
+        "scene_surface_revision": 1,
+        "final_camera_position": [
+          0.28502029180526733,
+          -0.12470130622386932,
+          0.010398302227258682,
+          1
+        ],
+        "environment_intensity_rotation_enabled_visible": [
+          1,
+          0,
+          1,
+          1
+        ],
+        "final_lights": []
+      },
+      "cpu_submission_ms": {
+        "cold": {
+          "count": 1,
+          "mean": 0.4785,
+          "median": 0.4785,
+          "p95": 0.4785,
+          "max": 0.4785
+        },
+        "warmup": {
+          "count": 119,
+          "mean": 0.012861344537815126,
+          "median": 0.0119,
+          "p95": 0.0158,
+          "max": 0.0343
+        },
+        "measured": {
+          "count": 1200,
+          "mean": 0.014595666666666667,
+          "median": 0.013699999999999999,
+          "p95": 0.019899999999999998,
+          "max": 0.1933
+        }
+      },
+      "cpu_submission_scope": "Sum of recorded render-graph CPU submission intervals per application frame; excludes startup uploads and host acquire/present. GPU time and frame-slot backpressure are reported separately.",
+      "full_summary": "build/p8/matrix-dark-exploration/hall-compute/summary.json"
+    },
+    "hardware": {
+      "frames": 1200,
+      "warmup": 120,
+      "fps": 73.17467020008449,
+      "mean_frame_ms": 13.665931083333334,
+      "median_frame_ms": 13.390799999999999,
+      "p95_frame_ms": 14.476,
+      "gpu_activity_percent_mean": 100.0,
+      "gpu_activity_percent_median": 100.0,
+      "memory_activity_percent_mean": 19.426573426573427,
+      "graphics_clock_mhz_mean": 2975.132867132867,
+      "power_watts_mean": 359.11384615384617,
+      "gpu_samples": 143,
+      "resolved_method": "hybrid",
+      "backend": "hardware",
+      "configuration_sha256": "7eaaf91316cea673663555e90e4a9eaf509b119f66f58e65d60b01f3cbb4094a",
+      "metric_note": "CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. Animation advances 1/60 second per frame. Configuration and shader hashes identify the workload; configured sample counts do not establish the number of rays actually issued.",
+      "vma_peak_committed_bytes": 2828140544,
+      "vma_peak_device_local_bytes": 2727477248,
+      "vma_remaining_bytes": 0,
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 83.913504,
+          "max": 83.913504,
+          "mean": 83.913504,
+          "median": 83.913504,
+          "p95": 83.913504
+        },
+        "warmup": {
+          "count": 119,
+          "min": 12.852352000000002,
+          "max": 15.66864,
+          "mean": 13.370160403361341,
+          "median": 13.271872,
+          "p95": 15.195552
+        },
+        "measured": {
+          "count": 1200,
+          "min": 12.913696,
+          "max": 29.312736,
+          "mean": 13.636603120000007,
+          "median": 13.396384000000001,
+          "p95": 14.38944
+        }
+      },
+      "resolved_settings": {
+        "viewport_width": 1920,
+        "viewport_height": 1080,
+        "gbuffer_size": [
+          1920,
+          1080
+        ],
+        "frames_in_flight": 3,
+        "rhi_threaded": true,
+        "async_compute_status": "available",
+        "vsync_requested": false,
+        "vsync_note": "VSync chooses the existing platform present-mode policy; compositor behavior is not measured",
+        "validation_enabled": false,
+        "ray_query_enabled": true,
+        "acceleration_structure_enabled": true,
+        "buffer_device_address_enabled": true,
+        "ray_tracing_disabled": false,
+        "gpu_markers": false,
+        "voxelizer": "comp",
+        "voxel_resolution": 64,
+        "reflectance_policy": "owner",
+        "gi_method": "hybrid",
+        "requested_ray_provider": 2,
+        "bounce_source": "rays",
+        "diffuse_samples": 4,
+        "reference_samples": 0,
+        "adaptive_sampling": false,
+        "diffuse_samples_max": 4,
+        "angular_guide_resolution": 8,
+        "history_frames": 32,
+        "temporal": true,
+        "filter": true,
+        "specular_occlusion": true,
+        "reflections": true,
+        "rt_shadows_requested": true,
+        "hardware_shadows": true,
+        "analytic_lighting": true,
+        "environment_lighting": true,
+        "emissive_lighting": true,
+        "indirect_intensity": 1,
+        "shadows": true,
+        "cone_count": 6,
+        "cone_max_steps": 128,
+        "cone_angle_degrees": 60,
+        "cone_step_scale": 1,
+        "cone_normal_bias_voxels": 1.5,
+        "cone_max_distance_grid_lengths": 1.732100009918213,
+        "scene_geometry_revision": 1,
+        "scene_surface_revision": 1,
+        "final_camera_position": [
+          0.28502029180526733,
+          -0.12470130622386932,
+          0.010398302227258682,
+          1
+        ],
+        "environment_intensity_rotation_enabled_visible": [
+          1,
+          0,
+          1,
+          1
+        ],
+        "final_lights": []
+      },
+      "cpu_submission_ms": {
+        "cold": {
+          "count": 1,
+          "mean": 0.5796,
+          "median": 0.5796,
+          "p95": 0.5796,
+          "max": 0.5796
+        },
+        "warmup": {
+          "count": 119,
+          "mean": 0.013688235294117647,
+          "median": 0.012199999999999999,
+          "p95": 0.024300000000000002,
+          "max": 0.0399
+        },
+        "measured": {
+          "count": 1200,
+          "mean": 0.016764333333333332,
+          "median": 0.0152,
+          "p95": 0.0216,
+          "max": 0.4702
+        }
+      },
+      "cpu_submission_scope": "Sum of recorded render-graph CPU submission intervals per application frame; excludes startup uploads and host acquire/present. GPU time and frame-slot backpressure are reported separately.",
+      "full_summary": "build/p8/matrix-dark-exploration/hall-hardware/summary.json"
+    }
+  },
+  "quality": {
+    "compute": {
+      "quality": {
+        "all_receivers": {
+          "pixels": 518400,
+          "reference_mean": 0.0270522627979517,
+          "bias": -0.0019365745829418302,
+          "rms": 0.03413461148738861,
+          "p99": 0.1269111931324005,
+          "unexpected_zeros": 0,
+          "passed": true
+        },
+        "sponza_floor": {
+          "pixels": 110395,
+          "reference_mean": 0.08079583197832108,
+          "bias": -0.001643270836211741,
+          "rms": 0.0132859256118536,
+          "p99": 0.051085587590932846,
+          "unexpected_zeros": 0,
+          "passed": true
+        }
+      },
+      "unexpected_validation_errors": [],
+      "passed": true,
+      "manifest": {
+        "path": "build\\p8\\quality-queue256\\hall-compute.inputs.json",
+        "bytes": 55628,
+        "sha256": "6edbabe7294ad77012d0b28b203a0b04c92de74a1393a654a33d2dae3863d1df"
+      }
+    },
+    "hardware": {
+      "quality": {
+        "all_receivers": {
+          "pixels": 518400,
+          "reference_mean": 0.047360438853502274,
+          "bias": -0.0009937029099091887,
+          "rms": 0.023861195892095566,
+          "p99": 0.08896344900131226,
+          "unexpected_zeros": 0,
+          "passed": true
+        },
+        "sponza_floor": {
+          "pixels": 110395,
+          "reference_mean": 0.14689265191555023,
+          "bias": -0.00153695372864604,
+          "rms": 0.008504573255777359,
+          "p99": 0.031059833243489265,
+          "unexpected_zeros": 0,
+          "passed": true
+        }
+      },
+      "unexpected_validation_errors": [],
+      "passed": true,
+      "manifest": {
+        "path": "build\\p8\\quality-queue256\\hall-hardware.inputs.json",
+        "bytes": 55615,
+        "sha256": "a4666b5809f50ffda9ebf333d1b325e5cfe4df77b840f11dc0e2b3c5b4600356"
+      }
+    },
+    "scope": "Historical pre-adaptive queue256 hall checks; current candidate evidence is below."
+  },
+  "tests": {
+    "render_core": {
+      "passed": 581,
+      "disabled": 7,
+      "failed": 0,
+      "log": "build/p8/core-final-candidate.log"
+    },
+    "profile_reader": {
+      "passed": 15,
+      "failed": 0,
+      "log": "build/p8/profile-tool-final.log"
+    },
+    "config_loader": {
+      "passed": 21,
+      "log": "build/p8/config-loader-final.log"
+    }
+  },
+  "invalid_measurements": {
+    "reason": "Sky-support shader incorrectly used reserved descriptor set 0. Vulkan validation rejected the layout; the runs below cannot qualify correctness or performance. Corrected to set 1 before quality-specialized captures.",
+    "invalid_runs": [
+      "support-hall-compute",
+      "pdf-hall-compute",
+      "pdf-hall-hardware",
+      "start-cache-hall-compute",
+      "specialized-hall-compute",
+      "specialized-hall-hardware"
+    ]
+  },
+  "platforms_unverified": [
+    "RX 7900 XT",
+    "Apple Silicon MoltenVK",
+    "physical GPU without ray queries"
+  ],
+  "hardware_advantage_observed": true,
+  "implementation": [
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_trace.glsl",
+      "sha256": "29764506d6f8ac3198895a3dd959a782bbd2aa90ca4f223df678595e3369acf3"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_filter.comp",
+      "sha256": "a2406116ba7770efa151234df42f19f4c7966efcde0f928c3b352f266ef6c4f6"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_filter.glsl",
+      "sha256": "3db7f7bf88637fd6ab8c1110d49dee756e795cfe3ff98e71e379408cf7b7c3e7"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_filter_common.glsl",
+      "sha256": "53e142bfeb8c6ee341b3d87838c7a3d6e028686678da1e2d511a75c3479e8523"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_filter_final.comp",
+      "sha256": "5ec7a04c5d45f52afb93686dafd5e31d8ab94d087a1360a67ba5927cca94a0aa"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_sky_support.comp",
+      "sha256": "a0ecaa98cc6b7756bc50b252bc7650aa43c1dc1c2a69fc9913b77513452d15cb"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_sky_search.comp",
+      "sha256": "ee8848e445f7292ef2aaf4f52dfe97a1af468b4a1ad0fa27b2ec75a0190bd26a"
+    },
+    {
+      "path": "ZenCore/Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp",
+      "sha256": "005a824367014572ac45fa3d1b27c4643d83da5c43f1dbc046e85b2b254a692b"
+    },
+    {
+      "path": "ZenCore/Source/Graphics/RenderCore/V2/ShaderProgram.cpp",
+      "sha256": "8cec3f443426dd12b1be0898ba1bbd32a8b5ca7c10b97eaa901ec3790a0a4574"
+    },
+    {
+      "path": "ZenSamples/RenderCoreTest/HybridGIRendererTests.inl",
+      "sha256": "951302a58f2532b30d692dc4634704a556da751179017f5d94a15db0ab4659bb"
+    },
+    {
+      "path": "tools/benchmark_voxel_gi.py",
+      "sha256": "ce67ebfa26f8f8aaa0cf08b4be59a180159589cb9f205e6aeaad75c3fa7e1195"
+    },
+    {
+      "path": "Data/Shaders/VoxelGI/hybrid_sky_support_bounds.glsl",
+      "sha256": "3deaaad12ef993b4ba360a41fc897ee15d08a8fd57c7c3ddafba9e9cc341d0a2"
+    },
+    {
+      "path": "ZenCore/Include/Graphics/Shared/EnvironmentSampling.h",
+      "sha256": "59d4e2f091ab50857a8d6dbc642bafc46b75f2b15280ebadbb1f6180774be974"
+    },
+    {
+      "path": "ZenCore/Include/Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h",
+      "sha256": "751cbc88714124ac17739626957971259b3b890f4fe9ce272d54b1bef920f97a"
+    },
+    {
+      "path": "ZenCore/Include/Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h",
+      "sha256": "34cfa6449dd03f2bec14ac92183b1d56172e09a2f8b32af7262226bec80a43f8"
+    },
+    {
+      "path": "ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp",
+      "sha256": "686748d681ea3e5368077bee8e1c58383b2b1627af81023d9cf019e8c5439491"
+    },
+    {
+      "path": "ZenSamples/RenderCoreTest/VoxelGISettingsTests.cpp",
+      "sha256": "e9a9bdc21039b24e5ff7bcc049b4cd1dadcfc1b0db2c9be57737b35ae22aad93"
+    },
+    {
+      "path": "ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp",
+      "sha256": "0d47865f55d680bed1c4c335d88e09560ec377545d5d71eb7c805f3a474bd108"
+    },
+    {
+      "path": "tools/capture_hybrid_gi.py",
+      "sha256": "0998e4588a65e6e46d064c66d819b70fef1744088567c83679714981ee7a6218"
+    },
+    {
+      "path": "tools/validate_hybrid_acceptance.py",
+      "sha256": "28056de53597cafb740092682e807fe4094e9142ae4a804ec74a4da66061e318"
+    }
+  ],
+  "quality_non_regression_required_after_final_optimization": true,
+  "current_static_regression": {
+    "passed": true,
+    "fixture_cases": 22,
+    "shipping_views": 20,
+    "report": {
+      "path": "build/p8/quality-adaptive-final/report.json",
+      "sha256": "40e34a6abc90558d4adb9dddbcd72bb1c1123d25508da68897f322e0a23bf503"
+    },
+    "archived_binary_root": "build/p8/archives/adaptive-v1",
+    "followup_black_environment": {
+      "path": "build/p8/black-reviewed/report.json",
+      "sha256": "6db9fb2d17c07778a0f336e346dd80a46331de3b65e0bf1a7960e2830c0b60b2"
+    },
+    "note": "Follow-up limits adaptive sampling to a nonempty residual environment; reviewed black-environment fixtures pass both providers. Shipping environments have a nonempty residual.",
+    "final_qualification": false
+  },
+  "regenerated_references": {
+    "root": "build/p8/quality-position-final/references/hardware",
+    "environments": [
+      "kloppenheim",
+      "qwantani",
+      "hotel",
+      "carpentry"
+    ],
+    "camera": "hall"
+  },
+  "rejected_experiments": {
+    "path": "build/p8/rejected-trace-experiments.json",
+    "sha256": "a6765cb35f3aefeb62f27da67ede19adc7d6a9dbefe6f794d1942688dcf25ee7"
+  },
+  "previous_profiles": {
+    "compute": {
+      "frames": 480,
+      "warmup": 64,
+      "fps": 43.48320275131269,
+      "mean_frame_ms": 22.997386041666665,
+      "median_frame_ms": 22.56675,
+      "p95_frame_ms": 25.3791,
+      "gpu_activity_percent_mean": 100.0,
+      "gpu_activity_percent_median": 100.0,
+      "memory_activity_percent_mean": 7.612903225806452,
+      "graphics_clock_mhz_mean": 3010.3440860215055,
+      "power_watts_mean": 282.87397849462366,
+      "gpu_samples": 93,
+      "resolved_method": "hybrid",
+      "backend": "compute",
+      "configuration_sha256": "3c1d0241adfd01dcecf572368ca6aaaf945ac2e0e945202b24c41bb3add99f8e",
+      "metric_note": "CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. Animation advances 1/60 second per frame; image quality settings are unchanged.",
+      "vma_peak_committed_bytes": 2593455872,
+      "vma_peak_device_local_bytes": 2492792576,
+      "vma_remaining_bytes": 0,
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 86.675296,
+          "max": 86.675296,
+          "mean": 86.675296,
+          "median": 86.675296,
+          "p95": 86.675296
+        },
+        "warmup": {
+          "count": 63,
+          "min": 21.6704,
+          "max": 25.314784,
+          "mean": 22.73664965079365,
+          "median": 22.479008,
+          "p95": 24.665248
+        },
+        "measured": {
+          "count": 480,
+          "min": 21.571583999999998,
+          "max": 37.165824,
+          "mean": 22.97072353333331,
+          "median": 22.540976,
+          "p95": 25.439488
+        }
+      },
+      "profile": {
+        "path": "build/p8/queue256-hall-compute/native.profile.json",
+        "sha256": "0ce11660657fca3bab65c10c72965ef6345be2461388c39951c11e8c08e8cdd2"
+      },
+      "summary": {
+        "path": "build/p8/queue256-hall-compute/summary.json",
+        "sha256": "0691dbe2b8a223dcdb343cee777369accc622523fa170552b900360c1741b881"
+      },
+      "frame_target_passed": false
+    },
+    "hardware": {
+      "frames": 480,
+      "warmup": 64,
+      "fps": 52.3036311654281,
+      "mean_frame_ms": 19.11913145833333,
+      "median_frame_ms": 18.506749999999997,
+      "p95_frame_ms": 25.5146,
+      "gpu_activity_percent_mean": 100.0,
+      "gpu_activity_percent_median": 100.0,
+      "memory_activity_percent_mean": 13.72,
+      "graphics_clock_mhz_mean": 3009.52,
+      "power_watts_mean": 303.5258666666667,
+      "gpu_samples": 75,
+      "resolved_method": "hybrid",
+      "backend": "hardware",
+      "configuration_sha256": "beedad34b0662698498642309609303ec35f11e3a789d96f22d1ae90d7b934ea",
+      "metric_note": "CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. Animation advances 1/60 second per frame; image quality settings are unchanged.",
+      "vma_peak_committed_bytes": 2928475904,
+      "vma_peak_device_local_bytes": 2827812608,
+      "vma_remaining_bytes": 0,
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 88.421056,
+          "max": 88.421056,
+          "mean": 88.421056,
+          "median": 88.421056,
+          "p95": 88.421056
+        },
+        "warmup": {
+          "count": 63,
+          "min": 18.421344,
+          "max": 21.741504,
+          "mean": 19.333155555555546,
+          "median": 19.123072,
+          "p95": 21.294048
+        },
+        "measured": {
+          "count": 480,
+          "min": 17.403104,
+          "max": 32.32128,
+          "mean": 19.084496399999992,
+          "median": 18.504576,
+          "p95": 25.380128
+        }
+      },
+      "profile": {
+        "path": "build/p8/queue256-hall-hardware/native.profile.json",
+        "sha256": "ec9667bdc23dd3b798ff4dac86d39fce0194fa6df3422bb4cab8b9a78442a158"
+      },
+      "summary": {
+        "path": "build/p8/queue256-hall-hardware/summary.json",
+        "sha256": "81aba3d5e04cf88aa4265b2625c7195feb4ae0c2a3167cf57f0f425f8c47fb95"
+      },
+      "frame_target_passed": false
+    }
+  },
+  "prior_motion_regression": {
+    "passed": true,
+    "scope": "Validated bounds+position predecessor; must repeat for compact angular guide and adaptive sampling.",
+    "report": {
+      "path": "build/p8/motion-bounds/report.json",
+      "sha256": "bde76b2d647f458b201783a15351724edee0aef808a60cb77388a0c437710d36"
+    }
+  },
+  "sampling": {
+    "angular_guide_per_face": 8,
+    "configured_diffuse_samples": 4,
+    "compute_adaptive_maximum": 6,
+    "source_samples_per_source": 2,
+    "hardware_adaptive": false,
+    "receiver_resolution": "full",
+    "configuration": "voxel_gi_adaptive_sampling=true",
+    "actual_issued_ray_count": "Diagnostic receiver-query variants implemented; cache and analytic shadows not counted yet",
+    "compute_dark_exploration": "Six residual rays when the start is unoccupied and the angular guide has positive support; fixed four on hardware."
+  },
+  "experiments": {
+    "path": "build/p8/rejected-trace-experiments.json",
+    "sha256": "6dba1ada1d8c592473d0ee124ccc7968042ad28b65faa50f91a149b5bb0c9390"
+  },
+  "candidate_motion_regression": {
+    "complete": true,
+    "passed": false,
+    "report": {
+      "path": "build/p8/motion-adaptive/report.json",
+      "sha256": "cd64823f2ccc0802345ab73c6c718d8905412afcb0818697be3e77bacac72093"
+    },
+    "failures": [
+      "hardware hall deform-32 RMS 10.244%",
+      "hardware hall rotation-32: one unexpected zero",
+      "switch-hardware-32: one unexpected zero"
+    ],
+    "next_candidate": "Adaptive four/six-ray budget on hardware as well as compute; not yet measured or validated."
+  },
+  "hardware_support_candidate": {
+    "status": "static_and_independent_reference_passed; final motion/backend matrix still pending",
+    "archive": "build/p8/archives/hardware-support",
+    "hardware_profile": {
+      "path": "build/p8/hardware-support-hall-hardware/summary.json",
+      "sha256": "c93322ff83c3b48fc257727a8e95c36cd7c82cdb663ac727b175155fb122e932"
+    },
+    "hardware_fps": 69.63595238067259,
+    "hardware_gpu_median_ms": 14.32736,
+    "hardware_gpu_p95_ms": 14.972704,
+    "static_report": {
+      "path": "build/p8/quality-hardware-support/report.json",
+      "sha256": "f5106afb749cff2cc5bdc4af6b6123fdc74e79b0f3395e63ad1a8ed844894f6f"
+    },
+    "fixtures": 22,
+    "shipping_views": 20,
+    "all_static_passed": true,
+    "independent_report": {
+      "path": "build/p8/independent-hardware-support/sweep/report.json",
+      "sha256": "affb0f4e8b5f2c273b4c199512c2a67b001168a7ea1fac20aac0b66c1ac9ba6e"
+    },
+    "independent_hardware_views": 18,
+    "all_independent_passed": true,
+    "sampler": "8x8 angular guide; adaptive 4/6 residual rays on both providers; a radiance-only proposal component of 1/guide_resolution on hardware sky only, included consistently in cell masses and PDF. Compute retains its preceding cosine proposal.",
+    "motion_evidence": "Fresh Papermill top/hall static, six reset-settling cases, both provider switches and continuous-camera-motion gates all pass. Full mixed-feature matrix remains pending.",
+    "motion_report": {
+      "path": "build/p8/motion-hardware-support-final/report.json",
+      "sha256": "2c1ae80685915bc3a63e1abb227d1f95f17366bdc93a8a6417c6fa6c979ccbcd",
+      "complete": true,
+      "passed": true
+    },
+    "quiet_demo_ordering_passed": false
+  },
+  "occupancy_hierarchy_candidate": {
+    "status": "rejected and removed: exact native equivalence passed, measured performance regressed",
+    "approach": "separate R32F max-mip pyramid at half base dimension, preserving original scalar boundary increments and tie priority while skipping base occupancy fetches inside empty blocks",
+    "verification": "native frozen-ray comparison of first hit cell, face and position; geometry invalidation graph checks",
+    "archive": "build/p8/archives/hierarchy-rejected",
+    "rendercore_tests_passed": 578,
+    "native_voxel_tests_passed": 20,
+    "compute_fps_single_loop": 52.4830903583107,
+    "compute_fps_nested_loop": 51.52508398347165,
+    "driver_workaround": "Derive mip count from power-of-two volume size instead of textureQueryLevels; temporary instrumentation removed"
+  },
+  "tool_tests": {
+    "profile_tests": 15,
+    "passed": true
+  },
+  "spirv_validation": {
+    "modules": 139,
+    "failed": 0,
+    "scope": "Recursive SceneRenderer and VoxelGI compiled modules",
+    "report": {
+      "path": "build\\p8\\spirv-final.json",
+      "sha256": "ec11bd60a385773208a5b261f9cc3cdb1f8ef9cd4daceb2ff44f05f2206c23c0"
+    }
+  },
+  "hardware_four_candidate": {
+    "status": "not accepted: mixed-feature switch to compute has one unexpected black receiver",
+    "quality_report": {
+      "path": "build/p8/quality-hardware-four/report.json",
+      "sha256": "ee39efbc18bc73091c00931363eb363626f062dfe496f7c3dbdb10168d353b19"
+    },
+    "rendercore_tests": 579,
+    "compute_budget": "adaptive 4/6",
+    "hardware_budget": 4,
+    "quiet_demo_compute_fps": 89.49052106706051,
+    "quiet_demo_hardware_four_fps": 94.78936688902199,
+    "preceding_both_adaptive_archive": "build/p8/archives/hardware-support-adaptive-both-qualified",
+    "motion_report": {
+      "path": "build/p8/motion-hardware-four/report.json",
+      "sha256": "ea9e6f58cc5d211aa657868e4bb5dd96078fccb906a0e91162710e707803dad7",
+      "passed": true
+    },
+    "baseline_matrix": "build/p8/matrix-four-baseline/report.json",
+    "archive": "build/p8/archives/hardware-four",
+    "baseline_profiles": {
+      "top-compute": {
+        "fps": 67.17210804496996,
+        "median_frame_ms": 14.4032,
+        "p95_frame_ms": 16.6548,
+        "gpu_frame_ms": {
+          "cold": {
+            "count": 1,
+            "min": 84.348416,
+            "max": 84.348416,
+            "mean": 84.348416,
+            "median": 84.348416,
+            "p95": 84.348416
+          },
+          "warmup": {
+            "count": 119,
+            "min": 15.038112,
+            "max": 17.939968,
+            "mean": 15.727324235294116,
+            "median": 15.671263999999999,
+            "p95": 17.093312
+          },
+          "measured": {
+            "count": 1200,
+            "min": 13.405728,
+            "max": 29.785472000000002,
+            "mean": 14.854397093333322,
+            "median": 14.335823999999999,
+            "p95": 16.730112000000002
+          }
+        },
+        "cpu_submission_ms": {
+          "cold": {
+            "count": 1,
+            "mean": 0.6547000000000001,
+            "median": 0.6547000000000001,
+            "p95": 0.6547000000000001,
+            "max": 0.6547000000000001
+          },
+          "warmup": {
+            "count": 119,
+            "mean": 0.013551260504201681,
+            "median": 0.0119,
+            "p95": 0.0275,
+            "max": 0.0337
+          },
+          "measured": {
+            "count": 1200,
+            "mean": 0.014592333333333334,
+            "median": 0.013800000000000002,
+            "p95": 0.0193,
+            "max": 0.043
+          }
+        },
+        "vma_peak_committed_bytes": 2493120512,
+        "vma_peak_device_local_bytes": 2392457216
+      },
+      "hall-compute": {
+        "fps": 63.07025364017853,
+        "median_frame_ms": 15.5027,
+        "p95_frame_ms": 17.286,
+        "gpu_frame_ms": {
+          "cold": {
+            "count": 1,
+            "min": 84.45452800000001,
+            "max": 84.45452800000001,
+            "mean": 84.45452800000001,
+            "median": 84.45452800000001,
+            "p95": 84.45452800000001
+          },
+          "warmup": {
+            "count": 119,
+            "min": 15.338528,
+            "max": 18.449696,
+            "mean": 16.16929263865547,
+            "median": 16.087904,
+            "p95": 17.633152
+          },
+          "measured": {
+            "count": 1200,
+            "min": 14.475232,
+            "max": 29.951968,
+            "mean": 15.82770109333331,
+            "median": 15.464144000000001,
+            "p95": 17.262112000000002
+          }
+        },
+        "cpu_submission_ms": {
+          "cold": {
+            "count": 1,
+            "mean": 0.49660000000000004,
+            "median": 0.49660000000000004,
+            "p95": 0.49660000000000004,
+            "max": 0.49660000000000004
+          },
+          "warmup": {
+            "count": 119,
+            "mean": 0.015531932773109243,
+            "median": 0.0119,
+            "p95": 0.0177,
+            "max": 0.31989999999999996
+          },
+          "measured": {
+            "count": 1200,
+            "mean": 0.015702,
+            "median": 0.01455,
+            "p95": 0.023399999999999997,
+            "max": 0.2081
+          }
+        },
+        "vma_peak_committed_bytes": 2493120512,
+        "vma_peak_device_local_bytes": 2392457216
+      },
+      "top-hardware": {
+        "fps": 87.4913640555467,
+        "median_frame_ms": 11.1691,
+        "p95_frame_ms": 12.0429,
+        "gpu_frame_ms": {
+          "cold": {
+            "count": 1,
+            "min": 79.84089599999999,
+            "max": 79.84089599999999,
+            "mean": 79.84089599999999,
+            "median": 79.84089599999999,
+            "p95": 79.84089599999999
+          },
+          "warmup": {
+            "count": 119,
+            "min": 10.789376,
+            "max": 13.337888000000001,
+            "mean": 11.237002756302518,
+            "median": 11.138464,
+            "p95": 13.046688
+          },
+          "measured": {
+            "count": 1200,
+            "min": 10.694304,
+            "max": 25.348416,
+            "mean": 11.397015520000002,
+            "median": 11.142112000000001,
+            "p95": 12.058112
+          }
+        },
+        "cpu_submission_ms": {
+          "cold": {
+            "count": 1,
+            "mean": 0.5677,
+            "median": 0.5677,
+            "p95": 0.5677,
+            "max": 0.5677
+          },
+          "warmup": {
+            "count": 119,
+            "mean": 0.013812605042016807,
+            "median": 0.0119,
+            "p95": 0.0254,
+            "max": 0.0396
+          },
+          "measured": {
+            "count": 1200,
+            "mean": 0.015210333333333333,
+            "median": 0.0144,
+            "p95": 0.02,
+            "max": 0.040100000000000004
+          }
+        },
+        "vma_peak_committed_bytes": 2828140544,
+        "vma_peak_device_local_bytes": 2727477248
+      },
+      "hall-hardware": {
+        "fps": 72.85476857227421,
+        "median_frame_ms": 13.43655,
+        "p95_frame_ms": 14.6295,
+        "gpu_frame_ms": {
+          "cold": {
+            "count": 1,
+            "min": 83.180864,
+            "max": 83.180864,
+            "mean": 83.180864,
+            "median": 83.180864,
+            "p95": 83.180864
+          },
+          "warmup": {
+            "count": 119,
+            "min": 12.85392,
+            "max": 15.860704,
+            "mean": 13.383842689075617,
+            "median": 13.242111999999999,
+            "p95": 15.185184
+          },
+          "measured": {
+            "count": 1200,
+            "min": 12.900191999999999,
+            "max": 28.604928,
+            "mean": 13.698159493333344,
+            "median": 13.447648000000001,
+            "p95": 14.597984
+          }
+        },
+        "cpu_submission_ms": {
+          "cold": {
+            "count": 1,
+            "mean": 0.627,
+            "median": 0.627,
+            "p95": 0.627,
+            "max": 0.627
+          },
+          "warmup": {
+            "count": 119,
+            "mean": 0.01342436974789916,
+            "median": 0.0123,
+            "p95": 0.0192,
+            "max": 0.0385
+          },
+          "measured": {
+            "count": 1200,
+            "mean": 0.015883,
+            "median": 0.0149,
+            "p95": 0.0219,
+            "max": 0.0444
+          }
+        },
+        "vma_peak_committed_bytes": 2828140544,
+        "vma_peak_device_local_bytes": 2727477248
+      }
+    },
+    "backend_report": "build/p8/backends-hardware-four/report.json"
+  },
+  "prior_profiles_adaptive_reviewed": {
+    "compute": {
+      "frames": 480,
+      "warmup": 64,
+      "fps": 62.2206414722586,
+      "mean_frame_ms": 16.071836875,
+      "median_frame_ms": 16.0492,
+      "p95_frame_ms": 16.7722,
+      "gpu_activity_percent_mean": 100.0,
+      "gpu_activity_percent_median": 100.0,
+      "memory_activity_percent_mean": 13.403225806451612,
+      "graphics_clock_mhz_mean": 2991.1129032258063,
+      "power_watts_mean": 346.44209677419354,
+      "gpu_samples": 62,
+      "resolved_method": "hybrid",
+      "backend": "compute",
+      "configuration_sha256": "c091e7598206f7a4c1e83f012629d356855d4b26af3dc2f528b5eb8889e44790",
+      "metric_note": "CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. Animation advances 1/60 second per frame. Configuration and shader hashes identify the workload; configured sample counts do not establish the number of rays actually issued.",
+      "vma_peak_committed_bytes": 2493120512,
+      "vma_peak_device_local_bytes": 2392457216,
+      "vma_remaining_bytes": 0,
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 83.86636800000001,
+          "max": 83.86636800000001,
+          "mean": 83.86636800000001,
+          "median": 83.86636800000001,
+          "p95": 83.86636800000001
+        },
+        "warmup": {
+          "count": 63,
+          "min": 15.422656000000002,
+          "max": 18.489088,
+          "mean": 16.29261358730158,
+          "median": 16.059072,
+          "p95": 17.735616
+        },
+        "measured": {
+          "count": 480,
+          "min": 15.140768,
+          "max": 17.73984,
+          "mean": 16.04556993333333,
+          "median": 16.044863999999997,
+          "p95": 16.752959999999998
+        }
+      },
+      "profile": {
+        "path": "build/p8/adaptive-reviewed-hall-compute/native.profile.json",
+        "sha256": "ed21bf2091bc227bfcc8ac887c3de21c5c26fead748f5621aa5ad9ecb4b2aa3b"
+      },
+      "summary": {
+        "path": "build/p8/adaptive-reviewed-hall-compute/summary.json",
+        "sha256": "7b1bb7de4015db9fcfcaac7345922a7ea7cebcba277ccd2d4ddd18c7812d6218"
+      },
+      "frame_target_passed": true,
+      "p95_frame_target_passed": false
+    },
+    "hardware": {
+      "frames": 480,
+      "warmup": 64,
+      "fps": 74.51107925417514,
+      "mean_frame_ms": 13.420822916666667,
+      "median_frame_ms": 13.4114,
+      "p95_frame_ms": 14.0154,
+      "gpu_activity_percent_mean": 100.0,
+      "gpu_activity_percent_median": 100.0,
+      "memory_activity_percent_mean": 21.54901960784314,
+      "graphics_clock_mhz_mean": 2993.0196078431372,
+      "power_watts_mean": 361.0035294117647,
+      "gpu_samples": 51,
+      "resolved_method": "hybrid",
+      "backend": "hardware",
+      "configuration_sha256": "442e524b2bc15102ae92bb9a59313091b56d8aaa6a57ede00f7c044e561758b7",
+      "metric_note": "CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. Animation advances 1/60 second per frame. Configuration and shader hashes identify the workload; configured sample counts do not establish the number of rays actually issued.",
+      "vma_peak_committed_bytes": 2828140544,
+      "vma_peak_device_local_bytes": 2727477248,
+      "vma_remaining_bytes": 0,
+      "gpu_frame_ms": {
+        "cold": {
+          "count": 1,
+          "min": 82.89472,
+          "max": 82.89472,
+          "mean": 82.89472,
+          "median": 82.89472,
+          "p95": 82.89472
+        },
+        "warmup": {
+          "count": 63,
+          "min": 12.881088,
+          "max": 16.170848,
+          "mean": 13.486164825396825,
+          "median": 13.365568,
+          "p95": 15.225504
+        },
+        "measured": {
+          "count": 480,
+          "min": 12.972064,
+          "max": 14.508032,
+          "mean": 13.394166133333329,
+          "median": 13.403872,
+          "p95": 13.984672
+        }
+      },
+      "profile": {
+        "path": "build/p8/adaptive-reviewed-hall-hardware/native.profile.json",
+        "sha256": "7201dd97b916b5cbc3034633c5869afc3351650f8a56e68047bfa38cae82cb92"
+      },
+      "summary": {
+        "path": "build/p8/adaptive-reviewed-hall-hardware/summary.json",
+        "sha256": "b985e6873c81ebd8b1f72d1f6ca6c44c780d4bce8180fa2a0642051022a25b85"
+      },
+      "frame_target_passed": true,
+      "p95_frame_target_passed": true
+    }
+  },
+  "active_candidate": "deformation_unique_vertex_bounds",
+  "dark_exploration_experiment": {
+    "status": "static, backend and motion passed; broader performance and dedicated bounce/reflection pending",
+    "archive": "build/p8/archives/dark-exploration",
+    "quality": {
+      "path": "build/p8/quality-exploration/report.json",
+      "sha256": "6cfa6c124a8525f909e3d3382cbc44520ab75bb40ceed67a9cd34ace1c915fcf"
+    },
+    "backend": {
+      "path": "build/p8/backends-exploration/report.json",
+      "sha256": "8bf074440c1e025ca7301a47ef3903472096a12b0c55aa7f95b8cc9c70705eeb"
+    },
+    "motion": {
+      "path": "build/p8/motion-exploration/report.json",
+      "sha256": "9f77486ae5f893713608cd54cc6ea99f8c760eb37d5bcdcd6a0824d2042a744a"
+    },
+    "performance": {
+      "path": "build/p8/matrix-dark-exploration/report.json",
+      "sha256": "f850e33f9667cf6dba252318757a973905dc867f1ebdf0d8e6b3ee46af4a5c3d"
+    },
+    "fixtures": 22,
+    "shipping_views": 20,
+    "backend_cases": 59,
+    "pending_source": "Superseded by built presets/editor diagnostics and an unqualified temporal-cache experiment."
+  },
+  "presets_and_diagnostics": {
+    "status": "built; 581 core, 41 editor model and 2 native debug tests passed; 20 native voxel tests passed before restoring the API struct default",
+    "presets": "low 64 occlusion only; medium 64 reflections; high 128; ultra 256; all full resolution",
+    "auto": "RTX 5080 driver 617.42 and medium only; other Auto requests select compute; explicit features retained",
+    "profile_interval_cap": 1024
+  },
+  "temporal_cache_experiment": {
+    "status": "16x16 guide-only variant built; final image/performance qualification running",
+    "position_only_compute_static_fps": 62.90201200052972,
+    "position_only_compute_moving_fps": 57.4626559775911,
+    "position_only_hardware_static_fps": 72.5424161854898,
+    "position_only_hardware_moving_fps": 63.41472001399689,
+    "baseline_compute_moving_fps": 53.51,
+    "backup": "build/p8/temporal-before-cache",
+    "selected": "full-precision scalar guide arrays, 16x16 group, 24x24 halo; original 9x9 taps and order",
+    "packed_radiance_cache": "rejected: slower",
+    "shader_specialization": "unresponsive frames retain the original shader without shared memory",
+    "compute_moving_fps": 56.75595342992402,
+    "hardware_moving_fps": 66.82420956691358,
+    "compute_gpu_median_ms": 17.082256,
+    "hardware_gpu_median_ms": 14.671888,
+    "probe": "build/p8/temporal-tile16-probe",
+    "qualification": "build/p8/qualification-temporal-final.json",
+    "archive": "build/p8/archives/temporal-guide16",
+    "hardware_reflections": {
+      "passed": true,
+      "report": {
+        "path": "build\\p8\\reflections-temporal-final-hardware\\reflection-results.json",
+        "sha256": "4e479daf160218c4ee515e8cf78e8b66e2742c3d1c1b32608a353da61498fbf1"
+      },
+      "non_regression": {
+        "path": "build\\p8\\reflection-non-regression-hardware.json",
+        "sha256": "28a4514e5d879299ded820526c62c81855caf04ff4aa2477fc9fdd60ecf6617b"
+      }
+    },
+    "hardware_bounce": {
+      "passed": true,
+      "report": {
+        "path": "build\\p8\\bounce-temporal-final-hardware\\bounce-results.json",
+        "sha256": "9a14e81d3077100d611d10aa4455c0e615f4a65d1988f47643a300e2d784e5c6"
+      }
+    },
+    "remaining_quality": "Temporal candidate static, bounce/reflection change gates, motion, shadow and native tests completed in the recorded scopes. Broader performance/update matrix remains open; new changes require their own affected-path checks.",
+    "compute_reflections": {
+      "overall_passed": false,
+      "prior_overall_passed": false,
+      "light_change_and_motion_gates_passed": true,
+      "non_regression_report": "build/p8/reflection-non-regression-voxel.json",
+      "maximum_static_metric_difference_percentage_points": 0.0213363557,
+      "maximum_motion_metric_difference_percentage_points": 0.0001332723,
+      "light_change_metric_difference": 0
+    },
+    "compute_bounce": {
+      "passed": true,
+      "report": "build/p8/bounce-temporal-final-voxel/bounce-results.json"
+    },
+    "static_quality": {
+      "passed": true,
+      "fixtures": 22,
+      "shipping_views": 20,
+      "report": "build/p8/quality-temporal-final/report.json"
+    },
+    "resumed_2026_10_14": {
+      "throughput": {
+        "cases": {
+          "compute-profiled": {
+            "fps": 56.66776726489427,
+            "mean_frame_ms": 17.646716083333335,
+            "p95_frame_ms": 19.7751,
+            "gpu_frame_ms": {
+              "count": 1200,
+              "min": 15.799808,
+              "max": 32.93408,
+              "mean": 17.620969920000004,
+              "median": 17.074464,
+              "p95": 19.727776000000002
+            }
+          },
+          "compute-production": {
+            "fps": 55.25702741837124,
+            "mean_frame_ms": 18.097245666666666,
+            "p95_frame_ms": 20.1761
+          },
+          "hardware-profiled": {
+            "fps": 63.86536941696192,
+            "mean_frame_ms": 15.657938083333333,
+            "p95_frame_ms": 17.6064,
+            "gpu_frame_ms": {
+              "count": 1200,
+              "min": 14.131968,
+              "max": 38.465504,
+              "mean": 15.629491946666658,
+              "median": 15.045168,
+              "p95": 17.470336
+            }
+          },
+          "hardware-production": {
+            "fps": 63.70448052085803,
+            "mean_frame_ms": 15.697483,
+            "p95_frame_ms": 17.9995
+          }
+        },
+        "complete": true
+      },
+      "throughput_report": "build/p8/resumed-throughput/report.json",
+      "compute_target_met": false,
+      "shadow_suite": {
+        "passed": true,
+        "report": "build/p8/shadows-resumed-explicit/results.json",
+        "harness_fix": "Explicit hardware provider, with inherited backend selectors removed; custom presets do not automatically select hardware."
+      },
+      "automatic_selection": {
+        "passed": true,
+        "report": "build/p8/auto-selection-final/report.json"
+      },
+      "editor_timing_fix": "Scene-graph timings retained through unrelated uploads/readbacks; both native execution modes pass. Options restored on disable.",
+      "motion": {
+        "passed": true,
+        "report": "build/p8/motion-hall-resumed/report.json",
+        "scope": "Completes the interrupted hall motion gate; top motion and both cameras static/settling passed in motion-temporal-final."
+      },
+      "interrupted_matrix": "build/p8/matrix-temporal-final is incomplete and includes prematurely ended runs; not acceptance evidence.",
+      "rejected_experiments": {
+        "full_precision_reflection_cache": {
+          "compute_fps": 55.86530903785804,
+          "path": "build/p8/temporal-radiance-soa"
+        },
+        "guide_cache_strip_layout": {
+          "compute_fps": 56.896294881510215,
+          "path": "build/p8/temporal-strip-cache"
+        }
+      },
+      "active_shaders": "Restored byte-identical to archives/temporal-guide16 after both experiments.",
+      "native_tests": {
+        "editor_debug": 2,
+        "native_voxel": 20,
+        "editor_model": 41,
+        "logs": [
+          "build/p8/editor-timings-retention-test.log",
+          "build/p8/native-voxel-resumed.log",
+          "build/p8/editor-model-resumed.log"
+        ]
+      }
+    }
+  },
+  "rigid_animation_optimization": {
+    "executable_sha256": "91272a574e396512941d816241f2a73f7af891c8d39d4792f6e2001f5503409e",
+    "change": "AdvanceAnimation skips ApplySceneDeformations when the scene has no deformation bindings. Morph/skinning path unchanged.",
+    "before_report": "build/p8/updates-resumed/report.json",
+    "rigid_non_regression": "build/p8/rigid-non-regression/report.json",
+    "shadow_regression": "build/p8/shadows-rigid-skip/results.json",
+    "quality_status": "All six provider/held-pose comparisons pass with exact receiver guides; lighting bounded by twice measured baseline repeatability. P7 shadow/injection/moving/fallback suite passes. P0 limits unchanged.",
+    "cases": {
+      "compute": {
+        "before_fps": 26.12644721467035,
+        "after_fps": 64.60530171564224,
+        "gpu_ms": {
+          "count": 1200,
+          "min": 14.022176,
+          "max": 29.243776,
+          "mean": 15.418040933333357,
+          "median": 14.908272,
+          "p95": 17.322176
+        },
+        "cpu_submission_ms": {
+          "count": 1200,
+          "mean": 0.11440658333333334,
+          "median": 0.10345,
+          "p95": 0.1721,
+          "max": 0.6915
+        },
+        "peak_device_local_bytes": 3389390848
+      },
+      "hardware": {
+        "before_fps": 25.022264863405177,
+        "after_fps": 64.89293544410224,
+        "gpu_ms": {
+          "count": 1200,
+          "min": 14.242239999999999,
+          "max": 30.232896,
+          "mean": 15.216048586666663,
+          "median": 14.906400000000001,
+          "p95": 16.248639999999998
+        },
+        "cpu_submission_ms": {
+          "count": 1200,
+          "mean": 0.19336041666666667,
+          "median": 0.17489999999999997,
+          "p95": 0.2892,
+          "max": 0.6767
+        },
+        "peak_device_local_bytes": 3992846336
+      }
+    },
+    "remaining_shortfall": "Moving-light compute remains about 55-57 FPS. Deforming production-scene updates remain about 23-24 FPS and unchanged by the rigid-only skip. Broader P8 matrix and update/memory policies remain open."
+  },
+  "deformation_update_optimization": {
+    "status": "in_progress",
+    "executable_sha256": "38916c4f07f125cfa326db0ed0e580ce5c3ca9c6ad8314c8db8db0c0b7784059",
+    "changes": [
+      "Use SmallVector<Vec2, 2> for per-vertex UV sets while preserving overflow sets and the original deformation algorithm.",
+      "Reuse triangle records unless material assignment, instance class or authored/explicit visibility changes.",
+      "Precompute one unique referenced-vertex list per immutable mesh; compute exact current world bounds once per referenced vertex per instance."
+    ],
+    "performance": {
+      "deformation-inline-uv": {
+        "compute": {
+          "fps": 55.54571264954919,
+          "mean_frame_ms": 18.003189666666668,
+          "p95_frame_ms": 19.6229,
+          "gpu_ms": {
+            "count": 1200,
+            "min": 15.321344,
+            "max": 17.059328,
+            "mean": 15.886287600000013,
+            "median": 15.869072,
+            "p95": 16.32768
+          },
+          "peak_device_local_bytes": 3141664768,
+          "report": "build/p8/deformation-inline-uv/compute/summary.json"
+        }
+      },
+      "deformation-triangle-reuse": {
+        "compute": {
+          "fps": 60.99970649991218,
+          "mean_frame_ms": 16.3935215,
+          "p95_frame_ms": 17.5295,
+          "gpu_ms": {
+            "count": 1200,
+            "min": 15.104832,
+            "max": 29.049919999999997,
+            "mean": 16.37107157333334,
+            "median": 16.07672,
+            "p95": 17.320576000000003
+          },
+          "peak_device_local_bytes": 3389390848,
+          "report": "build/p8/deformation-triangle-reuse/compute/summary.json"
+        },
+        "hardware": {
+          "fps": 57.411351717886625,
+          "mean_frame_ms": 17.418158083333335,
+          "p95_frame_ms": 18.3148,
+          "gpu_ms": {
+            "count": 1200,
+            "min": 14.721984,
+            "max": 16.038976,
+            "mean": 15.106612906666678,
+            "median": 15.12424,
+            "p95": 15.46608
+          },
+          "peak_device_local_bytes": 3476684800,
+          "report": "build/p8/deformation-triangle-reuse/hardware/summary.json"
+        }
+      },
+      "deformation-unique-bounds": {
+        "compute": {
+          "fps": 63.969249725779825,
+          "mean_frame_ms": 15.632511,
+          "p95_frame_ms": 19.4303,
+          "gpu_ms": {
+            "count": 1200,
+            "min": 14.191872,
+            "max": 33.064,
+            "mean": 15.607927013333343,
+            "median": 15.176704,
+            "p95": 17.863968
+          },
+          "peak_device_local_bytes": 3389390848,
+          "report": "build/p8/deformation-unique-bounds/compute/summary.json"
+        },
+        "hardware": {
+          "fps": 63.10541428152303,
+          "mean_frame_ms": 15.846500833333334,
+          "p95_frame_ms": 19.6356,
+          "gpu_ms": {
+            "count": 1200,
+            "min": 14.5968,
+            "max": 31.431296,
+            "mean": 15.641759039999995,
+            "median": 15.379504,
+            "p95": 16.45568
+          },
+          "peak_device_local_bytes": 4509007872,
+          "report": "build/p8/deformation-unique-bounds/hardware/summary.json"
+        }
+      }
+    },
+    "quality": {
+      "triangle_reuse_before_unique_bounds": "build/p8/deformation-triangle-reuse-quality/report.json",
+      "current_frozen_quality": "build/p8/quality-unique-bounds/report.json",
+      "current_frozen_quality_passed": true,
+      "current_focused_comparison": "build/p8/deformation-unique-bounds-quality/report.json",
+      "current_focused_comparison_passed": false,
+      "repeatability_diagnostic": "build/p8/deformation-bounds-repeatability/report.json",
+      "exact_bounds_diagnostic": "build/p8/exact-bounds-probe/report.json",
+      "note": "All 22 fixtures and 20 shipping views pass unchanged P0 limits. Five of six held-deformation comparisons pass the focused repeatability bound; hardware frame 16 exceeds the original pair bound (max 0.00308065 vs 2*0.00123833), while guides/identities and capture metadata agree. Four repeated captures also show 0.00308065 max variation within the new binary. Original and optimized geometry/class bounds match exactly on 241 smooth-animation updates per backend. Subsequent guide-disabled and deterministic-aggregation probes isolate the source of variation; see learned_guide_diagnostics. These do not relabel the original failed comparison as passed.",
+      "shadows": "build/p8/shadows-unique-bounds/results.json",
+      "shadows_passed": true,
+      "learned_guide_diagnostics": {
+        "guide_disabled": "build/p8/guide-disabled-repeatability/report.json",
+        "deterministic_aggregation": "build/p8/guide-max-repeatability/report.json",
+        "captures_per_probe": 8,
+        "raw_sky_max_difference": 0.0,
+        "lighting_max_difference": 0.0,
+        "production_trace_restored": true,
+        "interpretation": "Both probes eliminate all repeated and cross-executable differences. Evidence isolates the focused discrepancy to non-associative learned-guide accumulation and ensuing sampling variation, not altered receiver geometry. Diagnostic only; original failed shipping comparison remains false."
+      }
+    },
+    "tests": {
+      "native": "build/p8/scene-update-native-final.log",
+      "native_passed": 24,
+      "animation_import": "build/p8/unique-bounds-animation-tests.log",
+      "animation_import_passed": 46,
+      "core": "build/p8/scene-update-core-tests.log",
+      "core_passed": 581,
+      "editor_model": "build/p8/scene-update-editor-model-tests.log",
+      "editor_model_passed": 41,
+      "editor_rendering": "build/p8/scene-update-editor-rendering-tests.log",
+      "editor_rendering_passed": 2,
+      "calibration_spirv_validated": true
+    },
+    "remaining": "HW RT is still slightly slower in the latest deformation pair. Moving-light compute remains below 60 FPS; broader P8 policies, memory/preset qualification and final regression validation remain open."
+  },
+  "cooperative_sky_search_experiment": {
+    "status": "archived_not_retained",
+    "candidate_archive": "build\\p8\\tiled-search-prototype\\cooperative",
+    "build": "x64-windows-msvc-performance: Release /O2 /Ob2 /DNDEBUG",
+    "viewport": [
+      1920,
+      1080
+    ],
+    "voxel_resolution": 64,
+    "warmup_frames": 120,
+    "measured_frames": 1200,
+    "validation_enabled": false,
+    "vsync_enabled": false,
+    "profiling_enabled": true,
+    "baseline": {
+      "compute": {
+        "summary": "build\\p8\\tiled-search-prototype\\baseline-compute-repeat\\summary.json",
+        "fps": 58.72710784913782,
+        "p95_frame_ms": 18.7239,
+        "mean_frame_ms": 17.027911583333335,
+        "gpu_frame_ms": {
+          "count": 1200,
+          "min": 15.853247999999999,
+          "max": 29.953376,
+          "mean": 17.001786400000004,
+          "median": 16.670512,
+          "p95": 18.757024
+        }
+      },
+      "hardware": {
+        "summary": "build\\p8\\tiled-search-prototype\\baseline-hardware-repeat\\summary.json",
+        "fps": 65.323446404717,
+        "p95_frame_ms": 18.5422,
+        "mean_frame_ms": 15.308439083333333,
+        "gpu_frame_ms": {
+          "count": 1200,
+          "min": 13.834335999999999,
+          "max": 31.497376,
+          "mean": 15.279380533333315,
+          "median": 14.701888,
+          "p95": 18.450495999999998
+        }
+      }
+    },
+    "candidate": {
+      "compute": {
+        "summary": "build\\p8\\tiled-search-prototype\\cooperative-compute\\summary.json",
+        "fps": 62.02997433096279,
+        "p95_frame_ms": 19.0834,
+        "mean_frame_ms": 16.121238333333334,
+        "gpu_frame_ms": {
+          "count": 1200,
+          "min": 14.834464,
+          "max": 32.819807999999995,
+          "mean": 16.087705573333363,
+          "median": 15.469152000000001,
+          "p95": 19.063328000000002
+        }
+      },
+      "hardware": {
+        "summary": "build\\p8\\tiled-search-prototype\\cooperative-hardware\\summary.json",
+        "fps": 63.27945323430619,
+        "p95_frame_ms": 19.6819,
+        "mean_frame_ms": 15.802917833333334,
+        "gpu_frame_ms": {
+          "count": 1200,
+          "min": 13.621728,
+          "max": 31.9904,
+          "mean": 15.771700986666659,
+          "median": 15.315424,
+          "p95": 19.552896
+        }
+      }
+    },
+    "first_tiled_variant": {
+      "summary": "build\\p8\\tiled-search-prototype\\compute\\summary.json",
+      "fps": 55.460318890548116,
+      "p95_frame_ms": 21.4187,
+      "mean_frame_ms": 18.030909666666666,
+      "gpu_frame_ms": {
+        "count": 1200,
+        "min": 16.405632,
+        "max": 33.319264000000004,
+        "mean": 18.001555519999997,
+        "median": 17.185423999999998,
+        "p95": 21.31648
+      }
+    },
+    "quality": {
+      "report": "build/p8/quality-tiled-search-cooperative/report.json",
+      "passed": true,
+      "fixtures": 22,
+      "shipping_views": 20,
+      "new_validation_errors": 0,
+      "note": "Frozen P0 limits unchanged; motion/settling and wider configuration matrix not rerun."
+    },
+    "decision": "Compute improves 5.6% in the closer pair, but hardware is 3.1% slower. Archive uniform tiled layout; consider provider-specific work assignment. All experimental source, executable and both shader modules restored byte-for-byte.",
+    "next_candidates": [
+      "Provider-specific sky-search work assignment",
+      "Share geometry acceptance across bounce/reflection responsive-history scans",
+      "Partial voxel updates preserving static content and exact overlap/visibility behavior"
+    ]
+  }
+}

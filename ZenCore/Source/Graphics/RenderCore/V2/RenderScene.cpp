@@ -44,7 +44,9 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
         m_importedLightIds.push_back(m_lights.Add(light));
     }
 
-    m_indices            = HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
+    m_indices = HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
+
+    BuildMeshVertexIndices();
 
     const bool animated  = !m_pScene->GetAssetData().animations.empty();
 
@@ -63,7 +65,7 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     size_t uvStride = 2;
 
-    for (const HeapVector<Vec2>& sets : m_pScene->GetAssetData().vertexTexCoords)
+    for (const sg::VertexTextureCoordinates& sets : m_pScene->GetAssetData().vertexTexCoords)
     {
         uvStride = std::max(uvStride, sets.size());
     }
@@ -80,7 +82,7 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
         if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
         {
-            const HeapVector<Vec2>& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
+            const sg::VertexTextureCoordinates& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
 
             for (size_t set = 0; set < sets.size(); ++set)
             {
@@ -303,6 +305,8 @@ void RenderScene::PrepareBuffers()
                                                  reinterpret_cast<const uint8_t*>(voxelTriangles.data()), "voxel_triangles");
     }
 
+    m_triangleRecordsDirty = !voxelTriangles.empty() && m_pVoxelTriangleBuffer == nullptr;
+
     m_pRenderDevice->DestroyBuffer(m_pNodeSSBO);
 
     m_pNodeSSBO = nullptr;
@@ -445,7 +449,7 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
         HeapVector<asset::Vertex> vertices;
 
-        if (valid)
+        if (valid && !m_pScene->GetAssetData().deformations.empty())
         {
             valid = sg::ApplySceneDeformations(*m_pScene, MakeVecView(m_bindVertices), vertices);
         }
@@ -465,6 +469,8 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
                 if (m_authoredVisibility[index] != visible)
                 {
                     m_authoredVisibility[index]  = visible;
+
+                    m_triangleRecordsDirty       = true;
 
                     m_dirtyClasses              |= m_instanceClasses[index];
                 }
@@ -489,9 +495,9 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
                 m_dirtySurfaceClasses |= GI_DYNAMIC;
             }
 
-            const HeapVector<HeapVector<Vec2>>& coordinates = m_pScene->GetAssetData().vertexTexCoords;
+            const HeapVector<sg::VertexTextureCoordinates>& coordinates = m_pScene->GetAssetData().vertexTexCoords;
 
-            const size_t stride                             = static_cast<size_t>(m_uvCoordinates[0].x);
+            const size_t stride                                         = static_cast<size_t>(m_uvCoordinates[0].x);
 
             for (size_t vertex = 0; vertex < coordinates.size(); ++vertex)
             {
@@ -557,11 +563,13 @@ bool RenderScene::SetMaterialVariant(int32_t variant)
 
     if (valid)
     {
-        m_dirtyClasses        |= GI_ALL;
+        m_dirtyClasses         |= GI_ALL;
 
-        m_dirtySurfaceClasses |= GI_ALL;
+        m_dirtySurfaceClasses  |= GI_ALL;
 
-        m_materialsDirty       = true;
+        m_materialsDirty        = true;
+
+        m_triangleRecordsDirty  = true;
     }
 
     return valid;

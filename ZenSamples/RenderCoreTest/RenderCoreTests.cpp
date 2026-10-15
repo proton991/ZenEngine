@@ -1566,6 +1566,12 @@ uint32_t RenderScene::GetInstanceMask(uint32_t) const
     return GI_STATIC;
 }
 
+HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const
+{
+    // This facade supplies GPU buffers, without CPU asset geometry.
+    return {};
+}
+
 void RenderScene::LoadSceneTextures()
 {
     m_sceneTextures = sceneInputs.textures;
@@ -1676,11 +1682,11 @@ protected:
         InitializeDevice(nullptr);
     }
 
-    void InitializeDevice(RHIViewport* viewport,
-                          uint32_t     frameCount              = 2,
-                          RHIExecutionMode mode                = RHIExecutionMode::eInline,
-                          AsyncComputeMode asyncMode           = RenderConfig::GetInstance().asyncComputeMode,
-                          RHIQueueCapabilities queues          = {false, false, {0, 1, 2}},
+    void InitializeDevice(RHIViewport*             viewport,
+                          uint32_t                 frameCount  = 2,
+                          RHIExecutionMode         mode        = RHIExecutionMode::eInline,
+                          AsyncComputeMode         asyncMode   = RenderConfig::GetInstance().asyncComputeMode,
+                          RHIQueueCapabilities     queues      = {false, false, {0, 1, 2}},
                           RHIQueueCopyCapabilities computeCopy = {false, true, true, {1, 1, 1}})
     {
         destroyed.clear();
@@ -10828,11 +10834,11 @@ TEST_F(RenderCoreTest, VersionsScheduleLaterProducersAndProtectScratchReaders)
         {
             EXPECT_EQ(edge.bufferSize, 64u);
 
-            war |= edge.source == RDG_ID(0) && edge.destination == RDG_ID(2)
-                && edge.reason == RDGDependencyReason::eWriteAfterRead && edge.version == 1;
+            war      |= edge.source == RDG_ID(0) && edge.destination == RDG_ID(2)
+                     && edge.reason == RDGDependencyReason::eWriteAfterRead && edge.version == 1;
 
-            waw |= edge.source == RDG_ID(3) && edge.destination == RDG_ID(2)
-                && edge.reason == RDGDependencyReason::eWriteAfterWrite && edge.version == 2;
+            waw      |= edge.source == RDG_ID(3) && edge.destination == RDG_ID(2)
+                     && edge.reason == RDGDependencyReason::eWriteAfterWrite && edge.version == 2;
 
             producer |= edge.source == RDG_ID(3) && edge.destination == RDG_ID(0)
                      && edge.reason == RDGDependencyReason::eVersionProducer && edge.version == 1;

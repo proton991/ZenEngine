@@ -518,9 +518,12 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
                 lighting.SetShaderProgramName(capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP");
                 m_hybrid->BindLightingInputs(lighting);
             }
-            if (voxelGI != nullptr && voxelGI->UsesHardwareShadows())
+            if (voxelGI != nullptr && voxelGI->UsesRayShadows())
             {
-                lighting.SetShaderProgramName(capture ? "DeferredHardwareShadowsCaptureSP" : "DeferredHardwareShadowsSP");
+                lighting.SetShaderProgramName(
+                    voxelGI->UsesHardwareShadows()
+                        ? (capture ? "DeferredHardwareShadowsCaptureSP" : "DeferredHardwareShadowsSP")
+                        : (capture ? "DeferredSoftwareShadowsCaptureSP" : "DeferredSoftwareShadowsSP"));
                 lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
             }
 
@@ -838,9 +841,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 RDGGraphicsPassDesc source;
 
                 source.SetShaderProgramName(voxelGI == nullptr ? "ForwardScatterSP" : "ForwardScatterVoxelGISP");
-                if (voxelGI != nullptr && voxelGI->UsesHardwareShadows())
+                if (voxelGI != nullptr && voxelGI->UsesRayShadows())
                 {
-                    source.SetShaderProgramName("ForwardScatterHardwareShadowsSP");
+                    source.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? "ForwardScatterHardwareShadowsSP"
+                                                                               : "ForwardScatterSoftwareShadowsSP");
                 }
 
                 source.SetPassTag("ForwardScatterSource");
@@ -1012,9 +1016,11 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 }
                 m_hybrid->BindLightingInputs(forward);
             }
-            if (voxelGI != nullptr && voxelGI->UsesHardwareShadows())
+            if (voxelGI != nullptr && voxelGI->UsesRayShadows())
             {
-                forward.SetShaderProgramName(capture ? "ForwardHardwareShadowsCaptureSP" : "ForwardHardwareShadowsSP");
+                forward.SetShaderProgramName(voxelGI->UsesHardwareShadows()
+                                                 ? (capture ? "ForwardHardwareShadowsCaptureSP" : "ForwardHardwareShadowsSP")
+                                                 : (capture ? "ForwardSoftwareShadowsCaptureSP" : "ForwardSoftwareShadowsSP"));
             }
 
             forward.SetPassTag(stage < 3 ? "ForwardOpaque" : "ForwardTranslucent");

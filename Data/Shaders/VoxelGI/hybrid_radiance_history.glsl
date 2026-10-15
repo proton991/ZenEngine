@@ -9,8 +9,8 @@ void HybridUpdateRadianceHistory(ivec2 p, uint identity, vec3 position, vec3 ng,
     for(int y=-4;y<=4;++y) for(int x=-4;x<=4;++x)
     {
         ivec2 q=p+ivec2(x,y);
-        if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity) continue;
-        if(dot(HybridGeometricNormal(q),ng)<0.9 || abs(dot(HybridPosition(q)-position,ng))>hybrid.rejection.x) continue;
+        if(!HybridInView(q) || HybridHistoryIdentity(q)!=identity) continue;
+        if(dot(HybridHistoryNormal(q),ng)<0.9 || abs(dot(HybridHistoryPosition(q)-position,ng))>hybrid.rejection.x) continue;
         vec3 value=texelFetch(samples,q,0).rgb;
         mean+=value; second+=value*value; count+=1.0;
         if(cacheChanged)

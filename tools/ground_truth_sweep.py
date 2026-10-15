@@ -41,6 +41,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare_hybrid_gi import compare as shipping_gate, load as load_capture  # noqa: E402
 from capture_hybrid_gi import CAMERAS as CAMERA_MATRICES  # noqa: E402
+from hybrid_capture_io import read_bytes  # noqa: E402
 from ground_truth_mitsuba import compare as compare_truth, receiver_agreement  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,10 +61,12 @@ ENVIRONMENTS = {
 LUMINANCE = np.array([.2126, .7152, .0722])
 # Rung-3 limits for the tier reference and the P0 shipping limits.
 TIER_BIAS, TIER_EXCESS = .01, .03
+# Rays per pixel accumulated by the tier reference (1024 x 64 or 256 x 256 frames).
+REFERENCE_RAYS = 65536
 
 
 def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def log(text):
@@ -78,22 +81,27 @@ def capture(args, prefix, environment, camera, strip, reference):
         command.append('--rt')
     if strip:
         command.append('--strip-normal-maps')
+    frames = 64
     if reference:
-        command += ['--reference-samples', '1024']
+        # The tier reference accumulates REFERENCE_RAYS rays per pixel; the split only sets the
+        # per-frame cost (256 x 256 keeps Compute frames below the GPU watchdog).
+        frames = REFERENCE_RAYS // args.reference_samples
+        command += ['--reference-samples', str(args.reference_samples), '--frames', str(frames)]
     if args.reuse_captures and Path(str(prefix) + '.inputs.json').exists():
         inputs = json.loads(Path(str(prefix) + '.inputs.json').read_text())
         files = [inputs['executable']] + inputs['shaders'] + inputs['source_inputs']
         stale = [entry['path'] for entry in files
                  if not Path(entry['path']).exists() or sha256(entry['path']) != entry['sha256']]
         missing = [str(prefix)+suffix for suffix in ('.lighting.json', '.hybrid.bin', '.environment.bin', '.gltf')
-                   if not Path(str(prefix)+suffix).exists()]
+                   if not Path(str(prefix)+suffix).exists() and not Path(str(prefix)+suffix+'.gz').exists()]
         scene = json.loads(Path(str(prefix)+'.gltf').read_text()) if not missing else {}
         metadata = json.loads(Path(str(prefix)+'.lighting.json').read_text()) if not missing else {}
         has_normals = any('normalTexture' in material for material in scene.get('materials', []))
         source = json.loads(args.scene.read_text(encoding='utf-8'))
         expected_normals = not strip and any('normalTexture' in material for material in source.get('materials', []))
         settings = inputs['settings']
-        expected = dict(environment_texture=ENVIRONMENTS[environment], voxel_gi_reference_samples=1024 if reference else 0,
+        expected = dict(environment_texture=ENVIRONMENTS[environment],
+                        voxel_gi_reference_samples=args.reference_samples if reference else 0,
                         voxel_gi_ray_provider=args.provider, voxel_gi_samples=4, voxel_gi_history_frames=32,
                         voxel_gi_indirect_intensity=0, voxel_resolution=64, voxel_gi_temporal='true', voxel_gi_filter='true')
         nodes = scene.get('nodes', [])
@@ -101,7 +109,7 @@ def capture(args, prefix, environment, camera, strip, reference):
                           or has_normals != expected_normals
                           or not nodes or nodes[-1].get('matrix') != CAMERA_MATRICES[camera]
                           or any(metadata.get(key) != value for key, value in
-                                 dict(width=960, height=540, frame=64, ray_provider=args.provider).items())
+                                 dict(width=960, height=540, frame=frames, ray_provider=args.provider).items())
                           or sha256(args.scene) not in {entry['sha256'] for entry in inputs['source_inputs']}
                           or inputs['executable']['sha256'] != sha256(args.exe))
         if stale or missing or wrong_settings:
@@ -160,12 +168,20 @@ def save_dataset(folder, dataset):
     (folder / 'dataset.json').write_text(json.dumps(dataset, indent=2) + '\n')
 
 
+def check_backend(view, render):
+    """Independent ground truth is rendered on the GPU; a CPU-rendered truth never gates."""
+    if render.get('variant') != 'cuda_ad_rgb':
+        raise SystemExit(f'{view}: ground truth was rendered with {render.get("variant")!r}, not cuda_ad_rgb; '
+                         'render it again on the CUDA backend')
+
+
 def register(folder, dataset, view, truth_prefix, gate):
     """Copy a ground_truth_mitsuba.py render into the dataset unchanged and record what it depends on."""
     truth_prefix = Path(truth_prefix)
     if view in dataset['views'] or (folder / f'truth-{view}.npz').exists():
         raise SystemExit(f'{view} is already in the dataset; stored renders are never replaced')
     render = json.loads(Path(str(truth_prefix) + '.json').read_text())
+    check_backend(view, render)
     source = Path(render['capture'])
     source = source if source.is_absolute() else ROOT / source
     entry = identity(source)
@@ -249,6 +265,7 @@ def compare_view(args, dataset, view):
     truth = args.dataset / entry['truth']
     if sha256(truth) != entry['truth_sha256']:
         raise SystemExit(f'{truth} has changed since it was registered')
+    check_backend(view, entry['render'])
     result = {}
     shipping, reference = args.output / 'gt' / view, args.output / 'gt' / f'{view}-reference'
     for prefix in (shipping, reference):
@@ -284,13 +301,12 @@ def tier_verdict(reference):
 
 
 def summary(report):
-    hardware = report.get('provider', 'hardware') == 'hardware'
-    lines = ['# Ground-truth sweep', '', f'Build: {report["executable"]["path"]}', '',
+    provider = 'HW RT' if report.get('provider', 'hardware') == 'hardware' else 'Compute'
+    lines = ['# Ground-truth sweep', '', f'Build: {report["executable"]["path"]}', '', f'Provider: {provider}', '',
              '## Tier reference and shipping against the ground truth', '',
              'Excess is RMS error with the ground truth\'s own noise removed; limits for the tier reference: '
              f'|bias| <= {100 * TIER_BIAS:.0f}%, excess <= {100 * TIER_EXCESS:.0f}% per pixel and on 8x8 blocks. '
-             + ('' if hardware else 'Compute versus triangle ground truth is report-only under P0; '
-                'voxel geometry differences do not use the hardware correctness gate.'), '',
+             'Both tiers trace triangles since 2026-10-14, so both use these limits.', '',
              '| View | Ground-truth noise | Tier reference: bias / excess / 8x8 excess | Floor: bias / excess | '
              'Near / far excess | Shipping: bias / excess | Tier reference |',
              '| --- | ---: | --- | --- | --- | --- | --- |']
@@ -302,7 +318,7 @@ def summary(report):
         lines.append(f'| {view} | {percent(a["truth_noise_rms"])} | {percent(a["bias"], True)} / {percent(a["excess_rms"])} / '
                      f'{percent(a["blocks"]["excess_rms"])} | {floor} | {bands} | '
                      f'{percent(ship["all_receivers"]["bias"], True)} / {percent(ship["all_receivers"]["excess_rms"])} | '
-                     f'{tier_verdict(ref) if hardware else "Reported (voxel geometry)"} |')
+                     f'{tier_verdict(ref)} |')
     gated = {view: result for view, result in report['views'].items() if 'shipping_gate' in result}
     if gated:
         lines += ['', '## Shipping gate (normal maps on, against the tier reference)', '',
@@ -346,7 +362,7 @@ def main():
     parser.add_argument('--environments', nargs='+', choices=ENVIRONMENTS, default=list(ENVIRONMENTS))
     parser.add_argument('--cameras', nargs='+', choices=CAMERAS, default=list(CAMERAS))
     parser.add_argument('--provider', choices=('hardware', 'voxel'), default='hardware',
-                        help='Compute versus triangle ground truth is report-only; shipping still gates against its own tier')
+                        help='Tier to capture: voxel selects Compute (software triangle BVH), hardware selects HW RT')
     parser.add_argument('--skip-shipping-gate', action='store_true', help='Only the normal-map-free ground-truth comparison')
     parser.add_argument('--reuse-captures', action='store_true', help='Keep captures already in --output (same build only)')
     parser.add_argument('--render-missing', action='store_true', help='Render ground truth for requested views not in the dataset')
@@ -355,7 +371,10 @@ def main():
     parser.add_argument('--samples', type=int, default=32768)
     parser.add_argument('--batch', type=int, default=32)
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--backend', choices=('auto', 'cuda', 'llvm'), default='auto')
+    parser.add_argument('--backend', choices=('cuda',), default='cuda',
+                        help='Mitsuba backend; ground truth runs only on CUDA and fails without it')
+    parser.add_argument('--reference-samples', type=int, choices=(256, 1024), default=1024,
+                        help='Tier-reference rays per frame; frames = 65536 / samples (256 keeps Compute frames short)')
     parser.add_argument('--normal-maps', action='store_true',
                         help='Check captured normal-mapped shading normals; requires a separate matching ground-truth dataset')
     parser.add_argument('--import-truth', nargs=2, action='append', metavar=('VIEW', 'TRUTH_PREFIX'), default=[],
@@ -396,7 +415,8 @@ def main():
             register(args.dataset, dataset, view, future.result(), gate)
 
     report = dict(executable=dict(path=str(args.exe.resolve()), sha256=sha256(args.exe)),
-                  provider=args.provider, dataset=str(args.dataset), views={})
+                  provider=args.provider, reference_samples_per_frame=args.reference_samples,
+                  reference_frames=REFERENCE_RAYS // args.reference_samples, dataset=str(args.dataset), views={})
     for view in views:
         report['views'][view] = compare_view(args, dataset, view)
         log(f'compared {view}')

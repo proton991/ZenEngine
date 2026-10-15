@@ -1,8 +1,8 @@
-# P0–P3 and P4e acceptance, 2026-10-11
+# P0–P3 and P4e acceptance, updated 2026-10-13
 
 This record rechecks the earlier phases after P5–P7, before P8. Commit `4076f15a` is the historical baseline; this checkpoint contains the subsequent gap fixes, explicit backend controls and built legacy-selector retirement. Measurements use the RTX 5080, MSVC 19.51 Debug, driver raw version `2588573696`, synchronization validation and a fixed 60 Hz step. Ray count, lighting-history length, filter iteration count, cameras and error limits remain frozen.
 
-**Checkpoint; further qualification deferred:** P0 and P1's exits are met on the tested scope. The recorded candidate passes all 10 hardware and 10 compute shipping views, all 16 reset-settling cases and all 18 independent RT comparisons. The later explicit per-feature backend controls and legacy retirement build successfully and pass nine settings/history and four native editor tests. These focused tests verify routing/submission; the earlier captures do not qualify every mixed-provider configuration. P2/P3/P4e are not marked fully accepted. Machine-readable results and artifact hashes are in [P0P4Verification.json](P0P4Verification.json). Earlier measurements below are retained as history.
+**Current status: P0–P4 acceptance is closed on the agreed tested scope.** The [October 13 closeout](P2P4Acceptance.md) completes all-environment compute convergence, the current flagpole comparison and explicit-backend image qualification. It records two shader fixes, fresh final regressions and the new filter cost left for P8. The measurements below retain their original configurations and dates; [P2P4Acceptance.json](P2P4Acceptance.json) and [P0P4Verification.json](P0P4Verification.json) identify the evidence.
 
 ## Current completed work and remaining limits
 
@@ -11,7 +11,7 @@ This record rechecks the earlier phases after P5–P7, before P8. Commit `4076f1
 - `build/p0-p4-resolution/final-voxel/static-results.json`: 10/10 required compute views pass, maximum P99 19.27%. All nine environments were reported. Studio's top-floor P99 20.28% and hall RMS 24.88% exceed report-only stress limits.
 - `build/p0-p4-resolution/independent-rt/report.json`: 18/18 independent RT comparisons pass, maximum absolute bias 0.1043% and excess RMS 1.7875%, with the previously agreed six block decisions.
 - `build/lighting-backends/{settings-tests,editor-tests}.json`: 9/9 settings/history and 4/4 native editor tests pass. Editor and demo executables and shaders build; the three changed trace/filter SPIR-V modules validate. Legacy retirement is built, and the new controls support each feature independently plus an overall selector.
-- All-environment compute convergence and the latest flagpole-region comparison remain incomplete. Current mixed-provider image-quality qualification and P8 performance/memory/platform work are not claimed. The long runs stopped at the user's request; no further sweeps are running or scheduled.
+- October 13: 18/18 compute convergence views, 15/15 final flagpole regions, 28/28 backend combinations, 30/30 switches and sky-cache isolation pass. Final filtering regressions pass 16 fixtures, ten compute shipping views and five hardware top views. P8 remains open, including the dense sky-fallback cost; no sweeps remain active.
 
 The current acceptance runner is [validate_hybrid_acceptance.py](../../tools/validate_hybrid_acceptance.py). Static hardware views gate `D_sky + D_bounce` with the default ray-hit bounce, following P5 decision 2. Reset-settling still gates sky at frame 32; the static amendment does not change that requirement. Compute views use their cone default and compare sky against their own voxel reference. The independent sky check remains separate.
 
@@ -94,9 +94,9 @@ The half-wall sky-cache comparison passes: hardware/voxel bounce ratio **1.03995
 | --- | --- |
 | P0 | Exit met: inputs, analytic-validated references, fixture cameras, limits, targets and platform matrix are archived. The approved frozen views/flagpole regions replace the missing original camera; all 72 configuration/component checks pass on RTX 5080. Other platforms remain recorded as unverified under decision 3. |
 | P1 | Exit met on the tested RTX 5080, with moving-camera, identity, normal and graph/history evidence described above. |
-| P2 | Native functional/analytic checks, Papermill voxel convergence, sky-cache and legacy compatibility passed in the earlier run. Material coverage is now fixed and all 72 configuration/component checks pass. Expanded native/analytic fixtures and channel isolation now pass; all-environment higher-sample compute convergence is pending. |
-| P3 | Every-frame transform/vertex motion, post-motion settling and native independent-view histories now pass on both providers. The frozen Sponza frame-32 reset-settling image gates remain under qualification. |
-| P4e | Current candidate passes static composed diffuse in all 10 views and all floor regions. Every hardware reset passes; the hall hardware-to-voxel switch still fails. The current estimator's independent RT sweep is running. |
+| P2 | Exit met: eighteen-view compute convergence closes the remaining gap; final compute shipping and closed-surface regression checks pass. See [October 13 closeout](P2P4Acceptance.md). |
+| P3 | Exit met on the tested scope: twenty-eight backend combinations, thirty live switches and final filtering regressions pass alongside the archived motion/history evidence. See [October 13 closeout](P2P4Acceptance.md). |
+| P4e | Exit met on the tested scope: fifteen final flagpole regions and explicit-backend image checks complement the archived independent RT, hardware shipping and reset gates. See [October 13 closeout](P2P4Acceptance.md). |
 
 P8 performance, complete GI memory budgets and preset qualification remain outside this acceptance rerun. RX 7900 XT, Apple Silicon/MoltenVK and a physical non-RT device remain unverified under the existing platform decision.
 

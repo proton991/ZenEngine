@@ -8,6 +8,8 @@
 #include "Utils/Errors.h"
 #include <algorithm>
 #include <cstring>
+#include <functional>
+#include <string_view>
 
 namespace zen::editor
 {
@@ -126,6 +128,7 @@ bool EditorViewport::Init()
 
 void EditorViewport::Destroy()
 {
+    SetGPUTimingsEnabled(false);
     DiscardScene();
 
     m_device.GetRendererServer()->SetRenderScene(nullptr);
@@ -482,17 +485,71 @@ EditorRenderSnapshot EditorViewport::GetSnapshot() const
 {
     const rc::RendererServer& server = *m_device.GetRendererServer();
 
-    return {m_device.GetGPUMemoryStats(),
-            server.GetVoxelGISettings(),
-            server.GetRequestedRenderOption(),
-            server.GetRenderOption(),
-            server.GetRenderingStatus(),
-            server.GetEffectiveVoxelizer(),
-            server.GetDebugOutputDescription(),
-            server.RequestDeferredLightingRenderer()->GetLightMarkersEnabled(),
-            server.RequestDeferredLightingRenderer()->GetLightMarkerSize(),
-            server.RequestVoxelGI() != nullptr && server.RequestVoxelGI()->UsesHardwareQueries(),
-            server.RequestVoxelGI() != nullptr ? server.RequestVoxelGI()->GetProviderReason() : "GI inactive"};
+    EditorRenderSnapshot snapshot{m_device.GetGPUMemoryStats(),
+                                  server.GetVoxelGISettings(),
+                                  server.GetRequestedRenderOption(),
+                                  server.GetRenderOption(),
+                                  server.GetRenderingStatus(),
+                                  server.GetEffectiveVoxelizer(),
+                                  server.GetDebugOutputDescription(),
+                                  server.RequestDeferredLightingRenderer()->GetLightMarkersEnabled(),
+                                  server.RequestDeferredLightingRenderer()->GetLightMarkerSize(),
+                                  server.RequestVoxelGI() != nullptr && server.RequestVoxelGI()->UsesHardwareQueries(),
+                                  server.RequestVoxelGI() != nullptr ? server.RequestVoxelGI()->GetProviderReason()
+                                                                     : "GI inactive"};
+    snapshot.giSelectionReason = server.GetGISelectionReason();
+    snapshot.gpuTimingsEnabled = m_gpuTimingsEnabled;
+    if (m_gpuTimingsEnabled)
+    {
+        snapshot.giPassTimings = m_giPassTimings;
+    }
+    return snapshot;
+}
+
+void EditorViewport::UpdateGPUTimings(const rc::RDGMetricsSnapshot& timings)
+{
+    // Upload, preview and readback graphs can complete after the scene graph.
+    // Keep the last scene measurement instead of replacing it with unrelated work.
+    if (timings.graph == "frame_rdg")
+    {
+        m_giPassTimings.clear();
+        for (const rc::RDGNodeMetrics& node : timings.nodes)
+        {
+            const std::string_view name(node.name.CStr());
+            if (name.starts_with("Hybrid") || name.starts_with("Voxel") || name == "BuildSceneBLAS" || name == "UpdateSceneBLAS"
+                || name == "BuildSceneTLAS")
+            {
+                m_giPassTimings.push_back(node);
+            }
+        }
+    }
+}
+
+void EditorViewport::SetGPUTimingsEnabled(bool enabled)
+{
+    if (enabled != m_gpuTimingsEnabled)
+    {
+        rc::RDGMetrics& metrics = m_device.GetRDGMetrics();
+        if (enabled)
+        {
+            m_previousMetricsOptions      = metrics.GetOptions();
+            rc::RDGMetricsOptions options = m_previousMetricsOptions;
+            options.logging.enabled       = true;
+            options.logging.sampleEvery   = 30;
+            options.logging.minInterval   = std::chrono::milliseconds(500);
+            options.gpuTimings            = true;
+            options.maxNodeDetails        = std::max(options.maxNodeDetails, 512u);
+            metrics.Configure(options);
+            metrics.SetGPUSink(std::bind_front(&EditorViewport::UpdateGPUTimings, this));
+        }
+        else
+        {
+            metrics.SetGPUSink({});
+            metrics.Configure(m_previousMetricsOptions);
+            m_giPassTimings.clear();
+        }
+        m_gpuTimingsEnabled = enabled;
+    }
 }
 
 bool EditorViewport::ApplyRenderingSettings(const rc::RenderingSettings& settings, bool retryResources, std::string& error)
@@ -844,6 +901,10 @@ void EditorViewport::BuildOverlays(rc::RenderGraph& graph)
 
 void EditorViewport::OnSubmitted(bool succeeded)
 {
+    if (m_gpuTimingsEnabled)
+    {
+        m_device.GetRDGMetrics().CollectGPUResults();
+    }
     if (m_pickRecorded)
     {
         m_pickInFlight = succeeded;

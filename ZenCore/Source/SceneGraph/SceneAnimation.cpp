@@ -59,8 +59,8 @@ bool SampleAnimationSampler(const AnimationSampler& sampler,
     const size_t triples = sampler.interpolation == AnimationInterpolation::CubicSpline ? 3 : 1;
 
     bool valid           = std::isfinite(time) && dimensions > 0 && keys > 0
-              && dimensions <= std::numeric_limits<size_t>::max() / triples / std::max(keys, size_t(1))
-              && sampler.values.size() == keys * dimensions * triples && (!quaternion || dimensions == 4);
+                        && dimensions <= std::numeric_limits<size_t>::max() / triples / std::max(keys, size_t(1))
+                        && sampler.values.size() == keys * dimensions * triples && (!quaternion || dimensions == 4);
 
     for (size_t key = 0; valid && key < keys; ++key)
     {
@@ -265,14 +265,14 @@ bool EvaluateSceneAnimation(Scene& scene, uint32_t animationIndex, float time, b
                     const size_t dimensions          = count > 0 ? sampler.values.size() / count : 0;
 
                     valid                           &= dimensions > 0 && dimensions <= UINT32_MAX
-                          && SampleAnimationSampler(
-                                 sampler, sampleTime, static_cast<uint32_t>(dimensions),
-                                 dimensions == 4
-                                     && (channel.pointer.starts_with("/nodes/")
-                                         || channel.pointer.starts_with("/extensions/EXT_lights_image_based/lights/"))
-                                     && channel.pointer.ends_with("/rotation"),
-                                 samples[index])
-                          && ValidateAnimationPointer(scene, channel.pointer, MakeVecView(samples[index]));
+                                                    && SampleAnimationSampler(
+                                                           sampler, sampleTime, static_cast<uint32_t>(dimensions),
+                                                           dimensions == 4
+                                                               && (channel.pointer.starts_with("/nodes/")
+                                                                   || channel.pointer.starts_with("/extensions/EXT_lights_image_based/lights/"))
+                                                               && channel.pointer.ends_with("/rotation"),
+                                                           samples[index])
+                                                    && ValidateAnimationPointer(scene, channel.pointer, MakeVecView(samples[index]));
                 }
             }
             else if (nodes[index] != nullptr)
@@ -373,7 +373,7 @@ static void MorphVertex(const MorphPrimitiveAsset& morph,
                         const Node&                node,
                         uint32_t                   source,
                         asset::Vertex&             vertex,
-                        HeapVector<Vec2>&          coordinates,
+                        VertexTextureCoordinates&  coordinates,
                         bool                       flatNormals)
 {
     for (size_t targetIndex = 0; targetIndex < morph.targets.size(); ++targetIndex)
@@ -502,11 +502,11 @@ bool ApplySceneDeformations(Scene& scene, VectorView<const asset::Vertex> bindVe
 {
     HeapVector<asset::Vertex> posed(bindVertices.data(), bindVertices.size());
 
-    const HeapVector<HeapVector<Vec2>>& authoredCoordinates = scene.GetAssetData().bindVertexTexCoords.empty()
-                                                                ? scene.GetAssetData().vertexTexCoords
-                                                                : scene.GetAssetData().bindVertexTexCoords;
+    const HeapVector<VertexTextureCoordinates>& authoredCoordinates = scene.GetAssetData().bindVertexTexCoords.empty()
+                                                                        ? scene.GetAssetData().vertexTexCoords
+                                                                        : scene.GetAssetData().bindVertexTexCoords;
 
-    HeapVector<HeapVector<Vec2>> coordinates                = authoredCoordinates;
+    HeapVector<VertexTextureCoordinates> coordinates                = authoredCoordinates;
 
     if (coordinates.size() < posed.size())
     {
@@ -531,7 +531,7 @@ bool ApplySceneDeformations(Scene& scene, VectorView<const asset::Vertex> bindVe
                                : node;
 
         valid             &= node != nullptr && morphSource != nullptr && binding.firstVertex <= posed.size()
-              && binding.vertexCount <= posed.size() - binding.firstVertex;
+                          && binding.vertexCount <= posed.size() - binding.firstVertex;
 
         if (valid)
         {
@@ -557,7 +557,7 @@ bool ApplySceneDeformations(Scene& scene, VectorView<const asset::Vertex> bindVe
                 const Mat4 delta        = std::isfinite(determinant) && std::abs(determinant) > 1e-20f
                                             ? node->GetComponent<Transform>()->GetWorldMatrix() * glm::inverse(sourceWorld)
                                             : node->GetComponent<Transform>()->GetPrefixMatrix()
-                                           * node->GetComponent<Transform>()->GetLocalMatrix();
+                                                  * node->GetComponent<Transform>()->GetLocalMatrix();
 
                 for (Mat4& joint : palette)
                 {

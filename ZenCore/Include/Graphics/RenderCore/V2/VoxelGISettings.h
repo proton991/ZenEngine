@@ -18,6 +18,22 @@ struct VoxelGIRuntimeSettings
     bool operator==(const VoxelGIRuntimeSettings&) const = default;
 };
 
+enum class VoxelGIPreset : uint32_t
+{
+    Custom,
+    Low,
+    Medium,
+    High,
+    Ultra
+};
+
+const char*   GetVoxelGIPresetName(VoxelGIPreset preset);
+VoxelGIPreset GetVoxelGIPreset(const VoxelGIRuntimeSettings& settings);
+bool          ApplyVoxelGIPreset(VoxelGIPreset preset, VoxelGIRuntimeSettings& settings);
+// Resolve only inherited Auto requests from device capability: HW RT where ray queries are
+// usable, Compute otherwise. Explicit per-feature requests remain authoritative.
+const char* ResolveVoxelGIAutomaticProvider(VoxelGIRuntimeSettings& settings, const RHIGPUInfo& gpu);
+
 bool ValidateVoxelGIRuntimeSettings(const VoxelGIRuntimeSettings& settings);
 
 // Parsing is transactional: a rejected configuration leaves output untouched.

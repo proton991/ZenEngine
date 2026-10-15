@@ -60,8 +60,9 @@ public:
     bool CaptureFrame(const std::string& path);
 
     bool CaptureLighting(const std::string& path);
+    bool CaptureRayCounts(const std::string& path);
 
-    bool CaptureProviderSwitching(const std::string& path);
+    bool CaptureProviderSwitching(const std::string& path, bool individualFeatures = false);
 
     bool CaptureOriginStress(const std::string& path);
 

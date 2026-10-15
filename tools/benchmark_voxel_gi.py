@@ -26,6 +26,10 @@ def main():
     parser.add_argument('--thread', type=int, choices=(0, 1), default=1)
     parser.add_argument('--async-compute', type=int, choices=(0, 1), default=1)
     parser.add_argument('--validation', action='store_true')
+    parser.add_argument('--backend', choices=('compute', 'hardware'), default='compute')
+    parser.add_argument('--legacy-provider-controls', action='store_true',
+                        help='Use the provider selector so explicit bounce-source/reflection settings remain effective')
+    parser.add_argument('--profile', action='store_true', help='Also record native GPU frame/pass timings')
     parser.add_argument('--motion-fixture', action='store_true')
     parser.add_argument('--config', type=Path)
     parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE')
@@ -38,6 +42,10 @@ def main():
     settings = args.config.read_bytes() if args.config else original
     if args.set:
         settings += b'\n' + ('\n'.join(args.set)+'\n').encode()
+    from capture_hybrid_gi import capture_configuration
+    selector = ({'voxel_gi_ray_provider': 'voxel' if args.backend == 'compute' else 'hardware'}
+                if args.legacy_provider_controls else {'voxel_gi_backend': args.backend})
+    settings = capture_configuration(settings, selector)
     try:
         if settings != original:
             config.write_bytes(settings)
@@ -55,10 +63,14 @@ def measure(args):
     config = ROOT/'Data/engine.cfg'
     original = config.read_bytes()
     (out/'engine.cfg').write_bytes(original)
-    command = [str(executable), '--mode=3', '--fixed-step', '--disable-rt', '--gpu-memory-stats', f'--warmup={args.warmup}',
+    command = [str(executable), '--mode=3', '--fixed-step', '--no-ui', '--vsync=0', '--gpu-memory-stats', f'--warmup={args.warmup}',
                f'--frames={args.frames}', f'--width={args.width}', f'--height={args.height}',
                f'--rhi-thread={args.thread}', f'--async-compute={args.async_compute}',
                f'--frame-times={out / "frames.csv"}']
+    if args.backend == 'compute':
+        command.append('--disable-rt')
+    if args.profile:
+        command.append(f'--profile={out / "native"}')
     if not args.validation:
         command.append('--disable-validation')
     if args.motion_fixture:
@@ -82,7 +94,9 @@ def measure(args):
             monitor.wait()
     assert config.read_bytes() == original, 'Configuration changed during the benchmark'
     text = (out/'run.log').read_text(errors='replace')
-    errors = [line for line in text.splitlines() if any(x in line for x in ('[error]', 'VUID-', 'SYNC-HAZARD'))]
+    errors = [line for line in text.splitlines() if any(x in line for x in (
+        '[error]', 'VUID-', 'SYNC-HAZARD', 'Using GI defaults after rejected configuration',
+        'Invalid voxel_gi settings; using defaults'))]
     assert run.returncode == 0 and not errors, (run.returncode, errors[:5])
     frames = [float(row['cpu_frame_ms']) for row in csv.DictReader((out/'frames.csv').open())]
     assert len(frames) == args.frames and all(math.isfinite(value) and value > 0 for value in frames)
@@ -99,7 +113,7 @@ def measure(args):
             if start <= timestamp <= end:
                 samples.append([float(value.strip()) for value in row[1:]])
     assert samples, 'No warmed NVIDIA activity samples; increase --frames'
-    methods = re.findall(r'Selected voxel GI method: (\w+); query backend: (\w+)', text)
+    native = json.loads((out/'native.profile.json').read_text()) if args.profile else None
     ordered = sorted(frames)
     report = dict(frames=len(frames), warmup=args.warmup, fps=1000/statistics.mean(frames),
         mean_frame_ms=statistics.mean(frames), median_frame_ms=statistics.median(frames),
@@ -109,13 +123,33 @@ def measure(args):
         memory_activity_percent_mean=statistics.mean(row[1] for row in samples),
         graphics_clock_mhz_mean=statistics.mean(row[2] for row in samples),
         power_watts_mean=statistics.mean(row[3] for row in samples), gpu_samples=len(samples),
-        resolved_method=methods[-1][0], query_backend=methods[-1][1],
+        resolved_method=native['settings']['gi_method'] if native else None, backend=args.backend,
         configuration_sha256=hashlib.sha256(original).hexdigest(),
         metric_note='CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. '
-                    'Animation advances 1/60 second per frame; image quality settings are unchanged.')
+                    'Animation advances 1/60 second per frame. Configuration and shader hashes identify the workload; '
+                    'configured sample counts do not establish the number of rays actually issued.')
     memory = re.findall(r'GPU memory VMA: peak_committed_bytes=(\d+) peak_device_local_bytes=(\d+) remaining_bytes=(\d+)', text)
     assert len(memory) == 1 and int(memory[0][2]) == 0, memory
     report['vma_peak_committed_bytes'], report['vma_peak_device_local_bytes'], report['vma_remaining_bytes'] = map(int, memory[0])
+    if args.profile:
+        from validate_engine_profile import validate
+        validate(out / 'native', require_gpu=True, require_frame_gpu=True)
+        report['gpu_frame_ms'] = native['gpu_frame_ms']
+        report['resolved_settings'] = native['settings']
+        report['pass_statistics'] = native['pass_statistics']
+        report['cpu_submission_ms'] = {}
+        for phase in ('cold', 'warmup', 'measured'):
+            per_frame = {}
+            for graph in native['graphs']:
+                if graph['phase'] == phase and graph['frame_index'] is not None:
+                    frame = graph['frame_index']
+                    per_frame[frame] = per_frame.get(frame, 0.0) + graph['submission_cpu_us'] / 1000
+            values = sorted(per_frame.values())
+            if values:
+                report['cpu_submission_ms'][phase] = dict(count=len(values), mean=statistics.mean(values),
+                    median=statistics.median(values), p95=values[math.ceil(.95 * len(values)) - 1], max=max(values))
+        report['cpu_submission_scope'] = ('Sum of recorded render-graph CPU submission intervals per application frame; '
+            'excludes startup uploads and host acquire/present. GPU time and frame-slot backpressure are reported separately.')
     (out/'summary.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(out.name, json.dumps(report), flush=True)
 

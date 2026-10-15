@@ -168,6 +168,9 @@ public:
         return m_pIndexBuffer;
     }
 
+    // Full-scene triangle records shared by voxelization and software ray queries.
+    HeapVector<glm::uvec4> BuildTriangleRecords() const;
+
     RHIBuffer* GetVoxelTriangleBuffer() const
     {
         return m_pVoxelTriangleBuffer;
@@ -237,7 +240,8 @@ public:
 private:
     void UpdateAuthoredEnvironment();
 
-    HeapVector<glm::uvec4> BuildTriangleRecords() const;
+
+    void BuildMeshVertexIndices();
 
     bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2]) const;
 
@@ -257,25 +261,29 @@ private:
 
     HeapVector<LightId>  m_importedLightIds;
     HeapVector<uint32_t> m_indices;
-    HeapVector<uint32_t> m_instanceClasses;
-    HeapVector<uint32_t> m_instanceEnabled;
-    HeapVector<uint32_t> m_authoredVisibility;
-    uint32_t             m_dirtyClasses{0};
-    uint32_t             m_dirtySurfaceClasses{0};
-    bool                 m_materialsDirty{false};
-    bool                 m_verticesDirty{false};
-    bool                 m_geometryReady{true};
-    uint64_t             m_geometryRevision{1};
-    uint64_t             m_staticRevision{1};
-    uint64_t             m_dynamicRevision{1};
-    uint64_t             m_surfaceRevision{1};
-    uint64_t             m_staticSurfaceRevision{1};
-    uint64_t             m_dynamicSurfaceRevision{1};
-    sg::AABB             m_voxelBounds;
-    sg::AABB             m_classBounds[2];
-    RenderDevice*        m_pRenderDevice{nullptr};
-    sg::Scene*           m_pScene{nullptr};
-    sg::Camera*          m_pCamera{nullptr};
+    // Loaded topology is immutable; shared instances reuse one unique vertex list.
+    HashMap<const sg::Mesh*, HeapVector<uint32_t>> m_meshVertexIndices;
+    HeapVector<uint32_t>                           m_instanceClasses;
+    HeapVector<uint32_t>                           m_instanceEnabled;
+    HeapVector<uint32_t>                           m_authoredVisibility;
+    uint32_t                                       m_dirtyClasses{0};
+    uint32_t                                       m_dirtySurfaceClasses{0};
+    bool                                           m_materialsDirty{false};
+    bool                                           m_verticesDirty{false};
+    // Triangle indices, material assignments and instance masks; independent of poses.
+    bool          m_triangleRecordsDirty{false};
+    bool          m_geometryReady{true};
+    uint64_t      m_geometryRevision{1};
+    uint64_t      m_staticRevision{1};
+    uint64_t      m_dynamicRevision{1};
+    uint64_t      m_surfaceRevision{1};
+    uint64_t      m_staticSurfaceRevision{1};
+    uint64_t      m_dynamicSurfaceRevision{1};
+    sg::AABB      m_voxelBounds;
+    sg::AABB      m_classBounds[2];
+    RenderDevice* m_pRenderDevice{nullptr};
+    sg::Scene*    m_pScene{nullptr};
+    sg::Camera*   m_pCamera{nullptr};
 
     HeapVector<sg::NodeData> m_nodesData;
     RHIBuffer*               m_pNodeSSBO{nullptr};

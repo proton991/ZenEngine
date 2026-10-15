@@ -157,6 +157,7 @@ template <class T> HeapVector<T> ReadStaticBuffer(RHIBuffer* buffer)
 #include "ConeEnvironmentTests.inl"
 #include "HybridEstimatorTests.inl"
 #include "CompactGBufferTests.inl"
+#include "SceneGeometryUpdatesTests.inl"
 
 INSTANTIATE_TEST_SUITE_P(SubmissionModes, ConeVoxelGIIntegrationTest, testing::Values(0u, 1u, 2u, 3u));
 } // namespace

@@ -582,7 +582,7 @@ static fastgltf::Error ValidateSceneAsset(fastgltf::Asset& asset)
             const fastgltf::Accessor& accessor  = asset.accessors[*skin.inverseBindMatrices];
 
             referencesValid                    &= accessor.type == fastgltf::AccessorType::Mat4
-                            && accessor.componentType == fastgltf::ComponentType::Float && accessor.count >= skin.joints.size();
+                                               && accessor.componentType == fastgltf::ComponentType::Float && accessor.count >= skin.joints.size();
         }
     }
 
@@ -778,7 +778,7 @@ static std::string NormalizeIntegralJsonNumber(std::string_view number)
             exponentOverflow  = parsed.ec == std::errc::result_out_of_range;
 
             valid            &= begin < number.size() && (parsed.ec == std::errc{} || exponentOverflow)
-                  && parsed.ptr == number.data() + number.size();
+                             && parsed.ptr == number.data() + number.size();
         }
 
         const size_t first = digits.find_first_not_of('0');
@@ -836,7 +836,7 @@ static std::string NormalizeIntegralJsonNumber(std::string_view number)
             const std::from_chars_result parsed  = std::from_chars(digits.data(), digits.data() + digits.size(), value);
 
             valid                               &= parsed.ec == std::errc{} && parsed.ptr == digits.data() + digits.size()
-                  && (!negative || value <= uint64_t(INT64_MAX) + 1);
+                                                && (!negative || value <= uint64_t(INT64_MAX) + 1);
 
             if (valid)
             {
@@ -2584,8 +2584,8 @@ const fastgltf::Accessor* FastGLTFLoader::GetVertexAccessor(const fastgltf::Prim
 
         const std::string_view semantic(name);
 
-        const bool integer = accessor.componentType == fastgltf::ComponentType::UnsignedByte
-                          || accessor.componentType == fastgltf::ComponentType::UnsignedShort;
+        const bool integer  = accessor.componentType == fastgltf::ComponentType::UnsignedByte
+                           || accessor.componentType == fastgltf::ComponentType::UnsignedShort;
 
         bool componentValid = accessor.componentType == fastgltf::ComponentType::Float
                            || accessor.componentType == fastgltf::ComponentType::Double;
@@ -2729,8 +2729,8 @@ bool FastGLTFLoader::LoadPrimitive(const fastgltf::Primitive& primitive,
     bool valid                          = positions != nullptr;
 
     const bool triangles                = primitive.type == fastgltf::PrimitiveType::Triangles
-                        || primitive.type == fastgltf::PrimitiveType::TriangleStrip
-                        || primitive.type == fastgltf::PrimitiveType::TriangleFan;
+                                       || primitive.type == fastgltf::PrimitiveType::TriangleStrip
+                                       || primitive.type == fastgltf::PrimitiveType::TriangleFan;
 
     if (valid)
     {
@@ -2827,9 +2827,9 @@ bool FastGLTFLoader::LoadPrimitive(const fastgltf::Primitive& primitive,
             const fastgltf::Accessor& accessor  = m_gltfAsset.accessors[*primitive.indicesAccessor];
 
             valid                              &= accessor.type == fastgltf::AccessorType::Scalar && !accessor.normalized
-                  && (accessor.componentType == fastgltf::ComponentType::UnsignedByte
-                      || accessor.componentType == fastgltf::ComponentType::UnsignedShort
-                      || accessor.componentType == fastgltf::ComponentType::UnsignedInt);
+                                               && (accessor.componentType == fastgltf::ComponentType::UnsignedByte
+                                                   || accessor.componentType == fastgltf::ComponentType::UnsignedShort
+                                                   || accessor.componentType == fastgltf::ComponentType::UnsignedInt);
 
             if (valid)
             {
@@ -3008,7 +3008,11 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
 
                     m_vertices.push_back(vertex);
 
-                    HeapVector<Vec2> coordinates(texCoordCount, Vec2(0));
+                    sg::VertexTextureCoordinates coordinates(texCoordCount);
+                    for (Vec2& coordinate : coordinates)
+                    {
+                        coordinate = Vec2(0);
+                    }
 
                     for (const std::pair<uint32_t, const fastgltf::Accessor*>& coordinate : texCoords)
                     {
@@ -3041,8 +3045,8 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
 
                 subMesh->topology       = primitive.type == fastgltf::PrimitiveType::Points ? sg::MeshTopology::Points
                                         : primitive.type == fastgltf::PrimitiveType::Lines
-                                            || primitive.type == fastgltf::PrimitiveType::LineLoop
-                                            || primitive.type == fastgltf::PrimitiveType::LineStrip
+                                                  || primitive.type == fastgltf::PrimitiveType::LineLoop
+                                                  || primitive.type == fastgltf::PrimitiveType::LineStrip
                                             ? sg::MeshTopology::Lines
                                             : sg::MeshTopology::Triangles;
 
@@ -3145,7 +3149,7 @@ void FastGLTFLoader::CloneDeformedMesh(uint32_t meshIndex, sg::Node& node, sg::S
 
                 m_vertices.push_back(originalVertex);
 
-                HeapVector<Vec2> coordinates = data.vertexTexCoords[sourceFirstVertex + vertex];
+                sg::VertexTextureCoordinates coordinates = data.vertexTexCoords[sourceFirstVertex + vertex];
 
                 data.vertexTexCoords.push_back(std::move(coordinates));
 

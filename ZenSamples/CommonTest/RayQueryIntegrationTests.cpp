@@ -1,12 +1,17 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
+#include "Graphics/RenderCore/V2/SoftwareSceneRayQuery.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanAccelerationStructure.h"
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <limits>
+#include <random>
 
 namespace
 {
@@ -553,6 +558,437 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
     {
         GTEST_SKIP() << "Ray queries unavailable on this device";
     }
+}
+
+// Independent double-precision brute force over the authored triangles, never the BVH builder's records.
+struct OracleTriangle
+{
+    glm::dvec3 a, b, c;
+    uint32_t   indexOffset, node, material;
+    Vec3       alpha; // vertex alpha at a, b, c
+};
+
+struct OracleCandidate
+{
+    double   t, u, v;
+    uint32_t triangle;
+};
+
+bool OracleIntersect(const OracleTriangle& triangle,
+                     const glm::dvec3&     origin,
+                     const glm::dvec3&     direction,
+                     OracleCandidate&      hit)
+{
+    // Moller-Trumbore, both faces: u weights b, v weights c, matching the shader's barycentrics.
+    const glm::dvec3 e1 = triangle.b - triangle.a, e2 = triangle.c - triangle.a, p = glm::cross(direction, e2);
+    const double     determinant = glm::dot(e1, p);
+    if (std::abs(determinant) < 1e-30)
+    {
+        return false;
+    }
+    const glm::dvec3 s = origin - triangle.a, q = glm::cross(s, e1);
+    hit.u = glm::dot(s, p) / determinant;
+    hit.v = glm::dot(direction, q) / determinant;
+    hit.t = glm::dot(e2, q) / determinant;
+    return hit.u > -1e-3 && hit.v > -1e-3 && hit.u + hit.v < 1.001 && hit.t > -1e-6;
+}
+
+TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle)
+{
+    ShaderProgramManager::GetInstance().StoreProgram(
+        ZEN_NEW() ComputeFileSP(device, "SoftwareRayQueryCheckSP", "VoxelGI/Calibration/software_ray_query_check.comp.spv"));
+    std::mt19937                          random(29);
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    const auto                            Uniform = [&](float low, float high) {
+        return low + (high - low) * unit(random);
+    };
+    const auto Direction = [&]() {
+        const float z = Uniform(-1, 1), phi = Uniform(0, 6.2831853f), r = std::sqrt(std::max(0.0f, 1 - z * z));
+        return Vec3(r * std::cos(phi), r * std::sin(phi), z);
+    };
+
+    // Materials: opaque; masked with zero alpha (always rejected); masked by interpolated vertex alpha.
+    sg::Scene                           source;
+    HeapVector<UniquePtr<sg::Material>> materials;
+    for (uint32_t i = 0; i < 3; ++i)
+    {
+        UniquePtr<sg::Material> material   = MakeUnique<sg::Material>("oracle material");
+        material->index                    = i;
+        material->data.surfaceProperties.y = i == 0 ? 0.0f : 1.0f;
+        material->data.baseColorFactor.a   = i == 1 ? 0.0f : 1.0f;
+        materials.push_back(std::move(material));
+    }
+    HeapVector<asset::Vertex> vertices;
+    HeapVector<uint32_t>      indices;
+    struct MeshDesc
+    {
+        HeapVector<std::pair<uint32_t, uint32_t>> submeshes; // first index, material; three indices each
+    };
+    HeapVector<MeshDesc> meshDescs;
+    const auto           Triangle = [&](MeshDesc& mesh, Vec3 a, Vec3 b, Vec3 c, uint32_t material, Vec3 alpha = Vec3(1)) {
+        mesh.submeshes.push_back({static_cast<uint32_t>(indices.size()), material});
+        for (uint32_t corner = 0; corner < 3; ++corner)
+        {
+            asset::Vertex vertex{};
+            vertex.pos    = Vec4(corner == 0 ? a : corner == 1 ? b : c, 1);
+            vertex.normal = Vec4(0, 0, 1, 0);
+            vertex.color  = Vec4(1, 1, 1, alpha[corner]);
+            indices.push_back(static_cast<uint32_t>(vertices.size()));
+            vertices.push_back(vertex);
+        }
+    };
+    MeshDesc field, layered, alpha, quad, skewed;
+    for (uint32_t i = 0; i < 160; ++i)
+    {
+        const Vec3  center(Uniform(-1, 1), Uniform(-1, 1), Uniform(-1, 1));
+        const float size = Uniform(0.05f, 0.3f);
+        Triangle(field, center + Direction() * size, center + Direction() * size, center + Direction() * size, 0);
+    }
+    // A rejected candidate directly in front of an opaque blocker, a few micro-units apart.
+    Triangle(layered, Vec3(-0.5f, -0.5f, 0), Vec3(0.5f, -0.5f, 0), Vec3(0, 0.5f, 0), 1);
+    Triangle(layered, Vec3(-0.5f, -0.5f, 0.002f), Vec3(0.5f, -0.5f, 0.002f), Vec3(0, 0.5f, 0.002f), 0);
+    // Accepted only where the first vertex's weight reaches the 0.5 cutoff; rejected rays reach the blocker.
+    Triangle(alpha, Vec3(-0.5f, -0.5f, 0), Vec3(0.5f, -0.5f, 0), Vec3(0, 0.5f, 0), 2, Vec3(1, 0, 0));
+    Triangle(alpha, Vec3(-0.6f, -0.6f, 0.01f), Vec3(0.6f, -0.6f, 0.01f), Vec3(0, 0.6f, 0.01f), 0);
+    // Two triangles sharing a diagonal: watertight traversal never misses on it.
+    Triangle(quad, Vec3(-0.5f, -0.5f, 0), Vec3(0.5f, -0.5f, 0), Vec3(0.5f, 0.5f, 0), 0);
+    Triangle(quad, Vec3(-0.5f, -0.5f, 0), Vec3(0.5f, 0.5f, 0), Vec3(-0.5f, 0.5f, 0), 0);
+    // Exponentially spaced centroids produce strongly skewed surface-area splits.
+    for (uint32_t i = 0; i < 64; ++i)
+    {
+        const float x = 0.01f * std::pow(1.2f, float(i));
+        Triangle(skewed, Vec3(x, 0, 0), Vec3(x + 0.004f, 0, 0), Vec3(x, 0.004f, 0.002f), 0);
+    }
+    for (const MeshDesc& mesh : {field, layered, alpha, quad, skewed})
+    {
+        meshDescs.push_back(mesh);
+    }
+
+    struct InstanceDesc
+    {
+        uint32_t mesh;
+        Mat4     transform;
+        bool     enabled;
+    };
+    const InstanceDesc instances[] = {
+        {0, Mat4(1), true},
+        {1, glm::translate(Mat4(1), Vec3(2.5f, 0, 0)), true},
+        {2, glm::translate(Mat4(1), Vec3(-2.5f, 0, 0)), true},
+        {3, glm::translate(Mat4(1), Vec3(0, 2.5f, 0)), true},
+        {3, glm::scale(glm::translate(Mat4(1), Vec3(0, -2.5f, 0)), Vec3(-1, 1, 1)), true}, // mirrored
+        {4, glm::translate(Mat4(1), Vec3(0, 0, 3)), true},
+        {0, glm::scale(glm::translate(Mat4(1), Vec3(0.3f, 0.2f, 0.1f)), Vec3(0.9f)), false}, // disabled, overlaps 0
+        {0, glm::rotate(glm::translate(Mat4(1), Vec3(0, 0, -3)), 0.7f, glm::normalize(Vec3(1, 1, 0))), true},
+    };
+    HeapVector<UniquePtr<sg::Mesh>> meshes;
+    for (const MeshDesc& desc : meshDescs)
+    {
+        UniquePtr<sg::Mesh> mesh = MakeUnique<sg::Mesh>("oracle mesh");
+        mesh->SetAABB(Vec3(-2), Vec3(2));
+        for (const auto& [first, material] : desc.submeshes)
+        {
+            UniquePtr<sg::SubMesh> primitive = MakeUnique<sg::SubMesh>("triangle", first, 3, 3);
+            primitive->SetMaterial(material, materials[material].Get());
+            mesh->AddSubMesh(primitive.Get());
+            source.AddComponent(std::move(primitive));
+        }
+        meshes.push_back(std::move(mesh));
+    }
+    for (UniquePtr<sg::Material>& material : materials)
+    {
+        source.AddComponent(std::move(material));
+    }
+    HeapVector<UniquePtr<sg::Node>> nodes;
+    for (uint32_t i = 0; i < std::size(instances); ++i)
+    {
+        UniquePtr<sg::Node> node = MakeUnique<sg::Node>(i, "oracle instance");
+        node->SetData(i, instances[i].transform);
+        node->AddComponent(meshes[instances[i].mesh].Get());
+        source.AddRenderableNode(node.Get());
+        nodes.push_back(std::move(node));
+    }
+    source.SetNodes(std::move(nodes));
+    for (UniquePtr<sg::Mesh>& mesh : meshes)
+    {
+        source.AddComponent(std::move(mesh));
+    }
+    // A unit box at the origin makes RenderScene's scene normalization the identity,
+    // so the oracle can use the authored transforms directly.
+    source.GetAABB() = sg::AABB(Vec3(-0.5f), Vec3(0.5f));
+    sg::Camera camera(Vec3(0, 0, -5), Vec3(0), 1);
+    SceneData  data{};
+    data.pScene      = &source;
+    data.pVertices   = vertices.data();
+    data.numVertices = static_cast<uint32_t>(vertices.size());
+    data.pIndices    = indices.data();
+    data.numIndices  = static_cast<uint32_t>(indices.size());
+    data.pCamera     = &camera;
+    RenderScene scene(device, data);
+    scene.LoadSceneMaterials();
+    scene.PrepareBuffers();
+    for (uint32_t i = 0; i < std::size(instances); ++i)
+    {
+        ASSERT_TRUE(scene.SetInstanceEnabled(i, instances[i].enabled));
+    }
+    ASSERT_TRUE(scene.Update());
+
+    HeapVector<OracleTriangle> oracle;
+    for (uint32_t node = 0; node < std::size(instances); ++node)
+    {
+        const glm::dmat4 transform(instances[node].transform);
+        for (const auto& [first, material] : meshDescs[instances[node].mesh].submeshes)
+        {
+            OracleTriangle triangle;
+            glm::dvec3*    corners[] = {&triangle.a, &triangle.b, &triangle.c};
+            for (uint32_t corner = 0; corner < 3; ++corner)
+            {
+                const asset::Vertex& vertex = vertices[indices[first + corner]];
+                *corners[corner]            = glm::dvec3(transform * glm::dvec4(glm::dvec3(Vec3(vertex.pos)), 1));
+                triangle.alpha[corner]      = vertex.color.a;
+            }
+            triangle.indexOffset = first;
+            triangle.node        = node;
+            triangle.material    = material;
+            if (instances[node].enabled)
+            {
+                oracle.push_back(triangle);
+            }
+        }
+    }
+
+    // Rays: toward random points on any instance (disabled ones included), axis-aligned rays
+    // with zero direction components, rays on the shared diagonal, and perpendicular rays
+    // through the masked layers. Finite maxima end some rays short of their target.
+    constexpr uint32_t kRays = 2048;
+    HeapVector<Vec4>   rays;
+    const auto         Add = [&](Vec3 origin, Vec3 direction, float maximum, bool closest) {
+        rays.push_back(Vec4(origin, maximum));
+        rays.push_back(Vec4(direction, closest ? 1.0f : 0.0f));
+    };
+    const auto Point = [&](uint32_t node) {
+        const MeshDesc& mesh  = meshDescs[instances[node].mesh];
+        const uint32_t  first = mesh.submeshes[random() % mesh.submeshes.size()].first;
+        float           u = unit(random), v = unit(random);
+        if (u + v > 1)
+        {
+            u = 1 - u;
+            v = 1 - v;
+        }
+        const Vec3 a = Vec3(vertices[indices[first]].pos), b = Vec3(vertices[indices[first + 1]].pos),
+                   c = Vec3(vertices[indices[first + 2]].pos);
+        return Vec3(instances[node].transform * Vec4(a + (b - a) * u + (c - a) * v, 1));
+    };
+    while (rays.size() < 2 * 1536)
+    {
+        const Vec3  target   = Point(random() % std::size(instances));
+        const float distance = Uniform(0.2f, 4.0f);
+        const Vec3  origin   = target + Direction() * distance;
+        Add(origin, glm::normalize(target - origin), unit(random) < 0.3f ? distance * Uniform(0.3f, 1.2f) : 1e20f,
+            rays.size() % 4 == 0);
+    }
+    while (rays.size() < 2 * 1792)
+    {
+        const Vec3     target = Point(random() % std::size(instances));
+        const uint32_t axis   = random() % 3;
+        Vec3           direction(0);
+        direction[axis] = unit(random) < 0.5f ? 1.0f : -1.0f;
+        Add(target - direction * Uniform(0.2f, 3.0f), direction, 1e20f, rays.size() % 4 == 0);
+    }
+    while (rays.size() < 2 * 1920)
+    {
+        const float s      = Uniform(0.05f, 0.95f);
+        const Vec3  target = Vec3(instances[3].transform * Vec4(Vec3(-0.5f + s, -0.5f + s, 0), 1));
+        const Vec3  origin = target + glm::normalize(Vec3(Uniform(-0.3f, 0.3f), Uniform(-0.3f, 0.3f), -1.0f));
+        Add(origin, glm::normalize(target - origin), 1e20f, true);
+    }
+    while (rays.size() < 2 * kRays)
+    {
+        const uint32_t node   = 1 + random() % 2;
+        const Vec3     target = Vec3(instances[node].transform * Vec4(Uniform(-0.3f, 0.3f), Uniform(-0.4f, 0.3f), 0, 1));
+        Add(target - Vec3(0, 0, 1), Vec3(0, 0, 1), 1e20f, rays.size() % 4 != 0);
+    }
+
+    SoftwareSceneRayQuery            queries(device);
+    BitField<RHIBufferUsageFlagBits> storage(RHIBufferUsageFlagBits::eStorageBuffer);
+    RHIBuffer* rayBuffer = Buffer(static_cast<uint32_t>(rays.size() * sizeof(Vec4)), storage, rays.data());
+    BitField<RHIBufferUsageFlagBits> usage;
+    usage.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+    const uint32_t resultBytes = kRays * 4 * sizeof(Vec4);
+    RHIBuffer*     output      = Buffer(resultBytes, usage, nullptr, RHIBufferAllocateType::eGPU);
+    RHIBuffer*     readback = Buffer(resultBytes, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
+                                     nullptr, RHIBufferAllocateType::eCPURead);
+    const auto     Trace    = [&](HeapVector<Vec4>& values) {
+        RenderGraph& graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        graph.GetResourceManager()->ImportHostWrittenBuffer(rayBuffer);
+        RDGComputePassDesc pass;
+        pass.SetShaderProgramName("SoftwareRayQueryCheckSP");
+        pass.BindStorageBuffer("Rays", rayBuffer);
+        pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
+        const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0)};
+        pass.BindValue("uGISettings", gi, sizeof(gi));
+        pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+        queries.BindInputs(pass, scene);
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch(kRays / 64, 1, 1);
+        });
+        graph.AddTransferPass("ReadSoftwareQueries").CopyBuffer(output, readback, {0, 0, resultBytes});
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        const bool succeeded = device->ExecuteRenderGraph(graph);
+        queries.OnRenderGraphExecuted(succeeded);
+        ASSERT_TRUE(succeeded);
+        device->WaitForIdle();
+        values.resize(kRays * 4);
+        std::memcpy(values.data(), readback->Map(), resultBytes);
+        readback->Unmap();
+    };
+
+    ASSERT_TRUE(queries.Prepare(scene));
+    ASSERT_TRUE(queries.HoldsSceneGeometry());
+    HeapVector<Vec4> values;
+    Trace(values);
+    uint32_t strict = 0, hits = 0, misses = 0, continued = 0, edges = 0, cut = 0, visibilityMismatches = 0;
+    for (uint32_t ray = 0; ray < kRays; ++ray)
+    {
+        SCOPED_TRACE(ray);
+        const glm::dvec3 origin    = glm::dvec3(Vec3(rays[2 * ray]));
+        const glm::dvec3 direction = glm::dvec3(Vec3(rays[2 * ray + 1]));
+        const double     maximum   = rays[2 * ray].w;
+        const bool       closest   = rays[2 * ray + 1].w > 0.5f;
+        // Candidates near an edge, the alpha cutoff or the maximum distance may resolve
+        // either way in float; they make a ray ambiguous only where they could decide it.
+        double             nearest = std::numeric_limits<double>::infinity(), ambiguousNearest = nearest;
+        double             firstCandidate = nearest;
+        uint32_t           chosen = UINT32_MAX, robust = 0;
+        OracleCandidate    best{};
+        HeapVector<double> accepted;
+        for (uint32_t index = 0; index < oracle.size(); ++index)
+        {
+            OracleCandidate hit;
+            if (!OracleIntersect(oracle[index], origin, direction, hit))
+            {
+                continue;
+            }
+            const OracleTriangle& triangle = oracle[index];
+            const double          w0       = 1 - hit.u - hit.v;
+            const double          edge     = std::min({w0, hit.u, hit.v});
+            const bool            masked   = triangle.material != 0;
+            // Material 1 has zero alpha factor; material 2 interpolates vertex alpha (factor one).
+            const double opacity =
+                triangle.material == 1 ? 0.0 : triangle.alpha.x * w0 + triangle.alpha.y * hit.u + triangle.alpha.z * hit.v;
+            const bool ambiguous = std::abs(edge) < 2e-4 || std::abs(hit.t - maximum) < 1e-4 * (1 + hit.t)
+                                || (masked && std::abs(opacity - 0.5) < 1e-3) || hit.t < 1e-4;
+            if (edge < -2e-4 || hit.t > maximum + 1e-4 * (1 + maximum))
+            {
+                continue;
+            }
+            firstCandidate = std::min(firstCandidate, hit.t);
+            if (ambiguous)
+            {
+                ambiguousNearest = std::min(ambiguousNearest, hit.t);
+                continue;
+            }
+            if (!masked || opacity >= 0.5)
+            {
+                ++robust;
+                accepted.push_back(hit.t);
+                if (hit.t < nearest)
+                {
+                    nearest = hit.t;
+                    chosen  = index;
+                    best    = hit;
+                }
+            }
+        }
+        std::sort(accepted.begin(), accepted.end());
+        const bool  tie          = accepted.size() > 1 && accepted[1] - accepted[0] < 1e-5 * (1 + accepted[0]);
+        const bool  expectHit    = robust != 0;
+        const bool  ambiguousRay = closest ? (ambiguousNearest <= nearest + 1e-5 * (1 + nearest) || tie)
+                                           : (!expectHit && std::isfinite(ambiguousNearest));
+        const Vec4* result       = &values[4 * ray];
+        if (ray >= 1792 && ray < 1920)
+        {
+            // Rays exactly on the shared diagonal: a hit on one of the two triangles, never a crack.
+            ++edges;
+            EXPECT_EQ(result[0].x, 1.0f);
+            EXPECT_EQ(glm::floatBitsToUint(result[1].y), 3u);
+            continue;
+        }
+        if (ambiguousRay)
+        {
+            continue;
+        }
+        ++strict;
+        if (result[0].x != (expectHit ? 1.0f : 0.0f))
+        {
+            if (++visibilityMismatches <= 5)
+            {
+                ADD_FAILURE() << "ray " << ray << (closest ? " closest" : " any-hit") << " expected "
+                              << (expectHit ? "hit" : "miss") << " at " << nearest << " origin (" << origin.x << ", "
+                              << origin.y << ", " << origin.z << ") direction (" << direction.x << ", " << direction.y << ", "
+                              << direction.z << ") maximum " << maximum;
+            }
+            continue;
+        }
+        if (!expectHit)
+        {
+            ++misses;
+            cut += maximum < 1e19 ? 1 : 0;
+            continue;
+        }
+        ++hits;
+        if (closest)
+        {
+            const OracleTriangle& triangle  = oracle[chosen];
+            continued                      += firstCandidate < nearest - 1e-5 ? 1 : 0;
+            EXPECT_EQ(glm::floatBitsToUint(result[1].x), triangle.indexOffset);
+            EXPECT_EQ(glm::floatBitsToUint(result[1].y), triangle.node);
+            EXPECT_EQ(glm::floatBitsToUint(result[1].z), triangle.material);
+            EXPECT_NEAR(result[0].y, nearest, 1e-4 * (1 + nearest));
+            EXPECT_NEAR(result[0].z, best.u, 1e-3);
+            EXPECT_NEAR(result[0].w, best.v, 1e-3);
+            const glm::dvec3 point = origin + direction * nearest;
+            EXPECT_LT(glm::length(glm::dvec3(Vec3(result[2])) - point), 1e-4 * (1 + glm::length(origin) + nearest));
+            const glm::dvec3 normal = glm::normalize(glm::cross(triangle.b - triangle.a, triangle.c - triangle.a));
+            const glm::dvec3 actual = glm::dvec3(Vec3(result[3]));
+            EXPECT_NEAR(glm::length(actual), 1.0, 1e-4);
+            EXPECT_LT(glm::dot(actual, direction), 0.0);
+            EXPECT_GT(std::abs(glm::dot(actual, normal)), 0.9999);
+        }
+    }
+    EXPECT_EQ(visibilityMismatches, 0u);
+    std::printf("[ oracle   ] decided=%u hits=%u misses=%u continued=%u cut=%u diagonal=%u\n", strict, hits, misses, continued,
+                cut, edges);
+    // The oracle decided most rays, and they exercised every behavior under test.
+    EXPECT_GT(strict, 1400u);
+    EXPECT_GT(hits, 500u);
+    EXPECT_GT(misses, 100u);
+    EXPECT_GT(continued, 20u);
+    EXPECT_GT(cut, 20u);
+    EXPECT_EQ(edges, 128u);
+
+    // Without enabled triangles the BVH has an empty root, and every ray misses.
+    for (uint32_t i = 0; i < std::size(instances); ++i)
+    {
+        ASSERT_TRUE(scene.SetInstanceEnabled(i, false));
+    }
+    ASSERT_TRUE(scene.Update());
+    ASSERT_TRUE(queries.Prepare(scene));
+    Trace(values);
+    for (uint32_t ray = 0; ray < kRays; ++ray)
+    {
+        EXPECT_EQ(values[4 * ray].x, 0.0f) << ray;
+    }
+    // Unused-path placeholders bind valid buffers that hold no scene geometry and never hit.
+    ASSERT_TRUE(queries.PrepareUnused());
+    EXPECT_FALSE(queries.HoldsSceneGeometry());
+    Trace(values);
+    for (uint32_t ray = 0; ray < kRays; ++ray)
+    {
+        EXPECT_EQ(values[4 * ray].x, 0.0f) << ray;
+    }
+    queries.Destroy();
+    scene.Destroy();
 }
 
 INSTANTIATE_TEST_SUITE_P(ExecutionModes, RayQueryIntegrationTest, testing::Values(0u, 1u, 2u, 3u));

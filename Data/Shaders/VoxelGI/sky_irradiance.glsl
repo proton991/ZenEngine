@@ -39,6 +39,11 @@ void main()
                 normal=normalize(face);
                 if(dot(normal,reference)<0.0) normal=-normal;
                 vec3 barycentric=TriangleBarycentrics(pa,pb,pc,position);
+                // A cache cell may project beyond its owner triangle onto an exact
+                // edge. Keep the representative point just inside that triangle,
+                // so transform rounding cannot place one provider across the edge.
+                barycentric=max(barycentric,vec3(1e-5));
+                barycentric/=barycentric.x+barycentric.y+barycentric.z;
                 position=pa*barycentric.x+pb*barycentric.y+pc*barycentric.z;
             }
         }

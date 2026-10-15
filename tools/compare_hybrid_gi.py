@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 import numpy as np
+from hybrid_capture_io import read_bytes
 
 # Capture components holding each signal: raw at the offset, reconstructed one after it.
 CHANNELS={'sky':(0,),'bounce':(2,),'diffuse':(0,2),'reflection':(4,)}
@@ -14,24 +15,32 @@ CHANNELS={'sky':(0,),'bounce':(2,),'diffuse':(0,2),'reflection':(4,)}
 
 def load(prefix):
     m=json.loads(Path(str(prefix)+'.lighting.json').read_text())
-    return m,np.fromfile(str(prefix)+'.hybrid.bin','<f4').reshape(m['height'],m['width'],13,4)
+    return m,np.frombuffer(read_bytes(str(prefix)+'.hybrid.bin'),'<f4').reshape(m['height'],m['width'],13,4).copy()
 
 
-def compare(candidate,reference,additional_regions=None,channel='sky'):
+def compare(candidate,reference,additional_regions=None,channel='sky',required=('all_receivers',)):
     cm,c=load(candidate);rm,r=load(reference)
     assert cm['projection_view_column_major']==rm['projection_view_column_major']
     assert cm['voxel_resolution']==rm['voxel_resolution']
-    return compare_data(c,r,rm,additional_regions,channel)
+    return compare_data(c,r,rm,additional_regions,channel,required)
 
 
-def compare_data(c,r,rm,additional_regions=None,channel='sky'):
+def compare_data(c,r,rm,additional_regions=None,channel='sky',required=('all_receivers',)):
+    """Report every non-empty region. A required region without pixels is reported as failed
+    with NaN metrics, so callers combining regions with all() cannot pass it vacuously."""
     valid=r[:,:,8,3]>0
     regions={'all_receivers':valid,'sponza_floor':valid&(r[:,:,10,1]>.99)&(r[:,:,8,1]<-.12)}
     if additional_regions:
         regions.update({name: valid & mask for name,mask in additional_regions.items()})
+    unknown=set(required)-set(regions)
+    if unknown:raise ValueError(f'Unknown required regions: {sorted(unknown)}')
     report={}
     for name,mask in regions.items():
-        if not mask.any():continue
+        if not mask.any():
+            if name in required:
+                nan=float('nan')
+                report[name]=dict(pixels=0,reference_mean=nan,bias=nan,rms=nan,p99=nan,unexpected_zeros=0,passed=False)
+            continue
         converged=1 if rm.get("sample_count",0)>4 else 0
         expected=sum(r[:,:,o+converged,:3] for o in CHANNELS[channel])[mask]
         actual=sum(c[:,:,o+1,:3] for o in CHANNELS[channel])[mask];mean=expected.mean()

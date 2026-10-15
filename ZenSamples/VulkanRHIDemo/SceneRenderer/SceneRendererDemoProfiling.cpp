@@ -6,6 +6,7 @@
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
+#include "Graphics/Shared/EnvironmentSampling.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIGPUFrameTiming.h"
@@ -1018,6 +1019,7 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
         const rc::VoxelizerBase& voxels      = *server.RequestVoxelizer();
 
         const rc::VoxelGISettings& cone      = server.RequestVoxelGI()->GetSettings();
+        const bool                 adaptive  = cone.UsesAdaptiveSampling();
 
         // [0,0] when the last frame had no G-buffer (forward materials).
         const glm::uvec2 gbuffer = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
@@ -1052,12 +1054,19 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
 
         JSONString(output, voxels.UsesAveragedReflectance() ? "averaged" : "owner");
 
+        output << ",\"gi_preset\":";
+        JSONString(output, rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())));
+        output << ",\"gi_selection_reason\":";
+        JSONString(output, server.GetGISelectionReason());
         output << ",\"gi_method\":\"hybrid\""
                << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider) << ",\"bounce_source\":\""
                << (server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone") << "\""
                << ",\"diffuse_samples\":" << cone.samples << ",\"reference_samples\":" << cone.referenceSamples
-               << ",\"history_frames\":" << cone.historyFrames << ",\"temporal\":" << cone.temporal
-               << ",\"filter\":" << cone.filter << ",\"specular_occlusion\":" << cone.specularOcclusion
+               << ",\"adaptive_sampling\":" << adaptive << ",\"diffuse_samples_max\":"
+               << (cone.referenceSamples != 0 ? cone.referenceSamples : cone.samples + (adaptive ? 2u : 0u))
+               << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE << ",\"history_frames\":" << cone.historyFrames
+               << ",\"temporal\":" << cone.temporal << ",\"filter\":" << cone.filter
+               << ",\"specular_occlusion\":" << cone.specularOcclusion
                << ",\"reflections\":" << server.RequestVoxelGI()->UsesReflections()
                << ",\"rt_shadows_requested\":" << cone.rtShadows
                << ",\"hardware_shadows\":" << server.RequestVoxelGI()->UsesHardwareShadows()

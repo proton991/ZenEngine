@@ -1,6 +1,7 @@
 #ifndef ZEN_HYBRID_PROVIDER
 #define ZEN_HYBRID_PROVIDER
 #include "gi_common.glsl"
+#include "hybrid_ray_counts.glsl"
 struct HybridRayResult
 {
     bool hit;
@@ -8,15 +9,19 @@ struct HybridRayResult
     vec3 normal;
     ivec3 cell;
 };
-#ifdef HYBRID_HARDWARE_PROVIDER
+#if defined(HYBRID_VOXEL_REFERENCE)
+#define HybridTraceRay(occupancy,origin,direction,maximumDistance) VoxelTraceRay(occupancy,origin,direction,maximumDistance)
+#elif defined(HYBRID_HARDWARE_PROVIDER)
 #include "hardware_ray_query.glsl"
-// Keep call sites provider-independent; occupancy is absent in the RT variant.
+// Call sites share triangle visibility; only the traversal mechanism differs.
 #define HybridTraceRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,false)
 #define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,true)
 #else
-#define HybridTraceRay(occupancy,origin,direction,maximumDistance) VoxelTraceRay(occupancy,origin,direction,maximumDistance)
-#define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) VoxelTraceRay(occupancy,origin,direction,maximumDistance)
-vec3 HybridTraceOrigin(vec3 position,vec3 normal,float error) { return TraceOrigin(position,normal); }
+#define HybridTraceRay(occupancy,origin,direction,maximumDistance) SoftwareTraceRay(origin,direction,maximumDistance,false)
+#define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) SoftwareTraceRay(origin,direction,maximumDistance,true)
+#endif
+#if !defined(HYBRID_VOXEL_REFERENCE) && (!defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_MIXED_PROVIDER))
+#include "software_ray_query.glsl"
 #endif
 // The starting cell is tested. Do not skip occupied starts: that leaks at wall bases.
 // Slab entry also handles rays starting outside the voxel volume.
@@ -46,6 +51,9 @@ HybridRayResult VoxelTraceRay(sampler3D occupancy, vec3 origin, vec3 direction, 
     }
     if(intersects && leave>enter)
     {
+#ifdef HYBRID_COUNT_RAYS
+        ++issuedComputeRays[issuedRayFeature];
+#endif
         vec3 entry=p+direction*enter;
         ivec3 cell=ivec3(clamp(floor(entry),vec3(0),vec3(gi.volume.x-1.0)));
         ivec3 stepDirection=ivec3(sign(direction));

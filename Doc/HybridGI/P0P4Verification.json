@@ -1,39 +1,111 @@
 {
-  "date": "2026-10-11",
+  "date": "2026-10-13",
   "checkpoint": "4076f15add204213b550b6bd3f58e86955cf4355",
   "record": "Doc/HybridGI/P0P4Acceptance.md",
-  "overall_acceptance_passed": false,
+  "overall_acceptance_passed": true,
   "latest_checkpoint": {
-    "date": "2026-10-11",
-    "status": "Implementation checkpoint; further image qualification deferred at user request",
-    "scope": "Historical capture metrics below identify their original candidates. Subsequent independent-backend controls and legacy retirement have build and focused routing coverage, not full mixed-provider image qualification.",
+    "date": "2026-10-13",
+    "status": "P0-P4 acceptance closed on the agreed tested scope",
+    "scope": "P2P4Acceptance.json closes the remaining gates with a mixed-provider origin correction and dense sky fallback for all-miss thin surfaces. The estimator, ray/history counts, five iterations and frozen limits are unchanged; filtering is amended. Earlier measurements remain dated evidence.",
     "recorded_candidate": {
-      "hardware_shipping": {"passed": 10, "required": 10, "artifact": "build/p0-p4-resolution/final-hardware-reset/static-results.json"},
-      "compute_shipping": {"passed": 10, "required": 10, "artifact": "build/p0-p4-resolution/final-voxel/static-results.json"},
-      "reset_settling": {"passed": 16, "required": 16, "artifact": "build/p0-p4-resolution/final-hardware-reset/settling-results.json"},
-      "independent_rt": {"passed": 18, "required": 18, "artifact": "build/p0-p4-resolution/independent-rt/report.json"}
+      "hardware_shipping": {
+        "passed": 10,
+        "required": 10,
+        "artifact": "build/p0-p4-resolution/final-hardware-reset/static-results.json"
+      },
+      "compute_shipping": {
+        "passed": 10,
+        "required": 10,
+        "artifact": "build/p0-p4-resolution/final-voxel/static-results.json"
+      },
+      "reset_settling": {
+        "passed": 16,
+        "required": 16,
+        "artifact": "build/p0-p4-resolution/final-hardware-reset/settling-results.json"
+      },
+      "independent_rt": {
+        "passed": 18,
+        "required": 18,
+        "artifact": "build/p0-p4-resolution/independent-rt/report.json"
+      }
     },
     "explicit_feature_backends": {
       "implemented": true,
-      "features": ["sky", "specular_occlusion", "sky_cache", "bounce", "reflections", "shadows"],
-      "choices": ["compute", "hardware"],
+      "features": [
+        "sky",
+        "specular_occlusion",
+        "sky_cache",
+        "bounce",
+        "reflections",
+        "shadows"
+      ],
+      "choices": [
+        "compute",
+        "hardware"
+      ],
       "overall_selector": true,
       "mixed_selection": true,
       "old_controls_removed": true,
-      "build_targets_passed": ["zen_editor", "scene_renderer_demo", "RenderCoreTest", "EditorRenderingTest", "SpvShaders"],
-      "settings_history_tests": {"passed": 9, "artifact": "build/lighting-backends/settings-tests.json"},
-      "native_editor_tests": {"passed": 4, "artifact": "build/lighting-backends/editor-tests.json"},
-      "trace_filter_spirv_modules_validated": 3
+      "build_targets_passed": [
+        "zen_editor",
+        "scene_renderer_demo",
+        "RenderCoreTest",
+        "EditorRenderingTest",
+        "SpvShaders"
+      ],
+      "settings_history_tests": {
+        "passed": 9,
+        "artifact": "build/lighting-backends/settings-tests.json"
+      },
+      "native_editor_tests": {
+        "passed": 4,
+        "artifact": "build/lighting-backends/editor-tests.json"
+      },
+      "trace_filter_spirv_modules_validated": 3,
+      "image_acceptance": {
+        "passed": true,
+        "cases": 59,
+        "artifact": "Doc/HybridGI/P2P4Acceptance.json"
+      }
     },
     "legacy_selector_retirement_built": true,
     "remaining": [
-      "All-environment compute convergence",
-      "Latest candidate flagpole-region comparison",
-      "Current mixed-provider image acceptance; focused tests establish routing and submission only",
-      "P8 performance, memory and platform qualification"
+      "P8 performance, memory and preset qualification",
+      "Platform entries unavailable under decision 3; far-origin rendering under decision 8",
+      "Report-only compute geometry differences and Studio shipping noise limitations"
     ],
-    "report_only_limits": ["Compute Studio top-floor P99 20.28%", "Compute Studio hall RMS 24.88%"],
-    "active_rendering_sweeps": false
+    "report_only_limits": [
+      "Compute Studio top-floor P99 20.28%",
+      "Compute Studio hall RMS 24.88%"
+    ],
+    "active_rendering_sweeps": false,
+    "rendering_revision": "9886fd5ff5013203e32a888c1a7e7b85a4948f65",
+    "acceptance_record": "Doc/HybridGI/P2P4Acceptance.md",
+    "acceptance_summary": {
+      "compute_convergence": {
+        "views": 18,
+        "max_abs_bias": 2.1771082174382173e-05,
+        "max_rms": 0.01279471442103386,
+        "unexpected_zeros": 0
+      },
+      "flagpoles": {
+        "regions": 15,
+        "max_abs_bias": 0.0007605798309668899,
+        "max_excess_rms": 0.010394855542834109,
+        "max_shipping_p99": 0.1053348183631897,
+        "unexpected_zeros": 0
+      },
+      "feature_backends": {
+        "static_cases": 28,
+        "switch_cases": 30,
+        "sky_cache_cases": 1,
+        "max_sky_rms": 0.05381762236356735,
+        "max_sky_p99": 0.1761244237422943,
+        "unexpected_zeros": 0,
+        "max_specular_visibility_rms": 8.445085404673591e-05,
+        "sky_cache_ratio": 1.039978005266988
+      }
+    }
   },
   "configuration": {
     "device": "NVIDIA GeForce RTX 5080",
@@ -55,9 +127,9 @@
   "phase_exit_met": {
     "P0": true,
     "P1": true,
-    "P2": false,
-    "P3": false,
-    "P4e": false
+    "P2": true,
+    "P3": true,
+    "P4e": true
   },
   "limits": {
     "analytic_relative_error": 0.005,

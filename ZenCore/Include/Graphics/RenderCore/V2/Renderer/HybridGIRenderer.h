@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderView.h"
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 
 namespace zen::rc
 {
@@ -24,7 +25,7 @@ struct HybridGIUniformData
     Vec4               previousViewPosition{0};
     Vec4               previousViewDirection{0, 0, 1, 0};
     glm::uvec4         sampling{0};   // frame, sample count, history limit, history valid
-    glm::uvec4         provider{0};   // hardware trace variant, guide valid, hardware feature mask, reserved
+    glm::uvec4         provider{0};   // hardware trace variant, guide valid, hardware feature mask, adaptive sampling
     Vec4               rejection{0};  // plane threshold, specular enabled, temporal enabled, static reference
     glm::uvec4         bounce{0};     // ray bounce enabled, bounce history valid, responsive reconstruction, cache changed
     glm::uvec4         reflection{0}; // reflections enabled, history valid, responsive reconstruction, cache changed
@@ -37,18 +38,31 @@ class HybridGIRenderer
 {
 public:
     explicit HybridGIRenderer(RenderDevice* device);
-    void               Prepare(const RenderView& view, RenderScene& scene);
-    void               BindReceiverInputs(RDGPassDescBase& pass) const;
-    HybridReceiverDraw ReceiverDraw(uint32_t node, uint32_t material) const;
-    bool               BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI);
-    void               BindLightingInputs(RDGPassDescBase& pass) const;
-    void               OnRenderGraphExecuted(bool succeeded);
-    void               InvalidateHistory(const char* reason);
-    void               Destroy();
-    void               SetCapture(RHIBuffer* output, RHIBuffer* readback)
+    void                   Prepare(const RenderView& view, RenderScene& scene);
+    void                   BindReceiverInputs(RDGPassDescBase& pass) const;
+    HybridReceiverDraw     ReceiverDraw(uint32_t node, uint32_t material) const;
+    bool                   BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI);
+    void                   BindLightingInputs(RDGPassDescBase& pass) const;
+    DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection) const;
+    void                   OnRenderGraphExecuted(bool succeeded);
+    void                   InvalidateHistory(const char* reason);
+    void                   Destroy();
+    void                   SetCapture(RHIBuffer* output, RHIBuffer* readback)
     {
         m_captureOutput   = output;
         m_captureReadback = readback;
+    }
+    // Diagnostic variants only. The caller retains both buffers through GPU completion.
+    static uint64_t GetRayCountCaptureBytes(uint32_t width, uint32_t height);
+    void            SetRayCountCapture(RHIBuffer* output, RHIBuffer* readback)
+    {
+        m_rayCountOutput    = output;
+        m_rayCountReadback  = readback;
+        m_rayCountsRecorded = false;
+    }
+    bool WereRayCountsRecorded() const
+    {
+        return m_rayCountsRecorded;
     }
 
     bool IsActive() const
@@ -92,10 +106,14 @@ private:
     RHISampler*   m_sampler{nullptr};
     RHIBuffer*    m_captureOutput{nullptr};
     RHIBuffer*    m_captureReadback{nullptr};
+    RHIBuffer*    m_rayCountOutput{nullptr};
+    RHIBuffer*    m_rayCountReadback{nullptr};
+    bool          m_rayCountsRecorded{false};
     RHITexture*   m_history[2][Count]{};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
     RHIBuffer*       m_guide[2]{};
     RDGTexture       m_outputSky, m_outputSpecular, m_outputBounce;
+    RDGTexture       m_rawSky, m_rawSpecular;
     HeapVector<Mat4> m_previousModels;
     HeapVector<Mat4> m_recordedModels;
     // Scene vertex uploads are immutable generations. Each view retains its last

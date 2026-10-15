@@ -12,6 +12,8 @@ namespace zen::rc
 class RenderScene;
 class RenderDevice;
 
+void BindSceneRayGeometry(RDGPassDescBase& pass, RenderDevice& device, RenderScene& scene, bool forwardMaterialBound);
+
 // One full-scene query snapshot. Builds and shader consumers use the same raster
 // buffers; publication follows successful graph execution, never command recording.
 class SceneRayQuery

@@ -340,12 +340,13 @@ private:
 
     void DrawGI(EditorController& editor, const EditorRenderSnapshot& snapshot)
     {
-        rc::RenderingSettings draft          = editor.GetRenderingState().GetDraft();
+        rc::RenderingSettings draft           = editor.GetRenderingState().GetDraft();
 
-        rc::VoxelGIRuntimeSettings& settings = draft.gi;
+        rc::VoxelGIRuntimeSettings& settings  = draft.gi;
 
-        bool changed                         = false;
+        bool changed                          = false;
 
+        changed                              |= ui::DrawGIPresetControls(settings, snapshot.giSelectionReason.c_str());
         changed |= ui::DrawLightingBackendControls(settings.cone, snapshot.hardwareQueries, snapshot.rayQueryReason.c_str());
 
         if (ImGui::CollapsingHeader("Shadows"))
@@ -497,6 +498,31 @@ private:
 
             ImGui::Text("GPU committed: %.1f MiB", double(snapshot.memory.deviceLocalBytes) / (1024.0 * 1024.0));
 
+            bool gpuTimings = snapshot.gpuTimingsEnabled;
+            if (ImGui::Checkbox("Measure GI GPU passes", &gpuTimings))
+            {
+                editor.GetViewport().SetGPUTimingsEnabled(gpuTimings);
+            }
+            if (snapshot.gpuTimingsEnabled)
+            {
+                ImGui::TextDisabled("Last completed sample; intervals include barriers and may overlap.");
+                for (const rc::RDGNodeMetrics& pass : snapshot.giPassTimings)
+                {
+                    if (pass.gpuStatus == RHIGPUTimingStatus::eAvailable)
+                    {
+                        ImGui::Text("%s: %.3f ms", pass.name.CStr(), pass.gpuUs / 1000.0);
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled("%s: %s", pass.name.CStr(), RHIGPUTimingStatusName(pass.gpuStatus));
+                    }
+                }
+                if (snapshot.giPassTimings.empty())
+                {
+                    ImGui::TextDisabled("Waiting for a completed GI sample.");
+                }
+            }
+
             DrawHint("Apply validates resources before rebuilding. A later GPU allocation failure is reported as a fallback.");
         }
 
@@ -516,9 +542,20 @@ private:
 
             int output                  = static_cast<int>(debug.output);
 
-            const char* outputs[] = {"Final", "Depth", "Albedo", "Normal (world)", "Shadow", "Voxels (3D)", "Voxel slice"};
+            const char* outputs[]       = {"Final",
+                                           "Depth",
+                                           "Albedo",
+                                           "Normal (world)",
+                                           "Shadow",
+                                           "Voxels (3D)",
+                                           "Voxel slice",
+                                           "GI raw sky",
+                                           "GI reconstructed sky",
+                                           "GI history length",
+                                           "GI specular hit / miss",
+                                           "GI history rejection"};
 
-            bool changed          = ImGui::Combo(PropertyLabel("Output").c_str(), &output, outputs, 7);
+            bool changed                = ImGui::Combo(PropertyLabel("Output").c_str(), &output, outputs, 12);
 
             if (changed)
             {

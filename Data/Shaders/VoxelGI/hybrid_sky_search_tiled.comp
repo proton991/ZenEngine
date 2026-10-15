@@ -1,0 +1,106 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hybrid_filter_common.glsl"
+layout(local_size_x=16,local_size_y=16) in;
+layout(set=1,binding=10,rgba16f) uniform image2D filteredSky;
+layout(set=1,binding=13,rgba32f) uniform image2D filteredVariance;
+layout(std430,set=1,binding=21) readonly buffer HybridSkySearchArgs { uint searchCount; uint searchX; uint searchY; uint searchZ; };
+layout(std430,set=1,binding=22) readonly buffer HybridSkySearchPixels { uint searchPixels[]; };
+shared uint activeReceivers;
+shared uint cachedIdentity[256];
+shared vec4 cachedPositionVariance[256];
+shared vec4 cachedNormal[256];
+shared vec4 cachedGeometric[256];
+shared vec4 cachedSky[256];
+shared vec4 cachedGuide[256];
+void main()
+{
+    if(searchCount==0u) return;
+    uint lane=gl_LocalInvocationIndex;
+    ivec2 base=ivec2(gl_WorkGroupID.xy)*8;
+    ivec2 p=base+ivec2((lane/4u)%8u,lane/32u);
+    uint width=uint(textureSize(inputSky,0).x);
+    bool needsSearch=HybridInView(p) && searchPixels[uint(p.y)*width+uint(p.x)]!=0u;
+    if(lane==0u) activeReceivers=0u;
+    barrier();
+    if(needsSearch) atomicAdd(activeReceivers,1u);
+    barrier();
+    if(activeReceivers==0u) return;
+
+    uint identity=0u;
+    vec4 center=vec4(0);
+    vec3 position=vec3(0), normal=vec3(0), geometric=vec3(0), guide=vec3(1);
+    float scale=1.0, variance=0.0;
+    if(needsSearch)
+    {
+        identity=texelFetch(receiverSurface,p,0).g;
+        center=texelFetch(inputSky,p,0);
+        position=FilterPosition(p); normal=HybridNormal(p); geometric=HybridGeometricNormal(p); guide=SkyGuide(p);
+        scale=1.0/HybridLuminance(guide);
+        variance=texelFetch(inputVariance,p,0).x*scale*scale;
+    }
+    vec4 sky=vec4(0);
+    float total=0.0, varianceOut=0.0;
+    // Stream 16x16 tiles covering the 72x72 union of unchanged 65x65 footprints.
+    // Each loaded guide is decoded once and shared by up to 64 receivers.
+    for(int tileY=-2;tileY<=2;++tileY) for(int tileX=-2;tileX<=2;++tileX)
+    {
+        ivec2 origin=base+ivec2(tileX,tileY)*16;
+        ivec2 q=origin+ivec2(gl_LocalInvocationID.xy);
+        cachedIdentity[lane]=0u;
+        cachedPositionVariance[lane]=vec4(0);
+        cachedNormal[lane]=vec4(0);
+        cachedGeometric[lane]=vec4(0);
+        cachedSky[lane]=vec4(0);
+        cachedGuide[lane]=vec4(1);
+        if(HybridInView(q))
+        {
+            cachedIdentity[lane]=texelFetch(receiverSurface,q,0).g;
+            cachedGuide[lane]=texelFetch(skyGuide,q,0);
+            float sampleScale=1.0/HybridLuminance(cachedGuide[lane].rgb);
+            cachedPositionVariance[lane]=vec4(FilterPosition(q),texelFetch(inputVariance,q,0).x*sampleScale*sampleScale);
+            cachedNormal[lane]=vec4(HybridNormal(q),0);
+            cachedGeometric[lane]=vec4(HybridGeometricNormal(q),0);
+            cachedSky[lane]=texelFetch(inputSky,q,0);
+        }
+        barrier();
+        if(needsSearch)
+        for(uint tap=lane%4u;tap<256u;tap+=4u)
+        {
+            ivec2 offset=origin+ivec2(tap%16u,tap/16u)-p;
+            if(any(greaterThan(abs(offset),ivec2(32))) || cachedIdentity[tap]!=identity) continue;
+            vec3 delta=cachedPositionVariance[tap].xyz-position;
+            if(abs(dot(delta,geometric))>hybrid.rejection.x*max(1.0,length(delta))
+                || dot(geometric,cachedGeometric[tap].xyz)<0.9) continue;
+            float weight=pow(max(dot(normal,cachedNormal[tap].xyz),0.0),32.0);
+            if(weight==0.0) continue;
+            vec4 sampleSky=cachedSky[tap];
+            vec3 sampleGuide=cachedGuide[tap].rgb;
+            float neighborVariance=cachedPositionVariance[tap].w;
+            float sigma=1.5*sqrt(max(variance+neighborVariance,0.0))+1e-4*scale;
+            weight*=exp(-float(offset.x*offset.x+offset.y*offset.y)/512.0)
+                *SkyWeight(sampleSky.rgb,sampleGuide,center.rgb,guide,sigma);
+            sky+=weight*vec4(sampleSky.rgb/sampleGuide,sampleSky.a);
+            total+=weight;
+            varianceOut+=weight*weight*neighborVariance;
+        }
+        barrier();
+    }
+    cachedSky[lane]=sky;
+    cachedPositionVariance[lane]=vec4(total,varianceOut,0,0);
+    barrier();
+    if(needsSearch && lane%4u==0u)
+    {
+        for(uint i=1u;i<4u;++i)
+        {
+            sky+=cachedSky[lane+i];
+            total+=cachedPositionVariance[lane+i].x;
+            varianceOut+=cachedPositionVariance[lane+i].y;
+        }
+        vec4 filtered=imageLoad(filteredVariance,p);
+        filtered.x=varianceOut/max(total*total,1e-20)/(scale*scale);
+        imageStore(filteredVariance,p,filtered);
+        imageStore(filteredSky,p,total>0.0 ? vec4(sky.rgb*guide,sky.a)/total : center);
+    }
+}
+

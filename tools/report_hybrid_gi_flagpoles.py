@@ -19,6 +19,17 @@ from ground_truth_sweep import ENVIRONMENTS, load_dataset
 RECTANGLES = ((416, 130, 552, 207), (416, 285, 552, 362), (416, 437, 552, 514))
 
 
+def flagpole_masks(data):
+    """The frozen shadow receivers: the fixed rectangles intersected with the floor."""
+    floor = (data[:, :, 10, 1] > .99) & (data[:, :, 8, 1] < -.12)
+    masks = {}
+    for index, (x0, y0, x1, y1) in enumerate(RECTANGLES):
+        mask = np.zeros(floor.shape, bool)
+        mask[y0:y1, x0:x1] = True
+        masks[f'pole_{index}'] = mask & floor
+    return masks
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--captures', type=Path, required=True)
@@ -35,11 +46,7 @@ def main():
         metadata, data = load(reference)
         assert (metadata['width'], metadata['height']) == (960, 540)
         floor = (data[:, :, 10, 1] > .99) & (data[:, :, 8, 1] < -.12)
-        masks = {}
-        for index, (x0, y0, x1, y1) in enumerate(RECTANGLES):
-            mask = np.zeros(floor.shape, bool)
-            mask[y0:y1, x0:x1] = True
-            masks[f'pole_{index}'] = mask & floor
+        masks = flagpole_masks(data)
         truth_path = args.dataset / dataset['views'][view]['truth']
         truth = np.load(truth_path)
         converged = compare_truth(truth_path, reference, additional_regions=masks)

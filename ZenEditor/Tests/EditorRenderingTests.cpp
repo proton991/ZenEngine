@@ -1474,7 +1474,8 @@ TEST_P(EditorRendering, VoxelDebugShowsOpaqueSRGBAlbedoWithoutLighting)
 
 TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 {
-    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+    UniquePtr<rc::RenderDevice> device          = CreateDevice(GetParam());
+    const rc::RDGMetricsOptions previousMetrics = device->GetRDGMetrics().GetOptions();
 
     EditorController editor(*device);
 
@@ -1502,7 +1503,8 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 
     settings.debug.face                    = 5;
 
-    HeapVector<uint8_t> albedo;
+    HeapVector<uint8_t>       albedo;
+    HeapVector<rc::RDGResult> giWarnings;
 
     sg::AABB selectedBounds;
 
@@ -1512,9 +1514,26 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 
     for (const rc::DebugOutput output :
          {rc::DebugOutput::eFinal, rc::DebugOutput::eAlbedo, rc::DebugOutput::eNormal, rc::DebugOutput::eDepth,
-          rc::DebugOutput::eShadow, rc::DebugOutput::eVoxelSlice, rc::DebugOutput::eVoxels})
+          rc::DebugOutput::eShadow, rc::DebugOutput::eVoxelSlice, rc::DebugOutput::eVoxels, rc::DebugOutput::eGIRawSky,
+          rc::DebugOutput::eGIReconstructedSky, rc::DebugOutput::eGIHistoryLength, rc::DebugOutput::eGIHitMiss,
+          rc::DebugOutput::eGIRejection})
     {
-        settings.debug.output      = output;
+        settings.debug.output = output;
+        settings.algorithm = output >= rc::DebugOutput::eGIRawSky ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+
+        if (output == rc::DebugOutput::eGIRawSky)
+        {
+            editor.GetViewport().SetGPUTimingsEnabled(true);
+            device->GetRDGMetrics().RequestCapture();
+            // Compare diagnostics against the same view's ordinary GI graph. Existing
+            // conditional-history content warnings must not hide a new debug dependency warning.
+            settings.debug.output = rc::DebugOutput::eFinal;
+            ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+            ASSERT_TRUE(editor.UpdateRenderingSettings());
+            ASSERT_TRUE(Frame(*device, editor));
+            giWarnings            = device->GetCurrentFrameRDG()->GetWarnings();
+            settings.debug.output = output;
+        }
 
         settings.debug.maximum     = output == rc::DebugOutput::eDepth ? 10.0f : 1.0f;
 
@@ -1535,11 +1554,45 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 
         EXPECT_EQ(description.output, output);
 
-        EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+        if (output >= rc::DebugOutput::eGIRawSky)
+        {
+            for (const rc::RDGResult& warning : device->GetCurrentFrameRDG()->GetWarnings())
+            {
+                bool existing = false;
+                for (const rc::RDGResult& baseline : giWarnings)
+                {
+                    existing |= warning.code == baseline.code && warning.message == baseline.message;
+                }
+                EXPECT_TRUE(existing) << warning.message;
+            }
+        }
+        else
+        {
+            EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+        }
 
         const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
 
         EXPECT_EQ(pixels.size(), 96u * 64 * 4);
+
+        if (output == rc::DebugOutput::eGIHistoryLength || output == rc::DebugOutput::eGIRejection)
+        {
+            const size_t center = (32 * 96 + 48) * 4;
+            if (output == rc::DebugOutput::eGIHistoryLength)
+            {
+                EXPECT_GT(pixels[center], 0);
+                EXPECT_LT(pixels[center], 255);
+                EXPECT_EQ(pixels[center], pixels[center + 1]);
+                EXPECT_EQ(pixels[center], pixels[center + 2]);
+            }
+            else
+            {
+                // Static surface history survives switching diagnostic displays.
+                EXPECT_EQ(pixels[center], 0);
+                EXPECT_EQ(pixels[center + 1], 255);
+                EXPECT_EQ(pixels[center + 2], 0);
+            }
+        }
 
         if (output == rc::DebugOutput::eShadow)
         {
@@ -1599,7 +1652,22 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
         }
     }
 
+    const EditorRenderSnapshot timingSnapshot = editor.GetViewport().GetSnapshot();
+    EXPECT_TRUE(timingSnapshot.gpuTimingsEnabled);
+    EXPECT_FALSE(timingSnapshot.giPassTimings.empty());
+    for (const rc::RDGNodeMetrics& timing : timingSnapshot.giPassTimings)
+    {
+        EXPECT_EQ(timing.gpuStatus, RHIGPUTimingStatus::eAvailable);
+        EXPECT_GE(timing.gpuUs, 0.0);
+    }
+    editor.GetViewport().SetGPUTimingsEnabled(false);
+    EXPECT_FALSE(editor.GetViewport().GetSnapshot().gpuTimingsEnabled);
+    EXPECT_EQ(device->GetRDGMetrics().GetOptions().gpuTimings, previousMetrics.gpuTimings);
+    EXPECT_EQ(device->GetRDGMetrics().GetOptions().logging.enabled, previousMetrics.logging.enabled);
+
     settings.debug.output  = rc::DebugOutput::eDepth;
+
+    settings.algorithm     = rc::RenderAlgorithm::ePBR;
 
     settings.debug.maximum = 10.0f;
 
@@ -1914,13 +1982,17 @@ TEST_P(EditorRendering, LightingBackendsSwitchIndependently)
         EXPECT_EQ(server.GetRenderOption(), rc::RenderOption::eVoxelGI);
         EXPECT_EQ(gi.GetHardwareFeatureMask(), hardware ? settings.gi.cone.GetHardwareFeatureMask() : 0u);
         EXPECT_EQ(gi.UsesHardwareShadows(), hardware && (frame == featureCount || frame == featureCount + 1));
-        EXPECT_EQ(gi.UsesRayBounce(), hardware && (frame == 4 || frame == featureCount + 1));
+        EXPECT_TRUE(gi.UsesRayBounce());
+        EXPECT_TRUE(gi.UsesRayShadows());
         EXPECT_TRUE(gi.UsesReflections());
+        // All-HW RT neither builds nor depends on the software BVH; any Compute feature rebuilds it.
+        EXPECT_EQ(gi.UsesSoftwareQueries(), !hardware || frame != featureCount + 1);
+        EXPECT_EQ(gi.GetSoftwareRayQuery().HoldsSceneGeometry(), gi.UsesSoftwareQueries());
     }
     DestroyDevice(*device, editor);
 }
 
-TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelection)
+TEST_P(EditorRendering, ShadowPreflightFollowsRayOrMapSelection)
 {
     UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), true);
     EditorController            editor(*device);
@@ -1935,17 +2007,18 @@ TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelect
     settings.gi.resolution          = 64;
     settings.gi.shadowMapResolution = 128;
     settings.gi.cone                = rc::VoxelGISettings{};
+    settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
 
     // An impossible map-array size makes the map preflight fail deterministically,
-    // without exhausting physical VRAM. Hardware visibility needs no map array.
+    // without exhausting physical VRAM. Neither software nor hardware ray visibility needs a map array.
     constexpr uint32_t rejectedFaces = (rc::MaxSceneLights + 1) * 6 + 1;
-    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
     ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
     ASSERT_TRUE(Frame(*device, editor));
     const bool hardware = device->GetGPUInfo().rayQuery.IsUsable();
     ASSERT_EQ(server.RequestVoxelGI()->UsesHardwareShadows(), hardware);
-    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
 
     // A settings edit and a light-count edit both use the viewport's preflight path.
     settings.gi.cone.indirectIntensity = 0.5f;
@@ -1967,17 +2040,14 @@ TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelect
           rc::VoxelGISettings::RayProvider::Auto})
     {
         settings.gi.cone.rayProvider = provider;
-        EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces),
-                  hardware
-                      && (provider == rc::VoxelGISettings::RayProvider::Hardware
-                          || provider == rc::VoxelGISettings::RayProvider::Auto));
+        EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     }
     settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
     settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Voxel);
-    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
     settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Hardware);
-    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.debug.output = rc::DebugOutput::eShadow;
     EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.shadows = false;
@@ -1986,9 +2056,9 @@ TEST_P(EditorRendering, ShadowPreflightFollowsHardwareReadinessAndProposedSelect
     EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.shadows = true;
 
-    // Scene replacement removes readiness until queries for the new scene are built.
+    // Scene visibility allocation is checked separately when the frame is prepared.
     server.RequestVoxelGI()->SetRenderScene(nullptr);
-    EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
+    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.algorithm = rc::RenderAlgorithm::ePBR;
     EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     DestroyDevice(*device, editor);

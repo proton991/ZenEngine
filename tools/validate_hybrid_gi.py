@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import numpy as np
 from hybrid_gi_fixtures import generate
-from capture_hybrid_gi import fingerprint
+from capture_hybrid_gi import fingerprint, capture_configuration
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -38,7 +38,8 @@ def environment_integral(prefix, metadata, normal):
 def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False,rt=False,samples=4,indirect=0,gpu=None,reference_samples=0,
         bounce_source='cone',resolution=64,environment_lighting=True,shadows=False,light_changes=False,spatial_filter=True,
         width=320,height=180,reflections=True,reflection_motion=False,mode=3,rt_shadows=False,
-        geometry_motion=False,independent_views=False,analytic_lighting=None,voxelizer=None):
+        geometry_motion=False,independent_views=False,analytic_lighting=None,voxelizer=None,
+        backend=None,feature_backends=None):
     exe=exe.resolve();folder=folder.resolve()
     fixtures=folder/'fixtures'
     generate(fixtures)
@@ -86,8 +87,12 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                 settings['scene_lighting_override']=str(not analytic_lighting).lower()
             if voxelizer is not None:
                 settings['voxelizer']=voxelizer
+            if backend is not None:
+                settings['voxel_gi_backend']=backend
+            for feature, choice in (feature_backends or {}).items():
+                settings[f'voxel_gi_{feature}_backend']=choice
             assert config.read_bytes()==active,'External config edit; aborting'
-            active=original+b'\n'+''.join(f'{key}={value}\n' for key,value in settings.items()).encode()
+            active=capture_configuration(original,settings)
             config.write_bytes(active)
             prefix=folder/name
             assert frames >= 2
@@ -204,7 +209,7 @@ if __name__=='__main__':
     parser.add_argument('--provider',choices=['voxel','hardware','auto'],default='voxel')
     parser.add_argument('--rt',action='store_true')
     parser.add_argument('--gpu',help='Device name substring passed to the native demo')
-    parser.add_argument('--reference-samples',type=int,choices=(0,1024,4096),default=0)
+    parser.add_argument('--reference-samples',type=int,choices=(0,256,1024,4096),default=0)
     parser.add_argument('--bounce-source',choices=('cone','rays'),default='cone')
     parser.add_argument('--indirect',type=float,default=0)
     parser.add_argument('--resolution',type=int,choices=(64,128,256),default=64)

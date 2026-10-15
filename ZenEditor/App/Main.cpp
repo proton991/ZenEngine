@@ -35,11 +35,13 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
         }
         else if (argument.starts_with("--debug="))
         {
-            const std::string_view names[] = {"final", "depth", "albedo", "normal", "shadow", "voxels", "voxel-slice"};
+            const std::string_view names[] = {"final",       "depth",       "albedo", "normal",           "shadow",
+                                              "voxels",      "voxel-slice", "gi-raw", "gi-reconstructed", "gi-history",
+                                              "gi-hit-miss", "gi-rejection"};
 
             bool found                     = false;
 
-            for (uint32_t output = 0; output < 7; ++output)
+            for (uint32_t output = 0; output < 12; ++output)
             {
                 if (argument.substr(8) == names[output])
                 {
@@ -120,7 +122,8 @@ int main(int argc, char** argv)
         std::fprintf(
             stderr,
             "Usage: zen_editor [--scene=path.gltf|path.glb] [--rhi=inline|threaded] [--frames=N] "
-            "[--environment=path.hdr|path.ktx|path.dds] [--mode=pbr|gi|voxels] [--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice] "
+            "[--environment=path.hdr|path.ktx|path.dds] [--mode=pbr|gi|voxels] "
+            "[--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice|gi-raw|gi-reconstructed|gi-history|gi-hit-miss|gi-rejection] "
             "[--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--capture-scene=path.ppm] [--smoke-test] [--hidden] [--windowed]\n");
     }
 

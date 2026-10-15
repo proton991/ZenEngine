@@ -1,0 +1,4466 @@
+{
+  "date": "2026-10-13",
+  "rendering_revision": "9886fd5ff5013203e32a888c1a7e7b85a4948f65",
+  "accepted": true,
+  "final_filter_regression": {
+    "fixtures": {
+      "voxel": {
+        "closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 57600,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "single_sided_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 51272,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "forward_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 57600,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "blend_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36420,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "transmission_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36420,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "black_environment_plane": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.9996607303619385,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36420,
+          "motion_error_pixels": 5.44958305516144e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "narrow_slot": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.876354455947876,
+          "sky_max": 1.0078125,
+          "S_mean": 0.8756682276725769,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 55792,
+          "motion_error_pixels": 5.407808408774277e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "thin_pole": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.9680875539779663,
+          "sky_max": 1.0146484375,
+          "S_mean": 0.9769036173820496,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36598,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        }
+      },
+      "hardware": {
+        "closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 57600,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "single_sided_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 51272,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "forward_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 57600,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "blend_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36420,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "transmission_closed_box": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.0,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36420,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "black_environment_plane": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.0,
+          "sky_max": 0.0,
+          "S_mean": 0.9996607303619385,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36420,
+          "motion_error_pixels": 5.44958305516144e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "narrow_slot": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.8983643054962158,
+          "sky_max": 1.0078125,
+          "S_mean": 0.8908216953277588,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 55792,
+          "motion_error_pixels": 5.407808408774277e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        },
+        "thin_pole": {
+          "preexisting_present_hazards": 10,
+          "sky_mean": 0.9897252321243286,
+          "sky_max": 1.009765625,
+          "S_mean": 0.9919961094856262,
+          "history_min": 32.0,
+          "history_max": 32.0,
+          "covered_pixels": 36598,
+          "motion_error_pixels": 5.461538353958181e-06,
+          "composition_error": 0.0,
+          "diffuse_split_error": 0.0,
+          "reset_reason": "none"
+        }
+      }
+    },
+    "shipping": {
+      "voxel-papermill-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.7303882241249084,
+            "bias": -0.0017961025005206466,
+            "rms": 0.011412061750888824,
+            "p99": 0.041646480560302734,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.0737345963716507,
+            "bias": -0.0008330682176165283,
+            "rms": 0.016781894490122795,
+            "p99": 0.06104831025004387,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\papermill-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-papermill-hall": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.0270522627979517,
+            "bias": -0.0019439030438661575,
+            "rms": 0.03410797938704491,
+            "p99": 0.12714023888111115,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 110395,
+            "reference_mean": 0.08079583197832108,
+            "bias": -0.0016490700654685497,
+            "rms": 0.013287056237459183,
+            "p99": 0.051160234957933426,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\papermill-hall.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-kloppenheim-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.5647567510604858,
+            "bias": -0.0017372968140989542,
+            "rms": 0.013273222371935844,
+            "p99": 0.04971395432949066,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.01906416565179825,
+            "bias": -0.0012510109227150679,
+            "rms": 0.01713613048195839,
+            "p99": 0.0663798600435257,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\kloppenheim-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-kloppenheim-hall": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.008440682664513588,
+            "bias": -0.002150043146684766,
+            "rms": 0.04517478123307228,
+            "p99": 0.19117137789726257,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 110395,
+            "reference_mean": 0.01657385379076004,
+            "bias": -0.0012715881457552314,
+            "rms": 0.014778746291995049,
+            "p99": 0.05509480461478233,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\kloppenheim-hall.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-qwantani-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.9673948884010315,
+            "bias": -0.0015634613810107112,
+            "rms": 0.002949734451249242,
+            "p99": 0.008659416809678078,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.005245929583907127,
+            "bias": -0.0012019143905490637,
+            "rms": 0.02083549275994301,
+            "p99": 0.08248724788427353,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\qwantani-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-qwantani-hall": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.010509110987186432,
+            "bias": -0.0015834015794098377,
+            "rms": 0.03497735410928726,
+            "p99": 0.07777639478445053,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 110395,
+            "reference_mean": 0.004403466358780861,
+            "bias": -0.0014505274593830109,
+            "rms": 0.015573449432849884,
+            "p99": 0.055961597710847855,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\qwantani-hall.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-hotel-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 1.4420411586761475,
+            "bias": -0.001549350330606103,
+            "rms": 0.008111104369163513,
+            "p99": 0.02895049750804901,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.03187029808759689,
+            "bias": -0.0016998372739180923,
+            "rms": 0.044223085045814514,
+            "p99": 0.18635043501853943,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\hotel-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-hotel-hall": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.017079578712582588,
+            "bias": -0.0015164032811298966,
+            "rms": 0.05688564106822014,
+            "p99": 0.19266611337661743,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 110395,
+            "reference_mean": 0.0190990399569273,
+            "bias": -0.001541381934657693,
+            "rms": 0.02711106278002262,
+            "p99": 0.05618725344538689,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\hotel-hall.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-carpentry-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.8759186863899231,
+            "bias": -0.00186006142757833,
+            "rms": 0.010393011383712292,
+            "p99": 0.0347011536359787,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.0933309942483902,
+            "bias": -0.0012898201821371913,
+            "rms": 0.014202533289790154,
+            "p99": 0.058895427733659744,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\carpentry-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "voxel-carpentry-hall": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.012658804655075073,
+            "bias": -0.0014875199412927032,
+            "rms": 0.045712947845458984,
+            "p99": 0.18804074823856354,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 110395,
+            "reference_mean": 0.03327023610472679,
+            "bias": -0.0015821337001398206,
+            "rms": 0.02933591417968273,
+            "p99": 0.13952673971652985,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\compute-final\\static\\carpentry-hall.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "hardware-papermill-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.760793149471283,
+            "bias": -0.0016324531752616167,
+            "rms": 0.016419682651758194,
+            "p99": 0.05381091684103012,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.1415271908044815,
+            "bias": -0.0009158143075183034,
+            "rms": 0.013276972807943821,
+            "p99": 0.05047444999217987,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\papermill-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "hardware-kloppenheim-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.5698860883712769,
+            "bias": -0.0016021281480789185,
+            "rms": 0.018927618861198425,
+            "p99": 0.06413695961236954,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.041154228150844574,
+            "bias": -0.0007482274086214602,
+            "rms": 0.016211943700909615,
+            "p99": 0.06412191689014435,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\kloppenheim-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "hardware-qwantani-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 1.0519039630889893,
+            "bias": -0.0016116974875330925,
+            "rms": 0.0034988566767424345,
+            "p99": 0.010656720027327538,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.013843093998730183,
+            "bias": -0.0016223324928432703,
+            "rms": 0.02299218811094761,
+            "p99": 0.08634456992149353,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\qwantani-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "hardware-hotel-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 1.520708441734314,
+            "bias": -0.0015262624947354198,
+            "rms": 0.010398845188319683,
+            "p99": 0.03513111174106598,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.10990121215581894,
+            "bias": -0.0007944218814373016,
+            "rms": 0.019096508622169495,
+            "p99": 0.0798693373799324,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\hotel-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      },
+      "hardware-carpentry-top": {
+        "quality": {
+          "all_receivers": {
+            "pixels": 518400,
+            "reference_mean": 0.8872841000556946,
+            "bias": -0.0017785429954528809,
+            "rms": 0.011460746638476849,
+            "p99": 0.03800954669713974,
+            "unexpected_zeros": 0,
+            "passed": true
+          },
+          "sponza_floor": {
+            "pixels": 52404,
+            "reference_mean": 0.1823320984840393,
+            "bias": -0.0012454944662749767,
+            "rms": 0.009463619440793991,
+            "p99": 0.03822113573551178,
+            "unexpected_zeros": 0,
+            "passed": true
+          }
+        },
+        "evidence": {
+          "manifest": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\carpentry-top.inputs.json",
+          "preexisting_present_hazards": 10,
+          "sky_cache_evaluated": 22997,
+          "sky_cache_center_fallback": 0
+        },
+        "passed": true
+      }
+    },
+    "passed": true
+  },
+  "reproduction_script_sha256": "d31e8d470f6bc26f638fa6739fb246c8601dfa86e606ef13863e85e16442eb8b",
+  "filter_timing_us": {
+    "variance-probe": {
+      "HybridFilter0": 720.7163870967742,
+      "HybridFilter1": 773.9148387096774,
+      "HybridFilter2": 699.8214193548387,
+      "HybridFilter3": 664.4428387096774,
+      "HybridFilter4": 616.5109677419355
+    },
+    "footprint32-probe": {
+      "HybridFilter0": 761.405935483871,
+      "HybridFilter1": 860.0010322580645,
+      "HybridFilter2": 809.4492903225806,
+      "HybridFilter3": 770.9243870967741,
+      "HybridFilter4": 4840.20335483871
+    }
+  },
+  "rendering_patch_sha256": "42937966e965601c23b3dcd2de3355d294a4ad6cdcf29d7ee52b2060ff4238b1",
+  "canonical_regression": {
+    "top-00": {
+      "sky_identical": false,
+      "sky_rms": 0.0008910415344871581,
+      "sky_max": 0.033203125,
+      "p99": 0.0026789065450429916,
+      "changed": 673465,
+      "positions_identical": true,
+      "specular_visibility_identical": true
+    },
+    "top-63": {
+      "sky_identical": false,
+      "sky_rms": 0.0009170558187179267,
+      "sky_max": 0.0458984375,
+      "p99": 0.003230470232665539,
+      "changed": 732291,
+      "positions_identical": true,
+      "specular_visibility_identical": true
+    }
+  },
+  "flagpole_mask_regression": {
+    "papermill-top": {
+      "pole_0": {
+        "old_pixels": 8251,
+        "new_pixels": 8251,
+        "passed": true
+      },
+      "pole_1": {
+        "old_pixels": 8048,
+        "new_pixels": 8048,
+        "passed": true
+      },
+      "pole_2": {
+        "old_pixels": 7118,
+        "new_pixels": 7118,
+        "passed": true
+      }
+    },
+    "kloppenheim-top": {
+      "pole_0": {
+        "old_pixels": 8251,
+        "new_pixels": 8251,
+        "passed": true
+      },
+      "pole_1": {
+        "old_pixels": 8048,
+        "new_pixels": 8048,
+        "passed": true
+      },
+      "pole_2": {
+        "old_pixels": 7118,
+        "new_pixels": 7118,
+        "passed": true
+      }
+    },
+    "qwantani-top": {
+      "pole_0": {
+        "old_pixels": 8251,
+        "new_pixels": 8251,
+        "passed": true
+      },
+      "pole_1": {
+        "old_pixels": 8048,
+        "new_pixels": 8048,
+        "passed": true
+      },
+      "pole_2": {
+        "old_pixels": 7118,
+        "new_pixels": 7118,
+        "passed": true
+      }
+    },
+    "hotel-top": {
+      "pole_0": {
+        "old_pixels": 8251,
+        "new_pixels": 8251,
+        "passed": true
+      },
+      "pole_1": {
+        "old_pixels": 8048,
+        "new_pixels": 8048,
+        "passed": true
+      },
+      "pole_2": {
+        "old_pixels": 7118,
+        "new_pixels": 7118,
+        "passed": true
+      }
+    },
+    "carpentry-top": {
+      "pole_0": {
+        "old_pixels": 8251,
+        "new_pixels": 8251,
+        "passed": true
+      },
+      "pole_1": {
+        "old_pixels": 8048,
+        "new_pixels": 8048,
+        "passed": true
+      },
+      "pole_2": {
+        "old_pixels": 7118,
+        "new_pixels": 7118,
+        "passed": true
+      }
+    }
+  },
+  "scope": "P2, P3 and P4e on RTX 5080 under the existing five-shipping/nine-reference environment and platform decisions.",
+  "summary": {
+    "compute_convergence": {
+      "views": 18,
+      "max_abs_bias": 2.1771082174382173e-05,
+      "max_rms": 0.01279471442103386,
+      "unexpected_zeros": 0
+    },
+    "flagpoles": {
+      "regions": 15,
+      "max_abs_bias": 0.0007605798309668899,
+      "max_excess_rms": 0.010394855542834109,
+      "max_shipping_p99": 0.1053348183631897,
+      "unexpected_zeros": 0
+    },
+    "feature_backends": {
+      "static_cases": 28,
+      "switch_cases": 30,
+      "sky_cache_cases": 1,
+      "max_sky_rms": 0.05381762236356735,
+      "max_sky_p99": 0.1761244237422943,
+      "unexpected_zeros": 0,
+      "max_specular_visibility_rms": 8.445085404673591e-05,
+      "sky_cache_ratio": 1.039978005266988
+    }
+  },
+  "reports": {
+    "compute_convergence": {
+      "samples_per_frame": [
+        4096,
+        1024
+      ],
+      "frames": [
+        32,
+        64
+      ],
+      "total_rays_per_pixel": [
+        131072,
+        65536
+      ],
+      "sky_only": true,
+      "views": {
+        "papermill-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -1.645445877329621e-06,
+              "rms": 0.00047857873141765594,
+              "p99": 0.0014934043865650892,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -2.023444494625437e-06,
+              "rms": 0.0013884473592042923,
+              "p99": 0.004578795284032822,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\papermill-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\papermill-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "papermill-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -2.273901600347017e-06,
+              "rms": 0.0030694042798131704,
+              "p99": 0.012162021361291409,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -1.9369283563719364e-06,
+              "rms": 0.0014628143981099129,
+              "p99": 0.00484002148732543,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\papermill-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\papermill-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "hotel-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 1.4420411586761475,
+              "bias": -1.2395610156090697e-06,
+              "rms": 0.00023217531270347536,
+              "p99": 0.0006987018859945238,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.03187029808759689,
+              "bias": 2.756684409632726e-07,
+              "rms": 0.0015461171278730035,
+              "p99": 0.0047859069891273975,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\hotel-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\hotel-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "hotel-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.017079578712582588,
+              "bias": 2.1771082174382173e-05,
+              "rms": 0.01279471442103386,
+              "p99": 0.008040325716137886,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.0190990399569273,
+              "bias": -3.835963980236556e-06,
+              "rms": 0.00262008560821414,
+              "p99": 0.008115439675748348,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\hotel-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\hotel-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "kloppenheim-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.5647567510604858,
+              "bias": -4.406619154906366e-06,
+              "rms": 0.00030051713110879064,
+              "p99": 0.0009320271201431751,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.01906416565179825,
+              "bias": 1.6493917200932628e-06,
+              "rms": 0.0024850708432495594,
+              "p99": 0.008153984323143959,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloppenheim-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloppenheim-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "kloppenheim-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.008440682664513588,
+              "bias": -6.737311650795164e-06,
+              "rms": 0.0035708434879779816,
+              "p99": 0.01502839382737875,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.01657385379076004,
+              "bias": 3.0846561571706843e-07,
+              "rms": 0.0026979653630405664,
+              "p99": 0.009293078444898129,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloppenheim-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloppenheim-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "kloofendal-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.9697496891021729,
+              "bias": -1.1606006182773854e-06,
+              "rms": 0.00010250580089632422,
+              "p99": 0.0003145724767819047,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.020601259544491768,
+              "bias": -1.7062123447431077e-07,
+              "rms": 0.0018247922416776419,
+              "p99": 0.005948527250438929,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloofendal-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloofendal-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "kloofendal-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.01409104559570551,
+              "bias": 1.572383212078421e-06,
+              "rms": 0.0016309358179569244,
+              "p99": 0.006463256198912859,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.018145838752388954,
+              "bias": 2.8967806429136544e-06,
+              "rms": 0.00207485887221992,
+              "p99": 0.006450968328863382,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloofendal-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\kloofendal-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "qwantani-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.9673948884010315,
+              "bias": -4.87511442770483e-07,
+              "rms": 7.071782601997256e-05,
+              "p99": 0.00022069977421779186,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.005245929583907127,
+              "bias": 6.351129286485957e-06,
+              "rms": 0.0021942395251244307,
+              "p99": 0.007772320881485939,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\qwantani-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\qwantani-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "qwantani-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.010509110987186432,
+              "bias": 7.354120725722169e-07,
+              "rms": 0.0008499945397488773,
+              "p99": 0.0031594205647706985,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.004403466358780861,
+              "bias": 5.733456418965943e-06,
+              "rms": 0.00242595630697906,
+              "p99": 0.00855528935790062,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\qwantani-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\qwantani-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "studio-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.5421180129051208,
+              "bias": -2.993429234265932e-06,
+              "rms": 0.0007396723958663642,
+              "p99": 0.0027440753765404224,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0007602898986078799,
+              "bias": -9.865676474873908e-06,
+              "rms": 0.005324918311089277,
+              "p99": 0.01840360276401043,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\studio-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\studio-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "studio-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0012036511907353997,
+              "bias": -9.946127647708636e-06,
+              "rms": 0.010893053375184536,
+              "p99": 0.013717195950448513,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.0007768601062707603,
+              "bias": 9.71466852206504e-06,
+              "rms": 0.005803038831800222,
+              "p99": 0.018807105720043182,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\studio-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\studio-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "emptyroom-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.453063428401947,
+              "bias": -2.7916412363993004e-06,
+              "rms": 0.0005601450684480369,
+              "p99": 0.002702619880437851,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.02555054984986782,
+              "bias": 3.8906641748326365e-06,
+              "rms": 0.0018095973646268249,
+              "p99": 0.005617558490484953,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\emptyroom-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\emptyroom-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "emptyroom-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.008390039205551147,
+              "bias": -5.5958962548174895e-06,
+              "rms": 0.003130468539893627,
+              "p99": 0.01210691500455141,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.02190236747264862,
+              "bias": -1.7983956013267743e-06,
+              "rms": 0.0020265220664441586,
+              "p99": 0.006139261182397604,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\emptyroom-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\emptyroom-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "corridor-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.2659665644168854,
+              "bias": -1.858138261923159e-06,
+              "rms": 0.00064566993387416,
+              "p99": 0.002832641126587987,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.006261265370994806,
+              "bias": 3.924442353309132e-06,
+              "rms": 0.0024927735794335604,
+              "p99": 0.008910893462598324,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\corridor-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\corridor-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "corridor-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0028686742298305035,
+              "bias": -3.849725089821732e-06,
+              "rms": 0.00387614406645298,
+              "p99": 0.015958623960614204,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.0066232639364898205,
+              "bias": 3.256014679209329e-06,
+              "rms": 0.0026502814143896103,
+              "p99": 0.009431532584130764,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\corridor-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\corridor-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "carpentry-top": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.8759186863899231,
+              "bias": 1.8713427607508493e-06,
+              "rms": 0.001070967991836369,
+              "p99": 0.0017595890676602721,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0933309942483902,
+              "bias": -1.1782614137700875e-06,
+              "rms": 0.0005266937077976763,
+              "p99": 0.0017990409396588802,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\carpentry-top-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\carpentry-top.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        },
+        "carpentry-hall": {
+          "regions": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.012658804655075073,
+              "bias": -7.826332648619427e-07,
+              "rms": 0.0019551697187125683,
+              "p99": 0.008532191626727581,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.03327023610472679,
+              "bias": 1.1745489700842882e-06,
+              "rms": 0.00127738481387496,
+              "p99": 0.004500324837863445,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\carpentry-hall-reference.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            },
+            {
+              "manifest": "build\\p2-p4-acceptance-20261013\\convergence\\carpentry-hall.inputs.json",
+              "preexisting_present_hazards": 10,
+              "sky_cache_evaluated": 22997,
+              "sky_cache_center_fallback": 0
+            }
+          ],
+          "passed": true
+        }
+      },
+      "complete": true,
+      "passed": true
+    },
+    "flagpoles": {
+      "rectangles_xyxy": [
+        [
+          416,
+          130,
+          552,
+          207
+        ],
+        [
+          416,
+          285,
+          552,
+          362
+        ],
+        [
+          416,
+          437,
+          552,
+          514
+        ]
+      ],
+      "receiver_mask": "frozen floor: geometric_normal.y > .99 and position.y < -.12",
+      "shipping_channel": "diffuse",
+      "views": {
+        "papermill-top": {
+          "regions": {
+            "pole_0": {
+              "converged": {
+                "pixels": 8202,
+                "truth_mean": 0.16536226868629456,
+                "bias": -0.00020516790391411632,
+                "rms": 0.01601844925416027,
+                "p99": 0.04692787677049637,
+                "truth_noise_rms": 0.015862548142947075,
+                "excess_rms": 0.0022294131337179213,
+                "blocks": {
+                  "count": 135,
+                  "rms": 0.0021241558710322498,
+                  "p99": 0.005854326696438906,
+                  "truth_noise_rms": 0.002242272669948121,
+                  "excess_rms": 0.0
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8251,
+                "reference_mean": 0.1672813594341278,
+                "bias": -0.0010378222214058042,
+                "rms": 0.012293324805796146,
+                "p99": 0.04947144538164139,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_1": {
+              "converged": {
+                "pixels": 8014,
+                "truth_mean": 0.17276963591575623,
+                "bias": -0.00044791086111217737,
+                "rms": 0.015366983796463582,
+                "p99": 0.04479043185710907,
+                "truth_noise_rms": 0.015433388698008811,
+                "excess_rms": 0.0,
+                "blocks": {
+                  "count": 120,
+                  "rms": 0.0020497068725872807,
+                  "p99": 0.00573410501499618,
+                  "truth_noise_rms": 0.0021580789221255802,
+                  "excess_rms": 0.0
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8048,
+                "reference_mean": 0.17491333186626434,
+                "bias": -0.0006884518661536276,
+                "rms": 0.012219647876918316,
+                "p99": 0.05280864238739014,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_2": {
+              "converged": {
+                "pixels": 7105,
+                "truth_mean": 0.0905352458357811,
+                "bias": -0.0003528430825099349,
+                "rms": 0.021242332440427295,
+                "p99": 0.06717956811189651,
+                "truth_noise_rms": 0.02100047092493752,
+                "excess_rms": 0.003196389907455558,
+                "blocks": {
+                  "count": 108,
+                  "rms": 0.0028703635479407227,
+                  "p99": 0.008967151888501517,
+                  "truth_noise_rms": 0.002383444674393851,
+                  "excess_rms": 0.0015994306429009178
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 7118,
+                "reference_mean": 0.09142991155385971,
+                "bias": -0.0009948421502485871,
+                "rms": 0.01856360211968422,
+                "p99": 0.06596975028514862,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "path": "build\\ground-truth\\dataset-p4-corrected\\truth-papermill-top.npz",
+              "bytes": 26942065,
+              "sha256": "e9bd9afcab24840ef4dd2a608e07c1f8196638db34c14d6336bd49a9da01c738"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\papermill-top-reference.inputs.json",
+              "bytes": 55048,
+              "sha256": "75098d69b825acabcc3950e645b392995ff1864bc0e0045acb9d59199791c845"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\papermill-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "3665c7ae5e4965b8d4f582b4bec5b4fa5ca74ef9835b2a531f5b385042a5db5e"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\papermill-top-reference.lighting.json",
+              "bytes": 2670,
+              "sha256": "2309bebe2657baa42dc1a2f6fd58ba6abb52855a783826b052628528def40ae4"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\papermill-top.inputs.json",
+              "bytes": 55044,
+              "sha256": "e8303096ff5bce293f60857f5648e6004d4bfdf9a1162fa96bec061eaedfd388"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\papermill-top.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "567facbc951374cb19ea2681e0811ff027a1c55eb74186ed32bfbcdc82475952"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\papermill-top.lighting.json",
+              "bytes": 2666,
+              "sha256": "692770326fea39a695f2789acda023d12fe0aeab8304f80c61e9307fdc164722"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\papermill-top-reference.inputs.json",
+              "bytes": 55063,
+              "sha256": "f7e533da392cb487588f4d255a1e8e0dba50037dd4474824ad3ee5784b018aaa"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\papermill-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "6cb65a794d2e7210a9b003402f526afdf27b14b1d64fa2b77802a011da3275dc"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\papermill-top-reference.lighting.json",
+              "bytes": 2669,
+              "sha256": "9ca0e6fcd66bd2ddb3edee8144fba7a9267893449b7ca8944764bc4b2b201646"
+            }
+          ],
+          "passed": true
+        },
+        "kloppenheim-top": {
+          "regions": {
+            "pole_0": {
+              "converged": {
+                "pixels": 8202,
+                "truth_mean": 0.046483300626277924,
+                "bias": -5.749128104071133e-05,
+                "rms": 0.018552151618034318,
+                "p99": 0.052759598940610886,
+                "truth_noise_rms": 0.01830678010696106,
+                "excess_rms": 0.00300734630096172,
+                "blocks": {
+                  "count": 135,
+                  "rms": 0.0022580224417882537,
+                  "p99": 0.006298305922710833,
+                  "truth_noise_rms": 0.0025162870911472515,
+                  "excess_rms": 0.0
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8251,
+                "reference_mean": 0.048936184495687485,
+                "bias": -0.0011601101141422987,
+                "rms": 0.0164400152862072,
+                "p99": 0.06396029889583588,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_1": {
+              "converged": {
+                "pixels": 8014,
+                "truth_mean": 0.03900693729519844,
+                "bias": -0.00033652648562565446,
+                "rms": 0.017784639647860305,
+                "p99": 0.05542117357254028,
+                "truth_noise_rms": 0.017806110971727403,
+                "excess_rms": 0.0,
+                "blocks": {
+                  "count": 120,
+                  "rms": 0.002406606989034541,
+                  "p99": 0.00771897907356093,
+                  "truth_noise_rms": 0.0022364933180458756,
+                  "excess_rms": 0.0008887377779784375
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8048,
+                "reference_mean": 0.04127968102693558,
+                "bias": -0.0013306902255862951,
+                "rms": 0.015644172206521034,
+                "p99": 0.0650322362780571,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_2": {
+              "converged": {
+                "pixels": 7105,
+                "truth_mean": 0.024452736601233482,
+                "bias": -0.0005796670448035002,
+                "rms": 0.02342469999297498,
+                "p99": 0.071843221783638,
+                "truth_noise_rms": 0.023355584500115347,
+                "excess_rms": 0.0017981219143467283,
+                "blocks": {
+                  "count": 108,
+                  "rms": 0.0029185264623808457,
+                  "p99": 0.008452991478952216,
+                  "truth_noise_rms": 0.0030012273588298426,
+                  "excess_rms": 0.0
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 7118,
+                "reference_mean": 0.025539379566907883,
+                "bias": -0.0003058473812416196,
+                "rms": 0.01759188063442707,
+                "p99": 0.07472419738769531,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "path": "build\\ground-truth\\dataset-p4-corrected\\truth-kloppenheim-top.npz",
+              "bytes": 27186240,
+              "sha256": "8e3791a67b0698ddcdd245a765feb6002980e29e6031052f0a77f17551be7762"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\kloppenheim-top-reference.inputs.json",
+              "bytes": 55114,
+              "sha256": "15b86562d1c04fb1ac1d86d2af3eef2f96b344c7d2529de389dfe30a4e185c95"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\kloppenheim-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "abc8856987db1f92094777469bc065e0637dbc9ccb219ec1c594d392ff7cdd46"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\kloppenheim-top-reference.lighting.json",
+              "bytes": 2670,
+              "sha256": "2309bebe2657baa42dc1a2f6fd58ba6abb52855a783826b052628528def40ae4"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\kloppenheim-top.inputs.json",
+              "bytes": 55110,
+              "sha256": "ac5701a6e44d51c76ab377817c82fb0de5ad95185b3562310337a7f4825dca30"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\kloppenheim-top.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "4f14499d7f67547198892af9058fd99f6ebaba685bc2ec4a46aae626a5e55ce4"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\kloppenheim-top.lighting.json",
+              "bytes": 2666,
+              "sha256": "692770326fea39a695f2789acda023d12fe0aeab8304f80c61e9307fdc164722"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\kloppenheim-top-reference.inputs.json",
+              "bytes": 55129,
+              "sha256": "cc3aac846146808cbf8bdda0d39641a46e7617ddd44d54b3fe2b0e69179ebcd7"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\kloppenheim-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "3c6fba7d609fb3f39512c31aca1e75acc3d385988af0718d209b6799fb43df92"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\kloppenheim-top-reference.lighting.json",
+              "bytes": 2669,
+              "sha256": "9ca0e6fcd66bd2ddb3edee8144fba7a9267893449b7ca8944764bc4b2b201646"
+            }
+          ],
+          "passed": true
+        },
+        "qwantani-top": {
+          "regions": {
+            "pole_0": {
+              "converged": {
+                "pixels": 8202,
+                "truth_mean": 0.013563032262027264,
+                "bias": -7.86602176958695e-05,
+                "rms": 0.0197321794912458,
+                "p99": 0.061668507754802704,
+                "truth_noise_rms": 0.01947148615538506,
+                "excess_rms": 0.003196894489248802,
+                "blocks": {
+                  "count": 135,
+                  "rms": 0.00220928567969095,
+                  "p99": 0.006824018956691841,
+                  "truth_noise_rms": 0.0027197107986181796,
+                  "excess_rms": 0.0
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8251,
+                "reference_mean": 0.017792660742998123,
+                "bias": -0.0021598869934678078,
+                "rms": 0.0225998405367136,
+                "p99": 0.09190379083156586,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_1": {
+              "converged": {
+                "pixels": 8014,
+                "truth_mean": 0.010928002186119556,
+                "bias": -0.0005294970469549298,
+                "rms": 0.019684458792265495,
+                "p99": 0.062232568860054016,
+                "truth_noise_rms": 0.019313018460617656,
+                "excess_rms": 0.0038059474358219966,
+                "blocks": {
+                  "count": 120,
+                  "rms": 0.0024741873326523953,
+                  "p99": 0.007280917710917294,
+                  "truth_noise_rms": 0.002301807936742363,
+                  "excess_rms": 0.0009073495354092822
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8048,
+                "reference_mean": 0.014606720767915249,
+                "bias": -0.0008759636548347771,
+                "rms": 0.020609401166439056,
+                "p99": 0.08350939303636551,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_2": {
+              "converged": {
+                "pixels": 7105,
+                "truth_mean": 0.005041290074586868,
+                "bias": -0.0007605798309668899,
+                "rms": 0.025261772866560457,
+                "p99": 0.08417586237192154,
+                "truth_noise_rms": 0.024963474920051663,
+                "excess_rms": 0.0038706702620659706,
+                "blocks": {
+                  "count": 108,
+                  "rms": 0.0032466396593293866,
+                  "p99": 0.009163852175022904,
+                  "truth_noise_rms": 0.003068548542542878,
+                  "excess_rms": 0.00106050880222109
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 7118,
+                "reference_mean": 0.006866373587399721,
+                "bias": -0.0005593704408966005,
+                "rms": 0.023268649354577065,
+                "p99": 0.08467479050159454,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "path": "build\\ground-truth\\dataset-p4-corrected\\truth-qwantani-top.npz",
+              "bytes": 26963744,
+              "sha256": "15a51f2fcf1ce3ffbf8ab259da1770384d19a556969537c6165c34ee98439d56"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\qwantani-top-reference.inputs.json",
+              "bytes": 55100,
+              "sha256": "1a32eae56451da5f5a42eb294eb14ffc645df9634e38b2c84623ff69ffc40533"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\qwantani-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "f5b278c68ff43d0b3d061afe1e9bc5ea6aae5ec5a67d8c9c8431186e52bf0858"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\qwantani-top-reference.lighting.json",
+              "bytes": 2670,
+              "sha256": "2309bebe2657baa42dc1a2f6fd58ba6abb52855a783826b052628528def40ae4"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\qwantani-top.inputs.json",
+              "bytes": 55096,
+              "sha256": "4a8622b14e372339410367119845676b676b6eef6261af2e16be07ab6f431fcc"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\qwantani-top.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "423296012ef51f57f866bf7e3e1548c270f88dcaffde546146cb5631a1b39646"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\qwantani-top.lighting.json",
+              "bytes": 2666,
+              "sha256": "692770326fea39a695f2789acda023d12fe0aeab8304f80c61e9307fdc164722"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\qwantani-top-reference.inputs.json",
+              "bytes": 55115,
+              "sha256": "87ee675c7cc8339d43f2483bf9a8a8e95536911de7f16b30caa53aad17f31966"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\qwantani-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "addf5d6bedb985fe567d7c91a22a13c969bdb2e1d2d13a51d59f7589d3a8524c"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\qwantani-top-reference.lighting.json",
+              "bytes": 2669,
+              "sha256": "9ca0e6fcd66bd2ddb3edee8144fba7a9267893449b7ca8944764bc4b2b201646"
+            }
+          ],
+          "passed": true
+        },
+        "hotel-top": {
+          "regions": {
+            "pole_0": {
+              "converged": {
+                "pixels": 8202,
+                "truth_mean": 0.19123628735542297,
+                "bias": -0.0004872082208748907,
+                "rms": 0.021935328417135556,
+                "p99": 0.09718281775712967,
+                "truth_noise_rms": 0.021367628690939472,
+                "excess_rms": 0.004958132399778691,
+                "blocks": {
+                  "count": 135,
+                  "rms": 0.0033703720298744982,
+                  "p99": 0.016463471654595482,
+                  "truth_noise_rms": 0.003136687932711102,
+                  "excess_rms": 0.001233124662207718
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8251,
+                "reference_mean": 0.19917702674865723,
+                "bias": -0.001123336493037641,
+                "rms": 0.013240213505923748,
+                "p99": 0.060509320348501205,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_1": {
+              "converged": {
+                "pixels": 8014,
+                "truth_mean": 0.040655460208654404,
+                "bias": -0.00042492838110774755,
+                "rms": 0.01731931352401879,
+                "p99": 0.0477597676217556,
+                "truth_noise_rms": 0.01714214948316079,
+                "excess_rms": 0.0024708970112552876,
+                "blocks": {
+                  "count": 120,
+                  "rms": 0.0023618912269006416,
+                  "p99": 0.006101044838522338,
+                  "truth_noise_rms": 0.002099179665451968,
+                  "excess_rms": 0.0010825778955175385
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8048,
+                "reference_mean": 0.04632614925503731,
+                "bias": -0.00027603478520177305,
+                "rms": 0.01644005812704563,
+                "p99": 0.0693858191370964,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_2": {
+              "converged": {
+                "pixels": 7105,
+                "truth_mean": 0.025633133947849274,
+                "bias": -0.0004553822218440473,
+                "rms": 0.022722656769165406,
+                "p99": 0.06461326032876968,
+                "truth_noise_rms": 0.022929059452276513,
+                "excess_rms": 0.0,
+                "blocks": {
+                  "count": 108,
+                  "rms": 0.0031393259532826174,
+                  "p99": 0.008712485769891011,
+                  "truth_noise_rms": 0.002937820504305126,
+                  "excess_rms": 0.0011066065811471527
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 7118,
+                "reference_mean": 0.0283375084400177,
+                "bias": 0.0005535425734706223,
+                "rms": 0.018584927543997765,
+                "p99": 0.07626667618751526,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "path": "build\\ground-truth\\dataset-p4-corrected\\truth-hotel-top.npz",
+              "bytes": 27374399,
+              "sha256": "a051fc1eb9e97ff931708b36bd5ef9ce11f58536da74ca166c64ae955a3cc48a"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\hotel-top-reference.inputs.json",
+              "bytes": 55066,
+              "sha256": "9521387798a07dcee05c0939cbcd837ec876ec1b18b510db1d44e22b5cef7b6f"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\hotel-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "9eaeefee6b5046a35f6c8e31bed1a2013cb09434aba0c66534958c0e8da459c2"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\hotel-top-reference.lighting.json",
+              "bytes": 2670,
+              "sha256": "2309bebe2657baa42dc1a2f6fd58ba6abb52855a783826b052628528def40ae4"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\hotel-top.inputs.json",
+              "bytes": 55062,
+              "sha256": "baf8a0122d545c9d44f7cfb6c9d55f38437bb44e39392eae8e232d29320b4c8f"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\hotel-top.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "b6dac2ad25512dc8dc548658b1bdec8f8a2f85018f9ab3d23e39086398f16b8e"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\hotel-top.lighting.json",
+              "bytes": 2666,
+              "sha256": "692770326fea39a695f2789acda023d12fe0aeab8304f80c61e9307fdc164722"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\hotel-top-reference.inputs.json",
+              "bytes": 55081,
+              "sha256": "228ac91dcd06330c205f83be11b61ae7ce50f4f6af11ed867db89852583c3344"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\hotel-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "623b534bef9b0f52a93a02c5e4dedfef14ff96efaf157babd64470174beed10d"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\hotel-top-reference.lighting.json",
+              "bytes": 2669,
+              "sha256": "9ca0e6fcd66bd2ddb3edee8144fba7a9267893449b7ca8944764bc4b2b201646"
+            }
+          ],
+          "passed": true
+        },
+        "carpentry-top": {
+          "regions": {
+            "pole_0": {
+              "converged": {
+                "pixels": 8202,
+                "truth_mean": 0.25324252247810364,
+                "bias": -0.0005184737383387983,
+                "rms": 0.01874816161297407,
+                "p99": 0.05881178006529808,
+                "truth_noise_rms": 0.018567045612752957,
+                "excess_rms": 0.0025996886506167785,
+                "blocks": {
+                  "count": 135,
+                  "rms": 0.0025304768240884705,
+                  "p99": 0.007292309301282303,
+                  "truth_noise_rms": 0.002250199064366557,
+                  "excess_rms": 0.001157547894461713
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8251,
+                "reference_mean": 0.25579360127449036,
+                "bias": -0.0012228044215589762,
+                "rms": 0.008258363232016563,
+                "p99": 0.030767258256673813,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_1": {
+              "converged": {
+                "pixels": 8014,
+                "truth_mean": 0.22686518728733063,
+                "bias": -0.0003191799041815102,
+                "rms": 0.019432656456030557,
+                "p99": 0.06226354464888573,
+                "truth_noise_rms": 0.0197700785733642,
+                "excess_rms": 0.0,
+                "blocks": {
+                  "count": 120,
+                  "rms": 0.0022481577834477474,
+                  "p99": 0.006037282409005388,
+                  "truth_noise_rms": 0.002593660839808581,
+                  "excess_rms": 0.0
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 8048,
+                "reference_mean": 0.2295573353767395,
+                "bias": -0.0014358183834701777,
+                "rms": 0.008721128106117249,
+                "p99": 0.03239798545837402,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            },
+            "pole_2": {
+              "converged": {
+                "pixels": 7105,
+                "truth_mean": 0.005659689661115408,
+                "bias": -0.0006839909474365413,
+                "rms": 0.03736847311028254,
+                "p99": 0.12640877068042755,
+                "truth_noise_rms": 0.03589358941144672,
+                "excess_rms": 0.010394855542834109,
+                "blocks": {
+                  "count": 108,
+                  "rms": 0.004655584711909144,
+                  "p99": 0.01697943346867653,
+                  "truth_noise_rms": 0.003960301846340718,
+                  "excess_rms": 0.0024475453613023103
+                },
+                "passed": true
+              },
+              "shipping": {
+                "pixels": 7118,
+                "reference_mean": 0.007170097436755896,
+                "bias": 0.0021212343126535416,
+                "rms": 0.02713262476027012,
+                "p99": 0.1053348183631897,
+                "unexpected_zeros": 0,
+                "passed": true
+              },
+              "passed": true
+            }
+          },
+          "evidence": [
+            {
+              "path": "build\\ground-truth\\dataset-p4-corrected\\truth-carpentry-top.npz",
+              "bytes": 27175631,
+              "sha256": "efd723be1414f5537a8b65f7c4390b3d712eef1b8426d9993313ac8e337f612e"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\carpentry-top-reference.inputs.json",
+              "bytes": 55096,
+              "sha256": "d4bf54f995c76ca72da87917fbbdff1621f8b04128e6999bb881b08b056dc93f"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\carpentry-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "57d9dff6f44cc55362d34a123751f1af2170107688cd27701245945cd65be26e"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\gt\\carpentry-top-reference.lighting.json",
+              "bytes": 2670,
+              "sha256": "2309bebe2657baa42dc1a2f6fd58ba6abb52855a783826b052628528def40ae4"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\carpentry-top.inputs.json",
+              "bytes": 55092,
+              "sha256": "a712c888bf52cb527435342dddf12400e2b12619e98be62ff668ae5e5403e382"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\carpentry-top.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "3fade8c0a653b445f76663dd14457819d70583d22053ae77f1e8a8e5ddf0bc61"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\static\\carpentry-top.lighting.json",
+              "bytes": 2666,
+              "sha256": "692770326fea39a695f2789acda023d12fe0aeab8304f80c61e9307fdc164722"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\carpentry-top-reference.inputs.json",
+              "bytes": 55111,
+              "sha256": "7bd500b659167349217a463a5479bad70de22ed72980f8800d2b796bc777e115"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\carpentry-top-reference.hybrid.bin",
+              "bytes": 107827200,
+              "sha256": "4d5e75cd77d3d602d2ebd382c5b92c5096f8429fb07c31e5e5c03f72eb79bc0d"
+            },
+            {
+              "path": "build\\p2-p4-acceptance-20261013\\flagpoles\\static\\carpentry-top-reference.lighting.json",
+              "bytes": 2669,
+              "sha256": "9ca0e6fcd66bd2ddb3edee8144fba7a9267893449b7ca8944764bc4b2b201646"
+            }
+          ],
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "feature_backends": {
+      "scope": "P2/P3/P4 image checks for each explicit feature selector, in both directions.\n\nAt both frozen Sponza cameras, test all Compute, all HW RT, each feature alone\non HW RT, and each feature alone on Compute. Sky must meet the existing shipping\nlimits against its selected provider's converged reference. Specular visibility\nmust agree with that provider's endpoint (2% absolute RMS and P99); changing other\nproviders must not substitute their visibility. Check linear composition too.\nThis supplements the archived motion/reset gates; it is not a P8 qualification.\n",
+      "expected_cases": 59,
+      "cases": {
+        "top-00": {
+          "mask": 0,
+          "backend": "compute",
+          "overrides": [],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017990028718486428,
+              "rms": 0.011411796323955059,
+              "p99": 0.04163635894656181,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008226284408010542,
+              "rms": 0.01677393913269043,
+              "p99": 0.06107097119092941,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 8.940696716308594e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-00.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-63": {
+          "mask": 63,
+          "backend": "hardware",
+          "overrides": [],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.001545073464512825,
+              "rms": 0.016371382400393486,
+              "p99": 0.05364398658275604,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009857418481260538,
+              "rms": 0.013253988698124886,
+              "p99": 0.049921270459890366,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 5.960464477539063e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-63.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-01": {
+          "mask": 1,
+          "backend": "compute",
+          "overrides": [
+            "sky=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.001545629813335836,
+              "rms": 0.016371505334973335,
+              "p99": 0.05365382879972458,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009916570270434022,
+              "rms": 0.013266320340335369,
+              "p99": 0.0499364398419857,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 8.445085404673591e-05,
+            "p99": 0.0,
+            "maximum": 0.02294921875,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-01.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-02": {
+          "mask": 2,
+          "backend": "compute",
+          "overrides": [
+            "specular=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017998793628066778,
+              "rms": 0.01141316443681717,
+              "p99": 0.04161571338772774,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008185383048839867,
+              "rms": 0.016775056719779968,
+              "p99": 0.06113266572356224,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-02.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-04": {
+          "mask": 4,
+          "backend": "compute",
+          "overrides": [
+            "sky_cache=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017939688405022025,
+              "rms": 0.011413284577429295,
+              "p99": 0.04163660481572151,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008318957989104092,
+              "rms": 0.016766466200351715,
+              "p99": 0.06093023717403412,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-04.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-08": {
+          "mask": 8,
+          "backend": "compute",
+          "overrides": [
+            "bounce=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0018031172221526504,
+              "rms": 0.011414865963160992,
+              "p99": 0.04165766015648842,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008126066531985998,
+              "rms": 0.016769004985690117,
+              "p99": 0.06100749969482422,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 8.445085404673591e-05,
+            "p99": 0.0,
+            "maximum": 0.02294921875,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 5.960464477539063e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-08.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-16": {
+          "mask": 16,
+          "backend": "compute",
+          "overrides": [
+            "reflections=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017998573603108525,
+              "rms": 0.01141066662967205,
+              "p99": 0.04165668413043022,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008197466959245503,
+              "rms": 0.01676001213490963,
+              "p99": 0.061251841485500336,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 8.445085404673591e-05,
+            "p99": 0.0,
+            "maximum": 0.02294921875,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-16.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-32": {
+          "mask": 32,
+          "backend": "compute",
+          "overrides": [
+            "shadows=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017986111342906952,
+              "rms": 0.011409277096390724,
+              "p99": 0.04163644090294838,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008449298329651356,
+              "rms": 0.01677018404006958,
+              "p99": 0.06133067235350609,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-32.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-62": {
+          "mask": 62,
+          "backend": "hardware",
+          "overrides": [
+            "sky=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.001801094738766551,
+              "rms": 0.011412945576012135,
+              "p99": 0.0416468046605587,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0008139059646055102,
+              "rms": 0.016770899295806885,
+              "p99": 0.06100466474890709,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 5.960464477539063e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-62.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-61": {
+          "mask": 61,
+          "backend": "hardware",
+          "overrides": [
+            "specular=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015429718187078834,
+              "rms": 0.01636510342359543,
+              "p99": 0.053643908351659775,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009962405310943723,
+              "rms": 0.013251536525785923,
+              "p99": 0.0498889684677124,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 8.445085404673591e-05,
+            "p99": 0.0,
+            "maximum": 0.02294921875,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 5.960464477539063e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-61.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-59": {
+          "mask": 59,
+          "backend": "hardware",
+          "overrides": [
+            "sky_cache=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015462939627468586,
+              "rms": 0.01636325754225254,
+              "p99": 0.053644225001335144,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009943586774170399,
+              "rms": 0.013261325657367706,
+              "p99": 0.0499497726559639,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-59.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-55": {
+          "mask": 55,
+          "backend": "hardware",
+          "overrides": [
+            "bounce=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015436848625540733,
+              "rms": 0.01636694185435772,
+              "p99": 0.0536237508058548,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009907690109685063,
+              "rms": 0.013257975690066814,
+              "p99": 0.04993455857038498,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.1920928955078125e-07,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-55.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-47": {
+          "mask": 47,
+          "backend": "hardware",
+          "overrides": [
+            "reflections=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015399735420942307,
+              "rms": 0.01636654883623123,
+              "p99": 0.053643908351659775,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009875792311504483,
+              "rms": 0.013255973346531391,
+              "p99": 0.04991030693054199,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 5.960464477539063e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-47.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-31": {
+          "mask": 31,
+          "backend": "hardware",
+          "overrides": [
+            "shadows=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015431621577590704,
+              "rms": 0.0163706224411726,
+              "p99": 0.053664226084947586,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0009883877355605364,
+              "rms": 0.013261000625789165,
+              "p99": 0.049951326102018356,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 5.960464477539063e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-31.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-00": {
+          "mask": 0,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.001858168514445424,
+              "rms": 0.014004994183778763,
+              "p99": 0.04978422820568085,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0023659570142626762,
+              "rms": 0.0231779795140028,
+              "p99": 0.08037681132555008,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-01": {
+          "mask": 1,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0016512965084984899,
+              "rms": 0.018146364018321037,
+              "p99": 0.05924827232956886,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0017961525591090322,
+              "rms": 0.01729264110326767,
+              "p99": 0.06078539416193962,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-02": {
+          "mask": 2,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017543272115290165,
+              "rms": 0.013512975536286831,
+              "p99": 0.04773671180009842,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.002722650533542037,
+              "rms": 0.02200888656079769,
+              "p99": 0.07760049402713776,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-03": {
+          "mask": 4,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.001835831324569881,
+              "rms": 0.014184645377099514,
+              "p99": 0.05046295002102852,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.002084820531308651,
+              "rms": 0.024192605167627335,
+              "p99": 0.08367937058210373,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-04": {
+          "mask": 8,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0017864092951640487,
+              "rms": 0.013786680996418,
+              "p99": 0.048927683383226395,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.002081413520500064,
+              "rms": 0.022952158004045486,
+              "p99": 0.08074534684419632,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-05": {
+          "mask": 16,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.001803325256332755,
+              "rms": 0.013478470966219902,
+              "p99": 0.047924816608428955,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0030045839957892895,
+              "rms": 0.02268098294734955,
+              "p99": 0.07685021311044693,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-06": {
+          "mask": 32,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.001776137389242649,
+              "rms": 0.013499253429472446,
+              "p99": 0.047987326979637146,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0028056823648512363,
+              "rms": 0.022297488525509834,
+              "p99": 0.07736775279045105,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-07": {
+          "mask": 63,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.001634156797081232,
+              "rms": 0.01849980279803276,
+              "p99": 0.06029663607478142,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0021112572867423296,
+              "rms": 0.01748012937605381,
+              "p99": 0.06270898878574371,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-08": {
+          "mask": 62,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.001807411783374846,
+              "rms": 0.014137397520244122,
+              "p99": 0.05030634626746178,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.0027264703530818224,
+              "rms": 0.02490755170583725,
+              "p99": 0.08471477776765823,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-09": {
+          "mask": 61,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015889483038336039,
+              "rms": 0.018226638436317444,
+              "p99": 0.05936930701136589,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0020366585813462734,
+              "rms": 0.01667487435042858,
+              "p99": 0.059942685067653656,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-10": {
+          "mask": 59,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015867805341258645,
+              "rms": 0.018063081428408623,
+              "p99": 0.05919795483350754,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.001969241304323077,
+              "rms": 0.017366448417305946,
+              "p99": 0.062304288148880005,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-11": {
+          "mask": 55,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.001605222001671791,
+              "rms": 0.018571948632597923,
+              "p99": 0.0610017403960228,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0020296024158596992,
+              "rms": 0.017732925713062286,
+              "p99": 0.06305111944675446,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-12": {
+          "mask": 47,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.001555576571263373,
+              "rms": 0.01848071999847889,
+              "p99": 0.06034703552722931,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0023348189424723387,
+              "rms": 0.01766735315322876,
+              "p99": 0.062463030219078064,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-13": {
+          "mask": 31,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.756910502910614,
+              "bias": -0.0015600951155647635,
+              "rms": 0.018112188205122948,
+              "p99": 0.059248607605695724,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.1393340677022934,
+              "bias": -0.0020264622289687395,
+              "rms": 0.017519382759928703,
+              "p99": 0.060272056609392166,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "top-switch-14": {
+          "mask": 0,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.7303882241249084,
+              "bias": -0.0018054714892059565,
+              "rms": 0.013411181047558784,
+              "p99": 0.047548770904541016,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 52404,
+              "reference_mean": 0.0737345963716507,
+              "bias": -0.002231357153505087,
+              "rms": 0.022356798872351646,
+              "p99": 0.07723820954561234,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\top-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-00": {
+          "mask": 0,
+          "backend": "compute",
+          "overrides": [],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.001955225598067045,
+              "rms": 0.034144237637519836,
+              "p99": 0.1271926611661911,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.001668173586949706,
+              "rms": 0.013338986784219742,
+              "p99": 0.05132358893752098,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-00.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-63": {
+          "mask": 63,
+          "backend": "hardware",
+          "overrides": [],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0009932805551216006,
+              "rms": 0.02386455424129963,
+              "p99": 0.08888290077447891,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0015389635227620602,
+              "rms": 0.008515523746609688,
+              "p99": 0.03126949444413185,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-63.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-01": {
+          "mask": 1,
+          "backend": "compute",
+          "overrides": [
+            "sky=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.000997139373794198,
+              "rms": 0.023812921717762947,
+              "p99": 0.08893295377492905,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0015351404435932636,
+              "rms": 0.008506633341312408,
+              "p99": 0.03112439252436161,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 1.6984773537842557e-05,
+            "p99": 1.52587890625e-05,
+            "maximum": 0.0048675537109375,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-01.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-02": {
+          "mask": 2,
+          "backend": "compute",
+          "overrides": [
+            "specular=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.001954928506165743,
+              "rms": 0.03409160301089287,
+              "p99": 0.12696339190006256,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.001670571626164019,
+              "rms": 0.01333102397620678,
+              "p99": 0.051309529691934586,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-02.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-04": {
+          "mask": 4,
+          "backend": "compute",
+          "overrides": [
+            "sky_cache=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.001975598745048046,
+              "rms": 0.03411780297756195,
+              "p99": 0.127153217792511,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0016791686648502946,
+              "rms": 0.013319723308086395,
+              "p99": 0.05132165551185608,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 7.450580596923828e-09,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-04.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-08": {
+          "mask": 8,
+          "backend": "compute",
+          "overrides": [
+            "bounce=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0019428327213972807,
+              "rms": 0.034133587032556534,
+              "p99": 0.12697923183441162,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0016510006971657276,
+              "rms": 0.013344046659767628,
+              "p99": 0.05135691165924072,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 1.6984773537842557e-05,
+            "p99": 1.52587890625e-05,
+            "maximum": 0.0048675537109375,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 7.450580596923828e-09,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-08.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-16": {
+          "mask": 16,
+          "backend": "compute",
+          "overrides": [
+            "reflections=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.00195934041403234,
+              "rms": 0.03409068286418915,
+              "p99": 0.12698115408420563,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.001657070592045784,
+              "rms": 0.013295356184244156,
+              "p99": 0.05123966187238693,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 1.6984773537842557e-05,
+            "p99": 1.52587890625e-05,
+            "maximum": 0.0048675537109375,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-16.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-32": {
+          "mask": 32,
+          "backend": "compute",
+          "overrides": [
+            "shadows=hardware"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0019563352689146996,
+              "rms": 0.034122344106435776,
+              "p99": 0.12719349563121796,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.00166627811267972,
+              "rms": 0.013343027792870998,
+              "p99": 0.051311712712049484,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-32.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-62": {
+          "mask": 62,
+          "backend": "hardware",
+          "overrides": [
+            "sky=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0019493751460686326,
+              "rms": 0.034110963344573975,
+              "p99": 0.1269463449716568,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0016523698577657342,
+              "rms": 0.013342175632715225,
+              "p99": 0.051321499049663544,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 7.450580596923828e-09,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-62.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-61": {
+          "mask": 61,
+          "backend": "hardware",
+          "overrides": [
+            "specular=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.000996741815470159,
+              "rms": 0.0238387119024992,
+              "p99": 0.08892327547073364,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.001533022616058588,
+              "rms": 0.00851100217550993,
+              "p99": 0.03110700659453869,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 1.6984773537842557e-05,
+            "p99": 1.52587890625e-05,
+            "maximum": 0.0048675537109375,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-61.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-59": {
+          "mask": 59,
+          "backend": "hardware",
+          "overrides": [
+            "sky_cache=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.00099033338483423,
+              "rms": 0.023803357034921646,
+              "p99": 0.08890225738286972,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0015446589095517993,
+              "rms": 0.008510277606546879,
+              "p99": 0.031151024624705315,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-59.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-55": {
+          "mask": 55,
+          "backend": "hardware",
+          "overrides": [
+            "bounce=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0010036271996796131,
+              "rms": 0.023822639137506485,
+              "p99": 0.0888398215174675,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0015456764958798885,
+              "rms": 0.008511754684150219,
+              "p99": 0.03106136992573738,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-55.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-47": {
+          "mask": 47,
+          "backend": "hardware",
+          "overrides": [
+            "reflections=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0009875564137473702,
+              "rms": 0.023832792416214943,
+              "p99": 0.08897829055786133,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0015292306197807193,
+              "rms": 0.00850844755768776,
+              "p99": 0.03107214905321598,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 1.4901161193847656e-08,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-47.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-31": {
+          "mask": 31,
+          "backend": "hardware",
+          "overrides": [
+            "shadows=compute"
+          ],
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0009983237832784653,
+              "rms": 0.02383972890675068,
+              "p99": 0.08896250277757645,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0015347256558015943,
+              "rms": 0.008516991510987282,
+              "p99": 0.03112439252436161,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "specular_visibility": {
+            "rms": 0.0,
+            "p99": 0.0,
+            "maximum": 0.0,
+            "passed": true
+          },
+          "composition_error": 0.0,
+          "diffuse_split_error": 7.450580596923828e-09,
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-31.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-00": {
+          "mask": 0,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.003130814526230097,
+              "rms": 0.051348667591810226,
+              "p99": 0.17573636770248413,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.002355022355914116,
+              "rms": 0.019393064081668854,
+              "p99": 0.06973500549793243,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-01": {
+          "mask": 1,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.002291604643687606,
+              "rms": 0.03459595888853073,
+              "p99": 0.11572440713644028,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0023629534989595413,
+              "rms": 0.01257602870464325,
+              "p99": 0.04300533980131149,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-02": {
+          "mask": 2,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0033545996993780136,
+              "rms": 0.05009584501385689,
+              "p99": 0.1664637178182602,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0030674897134304047,
+              "rms": 0.018574558198451996,
+              "p99": 0.06666023284196854,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-03": {
+          "mask": 4,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0031100749038159847,
+              "rms": 0.04942072182893753,
+              "p99": 0.17302188277244568,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0026296842843294144,
+              "rms": 0.019257182255387306,
+              "p99": 0.06897953897714615,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-04": {
+          "mask": 8,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0033723211381584406,
+              "rms": 0.050500284880399704,
+              "p99": 0.16833268105983734,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0026525906287133694,
+              "rms": 0.018371805548667908,
+              "p99": 0.06642985343933105,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-05": {
+          "mask": 16,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.003602780867367983,
+              "rms": 0.046556346118450165,
+              "p99": 0.16702966392040253,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.0028862471226602793,
+              "rms": 0.018413962796330452,
+              "p99": 0.06679802387952805,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-06": {
+          "mask": 32,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0035645707976073027,
+              "rms": 0.046640004962682724,
+              "p99": 0.16893281042575836,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.00285396259278059,
+              "rms": 0.01801009476184845,
+              "p99": 0.06541489064693451,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-07": {
+          "mask": 63,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0022806483320891857,
+              "rms": 0.032988566905260086,
+              "p99": 0.11818131804466248,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.002342694904655218,
+              "rms": 0.012931630946695805,
+              "p99": 0.04552427679300308,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-08": {
+          "mask": 62,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0031471499241888523,
+              "rms": 0.05381762236356735,
+              "p99": 0.1761244237422943,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.002335504861548543,
+              "rms": 0.019290989264845848,
+              "p99": 0.07086829841136932,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-09": {
+          "mask": 61,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0022693739738315344,
+              "rms": 0.032092656940221786,
+              "p99": 0.11745139956474304,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0023585171438753605,
+              "rms": 0.012261190451681614,
+              "p99": 0.042842891067266464,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-10": {
+          "mask": 59,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.002063788240775466,
+              "rms": 0.03542711213231087,
+              "p99": 0.11713381111621857,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0023153526708483696,
+              "rms": 0.012623659335076809,
+              "p99": 0.04375834763050079,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-11": {
+          "mask": 55,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.002237179083749652,
+              "rms": 0.03494621440768242,
+              "p99": 0.12001364678144455,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.0025087737012654543,
+              "rms": 0.013026143424212933,
+              "p99": 0.045589301735162735,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-12": {
+          "mask": 47,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0023658922873437405,
+              "rms": 0.032321032136678696,
+              "p99": 0.11743658781051636,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.002470128471031785,
+              "rms": 0.012955459766089916,
+              "p99": 0.04433382675051689,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-13": {
+          "mask": 31,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.047360438853502274,
+              "bias": -0.0025599459186196327,
+              "rms": 0.0386771634221077,
+              "p99": 0.11562325805425644,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.14689265191555023,
+              "bias": -0.002609500428661704,
+              "rms": 0.012381473556160927,
+              "p99": 0.04279959946870804,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "hall-switch-14": {
+          "mask": 0,
+          "reset": true,
+          "routing": true,
+          "finite": true,
+          "sky": {
+            "all_receivers": {
+              "pixels": 518400,
+              "reference_mean": 0.0270522627979517,
+              "bias": -0.0030561641324311495,
+              "rms": 0.046672627329826355,
+              "p99": 0.1678394079208374,
+              "unexpected_zeros": 0,
+              "passed": true
+            },
+            "sponza_floor": {
+              "pixels": 110395,
+              "reference_mean": 0.08079583197832108,
+              "bias": -0.002623493317514658,
+              "rms": 0.017866002395749092,
+              "p99": 0.06491923332214355,
+              "unexpected_zeros": 0,
+              "passed": true
+            }
+          },
+          "evidence": {
+            "manifest": "build\\p2-p4-acceptance-20261013\\backends-final\\hall-switching.inputs.json",
+            "preexisting_present_hazards": 10,
+            "sky_cache_evaluated": 22997,
+            "sky_cache_center_fallback": 0
+          },
+          "passed": true
+        },
+        "sky-cache-isolation": {
+          "means": {
+            "voxel": 0.11415667831897736,
+            "hardware": 0.11872043460607529
+          },
+          "ratio": 1.039978005266988,
+          "passed": true
+        }
+      },
+      "complete": true,
+      "passed": true
+    }
+  },
+  "report_files": {
+    "compute_convergence": {
+      "path": "build\\p2-p4-acceptance-20261013\\convergence\\convergence-results.json",
+      "sha256": "bb6d4f8e4b47f1a0ac5852469364884bd5a61da3b011cd1c46d654cf6a69e883"
+    },
+    "flagpoles": {
+      "path": "build\\p2-p4-acceptance-20261013\\flagpoles-final\\report.json",
+      "sha256": "d5065e9d94c1f3244ff7868b9115830fedf7de01987279caf721164314cb12e7"
+    },
+    "feature_backends": {
+      "path": "build\\p2-p4-acceptance-20261013\\backends-final\\report.json",
+      "sha256": "4afbae59b5ee04b43e8266584c93d9a4eb68154ee7763c67a8adfa7edc014f9e"
+    }
+  },
+  "retained_evidence": {
+    "hardware_shipping": {
+      "path": "build/p0-p4-resolution/final-hardware-reset/static-results.json",
+      "sha256": "4a7a199cf13810cf0819a4bb5e3e88bddd5cbd2d83df3ffbbc3f1b1a8e5d0300"
+    },
+    "compute_shipping": {
+      "path": "build/p0-p4-resolution/final-voxel/static-results.json",
+      "sha256": "7f76b114da691b57cc250523b1403f37f0f2df08bedb5fa26a31758fc042cc3e"
+    },
+    "reset_settling": {
+      "path": "build/p0-p4-resolution/final-hardware-reset/settling-results.json",
+      "sha256": "cc68be2480a489362fab222aaaa49154b091a5ada067a1a014c715665c9814e9"
+    },
+    "independent_rt": {
+      "path": "build/p0-p4-resolution/independent-rt/report.json",
+      "sha256": "ae6b706a682fb33b320b9e06e41e7956460df1db15ad310510576f3ddae7829e"
+    },
+    "configuration_matrix": {
+      "path": "build/p0-p4-resolution/configuration-matrix/matrix-results.json",
+      "sha256": "4cb498d8147ef8131be51c9318c72f725eaa3b512463f4a6aa167697da98d5b7"
+    },
+    "fixtures": {
+      "path": "build/p0-p4-resolution/coverage/coverage-results.json",
+      "sha256": "11182d7c79d42205cc5efc2f00b2c7468e8976b315d701222184f3dc6d93ebac"
+    },
+    "hardware_motion": {
+      "path": "build/p0-p4-resolution/motion-fixed-hardware/motion-results.json",
+      "sha256": "95e571d8e69b9e8523188adf9cf7e30ce052ebe0fb8aaf787b6df25976d3c702"
+    },
+    "compute_motion": {
+      "path": "build/p0-p4-resolution/motion-fixed-voxel/motion-results.json",
+      "sha256": "0b858b401f64ded363aea0e8b84d16a60b8335cdf4622a1eda3dc0b48ecdd9b8"
+    }
+  }
+}

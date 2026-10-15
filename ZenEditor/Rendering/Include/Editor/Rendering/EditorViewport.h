@@ -4,22 +4,26 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderView.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGMetrics.h"
 
 namespace zen::editor
 {
 struct EditorRenderSnapshot
 {
-    RHIGPUMemoryStats          memory;
-    rc::VoxelGIRuntimeSettings settings;
-    rc::RenderOption           requestedMode{rc::RenderOption::ePBR};
-    rc::RenderOption           renderedMode{rc::RenderOption::ePBR};
-    rc::RenderingStatus        status;
-    platform::VoxelizerMode    effectiveVoxelizer{platform::VoxelizerMode::eCompute};
-    rc::DebugOutputDescription debug;
-    bool                       lightMarkers{false};
-    float                      lightMarkerSize{0.02f};
-    bool                       hardwareQueries{false};
-    std::string                rayQueryReason;
+    RHIGPUMemoryStats              memory;
+    rc::VoxelGIRuntimeSettings     settings;
+    rc::RenderOption               requestedMode{rc::RenderOption::ePBR};
+    rc::RenderOption               renderedMode{rc::RenderOption::ePBR};
+    rc::RenderingStatus            status;
+    platform::VoxelizerMode        effectiveVoxelizer{platform::VoxelizerMode::eCompute};
+    rc::DebugOutputDescription     debug;
+    bool                           lightMarkers{false};
+    float                          lightMarkerSize{0.02f};
+    bool                           hardwareQueries{false};
+    std::string                    rayQueryReason;
+    std::string                    giSelectionReason;
+    bool                           gpuTimingsEnabled{false};
+    HeapVector<rc::RDGNodeMetrics> giPassTimings;
 };
 
 // A completed GPU surface pick. The stamp is the one supplied with the request; the
@@ -68,6 +72,8 @@ public:
 
     EditorRenderSnapshot GetSnapshot() const;
 
+    void SetGPUTimingsEnabled(bool enabled);
+
     void SetRenderMode(rc::RenderOption mode);
 
     // Between frames. GI settings apply only when they change or retryResources is set,
@@ -100,6 +106,8 @@ public:
     RHITexture* GetAssetPreview(SceneAssetId id) const;
 
 private:
+    void UpdateGPUTimings(const rc::RDGMetricsSnapshot& timings);
+
     void BuildPick(rc::RenderGraph& graph);
 
     void BuildBounds(rc::RenderGraph& graph);
@@ -109,6 +117,9 @@ private:
     void CreatePreviews();
 
     rc::RenderDevice&              m_device;
+    bool                           m_gpuTimingsEnabled{false};
+    rc::RDGMetricsOptions          m_previousMetricsOptions;
+    HeapVector<rc::RDGNodeMetrics> m_giPassTimings;
     const EditorScene&             m_editorScene;
     const EditorSelection&         m_selection;
     EditorCamera&                  m_camera;

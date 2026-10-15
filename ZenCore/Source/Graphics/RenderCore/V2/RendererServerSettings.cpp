@@ -10,19 +10,8 @@ bool RendererServer::ValidateShadowResources(const RenderingSettings& settings, 
 {
     const VoxelGISettings& gi = settings.gi.cone;
 
-    const bool hardwareProvider =
-        gi.GetFeatureProvider(VoxelGISettings::Feature::Shadows) == VoxelGISettings::RayProvider::Hardware;
-
-    const uint64_t budget = uint64_t(gi.accelerationStructureBudgetMB) * 1024 * 1024;
-
-    // Readiness matters: supported devices can still fall back after a scene/build failure.
-    // Recheck the proposed provider and budget so edits which select maps are preflighted.
-    const bool hardwareShadows = gi.rtShadows && hardwareProvider && m_pVoxelGI != nullptr && m_pVoxelGI->UsesHardwareQueries()
-                              && m_pVoxelGI->GetSceneRayQuery().IsReady()
-                              && (budget == 0 || m_pVoxelGI->GetSceneRayQuery().GetMemoryBytes() <= budget);
-
-    const bool maps            = settings.debug.output == DebugOutput::eShadow
-                              || (settings.algorithm == RenderAlgorithm::eVoxelGI && gi.shadows && !hardwareShadows);
+    const bool maps           = settings.debug.output == DebugOutput::eShadow
+                             || (settings.algorithm == RenderAlgorithm::eVoxelGI && gi.shadows && !gi.rtShadows);
 
     return !maps || (m_pSceneShadows != nullptr && m_pSceneShadows->Preflight(settings.gi.shadowMapResolution, faces));
 }
@@ -83,9 +72,10 @@ void RendererServer::DestroyVoxelGIResources()
 
 bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requested, bool retryFailedResources)
 {
-    VoxelGIRuntimeSettings settings = requested;
+    VoxelGIRuntimeSettings settings        = requested;
+    const char*            selectionReason = ResolveVoxelGIAutomaticProvider(settings, m_pRenderDevice->GetGPUInfo());
 
-    uint64_t reflectanceBytes       = 0;
+    uint64_t reflectanceBytes              = 0;
 
     bool valid = ValidateVoxelGIResources(settings, reflectanceBytes) == GIResourceStatus::eSuccess && m_pVoxelGI != nullptr
               && m_pRenderDevice->CanReconfigureResources();
@@ -127,9 +117,10 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
                 m_pRenderDevice->CollectCompletedResources();
             }
 
-            m_giSettings    = settings;
+            m_giSettings        = settings;
+            m_giSelectionReason = selectionReason;
 
-            m_voxelizerMode = ResolveVoxelizerMode(settings.voxelizer, m_pRenderDevice->GetGPUInfo());
+            m_voxelizerMode     = ResolveVoxelizerMode(settings.voxelizer, m_pRenderDevice->GetGPUInfo());
 
             if (rebuild)
             {

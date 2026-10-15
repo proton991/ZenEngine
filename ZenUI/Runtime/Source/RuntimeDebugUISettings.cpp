@@ -174,6 +174,7 @@ void RuntimeDebugUI::BuildSettings()
         ImGui::SliderFloat("Indirect intensity", &m_draft.cone.indirectIntensity, 0, 10, "%.2f", ImGuiSliderFlags_AlwaysClamp));
 
     const rc::VoxelGIRenderer* gi = m_device.GetRendererServer()->RequestVoxelGI();
+    MarkGIEdit(DrawGIPresetControls(m_draft, m_device.GetRendererServer()->GetGISelectionReason()));
     MarkGIEdit(DrawLightingBackendControls(m_draft.cone, gi != nullptr && gi->UsesHardwareQueries(),
                                            gi != nullptr ? gi->GetProviderReason() : "GI inactive"));
 

@@ -1,8 +1,8 @@
 # P4 gap execution, 2026-10-10
 
-For the 2026-10-11 checkpoint after P5–P7, see [current acceptance](P0P4Acceptance.md): P1 passes, the recorded candidate passes 18/18 independent RT, 10/10 hardware shipping, 10/10 compute shipping and 16/16 reset cases. The subsequent per-feature backend controls are built and pass focused routing tests. P4e remains open for the latest flagpole comparison and current-revision image acceptance; further sweeps are deferred. The runs below retain their original configurations and results.
+Current status, 2026-10-13: **P4 is accepted on the agreed tested scope.** The [P2/P3/P4e closeout](P2P4Acceptance.md) completes the current flagpole and explicit-backend image checks and records the final shader fixes. P8, unavailable platforms and far-origin work retain their stated scope. Everything below is the dated October 10 investigation, not the current failure list.
 
-**P4 is not accepted.** This is the implementation and measurement record for [P4Gaps.md](P4Gaps.md). Error limits, the five shipping-gate environments, the nine ground-truth environments, camera matrices, four diffuse rays, 32 history frames and five edge-stopping iterations are unchanged. Failed estimator probes were restored; none is a shipping implementation.
+**Historical October 10 status: P4 was not accepted.** This is the implementation and measurement record for [P4Gaps.md](P4Gaps.md). Error limits, the five shipping-gate environments, the nine ground-truth environments, camera matrices, four diffuse rays, 32 history frames and five edge-stopping iterations are unchanged. Failed estimator probes were restored; none is a shipping implementation.
 
 Final sweep: maximum full-image/floor shipping bias is **0.46%**. After the review's [flat default normal fix](#flat-default-normal-fix-review-2026-10-10) and [surface-agreement fix](#surface-agreement-at-shared-edges-review-2026-10-10), converged references pass **all 18 views** (hotel hall 1.51% excess). Before them: 16/18 (hotel 3.87%, qwantani 4.62%), then 17/18 (hotel 3.13%). The [G1 sky estimator](#g1-sky-estimator-2026-10-10) reduces gating shipping failures from seven of ten pairs to one (kloppenheim hall, P99 26.68%) with a maximum shipping bias of 0.25%. With the [bias correction removed](#bias-correction-removed-2026-10-10), hotel hall also fails on three isolated all-miss pixels the correction had hidden: two of ten. Provider-switch settling also fails. Large-coordinate rendering fails and is moved out of P4 ([decision 8](P4Gaps.md#decisions-2026-10-10)). Detailed numerical evidence is saved in [p4-gap-results.json](p4-gap-results.json).
 
@@ -63,7 +63,7 @@ The position target adds 16 bytes/pixel. The seven RGBA32F correction targets de
 
 ## Reproduction and artifacts
 
-Use the Python environment from `tools/requirements-gi-quality.txt`; system Python may lack NumPy, Mitsuba and Embree. Capture commands mutate `Data/engine.cfg` transactionally, so run them serially. Offline truth rendering may run independently.
+Use the Python environment `build/venv` (`tools/requirements-gi-quality.txt`); system Python lacks NumPy, Mitsuba and Embree. Capture commands mutate `Data/engine.cfg` transactionally, so run them serially. Offline truth rendering may run independently.
 
 ```powershell
 python tools/ground_truth_sweep.py --exe build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe --scene PATH/TO/Sponza/glTF/Sponza.gltf --dataset build/ground-truth/dataset-p4-corrected --output build/p4-gaps/acceptance-verified

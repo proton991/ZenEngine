@@ -990,6 +990,7 @@ struct DemoOptions
 
     std::string capturePath;
     std::string providerSwitchCapturePath;
+    bool        individualFeatureSwitches{false};
     std::string originStressCapturePath;
     std::string stabilityCapturePath;
     std::string bounceLightCapturePath;
@@ -997,6 +998,7 @@ struct DemoOptions
     std::string geometryMotionCapturePath;
     std::string independentViewsCapturePath;
     std::string lightingCapturePath;
+    std::string rayCountCapturePath;
     std::string voxelCapturePath;
     bool        voxelReference{false};
     bool        voxelLifecycle{false};
@@ -1080,9 +1082,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 
             valid                    = !options.voxelCapturePath.empty();
         }
-        else if (argument.starts_with("--capture-provider-switching="))
+        else if (argument.starts_with("--capture-provider-switching=") || argument.starts_with("--capture-feature-switching="))
         {
-            options.providerSwitchCapturePath = argument.substr(29);
+            options.providerSwitchCapturePath = argument.substr(argument.find('=') + 1);
+            options.individualFeatureSwitches = argument.starts_with("--capture-feature-switching=");
             valid                             = !options.providerSwitchCapturePath.empty();
         }
         else if (argument.starts_with("--capture-origin-stress="))
@@ -1120,6 +1123,11 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
             options.lightingCapturePath = argument.substr(19);
 
             valid                       = !options.lightingCapturePath.empty();
+        }
+        else if (argument.starts_with("--capture-ray-counts="))
+        {
+            options.rayCountCapturePath = argument.substr(sizeof("--capture-ray-counts=") - 1);
+            valid                       = !options.rayCountCapturePath.empty();
         }
 
         else if (argument == "--voxel-reference")
@@ -1369,6 +1377,11 @@ int main(int argc, char** pArgv)
         // Extra diagnostic capture graphs are outside the requested profiling workload.
         pDemo->StopProfiling();
 
+        if (result == 0 && !options.rayCountCapturePath.empty())
+        {
+            result = pDemo->CaptureRayCounts(options.rayCountCapturePath) ? 0 : 1;
+        }
+
         if (result == 0 && !options.lightingCapturePath.empty())
         {
             result = pDemo->CaptureLighting(options.lightingCapturePath) ? 0 : 1;
@@ -1376,7 +1389,8 @@ int main(int argc, char** pArgv)
 
         if (result == 0 && !options.providerSwitchCapturePath.empty())
         {
-            result = pDemo->CaptureProviderSwitching(options.providerSwitchCapturePath) ? 0 : 1;
+            result =
+                pDemo->CaptureProviderSwitching(options.providerSwitchCapturePath, options.individualFeatureSwitches) ? 0 : 1;
         }
         if (result == 0 && !options.originStressCapturePath.empty())
         {
@@ -1448,7 +1462,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-provider-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

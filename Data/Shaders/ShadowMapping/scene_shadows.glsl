@@ -1,7 +1,7 @@
 #ifndef ZEN_SCENE_SHADOWS
 #define ZEN_SCENE_SHADOWS
 #include "../Common/scene_lighting.glsl"
-#ifdef HARDWARE_SHADOWS
+#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
 #include "../VoxelGI/hybrid_provider.glsl"
 
 float SceneLightVisibility(int lightIndex,vec3 position,vec3 normal)
@@ -25,7 +25,7 @@ float SceneLightVisibility(int lightIndex,vec3 position,vec3 normal)
                 distanceToLight=uintBitsToFloat(floatBitsToUint(distanceToLight)-uint(distanceToLight>0.0));
             }
             if(distanceToLight>0.0)
-                visibility=HardwareTraceRay(origin,direction,distanceToLight,false).hit ? 0.0 : 1.0;
+                visibility=HybridTraceRay(0,origin,direction,distanceToLight).hit ? 0.0 : 1.0;
         }
     }
     return visibility;

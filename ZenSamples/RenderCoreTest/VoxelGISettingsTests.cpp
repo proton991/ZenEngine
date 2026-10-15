@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include <sstream>
+#include <tuple>
 
 namespace
 {
@@ -17,6 +18,7 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
                               "voxel_resolution=65",
                               "voxel_gi_cone_count=5",
                               "voxel_gi_samples=3",
+                              "voxel_gi_adaptive_sampling=1",
                               "voxel_gi_history_frames=0",
                               "voxel_gi_history_frames=257",
                               "voxel_gi_temporal=1",
@@ -114,12 +116,16 @@ TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
 TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
 {
     std::istringstream     stream("voxel_gi_samples=4\nvoxel_gi_history_frames=64\nvoxel_gi_ray_provider=hardware\n"
+                                  "voxel_gi_adaptive_sampling=false\n"
                                   "voxel_gi_temporal=false\nvoxel_gi_filter=false\nvoxel_gi_specular_occlusion=false\n"
                                   "voxel_gi_reflections=false\nvoxel_gi_rt_shadows=false\n");
     platform::ConfigLoader config(stream);
     VoxelGIRuntimeSettings settings;
     ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
     EXPECT_EQ(settings.cone.samples, 4u);
+    EXPECT_FALSE(settings.cone.adaptiveSampling);
+    EXPECT_FALSE(settings.cone.UsesAdaptiveSampling());
+    EXPECT_FALSE(settings.cone.UsesAdaptiveSampling());
     EXPECT_EQ(settings.cone.historyFrames, 64u);
     EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Hardware);
     EXPECT_FALSE(settings.cone.temporal);
@@ -140,6 +146,123 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
     platform::ConfigLoader invalidConfig(invalidStream);
     EXPECT_FALSE(LoadVoxelGIRuntimeSettings(invalidConfig, settings));
     EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Rays);
+}
+
+TEST(VoxelGIRuntimeSettings, AdaptiveBudgetIsIndependentOfTraversalBackend)
+{
+    VoxelGISettings settings;
+    // Both backends sample the same triangle visibility distribution.
+    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Hardware);
+    EXPECT_TRUE(settings.UsesAdaptiveSampling());
+    settings.referenceSamples = 1024;
+    EXPECT_FALSE(settings.UsesAdaptiveSampling());
+    settings.referenceSamples = 0;
+    settings.samples          = 2;
+    EXPECT_FALSE(settings.UsesAdaptiveSampling());
+}
+
+TEST(VoxelGIRuntimeSettings, ReferenceSamplesAcceptOnlyTheDiagnosticBudgets)
+{
+    // 256 x 256 frames splits the 1024 x 64 tier reference into frames below the GPU watchdog.
+    for (uint32_t samples : {0u, 256u, 1024u, 4096u})
+    {
+        VoxelGISettings settings;
+        settings.referenceSamples = samples;
+        EXPECT_TRUE(ValidateVoxelGISettings(settings)) << samples;
+        EXPECT_EQ(settings.UsesAdaptiveSampling(), samples == 0) << samples;
+    }
+    for (uint32_t samples : {1u, 128u, 512u, 2048u})
+    {
+        VoxelGISettings settings;
+        settings.referenceSamples = samples;
+        EXPECT_FALSE(ValidateVoxelGISettings(settings)) << samples;
+    }
+}
+
+TEST(VoxelGIRuntimeSettings, PresetsAllowExplicitOverridesAndRejectInvalidNamesTransactionally)
+{
+    VoxelGIRuntimeSettings settings;
+    for (uint32_t index = 1; index <= 4; ++index)
+    {
+        const VoxelGIPreset    preset = static_cast<VoxelGIPreset>(index);
+        std::istringstream     stream(std::string("voxel_gi_preset=") + GetVoxelGIPresetName(preset));
+        platform::ConfigLoader config(stream);
+        ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+        EXPECT_EQ(GetVoxelGIPreset(settings), preset);
+    }
+    std::istringstream     overrides("voxel_gi_preset=ultra\nvoxel_resolution=64\nvoxel_gi_ray_provider=voxel\n");
+    platform::ConfigLoader overrideConfig(overrides);
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(overrideConfig, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 0u);
+    const VoxelGIRuntimeSettings previous = settings;
+    std::istringstream           invalid("voxel_gi_preset=invalid\n");
+    platform::ConfigLoader       invalidConfig(invalid);
+    EXPECT_FALSE(LoadVoxelGIRuntimeSettings(invalidConfig, settings));
+    EXPECT_EQ(settings, previous);
+    EXPECT_FALSE(ApplyVoxelGIPreset(VoxelGIPreset::Custom, settings));
+    EXPECT_EQ(settings, previous);
+    // The name reported for unmatched settings loads: no preset baseline, explicit keys still apply.
+    std::istringstream     custom(std::string("voxel_gi_preset=") + GetVoxelGIPresetName(VoxelGIPreset::Custom)
+                                  + "\nvoxel_resolution=128\nvoxel_gi_samples=2\n");
+    platform::ConfigLoader customConfig(custom);
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(customConfig, settings));
+    EXPECT_EQ(settings.resolution, 128u);
+    EXPECT_EQ(settings.cone.samples, 2u);
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
+    std::istringstream     unspecified("voxel_gi_preset=custom\n");
+    platform::ConfigLoader unspecifiedConfig(unspecified);
+    VoxelGIRuntimeSettings defaults;
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(unspecifiedConfig, settings));
+    EXPECT_EQ(settings.cone, defaults.cone);
+}
+
+TEST(VoxelGIRuntimeSettings, AutomaticProviderFollowsRayQueryCapabilityAndKeepsExplicitFeatures)
+{
+    VoxelGIRuntimeSettings settings;
+    RHIGPUInfo             gpu;
+    gpu.rayQuery = {true, true, true, true, true, 256};
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 63u);
+    // Device and driver identity never select the tier.
+    for (const auto& [vendor, device, driver] :
+         {std::tuple{0x10DEu, 0x2C02u, 0u}, std::tuple{0x1002u, 0x744Cu, 1u}, std::tuple{0x8086u, 0x56A0u, 0xFFFFFFFFu}})
+    {
+        gpu.vendorID         = vendor;
+        gpu.deviceID         = device;
+        gpu.driverVersionRaw = driver;
+        ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+        EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
+        EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Hardware);
+    }
+    // Inherited Auto is resolved for any configuration, not only the Medium preset.
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    settings.resolution = 128;
+    EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 63u);
+    // Each missing capability selects Compute; explicit per-feature requests survive.
+    for (bool RHIRayQueryCapabilities::* feature :
+         {&RHIRayQueryCapabilities::bufferDeviceAddress, &RHIRayQueryCapabilities::accelerationStructure,
+          &RHIRayQueryCapabilities::rayQuery, &RHIRayQueryCapabilities::graphicsBuild,
+          &RHIRayQueryCapabilities::triangleFloat3})
+    {
+        gpu.rayQuery          = {true, true, true, true, true, 256};
+        gpu.rayQuery.*feature = false;
+        ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+        settings.cone.SetFeatureProvider(VoxelGISettings::Feature::Shadows, VoxelGISettings::RayProvider::Hardware);
+        EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_unavailable");
+        EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 32u);
+    }
+    gpu.rayQuery = {true, true, true, true, true, 0};
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_unavailable");
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 0u);
+    // Explicit backends are never re-resolved.
+    gpu.rayQuery = {true, true, true, true, true, 256};
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Low, settings));
+    EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "explicit_provider");
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 0u);
 }
 
 TEST(VoxelGIRuntimeSettings, RejectsInvalidEnumsAndNonFiniteAPIValues)

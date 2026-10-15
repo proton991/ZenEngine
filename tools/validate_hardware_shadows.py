@@ -1,9 +1,10 @@
-"""P7 hard-shadow captures, independent CPU visibility, and map/ray cost comparison.
+"""P7 hard-shadow captures, independent GPU visibility, and map/ray cost comparison.
 
 Generated assets and reports stay under --output. engine.cfg is restored byte-for-byte.
-The image oracle multiplies an unshadowed direct-light capture by independent Embree
-segment visibility. Injection is checked at the captured voxel owners against the
-same triangle oracle. No temporal or spatial shadow reconstruction is involved.
+The image oracle multiplies an unshadowed direct-light capture by independent segment
+visibility traced with Mitsuba's CUDA backend (no CPU fallback). Injection is checked at
+the captured voxel owners against the same triangle oracle. No temporal or spatial shadow
+reconstruction is involved.
 """
 import argparse
 import base64
@@ -16,9 +17,12 @@ from pathlib import Path
 import subprocess
 
 import numpy as np
-from environment_reference import load_gltf, normalize, self_test
+from environment_reference import Environment, normalize
+from ground_truth_mitsuba import (build_scene, load_gltf_primitives, setup_mitsuba, transparent,
+                                  validate_alpha_continuation)
 from hybrid_gi_fixtures import quad
 from voxelization_fixtures import Fixture, rgba_png
+from capture_hybrid_gi import capture_configuration
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -100,19 +104,21 @@ class Captures:
         self.env.update(VK_LOADER_LAYERS_DISABLE='~implicit~', DISABLE_RTSS_LAYER='1', VK_LAYER_VALIDATE_SYNC='1')
 
     def run(self, scene, tag, hardware=True, shadows=True, rt=True, frames=4, width=320, height=180, voxels=False,
-            benchmark=False):
+            benchmark=False, software=False):
+        software = software or getattr(self.args, 'software', False)
+        rt = rt and not software
         prefix = self.args.output/tag
         settings = dict(default_model_path=scene.as_posix(), scene_lighting_override='false',
             environment_lighting='false', skybox_visible='false', voxelizer='comp', voxel_resolution=64,
             voxel_reflectance_policy='averaged' if voxels else 'owner', voxel_reflectance_budget_mb=512,
             voxel_gi_indirect_intensity=0, voxel_gi_environment_lighting='false', voxel_gi_emissive_lighting='false',
-            voxel_gi_analytic_lighting='true', voxel_gi_ray_provider='auto', voxel_gi_samples=1,
+            voxel_gi_analytic_lighting='true', voxel_gi_ray_provider='hardware' if hardware and not software else 'voxel', voxel_gi_samples=1,
             voxel_gi_reference_samples=0, voxel_gi_reflections='false', voxel_gi_bounce_source='cone',
             voxel_gi_rt_shadows=str(hardware).lower(), voxel_gi_shadow_enabled=str(shadows).lower(),
             shadow_map_resolution=1024, light_count=0)
         settings.update({'dynamic_light.enabled': 'false', 'light_markers.enabled': 'false'})
         assert self.config.read_bytes() == self.active, 'External config edit; aborting'
-        self.active = self.original+b'\n'+''.join(f'{k}={v}\n' for k, v in settings.items()).encode()
+        self.active = capture_configuration(self.original, settings)
         self.config.write_bytes(self.active)
         command = [str(self.args.exe), '--no-ui', '--fixed-step', '--mode=3', f'--frames={frames-1}',
                    f'--width={width}', f'--height={height}', f'--profile={prefix}', f'--capture-lighting={prefix}',
@@ -133,6 +139,8 @@ class Captures:
         assert result.returncode == 0 and not errors, (tag, result.returncode, errors[:4])
         meta = json.loads(Path(str(prefix)+'.lighting.json').read_text())
         assert meta['hardware_shadows'] == (hardware and rt and shadows), meta
+        if hardware and shadows and not rt:
+            assert meta['analytic_visibility'] == 'software_shadow_rays', meta
         lighting = np.fromfile(str(prefix)+'.lighting.bin', '<f4').reshape(height, width, 7, 4)
         hybrid = np.fromfile(str(prefix)+'.hybrid.bin', '<f4').reshape(height, width, 13, 4)
         assert np.isfinite(lighting).all() and np.isfinite(hybrid[:, :, :12]).all()
@@ -141,6 +149,65 @@ class Captures:
     def restore(self):
         assert self.config.read_bytes() == self.active, 'External config edit; refusing to overwrite'
         self.config.write_bytes(self.original)
+
+
+class SegmentOracle:
+    """Shadow-segment visibility on the GPU: Mitsuba's CUDA backend over the glTF triangles in
+    the renderer's normalization. Masked texels are transparent and traversal continues; both
+    faces of every surface block. Shares only the scene file with the engine."""
+
+    def __init__(self, mi, path=None, primitives=None, max_layers=64):
+        self.mi, self.max_layers, self.transform = mi, max_layers, None
+        alpha = None
+        if path is not None:
+            primitives, alpha, self.transform = load_gltf_primitives(path)
+        self.scene, self.dr, _ = build_scene(mi, primitives, alpha, Environment(constant=(0, 0, 0)), 16)
+
+    def blocked(self, origins, directions, maximum=np.inf):
+        mi, dr = self.mi, self.dr
+        count = len(origins)
+        limit = np.broadcast_to(np.asarray(maximum, float), (count,))
+        origin = mi.Point3f(*[mi.Float(origins[:, i].astype(np.float32)) for i in range(3)])
+        direction = mi.Vector3f(*[mi.Float(directions[:, i].astype(np.float32)) for i in range(3)])
+        remaining = mi.Float(np.where(np.isfinite(limit), limit, np.finfo(np.float32).max).astype(np.float32))
+        blocked = dr.zeros(mi.Bool, count)
+        active = mi.Bool(np.ones(count, bool))
+        for _ in range(self.max_layers):
+            ray = mi.Ray3f(origin, direction)
+            ray.maxt = remaining
+            si = self.scene.ray_intersect(ray, active)
+            hit = active & si.is_valid()
+            passes = transparent(mi, si, si.bsdf(ray), hit)
+            blocked |= hit & ~passes
+            # A rejected candidate keeps the line of sight and the segment endpoint, with the
+            # same one-micro-unit forward progress as the sky ground truth.
+            origin = dr.select(passes, si.p + direction * 1e-6, origin)
+            remaining = dr.select(passes, remaining - (si.t + 1e-6), remaining)
+            active = passes & (remaining > 0)
+            dr.eval(origin, remaining, blocked, active)
+            if not dr.any(active):
+                break
+        if dr.any(active):
+            raise RuntimeError('Shadow alpha traversal exhausted max_layers')
+        return np.array(blocked, bool)
+
+
+def oracle_self_test(mi):
+    """Closed-form segment fixtures for the shadow oracle before it judges any capture."""
+    def sheet(z, masked=False):
+        return dict(positions=np.array([[-1, -1, z], [1, -1, z], [1, 1, z], [-1, 1, z]], float),
+                    faces=np.array([[0, 1, 2], [0, 2, 3]]), normals=None, uv=np.zeros((4, 2)), double_sided=False,
+                    masked=masked, cutoff=.5, alpha=0 if masked else 1, vertex_alpha=np.ones(4), texture=None)
+    oracle = SegmentOracle(mi, primitives=[sheet(.1, masked=True), sheet(.2)])
+    origins = np.zeros((5, 3))
+    origins[3:, 2] = .3
+    directions = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, -1], [0, 0, -1]], float)
+    # Short of the masked sheet; through it but short of the opaque sheet; into the opaque
+    # single-sided sheet's back face (+z normal); toward its front face, short of it and through it.
+    actual = oracle.blocked(origins, directions, np.array([.05, .15, .3, .05, .25]))
+    expected = np.array([False, False, True, False, True])
+    assert np.array_equal(actual, expected), (actual, expected)
+    return dict(segments='pass', alpha_continuation=validate_alpha_continuation(mi), variant=mi.variant())
 
 
 def visibility(oracle, positions, normals, light):
@@ -155,12 +222,12 @@ def visibility(oracle, positions, normals, light):
         delta = np.array(light['position_range'][:3])-origins
         maximum = np.linalg.norm(delta, axis=1)
         direction = normalize(delta)
-    return oracle.intersect(origins, direction, maximum)[0] < 0
+    return ~oracle.blocked(origins, direction, maximum)
 
 
-def compare(scene, shadowed, unshadowed):
+def compare(mi, scene, shadowed, unshadowed):
     prefix, meta, lighting, hybrid, baseline = shadowed
-    oracle, _ = load_gltf(scene)
+    oracle = SegmentOracle(mi, scene)
     mask = hybrid[:, :, 8, 3] > 0
     positions = hybrid[:, :, 8, :3][mask]
     normals = hybrid[:, :, 10, :3][mask]
@@ -181,7 +248,7 @@ def compare(scene, shadowed, unshadowed):
     return report
 
 
-def compare_injection(scene, capture):
+def compare_injection(mi, scene, capture):
     prefix, meta = capture[:2]
     root = str(prefix)+'-voxels'
     volume = json.loads(Path(root+'.json').read_text())
@@ -212,7 +279,7 @@ def compare_injection(scene, capture):
     geometric = normalize(np.cross(ab, ac))
     shading = normalize(((words[cells, 2, None] >> (8*np.arange(3))) & 255)/255.*2-1)
     geometric *= np.where(np.sum(geometric*shading, axis=1) >= 0, 1., -1.)[:, None]
-    oracle, _ = load_gltf(scene)
+    oracle = SegmentOracle(mi, scene)
     light = meta['lights'][0]
     visible = visibility(oracle, positions, geometric, light)
     direction = np.broadcast_to(-np.array(light['direction_type'][:3]), positions.shape).copy()
@@ -249,20 +316,23 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--allow-present-baseline', action='store_true')
     parser.add_argument('--profile', action='store_true')
+    parser.add_argument('--software', action='store_true', help='Validate pure compute triangle queries with RT disabled')
     args = parser.parse_args()
     args.exe = args.exe.resolve()
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
     assets = args.output/'fixtures'
     assets.mkdir(exist_ok=True)
-    reference_fixtures = self_test()
+    # Fail rather than fall back to a CPU backend: the oracle is an independent GPU reference.
+    mi = setup_mitsuba('cuda')
+    reference_fixtures = oracle_self_test(mi)
     runner = Captures(args)
     shaders = hashlib.sha256()
     for shader in sorted((ROOT/'Data/SpvShaders').rglob('*.spv')):
         shaders.update(shader.relative_to(ROOT).as_posix().encode())
         shaders.update(shader.read_bytes())
     results = dict(executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-                   shader_bundle_sha256=shaders.hexdigest(), cpu_reference_fixtures=reference_fixtures,
+                   shader_bundle_sha256=shaders.hexdigest(), reference_fixtures=reference_fixtures,
                    fixtures={}, profiles={})
     try:
         for kind, blocker, forward in [('point', 'opaque', False), ('point', 'beyond', False),
@@ -272,9 +342,9 @@ def main():
             scene = fixture(assets, name, kind, blocker, forward)
             a = runner.run(scene, name, voxels=blocker in ('opaque', 'mask') and not forward)
             b = runner.run(scene, name+'-unshadowed', shadows=False)
-            results['fixtures'][name] = compare(scene, a, b)
+            results['fixtures'][name] = compare(mi, scene, a, b)
             if blocker in ('opaque', 'mask') and not forward:
-                injection = compare_injection(scene, a)
+                injection = compare_injection(mi, scene, a)
                 results['fixtures'][name]['injection'] = injection
                 results['fixtures'][name]['passed'] &= injection['passed']
             print(name, results['fixtures'][name], flush=True)
@@ -283,11 +353,11 @@ def main():
             scene = fixture(assets, name, forward=forward, tilted=True)
             a = runner.run(scene, name)
             b = runner.run(scene, name+'-unshadowed', shadows=False)
-            results['fixtures'][name] = compare(scene, a, b)
+            results['fixtures'][name] = compare(mi, scene, a, b)
             print(name, results['fixtures'][name], flush=True)
         scene = assets/'point-opaque.gltf'
         a = runner.run(scene, 'fallback-requested', rt=False)
-        b = runner.run(scene, 'fallback-maps', hardware=False, rt=False)
+        b = runner.run(scene, 'fallback-software', software=True, rt=False)
         results['fallback_identical'] = bool(np.array_equal(a[2], b[2]))
         scene = fixture(assets, 'scatter', scatter=True)
         capture = runner.run(scene, 'scatter')
@@ -313,7 +383,7 @@ def main():
             # the normalization. Read the actual light position rather than assume
             # which animation tick was captured.
             snapshot = json.loads(scene.read_text())
-            _, transform = load_gltf(scene)
+            transform = load_gltf_primitives(scene)[2]
             displacement = a[1]['lights'][0]['position_range'][0]/transform['scale']
             snapshot['nodes'][1]['translation'] = [displacement, 0, 0]
             snapshot['nodes'][2]['translation'][0] = displacement
@@ -323,8 +393,8 @@ def main():
             # The demo's final capture tick uses wall time even with --fixed-step.
             # Freeze the measured pose for the unshadowed comparison.
             b = runner.run(reference, name+'-unshadowed', shadows=False)
-            results['fixtures'][name] = compare(reference, a, b)
-            injection = compare_injection(reference, a)
+            results['fixtures'][name] = compare(mi, reference, a, b)
+            injection = compare_injection(mi, reference, a)
             results['fixtures'][name]['injection'] = injection
             results['fixtures'][name]['passed'] &= injection['passed']
             print(name, results['fixtures'][name], flush=True)

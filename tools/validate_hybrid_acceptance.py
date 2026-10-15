@@ -25,12 +25,26 @@ FRAMES = (1, 4, 8, 32)
 
 
 def capture(args, prefix, environment, camera, provider, reference=False, settling=False, motion=False,
-            reference_samples=1024, frames=64):
+            reference_samples=1024, frames=64, sky_only=False, compact=False, backend=None, feature_backends=(),
+            strip_normal_maps=False, feature_switching=False):
     command = [sys.executable, str(ROOT / 'tools/capture_hybrid_gi.py'),
                '--exe', str(args.exe), '--scene', str(args.scene), '--output', str(prefix),
                '--camera', camera, '--provider', provider, '--environment-texture', ENVIRONMENTS[environment], '--frames', str(frames),
-               '--bounce', '1', '--bounce-source', 'auto', '--reference-samples', str(reference_samples) if reference else '0']
-    if provider == 'hardware':
+               '--bounce', '0' if sky_only else '1', '--bounce-source', 'cone' if sky_only else 'auto',
+               '--reference-samples', str(reference_samples) if reference else '0']
+    if sky_only:
+        command.append('--no-specular-occlusion')
+    if compact:
+        command.append('--compact')
+    if strip_normal_maps:
+        command.append('--strip-normal-maps')
+    if feature_switching:
+        command.append('--feature-switching')
+    if backend:
+        command += ['--backend', backend]
+    for feature in feature_backends:
+        command += ['--feature-backend', feature]
+    if provider == 'hardware' or backend == 'hardware' or any(v.endswith('=hardware') for v in feature_backends):
         command.append('--rt')
     if settling:
         command += ['--stability', '--provider-switching']
@@ -39,15 +53,24 @@ def capture(args, prefix, environment, camera, provider, reference=False, settli
     subprocess.run(command, cwd=ROOT, check=True)
 
 
-def validate_capture(args, prefix, environment, camera, provider, reference=False, reference_samples=1024, frames=64):
+def validate_capture(args, prefix, environment, camera, provider, reference=False, reference_samples=1024, frames=64,
+                     sky_only=False, feature_mask=None, strip_normal_maps=False, shader_root=None):
     """Reject incomplete, stale or differently configured inputs before comparing."""
     inputs = json.loads(Path(str(prefix) + '.inputs.json').read_text())
     # The caller may supply the archived matching executable after a later build
     # replaces the original bin/ path. Its content hash, checked below, is authoritative.
-    for entry in inputs['source_inputs'] + inputs['shaders']:
+    for entry in inputs['source_inputs']:
         path = Path(entry['path'])
         if not path.exists() or fingerprint(path)['sha256'] != entry['sha256']:
             raise ValueError(f'Stale input for {prefix}: {path}')
+    for entry in inputs['shaders']:
+        path = Path(entry['path'])
+        if shader_root is not None and (not path.exists() or fingerprint(path)['sha256'] != entry['sha256']):
+            path = shader_root / path.relative_to(ROOT / 'Data/SpvShaders')
+            if not path.exists() or fingerprint(path)['sha256'] != entry['sha256']:
+                path = shader_root / entry['sha256'] / path.name
+        if not path.exists() or fingerprint(path)['sha256'] != entry['sha256']:
+            raise ValueError(f'Stale shader for {prefix}: {path}')
     if inputs['executable']['sha256'] != fingerprint(args.exe)['sha256']:
         raise ValueError(f'Wrong executable for {prefix}')
     if fingerprint(args.scene)['sha256'] not in {entry['sha256'] for entry in inputs['source_inputs']}:
@@ -56,23 +79,35 @@ def validate_capture(args, prefix, environment, camera, provider, reference=Fals
     source = json.loads(args.scene.read_text(encoding='utf-8'))
     if (scene['nodes'][-1].get('matrix') != CAMERA_MATRICES[camera]
             or any('normalTexture' in m for m in scene.get('materials', []))
-            != any('normalTexture' in m for m in source.get('materials', []))):
+            != (not strip_normal_maps and any('normalTexture' in m for m in source.get('materials', [])))):
         raise ValueError(f'Wrong camera or normal-map configuration for {prefix}')
     settings = inputs['settings']
     expected = dict(environment_texture=ENVIRONMENTS[environment], environment_lighting='true',
                     environment_intensity=1, environment_rotation_degrees=0, scene_lighting_override='true', light_count=0,
-                    voxel_gi_shadow_enabled='false', voxel_gi_specular_occlusion='true', voxel_gi_ray_provider=provider,
-                    voxel_gi_indirect_intensity=1, voxel_gi_bounce_source='auto', voxel_gi_history_frames=32,
+                    voxel_gi_shadow_enabled='false', voxel_gi_specular_occlusion='false' if sky_only else 'true',
+                    voxel_gi_ray_provider=provider, voxel_gi_indirect_intensity=0 if sky_only else 1,
+                    voxel_gi_bounce_source='cone' if sky_only else 'auto', voxel_gi_history_frames=32,
                     voxel_gi_samples=4, voxel_gi_reference_samples=reference_samples if reference else 0,
                     voxel_gi_temporal='true', voxel_gi_filter='true', voxel_resolution=64)
     if any(settings.get(key) != value for key, value in expected.items()):
         raise ValueError(f'Wrong settings for {prefix}')
     metadata, data = load(prefix)
     expected = dict(width=960, height=540, frame=frames, ray_provider=provider, sample_seed=0,
-                    sample_count=reference_samples if reference else 4, indirect_intensity=1,
+                    sample_count=reference_samples if reference else 4, indirect_intensity=0 if sky_only else 1,
                     history_limit=256 if reference else 32, filter_iterations=0 if reference else 5,
-                    temporal=True, reflections=provider == 'hardware',
-                    bounce_source='rays' if provider == 'hardware' else 'cone')
+                    temporal=True, reflections=provider == 'hardware' and not sky_only,
+                    bounce_source='rays' if provider == 'hardware' and not sky_only else 'cone')
+    if feature_mask is not None:
+        expected.update(hardware_feature_mask=feature_mask, requested_hardware_feature_mask=feature_mask,
+                        ray_provider='hardware' if feature_mask else 'voxel',
+                        receiver_position='raster_fp32' if feature_mask & 27 else 'depth',
+                        reflections=True, bounce_source='rays' if feature_mask & 8 else 'cone')
+    if 'adaptive_sampling' in metadata:
+        hardware_sky = bool(feature_mask & 1) if feature_mask is not None else provider == 'hardware'
+        adaptive = (settings.get('voxel_gi_adaptive_sampling', 'true') == 'true'
+                    and not hardware_sky and not reference)
+        expected.update(adaptive_sampling=adaptive, sample_count_max=reference_samples if reference else 6 if adaptive else 4,
+                        angular_guide_resolution=8)
     if any(metadata.get(key) != value for key, value in expected.items()):
         raise ValueError(f'Wrong capture metadata for {prefix}')
     if not np.isfinite(data).all() or not (data[:, :, 8, 3] > 0).any():
@@ -89,7 +124,9 @@ def validate_capture(args, prefix, environment, camera, provider, reference=Fals
 
 
 def metrics(candidate, reference):
-    return {channel: compare(candidate, reference, channel=channel) for channel in ('sky', 'bounce', 'diffuse')}
+    # Frozen Sponza views gate both regions; an empty floor mask fails instead of being skipped.
+    return {channel: compare(candidate, reference, channel=channel, required=('all_receivers', 'sponza_floor'))
+            for channel in ('sky', 'bounce', 'diffuse')}
 
 
 def passed(regions):
@@ -211,7 +248,8 @@ def motion_view(args, environment, camera):
 def summary(report):
     lines = ['# Hybrid GI acceptance', '',
              f'Commit: `{report["commit"]}`. Provider: `{report["provider"]}`. Complete: {report["complete"]}.', '',
-             'Frozen preset: four diffuse rays, 32-frame history, five filter iterations, 64 static frames. '
+             'Four configured diffuse rays; effective adaptive budgets are recorded in each capture. '
+             '32-frame history, five filter iterations, 64 static frames. '
              'Bias / RMS / P99 / unexpected zeros; limits 2% / 8% / 20% / 0.', '',
              '| Check | Channel | All receivers | Floor | Pass |', '| --- | --- | --- | --- | --- |']
     for phase, views in report['results'].items():

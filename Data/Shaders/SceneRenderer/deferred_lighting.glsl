@@ -11,7 +11,7 @@ layout (set = 1, binding = 5) uniform sampler2D depthMap;
 layout (set = 1, binding = 6) uniform samplerCube envIrradianceMap;
 layout (set = 1, binding = 7) uniform samplerCube envPrefilteredMap;
 layout (set = 1, binding = 8) uniform sampler2D lutBRDFMap;
-#ifdef HARDWARE_SHADOWS
+#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
 layout(set=4,binding=3) uniform sampler2D shadowReceiverPosition;
 #endif
 
@@ -75,7 +75,7 @@ void main() {
 	if (depth >= 1.0) discard;
 	vec3 relativePosition = ReconstructGBufferPosition(gl_FragCoord.xy, textureSize(depthMap, 0), depth, gbuffer.inverseViewProjection);
 	vec3 worldPos = relativePosition + gbuffer.worldOrigin.xyz;
-#ifdef HARDWARE_SHADOWS
+#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
     worldPos=texelFetch(shadowReceiverPosition,ivec2(gl_FragCoord.xy),0).xyz;
 #endif
 	vec3 N = DecodeGBufferNormal(SURFACE_SAMPLE(normalMap).rg);

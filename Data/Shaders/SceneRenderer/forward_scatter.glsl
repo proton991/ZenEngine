@@ -6,7 +6,7 @@
 #include "../ShadowMapping/scene_shadows.glsl"
 #endif
 layout(set=1,binding=0) uniform uCameraData { mat4 uProjViewMatrix; mat4 uProjMatrix; mat4 uViewMatrix; };
-#ifndef HARDWARE_SHADOWS
+#if !defined(HARDWARE_SHADOWS) && !defined(SOFTWARE_SHADOWS)
 struct NodeData { mat4 modelMatrix; mat4 normalMatrix; vec4 surfaceScale; };
 layout(std140,set=1,binding=1) readonly buffer NodeBuffer { NodeData nodesData[]; };
 layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
@@ -23,7 +23,7 @@ void main()
     vec3 N = SurfaceNormal(material);
 #ifdef VOXEL_GI
     vec3 shadowNormal = GeometricNormal(material);
-#ifdef HARDWARE_SHADOWS
+#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
     shadowNormal = TriangleNormal(shadowNormal);
 #endif
 #endif

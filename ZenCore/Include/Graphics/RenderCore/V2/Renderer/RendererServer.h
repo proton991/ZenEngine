@@ -72,6 +72,10 @@ public:
     {
         return m_pVoxelGI;
     }
+    const char* GetGISelectionReason() const
+    {
+        return m_giSelectionReason;
+    }
 
     void SetRenderOption(RenderOption option)
     {
@@ -158,6 +162,7 @@ private:
     RenderingStatus        m_status;
     DebugSelection         m_debug{DebugOutput::eVoxels};
     DebugOutputDescription m_debugDescription;
+    const char*            m_giSelectionReason{"not_selected"};
     bool                   m_frameShadows{false};
     bool                   m_frameGI{false};
 };

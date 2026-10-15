@@ -48,6 +48,8 @@ bool RenderScene::SetInstanceClass(uint32_t instance, uint32_t objectClass)
         m_dirtyClasses              |= m_instanceClasses[instance] | objectClass;
 
         m_instanceClasses[instance]  = objectClass;
+
+        m_triangleRecordsDirty       = true;
     }
 
     return valid;
@@ -62,6 +64,8 @@ bool RenderScene::SetInstanceEnabled(uint32_t instance, bool enabled)
         m_dirtyClasses              |= m_instanceClasses[instance];
 
         m_instanceEnabled[instance]  = enabled ? 1 : 0;
+
+        m_triangleRecordsDirty       = true;
     }
 
     return valid;
@@ -72,8 +76,8 @@ bool RenderScene::SetInstanceTransform(uint32_t instance, const Mat4& worldTrans
     const float determinant = glm::determinant(worldTransform);
 
     bool valid              = instance < m_nodesData.size() && instance < m_instanceClasses.size() && worldTransform[0][3] == 0
-              && worldTransform[1][3] == 0 && worldTransform[2][3] == 0 && worldTransform[3][3] == 1
-              && std::isfinite(determinant) && determinant != 0;
+                           && worldTransform[1][3] == 0 && worldTransform[2][3] == 0 && worldTransform[3][3] == 1
+                           && std::isfinite(determinant) && determinant != 0;
 
     for (uint32_t column = 0; column < 4; ++column)
     {
@@ -240,8 +244,8 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
 
     for (const sg::MaterialTextureData& binding : data.featureTextures)
     {
-        valid &= FiniteMaterialVector(binding.properties)
-              && ValidateMaterialTextureTransform(binding.transform, m_sceneSamplers.size());
+        valid             &= FiniteMaterialVector(binding.properties)
+                          && ValidateMaterialTextureTransform(binding.transform, m_sceneSamplers.size());
 
         const float index  = binding.properties.x;
 
@@ -342,6 +346,32 @@ uint32_t RenderScene::GetVoxelCoverageMask(const sg::AABB& gridBounds) const
     return mask;
 }
 
+void RenderScene::BuildMeshVertexIndices()
+{
+    HeapVector<uint32_t> visited(m_vertices.size(), UINT32_MAX);
+    for (const sg::Node* node : m_pScene->GetRenderableNodes())
+    {
+        const sg::Mesh* mesh = node->GetComponent<sg::Mesh>();
+        if (m_meshVertexIndices.find(mesh) == m_meshVertexIndices.end())
+        {
+            const uint32_t        meshIndex = static_cast<uint32_t>(m_meshVertexIndices.size());
+            HeapVector<uint32_t>& vertices  = m_meshVertexIndices[mesh];
+            for (const sg::SubMesh* primitive : mesh->GetSubMeshes())
+            {
+                for (uint32_t i = 0; i < primitive->GetIndexCount(); ++i)
+                {
+                    const uint32_t vertex = m_indices[primitive->GetFirstIndex() + i];
+                    if (visited[vertex] != meshIndex)
+                    {
+                        visited[vertex] = meshIndex;
+                        vertices.push_back(vertex);
+                    }
+                }
+            }
+        }
+    }
+}
+
 bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2]) const
 {
     bool valid     = true;
@@ -354,14 +384,21 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds
     {
         const uint32_t instance = node->GetRenderableIndex();
 
-        if (GetInstanceMask(instance) != 0)
-        {
-            for (const sg::SubMesh* mesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
-            {
-                for (uint32_t i = 0; i < mesh->GetIndexCount(); ++i)
-                {
-                    const uint32_t vertex = m_indices[mesh->GetFirstIndex() + i];
+        const uint32_t mask     = GetInstanceMask(instance);
 
+        if (mask != 0)
+        {
+            const HashMap<const sg::Mesh*, HeapVector<uint32_t>>::const_iterator vertices =
+                m_meshVertexIndices.find(node->GetComponent<sg::Mesh>());
+
+            valid &= vertices != m_meshVertexIndices.end();
+
+            if (vertices != m_meshVertexIndices.end())
+            {
+                sg::AABB& objectBounds = classBounds[mask == GI_STATIC ? 0 : 1];
+
+                for (uint32_t vertex : vertices->second)
+                {
                     const Vec3 world(m_nodesData[instance].modelMatrix * Vec4(Vec3(m_vertices[vertex].pos), 1));
 
                     valid = valid && std::isfinite(world.x) && std::isfinite(world.y) && std::isfinite(world.z);
@@ -369,8 +406,6 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds
                     bounds.SetMin(world);
 
                     bounds.SetMax(world);
-
-                    sg::AABB& objectBounds = classBounds[GetInstanceMask(instance) == GI_STATIC ? 0 : 1];
 
                     objectBounds.SetMin(world);
 
@@ -398,13 +433,15 @@ bool RenderScene::CommitGeometryUpdates()
 {
     bool valid = m_geometryReady && !m_pRenderDevice->AreSubmissionsBlocked();
 
-    if (valid && (m_dirtyClasses != 0 || m_verticesDirty || m_materialsDirty))
+    if (valid && (m_dirtyClasses != 0 || m_verticesDirty || m_materialsDirty || m_triangleRecordsDirty))
     {
-        const bool geometryChanged             = m_dirtyClasses != 0 || m_verticesDirty;
+        const bool geometryChanged             = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;
 
-        const HeapVector<glm::uvec4> triangles = BuildTriangleRecords();
+        const HeapVector<glm::uvec4> triangles = m_triangleRecordsDirty ? BuildTriangleRecords() : HeapVector<glm::uvec4>();
 
-        const RHIGPUInfo& gpu                  = m_pRenderDevice->GetGPUInfo();
+        const uint32_t triangleCount = m_triangleRecordsDirty ? static_cast<uint32_t>(triangles.size()) : m_voxelTriangleCount;
+
+        const RHIGPUInfo& gpu        = m_pRenderDevice->GetGPUInfo();
 
         uint64_t nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
 
@@ -418,7 +455,7 @@ bool RenderScene::CommitGeometryUpdates()
             {
                 if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
                 {
-                    const HeapVector<Vec2>& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
+                    const sg::VertexTextureCoordinates& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
 
                     for (size_t set = 2; set < std::min(stride, sets.size()); ++set)
                     {
@@ -441,7 +478,7 @@ bool RenderScene::CommitGeometryUpdates()
         valid =
             validUVCoordinates && ComputeGeometryBounds(bounds, classBounds)
             && ValidateGIStorageBuffer(m_nodesData.size(), sizeof(sg::NodeData), gpu, nodeBytes) == GIResourceStatus::eSuccess
-            && ValidateGIStorageBuffer(triangles.size(), sizeof(glm::uvec4), gpu, triangleBytes) == GIResourceStatus::eSuccess
+            && ValidateGIStorageBuffer(triangleCount, sizeof(glm::uvec4), gpu, triangleBytes) == GIResourceStatus::eSuccess
             && ValidateGIStorageBuffer(m_vertices.size(), sizeof(asset::Vertex), gpu, vertexBytes) == GIResourceStatus::eSuccess
             && ValidateGIStorageBuffer(m_materialsData.size(), sizeof(sg::MaterialData), gpu, materialBytes)
                    == GIResourceStatus::eSuccess
@@ -455,7 +492,7 @@ bool RenderScene::CommitGeometryUpdates()
                                                                            "scene_nodes_generation")
                                     : m_pNodeSSBO;
 
-            RHIBuffer* records  = !geometryChanged ? m_pVoxelTriangleBuffer
+            RHIBuffer* records  = !m_triangleRecordsDirty ? m_pVoxelTriangleBuffer
                                 : triangles.empty()
                                     ? nullptr
                                     : m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(triangleBytes),
@@ -480,15 +517,18 @@ bool RenderScene::CommitGeometryUpdates()
                                                                        "scene_uv_generation")
                                 : m_pUVBuffer;
 
-            valid = nodes != nullptr && (triangles.empty() || records != nullptr) && vertices != nullptr && materials != nullptr
-                 && uvCoordinates != nullptr;
+            valid = nodes != nullptr && (triangleCount == 0 || records != nullptr) && vertices != nullptr
+                 && materials != nullptr && uvCoordinates != nullptr;
 
             if (valid)
             {
                 if (geometryChanged)
                 {
                     m_pRenderDevice->DestroyBuffer(m_pNodeSSBO);
+                }
 
+                if (m_triangleRecordsDirty)
+                {
                     m_pRenderDevice->DestroyBuffer(m_pVoxelTriangleBuffer);
                 }
 
@@ -514,7 +554,7 @@ bool RenderScene::CommitGeometryUpdates()
 
                 m_pUVBuffer            = uvCoordinates;
 
-                m_voxelTriangleCount   = static_cast<uint32_t>(triangles.size());
+                m_voxelTriangleCount   = triangleCount;
 
                 m_pScene->GetAABB()    = bounds;
 
@@ -557,20 +597,25 @@ bool RenderScene::CommitGeometryUpdates()
                     }
                 }
 
-                m_dirtyClasses        = 0;
+                m_dirtyClasses         = 0;
 
-                m_dirtySurfaceClasses = 0;
+                m_dirtySurfaceClasses  = 0;
 
-                m_materialsDirty      = false;
+                m_materialsDirty       = false;
 
-                m_verticesDirty       = false;
+                m_verticesDirty        = false;
+
+                m_triangleRecordsDirty = false;
             }
             else
             {
                 if (geometryChanged)
                 {
                     m_pRenderDevice->DestroyBuffer(nodes);
+                }
 
+                if (m_triangleRecordsDirty)
+                {
                     m_pRenderDevice->DestroyBuffer(records);
                 }
 

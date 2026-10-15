@@ -28,6 +28,8 @@ void RendererServer::Init()
         settings.resolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
     }
 
+    m_giSelectionReason = ResolveVoxelGIAutomaticProvider(settings, m_pRenderDevice->GetGPUInfo());
+    LOGI("GI preset {}: {}", GetVoxelGIPresetName(GetVoxelGIPreset(settings)), m_giSelectionReason);
     m_giSettings                = settings;
 
     m_giSettings.asyncCompute   = m_pRenderDevice->GetAsyncComputeMode();
@@ -117,7 +119,9 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
         if (succeeded && renderScene)
         {
-            const bool diagnostic = m_debug.output != DebugOutput::eFinal && m_debug.output != DebugOutput::eDepth;
+            const bool hybridDebug = m_debug.output >= DebugOutput::eGIRawSky && m_debug.output <= DebugOutput::eGIRejection;
+            const bool diagnostic =
+                m_debug.output != DebugOutput::eFinal && m_debug.output != DebugOutput::eDepth && !hybridDebug;
 
             if (diagnostic)
             {
@@ -134,11 +138,15 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                 if (m_frameRenderOption == RenderOption::eVoxelGI)
                 {
-                    m_pVoxelGI->BuildRayQueryGraph();
-                    m_frameGI = true;
+                    m_frameGI = m_pVoxelGI->BuildRayQueryGraph();
+                    if (!m_frameGI)
+                    {
+                        m_frameRenderOption     = RenderOption::ePBR;
+                        m_status.fallbackReason = "Scene visibility preparation failed.";
+                    }
                 }
 
-                if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->UsesHardwareShadows()
+                if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->UsesRayShadows()
                     && !m_pSceneShadows->Prepare(*m_pScene, m_pVoxelGI->GetSettings().shadows, false))
                 {
                     m_frameRenderOption     = RenderOption::ePBR;
@@ -154,7 +162,7 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                     m_pVoxelizer->BuildVoxelizationGraph();
 
-                    if (m_pVoxelGI->UsesHardwareShadows())
+                    if (m_pVoxelGI->UsesRayShadows())
                     {
                         m_pSceneShadows->Destroy();
                     }
@@ -166,16 +174,6 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
                     m_pVoxelGI->BuildRenderGraph(m_frameShadows ? m_pSceneShadows : nullptr);
 
-                    // The hardware visibility provider covers the full raster scene,
-                    // including occluders outside the radiance-cache volume.
-                    if ((!m_pVoxelGI->UsesHardwareQueries(VoxelGISettings::Feature::Sky)
-                         || !m_pVoxelGI->UsesHardwareQueries(VoxelGISettings::Feature::SpecularOcclusion)
-                         || !m_pVoxelGI->UsesHardwareQueries(VoxelGISettings::Feature::SkyCache))
-                        && m_pScene->GetVoxelCoverageMask(m_pVoxelizer->GetVoxelBounds()) != GI_ALL)
-                    {
-                        m_frameRenderOption     = RenderOption::ePBR;
-                        m_status.fallbackReason = "The scene has incomplete voxel coverage.";
-                    }
                     m_pDeferredLightingRenderer->BuildCompositionGraph(
                         view, m_frameRenderOption == RenderOption::eVoxelGI ? m_pVoxelGI : nullptr, m_pSceneShadows);
 
@@ -206,6 +204,19 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
                 if (m_debug.output == DebugOutput::eDepth)
                 {
                     m_debugDescription = m_pDeferredLightingRenderer->BuildDebugView(view, m_debug);
+                }
+                else if (hybridDebug)
+                {
+                    HybridGIRenderer* hybrid = m_pDeferredLightingRenderer->GetHybridGI();
+                    if (m_frameRenderOption == RenderOption::eVoxelGI && hybrid != nullptr)
+                    {
+                        m_debugDescription = hybrid->BuildDebugView(view, m_debug);
+                    }
+                    else
+                    {
+                        m_debugDescription.available = false;
+                        m_debugDescription.reason    = "Select Voxel GI to inspect hybrid lighting.";
+                    }
                 }
             }
 

@@ -2,11 +2,20 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
 {
     for (const std::array<const char*, 2>& shader :
          {std::array<const char*, 2>{"HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"},
+          {"HybridTraceCountsSP", "VoxelGI/hybrid_trace_counts.comp.spv"},
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
           {"HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"},
-          {"HybridFilterSP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridTemporalCachedSP", "VoxelGI/hybrid_temporal_cached.comp.spv"},
+          {"HybridFilter0SP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridFilter1SP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridFilter2SP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridFilter3SP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridFilter4SP", "VoxelGI/hybrid_filter_final.comp.spv"},
+          {"HybridSkySupportSP", "VoxelGI/hybrid_sky_support.comp.spv"},
+          {"HybridSkySearchSP", "VoxelGI/hybrid_sky_search.comp.spv"},
+          {"HybridSkySearchTiledSP", "VoxelGI/hybrid_sky_search_tiled.comp.spv"},
           {"VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv"},
           {"VoxelFilterRadianceSP", "VoxelGI/filter_radiance.comp.spv"},
           {"VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv"},
@@ -45,7 +54,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     // Establish the test's starting state independently of engine.cfg and earlier config tests.
     VoxelGISettings bounceSettings;
     bounceSettings.bounceSource = VoxelGISettings::BounceSource::Rays;
-    // The test device has no hardware queries, so automatic reflections would resolve to off.
+    // Exercise reflected-hit histories on the compute-only test device.
     bounceSettings.reflections = VoxelGISettings::Reflections::On;
     ASSERT_TRUE(gi.SetSettings(bounceSettings));
     DeferredLightingRenderer renderer(device);
@@ -118,6 +127,12 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
             changed.analyticLighting = frame == 14;
             ASSERT_TRUE(gi.SetSettings(changed));
         }
+        if (frame == 15)
+        {
+            VoxelGISettings changed  = gi.GetSettings();
+            changed.adaptiveSampling = false;
+            ASSERT_TRUE(gi.SetSettings(changed));
+        }
         if (frame >= 1 && frame <= 3)
         {
             // Replace the immutable vertex generation without replacing the scene facade.
@@ -128,6 +143,23 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         }
         renderer.BuildGBufferGraph(view, true);
         HybridGIRenderer* hybrid = renderer.GetHybridGI();
+        if (frame == 15)
+        {
+            RHIBufferCreateInfo info;
+            info.size         = HybridGIRenderer::GetRayCountCaptureBytes(view.width, view.height);
+            info.allocateType = RHIBufferAllocateType::eGPU;
+            info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+            RHIBuffer* counts = device->CreateBuffer(info);
+            ASSERT_NE(counts, nullptr);
+            ownedBuffers.push_back(counts);
+            info.allocateType = RHIBufferAllocateType::eCPURead;
+            info.usageFlags   = 0;
+            info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+            RHIBuffer* readback = device->CreateBuffer(info);
+            ASSERT_NE(readback, nullptr);
+            ownedBuffers.push_back(readback);
+            hybrid->SetRayCountCapture(counts, readback);
+        }
         if (frame <= 4)
         {
             // Frame 1 fails, so frame 2 must restart from its current vertices. The second
@@ -160,8 +192,9 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         rhi->failTextureCreationAt = 0;
         EXPECT_EQ(gi.HasPreviousRadiance(), frame != 14);
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
-        EXPECT_EQ(hybrid->IsHistoryValid(), frame == 1 || frame == 5 || frame >= 9);
-        if (frame == 2 || frame == 6)
+        EXPECT_EQ(hybrid->WereRayCountsRecorded(), frame == 15);
+        EXPECT_EQ(hybrid->IsHistoryValid(), frame == 1 || frame == 5 || (frame >= 9 && frame != 15));
+        if (frame == 2 || frame == 6 || frame == 15)
         {
             EXPECT_STREQ(hybrid->GetResetReason(), "settings");
         }
@@ -187,18 +220,19 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
                     // Only steady history and a settings reset after a successful frame can reuse the guide.
                     // Startup, failed-frame recovery, a new view, resize, environment and scene resets cannot.
                     EXPECT_EQ(uniforms.provider.y, frame == 5 || frame == 6 || frame >= 9 ? 1u : 0u);
+                    EXPECT_EQ(uniforms.provider.w, frame < 2 || (frame >= 6 && frame < 15) ? 1u : 0u);
                     EXPECT_EQ(uniforms.bounce.x, frame >= 12 ? 0u : 1u);
                     EXPECT_EQ(uniforms.reflection.x, frame == 13 ? 0u : 1u);
                     if (frame >= 9)
                     {
                         // An injection change keeps bounce history for the temporal pass to test; intensity
                         // and source changes reset it. None of them touches sky.
-                        EXPECT_EQ(uniforms.sampling.w, 1u);
-                        EXPECT_EQ(uniforms.bounce.y, frame == 11 || frame == 12 || frame == 14 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.sampling.w, frame == 15 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.bounce.y, frame == 11 || frame == 12 || frame == 14 || frame == 15 ? 0u : 1u);
                         EXPECT_EQ(uniforms.bounce.z, 1u);
                         // Only the injection frame measures the change between the caches.
                         EXPECT_EQ(uniforms.bounce.w, frame == 9 ? 1u : 0u);
-                        EXPECT_EQ(uniforms.reflection.y, frame == 11 || frame == 13 || frame == 14 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.reflection.y, frame == 11 || frame == 13 || frame == 14 || frame == 15 ? 0u : 1u);
                         EXPECT_EQ(uniforms.reflection.w, frame == 9 ? 1u : 0u);
                     }
                     foundUniforms = true;

@@ -1,79 +1,17 @@
 #ifndef ZEN_HARDWARE_RAY_QUERY
 #define ZEN_HARDWARE_RAY_QUERY
-#define VOXEL_GEOMETRY_SET 5
-#include "../Common/scene_geometry.glsl"
-#include "../Common/material.glsl"
+#include "hybrid_ray_counts.glsl"
+#include "scene_ray_geometry.glsl"
 layout(set=6,binding=0) uniform accelerationStructureEXT sceneAccelerationStructure;
 layout(std430,set=6,binding=1) readonly buffer RayGeometryMetadata { uvec4 rayGeometries[]; };
 layout(std430,set=6,binding=2) readonly buffer RayInstanceMetadata { uvec4 rayInstances[]; };
-#ifdef RAY_FORWARD_MATERIAL
-// Match the forward vertex stage's bindings, shared by raster and ray-hit material evaluation.
-layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
-layout(std430,set=1,binding=3) readonly buffer UVBuffer { vec4 uvValues[]; };
-#else
-layout(std140,set=6,binding=3) readonly buffer MaterialBuffer { Material materialData[]; };
-layout(std430,set=6,binding=4) readonly buffer UVBuffer { vec4 uvValues[]; };
-#endif
 layout(std140,set=6,binding=5) uniform uRayQueryData { vec4 minimum; vec4 maximum; uvec4 generation; } rayScene;
-
-// A few ULPs cover surface transform arithmetic; the receiver additionally
-// supplies its measured depth-quantization error. No whole instance is ignored.
-vec3 HybridTraceOrigin(vec3 position,vec3 normal,float error)
-{
-    vec3 shifted=position+normal*(error+1e-6);
-    ivec3 bits=floatBitsToInt(shifted);
-    ivec3 offset=ivec3(normal*32.0);
-    return intBitsToFloat(bits+mix(offset,-offset,lessThan(shifted,vec3(0))));
-}
 
 uvec4 RayTriangle(uint instance,uint geometry,uint primitive)
 {
     uvec4 object=rayInstances[instance];
     uvec4 mesh=rayGeometries[object.y+geometry];
     return uvec4(mesh.x+3u*primitive,object.x,mesh.y,instance);
-}
-
-vec3 RayGeometricNormal(uvec4 triangle)
-{
-    vec3 a=vertices[indices[triangle.x]].position.xyz;
-    vec3 b=vertices[indices[triangle.x+1u]].position.xyz;
-    vec3 c=vertices[indices[triangle.x+2u]].position.xyz;
-    return normalize(mat3(nodesData[triangle.y].normalMatrix)*cross(b-a,c-a));
-}
-
-// Only alpha-mask geometry is non-opaque in the BLAS. Both faces of single-sided
-// surfaces block: raster back-face culling is view-dependent, and ignoring back
-// faces would admit sky into closed single-sided shells.
-bool RayCandidateAccepted(uvec4 triangle,vec2 barycentric)
-{
-    Material material=materialData[triangle.z];
-    bool accepted=true;
-    if(material.surfaceProperties.y==1.0)
-    {
-        vec3 weights=vec3(1.0-barycentric.x-barycentric.y,barycentric);
-        bool specularGlossiness=material.surfaceProperties.w>0.5;
-        uint set=uint(max(specularGlossiness ? int(material.featureTextures[2].properties.y) : material.bcTexSet,0));
-        uint stride=uint(uvValues[0].x);
-        vec2 uv=vec2(0); float alpha=0.0;
-        for(uint corner=0u;corner<3u;++corner)
-        {
-            uint vertex=indices[triangle.x+corner];
-            if(set<stride) uv+=weights[corner]*uvValues[1u+vertex*stride+set].xy;
-            alpha+=weights[corner]*vertices[vertex].color.a;
-        }
-        // Ray hits have neither the current fragment's interpolated UVs nor its derivatives.
-        // Always apply the hit's transform and level-zero alpha, including in fragment shaders.
-        TextureTransform transform=specularGlossiness ? material.featureTextures[2].transform : material.textureTransforms[0];
-        int textureIndex=specularGlossiness ? int(material.featureTextures[2].properties.x) : material.bcTexIndex;
-        vec2 transformed=vec2(dot(transform.row0.xyz,vec3(uv,1)),dot(transform.row1.xyz,vec3(uv,1)));
-        alpha*=specularGlossiness ? material.diffuseFactor.a : material.baseColorFactor.a;
-        if(textureIndex>=0)
-            alpha*=textureLod(sampler2D(uTexture2DHeap[nonuniformEXT(textureIndex)],
-                uSamplerHeap[nonuniformEXT(int(transform.row0.w))]),transformed,0.0).a;
-        accepted=MaterialVisible(material,alpha);
-    }
-    // Blend/transmission are opaque blockers under the query lighting contract.
-    return accepted;
 }
 
 // The same query supports visibility and closest-hit consumers. Metadata is
@@ -113,6 +51,9 @@ HardwareRayHit HardwareQuery(vec3 origin,vec3 direction,float maximumDistance,bo
     }
     if(intersects && leave>=enter && leave>0.0)
     {
+#ifdef HYBRID_COUNT_RAYS
+        ++issuedHardwareRays[issuedRayFeature];
+#endif
         rayQueryEXT query;
         uint flags=closest ? 0u : gl_RayFlagsTerminateOnFirstHitEXT;
         // Pad the scene bound, but never trace beyond a finite caller-supplied endpoint (a light).
@@ -135,7 +76,7 @@ HardwareRayHit HardwareQuery(vec3 origin,vec3 direction,float maximumDistance,bo
             result.material=triangle.z;
             result.barycentrics=rayQueryGetIntersectionBarycentricsEXT(query,true);
             result.ray.hit=true;
-            result.ray.position=origin+direction*rayQueryGetIntersectionTEXT(query,true);
+            result.ray.position=RaySurfacePosition(triangle,result.barycentrics);
             result.ray.normal=RayGeometricNormal(triangle);
             result.frontFacing=dot(result.ray.normal,direction)<0.0;
             if(!result.frontFacing) result.ray.normal=-result.ray.normal;

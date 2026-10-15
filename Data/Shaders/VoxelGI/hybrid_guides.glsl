@@ -20,9 +20,7 @@ layout(set=1,binding=5) uniform sampler2D receiverMotion;
 layout(set=1,binding=24) uniform sampler2D receiverPosition;
 vec3 HybridPosition(ivec2 pixel)
 {
-    return hybrid.provider.x!=0u ? texelFetch(receiverPosition,pixel,0).xyz
-        : ReconstructGBufferPosition(vec2(pixel)+0.5,textureSize(receiverDepth,0),texelFetch(receiverDepth,pixel,0).r,
-            hybrid.inverseViewProjection)+hybrid.worldOrigin.xyz;
+    return texelFetch(receiverPosition,pixel,0).xyz;
 }
 vec3 HybridNormal(ivec2 pixel) { return DecodeGBufferNormal(texelFetch(receiverNormal,pixel,0).rg); }
 vec3 HybridGeometricNormal(ivec2 pixel) { return DecodeGBufferNormal(unpackUnorm2x16(texelFetch(receiverSurface,pixel,0).r)); }

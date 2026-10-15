@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
+#include "Graphics/RenderCore/V2/SoftwareSceneRayQuery.h"
 #include "SceneGraph/AABB.h"
 #include <array>
 
@@ -40,25 +41,28 @@ struct VoxelGISettings
     std::array<RayProvider, static_cast<size_t>(Feature::Count)> featureProviders{};
     RayProvider                                                  GetFeatureProvider(Feature feature) const;
     uint32_t                                                     GetHardwareFeatureMask() const;
+    bool                                                         UsesAdaptiveSampling() const;
     void                                                         SetFeatureProvider(Feature feature, RayProvider provider);
     void                                                         SetAllFeatureProviders(RayProvider provider);
     enum class BounceSource : uint32_t
     {
-        Auto, // Ray hits with hardware queries (P5 passed on the RT tier); cones on the compute tier until P8.
+        Auto, // Triangle hits with either traversal backend.
         Cone,
         Rays
     };
     BounceSource bounceSource{BounceSource::Auto};
     uint32_t     samples{4};
-    uint32_t     accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
-    uint32_t     referenceSamples{0};              // Diagnostic: 0, 1024 or 4096; static running mean, no spatial filter.
-    uint32_t     historyFrames{32};
-    bool         temporal{true};
-    bool         filter{true};
-    bool         specularOcclusion{true};
+    // Both triangle backends add two guided samples on reset and where the sky guide has support.
+    bool     adaptiveSampling{true};
+    uint32_t accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
+    uint32_t referenceSamples{0};              // Diagnostic: 0, 256, 1024 or 4096; static running mean, no spatial filter.
+    uint32_t historyFrames{32};
+    bool     temporal{true};
+    bool     filter{true};
+    bool     specularOcclusion{true};
     enum class Reflections : uint32_t
     {
-        Auto, // Radiance-cache reflections with hardware queries; occlusion only on the compute tier until P8.
+        Auto, // Radiance-cache reflections with either traversal backend.
         Off,
         On
     };
@@ -71,7 +75,7 @@ struct VoxelGISettings
     uint32_t    coneCount{6};
     uint32_t    maxSteps{128};
     bool        shadows{true};
-    bool        rtShadows{true}; // Use hardware queries when available; maps remain the fallback.
+    bool        rtShadows{true}; // Use triangle shadow rays; false explicitly selects shadow maps.
     bool        analyticLighting{true};
     bool        environmentLighting{true};
     bool        emissiveLighting{true};
@@ -81,7 +85,7 @@ struct VoxelGISettings
 
 bool ValidateVoxelGISettings(const VoxelGISettings& settings);
 
-bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& output);
+bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& output, const VoxelGISettings& defaults = {});
 
 struct VoxelGIUniformData
 {
@@ -113,7 +117,8 @@ public:
     bool Init();
 
     // Select/build the provider before shadow-map preparation; call once per frame before BuildRenderGraph.
-    void BuildRayQueryGraph();
+    bool BuildRayQueryGraph();
+    void BindSoftwareRayInputs(RDGPassDescBase& pass, bool forwardMaterialBound = false) const;
 
     void BuildRenderGraph(SceneShadowRenderer* shadows = nullptr);
 
@@ -156,24 +161,25 @@ public:
     {
         return m_hardwareQueries ? m_settings.GetHardwareFeatureMask() : 0;
     }
+    // True when an enabled feature resolves to Compute and traces the software BVH.
+    bool UsesSoftwareQueries() const;
     bool UsesHardwareShadows() const
     {
         return m_settings.shadows && m_settings.rtShadows && UsesHardwareQueries(VoxelGISettings::Feature::Shadows);
     }
+    bool UsesRayShadows() const
+    {
+        return m_settings.shadows && m_settings.rtShadows;
+    }
     // The resolved bounce source; valid once BuildRayQueryGraph has selected the provider.
     bool UsesRayBounce() const
     {
-        return m_settings.bounceSource == VoxelGISettings::BounceSource::Rays
-            || (m_settings.bounceSource == VoxelGISettings::BounceSource::Auto
-                && UsesHardwareQueries(VoxelGISettings::Feature::Bounce));
+        return m_settings.bounceSource != VoxelGISettings::BounceSource::Cone;
     }
     // Resolved reflection enablement; reflections need the specular-occlusion rays they reuse.
     bool UsesReflections() const
     {
-        return m_settings.specularOcclusion
-            && (m_settings.reflections == VoxelGISettings::Reflections::On
-                || (m_settings.reflections == VoxelGISettings::Reflections::Auto
-                    && UsesHardwareQueries(VoxelGISettings::Feature::Reflections)));
+        return m_settings.specularOcclusion && m_settings.reflections != VoxelGISettings::Reflections::Off;
     }
     const char* GetProviderReason() const
     {
@@ -182,6 +188,10 @@ public:
     const SceneRayQuery& GetSceneRayQuery() const
     {
         return m_rayQuery;
+    }
+    const SoftwareSceneRayQuery& GetSoftwareRayQuery() const
+    {
+        return m_softwareRayQuery;
     }
     void BindHardwareRayInputs(RDGPassDescBase& pass) const;
     void BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound = false) const;
@@ -221,13 +231,14 @@ private:
 
     void BuildEnvironmentDistribution();
 
-    SceneRayQuery  m_rayQuery;
-    bool           m_hardwareQueries{false};
-    const char*    m_providerReason{"voxel_selected"};
-    RenderDevice*  m_device{nullptr};
-    RenderScene*   m_scene{nullptr};
-    VoxelizerBase* m_voxelizer{nullptr};
-    RHITexture*    m_radiance{nullptr};
+    SceneRayQuery         m_rayQuery;
+    SoftwareSceneRayQuery m_softwareRayQuery;
+    bool                  m_hardwareQueries{false};
+    const char*           m_providerReason{"software_bvh_selected"};
+    RenderDevice*         m_device{nullptr};
+    RenderScene*          m_scene{nullptr};
+    VoxelizerBase*        m_voxelizer{nullptr};
+    RHITexture*           m_radiance{nullptr};
     // Base level before the latest injection, for ray-hit bounce/reflection history; 1x1x1 otherwise.
     RHITexture*                 m_previousRadiance{nullptr};
     RHITexture*                 m_skyIrradiance{nullptr};

@@ -10,7 +10,8 @@ namespace zen
 class RHIGPUFrameTiming
 {
 public:
-    static constexpr size_t kMaxIntervals = 256;
+    // Cold frames can render 192 point-light shadow faces plus their copies and uploads.
+    static constexpr size_t kMaxIntervals = 1024;
 
     RHIGPUTimingPtr AddInterval();
 

@@ -11,8 +11,11 @@ import os
 from pathlib import Path
 import subprocess
 from urllib.parse import unquote
+from hybrid_capture_io import compact, read_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
+BACKEND_KEYS = {'voxel_gi_backend'} | {f'voxel_gi_{name}_backend' for name in
+                ('sky', 'specular', 'sky_cache', 'bounce', 'reflections', 'shadows')}
 CAMERAS = {
     'top': [0, 0, -1, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 16, 0, 1],
     'hall': [0, 0, -1, 0, -.06237828615518053, .9980525784828885, 0, 0,
@@ -21,8 +24,16 @@ CAMERAS = {
 
 
 def fingerprint(path):
-    return dict(path=str(path), bytes=path.stat().st_size,
-                sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    data = read_bytes(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+
+def capture_configuration(original, settings):
+    # Explicit selectors supersede legacy keys, so remove inherited selectors before
+    # applying the frozen settings. Callers restore the original bytes transactionally.
+    base = b''.join(line for line in original.splitlines(keepends=True)
+                    if line.split(b'=', 1)[0].strip().decode(errors='replace') not in BACKEND_KEYS)
+    return base + b'\n' + ''.join(f'{k}={v}\n' for k, v in settings.items()).encode()
 
 
 def main():
@@ -36,9 +47,15 @@ def main():
     parser.add_argument('--height', type=int, default=540)
     parser.add_argument('--resolution', type=int, choices=(64, 128, 256), default=64)
     parser.add_argument('--provider', choices=('auto', 'voxel', 'hardware'), default='voxel')
+    parser.add_argument('--backend', choices=('compute', 'hardware'), help='Use the explicit all-feature selector')
+    parser.add_argument('--feature-backend', action='append', default=[], metavar='FEATURE=BACKEND',
+                        help='Override sky/specular/sky_cache/bounce/reflections/shadows with compute or hardware')
+    parser.add_argument('--compact', action='store_true', help='Losslessly compress and verify generated buffers')
+    parser.add_argument('--specular-occlusion', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--as-budget-mb', type=int, default=0, help='Acceleration-structure preflight cap; zero leaves it unset')
     parser.add_argument('--samples', type=int, choices=(1, 2, 4), default=4)
-    parser.add_argument('--reference-samples', type=int, choices=(0, 1024, 4096), default=0)
+    parser.add_argument('--adaptive-sampling', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--reference-samples', type=int, choices=(0, 256, 1024, 4096), default=0)
     parser.add_argument('--history-frames', type=int, default=32, help='Temporal history length (frozen preset: 32)')
     parser.add_argument('--bounce', type=float, default=0)
     parser.add_argument('--bounce-source', choices=('auto', 'cone', 'rays'), default='cone',
@@ -53,6 +70,8 @@ def main():
                         help='Remove normal textures from the captured scene copy, for ground-truth comparisons with vertex normals')
     parser.add_argument('--provider-switching', action='store_true',
                         help='Also capture hardware/voxel/hardware at frames 1 and 32 under <output>-switch')
+    parser.add_argument('--feature-switching', action='store_true',
+                        help='Capture each feature switched both ways at frames 1 and 32 under <output>-switch')
     parser.add_argument('--origin-stress', action='store_true',
                         help='Also translate scene and camera by 0, 100 and 10000 normalized X units; capture each after 64 frames')
     parser.add_argument('--stability', action='store_true',
@@ -99,13 +118,22 @@ def main():
                     voxel_gi_shadow_enabled='false', voxel_gi_ray_provider=args.provider,
                     voxel_gi_acceleration_structure_budget_mb=args.as_budget_mb,
                     voxel_gi_samples=args.samples, voxel_gi_reference_samples=args.reference_samples,
+                    voxel_gi_adaptive_sampling=str(args.adaptive_sampling).lower(),
                     voxel_gi_history_frames=args.history_frames, voxel_gi_temporal=str(args.temporal).lower(),
-                    voxel_gi_filter=str(args.filter).lower(), voxel_gi_specular_occlusion='true',
+                    voxel_gi_filter=str(args.filter).lower(), voxel_gi_specular_occlusion=str(args.specular_occlusion).lower(),
                     voxel_gi_reflections='auto')
+    if args.backend:
+        settings['voxel_gi_backend'] = args.backend
+    for override in args.feature_backend:
+        feature, separator, backend = override.partition('=')
+        key = f'voxel_gi_{feature}_backend'
+        if not separator or key not in BACKEND_KEYS or backend not in ('compute', 'hardware'):
+            parser.error(f'Invalid feature backend: {override}')
+        settings[key] = backend
     settings.update({'dynamic_light.enabled': 'false', 'light_markers.enabled': 'false'})
     config = ROOT / 'Data/engine.cfg'
     original = config.read_bytes()
-    changed = original + b'\n' + ''.join(f'{k}={v}\n' for k, v in settings.items()).encode()
+    changed = capture_configuration(original, settings)
     environment = os.environ.copy()
     environment.update(VK_LOADER_LAYERS_DISABLE='~implicit~', DISABLE_RTSS_LAYER='1', VK_LAYER_VALIDATE_SYNC='1')
     command = [str(args.exe.resolve()), '--no-ui', '--fixed-step', '--mode=3',
@@ -113,8 +141,9 @@ def main():
                f'--capture={prefix}.ppm', f'--capture-lighting={prefix}', f'--profile={prefix}']
     if not args.rt:
         command.append('--disable-rt')
-    if args.provider_switching:
-        command.append(f'--capture-provider-switching={prefix}-switch')
+    if args.provider_switching or args.feature_switching:
+        kind = 'feature' if args.feature_switching else 'provider'
+        command.append(f'--capture-{kind}-switching={prefix}-switch')
     if args.origin_stress:
         command.append(f'--capture-origin-stress={prefix}-origin')
     if args.stability:
@@ -135,6 +164,13 @@ def main():
                     configuration_sha256=hashlib.sha256(changed).hexdigest(),
                     executable=fingerprint(args.exe.resolve()),
                     shaders=[fingerprint(p) for p in sorted((ROOT / 'Data/SpvShaders').rglob('*.spv'))])
+    if args.compact:
+        manifest['buffers'] = compact(prefix)
+        if args.feature_switching or args.provider_switching:
+            manifest['switch_buffers'] = {}
+            for metadata in sorted(prefix.parent.glob(prefix.name + '-switch-*.lighting.json')):
+                switched = Path(str(metadata)[:-len('.lighting.json')])
+                manifest['switch_buffers'][switched.name] = compact(switched)
     Path(str(prefix) + '.inputs.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(prefix, flush=True)
 

@@ -26,17 +26,14 @@ cube, exactly the engine's L_env; the envmap, resampled from that cube, only cho
 and supplies their density. (Evaluating the resampled map instead widened the hotel room's
 sub-degree lamps enough to shift hard penumbrae.) Outputs: <output>.npz (sky, nu, two independent half
 estimates, primary hits, normals, primitive index), <output>.json, and per compared capture
-a report in <output>-compare.json and an image <output>-compare-<i>.png. --backend auto uses
-Mitsuba's CUDA backend when an NVIDIA GPU is available (driver only) and its CPU LLVM backend
-otherwise (DRJIT_LIBLLVM_PATH may point at LLVM-C.dll; Visual Studio's copy is found
-automatically). Both run the same estimator.
+a report in <output>-compare.json and an image <output>-compare-<i>.png. Rendering requires
+Mitsuba's CUDA backend (NVIDIA driver only, no toolkit) and fails without it; there is no CPU
+fallback, and the sweep refuses truth whose manifest records another variant.
 """
 import argparse
 import base64
-import glob
 import io
 import json
-import os
 from pathlib import Path
 import sys
 from urllib.parse import unquote
@@ -46,33 +43,22 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare_hybrid_gi import load as load_capture  # noqa: E402
+from hybrid_capture_io import read_bytes  # noqa: E402
 from environment_reference import Environment, cosine_directions, load_gltf  # noqa: E402
 
 
-def setup_mitsuba(backend='auto'):
-    """Mitsuba with its CUDA backend when requested or available, else the CPU LLVM backend.
-
-    The backends run the same estimator; CUDA (NVIDIA driver only, no toolkit) is used purely
-    to speed up this offline reference and never by the engine.
+def setup_mitsuba(backend='cuda'):
+    """Mitsuba with its CUDA backend (NVIDIA driver only, no toolkit), used purely for offline
+    references and never by the engine. Independent references and the gates that consume them
+    run on the GPU: an unavailable CUDA backend raises instead of falling back to a CPU backend.
     """
+    if backend != 'cuda':
+        raise ValueError(f'Ground-truth references require the CUDA backend, not {backend!r}')
     import mitsuba as mi
-    if backend in ('auto', 'cuda'):
-        try:
-            mi.set_variant('cuda_ad_rgb')
-            import drjit as dr
-            dr.eval(dr.zeros(mi.Float, 1))
-            print('Mitsuba backend: cuda_ad_rgb', file=sys.stderr, flush=True)
-            return mi
-        except Exception as error:
-            if backend == 'cuda':
-                raise
-            print(f'Mitsuba CUDA backend unavailable ({error}); using the CPU LLVM backend', file=sys.stderr, flush=True)
-    if 'DRJIT_LIBLLVM_PATH' not in os.environ and os.name == 'nt':
-        found = sorted(glob.glob('C:/Program Files/LLVM/bin/LLVM-C.dll')
-                       + glob.glob('C:/Program Files/Microsoft Visual Studio/*/*/VC/Tools/Llvm/x64/bin/LLVM-C.dll'))
-        if found:
-            os.environ['DRJIT_LIBLLVM_PATH'] = found[-1]
-    mi.set_variant('llvm_ad_rgb')
+    mi.set_variant('cuda_ad_rgb')
+    import drjit as dr
+    dr.eval(dr.zeros(mi.Float, 1))
+    print('Mitsuba backend: cuda_ad_rgb', file=sys.stderr, flush=True)
     return mi
 
 
@@ -455,7 +441,7 @@ def render_capture(mi, capture, output, scene_path=None, samples=1024, batch=8, 
     metadata, data = load_capture(capture)
     e = metadata['environment_intensity_rotation_enabled_visible']
     size = metadata['environment_cube_size']
-    cube = np.fromfile(str(capture) + '.environment.bin', '<f4').reshape(6, size, size, 4)
+    cube = np.frombuffer(read_bytes(str(capture) + '.environment.bin'), '<f4').reshape(6, size, size, 4)
     environment = Environment(cube=cube, rotation=e[1], orientation=metadata.get('environment_orientation', [0, 0, 0, 1]),
                               intensity=e[0] * e[2])
     scene_path = scene_path or Path(str(capture) + '.gltf')
@@ -790,8 +776,8 @@ def main():
                         help='Shade exact primary hits (ground truth) or the engine receivers (diagnostic)')
     parser.add_argument('--shading-normals', choices=('vertex', 'engine'), default='vertex',
                         help='Use captured shading normals to check normal mapping with independent geometry and visibility')
-    parser.add_argument('--backend', choices=('auto', 'cuda', 'llvm'), default='auto',
-                        help='Mitsuba backend: CUDA when an NVIDIA GPU is available (auto), else the CPU LLVM backend')
+    parser.add_argument('--backend', choices=('cuda',), default='cuda',
+                        help='Mitsuba backend; references run only on CUDA and fail without it')
     args = parser.parse_args()
     if args.compare_only:
         truth = Path(str(args.output) + '.npz')

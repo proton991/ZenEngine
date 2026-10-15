@@ -1,0 +1,70 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../Common/gbuffer.glsl"
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=1,binding=0) uniform sampler2D inputSky;
+layout(set=1,binding=1) uniform sampler2D inputVariance;
+layout(set=1,binding=2,r32f) uniform writeonly image2D skySupport;
+layout(set=1,binding=4) uniform usampler2D receiverSurface;
+layout(set=1,binding=5) uniform sampler2D filterPosition;
+layout(std430,set=1,binding=21) writeonly buffer HybridSkySearchArgs { uint searchCount; uint searchX; uint searchY; uint searchZ; };
+layout(std430,set=1,binding=22) writeonly buffer HybridSkySearchPixels { uint searchPixels[]; };
+layout(std430,set=1,binding=23) writeonly buffer HybridSkySupportBounds { vec4 supportBounds[]; };
+shared uint nonzero;
+shared uint bounds[36];
+uint OrderedFloat(float value)
+{
+    uint bits=floatBitsToUint(value);
+    return bits^((bits&0x80000000u)!=0u ? 0xffffffffu : 0x80000000u);
+}
+float UnorderedFloat(uint value)
+{
+    return uintBitsToFloat(value^((value&0x80000000u)!=0u ? 0x80000000u : 0xffffffffu));
+}
+void main()
+{
+    if(gl_LocalInvocationIndex==0u) nonzero=0u;
+    if(gl_LocalInvocationIndex<36u) bounds[gl_LocalInvocationIndex]=gl_LocalInvocationIndex%6u<3u ? 0xffffffffu : 0u;
+    barrier();
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(all(equal(p,ivec2(0)))) { searchCount=0u; searchX=0u; searchY=1u; searchZ=1u; }
+    if(all(lessThan(p,textureSize(inputSky,0))))
+    {
+        searchPixels[p.y*textureSize(inputSky,0).x+p.x]=0u;
+        // Include visibility and variance so skipping an empty footprint preserves
+        // every sky output, including the diagnostic alpha and propagated variance.
+        if(any(notEqual(texelFetch(inputSky,p,0),vec4(0))) || texelFetch(inputVariance,p,0).x!=0.0)
+        {
+            vec3 normal=DecodeGBufferNormal(unpackUnorm2x16(texelFetch(receiverSurface,p,0).r));
+            vec3 a=abs(normal);
+            uint axis=a.x>=a.y && a.x>=a.z ? 0u : a.y>=a.z ? 1u : 2u;
+            uint bucket=axis*2u+(normal[axis]<0.0 ? 1u : 0u);
+            atomicOr(nonzero,1u<<bucket);
+            vec3 position=texelFetch(filterPosition,p,0).xyz;
+            for(uint axis=0u;axis<3u;++axis)
+            {
+                uint value=OrderedFloat(position[axis]);
+                atomicMin(bounds[bucket*6u+axis],value);
+                atomicMax(bounds[bucket*6u+axis+3u],value);
+            }
+        }
+    }
+    barrier();
+    if(gl_LocalInvocationIndex==0u)
+        imageStore(skySupport,ivec2(gl_WorkGroupID.xy),vec4(float(nonzero)));
+    if(gl_LocalInvocationIndex<6u)
+    {
+        uint bucket=gl_LocalInvocationIndex;
+        uint base=(gl_WorkGroupID.y*gl_NumWorkGroups.x+gl_WorkGroupID.x)*12u+bucket*2u;
+        vec3 lower=vec3(0), upper=vec3(0);
+        if((nonzero&(1u<<bucket))!=0u)
+        {
+            lower=vec3(UnorderedFloat(bounds[bucket*6u]),UnorderedFloat(bounds[bucket*6u+1u]),
+                UnorderedFloat(bounds[bucket*6u+2u]));
+            upper=vec3(UnorderedFloat(bounds[bucket*6u+3u]),UnorderedFloat(bounds[bucket*6u+4u]),
+                UnorderedFloat(bounds[bucket*6u+5u]));
+        }
+        supportBounds[base]=vec4(lower,0);
+        supportBounds[base+1u]=vec4(upper,0);
+    }
+}

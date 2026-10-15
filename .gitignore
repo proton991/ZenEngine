@@ -9,6 +9,8 @@ out/
 
 Data/SpvShaders
 Data/engine.cfg
+# Dear ImGui writes window layout here when an app runs from the repository root.
+/imgui.ini
 .DS_Store
 __pycache__/
 

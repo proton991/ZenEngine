@@ -20,7 +20,12 @@ enum class DebugOutput : uint32_t
     eNormal,
     eShadow,
     eVoxels,
-    eVoxelSlice
+    eVoxelSlice,
+    eGIRawSky,
+    eGIReconstructedSky,
+    eGIHistoryLength,
+    eGIHitMiss,
+    eGIRejection
 };
 
 enum class LightOrigin : uint32_t

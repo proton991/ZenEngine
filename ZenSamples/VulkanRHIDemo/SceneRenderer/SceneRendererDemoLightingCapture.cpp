@@ -6,6 +6,7 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/Shared/LightingCapture.h"
+#include "Graphics/Shared/EnvironmentSampling.h"
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Platform/ConfigLoader.h"
 #include <cmath>
@@ -99,6 +100,8 @@ bool WriteLightingMetadata(const std::string&        path,
     const rc::HybridGIRenderer* hybrid        = server.RequestDeferredLightingRenderer()->GetHybridGI();
     const rc::VoxelGISettings&  settings      = server.RequestVoxelGI()->GetSettings();
     const bool                  reconstructed = server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr;
+    const uint32_t              hardwareMask  = reconstructed ? server.RequestVoxelGI()->GetHardwareFeatureMask() : 0u;
+    const bool                  adaptive      = settings.UsesAdaptiveSampling();
     std::ofstream               output(path + ".lighting.json");
 
     output
@@ -114,7 +117,9 @@ bool WriteLightingMetadata(const std::string&        path,
             : server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone"
                                                                      : "pbr")
         << "\",\"analytic_visibility\":\""
-        << (reconstructed && server.RequestVoxelGI()->UsesHardwareShadows() ? "hardware_shadow_rays" : "mesh_shadow_maps")
+        << (reconstructed && server.RequestVoxelGI()->UsesRayShadows()
+                ? (server.RequestVoxelGI()->UsesHardwareShadows() ? "hardware_shadow_rays" : "software_shadow_rays")
+                : "mesh_shadow_maps")
         << "\""
         << ",\"reflectance_policy\":\"" << (voxelizer.UsesAveragedReflectance() ? "averaged" : "owner")
         << "\",\"voxel_resolution\":" << voxelizer.GetVoxelTexResolution()
@@ -142,10 +147,12 @@ bool WriteLightingMetadata(const std::string&        path,
                 : "minimum")
         << "\",\"ray_provider\":\""
         << (reconstructed ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "voxel") : "legacy")
-        << "\",\"receiver_position\":\""
-        << (reconstructed && server.RequestVoxelGI()->UsesHardwareQueries() ? "raster_fp32" : "depth")
+        << "\",\"receiver_position\":\"" << (reconstructed ? "raster_fp32" : "depth")
         << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider) << ",\"provider_reason\":\""
         << server.RequestVoxelGI()->GetProviderReason() << "\""
+        << ",\"hardware_feature_mask\":" << hardwareMask
+        << ",\"requested_hardware_feature_mask\":" << settings.GetHardwareFeatureMask()
+        << ",\"visibility_geometry\":\"triangles\",\"compute_traversal\":\"software_bvh\""
         << ",\"ray_scene_ready\":" << (server.RequestVoxelGI()->GetSceneRayQuery().IsReady() ? "true" : "false")
         << ",\"ray_scene_generation\":" << server.RequestVoxelGI()->GetSceneRayQuery().GetGeneration()
         << ",\"ray_scene_bytes\":" << server.RequestVoxelGI()->GetSceneRayQuery().GetMemoryBytes()
@@ -163,7 +170,12 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"hardware_shadows\":" << (reconstructed && server.RequestVoxelGI()->UsesHardwareShadows() ? "true" : "false")
         << ",\"reflection_roughness_cutoff\":0.2,\"reflection_radiance\":\"RGB stores (1-S)*H; alpha stores S\""
         << ",\"reflection_diagnostics\":\"component 12: identity bits, raw mean hit distance, rejected lookups, history length\""
+        << ",\"preset\":\"" << rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())) << "\""
+        << ",\"selection_reason\":\"" << server.GetGISelectionReason() << "\""
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
+        << ",\"adaptive_sampling\":" << (adaptive ? "true" : "false") << ",\"sample_count_max\":"
+        << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples + (adaptive ? 2u : 0u))
+        << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE
         << ",\"frame\":" << (hybrid != nullptr ? hybrid->GetFrame() : 0)
         << ",\"environment_generation\":" << scene.GetEnvironmentRevision()
         << ",\"lighting_generation\":" << scene.GetLightingRevision()
@@ -213,16 +225,27 @@ bool WriteLightingMetadata(const std::string&        path,
 }
 } // namespace
 
-bool SceneRendererDemo::CaptureProviderSwitching(const std::string& path)
+bool SceneRendererDemo::CaptureProviderSwitching(const std::string& path, bool individualFeatures)
 {
     rc::VoxelGIRenderer*      gi        = m_renderDevice->GetRendererServer()->RequestVoxelGI();
     const rc::VoxelGISettings original  = gi->GetSettings();
     bool                      succeeded = true;
-    for (uint32_t stage = 0; stage < 3 && succeeded; ++stage)
+    const uint32_t            masks[]   = {0u, 1u, 2u, 4u, 8u, 16u, 32u, 63u, 62u, 61u, 59u, 55u, 47u, 31u, 0u};
+    const uint32_t            stages    = individualFeatures ? static_cast<uint32_t>(std::size(masks)) : 3u;
+    for (uint32_t stage = 0; stage < stages && succeeded; ++stage)
     {
         rc::VoxelGISettings settings = original;
         settings.SetAllFeatureProviders(stage == 1 ? rc::VoxelGISettings::RayProvider::Voxel
                                                    : rc::VoxelGISettings::RayProvider::Hardware);
+        if (individualFeatures)
+        {
+            for (uint32_t feature = 0; feature < static_cast<uint32_t>(rc::VoxelGISettings::Feature::Count); ++feature)
+            {
+                settings.SetFeatureProvider(static_cast<rc::VoxelGISettings::Feature>(feature),
+                                            (masks[stage] & (1u << feature)) != 0 ? rc::VoxelGISettings::RayProvider::Hardware
+                                                                                  : rc::VoxelGISettings::RayProvider::Voxel);
+            }
+        }
         const std::string prefix = fmt::format("{}-{}", path, stage);
         succeeded = gi->SetSettings(settings) && CaptureLighting(prefix + "-frame1") && Run(30, false, 3, {}, true)
                  && CaptureLighting(prefix + "-frame32");
@@ -627,6 +650,81 @@ bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
     if (!succeeded)
     {
         LOGE("Light-change capture requires ray bounce or reflections and an authored light; capture or restoration failed");
+    }
+    return succeeded;
+}
+
+bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
+{
+    rc::RendererServer*           server   = m_renderDevice->GetRendererServer();
+    rc::DeferredLightingRenderer* renderer = server->RequestDeferredLightingRenderer();
+    rc::HybridGIRenderer*         hybrid   = renderer->GetHybridGI();
+    const uint32_t                width = m_pViewport->GetWidth(), height = m_pViewport->GetHeight();
+    const uint64_t                requestedBytes = rc::HybridGIRenderer::GetRayCountCaptureBytes(width, height);
+    uint64_t                      bytes          = 0;
+    RHIBuffer*                    output         = nullptr;
+    RHIBuffer*                    readback       = nullptr;
+    bool                          succeeded =
+        server->GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && width != 0 && height != 0
+        && rc::ValidateGIStorageBuffer(requestedBytes, 1, m_renderDevice->GetGPUInfo(), bytes) == rc::GIResourceStatus::eSuccess
+        && bytes <= std::numeric_limits<uint32_t>::max() && !m_renderDevice->AreSubmissionsBlocked();
+    if (succeeded)
+    {
+        succeeded = CreateCaptureBuffers(*m_renderDevice, static_cast<uint32_t>(bytes), output, readback);
+    }
+    if (succeeded)
+    {
+        hybrid->SetRayCountCapture(output, readback);
+        succeeded = Run(1, false, 3, {}, true) && renderer->GetHybridGI() == hybrid && hybrid->WereRayCountsRecorded();
+        hybrid->SetRayCountCapture(nullptr, nullptr);
+        m_renderDevice->FlushRHIThread();
+        m_renderDevice->WaitForIdle();
+        succeeded = succeeded && !m_renderDevice->AreSubmissionsBlocked();
+    }
+    if (succeeded)
+    {
+        const uint32_t* values = reinterpret_cast<const uint32_t*>(readback->Map());
+        succeeded              = values != nullptr;
+        if (succeeded)
+        {
+            uint64_t totals[8]{};
+            for (uint64_t index = 0; index < bytes / sizeof(uint32_t); ++index)
+            {
+                totals[index % 8] += values[index];
+            }
+            readback->Unmap();
+            std::ofstream stream(path);
+            succeeded = stream.is_open();
+            if (succeeded)
+            {
+                stream
+                    << "{\"version\":1,\"scope\":\"screen_space_hybrid_trace\",\"width\":" << width << ",\"height\":" << height
+                    << ",\"frame\":" << hybrid->GetFrame()
+                    << ",\"counter_point\":\"DDA entry or rayQueryInitialize after bounds clipping\""
+                    << ",\"note\":\"Shared closest queries are counted once under sky/specular; excludes voxel-cache and fragment shadow rays. Diagnostic shader timings are not production timings.\"";
+                const char* providers[] = {"compute", "hardware"};
+                const char* features[]  = {"sky", "specular", "bounce", "reflection"};
+                for (uint32_t provider = 0; provider < 2; ++provider)
+                {
+                    stream << ",\"" << providers[provider] << "\":{";
+                    for (uint32_t feature = 0; feature < 4; ++feature)
+                    {
+                        stream << (feature == 0 ? "" : ",") << '"' << features[feature]
+                               << "\":" << totals[provider * 4 + feature];
+                    }
+                    stream << '}';
+                }
+                stream << "}\n";
+                stream.flush();
+                succeeded = stream.good();
+            }
+        }
+    }
+    m_renderDevice->DestroyBuffer(output);
+    m_renderDevice->DestroyBuffer(readback);
+    if (!succeeded)
+    {
+        LOGE("Hybrid ray-count capture failed: {}", path);
     }
     return succeeded;
 }

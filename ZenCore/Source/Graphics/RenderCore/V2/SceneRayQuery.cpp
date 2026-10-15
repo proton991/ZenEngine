@@ -477,12 +477,8 @@ bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
     return ready && IsReady();
 }
 
-void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound) const
+void BindSceneRayGeometry(RDGPassDescBase& pass, RenderDevice& device, RenderScene& scene, bool forwardMaterialBound)
 {
-    const Generation& generation = Current();
-    pass.BindAccelerationStructure("sceneAccelerationStructure", generation.tlas);
-    pass.BindStorageBuffer("RayGeometryMetadata", generation.geometryMetadata);
-    pass.BindStorageBuffer("RayInstanceMetadata", generation.instanceMetadata);
     pass.BindStorageBuffer("VertexBuffer", scene.GetVertexBuffer());
     pass.BindStorageBuffer("IndexBuffer", scene.GetIndexBuffer());
     if (!forwardMaterialBound)
@@ -491,8 +487,17 @@ void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool f
         pass.BindStorageBuffer("MaterialBuffer", scene.GetMaterialsDataSSBO());
         pass.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
         const RHISamplerCreateInfo samplerInfo = RHISamplerCreateInfo::CreateLinearRepeat();
-        BindSceneTextureArray(pass, m_device->CreateSampler(samplerInfo), scene.GetSceneTextures(), scene.GetSceneSamplers());
+        BindSceneTextureArray(pass, device.CreateSampler(samplerInfo), scene.GetSceneTextures(), scene.GetSceneSamplers());
     }
+}
+
+void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound) const
+{
+    const Generation& generation = Current();
+    pass.BindAccelerationStructure("sceneAccelerationStructure", generation.tlas);
+    pass.BindStorageBuffer("RayGeometryMetadata", generation.geometryMetadata);
+    pass.BindStorageBuffer("RayInstanceMetadata", generation.instanceMetadata);
+    BindSceneRayGeometry(pass, *m_device, scene, forwardMaterialBound);
     struct QueryUniforms
     {
         Vec4       minimum;

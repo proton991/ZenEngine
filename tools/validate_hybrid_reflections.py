@@ -82,7 +82,7 @@ def enclosed(prefix):
 
 def capture(args):
     options=dict(provider=args.provider,rt=args.provider=='hardware',indirect=1,resolution=128,shadows=True,
-                 width=args.width,height=args.height)
+                 width=args.width,height=args.height,allow_present_baseline=args.allow_present_baseline)
     # Native captures finish before any independent CPU work; all config mutations are sequential.
     run(args.exe,args.output/'shipping',['glossy_floor','glossy_smooth'],reflection_motion=True,**options)
     run(args.exe,args.output/'shipping',['glossy_closed','forward_glossy_closed','glossy_open'],**options)
@@ -154,6 +154,8 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--provider',choices=('hardware','voxel'),required=True)
     parser.add_argument('--capture',action='store_true')
+    parser.add_argument('--allow-present-baseline',action='store_true',
+                        help='Report the known PRESENT_AFTER_WRITE baseline; other validation errors still fail')
     parser.add_argument('--width',type=int,default=960)
     parser.add_argument('--height',type=int,default=540)
     args=parser.parse_args();args.output=args.output.resolve();args.exe=args.exe.resolve()

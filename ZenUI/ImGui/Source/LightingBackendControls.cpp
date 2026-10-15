@@ -3,6 +3,28 @@
 
 namespace zen::ui
 {
+bool DrawGIPresetControls(rc::VoxelGIRuntimeSettings& settings, const char* selectionReason)
+{
+    bool                    changed  = false;
+    const rc::VoxelGIPreset selected = rc::GetVoxelGIPreset(settings);
+    if (ImGui::BeginCombo("GI preset", rc::GetVoxelGIPresetName(selected)))
+    {
+        for (uint32_t index = 1; index <= static_cast<uint32_t>(rc::VoxelGIPreset::Ultra); ++index)
+        {
+            const rc::VoxelGIPreset preset = static_cast<rc::VoxelGIPreset>(index);
+            if (ImGui::Selectable(rc::GetVoxelGIPresetName(preset), selected == preset))
+            {
+                changed = rc::ApplyVoxelGIPreset(preset, settings);
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::TextWrapped(
+        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. All use full-resolution tracing.");
+    ImGui::TextWrapped("Selection: %s. Backend controls can override the preset preference.", selectionReason);
+    return changed;
+}
+
 bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason)
 {
     bool changed = false;
@@ -39,7 +61,7 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
             }
         }
         ImGui::TextWrapped(
-            "All features sets every selector. Individual changes show Mixed. Compute uses voxel visibility, cone bounce and shadow maps.");
+            "All features sets every selector. Individual changes show Mixed. Compute traces triangles in software; HW RT uses hardware queries. Both use the same lighting model.");
         if (settings.GetHardwareFeatureMask() != 0 && !hardwareReady)
         {
             ImGui::TextWrapped(

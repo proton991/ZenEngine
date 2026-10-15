@@ -1,5 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
+#define HYBRID_VOXEL_REFERENCE
 #include "../hybrid_provider.glsl"
 #include "../hit_radiance.glsl"
 layout(local_size_x=1) in;

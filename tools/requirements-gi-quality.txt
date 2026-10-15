@@ -1,3 +1,6 @@
+# Local environment: build/venv (gitignored), Python 3.14.7 with exactly these pins.
+# Run the GI tools with build/venv/Scripts/python.exe; tools that spawn other tools reuse it.
+# Recreate: python -m venv build/venv && build/venv/Scripts/python.exe -m pip install -r tools/requirements-gi-quality.txt
 numpy==2.5.3
 embreex==4.4.0
 pillow==12.3.0

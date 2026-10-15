@@ -248,3 +248,88 @@ TEST(SceneAnimation, MorphPrecedesSkinAndInstancesUseIndependentWeights)
 
     EXPECT_EQ(bind[0].pos, Vec4(1, 0, 0, 1));
 }
+
+TEST(SceneAnimation, DeformationUVsPreserveUntouchedVerticesAndPublishAfterValidation)
+{
+    sg::Scene                       scene;
+    HeapVector<UniquePtr<sg::Node>> nodes;
+    sg::Node*                       node = AddAnimationNode(scene, nodes, 0, Vec3(0));
+    node->morphWeights                   = {0.5f};
+    scene.SetNodes(std::move(nodes));
+
+    sg::MorphPrimitiveAsset morph;
+    sg::MorphTargetAsset    target;
+    target.positions = {Vec3(1, 0, 0)};
+    target.texCoords = {{Vec2(0.2f, 0)}, {}, {Vec2(0.4f, 0.6f)}};
+    morph.targets.push_back(std::move(target));
+    scene.GetAssetData().morphPrimitives.push_back(std::move(morph));
+    sg::DeformationPrimitiveAsset binding;
+    binding.node           = 0;
+    binding.firstVertex    = 1;
+    binding.vertexCount    = 1;
+    binding.morphPrimitive = 0;
+    // Overlapping bindings accumulate into the same staged coordinates.
+    scene.GetAssetData().deformations        = {binding, binding};
+    scene.GetAssetData().bindVertexTexCoords = {{Vec2(0.3f, 0.7f)}, {Vec2(0.1f, 0.2f)}};
+    scene.GetAssetData().vertexTexCoords     = {{Vec2(-1)}, {Vec2(-1)}};
+    HeapVector<asset::Vertex> bind(3);
+    bind[2].uv0 = Vec2(0.6f, 0.9f);
+    bind[2].uv1 = Vec2(0.4f, 0.8f);
+    HeapVector<asset::Vertex> posed;
+
+    ASSERT_TRUE(sg::ApplySceneDeformations(scene, MakeVecView(bind), posed));
+    EXPECT_FLOAT_EQ(posed[1].pos.x, 1.0f);
+    EXPECT_FLOAT_EQ(posed[1].uv0.x, 0.3f);
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[0][0], Vec2(0.3f, 0.7f));
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[1][2], Vec2(0.4f, 0.6f));
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[2][0], bind[2].uv0);
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[2][1], bind[2].uv1);
+
+    // A later invalid binding must not publish earlier changes from this call.
+    binding.firstVertex = 3;
+    scene.GetAssetData().deformations.push_back(binding);
+    node->morphWeights                         = {1.0f};
+    scene.GetAssetData().vertexTexCoords[0][0] = Vec2(9);
+    ASSERT_FALSE(sg::ApplySceneDeformations(scene, MakeVecView(bind), posed));
+    EXPECT_FLOAT_EQ(posed[1].pos.x, 1.0f);
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[0][0], Vec2(9));
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[1][2], Vec2(0.4f, 0.6f));
+
+    scene.GetAssetData().deformations.pop_back();
+    ASSERT_TRUE(sg::ApplySceneDeformations(scene, MakeVecView(bind), posed));
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[0][0], Vec2(0.3f, 0.7f));
+    EXPECT_FLOAT_EQ(posed[1].pos.x, 2.0f);
+}
+
+TEST(SceneAnimation, DeformationUVFallbackCanAliasOutputAndGrowMissingCoordinates)
+{
+    sg::Scene                       scene;
+    HeapVector<UniquePtr<sg::Node>> nodes;
+    sg::Node*                       node = AddAnimationNode(scene, nodes, 0, Vec3(0));
+    node->morphWeights                   = {1.0f};
+    scene.SetNodes(std::move(nodes));
+    sg::MorphPrimitiveAsset morph;
+    sg::MorphTargetAsset    target;
+    target.texCoords = {{Vec2(0.25f, 0)}};
+    morph.targets.push_back(std::move(target));
+    scene.GetAssetData().morphPrimitives.push_back(std::move(morph));
+    sg::DeformationPrimitiveAsset binding;
+    binding.node           = 0;
+    binding.firstVertex    = 1;
+    binding.vertexCount    = 1;
+    binding.morphPrimitive = 0;
+    scene.GetAssetData().deformations.push_back(binding);
+    HeapVector<asset::Vertex> bind(3);
+    bind[0].uv0 = Vec2(0.125f, 0.5f);
+    bind[1].uv0 = Vec2(0.5f, 0.25f);
+    HeapVector<asset::Vertex> posed;
+
+    ASSERT_TRUE(sg::ApplySceneDeformations(scene, MakeVecView(bind), posed));
+    ASSERT_EQ(scene.GetAssetData().vertexTexCoords.size(), 3u);
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[0][0], bind[0].uv0);
+    EXPECT_EQ(posed[1].uv0, Vec2(0.75f, 0.25f));
+    // Without immutable bind coordinates, the existing coordinates are the base.
+    ASSERT_TRUE(sg::ApplySceneDeformations(scene, MakeVecView(bind), posed));
+    EXPECT_EQ(scene.GetAssetData().vertexTexCoords[0][0], bind[0].uv0);
+    EXPECT_EQ(posed[1].uv0, Vec2(1.0f, 0.25f));
+}
