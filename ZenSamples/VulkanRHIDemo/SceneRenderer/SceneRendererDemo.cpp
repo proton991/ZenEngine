@@ -22,6 +22,7 @@
 #include <fstream>
 #include <filesystem>
 #include <iterator>
+#include <optional>
 #include <string_view>
 
 // #if defined(ZEN_WIN32) && defined(ZEN_DEBUG)
@@ -970,7 +971,6 @@ struct DemoOptions
     uint32_t backgroundTestSeconds{0};
     bool     smokeTest{false};
     bool     disableRT{false};
-    bool     disableValidation{false};
     bool     validationPrintf{false};
     bool     gpuMarkers{false};
     bool     gpuMemoryStats{false};
@@ -979,6 +979,8 @@ struct DemoOptions
     bool fixedStep{false};
 
     bool vsync{true};
+
+    std::optional<bool> validation;
 
     zen::RHIPresentMode presentMode{zen::RHIPresentMode::eDefault};
 
@@ -1164,13 +1166,16 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             zen::RHIOptions::GetInstance().SetExecutionCountersEnabled(argument == "--rhi-counters=1");
         }
-        else if (argument == "--validation-printf")
+        else if (argument == "--enable-validation" || argument == "--disable-validation" || argument == "--validation-printf")
         {
-            options.validationPrintf = true;
-        }
-        else if (argument == "--disable-validation")
-        {
-            options.disableValidation = true;
+            const bool enabled = argument != "--disable-validation";
+
+            valid              = !options.validation.has_value() || options.validation.value() == enabled;
+            if (valid)
+            {
+                options.validation        = enabled;
+                options.validationPrintf |= argument == "--validation-printf";
+            }
         }
         else if (argument == "--gpu-markers")
         {
@@ -1308,7 +1313,10 @@ int main(int argc, char** pArgv)
 
         RHIOptions::GetInstance().SetRayTracingDisabled(options.disableRT);
 
-        RHIOptions::GetInstance().SetValidationEnabled(!options.disableValidation);
+        if (options.validation.has_value())
+        {
+            RHIOptions::GetInstance().SetValidationEnabled(options.validation.value());
+        }
 
         RHIOptions::GetInstance().SetDebugPrintfEnabled(options.validationPrintf);
 
@@ -1462,7 +1470,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--enable-validation|--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

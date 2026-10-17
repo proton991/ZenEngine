@@ -45,7 +45,7 @@ def main():
         for mode, thread, compute in itertools.product((1, 2, 3), (0, 1), (0, 1)):
             command = [renderer, f"--mode={mode}", f"--rhi-thread={thread}",
                        f"--async-compute={compute}", "--smoke-test", "--frames=44",
-                       "--fixed-step", "--vsync=0"]
+                       "--fixed-step", "--vsync=0", "--enable-validation"]
             if args.diagnostics:
                 command.append("--device-loss-diagnostics")
             commands.append((f"smoke-m{mode}-t{thread}-a{compute}", command))

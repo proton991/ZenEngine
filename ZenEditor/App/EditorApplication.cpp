@@ -234,7 +234,10 @@ public:
 
         spdlog::default_logger()->sinks().push_back(m_sink);
 
-        RHIOptions::GetInstance().SetValidationEnabled(true);
+        if (m_options.validation.has_value())
+        {
+            RHIOptions::GetInstance().SetValidationEnabled(m_options.validation.value());
+        }
 
         RHIOptions::GetInstance().SetGPUMemoryStats(true);
 

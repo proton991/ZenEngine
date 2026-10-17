@@ -98,44 +98,16 @@ struct DrawIndexedIndirectCommand
     uint32_t firstInstance;
 };
 
-enum class PassResourceType
-{
-    eBuffer  = 0,
-    eTexture = 1,
-    eMax     = 2
-};
-
-struct PassResourceTracker
-{
-    NameID                  name;
-    HeapVector<RHITexture*> textures;
-
-    // TextureHandle textureHandle;
-    RHIBuffer*                  pBuffer;
-    PassResourceType            resourceType{PassResourceType::eMax};
-    RHIAccessMode               accessMode{RHIAccessMode::eNone};
-    BitField<RHIAccessFlagBits> accessFlags;
-    RHIBufferUsage              bufferUsage{RHIBufferUsage::eNone};
-    RHITextureUsage             textureUsage{RHITextureUsage::eNone};
-    // RHITextureSubResourceRange textureSubResRange;
-};
-
 struct GraphicsPass
 {
     // FramebufferHandle framebuffer;
     // RenderPassHandle renderPass;
     RHIPipeline* pPipeline;
 
-    // todo: move ownership of descriptorsets to elsewhere
-    // RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t       numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
 
     RHIRenderingLayout* pRenderingLayout{nullptr};
-
-    // setIndex as vector index, bindingIndex as inner map key
-    // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
-    HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
 
     void Reset()
     {
@@ -150,13 +122,8 @@ struct ComputePass
 {
     RHIPipeline* pPipeline;
 
-    // RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t       numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
-
-    // setIndex as vector index, bindingIndex as inner map key
-    // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
-    HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
 };
 
 enum class GfxPassShaderMode : uint32_t

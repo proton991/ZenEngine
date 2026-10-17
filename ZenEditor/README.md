@@ -426,7 +426,10 @@ graph declaration. Existing runtime UI and model-switch regression tests remain.
 
 `--smoke-test` runs 40 frames with resize, minimize/restore, hide/show, picks,
 camera/projection changes, layout reset and asset selection. Combine it with `--rhi=inline` or
-`--rhi=threaded`, `--mode=pbr|gi|voxels`, and `--hidden` for native validation.
+`--rhi=threaded`, `--mode=pbr|gi|voxels`, `--hidden`, and `--enable-validation` for native validation.
+Validation defaults to on in Debug and off in Release and Performance. Use
+`--enable-validation` or `--disable-validation` to override the default; conflicting
+flags are rejected.
 `--frames=N --capture=path.ppm` captures the last frame. Diagnostic capture waits
 for completion; normal rendering does not use this capture path.
 

@@ -129,6 +129,8 @@ class Captures:
             command.append(f'--capture-voxels={prefix}-voxels')
         if benchmark:
             command += ['--disable-validation', '--vsync=0', '--warmup=16']
+        else:
+            command.append('--enable-validation')
         with Path(str(prefix)+'.log').open('w') as log:
             result = subprocess.run(command, cwd=ROOT, env=self.env, stdout=log, stderr=subprocess.STDOUT, timeout=300)
         lines = Path(str(prefix)+'.log').read_text(errors='replace').splitlines()

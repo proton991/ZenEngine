@@ -13,8 +13,8 @@ cmake --preset x64-windows-msvc-performance
 if errorlevel 1 goto failed
 cmake --build --preset x64-windows-msvc-performance --target scene_renderer_demo -j 8
 if errorlevel 1 goto failed
-rem Validation remains enabled in ordinary launches; this is a performance run.
-"build\x64-windows-msvc-performance\bin\scene_renderer_demo.exe" --mode=3 --disable-validation %*
+rem Performance builds default validation off; --enable-validation opts in for diagnostics.
+"build\x64-windows-msvc-performance\bin\scene_renderer_demo.exe" --mode=3 %*
 set "ZEN_PERF_RESULT=%ERRORLEVEL%"
 popd
 exit /b %ZEN_PERF_RESULT%

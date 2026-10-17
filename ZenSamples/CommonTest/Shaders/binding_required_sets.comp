@@ -1,0 +1,9 @@
+#version 450
+layout(local_size_x = 1) in;
+layout(set = 1, binding = 0, std140) uniform InputValue { uint value; } inputValue;
+// Leave set 2 empty to exercise a legitimate layout gap.
+layout(set = 3, binding = 0, std430) buffer OutputValue { uint value; } outputValue;
+void main()
+{
+    outputValue.value = inputValue.value + 1u;
+}

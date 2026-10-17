@@ -206,7 +206,7 @@ def main():
             try:
                 with log.open("w", encoding="utf-8") as stream:
                     process = subprocess.run(
-                        [str(renderer), "--disable-rt", "--no-ui", "--fixed-step", "--vsync=0",
+                        [str(renderer), "--enable-validation", "--disable-rt", "--no-ui", "--fixed-step", "--vsync=0",
                          f"--frames={args.frames}", f"--width={args.width}", f"--height={args.height}",
                          f"--mode={args.mode}", f"--capture={capture}"],
                         cwd=ROOT,

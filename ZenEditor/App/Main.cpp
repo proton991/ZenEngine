@@ -75,6 +75,16 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
                          : argument == "--mode=gi"  ? zen::rc::RenderOption::eVoxelGI
                                                     : zen::rc::RenderOption::eVoxelize;
         }
+        else if (argument == "--enable-validation" || argument == "--disable-validation")
+        {
+            const bool enabled = argument == "--enable-validation";
+
+            valid              = valid && (!options.validation.has_value() || options.validation.value() == enabled);
+            if (valid)
+            {
+                options.validation = enabled;
+            }
+        }
         else if (argument == "--windowed")
         {
             options.windowed = true;
@@ -123,6 +133,7 @@ int main(int argc, char** argv)
             stderr,
             "Usage: zen_editor [--scene=path.gltf|path.glb] [--rhi=inline|threaded] [--frames=N] "
             "[--environment=path.hdr|path.ktx|path.dds] [--mode=pbr|gi|voxels] "
+            "[--enable-validation|--disable-validation] "
             "[--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice|gi-raw|gi-reconstructed|gi-history|gi-hit-miss|gi-rejection] "
             "[--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--capture-scene=path.ppm] [--smoke-test] [--hidden] [--windowed]\n");
     }

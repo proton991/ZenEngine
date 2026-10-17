@@ -11,7 +11,9 @@ namespace zen
 class RHIShaderUtil
 {
 public:
+    // maxDescriptorSets is the device's maxBoundDescriptorSets; every set index must be below it.
     [[nodiscard]] static bool ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderGroupSpirv,
+                                                     uint32_t               maxDescriptorSets,
                                                      RHIShaderGroupInfo&    shaderGroupInfo);
 };
 
@@ -379,11 +381,20 @@ inline bool ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     return srd.type != RHIShaderResourceType::eMax;
 }
 
-inline bool MergeOrAddSRDs(RHIShaderStage stage, RHIShaderResourceDescriptor& descriptor, RHIShaderGroupInfo& info)
+inline bool MergeOrAddSRDs(RHIShaderStage               stage,
+                           RHIShaderResourceDescriptor& descriptor,
+                           uint32_t                     maxDescriptorSets,
+                           RHIShaderGroupInfo&          info)
 {
-    bool valid = descriptor.set < 32;
+    // The device limit also bounds the table size, so a corrupt set index cannot grow it.
+    bool valid = descriptor.set < maxDescriptorSets;
 
-    if (valid)
+    if (!valid)
+    {
+        LOGE("Descriptor set {} (binding {}) is not below the device's {} descriptor sets", descriptor.set, descriptor.binding,
+             maxDescriptorSets);
+    }
+    else
     {
         if (info.SRDTable.size() <= descriptor.set)
         {
@@ -451,7 +462,9 @@ inline bool HasValidSpirvStructure(const HeapVector<uint8_t>& code)
     return valid;
 }
 
-inline bool RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr spirv, RHIShaderGroupInfo& output)
+inline bool RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr spirv,
+                                                  uint32_t               maxDescriptorSets,
+                                                  RHIShaderGroupInfo&    output)
 {
     bool valid    = spirv != nullptr;
 
@@ -494,7 +507,7 @@ inline bool RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr spirv, 
                         RHIShaderResourceDescriptor descriptor{};
 
                         valid = ParseSpvReflectDescriptorBinding(*sets[set]->bindings[binding], descriptor)
-                             && MergeOrAddSRDs(stage, descriptor, info);
+                             && MergeOrAddSRDs(stage, descriptor, maxDescriptorSets, info);
                     }
                 }
 

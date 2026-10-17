@@ -96,7 +96,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
             config.write_bytes(active)
             prefix=folder/name
             assert frames >= 2
-            command=[str(exe),'--no-ui','--fixed-step',f'--frames={frames-1}',
+            command=[str(exe),'--enable-validation','--no-ui','--fixed-step',f'--frames={frames-1}',
                      f'--mode={mode}',f'--width={width}',f'--height={height}',f'--capture-lighting={prefix}',f'--profile={prefix}']
             if not rt: command.append('--disable-rt')
             if gpu: command.append('--gpu='+gpu)

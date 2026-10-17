@@ -420,7 +420,7 @@ def main():
             last = original + b'\n' + ''.join(f'{k}={v}\n' for k,v in settings.items()).encode()
             config.write_bytes(last)
             with Path(str(prefix)+'.log').open('w') as log:
-                command = [str(args.executable.resolve()), '--disable-rt', '--frames=2',
+                command = [str(args.executable.resolve()), '--enable-validation', '--disable-rt', '--frames=2',
                     '--mode=1', f'--rhi-thread={thread}', f'--async-compute={queue}',
                     f'--capture-voxels={prefix}']
                 if args.reference:

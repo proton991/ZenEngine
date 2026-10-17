@@ -255,7 +255,7 @@ def main(overrides=None, executable=None):
         config.write_bytes(last)
         log, capture = OUT / f"{tag}.log", OUT / f"{tag}.ppm"
         with log.open("w") as output:
-            completed = subprocess.run([str(executable), *arguments,
+            completed = subprocess.run([str(executable), '--enable-validation', *arguments,
                                         f"--capture={capture}"], cwd=ROOT, env=env,
                                        stdout=output, stderr=subprocess.STDOUT, timeout=180)
         text = log.read_text(errors="replace")

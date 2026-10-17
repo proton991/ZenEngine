@@ -38,6 +38,11 @@ endif ()
 ############################################################
 add_subdirectory(External)
 add_subdirectory(ZenCore)
+if (BUILD_TESTING)
+  # Native correctness tests enable validation explicitly in every build configuration.
+  add_library(ZenVulkanTestMain STATIC ZenSamples/CommonTest/VulkanTestMain.cpp)
+  target_link_libraries(ZenVulkanTestMain PUBLIC ZenCore gtest)
+endif ()
 # Libraries before their consumers: the samples link the optional runtime UI.
 if (ZEN_BUILD_RUNTIME_UI OR ZEN_BUILD_EDITOR)
   add_subdirectory(ZenUI)

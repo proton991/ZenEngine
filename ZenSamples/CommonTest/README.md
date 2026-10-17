@@ -10,6 +10,8 @@ Resource creation tests cover all graphics/compute/transfer family alias pattern
 
 `VulkanRHIIntegrationTest` requires a Vulkan device and the Khronos validation layer. It initializes the RHI through its public API. Descriptor tests observe actual Vulkan allocations, writes and bindings; queue/lifetime tests intercept Vulkan calls to control completion and submission failures deterministically. Tests access no private engine state and require no test-friend declarations.
 
+Native RHI, ray-query, Cone, model-switch, window-platform and UI correctness executables use `ZenVulkanTestMain` to enable validation before running tests, including Release and Performance builds. Editor native fixtures also enable it explicitly. Individual tests can still override the option for deliberate failure-path coverage. The CPU-only `VulkanRHITest` retains the build default and checks both that default and explicit overrides. Renderer acceptance scripts pass `--enable-validation` rather than relying on Debug defaults.
+
 From a configured MSVC developer shell at the repository root:
 
 ```powershell

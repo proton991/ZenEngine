@@ -389,7 +389,7 @@ public:
         }
     }
 
-    explicit TestShader(const RHIShaderCreateInfo& info) : RHIShader(info)
+    TestShader(const RHIShaderCreateInfo& info, uint32_t maxDescriptorSets) : RHIShader(info)
     {
         if (!info.stageFlags.IsEmpty())
         {
@@ -407,7 +407,7 @@ public:
 
             RHIShaderGroupInfo reflected{};
 
-            VERIFY_EXPR(RHIShaderUtil::ReflectShaderGroupInfo(spirv, reflected));
+            VERIFY_EXPR(RHIShaderUtil::ReflectShaderGroupInfo(spirv, maxDescriptorSets, reflected));
 
             m_SRDTable = std::move(reflected.SRDTable);
 
@@ -968,6 +968,9 @@ public:
         info.uniformBufferAlignment = 16;
 
         info.storageBufferAlignment = 16;
+
+        // The fake device reports a typical desktop descriptor set limit.
+        info.maxBoundDescriptorSets = 32;
     }
 
     TestContext                                                graphics{RHICommandContextType::eGraphics};
@@ -1104,11 +1107,11 @@ public:
 
                 reflectedInfo.specializationConstants = info.specializationConstants;
 
-                result                                = ZEN_NEW() TestShader(reflectedInfo);
+                result                                = ZEN_NEW() TestShader(reflectedInfo, this->info.maxBoundDescriptorSets);
             }
             else
             {
-                result = ZEN_NEW() TestShader(info);
+                result = ZEN_NEW() TestShader(info, this->info.maxBoundDescriptorSets);
             }
         }
 

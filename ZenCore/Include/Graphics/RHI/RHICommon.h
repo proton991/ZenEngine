@@ -14,12 +14,14 @@
 
 #define MAX_NUM_COLOR_ATTACHMENTS 8
 
-#define MAX_NUM_DESCRIPTOR_SETS 8
-
 #define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
 
 namespace zen
 {
+// Inline storage for per-set containers, not a limit. Descriptor set indices are bounded
+// only by the device, reported as RHIGPUInfo::maxBoundDescriptorSets.
+inline constexpr uint32_t kInlineDescriptorSetCount = 8;
+
 class RHIResource;
 class RHIBuffer;
 class RHITexture;
@@ -117,7 +119,9 @@ struct RHIGPUInfo
     size_t uniformBufferAlignment{0};
     size_t storageBufferAlignment{0};
     // Conservative defaults; the backend supplies the physical device limits.
-    uint32_t                maxComputeWorkGroupInvocations{128};
+    uint32_t maxComputeWorkGroupInvocations{128};
+    // Every descriptor set index must be below this device limit (Vulkan guarantees at least 4).
+    uint32_t                maxBoundDescriptorSets{4};
     std::array<uint32_t, 3> maxComputeWorkGroupSize{128, 128, 64};
     std::array<uint32_t, 3> maxComputeWorkGroupCount{65535, 65535, 65535};
     uint32_t                maxStorageBufferRange{128u * 1024u * 1024u};
@@ -367,7 +371,7 @@ struct RHIBindlessHandle
     }
 };
 
-using RHIShaderResourceDescriptorTable = SmallVector<SmallVector<RHIShaderResourceDescriptor>, MAX_NUM_DESCRIPTOR_SETS>;
+using RHIShaderResourceDescriptorTable = SmallVector<SmallVector<RHIShaderResourceDescriptor>, kInlineDescriptorSetCount>;
 // .vert .frag .compute together
 struct RHIShaderGroupInfo
 {

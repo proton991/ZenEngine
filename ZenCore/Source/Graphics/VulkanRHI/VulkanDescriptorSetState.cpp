@@ -204,6 +204,11 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     {
         ClearAllSetStates();
 
+        // Per-set state covers exactly the bound shader's layout; the device bounds that count.
+        const VulkanShader* shader = pPipeline != nullptr ? TO_CVK_SHADER(pPipeline->GetShader()) : nullptr;
+
+        m_setStates.resize(shader != nullptr ? shader->GetNumDescriptorSetLayouts() : 0);
+
         m_packedValueBuffers.clear();
 
         m_cacheRevision          = 0;
@@ -226,12 +231,12 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
 
     for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
     {
-        valid &= parameter.set < MAX_NUM_DESCRIPTOR_SETS;
+        valid &= parameter.set < m_setStates.size();
     }
 
     for (const RHIShaderResourceParameter& parameter : parameters.GetResourceParams())
     {
-        valid &= parameter.set < MAX_NUM_DESCRIPTOR_SETS
+        valid &= parameter.set < m_setStates.size()
               && (parameter.bufferOffset == 0 || parameter.resourceType == RHIShaderResourceType::eUniformBuffer);
     }
 
@@ -375,6 +380,8 @@ void VulkanDescriptorSetState::Reset()
 
     ClearAllSetStates();
 
+    m_setStates.clear();
+
     m_packedValueBuffers.clear();
 
 
@@ -443,7 +450,7 @@ bool VulkanDescriptorSetState::ResolveSet(uint32_t setIdx, FVulkanCommandListCon
 {
     bool resolved = false;
 
-    if (setIdx < MAX_NUM_DESCRIPTOR_SETS && ValidateSetState(setIdx))
+    if (setIdx < m_setStates.size() && ValidateSetState(setIdx))
     {
         SetState& setState = m_setStates[setIdx];
 
@@ -503,7 +510,7 @@ bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx, VulkanDescriptor
 
     outKey        = {};
 
-    if (m_pPipeline != nullptr && setIdx < MAX_NUM_DESCRIPTOR_SETS)
+    if (m_pPipeline != nullptr && setIdx < m_setStates.size())
     {
         VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
 
@@ -610,9 +617,9 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
 {
     VERIFY_EXPR(m_pPipeline != nullptr);
 
-    VERIFY_EXPR(param.set < MAX_NUM_DESCRIPTOR_SETS);
+    VERIFY_EXPR(param.set < m_setStates.size());
 
-    if (m_pPipeline != nullptr && param.set < MAX_NUM_DESCRIPTOR_SETS)
+    if (m_pPipeline != nullptr && param.set < m_setStates.size())
     {
         if (param.bufferOffset != 0 && param.resourceType != RHIShaderResourceType::eUniformBuffer)
         {
@@ -696,7 +703,7 @@ bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
 {
     VulkanShader* shader = m_pPipeline != nullptr ? TO_VK_SHADER(m_pPipeline->GetShader()) : nullptr;
 
-    bool valid = shader != nullptr && setIdx < MAX_NUM_DESCRIPTOR_SETS && setIdx < shader->GetNumDescriptorSetLayouts();
+    bool valid           = shader != nullptr && setIdx < m_setStates.size() && setIdx < shader->GetNumDescriptorSetLayouts();
 
     if (valid && !(setIdx == kGlobalBindlessHeapIndex && shader->HasGlobalBindlessSet()))
     {
@@ -761,19 +768,23 @@ bool VulkanDescriptorSetState::BuildDescriptorSetList(FVulkanCommandListContext*
 
         const uint32_t numSets = pShader->GetNumDescriptorSetLayouts();
 
-        uint32_t firstUsed     = MAX_NUM_DESCRIPTOR_SETS;
+        VERIFY_EXPR(numSets == m_setStates.size());
 
-        uint32_t lastUsed      = 0;
+        uint32_t firstUsed = numSets;
 
-        bool anyUsed           = false;
+        uint32_t lastUsed  = 0;
+
+        bool anyUsed       = false;
 
         for (uint32_t setIdx = 0; setIdx < numSets; setIdx++)
         {
-            const SetState& setState  = m_setStates[setIdx];
+            const SetState& setState = m_setStates[setIdx];
 
-            const bool globalBindless = setIdx == kGlobalBindlessHeapIndex && pShader->HasGlobalBindlessSet();
+            const bool declaredSet   = !(*pShader->GetSRDTable())[setIdx].empty();
 
-            if (!globalBindless && setState.vkSet == VK_NULL_HANDLE && setState.bindings.empty())
+            // Resolve declared sets even without parameters: scalar bindings must be present,
+            // and partially-bound arrays still need a native set. Only empty layout gaps may be skipped.
+            if (!declaredSet && setState.vkSet == VK_NULL_HANDLE && setState.bindings.empty())
             {
                 continue;
             }
@@ -850,7 +861,7 @@ void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx, HeapV
 {
     const VulkanShader* shader = TO_CVK_SHADER(m_pPipeline->GetShader());
 
-    if (setIdx < MAX_NUM_DESCRIPTOR_SETS && shader != nullptr)
+    if (setIdx < m_setStates.size() && shader != nullptr)
     {
         for (const VulkanShader::DynamicOffsetSlot& slot : shader->GetDynamicOffsetSlots(setIdx))
         {

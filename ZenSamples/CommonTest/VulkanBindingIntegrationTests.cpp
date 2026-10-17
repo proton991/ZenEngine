@@ -39,6 +39,13 @@ struct BindingObserver
     static inline uint32_t                     firstSet;
     static inline std::vector<VkDescriptorSet> sets;
     static inline std::vector<uint32_t>        offsets;
+    static inline uint32_t                     suppressedDispatches;
+
+    // Invalid test inputs must never reach the driver, even before the regression is fixed.
+    static VKAPI_ATTR void VKAPI_CALL SuppressDispatch(VkCommandBuffer, uint32_t, uint32_t, uint32_t)
+    {
+        ++suppressedDispatches;
+    }
 
     static VKAPI_ATTR void VKAPI_CALL Bind(VkCommandBuffer        commands,
                                            VkPipelineBindPoint    point,
@@ -471,6 +478,76 @@ TEST_F(VulkanBindingIntegrationTest, TextureCannotFillSamplerBinding)
     EXPECT_TRUE(sets.empty());
 }
 
+TEST_F(VulkanBindingIntegrationTest, MissingRequiredSetsRejectDispatchAndAllowDiscardRecovery)
+{
+    RHIPipeline* pipeline = Compute("binding_required_sets.comp.spv");
+    ASSERT_NE(pipeline, nullptr);
+    VulkanBuffer* value = Buffer(16, true);
+    ASSERT_NE(value, nullptr);
+    *reinterpret_cast<uint32_t*>(value->Map()) = 41;
+    value->Unmap();
+    VulkanBuffer* output = Buffer();
+    ASSERT_NE(output, nullptr);
+
+    {
+        test::ScopedVulkanCall<PFN_vkCmdDispatch> suppressDispatch(vkCmdDispatch, BindingObserver::SuppressDispatch);
+        // No parameters, only the first required set, and only the last required set.
+        for (uint32_t suppliedSet : {0u, 1u, 3u})
+        {
+            SCOPED_TRACE(suppliedSet);
+            context->RHIDiscardRecording();
+            context->RHIBindPipeline(pipeline);
+            BindingObserver::sets.clear();
+            BindingObserver::suppressedDispatches = 0;
+            RHIBatchedShaderParameters parameters;
+            if (suppliedSet != 0)
+            {
+                parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(suppliedSet, 0),
+                                            suppliedSet == 1 ? value : output, nullptr, 0);
+            }
+            context->RHISetShaderParameters(parameters);
+            ASSERT_FALSE(context->GetRecordingError().IsFailure());
+            context->RHIDispatch(1, 1, 1);
+            EXPECT_EQ(context->GetRecordingError().code, RHIErrorCode::eInvalidArgument);
+            EXPECT_EQ(BindingObserver::suppressedDispatches, 0u);
+            EXPECT_TRUE(BindingObserver::sets.empty());
+        }
+    }
+
+    context->RHIDiscardRecording();
+    context->RHIBindPipeline(pipeline);
+    RHIBatchedShaderParameters complete;
+    complete.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 0), value, nullptr, 0);
+    complete.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(3, 0), output, nullptr, 0);
+    context->RHISetShaderParameters(complete);
+    context->RHIDispatch(1, 1, 1);
+    ASSERT_FALSE(context->GetRecordingError().IsFailure());
+    EXPECT_EQ(BindingObserver::firstSet, 1u);
+    ASSERT_EQ(BindingObserver::sets.size(), 3u);
+    EXPECT_NE(BindingObserver::sets[1], VK_NULL_HANDLE);
+    SubmitAndWait();
+    EXPECT_EQ(*reinterpret_cast<const uint32_t*>(output->Map()), 42u);
+    output->Unmap();
+}
+
+TEST_F(VulkanBindingIntegrationTest, UnpopulatedPartiallyBoundSetIsResolved)
+{
+    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("descriptor_array.comp.spv"));
+    ASSERT_NE(pipeline, nullptr);
+    VulkanDescriptorSetState state;
+    state.SetPipeline(pipeline);
+    context->GetCommandBuffer();
+    HeapVector<VkDescriptorSet> sets;
+    HeapVector<uint32_t>        offsets;
+    uint32_t                    firstSet = 0;
+    ASSERT_TRUE(state.FlushPendingDescriptorWrites(context, sets, firstSet, offsets));
+    EXPECT_EQ(firstSet, 1u);
+    ASSERT_EQ(sets.size(), 1u);
+    EXPECT_NE(sets[0], VK_NULL_HANDLE);
+    // An empty partially-bound array can be bound, but its unpopulated elements cannot be accessed.
+    EXPECT_TRUE(offsets.empty());
+}
+
 TEST_F(VulkanBindingIntegrationTest, InvalidSamplerElementsNeverWriteOrPublishDescriptors)
 {
     VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("binding_sampler.comp.spv"));
@@ -797,6 +874,66 @@ TEST_F(VulkanBindingIntegrationTest, UniformArraysEmitAllZeroOffsetsByDefault)
     }
 
     output->Unmap();
+}
+
+TEST_F(VulkanBindingIntegrationTest, DescriptorSetIndicesFollowTheDeviceLimit)
+{
+    const uint32_t limit = session->rhi.GetDevice()->GetPhysicalDeviceProperties().limits.maxBoundDescriptorSets;
+
+    EXPECT_EQ(session->rhi.QueryGPUInfo().maxBoundDescriptorSets, limit);
+
+    if (limit < 10)
+    {
+        // Ten sets exceed this device: creation fails before any native object exists.
+        RHIShaderCreateInfo info{};
+
+        test::SetShaderStage(info, RHIShaderStage::eCompute, "binding_high_set.comp.spv");
+
+        RHIResourcePtr<RHIShader> shader = RHIResourcePtr<RHIShader>::Adopt(session->rhi.CreateShader(info));
+
+        EXPECT_EQ(shader.Get(), nullptr);
+    }
+    else
+    {
+        RHIPipeline* pipeline = Compute("binding_high_set.comp.spv");
+
+        ASSERT_NE(pipeline, nullptr);
+
+        EXPECT_EQ(static_cast<VulkanShader*>(pipeline->GetShader())->GetNumDescriptorSetLayouts(), 10u);
+
+        VulkanBuffer* value                        = Buffer(16, true);
+
+        *reinterpret_cast<uint32_t*>(value->Map()) = 41;
+
+        value->Unmap();
+
+        VulkanBuffer* output = Buffer();
+
+        RHIBatchedShaderParameters parameters;
+
+        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(8, 0), value, nullptr, 0);
+
+        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(9, 0), output, nullptr, 0);
+
+        context->RHISetShaderParameters(parameters);
+
+        context->RHIDispatch(1, 1, 1);
+
+        // Sets 8 and 9 bind together, with the set-8 uniform buffer's dynamic offset.
+        EXPECT_EQ(BindingObserver::firstSet, 8u);
+
+        EXPECT_EQ(BindingObserver::sets.size(), 2u);
+
+        ASSERT_EQ(BindingObserver::offsets.size(), 1u);
+
+        EXPECT_EQ(BindingObserver::offsets[0], 0u);
+
+        SubmitAndWait();
+
+        EXPECT_EQ(*reinterpret_cast<const uint32_t*>(output->Map()), 42u);
+
+        output->Unmap();
+    }
 }
 
 TEST_F(VulkanBindingIntegrationTest, UniformElementOffsetsFollowBindingOrderAndReuseDescriptors)

@@ -4,6 +4,8 @@ Status: in progress, 2026-10-03. This is the single list of work before the RHI 
 
 Scope: Windows desktop Vulkan, the only platform the [RHI README](../ZenCore/Include/Graphics/RHI/README.md) supports. Item IDs continue section 8 of the improvement plan; carried items keep their original IDs so existing verification documents still match.
 
+Ownership decision, 2026-10-17: shader packaging and path resolution belong to the future engine filesystem. Cross-platform shader validation, including push-constant sizes and non-UBO descriptor counts, belongs to the future shader language and frontend compiler. These remain engine delivery dependencies and are deferred outside the current RHI work.
+
 ## 1. Rules
 
 Section 5.0 of the improvement plan applies to every item:
@@ -24,11 +26,11 @@ The engine does not use exceptions. A broken invariant or a missing required eng
 | --- | --- | --- | --- | --- | --- |
 | R17 | Blocker | Recoverable failures stop rendering permanently | M–L | Review | Implemented: option B; [verification](RHIProductionR17Verification.md) |
 | R18 | Blocker | Shader reflection leaks and crashes on bad SPIR-V | S | Review | Implemented; [verification](RHIProductionR18Verification.md) |
-| R19 | Blocker | Shader files load from a compile-time source path | S | Review | None |
-| R20 | Blocker | Validation is enabled by default in Release | S | Review | None |
+| R19 | Engine dependency | Shader files load from a compile-time source path | S | Review | Deferred to the future filesystem |
+| R20 | Blocker | Validation is enabled by default in Release | S | Review | Implemented; [verification](RHIProductionR20Verification.md) |
 | R21 | Blocker | Startup failure crashes without a message | S | Review | Implemented; [verification](RHIProductionR21Verification.md) |
 | R7 | Blocker | Device-loss diagnostics: manual acceptance | S | Improvement plan 9.2 | Needs a dedicated test machine |
-| R8 | Blocker | Hardware and CI acceptance | M | Improvement plan 9.2 | Needs NVIDIA and Intel hardware |
+| R8 | Blocker | Hardware and CI acceptance | M | Improvement plan 9.2 | NVIDIA acceptance recorded; Intel and CI acceptance remain |
 | 5.10 | Important | Remaining error-handling work | L | Improvement plan 9.2 | Implemented with R17; [verification](RHIErrorHandlingVerification.md) |
 | R22 | Important | Fixed bindless heap capacity | M | Review | Done: `8b59a3d0`, 2026-10-03 ([verification](RHIProductionR22Verification.md)) |
 | R23 | Important | Releases after teardown are not detected | S | Review | Done 2026-10-03 ([verification](RHIProductionR23Verification.md)) |
@@ -43,9 +45,9 @@ The engine does not use exceptions. A broken invariant or a missing required eng
 | 5.5 | RenderCore | Per-frame descriptor miss | S–M | Improvement plan 9.2 | Done 2026-10-03 ([verification](RenderCoreImprovementVerification.md)) |
 | H1 | Housekeeping | Ignored `FinalizeCommandLists` results in tests | S | Improvement plan 9.2 | Checked during error-handling migration |
 
-R17, R18, R21, R22, R23 and 5.10 are done; 5.5 was fixed in RenderCore afterwards ([verification](RenderCoreImprovementVerification.md)). On the final tree of the R-items, clean Debug and Release builds pass all four acceptance suites (CommonTest 112, RenderCoreTest 557, VulkanRHITest 48, VulkanRHIIntegrationTest 336 in Debug and 337 in Release, with 6 capability skips), every other test executable and all 24 smoke runs, with no validation errors. Captures for all three rendering modes are byte-identical to the R22 baseline. Hardware coverage remains limited to the RX 7900 XT; see the per-item verification records for results and capability skips.
+R17, R18, R21, R22, R23 and 5.10 are done; 5.5 was fixed in RenderCore afterwards ([verification](RenderCoreImprovementVerification.md)). On the final tree of the R-items, clean Debug and Release builds pass all four acceptance suites (CommonTest 112, RenderCoreTest 557, VulkanRHITest 48, VulkanRHIIntegrationTest 336 in Debug and 337 in Release, with 6 capability skips), every other test executable and all 24 smoke runs, with no validation errors. Captures for all three rendering modes are byte-identical to the R22 baseline. Those results used the RX 7900 XT. R20 is now implemented, with newer Debug/Release acceptance and smoke results on the RTX 5080 recorded in [R20 verification](RHIProductionR20Verification.md).
 
-The RHI is ready for a shipped Windows desktop product when the remaining Blocker items (R19, R20, R7 and R8) are done and R24 is done or accepted with a recorded reason. The Gated and Deferred items decide whether the RHI can serve as a general-purpose engine RHI. They do not block a product whose content fits the current limits.
+The remaining RHI acceptance blockers are R7 and R8; R24 must also be done or accepted with a recorded reason. Shipping the engine additionally requires resolving its shader-system and filesystem dependencies. The Gated and Deferred RHI items decide whether the RHI can serve as a general-purpose engine RHI. They do not block a product whose content fits the current limits.
 
 ## 3. New items from the review
 
@@ -112,6 +114,8 @@ The problem description below records the original review.
 
 ### R19. Shader files load from a compile-time source path
 
+**Status.** Deferred to the future engine filesystem on 2026-10-17. This is an engine packaging dependency, outside the current RHI work. The problem and acceptance criteria below are retained for that future work.
+
 **Problem.** `SPV_SHADER_PATH` is the absolute path of the source tree's `Data/SpvShaders/`, defined in [ZenCore/CMakeLists.txt](../ZenCore/CMakeLists.txt) and used by `platform::FileSystem::LoadSpvFile`. A build copied or installed to another directory or machine cannot find its shaders, so every shader and pipeline fails to create.
 
 **Done when:**
@@ -124,6 +128,10 @@ The problem description below records the original review.
 Check the other `Data/` paths in the same change.
 
 ### R20. Validation is enabled by default in Release
+
+**Status.** Implemented 2026-10-17. Debug defaults validation on; `NDEBUG` builds, including Release and Performance, default it off. Demo/editor command-line flags override the default, and native correctness tests and acceptance runners explicitly enable validation. [Verification](RHIProductionR20Verification.md).
+
+The problem description below records the original review.
 
 **Problem.** `RHIOptions::m_validationEnabled` ([RHIOptions.h](../ZenCore/Include/Graphics/RHI/RHIOptions.h)) defaults to true in every build configuration. Only the demo's `--disable-validation` turns it off. A Release build on a machine with the Vulkan SDK installed therefore runs with the Khronos validation layer and its CPU cost.
 
@@ -214,14 +222,14 @@ The README calls a late release an ownership violation, but nothing detects one.
 
 ### R8. Hardware and CI acceptance
 
-**Status.** Tooling implemented, acceptance open ([verification](RHIProductionR8Verification.md)). Only a Radeon RX 7900 XT under Windows 10 has run the production changes. No NVIDIA or Intel machine is currently available. The README declares macOS, Linux and mobile unsupported.
+**Status.** Tooling implemented, acceptance open ([verification](RHIProductionR8Verification.md)). The original acceptance used a Radeon RX 7900 XT under Windows 10. Debug/Release production acceptance and all 24 smoke runs now also pass on an RTX 5080 with synchronization validation ([R20 verification](RHIProductionR20Verification.md)). Intel and CI acceptance remain open. The README declares macOS, Linux and mobile unsupported.
 
 **Remaining work.**
 
-- Run `tools/verify_rhi_production.py` in Debug and Release on an NVIDIA GPU and an Intel GPU, with synchronization validation. It covers both RHI suites, `RenderCoreTest` and the section 6 smoke matrix.
-- Cover the paths the RX 7900 XT skips: swapchain-maintenance presentation fences (4 tests), the EXT surface-maintenance instance dependency (1 test) and the D24S8 depth fallback (1 test).
+- Run `tools/verify_rhi_production.py` in Debug and Release on an Intel GPU, with synchronization validation. It covers both RHI suites, `RenderCoreTest` and the section 6 smoke matrix.
+- Consolidate the NVIDIA results and capability-path coverage in the R8 verification record, including the paths the RX 7900 XT skipped: swapchain-maintenance presentation fences, the EXT surface-maintenance instance dependency and the D24S8 depth fallback.
 - Run the SwiftShader workflow ([rhi-software.yml](../.github/workflows/rhi-software.yml)) for the first time. Neither the workflow nor its cache (F11) has ever run.
-- Repeat the hardware runs after R17, R18 and the 5.10 remainder land.
+- Repeat acceptance after subsequent RHI changes.
 
 **Done when** the results are recorded in the R8 verification document. macOS stays unsupported unless it becomes a target.
 
@@ -355,7 +363,7 @@ Revisit these items only if the workload changes, for example if steady frames s
 
 ## 5. Order
 
-1. **R19 and R20.** R18 and R21 are implemented; packaging and default validation remain independent blockers.
+1. **R18, R20 and R21 are implemented.** Track R19 with the future engine filesystem work.
 2. **R17 and 5.10 are implemented.** Preserve their error/lifetime contracts when scheduling 5.9; do not interleave a singleton redesign with further executor changes.
 3. **R24.** R22 and R23 are done.
 4. **R7 and R8** whenever hardware is available. Repeat R8 after step 2.

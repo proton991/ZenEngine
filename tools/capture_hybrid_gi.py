@@ -136,7 +136,7 @@ def main():
     changed = capture_configuration(original, settings)
     environment = os.environ.copy()
     environment.update(VK_LOADER_LAYERS_DISABLE='~implicit~', DISABLE_RTSS_LAYER='1', VK_LAYER_VALIDATE_SYNC='1')
-    command = [str(args.exe.resolve()), '--no-ui', '--fixed-step', '--mode=3',
+    command = [str(args.exe.resolve()), '--enable-validation', '--no-ui', '--fixed-step', '--mode=3',
                f'--frames={args.frames-1}', f'--width={args.width}', f'--height={args.height}',
                f'--capture={prefix}.ppm', f'--capture-lighting={prefix}', f'--profile={prefix}']
     if not args.rt:

@@ -1,3 +1,4 @@
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
@@ -13,6 +14,22 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
                                                            VkDebugUtilsMessageTypeFlagsEXT,
                                                            const VkDebugUtilsMessengerCallbackDataEXT*,
                                                            void*);
+}
+
+TEST(VulkanReviewTest, ValidationDefaultsFollowBuildAndAllowExplicitOverrides)
+{
+    RHIOptions& options  = RHIOptions::GetInstance();
+    const bool  original = options.ValidationEnabled();
+#if defined(NDEBUG)
+    EXPECT_FALSE(original);
+#else
+    EXPECT_TRUE(original);
+#endif
+    options.SetValidationEnabled(false);
+    EXPECT_FALSE(options.ValidationEnabled());
+    options.SetValidationEnabled(true);
+    EXPECT_TRUE(options.ValidationEnabled());
+    options.SetValidationEnabled(original);
 }
 
 TEST(VulkanReviewTest, NullDebugMessageFieldsAreSafe)
@@ -139,6 +156,8 @@ TEST(VulkanReviewTest, ScalarContractsHandleBoundaryValues)
 
 TEST(VulkanReviewTest, LayoutRulesRejectRuntimeArraysReservedSetAndDuplicateNames)
 {
+    // Vulkan's guaranteed minimum, so these layouts are valid on every device.
+    const uint32_t     sets = RHIGPUInfo{}.maxBoundDescriptorSets;
     RHIShaderGroupInfo info{};
     info.SRDTable.resize(2);
     RHIShaderResourceDescriptor binding{};
@@ -147,15 +166,29 @@ TEST(VulkanReviewTest, LayoutRulesRejectRuntimeArraysReservedSetAndDuplicateName
     binding.name    = "Block";
     binding.type    = RHIShaderResourceType::eUniformBuffer;
     info.SRDTable[1].push_back(binding);
-    EXPECT_TRUE(ValidateShaderLayout(info));
+    EXPECT_TRUE(ValidateShaderLayout(info, sets));
     info.SRDTable[1][0].bindless = true;
-    EXPECT_FALSE(ValidateShaderLayout(info));
+    EXPECT_FALSE(ValidateShaderLayout(info, sets));
     info.SRDTable[1][0].bindless = false;
     binding.binding              = 1;
     info.SRDTable[1].push_back(binding);
-    EXPECT_FALSE(ValidateShaderLayout(info));
+    EXPECT_FALSE(ValidateShaderLayout(info, sets));
     info.SRDTable[1].clear();
     binding.set = 0;
     info.SRDTable[0].push_back(binding);
-    EXPECT_FALSE(ValidateShaderLayout(info));
+    EXPECT_FALSE(ValidateShaderLayout(info, sets));
+}
+
+TEST(VulkanReviewTest, LayoutRulesFollowTheDeviceDescriptorSetLimit)
+{
+    RHIShaderGroupInfo info{};
+    info.SRDTable.resize(10);
+    RHIShaderResourceDescriptor binding{};
+    binding.set  = 9;
+    binding.name = "HighSet";
+    binding.type = RHIShaderResourceType::eStorageBuffer;
+    info.SRDTable[9].push_back(binding);
+    // Ten sets fit a device that binds ten, and exceed one that binds nine; no engine count applies.
+    EXPECT_TRUE(ValidateShaderLayout(info, 10));
+    EXPECT_FALSE(ValidateShaderLayout(info, 9));
 }

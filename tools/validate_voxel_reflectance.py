@@ -87,7 +87,7 @@ def images():
                     config.write_bytes(last);Path(str(prefix)+'.cfg').write_bytes(last)
                     with Path(str(prefix)+'.log').open('w') as log:
                         result=subprocess.run([str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'),'--frames=3','--mode=3',
-                            '--rhi-thread=0','--async-compute=0',f'--capture={prefix}.ppm',
+                            '--enable-validation','--rhi-thread=0','--async-compute=0',f'--capture={prefix}.ppm',
                             f'--capture-voxels={prefix}',*args],cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180)
                     text=Path(str(prefix)+'.log').read_text(errors='replace')
                     errors=[line for line in text.splitlines() if '[error]' in line or 'VUID-' in line or 'SYNC-HAZARD' in line]

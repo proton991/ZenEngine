@@ -213,8 +213,10 @@ private:
     RHIBindlessHeapCapacities m_bindlessHeapCapacities;
 #if defined(NDEBUG)
     bool m_strictTeardownChecks{false};
+    bool m_validationEnabled{false};
 #else
     bool m_strictTeardownChecks{true};
+    bool m_validationEnabled{true};
 #endif
     bool        m_executionCountersEnabled{true};
     bool        m_debugPrintfEnabled{false};
@@ -224,7 +226,6 @@ private:
     bool        m_gpuProfilerMarkers{false};
     bool        m_gpuMemoryStats{false};
     bool        m_deviceLossDiagnostics{false};
-    bool        m_validationEnabled{true};
     RHIOptions() = default;
 };
 } // namespace zen

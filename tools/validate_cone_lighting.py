@@ -76,7 +76,7 @@ def validate(executable, output):
                 config.write_bytes(last)
                 prefix = output / f'{voxelizer}-{policy}-{name}'
                 command = [str(executable), '--frames=4', '--mode=3', '--width=320', '--height=180',
-                           '--no-ui', '--disable-rt', '--fixed-step', f'--rhi-thread={threaded}',
+                           '--enable-validation', '--no-ui', '--disable-rt', '--fixed-step', f'--rhi-thread={threaded}',
                            f'--capture-lighting={prefix}']
                 if name == 'all':
                     command.append(f'--profile={prefix}')

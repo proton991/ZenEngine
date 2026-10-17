@@ -55,7 +55,8 @@ VulkanUniformBufferUsage CountUniformBufferDescriptors(const RHIShaderResourceDe
 
 bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage, const VkPhysicalDeviceLimits& limits);
 
-bool ValidateShaderLayout(const RHIShaderGroupInfo& info);
+// maxDescriptorSets is the device's maxBoundDescriptorSets.
+bool ValidateShaderLayout(const RHIShaderGroupInfo& info, uint32_t maxDescriptorSets);
 
 class VulkanDevice;
 class VulkanShader : public RHIShader
@@ -71,7 +72,8 @@ public:
 
     VectorView<const DynamicOffsetSlot> GetDynamicOffsetSlots(uint32_t set) const
     {
-        return m_dynamicOffsetSlots[set];
+        return set < m_dynamicOffsetSlots.size() ? VectorView<const DynamicOffsetSlot>(m_dynamicOffsetSlots[set])
+                                                 : VectorView<const DynamicOffsetSlot>();
     }
 
     uint32_t GetNumShaderStages() const
@@ -162,16 +164,17 @@ private:
         bool                    ownsLayout{false};
     };
 
-    SmallVector<DescriptorSetInfo, MAX_NUM_DESCRIPTOR_SETS> m_descriptorSetInfos;
+    SmallVector<DescriptorSetInfo, kInlineDescriptorSetCount> m_descriptorSetInfos;
 
-    SmallVector<VkDescriptorSetLayout, MAX_NUM_DESCRIPTOR_SETS> m_descriptorSetLayouts;
+    SmallVector<VkDescriptorSetLayout, kInlineDescriptorSetCount> m_descriptorSetLayouts;
 
     VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
     bool             m_hasGlobalBindlessSet{false};
     // False when the reflected layout exceeds device descriptor limits; no native objects exist.
     bool m_fitsDeviceLimits{false};
 
-    SmallVector<DynamicOffsetSlot> m_dynamicOffsetSlots[MAX_NUM_DESCRIPTOR_SETS];
+    // One entry per descriptor set in the layout, sized from the reflected table.
+    SmallVector<SmallVector<DynamicOffsetSlot>, kInlineDescriptorSetCount> m_dynamicOffsetSlots;
 };
 
 class VulkanPipeline : public RHIPipeline

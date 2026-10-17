@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/Renderer/RenderOverlay.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Utils/UniquePtr.h"
+#include <optional>
 #include <string>
 
 namespace zen::editor
@@ -22,6 +23,8 @@ struct EditorOptions
     bool             hidden{false};
     bool             windowed{false};
     rc::RenderOption mode{rc::RenderOption::ePBR};
+
+    std::optional<bool> validation;
 };
 
 class EditorApplication

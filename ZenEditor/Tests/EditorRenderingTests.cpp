@@ -544,7 +544,8 @@ TEST(EditorMeshPreviewShader, DeclaresTheSceneVertexLayoutAndSharedConstants)
 
     RHIShaderGroupInfo info;
 
-    ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    // Vulkan's guaranteed descriptor set minimum: the shader must load on every device.
+    ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, RHIGPUInfo{}.maxBoundDescriptorSets, info));
 
     // The preview binds the scene vertex buffer, so the reflected stride must match it.
     EXPECT_EQ(info.vertexInputAttributes.size(), 8u);

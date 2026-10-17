@@ -74,8 +74,7 @@ def measure(args):
         command.append('--disable-rt')
     if args.profile:
         command.append(f'--profile={out / "native"}')
-    if not args.validation:
-        command.append('--disable-validation')
+    command.append('--enable-validation' if args.validation else '--disable-validation')
     if args.motion_fixture:
         command.append('--gi-motion-fixture')
     if args.gpu:

@@ -20,7 +20,8 @@ TEST(UIShaderReflectionTest, PackedVertexColorHasFourByteStrideAndTextureSlotArr
 
     RHIShaderGroupInfo info;
 
-    ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    // Vulkan's guaranteed descriptor set minimum: the shader must load on every device.
+    ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, RHIGPUInfo{}.maxBoundDescriptorSets, info));
 
     ASSERT_EQ(info.vertexInputAttributes.size(), 3u);
 

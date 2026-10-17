@@ -85,7 +85,8 @@ private:
 
     VulkanPipeline* m_pPipeline{nullptr};
 
-    SetState m_setStates[MAX_NUM_DESCRIPTOR_SETS];
+    // Sized to the bound shader's descriptor set count by SetPipeline.
+    SmallVector<SetState, kInlineDescriptorSetCount> m_setStates;
 
     HeapVector<PackedValueBufferState> m_packedValueBuffers;
 

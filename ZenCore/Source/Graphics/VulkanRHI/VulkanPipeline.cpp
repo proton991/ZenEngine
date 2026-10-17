@@ -17,9 +17,17 @@
 
 namespace zen
 {
-bool ValidateShaderLayout(const RHIShaderGroupInfo& info)
+bool ValidateShaderLayout(const RHIShaderGroupInfo& info, uint32_t maxDescriptorSets)
 {
-    bool                                                valid = true;
+    // Set indices are table positions, so the table size bounds every index and the layout count.
+    bool valid = info.SRDTable.size() <= maxDescriptorSets;
+
+    if (!valid)
+    {
+        LOGE("Shader '{}' uses {} descriptor sets; the device supports {}", info.name.CStr(), info.SRDTable.size(),
+             maxDescriptorSets);
+    }
+
     HashMap<NameID, const RHIShaderResourceDescriptor*> names;
     for (const SmallVector<RHIShaderResourceDescriptor>& set : info.SRDTable)
     {
@@ -205,6 +213,9 @@ bool VulkanShader::LoadSpirvFiles()
 
 void VulkanShader::Init()
 {
+    // Descriptor set counts are a device capability; no engine-wide count applies.
+    const uint32_t maxDescriptorSets = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits.maxBoundDescriptorSets;
+
     RHIShaderGroupInfo sgInfo{};
 
     bool reflected = m_reflection.has_value();
@@ -215,7 +226,7 @@ void VulkanShader::Init()
     }
     else
     {
-        reflected = RHIShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, sgInfo);
+        reflected = RHIShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, maxDescriptorSets, sgInfo);
 
         if (reflected)
         {
@@ -228,7 +239,7 @@ void VulkanShader::Init()
         // Layout-rule diagnostics name the shader that is rejected.
         sgInfo.name = m_name;
 
-        reflected   = ValidateShaderLayout(sgInfo);
+        reflected   = ValidateShaderLayout(sgInfo, maxDescriptorSets);
     }
 
     if (reflected)
@@ -586,6 +597,8 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
         GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT, reinterpret_cast<uint64_t>(m_pipelineLayout),
                                                debugName);
     }
+
+    m_dynamicOffsetSlots.resize(m_SRDTable.size());
 
     for (uint32_t set = 0; set < m_SRDTable.size(); ++set)
     {

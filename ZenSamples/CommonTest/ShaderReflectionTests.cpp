@@ -1,12 +1,19 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include <filesystem>
+#include <limits>
 #include "Platform/FileSystem.h"
 #include <gtest/gtest.h>
 #include "AssetLib/Types.h"
 #include "Graphics/Shared/VoxelGI.h"
 
 using namespace zen;
+
+namespace
+{
+// These tests exercise parsing and layout rules without a device, so no device set limit applies.
+constexpr uint32_t kNoDeviceSetLimit = std::numeric_limits<uint32_t>::max();
+} // namespace
 
 TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
 {
@@ -18,7 +25,7 @@ TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
 
     RHIShaderGroupInfo info{};
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     ASSERT_EQ(info.SRDTable.size(), 2u);
 
@@ -80,7 +87,7 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
 
     RHIShaderGroupInfo info{};
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     const uint32_t bindingCounts[] = {2, 1, 0, 6, 1};
 
@@ -117,7 +124,7 @@ TEST(ShaderReflectionTests, SparseDescriptorSetsPreserveTheirShaderSetNumbers)
 
     RHIShaderGroupInfo info{};
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     ASSERT_EQ(info.SRDTable.size(), 4u);
 
@@ -150,7 +157,7 @@ RHIShaderGroupInfo ReflectStage(RHIShaderStage stage, const char* path)
 
     RHIShaderGroupInfo info{};
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     return info;
 }
@@ -321,7 +328,7 @@ TEST(ShaderReflectionTests, SharedSpecializationIdsMergeStagesAndKeepNewConstant
 
     RHIShaderGroupInfo info{};
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     ASSERT_EQ(info.specializationConstants.size(), 3u);
 
@@ -363,7 +370,7 @@ TEST(ShaderReflectionTests, StorageQualifiersAndMemberAccessAreReflectedFromSPIR
 
     RHIShaderGroupInfo info;
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     ExpectAccess(info, "ReadBlock", true, false);
 
@@ -424,7 +431,7 @@ TEST(ShaderReflectionTests, SharedBindingAccessIsUnionedInEitherStageMergeOrder)
 
         RHIShaderGroupInfo info;
 
-        EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+        EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
         ASSERT_EQ(info.SRDTable.size(), 1u);
 
@@ -445,7 +452,8 @@ TEST(ShaderReflectionTests, SharedBindingAccessIsUnionedInEitherStageMergeOrder)
         {
             const uint32_t i = reverse ? 1 - n : n;
 
-            MergeOrAddSRDs(i == 0 ? RHIShaderStage::eVertex : RHIShaderStage::eFragment, descriptors[i], info);
+            MergeOrAddSRDs(i == 0 ? RHIShaderStage::eVertex : RHIShaderStage::eFragment, descriptors[i], kNoDeviceSetLimit,
+                           info);
         }
 
         ASSERT_EQ(info.SRDTable.size(), 1u);
@@ -471,7 +479,7 @@ TEST(ShaderReflectionTests, SharedBindingAccessIsUnionedInEitherStageMergeOrder)
 
     RHIShaderGroupInfo info;
 
-    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(both, info));
+    EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(both, kNoDeviceSetLimit, info));
 
     ExpectAccess(info, "SharedBuffer", true, true);
 }
@@ -678,7 +686,7 @@ TEST(ShaderReflectionTests, CorruptInputDoesNotPublishPartialReflection)
 
     info.vertexBindingStride = 123;
 
-    EXPECT_FALSE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+    EXPECT_FALSE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
     EXPECT_EQ(info.vertexBindingStride, 123u);
 }
@@ -747,6 +755,20 @@ TEST(ShaderReflectionTests, AccelerationStructureUsesAnOrdinaryReadOnlyDescripto
     EXPECT_FALSE(descriptor.bindless);
 }
 
+TEST(ShaderReflectionTests, ReflectionRejectsSetsAtOrBeyondTheDeviceLimit)
+{
+    RHIShaderResourceDescriptor descriptor{};
+    descriptor.set  = 5;
+    descriptor.type = RHIShaderResourceType::eStorageBuffer;
+    RHIShaderGroupInfo rejected{};
+    EXPECT_FALSE(MergeOrAddSRDs(RHIShaderStage::eCompute, descriptor, 5, rejected));
+    // A rejected index never sizes the table, so a corrupt index cannot grow it.
+    EXPECT_TRUE(rejected.SRDTable.empty());
+    RHIShaderGroupInfo accepted{};
+    EXPECT_TRUE(MergeOrAddSRDs(RHIShaderStage::eCompute, descriptor, 6, accepted));
+    EXPECT_EQ(accepted.SRDTable.size(), 6u);
+}
+
 namespace
 {
 RHIShaderStage ShippedShaderStage(const std::filesystem::path& source)
@@ -797,9 +819,9 @@ TEST(ShaderReflectionTests, ShippedShaderLayoutsRespectGlobalHeapContract)
             spirv->SetStageSPIRV(stage, platform::FileSystem::LoadSpvFile(relative, &loadError));
             ASSERT_EQ(loadError, platform::FileLoadError::eNone) << "compiled shader is missing";
             RHIShaderGroupInfo info{};
-            ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+            ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
             info.name = NameID(relative);
-            EXPECT_TRUE(ValidateShaderLayout(info));
+            EXPECT_TRUE(ValidateShaderLayout(info, kNoDeviceSetLimit));
             ++checked;
         }
     }

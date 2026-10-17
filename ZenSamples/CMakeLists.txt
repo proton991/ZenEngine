@@ -13,7 +13,7 @@ add_executable(VulkanRHITest
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
 # Explicit integration target: requires a Vulkan device and validation layer.
 add_executable(RayQueryIntegrationTest CommonTest/RayQueryIntegrationTests.cpp)
-target_link_libraries(RayQueryIntegrationTest PRIVATE ZenCore gtest_main)
+target_link_libraries(RayQueryIntegrationTest PRIVATE ZenCore ZenVulkanTestMain)
 add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanReviewIntegrationTests.cpp
     CommonTest/VulkanPresentationReviewTests.cpp
@@ -36,7 +36,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanUploadIntegrationTests.cpp
     CommonTest/BindlessSceneCapacityIntegrationTests.cpp
 )
-target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenCore gtest_main)
+target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenCore ZenVulkanTestMain)
 # Compile reflection fixtures as test inputs, without adding them to engine shader assets.
 set(RDG_REFLECTION_TEST_PATH "${CMAKE_CURRENT_BINARY_DIR}/rdg-reflection/")
 set(RDG_REFLECTION_TEST_BINARIES)
@@ -45,7 +45,8 @@ foreach(SHADER review_acceleration.comp review_runtime_array.comp review_reserve
         descriptor_uniform.comp descriptor_uniform_large.comp descriptor_uniform_limit.comp
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
         binding_sampler.comp binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
-        recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp)
+        recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp
+        binding_high_set.comp binding_required_sets.comp)
     set(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/CommonTest/Shaders/${SHADER}")
     set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
     add_custom_command(OUTPUT "${OUTPUT}"
@@ -177,7 +178,7 @@ if (ZEN_BUILD_RUNTIME_UI)
             VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp)
         target_include_directories(SceneModelSwitchTest PRIVATE VulkanRHIDemo/SceneRenderer)
         target_compile_definitions(SceneModelSwitchTest PRIVATE ZEN_RUNTIME_UI=1 ZEN_SCENE_MODEL_TEST=1)
-        target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI gtest_main)
+        target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI ZenVulkanTestMain)
         add_test(NAME SceneModelSwitchTest COMMAND SceneModelSwitchTest)
         set_tests_properties(SceneModelSwitchTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
     endif ()
@@ -186,7 +187,7 @@ endif ()
 # Native Cone visibility regression, isolated from suite-global Vulkan fixtures.
 if (BUILD_TESTING)
 add_executable(ConeVoxelGIIntegrationTest CommonTest/ConeVoxelGIIntegrationTests.cpp)
-target_link_libraries(ConeVoxelGIIntegrationTest PRIVATE ZenCore gtest_main)
+target_link_libraries(ConeVoxelGIIntegrationTest PRIVATE ZenCore ZenVulkanTestMain)
 add_dependencies(ConeVoxelGIIntegrationTest SpvShaders)
 
 target_link_libraries(ThreadPoolTest ZenCore)
@@ -218,7 +219,7 @@ if (BUILD_TESTING)
     target_include_directories(VulkanRHIIntegrationTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Source)
     target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenWindowBackendInternal)
     add_executable(WindowPlatformTest CommonTest/WindowPlatformTests.cpp)
-    target_link_libraries(WindowPlatformTest PRIVATE ZenCore ZenWindowBackendInternal gtest_main)
+    target_link_libraries(WindowPlatformTest PRIVATE ZenCore ZenWindowBackendInternal ZenVulkanTestMain)
     add_test(NAME WindowPlatformTest COMMAND WindowPlatformTest)
     set_tests_properties(WindowPlatformTest PROPERTIES LABELS "native" TIMEOUT 60)
 endif ()

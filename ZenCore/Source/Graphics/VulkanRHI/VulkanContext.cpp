@@ -852,6 +852,8 @@ void VulkanRHI::Init()
 
     m_gpuInfo.maxComputeWorkGroupInvocations   = limits.maxComputeWorkGroupInvocations;
 
+    m_gpuInfo.maxBoundDescriptorSets           = limits.maxBoundDescriptorSets;
+
     m_gpuInfo.maxStorageBufferRange            = limits.maxStorageBufferRange;
 
     m_gpuInfo.maxColorAttachments              = limits.maxColorAttachments;
