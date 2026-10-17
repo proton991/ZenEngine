@@ -2,6 +2,7 @@ if (BUILD_TESTING)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
 add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
 add_executable(VulkanRHITest
+    CommonTest/VulkanReviewTests.cpp
     CommonTest/ShaderReflectionTests.cpp
     CommonTest/VulkanSynchronizationTests.cpp
     CommonTest/VulkanLifetimeTrackerTests.cpp
@@ -14,6 +15,8 @@ target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
 add_executable(RayQueryIntegrationTest CommonTest/RayQueryIntegrationTests.cpp)
 target_link_libraries(RayQueryIntegrationTest PRIVATE ZenCore gtest_main)
 add_executable(VulkanRHIIntegrationTest
+    CommonTest/VulkanReviewIntegrationTests.cpp
+    CommonTest/VulkanPresentationReviewTests.cpp
     CommonTest/RHIProgressIntegrationTests.cpp
     CommonTest/RHIWindowThreadingTests.cpp
     CommonTest/VulkanDescriptorIntegrationTests.cpp
@@ -37,7 +40,7 @@ target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenCore gtest_main)
 # Compile reflection fixtures as test inputs, without adding them to engine shader assets.
 set(RDG_REFLECTION_TEST_PATH "${CMAKE_CURRENT_BINARY_DIR}/rdg-reflection/")
 set(RDG_REFLECTION_TEST_BINARIES)
-foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag
+foreach(SHADER review_acceleration.comp review_runtime_array.comp review_reserved_set.comp review_duplicate.vert review_duplicate.frag rdg_access.comp rdg_shared.vert rdg_shared.frag
         descriptor_storage.comp descriptor_array.comp descriptor_bindings.comp
         descriptor_uniform.comp descriptor_uniform_large.comp descriptor_uniform_limit.comp
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag

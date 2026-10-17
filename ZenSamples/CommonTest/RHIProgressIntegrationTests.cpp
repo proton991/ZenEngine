@@ -39,7 +39,9 @@ protected:
 
         RHIBufferCreateInfo info{};
 
-        info.size = 64;
+        info.allocateType = RHIBufferAllocateType::eGPU;
+
+        info.size         = 64;
 
         info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferDstBuffer);
 
@@ -252,7 +254,9 @@ TEST_P(RHIProgressIntegrationTest, ComputeProgressFailureRetainsSerialAndStopsDe
 
     RHIBufferCreateInfo info{};
 
-    info.size = 64;
+    info.allocateType = RHIBufferAllocateType::eGPU;
+
+    info.size         = 64;
 
     info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 

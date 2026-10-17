@@ -42,7 +42,7 @@ uint32_t SendRHIResizeMessages(HWND window)
 {
     uint32_t delivered = 0;
 
-    for (const SIZE size : {SIZE{120, 100}, SIZE{140, 110}})
+    for (const SIZE size : {SIZE{320, 200}, SIZE{340, 210}})
     {
         RECT outer{0, 0, size.cx, size.cy};
 
@@ -94,9 +94,9 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 
     EXPECT_EQ(observer.calls, 0u);
 
-    EXPECT_EQ(window.GetExtent2D().width, 140u);
+    EXPECT_EQ(window.GetExtent2D().width, 340u);
 
-    EXPECT_EQ(window.GetExtent2D().height, 110u);
+    EXPECT_EQ(window.GetExtent2D().height, 210u);
 
     window.Update();
 
@@ -104,9 +104,9 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 
     EXPECT_FALSE(observer.duringWait);
 
-    EXPECT_EQ(observer.width, 140u);
+    EXPECT_EQ(observer.width, 340u);
 
-    EXPECT_EQ(observer.height, 110u);
+    EXPECT_EQ(observer.height, 210u);
 
     window.Update();
 

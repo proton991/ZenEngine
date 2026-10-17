@@ -149,6 +149,10 @@ void RHIThread::Start(RHIExecutionMode mode, size_t capacity)
 
     if (m_threaded.load(std::memory_order_acquire))
     {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_workerRunning = true;
+        }
         m_worker = std::thread(&RHIThread::Run, this);
     }
 }
@@ -175,10 +179,6 @@ void RHIThread::Stop(std::function<void()> finalizer)
         WaitForRHIObject(m_worker.native_handle());
 #endif
         m_worker.join();
-
-        // The worker closed admission before its finalizer. Without one no backend was
-        // retired, so later work runs inline as it did before Start.
-        m_cleanupClosed.store(retiresBackend, std::memory_order_release);
     }
     else if (retiresBackend)
     {
@@ -200,7 +200,9 @@ void RHIThread::OpenAdmission()
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        m_failure = {};
+        m_stopping = false;
+
+        m_failure  = {};
 
         m_taskFailed.store(false, std::memory_order_release);
 
@@ -294,7 +296,15 @@ RHIJobAdmissionResult RHIThread::Enqueue(Task task, bool waitForSpace)
     }
     else
     {
-        result = Push(task, waitForSpace);
+        bool runInline = false;
+        result         = Push(task, waitForSpace, runInline);
+        if (runInline)
+        {
+            RHIThread* previous = s_current;
+            s_current           = this;
+            ExecuteTask(task);
+            s_current = previous;
+        }
     }
 
     if (!result)
@@ -315,7 +325,7 @@ RHIJobAdmissionResult RHIThread::Enqueue(Task task, bool waitForSpace)
     return result;
 }
 
-RHIJobAdmissionResult RHIThread::Push(const Task& task, bool waitForSpace)
+RHIJobAdmissionResult RHIThread::Push(Task& task, bool waitForSpace, bool& outRunInline)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
 
@@ -340,10 +350,11 @@ RHIJobAdmissionResult RHIThread::Push(const Task& task, bool waitForSpace)
             task.cleanup || m_tasks.Size() < m_capacity ? RHIJobAdmission::eAccepted : RHIJobAdmission::eQueueFull;
     }
 
+    outRunInline = result && !m_workerRunning;
     // Cleanup bypasses capacity so final releases cannot deadlock a draining worker.
-    if (result)
+    if (result && !outRunInline)
     {
-        m_tasks.Push(task);
+        m_tasks.Push(std::move(task));
 
         if (m_tasks.Size() >= m_capacity && !m_taskFailed)
         {
@@ -424,7 +435,8 @@ void RHIThread::Run()
 
             if (finished)
             {
-                m_cleanupClosed = true;
+                m_cleanupClosed = static_cast<bool>(m_finalizer);
+                m_workerRunning = false;
 
                 task            = {std::move(m_finalizer), {}, true};
             }

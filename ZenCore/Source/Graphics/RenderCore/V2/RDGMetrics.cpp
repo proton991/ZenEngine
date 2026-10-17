@@ -258,7 +258,10 @@ void RDGBarrierValidator::Check(int32_t                           node,
 
     const bool hazard          = prior.mode != RHIAccessMode::eNone && (prior.mode == RHIAccessMode::eReadWrite || !reads);
 
-    const bool required        = hazard || layoutChange;
+    const bool sameFinalState  = next.finalStateOnly && next.texture && !layoutChange && prior.mode == next.mode
+                              && prior.access == next.access && prior.stages == next.stages;
+
+    const bool required        = !sameFinalState && (hazard || layoutChange);
 
     const int32_t previousNode = state.execution == m_execution ? state.node : -1;
 
@@ -1332,7 +1335,7 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
                                                                   BitField<RHIPipelineStageFlagBits>(dstStages));
 
             barrier.wholeBuffer  = buffer.offset == 0
-                               && (buffer.size == ZEN_BUFFER_WHOLE_SIZE || buffer.size >= buffer.pBuffer->GetRequiredSize());
+                                && (buffer.size == ZEN_BUFFER_WHOLE_SIZE || buffer.size >= buffer.pBuffer->GetRequiredSize());
 
             m_barriers.push_back(barrier);
         }
@@ -1376,21 +1379,23 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
 
             RDGMetricAccess next{};
 
-            next.resource    = StableId(*resource);
+            next.resource       = StableId(*resource);
 
-            next.mode        = access.accessMode;
+            next.mode           = access.accessMode;
 
-            next.stages      = AccessStages(access.accessFlags, access.pipelineStages);
+            next.stages         = AccessStages(access.accessFlags, access.pipelineStages);
 
-            next.access      = access.accessFlags;
+            next.access         = access.accessFlags;
 
-            next.texture     = resource->type == RDGResourceType::eTexture;
+            next.texture        = resource->type == RDGResourceType::eTexture;
 
-            next.imported    = resource->imported;
+            next.imported       = resource->imported;
 
-            next.hostWritten = resource->hostWritten;
+            next.hostWritten    = resource->hostWritten;
 
-            next.range       = access.textureSubResourceRange;
+            next.range          = access.textureSubResourceRange;
+
+            next.finalStateOnly = access.finalStateOnly;
 
             if (next.texture)
             {
@@ -1565,10 +1570,10 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
 
     std::string text        = fmt::format(
         "[RDG metrics] graph=\"{}\" stream={} execution={} window(executions={},nodes={}) "
-               "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
-               "edges={},dependency_hazards={},reordered={}) "
-               "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
-               "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
+        "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
+        "edges={},dependency_hazards={},reordered={}) "
+        "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
+        "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
         Label(sample.graph), sample.transferOnly ? "transfer" : "frame", sample.execution, sample.windowExecutions,
         sample.windowNodes, sample.nodeCount, sample.passCounts[1], sample.passCounts[2], sample.passCounts[3],
         sample.resources, sample.importedResources, sample.transientResources, sample.dependencyEdges, sample.dependencyHazards,

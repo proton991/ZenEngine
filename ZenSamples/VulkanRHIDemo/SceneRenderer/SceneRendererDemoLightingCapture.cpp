@@ -179,8 +179,7 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"preset\":\"" << rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())) << "\""
         << ",\"selection_reason\":\"" << server.GetGISelectionReason() << "\""
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
-        << ",\"diffuse_resolution\":\"" << (hybrid != nullptr && hybrid->UsesHalfResolutionDiffuse() ? "half" : "full")
-        << "\""
+        << ",\"diffuse_resolution\":\"" << (hybrid != nullptr && hybrid->UsesHalfResolutionDiffuse() ? "half" : "full") << "\""
         << ",\"adaptive_sampling\":" << (adaptive ? "true" : "false") << ",\"sample_count_max\":"
         << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples + (adaptive ? 2u : 0u))
         << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE
@@ -680,8 +679,9 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
     RHIBuffer*                    zeros          = nullptr;
     RHIBuffer*                    totalsReadback = nullptr;
     // Receiver-shadow counting variants write from fragment shaders.
-    bool succeeded = server->GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && voxelGI != nullptr
-        && width != 0 && height != 0 && m_renderDevice->GetGPUInfo().supportFragmentStoresAndAtomics
+    bool succeeded =
+        server->GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && voxelGI != nullptr && width != 0
+        && height != 0 && m_renderDevice->GetGPUInfo().supportFragmentStoresAndAtomics
         && rc::ValidateGIStorageBuffer(requestedBytes, 1, m_renderDevice->GetGPUInfo(), bytes) == rc::GIResourceStatus::eSuccess
         && bytes <= std::numeric_limits<uint32_t>::max() && !m_renderDevice->AreSubmissionsBlocked();
     if (succeeded)
@@ -721,9 +721,9 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
         hybrid->SetRayCountCapture(output, readback);
         voxelGI->SetRayTotalsCapture(rayTotals, zeros, totalsReadback);
         succeeded = Run(1, false, 3, {}, true) && renderer->GetHybridGI() == hybrid && server->RequestVoxelGI() == voxelGI
-            && hybrid->WereRayCountsRecorded() && voxelGI->WereRayTotalsRecorded();
-        skyCache = voxelGI->CountedSkyCache();
-        injected = voxelGI->CountedInjection();
+                 && hybrid->WereRayCountsRecorded() && voxelGI->WereRayTotalsRecorded();
+        skyCache  = voxelGI->CountedSkyCache();
+        injected  = voxelGI->CountedInjection();
         hybrid->SetRayCountCapture(nullptr, nullptr);
         voxelGI->SetRayTotalsCapture(nullptr, nullptr, nullptr);
         m_renderDevice->FlushRHIThread();
@@ -768,9 +768,10 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
                     stream << '}';
                 }
                 // Sky-cache and injection rays are issued only on frames that update them.
-                stream << ",\"outside_trace\":{\"sky_cache_updated\":" << (skyCache ? "true" : "false")
-                       << ",\"radiance_injected\":" << (injected ? "true" : "false")
-                       << ",\"note\":\"Excludes the legacy sky cache of scenes without voxel triangles, which marches voxel occupancy\"";
+                stream
+                    << ",\"outside_trace\":{\"sky_cache_updated\":" << (skyCache ? "true" : "false")
+                    << ",\"radiance_injected\":" << (injected ? "true" : "false")
+                    << ",\"note\":\"Excludes the legacy sky cache of scenes without voxel triangles, which marches voxel occupancy\"";
                 const char* slots[] = {"sky_cache", "injection_shadows", "deferred_shadows", "forward_shadows"};
                 for (uint32_t provider = 0; provider < 2; ++provider)
                 {

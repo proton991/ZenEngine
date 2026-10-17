@@ -70,6 +70,9 @@ public:
 
     // A finalizer retires the backend: admission closes when it starts, in both modes, and
     // stays closed until Start or OpenAdmission. Releases from the finalizer still run.
+    // Stop ordinary producers first; ordinary jobs arriving while the worker drains are rejected.
+    // Without a finalizer no backend is retired: late cleanup stays admitted and runs inline once
+    // the worker has exited, and after Stop returns all work runs inline as it did before Start.
     void Stop(std::function<void()> finalizer = {});
 
     // Called when a backend starts without an executor, after an earlier backend was retired.
@@ -84,8 +87,8 @@ public:
     bool TryDispatch(std::function<void()> task);
 
     RHIJobAdmissionResult DispatchChecked(std::function<void()> task,
-                                          std::function<void()> cancelled = {},
-                                          bool waitForSpace               = true);
+                                          std::function<void()> cancelled    = {},
+                                          bool                  waitForSpace = true);
 
     // Stop normal work and wake producers; ordered cleanup remains admitted.
     void Fail(RHIError error);
@@ -209,7 +212,7 @@ private:
 
     RHIJobAdmissionResult Enqueue(Task task, bool waitForSpace);
 
-    RHIJobAdmissionResult Push(const Task& task, bool waitForSpace);
+    RHIJobAdmissionResult Push(Task& task, bool waitForSpace, bool& outRunInline);
 
     void ExecuteFinalizer(std::function<void()> finalizer);
 
@@ -224,6 +227,7 @@ private:
     Queue<Task>                    m_tasks;
     std::function<void()>          m_finalizer;
     size_t                         m_capacity{64};
+    bool                           m_workerRunning{false}; // Guarded by m_mutex.
     std::atomic<bool>              m_stopping{false};
     std::atomic<bool>              m_threaded{false};
     std::atomic<bool>              m_taskFailed{false};

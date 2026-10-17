@@ -110,7 +110,11 @@ void VulkanViewport::Destroy()
 
 bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
 {
-    bool ready  = true;
+    bool ready        = true;
+
+    m_recreationError = {};
+
+    GVulkanRHI->SetCreationError({});
 
     m_suspended = m_width == 0 || m_height == 0;
 
@@ -119,6 +123,8 @@ bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
         m_pSwapchain             = ZEN_NEW() VulkanSwapchain(m_width, m_height, m_enableVSync, pRecreateInfo);
 
         ready                    = static_cast<bool>(m_pSwapchain->GetStatus());
+
+        m_recreationError        = m_pSwapchain->GetStatus().error;
 
         const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
 
@@ -183,10 +189,11 @@ bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
 
             m_pDepthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
 
+            const bool created        = m_pColorBackBuffer != nullptr && m_pDepthStencilBackBuffer != nullptr;
+
             FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_pDevice);
 
-            ready = m_pColorBackBuffer != nullptr && m_pDepthStencilBackBuffer != nullptr && context.IsValid()
-                 && context.EnsureRecording();
+            ready = created && context.IsValid() && context.EnsureRecording();
 
             if (ready)
             {
@@ -195,15 +202,36 @@ bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
                 VulkanPipelineBarrier barrier;
 
                 barrier.AddImageBarrier(m_pColorBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
-                                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, m_pColorBackBuffer->GetVkSubresourceRange());
+                                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, m_pColorBackBuffer->GetVkSubresourceRange(),
+                                        0, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
-                barrier.AddImageBarrier(m_pDepthStencilBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
-                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                                        m_pDepthStencilBackBuffer->GetVkSubresourceRange());
+                barrier.AddImageBarrier(
+                    m_pDepthStencilBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, m_pDepthStencilBackBuffer->GetVkSubresourceRange(), 0,
+                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
-                barrier.ExecuteImageBarriersOnly(cmdBuffer);
+                barrier.Execute(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
+                                    | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 
                 ready = context.SubmitRecordedWorkloads() == RHISubmissionResult::eSuccess;
+
+                if (!ready)
+                {
+                    m_recreationError = GVulkanRHI->GetSubmissionFailureCause();
+                }
+            }
+            else if (!created)
+            {
+                m_recreationError =
+                    RHIErrorOr(GVulkanRHI->GetLastCreationError(),
+                               MakeRHIError(RHIErrorCode::eBackendFailure, "Viewport backbuffer creation", __FILE__, __LINE__));
+            }
+            else
+            {
+                m_recreationError =
+                    RHIErrorOr(context.GetRecordingError(), MakeRHIError(RHIErrorCode::eBackendFailure,
+                                                                         "Viewport backbuffer recording", __FILE__, __LINE__));
             }
 
             m_acquiredImageIndex = -1;
@@ -307,7 +335,9 @@ void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo)
 
         m_suspended = true;
 
-        GVulkanRHI->BlockSubmissions();
+        GVulkanRHI->BlockSubmissions(
+            RHIErrorOr(m_recreationError,
+                       MakeRHIError(RHIErrorCode::eBackendFailure, "Viewport backbuffer recreation", __FILE__, __LINE__)));
 
         LOGE("Viewport backbuffer recreation failed");
     }
@@ -355,10 +385,12 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
         VulkanPipelineBarrier barrier;
 
         barrier.AddImageBarrier(m_pColorBackBuffer->GetVkImage(), prevLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                m_pColorBackBuffer->GetVkSubresourceRange());
+                                m_pColorBackBuffer->GetVkSubresourceRange(), VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                VK_ACCESS_TRANSFER_READ_BIT);
 
         barrier.AddImageBarrier(dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
+                                VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1), 0,
+                                VK_ACCESS_TRANSFER_WRITE_BIT);
 
         // TRANSFER chains the acquired-image transition after PrepareForPresent's semaphore
         // wait. COLOR_ATTACHMENT_OUTPUT also covers the backbuffer writes in this batch.
@@ -366,55 +398,8 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                         VK_PIPELINE_STAGE_TRANSFER_BIT);
     }
 
-    // CreateSwapchain sizes the backbuffer to the negotiated extent. A blit to an
-    // sRGB image would encode gamma again, unlike the format-compatible byte copy.
-    VERIFY_EXPR(m_pSwapchain->GetFormat() == m_pSwapchain->GetBackBufferFormat()
-                || (m_width == windowWidth && m_height == windowHeight));
-
-    if (m_width != windowWidth || m_height != windowHeight)
-    {
-        VkImageBlit region{};
-
-        region.srcOffsets[0].x               = 0;
-
-        region.srcOffsets[0].y               = 0;
-
-        region.srcOffsets[0].z               = 0;
-
-        region.srcOffsets[1].x               = static_cast<int32_t>(m_width);
-
-        region.srcOffsets[1].y               = static_cast<int32_t>(m_height);
-
-        region.srcOffsets[1].z               = 1;
-
-        region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-
-        region.srcSubresource.layerCount     = 1;
-
-        region.srcSubresource.baseArrayLayer = 0;
-
-        region.dstOffsets[0].x               = 0;
-
-        region.dstOffsets[0].y               = 0;
-
-        region.dstOffsets[0].z               = 0;
-
-        region.dstOffsets[1].x               = static_cast<int32_t>(windowWidth);
-
-        region.dstOffsets[1].y               = static_cast<int32_t>(windowHeight);
-
-        region.dstOffsets[1].z               = 1;
-
-        region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-
-        region.dstSubresource.layerCount     = 1;
-
-        region.dstSubresource.baseArrayLayer = 0;
-
-        vkCmdBlitImage(cmdBufferVk, m_pColorBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
-                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
-    }
-    else
+    VERIFY_EXPR_MSG(m_width == windowWidth && m_height == windowHeight,
+                    "Presentation backbuffer and swapchain extents must match");
     {
         VkImageCopy region{};
 
@@ -460,12 +445,15 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
         VulkanPipelineBarrier barrier;
 
         barrier.AddImageBarrier(m_pColorBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevLayout,
-                                m_pColorBackBuffer->GetVkSubresourceRange());
+                                m_pColorBackBuffer->GetVkSubresourceRange(), 0,
+                                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
         barrier.AddImageBarrier(dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                                VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
+                                VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1),
+                                VK_ACCESS_TRANSFER_WRITE_BIT, 0);
 
-        barrier.ExecuteImageBarriersOnly(cmdBufferVk);
+        barrier.Execute(cmdBufferVk, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     }
 }
 

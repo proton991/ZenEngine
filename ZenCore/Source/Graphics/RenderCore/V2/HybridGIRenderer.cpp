@@ -15,7 +15,7 @@ const DataFormat  kHistoryFormats[] = {
     DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat,
     DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16SFloat,
     DataFormat::eR32G32UInt,         DataFormat::eR32G32B32A32SFloat, DataFormat::eR32G32SFloat,
-    DataFormat::eR32G32B32A32SFloat, DataFormat::eR32SFloat,         DataFormat::eR8UInt};
+    DataFormat::eR32G32B32A32SFloat, DataFormat::eR32SFloat,          DataFormat::eR8UInt};
 // The trace pass learns and reads the visibility guide per workgroup of this many pixels squared.
 constexpr uint32_t kGuideTile = 16;
 } // namespace
@@ -207,9 +207,9 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
     }
     const bool reference     = settings.referenceSamples != 0;
     const bool searchEnabled = settings.filter && !reference;
-    const bool ready =
-        countValid && m_prepared
-        && PrepareHistory(view.width, view.height, rays, reflections, searchEnabled, reference, settings.UsesAdaptiveSampling());
+    const bool ready         = countValid && m_prepared
+                            && PrepareHistory(view.width, view.height, rays, reflections, searchEnabled, reference,
+                                              settings.UsesAdaptiveSampling());
     if (ready)
     {
         const bool hadValidHistory = m_valid;
@@ -327,18 +327,17 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         reflectionDesc.texFormat.format     = DataFormat::eR32G32SFloat;
         const RDGTexture rawReflection      = resources->CreateTexture(reflectionDesc);
         desc.name                           = "hybrid_sky_guide";
-        const RDGTexture   skyGuide         = resources->CreateTexture(desc);
+        const RDGTexture skyGuide           = resources->CreateTexture(desc);
         // Half resolution traces diffuse rays for one rotating leader per 2x2 block; an upsample
         // reconstructs the other receivers and lists those that need full-resolution rays. It needs
         // valid history (dark and dissimilar receivers are found from it) and temporal accumulation
         // to gather each receiver's own samples, and applies to the software trace variant.
-        const bool halfRequested =
-            settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
-            || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
-                && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
-        const bool halfDiffuse = halfRequested && !reference && settings.temporal && m_valid && !m_previousHardware;
-        m_halfDiffuse          = halfDiffuse;
-        const glm::uvec2 guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
+        const bool halfRequested         = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
+                                        || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
+                                            && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
+        const bool halfDiffuse           = halfRequested && !reference && settings.temporal && m_valid && !m_previousHardware;
+        m_halfDiffuse                    = halfDiffuse;
+        const glm::uvec2 guideGroups     = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
         const auto       bindTraceInputs = [&](RDGComputePassDesc& pass) {
             BindGuides(pass);
             pass.BindValue("uHybridReuseData", reuseData);
@@ -361,10 +360,10 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             pass.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
         };
         RDGComputePassDesc trace;
-        trace.SetShaderProgramName(
-            halfDiffuse      ? (countRequested ? "HybridTraceHalfCountsSP" : "HybridTraceHalfSP")
-            : countRequested ? (m_previousHardware ? "HybridTraceHardwareCountsSP" : "HybridTraceCountsSP")
-                             : (m_previousHardware ? "HybridTraceHardwareSP" : "HybridTraceSP"));
+        trace.SetShaderProgramName(halfDiffuse ? (countRequested ? "HybridTraceHalfCountsSP" : "HybridTraceHalfSP")
+                                   : countRequested
+                                       ? (m_previousHardware ? "HybridTraceHardwareCountsSP" : "HybridTraceCountsSP")
+                                       : (m_previousHardware ? "HybridTraceHardwareSP" : "HybridTraceSP"));
         trace.SetPassTag("HybridTrace");
         bindTraceInputs(trace);
         trace.BindStorageImage("nextBudget", m_history[m_current][Budget]->GetDefaultView(), RDGContentGuarantee::eFullWrite);

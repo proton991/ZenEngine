@@ -7,6 +7,11 @@
 
 namespace zen
 {
+inline const char* RHIErrorText(const char* text, const char* fallback)
+{
+    return text != nullptr ? text : fallback;
+}
+
 enum class RHIErrorCode : uint8_t
 {
     eNone,
@@ -38,6 +43,12 @@ struct RHIError
 inline RHIError MakeRHIError(RHIErrorCode code, const char* operation, const char* source, uint32_t line)
 {
     return {code, 0, operation, source, line};
+}
+
+// Selects a recorded failure, or the caller's cause when nothing more specific was recorded.
+inline RHIError RHIErrorOr(const RHIError& error, const RHIError& fallback)
+{
+    return error.IsFailure() ? error : fallback;
 }
 
 // Expected incomplete operations are distinct from failures.

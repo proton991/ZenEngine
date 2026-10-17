@@ -26,11 +26,7 @@ static_assert((kInitialSetsPerPool << kMaxPoolGrowthShift) == kMaxSetsPerPool);
 
 using DescriptorPoolSizes = SmallVector<VkDescriptorPoolSize, ToUnderlying(RHIShaderResourceType::eMax)>;
 
-void BuildDescriptorPoolSizes(VulkanDevice*                  pDevice,
-                              const VulkanDescriptorPoolKey& poolKey,
-                              uint32_t                       maxNumSets,
-                              bool                           updateAfterBind,
-                              DescriptorPoolSizes&           poolSizes)
+void BuildDescriptorPoolSizes(const VulkanDescriptorPoolKey& poolKey, uint32_t maxNumSets, DescriptorPoolSizes& poolSizes)
 {
     for (uint32_t resourceTypeIdx = 0; resourceTypeIdx < ToUnderlying(RHIShaderResourceType::eMax); ++resourceTypeIdx)
     {
@@ -69,12 +65,6 @@ void BuildDescriptorPoolSizes(VulkanDevice*                  pDevice,
     {
         if (poolSize.descriptorCount > 0)
         {
-            if (updateAfterBind)
-            {
-                poolSize.descriptorCount =
-                    std::min(poolSize.descriptorCount, pDevice->GetDescriptorSetUpdateAfterBindLimit(poolSize.type));
-            }
-
             poolSize.descriptorCount *= maxNumSets;
 
             if (poolSize.descriptorCount > 0)
@@ -87,11 +77,8 @@ void BuildDescriptorPoolSizes(VulkanDevice*                  pDevice,
     poolSizes.resize(numPoolSizes);
 }
 
-VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice*                  pDevice,
-                                           const VulkanDescriptorPoolKey& poolKey,
-                                           uint32_t                       maxNumSets,
-                                           bool                           updateAfterBind) :
-    m_pDevice(pDevice), m_maxNumSets(maxNumSets), m_updateAfterBind(updateAfterBind)
+VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice* pDevice, const VulkanDescriptorPoolKey& poolKey, uint32_t maxNumSets) :
+    m_pDevice(pDevice), m_maxNumSets(maxNumSets)
 {
     VERIFY_EXPR(m_pDevice != nullptr);
 
@@ -101,13 +88,13 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice*                  pDevic
     {
         DescriptorPoolSizes poolSizes(ToUnderlying(RHIShaderResourceType::eMax));
 
-        BuildDescriptorPoolSizes(m_pDevice, poolKey, m_maxNumSets, m_updateAfterBind, poolSizes);
+        BuildDescriptorPoolSizes(poolKey, m_maxNumSets, poolSizes);
 
         VkDescriptorPoolCreateInfo poolCI{};
 
         InitVkStruct(poolCI, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
 
-        poolCI.flags          = m_updateAfterBind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
+        poolCI.flags          = 0;
 
         poolCI.maxSets        = m_maxNumSets;
 
@@ -138,25 +125,16 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
     }
 }
 
-VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout, uint32_t variableCount)
+VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout)
 {
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
     if (m_vkHandle != VK_NULL_HANDLE && layout != VK_NULL_HANDLE && m_numAllocatedSets < m_maxNumSets)
     {
-        VkDescriptorSetVariableDescriptorCountAllocateInfo variableCountInfo{};
-
-        InitVkStruct(variableCountInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
-
-        variableCountInfo.descriptorSetCount = 1;
-
-        variableCountInfo.pDescriptorCounts  = &variableCount;
-
         VkDescriptorSetAllocateInfo allocateInfo{};
 
         InitVkStruct(allocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
 
-        allocateInfo.pNext              = variableCount > 0 ? &variableCountInfo : nullptr;
 
         allocateInfo.descriptorPool     = m_vkHandle;
 
@@ -233,9 +211,7 @@ VulkanDescriptorPoolSetContainer::VulkanDescriptorPoolSetContainer(VulkanDevice*
 
 VulkanDescriptorPoolSetContainer::~VulkanDescriptorPoolSetContainer()
 {
-    DestroyChains(m_nonUABChainMap);
-
-    DestroyChains(m_UABChainMap);
+    DestroyChains(m_chainMap);
 }
 
 bool VulkanDescriptorPoolSetContainer::CanReuse() const
@@ -249,10 +225,7 @@ void VulkanDescriptorPoolSetContainer::Retire()
         m_lifetimeId, this, [](void* resource) { ZEN_DELETE(static_cast<VulkanDescriptorPoolSetContainer*>(resource)); });
 }
 
-VkDescriptorSet VulkanDescriptorPoolSetContainer::Allocate(const VulkanDescriptorPoolKey& poolKey,
-                                                           bool                           updateAfterBind,
-                                                           VkDescriptorSetLayout          layout,
-                                                           uint32_t                       variableCount)
+VkDescriptorSet VulkanDescriptorPoolSetContainer::Allocate(const VulkanDescriptorPoolKey& poolKey, VkDescriptorSetLayout layout)
 {
     VERIFY_EXPR(layout != VK_NULL_HANDLE);
 
@@ -260,11 +233,11 @@ VkDescriptorSet VulkanDescriptorPoolSetContainer::Allocate(const VulkanDescripto
 
     if (layout != VK_NULL_HANDLE)
     {
-        PoolChain* pChain = AcquireChain(poolKey, updateAfterBind);
+        PoolChain* pChain = AcquireChain(poolKey);
 
         if (pChain != nullptr)
         {
-            descriptorSet = AllocateFromChain(pChain, layout, variableCount);
+            descriptorSet = AllocateFromChain(pChain, layout);
         }
     }
 
@@ -295,16 +268,13 @@ void VulkanDescriptorPoolSetContainer::Reset()
 {
     VERIFY_EXPR(CanReuse());
 
-    ResetChains(m_nonUABChainMap);
-
-    ResetChains(m_UABChainMap);
+    ResetChains(m_chainMap);
 }
 
 VulkanDescriptorPoolSetContainer::PoolChain* VulkanDescriptorPoolSetContainer::AcquireChain(
-    const VulkanDescriptorPoolKey& poolKey,
-    bool                           updateAfterBind)
+    const VulkanDescriptorPoolKey& poolKey)
 {
-    PoolChainMap& chainMap = updateAfterBind ? m_UABChainMap : m_nonUABChainMap;
+    PoolChainMap& chainMap = m_chainMap;
 
     const FlatHashMap<VulkanDescriptorPoolKey, PoolChain*, VulkanDescriptorPoolKeyHasher>::iterator chainIt =
         chainMap.find(poolKey);
@@ -317,11 +287,10 @@ VulkanDescriptorPoolSetContainer::PoolChain* VulkanDescriptorPoolSetContainer::A
     }
     else
     {
-        pChain                  = ZEN_NEW() PoolChain();
+        pChain          = ZEN_NEW() PoolChain();
 
-        pChain->poolKey         = poolKey;
+        pChain->poolKey = poolKey;
 
-        pChain->updateAfterBind = updateAfterBind;
 
         chainMap.emplace(poolKey, pChain);
     }
@@ -329,9 +298,7 @@ VulkanDescriptorPoolSetContainer::PoolChain* VulkanDescriptorPoolSetContainer::A
     return pChain;
 }
 
-VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain*            pChain,
-                                                                    VkDescriptorSetLayout layout,
-                                                                    uint32_t              variableCount)
+VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain* pChain, VkDescriptorSetLayout layout)
 {
     VERIFY_EXPR(pChain != nullptr);
 
@@ -341,7 +308,7 @@ VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain*  
     {
         while (pChain->activePoolIdx < pChain->pools.size() && descriptorSet == VK_NULL_HANDLE)
         {
-            descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout, variableCount);
+            descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout);
 
             if (descriptorSet == VK_NULL_HANDLE)
             {
@@ -355,7 +322,7 @@ VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain*  
 
             if (pChain->activePoolIdx < pChain->pools.size())
             {
-                descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout, variableCount);
+                descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout);
             }
         }
     }
@@ -369,12 +336,11 @@ void VulkanDescriptorPoolSetContainer::PushPoolToChain(PoolChain* pChain)
 
     if (pChain != nullptr)
     {
-        const uint32_t growthShift = std::min(pChain->numPools, kMaxPoolGrowthShift);
+        const uint32_t growthShift  = std::min(pChain->numPools, kMaxPoolGrowthShift);
 
-        const uint32_t maxNumSets  = kInitialSetsPerPool << growthShift;
+        const uint32_t maxNumSets   = kInitialSetsPerPool << growthShift;
 
-        VulkanDescriptorPool* pPool =
-            ZEN_NEW() VulkanDescriptorPool(m_pVulkanDevice, pChain->poolKey, maxNumSets, pChain->updateAfterBind);
+        VulkanDescriptorPool* pPool = ZEN_NEW() VulkanDescriptorPool(m_pVulkanDevice, pChain->poolKey, maxNumSets);
 
         if (pPool->IsValid())
         {
@@ -511,12 +477,9 @@ VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key, VulkanDesc
     return descriptorSet;
 }
 
-VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey&                  key,
-                                                 const VulkanDescriptorPoolKey&     poolKey,
-                                                 VkDescriptorSetLayout              layout,
-                                                 bool                               updateAfterBind,
-                                                 uint32_t                           variableCount,
-                                                 VulkanDescriptorPoolSetContainer*& outContainer)
+VkDescriptorSet VulkanDescriptorSetCache::Allocate(const VulkanDescriptorPoolKey&     poolKey,
+                                                   VkDescriptorSetLayout              layout,
+                                                   VulkanDescriptorPoolSetContainer*& outContainer)
 {
     GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().descriptorInserts);
 
@@ -537,53 +500,59 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey&              
         {
             RingSlot& slot = m_ringSlots[0];
 
-            descriptorSet  = slot.pContainer->Allocate(poolKey, updateAfterBind, layout, variableCount);
+            descriptorSet  = slot.pContainer->Allocate(poolKey, layout);
 
             if (descriptorSet != VK_NULL_HANDLE)
             {
-                outContainer              = slot.pContainer;
-
-                const uint32_t entryIdx   = static_cast<uint32_t>(m_entries.size());
-
-                uint32_t previousEntryIdx = kInvalidEntryIndex;
-
-                const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t,
-                                  VulkanDescriptorSetCache::ContentKeyHasher>::iterator previousEntryIt =
-                    m_entryIndexMap.find(key);
-
-                if (previousEntryIt != m_entryIndexMap.end())
-                {
-                    previousEntryIdx        = previousEntryIt->second;
-
-                    previousEntryIt->second = entryIdx;
-                }
-                else
-                {
-                    m_entryIndexMap.emplace(key, entryIdx);
-                }
-
-                Entry entry{};
-
-                entry.key            = key;
-
-                entry.descriptorSet  = descriptorSet;
-
-                entry.slotGeneration = slot.generation;
-
-                m_entries.push_back(entry);
-
-                m_entryHashChain.push_back(previousEntryIdx);
-
-                ++slot.numLiveEntries;
-
-                slot.lastUsedFrame   = m_currentFrame;
-
-                m_entryHighWaterMark = std::max(m_entryHighWaterMark, static_cast<uint64_t>(m_entries.size()));
+                outContainer = slot.pContainer;
             }
         }
     }
 
     return descriptorSet;
+}
+
+void VulkanDescriptorSetCache::Publish(const ContentKey&                 key,
+                                       VkDescriptorSet                   descriptorSet,
+                                       VulkanDescriptorPoolSetContainer* container)
+{
+    VERIFY_EXPR(m_numLiveSlots > 0 && m_ringSlots[0].pContainer == container && descriptorSet != VK_NULL_HANDLE);
+    RingSlot&      slot       = m_ringSlots[0];
+    const uint32_t entryIdx   = static_cast<uint32_t>(m_entries.size());
+
+    uint32_t previousEntryIdx = kInvalidEntryIndex;
+
+    const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t, VulkanDescriptorSetCache::ContentKeyHasher>::iterator
+        previousEntryIt = m_entryIndexMap.find(key);
+
+    if (previousEntryIt != m_entryIndexMap.end())
+    {
+        previousEntryIdx        = previousEntryIt->second;
+
+        previousEntryIt->second = entryIdx;
+    }
+    else
+    {
+        m_entryIndexMap.emplace(key, entryIdx);
+    }
+
+    Entry entry{};
+
+    entry.key            = key;
+
+    entry.descriptorSet  = descriptorSet;
+
+    entry.slotGeneration = slot.generation;
+
+    m_entries.push_back(entry);
+
+    m_entryHashChain.push_back(previousEntryIdx);
+
+    ++slot.numLiveEntries;
+
+    slot.lastUsedFrame   = m_currentFrame;
+
+    m_entryHighWaterMark = std::max(m_entryHighWaterMark, static_cast<uint64_t>(m_entries.size()));
 }
 
 void VulkanDescriptorSetCache::RotateRing()
@@ -1037,7 +1006,7 @@ bool IsValidBindlessResource(const RHIResource* pResource, RHIBindlessHeapType h
         const VulkanTextureView* pTextureView = GetBindlessTextureView(pResource);
 
         valid                                 = pTextureView != nullptr && pTextureView->GetVkImageView() != VK_NULL_HANDLE
-             && pTextureView->GetTexture()->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eSampled);
+                                             && pTextureView->GetTexture()->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eSampled);
     }
 
     return valid;
@@ -1426,12 +1395,12 @@ bool VulkanBindlessDescriptorPoolManager::CanRegisterLocked(const RHIResource* r
             const BindlessSlotState& slot = m_slotStates[ToUnderlying(heap)][slotIndex];
 
             const bool earlierRecording   = recordedEpoch != 0 && recordedEpoch <= slot.retiredEpoch
-                                       && std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch)
-                                       && GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
+                                         && std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch)
+                                         && GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
 
-            valid = slot.pResource == nullptr
-                 || (slot.resourceId == resource->GetStableId() && (slot.retiredEpoch == 0 || earlierRecording)
-                     && (slot.transaction == 0 || slot.transaction == transaction));
+            valid                         = slot.pResource == nullptr
+                                         || (slot.resourceId == resource->GetStableId() && (slot.retiredEpoch == 0 || earlierRecording)
+                                             && (slot.transaction == 0 || slot.transaction == transaction));
         }
     }
 

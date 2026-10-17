@@ -17,21 +17,22 @@ class FVulkanCommandBuffer;
 
 struct DeviceExtensionFlags
 {
-    uint32_t hasBufferDeviceAddress   : 1;
-    uint32_t hasAccelerationStructure : 1;
-    uint32_t hasRaytracingPipeline    : 1;
-    uint32_t hasRayQuery              : 1;
-    uint32_t hasDescriptorIndexing    : 1;
-    uint32_t hasTimelineSemaphore     : 1;
+    uint32_t hasBufferDeviceAddress      : 1;
+    uint32_t hasAccelerationStructure    : 1;
+    uint32_t hasRaytracingPipeline       : 1;
+    uint32_t hasRayQuery                 : 1;
+    uint32_t hasDescriptorIndexing       : 1;
+    uint32_t hasTimelineSemaphore        : 1;
 
-    uint32_t hasDeferredHostOperation : 1;
-    uint32_t hasSPIRV_14              : 1;
-    uint32_t hasDynamicRendering      : 1;
-    uint32_t hasSwapchainMaintenance1 : 1;
-    uint32_t hasCalibratedTimestamps  : 1;
-    uint32_t hasMemoryBudget          : 1;
-    uint32_t hasDeviceFault           : 1;
-    uint32_t hasBufferMarker          : 1;
+    uint32_t hasDeferredHostOperation    : 1;
+    uint32_t hasSPIRV_14                 : 1;
+    uint32_t hasDynamicRendering         : 1;
+    uint32_t hasSwapchainMaintenance1    : 1;
+    uint32_t hasCalibratedTimestamps     : 1;
+    uint32_t hasMemoryBudget             : 1;
+    uint32_t hasSamplerMirrorClampToEdge : 1;
+    uint32_t hasDeviceFault              : 1;
+    uint32_t hasBufferMarker             : 1;
 };
 
 class VulkanDevice
@@ -92,7 +93,6 @@ public:
         return m_descriptorIndexingProperties;
     }
 
-    uint32_t GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType descriptorType) const;
 
     VulkanFenceManager* GetFenceManager() const
     {

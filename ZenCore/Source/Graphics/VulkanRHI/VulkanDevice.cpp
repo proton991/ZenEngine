@@ -29,6 +29,17 @@ void ReportVulkanDeviceLoss(VkResult result, const char* operation)
     }
 }
 
+void ReportVulkanCreationFailure(VkResult result, const char* operation, const char* source, uint32_t line)
+{
+    // MakeVulkanError reports device loss. A result of VK_SUCCESS still failed a post-condition.
+    const RHIError error = MakeVulkanError(result, operation, source, line);
+
+    if (GVulkanRHI != nullptr)
+    {
+        GVulkanRHI->SetCreationError(RHIErrorOr(error, MakeRHIError(RHIErrorCode::eBackendFailure, operation, source, line)));
+    }
+}
+
 void VulkanDevice::RegisterDiagnosticBuffer(FVulkanCommandBuffer* buffer)
 {
     m_diagnosticBuffers.push_back(buffer);
@@ -174,7 +185,7 @@ std::string VulkanDevice::GetUnsupportedReason(VkPhysicalDevice gpu)
         }
         else if (!indexing.runtimeDescriptorArray || !indexing.descriptorBindingPartiallyBound
                  || !indexing.descriptorBindingUpdateUnusedWhilePending
-                 || !indexing.descriptorBindingSampledImageUpdateAfterBind || !indexing.descriptorBindingVariableDescriptorCount
+                 || !indexing.descriptorBindingSampledImageUpdateAfterBind
                  || !indexing.shaderSampledImageArrayNonUniformIndexing)
         {
             reason =
@@ -204,45 +215,6 @@ std::string VulkanDevice::GetUnsupportedReason(VkPhysicalDevice gpu)
     }
 
     return reason;
-}
-
-uint32_t VulkanDevice::GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType descriptorType) const
-{
-    uint32_t limit = 0;
-
-    switch (descriptorType)
-    {
-        case VK_DESCRIPTOR_TYPE_SAMPLER: limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers; break;
-        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            limit = std::min(m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers,
-                             m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSampledImages);
-            break;
-
-        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-        case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSampledImages;
-            break;
-        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-        case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindStorageImages;
-            break;
-        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindUniformBuffers;
-            break;
-        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindUniformBuffersDynamic;
-            break;
-
-        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindStorageBuffers;
-            break;
-        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindInputAttachments;
-            break;
-        default: break;
-    }
-
-    return limit;
 }
 
 static std::string GetQueuePropString(const VkQueueFamilyProperties& queueProp)
@@ -538,6 +510,8 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     enabledFeatures.vertexPipelineStoresAndAtomics = m_physicalDeviceFeatures.vertexPipelineStoresAndAtomics;
 
     enabledFeatures.samplerAnisotropy              = m_physicalDeviceFeatures.samplerAnisotropy;
+    enabledFeatures.imageCubeArray                 = m_physicalDeviceFeatures.imageCubeArray;
+    enabledFeatures.fullDrawIndexUint32            = m_physicalDeviceFeatures.fullDrawIndexUint32;
 
     enabledFeatures.fillModeNonSolid               = m_physicalDeviceFeatures.fillModeNonSolid;
 
@@ -809,6 +783,11 @@ bool VulkanRHI::PrepareSubmissionDependencies(IRHICommandContext*               
 {
     GetRHIThread().CheckOwnership();
 
+    if (!m_submissionBlocked)
+    {
+        SetSubmissionError({});
+    }
+
     bool result                         = context != nullptr && !m_submissionBlocked;
 
     FVulkanCommandListContext* consumer = static_cast<FVulkanCommandListContext*>(context);
@@ -827,7 +806,8 @@ bool VulkanRHI::PrepareSubmissionDependencies(IRHICommandContext*               
 
             result = producer != nullptr && serial <= submitted;
 
-            if (result && serial != 0 && producer->GetVkHandle() != consumer->GetQueue()->GetVkHandle())
+            if (result && serial != 0 && producer->GetLastCompletedSerial() < serial
+                && producer->GetVkHandle() != consumer->GetQueue()->GetVkHandle())
             {
                 if (SupportsAsyncSubmissionDependencies())
                 {
@@ -846,7 +826,12 @@ bool VulkanRHI::PrepareSubmissionDependencies(IRHICommandContext*               
     {
         LOGE("Vulkan submission dependency is invalid or failed");
 
-        BlockSubmissions();
+        const RHIError error = GetSubmissionFailureCause(
+            MakeRHIError(RHIErrorCode::eInvalidArgument, "Vulkan submission dependency", __FILE__, __LINE__));
+
+        SetSubmissionError(error);
+
+        BlockSubmissions(error);
     }
 
     return result;

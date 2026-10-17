@@ -21,7 +21,7 @@ layout(location = 1) in vec3 inNormal;
 
 layout(constant_id = 0) const int type = 0;
 
-layout(binding = 0) uniform UBO
+layout(set = 1, binding = 0) uniform UBO
 {
 	mat4  projection;
 	mat4  modelview;

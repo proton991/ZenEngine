@@ -806,15 +806,17 @@ const RDGResourceManager::Allocation* RDGResourceManager::CreateTextureAllocatio
 
         if (ValidateRDGTextureDesc(desc))
         {
-            pResource             = AllocAllocation();
+            pResource            = AllocAllocation();
 
-            pResource->type       = RDGResourceType::eTexture;
+            pResource->type      = RDGResourceType::eTexture;
 
-            pResource->name       = desc.name;
+            pResource->name      = desc.name;
 
-            pResource->texFormat  = desc.texFormat;
+            pResource->texFormat = desc.texFormat;
 
-            pResource->usageFlags = desc.usageFlags;
+            // Allocation stores either buffer or texture usage as untyped bits.
+
+            pResource->usageFlags = static_cast<int64_t>(desc.usageFlags);
         }
 
         if (pResource == nullptr)
@@ -851,7 +853,9 @@ const RDGResourceManager::Allocation* RDGResourceManager::CreateBufferAllocation
 
             pResource->bufferSize = desc.size;
 
-            pResource->usageFlags = desc.usageFlags;
+            // Allocation stores either buffer or texture usage as untyped bits.
+
+            pResource->usageFlags = static_cast<int64_t>(desc.usageFlags);
         }
 
         if (pResource == nullptr)
@@ -872,11 +876,11 @@ RDGTexture RDGResourceManager::ImportTexture(RHITexture* texture, RDGImportConte
     return SetImportContents(resource, contents) ? RDGTexture(MakeResource(resource)) : RDGTexture{};
 }
 
-const RDGResourceManager::Allocation* RDGResourceManager::ImportTextureAllocation(RHITexture* pTexture)
+const RDGResourceManager::Allocation* RDGResourceManager::ImportTextureAllocation(RHITexture* pTexture, bool finalState)
 {
     const Allocation* result{};
 
-    if (CheckMutation())
+    if (finalState ? m_owner != nullptr && m_owner->GetExecutionState() == RDGExecutionState::eRecorded : CheckMutation())
     {
         if (pTexture == nullptr)
         {
@@ -906,25 +910,27 @@ const RDGResourceManager::Allocation* RDGResourceManager::ImportTextureAllocatio
 
                     Retain(pTexture);
 
-                    pResource->texFormat.format              = pTexture->GetFormat();
+                    pResource->texFormat.format        = pTexture->GetFormat();
 
-                    pResource->texFormat.sampleCount         = pTexture->GetBaseInfo().samples;
+                    pResource->texFormat.sampleCount   = pTexture->GetBaseInfo().samples;
 
-                    pResource->texFormat.width               = pTexture->GetWidth();
+                    pResource->texFormat.width         = pTexture->GetWidth();
 
-                    pResource->texFormat.height              = pTexture->GetHeight();
+                    pResource->texFormat.height        = pTexture->GetHeight();
 
-                    pResource->texFormat.depth               = pTexture->GetDepth();
+                    pResource->texFormat.depth         = pTexture->GetDepth();
 
-                    pResource->texFormat.arrayLayers         = pTexture->GetArrayLayers();
+                    pResource->texFormat.arrayLayers   = pTexture->GetArrayLayers();
 
-                    pResource->texFormat.mipmaps             = pTexture->GetNumMipmaps();
+                    pResource->texFormat.mipmaps       = pTexture->GetNumMipmaps();
 
-                    pResource->texFormat.dimension           = static_cast<TextureDimension>(pTexture->GetBaseInfo().type);
+                    pResource->texFormat.dimension     = static_cast<TextureDimension>(pTexture->GetBaseInfo().type);
 
-                    pResource->texFormat.mutableFormat       = pTexture->GetBaseInfo().mutableFormat;
+                    pResource->texFormat.mutableFormat = pTexture->GetBaseInfo().mutableFormat;
 
-                    pResource->usageFlags                    = pTexture->GetBaseInfo().usageFlags;
+                    // Allocation stores either buffer or texture usage as untyped bits.
+
+                    pResource->usageFlags                    = static_cast<int64_t>(pTexture->GetBaseInfo().usageFlags);
 
                     m_resourceTable[pTexture->GetStableId()] = pResource->id;
 
@@ -978,7 +984,9 @@ const RDGResourceManager::Allocation* RDGResourceManager::ImportBufferAllocation
 
                     pResource->bufferSize = pBuffer->GetRequiredSize();
 
-                    pResource->usageFlags = pBuffer->GetUsageFlags();
+                    // Allocation stores either buffer or texture usage as untyped bits.
+
+                    pResource->usageFlags = static_cast<int64_t>(pBuffer->GetUsageFlags());
 
                     pResource->pBuffer    = pBuffer;
 
@@ -1564,17 +1572,17 @@ void RDGResourceManager::CreatePhysicalResource(Allocation* pResource, RenderDev
 
                 RHITextureCreateInfo createInfo{};
 
-                createInfo.format        = pResource->texFormat.format;
+                createInfo.format     = pResource->texFormat.format;
 
-                createInfo.samples       = pResource->texFormat.sampleCount;
+                createInfo.samples    = pResource->texFormat.sampleCount;
 
-                createInfo.usageFlags    = pResource->usageFlags;
+                createInfo.usageFlags = static_cast<int64_t>(pResource->usageFlags); // Allocation kind selects the typed usage.
 
-                createInfo.width         = pResource->texFormat.width;
+                createInfo.width      = pResource->texFormat.width;
 
-                createInfo.height        = pResource->texFormat.height;
+                createInfo.height     = pResource->texFormat.height;
 
-                createInfo.depth         = pResource->texFormat.depth;
+                createInfo.depth      = pResource->texFormat.depth;
 
                 createInfo.arrayLayers   = pResource->texFormat.arrayLayers;
 
@@ -1609,9 +1617,10 @@ void RDGResourceManager::CreatePhysicalResource(Allocation* pResource, RenderDev
                 {
                     RHIBufferCreateInfo createInfo{};
 
-                    createInfo.size         = static_cast<uint32_t>(pResource->bufferSize);
+                    createInfo.size = static_cast<uint32_t>(pResource->bufferSize);
 
-                    createInfo.usageFlags   = pResource->usageFlags;
+                    createInfo.usageFlags =
+                        static_cast<int64_t>(pResource->usageFlags); // Allocation kind selects the typed usage.
 
                     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 

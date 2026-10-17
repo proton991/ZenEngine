@@ -64,11 +64,11 @@ VkSamplerAddressMode ToVkSamplerAddressMode(RHISamplerRepeatMode mode);
 
 VkBorderColor ToVkBorderColor(RHISamplerBorderColor color);
 
-VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue);
+VkClearColorValue ToVkClearColor(const Color& color, DataFormat format);
 
 VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& clearValue);
 
-void ToVkClearColor(const Color& color, VkClearColorValue* pColorValue);
+
 
 void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range, VkImageSubresourceRange* pVkRange);
 

@@ -1,5 +1,6 @@
 #include "Graphics/RHI/RHICommandListExecutor.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "ScopedVulkanCall.h"
 #include "VulkanIntegrationFixture.h"
@@ -178,6 +179,44 @@ protected:
         return executor->SubmitBatch(MakeVecView(&list, 1));
     }
 
+    uint64_t CompletedSerial(RHICommandContextType queue) const
+    {
+        return backend->GetDevice()->GetQueue(queue)->GetLastCompletedSerial();
+    }
+
+    struct ProducerWait
+    {
+        RHICommandContextType queue;
+        uint64_t              serial;
+    };
+
+    // Each cross-queue GPU wait carries its producer's exact accepted serial, in submission order.
+    // A wait is skipped when cached completion already covers the serial, which is also valid.
+    void ExpectExactWaitsOrCompletedProducers(VectorView<const ProducerWait> producers)
+    {
+        EXPECT_LE(gpuWaitCount, producers.size());
+
+        EXPECT_EQ(hostWaitCount, 0u);
+
+        uint32_t emitted = 0;
+
+        for (const ProducerWait& producer : producers)
+        {
+            if (emitted < waitValues.size() && waitValues[emitted] == producer.serial)
+            {
+                ++emitted;
+            }
+            else
+            {
+                EXPECT_GE(GetRHIThread().Invoke(&VulkanUploadIntegrationTest::CompletedSerial, this, producer.queue),
+                          producer.serial);
+            }
+        }
+
+        // Every emitted wait matched an expected producer.
+        EXPECT_EQ(emitted, waitValues.size());
+    }
+
     VulkanRHI*                         backend{nullptr};
     RHICommandListExecutor*            executor{nullptr};
     VkDebugUtilsMessengerEXT           messenger{VK_NULL_HANDLE};
@@ -243,15 +282,15 @@ TEST_P(VulkanUploadIntegrationTest, TransferFeedsGraphicsThroughSubmissionDepend
 
     const bool async = std::get<1>(GetParam()) && !executor->IsTransferQueueSharedWithGraphics();
 
-    EXPECT_EQ(gpuWaitCount, async ? 1u : 0u);
-
     if (async)
     {
-        EXPECT_EQ(hostWaitCount, 0u);
+        const ProducerWait producer{RHICommandContextType::eTransfer, transfer};
 
-        ASSERT_EQ(waitValues.size(), 1u);
-
-        EXPECT_EQ(waitValues[0], transfer);
+        ExpectExactWaitsOrCompletedProducers(MakeVecView(producer));
+    }
+    else
+    {
+        EXPECT_EQ(gpuWaitCount, 0u);
     }
 
     ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
@@ -318,15 +357,15 @@ TEST_P(VulkanUploadIntegrationTest, ExactComputeProducerSurvivesInterveningCompu
 
     const bool timeline = std::get<1>(GetParam());
 
-    EXPECT_EQ(gpuWaitCount, timeline ? 1u : 0u);
-
     if (timeline)
     {
-        EXPECT_EQ(hostWaitCount, 0u);
+        const ProducerWait producer{queue, accepted.serial};
 
-        ASSERT_EQ(waitValues.size(), 1u);
-
-        EXPECT_EQ(waitValues[0], accepted.serial);
+        ExpectExactWaitsOrCompletedProducers(MakeVecView(producer));
+    }
+    else
+    {
+        EXPECT_EQ(gpuWaitCount, 0u);
     }
 
     ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
@@ -504,16 +543,16 @@ TEST_P(VulkanUploadIntegrationTest, OwnedScheduleDispatchesBetweenProducerAndGra
 
         if (std::get<1>(GetParam()))
         {
-            EXPECT_EQ(hostWaitCount, 0u);
-
-            ASSERT_EQ(waitValues.size(), alias ? 1u : 2u);
+            HeapVector<ProducerWait> producers;
 
             if (!alias)
             {
-                EXPECT_EQ(waitValues[0], result.groups[1].accepted.serial);
+                producers.push_back({producerQueue, result.groups[1].accepted.serial});
             }
 
-            EXPECT_EQ(waitValues.back(), result.groups[2].accepted.serial);
+            producers.push_back({RHICommandContextType::eAsyncCompute, result.groups[2].accepted.serial});
+
+            ExpectExactWaitsOrCompletedProducers(MakeVecView(producers));
         }
 
         ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics, result.groups[3].accepted.serial));
@@ -573,6 +612,23 @@ TEST_P(VulkanUploadIntegrationTest, SameQueueDependencyAddsNoSemaphoreOrHostWait
 
     EXPECT_EQ(gpuWaitCount, 0u);
 
+    EXPECT_EQ(hostWaitCount, 0u);
+}
+
+TEST_P(VulkanUploadIntegrationTest, CompletedCrossQueueDependencyWaitCount)
+{
+    RHICommandListPtr producer(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eAsyncCompute)));
+    producer->CopyBuffer(source, destination, {0, 0, bytes.size()});
+    ASSERT_EQ(SubmitCommands(*producer), RHISubmissionResult::eSuccess);
+    executor->WaitDeviceIdle();
+    test::ScopedVulkanCall submitHook(vkQueueSubmit, &Submit);
+    test::ScopedVulkanCall waitHook(vkWaitSemaphores, &Wait);
+    RHICommandListPtr      consumer(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    consumer->AddSubmissionDependency({RHICommandContextType::eAsyncCompute, RHISubmissionDependency::kLatestSubmitted});
+    consumer->CopyBuffer(source, readback, {0, 0, bytes.size()});
+    ASSERT_EQ(SubmitCommands(*consumer), RHISubmissionResult::eSuccess);
+    printf("RVFIX_WAIT completed_frame_gpu_waits=%u host_waits=%u\n", gpuWaitCount, hostWaitCount);
+    EXPECT_EQ(gpuWaitCount, 0u);
     EXPECT_EQ(hostWaitCount, 0u);
 }
 

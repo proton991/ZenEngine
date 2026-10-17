@@ -13,7 +13,9 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
 {
     static constexpr size_t RESOURCE_SIZES[]  = {sizeof(RESOURCE_TYPES)...};
     static constexpr size_t MAX_RESOURCE_SIZE = std::max_element(RESOURCE_SIZES, RESOURCE_SIZES + sizeof...(RESOURCE_TYPES))[0];
-    uint8_t                 data[MAX_RESOURCE_SIZE];
+    static constexpr size_t MAX_RESOURCE_ALIGNMENT = std::max({alignof(RESOURCE_TYPES)...});
+    static_assert(MAX_RESOURCE_SIZE % MAX_RESOURCE_ALIGNMENT == 0);
+    alignas(RESOURCE_TYPES...) uint8_t data[MAX_RESOURCE_SIZE];
 
     template <typename T> static T* Alloc(PagedAllocator<VersatileResourceTemplate>& allocator)
     {

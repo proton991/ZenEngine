@@ -308,7 +308,8 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
         {
             RDGExecutor::ExecutionPlan plan;
 
-            if (!m_rdgExecutor.PrepareExecution(&graph, plan))
+            if (!graph.RequirePresentationState(viewport->GetColorBackBuffer())
+                || !m_rdgExecutor.PrepareExecution(&graph, plan))
             {
                 result = false;
             }
@@ -366,8 +367,8 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
 
         RDGExecutor::ExecutionPlan plan;
 
-        if (m_rdgExecutor.PrepareExecution(&graph, plan) && (m_pUploadQueue == nullptr || m_pUploadQueue->Flush())
-            && m_rdgExecutor.RefreshExecution(plan))
+        if (graph.RequirePresentationState(viewport->GetColorBackBuffer()) && m_rdgExecutor.PrepareExecution(&graph, plan)
+            && (m_pUploadQueue == nullptr || m_pUploadQueue->Flush()) && m_rdgExecutor.RefreshExecution(plan))
         {
             PendingFrame pending;
 
@@ -1075,14 +1076,14 @@ bool RenderDevice::ResolveStagingFlushAction(StagingFlushAction action, StagingB
 
         StampOutgoingFrameSerials();
 
-        m_submissionBlocked  |= result == RHISubmissionResult::eFatal;
+        m_submissionBlocked     |= result == RHISubmissionResult::eFatal;
 
-        const bool completed  = !m_submissionBlocked && result == RHISubmissionResult::eSuccess
-                            && (manager != nullptr ? manager : &m_stagingBufferManager)->WaitForSubmittedAllocations();
+        const bool completed     = !m_submissionBlocked && result == RHISubmissionResult::eSuccess
+                                && (manager != nullptr ? manager : &m_stagingBufferManager)->WaitForSubmittedAllocations();
 
-        m_resolvingStagingFlush = false;
+        m_resolvingStagingFlush  = false;
 
-        returnValue             = completed;
+        returnValue              = completed;
     }
 
     return returnValue;

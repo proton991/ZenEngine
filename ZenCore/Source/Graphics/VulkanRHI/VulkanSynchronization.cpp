@@ -81,8 +81,6 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
 {
     ResetFence(fence);
 
-    int size = m_usedFences.size();
-
     if (!m_usedFences.empty())
     {
         HeapVector<VulkanFence*>::iterator it = m_usedFences.begin();
@@ -91,7 +89,8 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
         {
             if (*it == fence)
             {
-                m_usedFences.erase(it);
+                *it = m_usedFences.back();
+                m_usedFences.pop_back();
 
                 break;
             }
@@ -352,38 +351,6 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
 void VulkanPipelineBarrier::AddImageBarrier(VkImage                        image,
                                             VkImageLayout                  srcLayout,
                                             VkImageLayout                  dstLayout,
-                                            const VkImageSubresourceRange& range)
-{
-    const VkAccessFlags srcAccessFlags = VkLayoutToAccessFlags(srcLayout);
-
-    const VkAccessFlags dstAccessFlags = VkLayoutToAccessFlags(dstLayout);
-
-    VkImageMemoryBarrier barrier;
-
-    InitVkStruct(barrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
-
-    barrier.image               = image;
-
-    barrier.srcAccessMask       = srcAccessFlags;
-
-    barrier.dstAccessMask       = dstAccessFlags;
-
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-    barrier.oldLayout           = srcLayout;
-
-    barrier.newLayout           = dstLayout;
-
-    barrier.subresourceRange    = range;
-
-    m_imageBarriers.emplace_back(barrier);
-}
-
-void VulkanPipelineBarrier::AddImageBarrier(VkImage                        image,
-                                            VkImageLayout                  srcLayout,
-                                            VkImageLayout                  dstLayout,
                                             const VkImageSubresourceRange& range,
                                             VkAccessFlags                  srcAccess,
                                             VkAccessFlags                  dstAccess)
@@ -451,28 +418,6 @@ void VulkanPipelineBarrier::AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFl
     m_memoryBarriers.emplace_back(memoryBarrier);
 }
 
-void VulkanPipelineBarrier::ExecuteImageBarriersOnly(VkCommandBuffer cmdBuffer)
-{
-    VkPipelineStageFlags srcStageFlags = 0;
-
-    VkPipelineStageFlags dstStageFlags = 0;
-
-    for (VkImageMemoryBarrier const& imageBarrier : m_imageBarriers)
-    {
-        srcStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.oldLayout);
-
-        dstStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.newLayout);
-    }
-
-    if (!m_imageBarriers.empty())
-    {
-        vkCmdPipelineBarrier(cmdBuffer, srcStageFlags, dstStageFlags, 0, 0, nullptr, 0, nullptr, m_imageBarriers.size(),
-                             m_imageBarriers.data());
-
-        m_imageBarriers.clear();
-    }
-}
-
 void VulkanPipelineBarrier::Execute(VkCommandBuffer      cmdBuffer,
                                     VkPipelineStageFlags srcStageFlags,
                                     VkPipelineStageFlags dstStageFlags)
@@ -490,83 +435,4 @@ void VulkanPipelineBarrier::Execute(VkCommandBuffer      cmdBuffer,
     }
 }
 
-VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelineStageFlags(VkImageLayout layout)
-{
-    VkPipelineStageFlags flags = 0;
-
-    switch (layout)
-    {
-        case VK_IMAGE_LAYOUT_UNDEFINED:;
-        case VK_IMAGE_LAYOUT_GENERAL: flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; break;
-
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: flags = VK_PIPELINE_STAGE_TRANSFER_BIT; break;
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; break;
-
-        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
-            flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; break;
-
-        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
-        case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
-            flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
-                  | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT; break;
-
-        default: LOGE("Invalid Vulkan Image Layout") break;
-    }
-
-    return flags;
-}
-
-VkAccessFlags VulkanPipelineBarrier::VkLayoutToAccessFlags(VkImageLayout layout)
-{
-    VkAccessFlags flags = 0;
-
-    switch (layout)
-    {
-        case VK_IMAGE_LAYOUT_UNDEFINED:;
-        case VK_IMAGE_LAYOUT_GENERAL: flags = 0; break;
-
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: flags = VK_ACCESS_TRANSFER_READ_BIT; break;
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: flags = VK_ACCESS_TRANSFER_WRITE_BIT; break;
-
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; break;
-
-        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
-            flags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
-            flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
-                  | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: flags = VK_ACCESS_SHADER_READ_BIT; break;
-
-        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
-        case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
-            flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: flags = 0; break;
-
-        default: LOGE("Invalid Vulkan Image Layout") break;
-    }
-
-    return flags;
-}
 } // namespace zen

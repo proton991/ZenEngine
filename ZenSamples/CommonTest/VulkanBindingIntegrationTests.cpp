@@ -7,6 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
+#include "Graphics/RHI/RHIAccelerationStructure.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <memory>
@@ -126,6 +127,21 @@ struct TexelViewObserver
         ++destroys;
 
         destroy(device, view, allocator);
+    }
+};
+
+struct ReviewWriteObserver
+{
+    static inline PFN_vkUpdateDescriptorSets original{};
+    static inline uint32_t                   calls{0};
+    static VKAPI_ATTR void VKAPI_CALL        Update(VkDevice                    device,
+                                                    uint32_t                    count,
+                                                    const VkWriteDescriptorSet* writes,
+                                                    uint32_t                    copyCount,
+                                                    const VkCopyDescriptorSet*  copies)
+    {
+        ++calls;
+        original(device, count, writes, copyCount, copies);
     }
 };
 
@@ -378,8 +394,8 @@ protected:
                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     }
 
-    void SubmitAndWait(VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VkAccessFlags access       = VK_ACCESS_SHADER_WRITE_BIT)
+    void SubmitAndWait(VkPipelineStageFlags stage  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VkAccessFlags        access = VK_ACCESS_SHADER_WRITE_BIT)
     {
         VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
 
@@ -453,6 +469,104 @@ TEST_F(VulkanBindingIntegrationTest, TextureCannotFillSamplerBinding)
     state.FlushPendingDescriptorWrites(context, sets, firstSet, offsets);
 
     EXPECT_TRUE(sets.empty());
+}
+
+TEST_F(VulkanBindingIntegrationTest, InvalidSamplerElementsNeverWriteOrPublishDescriptors)
+{
+    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("binding_sampler.comp.spv"));
+    VulkanTexture*  texture  = Texture();
+    RHISampler*     sampler  = Sampler();
+    VulkanBuffer*   output   = Buffer();
+    context->GetCommandBuffer();
+    ReviewWriteObserver::original = vkUpdateDescriptorSets;
+    test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> observeWrites(vkUpdateDescriptorSets, ReviewWriteObserver::Update);
+    for (uint32_t scenario = 0; scenario < 2; ++scenario)
+    {
+        VulkanDescriptorSetState state;
+        state.SetPipeline(pipeline);
+        RHIBatchedShaderParameters parameters;
+        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 0), scenario == 0 ? texture : nullptr, nullptr,
+                                    0);
+        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 1), texture, nullptr, 0);
+        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 2), output, nullptr, 0);
+        ASSERT_TRUE(state.SetShaderParameters(parameters));
+        HeapVector<VkDescriptorSet> sets;
+        HeapVector<uint32_t>        offsets;
+        uint32_t                    first = 0;
+        ReviewWriteObserver::calls        = 0;
+        EXPECT_FALSE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+        EXPECT_EQ(ReviewWriteObserver::calls, 0u);
+        EXPECT_TRUE(sets.empty());
+        RHIBatchedShaderParameters corrected;
+        corrected.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 0), sampler, nullptr, 0);
+        ASSERT_TRUE(state.SetShaderParameters(corrected));
+        ASSERT_TRUE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+        EXPECT_EQ(first, 1u);
+        ASSERT_EQ(sets.size(), 1u);
+        EXPECT_NE(sets[0], VK_NULL_HANDLE);
+        // The second valid set may reuse the first valid content-cache entry.
+        EXPECT_EQ(ReviewWriteObserver::calls, scenario == 0 ? 1u : 0u);
+    }
+}
+
+TEST_F(VulkanBindingIntegrationTest, MisalignedUniformOffsetCannotPoisonTheOffsetIndependentCacheKey)
+{
+    VulkanPipeline*                    pipeline   = static_cast<VulkanPipeline*>(Compute("descriptor_uniform.comp.spv"));
+    VulkanBuffer*                      uniform    = Buffer(512, true);
+    const RHIShaderResourceDescriptor& descriptor = *pipeline->GetShader()->GetSRDByLocation(1, 0);
+    VulkanDescriptorSetState           state;
+    state.SetPipeline(pipeline);
+    RHIBatchedShaderParameters parameters;
+    parameters.AddResourceParam(descriptor, uniform, nullptr, 0, 1);
+    ASSERT_TRUE(state.SetShaderParameters(parameters));
+    context->GetCommandBuffer();
+    ReviewWriteObserver::original = vkUpdateDescriptorSets;
+    ReviewWriteObserver::calls    = 0;
+    test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> observeWrites(vkUpdateDescriptorSets, ReviewWriteObserver::Update);
+    HeapVector<VkDescriptorSet>                        sets;
+    HeapVector<uint32_t>                               offsets;
+    uint32_t                                           first = 0;
+    EXPECT_FALSE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+    EXPECT_EQ(ReviewWriteObserver::calls, 0u);
+    RHIBatchedShaderParameters corrected;
+    corrected.AddResourceParam(descriptor, uniform, nullptr, 0, 0);
+    ASSERT_TRUE(state.SetShaderParameters(corrected));
+    ASSERT_TRUE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+    EXPECT_EQ(ReviewWriteObserver::calls, 1u);
+    EXPECT_EQ(first, 1u);
+    ASSERT_EQ(sets.size(), 1u);
+    EXPECT_NE(sets[0], VK_NULL_HANDLE);
+}
+
+TEST_F(VulkanBindingIntegrationTest, BottomLevelStructureCannotFillTopLevelDescriptor)
+{
+    if (!session->rhi.QueryGPUInfo().rayQuery.IsUsable())
+    {
+        GTEST_SKIP() << "Ray queries unavailable";
+    }
+    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("review_acceleration.comp.spv"));
+    ASSERT_NE(pipeline, nullptr);
+    RHIAccelerationStructureCreateInfo info{};
+    info.size = 4096;
+    info.type = RHIAccelerationStructureType::eBottomLevel;
+    RHIResourcePtr<RHIAccelerationStructure> bottom =
+        RHIResourcePtr<RHIAccelerationStructure>::Adopt(session->rhi.CreateAccelerationStructure(info));
+    ASSERT_NE(bottom.Get(), nullptr);
+    VulkanDescriptorSetState state;
+    state.SetPipeline(pipeline);
+    RHIBatchedShaderParameters parameters;
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 0), bottom.Get(), nullptr, 0);
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 1), Buffer(), nullptr, 0);
+    ASSERT_TRUE(state.SetShaderParameters(parameters));
+    context->GetCommandBuffer();
+    ReviewWriteObserver::original = vkUpdateDescriptorSets;
+    ReviewWriteObserver::calls    = 0;
+    test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> observeWrites(vkUpdateDescriptorSets, ReviewWriteObserver::Update);
+    HeapVector<VkDescriptorSet>                        sets;
+    HeapVector<uint32_t>                               offsets;
+    uint32_t                                           first = 0;
+    EXPECT_FALSE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+    EXPECT_EQ(ReviewWriteObserver::calls, 0u);
 }
 
 TEST_F(VulkanBindingIntegrationTest, TexelViewsUseLogicalBufferRange)
@@ -734,9 +848,10 @@ TEST_F(VulkanBindingIntegrationTest, UniformElementOffsetsFollowBindingOrderAndR
 
     state.FlushPendingDescriptorWrites(context, sets, first, offsets);
 
-    ASSERT_EQ(sets.size(), test::kLocalResourceSet + 1);
+    ASSERT_EQ(first, test::kLocalResourceSet);
+    ASSERT_EQ(sets.size(), 1u);
 
-    const VkDescriptorSet original = sets[test::kLocalResourceSet];
+    const VkDescriptorSet original = sets[0];
 
     RHIBatchedShaderParameters changed;
 
@@ -746,9 +861,10 @@ TEST_F(VulkanBindingIntegrationTest, UniformElementOffsetsFollowBindingOrderAndR
 
     state.FlushPendingDescriptorWrites(context, sets, first, offsets);
 
-    ASSERT_EQ(sets.size(), test::kLocalResourceSet + 1);
+    ASSERT_EQ(first, test::kLocalResourceSet);
+    ASSERT_EQ(sets.size(), 1u);
 
-    EXPECT_EQ(sets[test::kLocalResourceSet], original);
+    EXPECT_EQ(sets[0], original);
 
     EXPECT_EQ((std::vector<uint32_t>(offsets.begin(), offsets.end())),
               (std::vector<uint32_t>{alignment * 3, alignment, alignment * 2, alignment * 2}));
@@ -759,7 +875,9 @@ TEST_F(VulkanBindingIntegrationTest, UniformElementOffsetsFollowBindingOrderAndR
 
     context->RHIDispatch(1, 1, 1);
 
-    EXPECT_EQ(BindingObserver::sets[test::kLocalResourceSet], original);
+    EXPECT_EQ(BindingObserver::firstSet, test::kLocalResourceSet);
+    ASSERT_EQ(BindingObserver::sets.size(), 1u);
+    EXPECT_EQ(BindingObserver::sets[0], original);
 
     SubmitAndWait();
 

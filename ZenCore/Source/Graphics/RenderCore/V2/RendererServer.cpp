@@ -9,6 +9,7 @@
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 
 namespace zen::rc
@@ -64,6 +65,20 @@ void RendererServer::Init()
     m_pSceneShadows = ZEN_NEW() SceneShadowRenderer(m_pRenderDevice);
 
     m_pSceneShadows->SetResolution(m_giSettings.shadowMapResolution);
+
+    // Warm the supported programs registered for it before frames are queued; driver compilation
+    // would otherwise stall the later frames that first use them. Unsupported programs are never
+    // registered, so this compiles nothing the device cannot run.
+    for (NameID name : ShaderProgramManager::GetInstance().GetInitializationWarmups())
+    {
+        ShaderProgram* program = ShaderProgramManager::GetInstance().RequestShaderProgram(name);
+
+        if (program != nullptr && program->GetShader() != nullptr
+            && m_pRenderDevice->GetOrCreateComputePipeline(program->GetShader()) == nullptr)
+        {
+            LOGW("Pipeline warmup failed for '{}'", name.CStr());
+        }
+    }
 }
 
 void RendererServer::Destroy()

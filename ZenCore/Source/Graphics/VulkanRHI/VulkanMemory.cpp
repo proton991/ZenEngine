@@ -233,7 +233,7 @@ bool VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
 
     if (!ready)
     {
-        ReportVulkanDeviceLoss(result, "vmaCreateImage");
+        ReportVulkanCreationFailure(result, "vmaCreateImage", __FILE__, __LINE__);
 
         LOGE("Image allocation failed: {}", GetResultString(result));
 
@@ -250,11 +250,7 @@ void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocatio
     vmaDestroyImage(m_vmaAllocator, image, memAlloc.handle);
 }
 
-bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
-                                        const VkBufferCreateInfo* pBufferCI,
-                                        RHIBufferAllocateType     allocType,
-                                        VkBuffer*                 pBuffer,
-                                        VulkanMemoryAllocation*   pAllocation)
+VmaAllocationCreateInfo MakeVmaBufferAllocation(RHIBufferAllocateType allocType, bool budget)
 {
     VmaAllocationCreateInfo vmaAllocationCI{};
 
@@ -277,14 +273,25 @@ bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
         vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     }
 
-    if (m_memoryBudget)
+    if (budget)
     {
         vmaAllocationCI.flags |= VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
     }
 
-    *pBuffer     = VK_NULL_HANDLE;
+    return vmaAllocationCI;
+}
 
-    *pAllocation = {};
+bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
+                                        const VkBufferCreateInfo* pBufferCI,
+                                        RHIBufferAllocateType     allocType,
+                                        VkBuffer*                 pBuffer,
+                                        VulkanMemoryAllocation*   pAllocation)
+{
+    VmaAllocationCreateInfo vmaAllocationCI = MakeVmaBufferAllocation(allocType, m_memoryBudget);
+
+    *pBuffer                                = VK_NULL_HANDLE;
+
+    *pAllocation                            = {};
 
     // AS build inputs need 16-byte device addresses (instance data); the memory
     // requirements alone do not guarantee it, e.g. for small buffers on AMD.
@@ -297,11 +304,11 @@ bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
     const bool mappedRequired = (vmaAllocationCI.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) != 0;
 
     const bool ready          = result == VK_SUCCESS && *pBuffer != VK_NULL_HANDLE && pAllocation->handle != VK_NULL_HANDLE
-                    && (!mappedRequired || pAllocation->info.pMappedData != nullptr);
+                             && (!mappedRequired || pAllocation->info.pMappedData != nullptr);
 
     if (!ready)
     {
-        ReportVulkanDeviceLoss(result, "vmaCreateBuffer");
+        ReportVulkanCreationFailure(result, "vmaCreateBuffer", __FILE__, __LINE__);
 
         LOGE("Buffer allocation or persistent mapping failed: {}", GetResultString(result));
 

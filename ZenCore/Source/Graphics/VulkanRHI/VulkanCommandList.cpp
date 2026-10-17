@@ -693,7 +693,7 @@ void FVulkanCommandBuffer::ResolveGPUTimings()
             GPUTimingScope& scope = m_timingScopes[index];
 
             const bool available  = scope.ended && (status == VK_SUCCESS || status == VK_NOT_READY)
-                                && values[2 * index].available != 0 && values[2 * index + 1].available != 0;
+                                 && values[2 * index].available != 0 && values[2 * index + 1].available != 0;
 
             if (available)
             {
@@ -959,6 +959,8 @@ void VulkanCommandContextBase::FinalizePendingWorkload()
 
 RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
 {
+    GVulkanRHI->SetSubmissionError({});
+    VERIFY_EXPR_MSG(!m_pQueue->HasPendingSubmissions(), "Immediate submission cannot interleave with a platform-list flush");
     RHISubmissionResult result = RHISubmissionResult::eSuccess;
 
     HeapVector<VulkanWorkload*> workloads;
@@ -969,6 +971,7 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
 
     if (m_recordingError.IsFailure())
     {
+        GVulkanRHI->SetSubmissionError(m_recordingError);
         result =
             m_recordingError.code == RHIErrorCode::eDeviceLost ? RHISubmissionResult::eFatal : RHISubmissionResult::eRejected;
 
@@ -995,11 +998,14 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
 
             SetLastSubmittedSerial(serial);
 
-            if (result != RHISubmissionResult::eSuccess)
+            if (result == RHISubmissionResult::eFatal)
             {
-                m_pQueue->DiscardPendingWorkloads(result == RHISubmissionResult::eFatal);
-
-                GVulkanRHI->BlockSubmissions();
+                m_pQueue->DiscardPendingWorkloads(true);
+                GVulkanRHI->BlockSubmissions(GVulkanRHI->GetSubmissionFailureCause());
+            }
+            else if (result == RHISubmissionResult::eRejected)
+            {
+                m_pQueue->DiscardPendingWorkloads(false);
             }
             else
             {
@@ -1045,12 +1051,13 @@ void VulkanCommandContextBase::LatchError(RHIError error)
         {
             m_recordingError = error;
 
-            LOGE("RHI recording failed in {} (native {})", error.operation, error.nativeCode);
+            LOGE("RHI recording failed in {} (native {})", RHIErrorText(error.operation, "unknown operation"),
+                 error.nativeCode);
         }
 
         if (error.code == RHIErrorCode::eDeviceLost)
         {
-            GVulkanRHI->BlockSubmissions();
+            GVulkanRHI->BlockSubmissions(error);
         }
     }
 }
@@ -1529,9 +1536,9 @@ static RHITextureView* ResolveRenderingAttachment(const RHIRenderTarget&    targ
             const SampleCount actualSamples         = target.pTexture->GetBaseInfo().samples;
 
             valid                                   = view->GetTextureType() != RHITextureType::e3D && range.levelCount == 1
-                 && layout.numLayers <= range.layerCount && uint32_t(layout.renderArea.maxX) <= width
-                 && uint32_t(layout.renderArea.maxY) <= height && target.numSamples == actualSamples
-                 && (!hasSamples || samples == actualSamples);
+                                                   && layout.numLayers <= range.layerCount && uint32_t(layout.renderArea.maxX) <= width
+                                                   && uint32_t(layout.renderArea.maxY) <= height && target.numSamples == actualSamples
+                                                   && (!hasSamples || samples == actualSamples);
 
             if (valid)
             {
@@ -1605,7 +1612,7 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* layo
 
                     colors[i].storeOp          = ToVkAttachmentStoreOp(target.storeOp);
 
-                    colors[i].clearValue.color = ToVkClearColor(target.clearValue);
+                    colors[i].clearValue.color = ToVkClearColor(target.clearValue.color, view->GetFormat());
 
                     RecordResource(view);
                 }
@@ -1701,6 +1708,10 @@ void FVulkanCommandListContext::RHIBeginGPUTiming(const RHIGPUTimingPtr& result)
         {
             GetCommandBuffer()->BeginGPUTiming(result);
         }
+    }
+    else if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
+    {
+        result->Publish(RHIGPUTimingStatus::eDiscarded);
     }
 }
 
@@ -2012,15 +2023,18 @@ void FVulkanCommandListContext::RHIClearTexture(RHITexture*                     
                                                 const Color&                      color,
                                                 const RHITextureSubResourceRange& range)
 {
+    if (pTexture == nullptr || FormatIsDepthStencil(pTexture->GetBaseInfo().format)
+        || FormatIsDepthOnly(pTexture->GetBaseInfo().format) || FormatIsStencilOnly(pTexture->GetBaseInfo().format))
+    {
+        LatchError(MakeRHIError(RHIErrorCode::eInvalidArgument, "ClearTexture requires a color format", __FILE__, __LINE__));
+    }
     if (EnsureRecording())
     {
         VkImageSubresourceRange vkRange;
 
         ToVkImageSubresourceRange(range, &vkRange);
 
-        VkClearColorValue colorValue;
-
-        ToVkClearColor(color, &colorValue);
+        const VkClearColorValue colorValue = ToVkClearColor(color, pTexture->GetBaseInfo().format);
 
         vkCmdClearColorImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pTexture)->GetVkImage(),
                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colorValue, 1, &vkRange);
@@ -2033,7 +2047,7 @@ void FVulkanCommandListContext::RHICopyTexture(RHITexture*                      
 {
     if (EnsureRecording())
     {
-        HeapVector<VkImageCopy> copies(regions.size());
+        SmallVector<VkImageCopy, 4> copies(regions.size());
 
         for (uint32_t i = 0; i < regions.size(); i++)
         {
@@ -2053,7 +2067,7 @@ void FVulkanCommandListContext::RHIBlitTexture(RHITexture*                      
 {
     if (EnsureRecording())
     {
-        HeapVector<VkImageBlit> blits(regions.size());
+        SmallVector<VkImageBlit, 4> blits(regions.size());
 
         for (uint32_t i = 0; i < regions.size(); i++)
         {
@@ -2072,7 +2086,7 @@ void FVulkanCommandListContext::RHICopyTextureToBuffer(RHITexture*              
 {
     if (EnsureRecording())
     {
-        HeapVector<VkBufferImageCopy> copies(regions.size());
+        SmallVector<VkBufferImageCopy, 4> copies(regions.size());
 
         for (uint32_t i = 0; i < regions.size(); i++)
         {
@@ -2091,7 +2105,7 @@ void FVulkanCommandListContext::RHICopyBufferToTexture(RHIBuffer*               
 {
     if (EnsureRecording())
     {
-        HeapVector<VkBufferImageCopy> copies(regions.size());
+        SmallVector<VkBufferImageCopy, 4> copies(regions.size());
 
         for (uint32_t i = 0; i < copies.size(); i++)
         {
@@ -2176,9 +2190,9 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*>          c
 
     if (m_submissionBlocked || !PrepareCommandListDependencies(cmdLists))
     {
-        status.error = {RHIErrorCode::eBackendFailure, 0, "Prepare command dependencies"};
+        status.error = GetSubmissionFailureCause();
 
-        BlockSubmissions();
+        BlockSubmissions(status.error);
     }
 
     for (RHICommandList* commands : cmdLists)
@@ -2302,9 +2316,7 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
 
     if (result == RHISubmissionResult::eFatal)
     {
-        BlockSubmissions(GetLastSubmissionError().IsFailure()
-                             ? GetLastSubmissionError()
-                             : MakeRHIError(RHIErrorCode::eBackendFailure, "Vulkan submission", __FILE__, __LINE__));
+        BlockSubmissions(GetSubmissionFailureCause());
     }
 
     // Workload objects stay alive until every context has read the actual accepted serials.

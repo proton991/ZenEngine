@@ -433,9 +433,12 @@ bool NeedsResourceBarrier(const RDGBufferResourceState& previous, const RDGAcces
 
 bool NeedsResourceBarrier(const RDGTextureResourceState& previous, const RDGAccess& next)
 {
-    return previous.accessMode != RHIAccessMode::eRead || next.accessMode != RHIAccessMode::eRead
-        || RHITextureUsageToLayout(previous.usage) != RHITextureUsageToLayout(next.textureUsage)
-        || NeedsVisibility(previous.writer, next);
+    const bool sameFinalState = next.finalStateOnly && previous.accessMode == next.accessMode
+                             && previous.usage == next.textureUsage && previous.pipelineStages == next.pipelineStages;
+    return !sameFinalState
+        && (previous.accessMode != RHIAccessMode::eRead || next.accessMode != RHIAccessMode::eRead
+            || RHITextureUsageToLayout(previous.usage) != RHITextureUsageToLayout(next.textureUsage)
+            || NeedsVisibility(previous.writer, next));
 }
 
 void AdvanceVisibility(RDGWriterVisibility& writer,
@@ -1189,7 +1192,7 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
     {
         graph->m_pRenderDevice = m_pRenderDevice;
 
-        valid                  = graph->SortNodesByVersion();
+        valid                  = graph->SortNodesByVersion() && graph->AppendRequiredFinalStates();
 
         if (valid)
         {
@@ -1482,7 +1485,7 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
                     valid                                                                               = graph.Check(
                         !priorAccess || resource->hasInitialState || producer != external.end(), RDGErrorCode::eLifecycle,
                         fmt::format("Initial resource state requires queue provenance before group recording: {} (id {})",
-                                                                                                                  PhysicalResource(resource)->GetResourceTag().CStr(), id));
+                                    PhysicalResource(resource)->GetResourceTag().CStr(), id));
 
                     if (producer != external.end())
                     {
@@ -1501,12 +1504,12 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                             if (resource->type == RDGResourceType::eTexture)
                             {
-                                valid = valid
-                                     && graph.Check(firstScope
-                                                        || RHITextureUsageToLayout(state.layoutUsage)
-                                                               == RHITextureUsageToLayout(prior.access.textureUsage),
-                                                    RDGErrorCode::eLifecycle,
-                                                    "External readers have incompatible image layouts");
+                                valid                            = valid
+                                                                && graph.Check(firstScope
+                                                                                   || RHITextureUsageToLayout(state.layoutUsage)
+                                                                                          == RHITextureUsageToLayout(prior.access.textureUsage),
+                                                                               RDGErrorCode::eLifecycle,
+                                                                               "External readers have incompatible image layouts");
 
                                 RDGTextureResourceState& initial = state.textures[local];
 
@@ -1948,8 +1951,8 @@ struct RenderGraph::PassBindingValidator
             const RHIShaderResourceDescriptor* srd = Descriptor(binding.glslName, RHIShaderResourceType::eUniformBuffer, 1);
 
             allValid                               = srd != nullptr && Slice(binding.bytes, desc.valueByteStorage.size())
-                    && Check(srd->blockSize == 0 || binding.bytes.count <= srd->blockSize, RDGErrorCode::eBinding,
-                             prefix + "Value exceeds uniform block '" + binding.glslName.ToString() + "'");
+                                                  && Check(srd->blockSize == 0 || binding.bytes.count <= srd->blockSize, RDGErrorCode::eBinding,
+                                                           prefix + "Value exceeds uniform block '" + binding.glslName.ToString() + "'");
 
             if (!allValid)
             {
@@ -2015,9 +2018,9 @@ struct RenderGraph::PassBindingValidator
             const RHIShaderResourceDescriptor* srd = Descriptor(binding.glslName, type, binding.views.count);
 
             bool compatible                        = srd != nullptr
-                           && Check(ValidContentGuarantee(*srd, binding.contents), RDGErrorCode::eBinding,
-                                    prefix + "Texture content guarantee conflicts with reflection")
-                           && Slice(binding.views, desc.textureViewStorage.size());
+                                                  && Check(ValidContentGuarantee(*srd, binding.contents), RDGErrorCode::eBinding,
+                                                           prefix + "Texture content guarantee conflicts with reflection")
+                                                  && Slice(binding.views, desc.textureViewStorage.size());
 
             for (uint32_t i = 0; compatible && i < binding.views.count; ++i)
             {
@@ -2079,12 +2082,12 @@ struct RenderGraph::PassBindingValidator
                                                        : program->GetShaderResourceDescriptor(binding.glslName);
 
             allValid                               = srd != nullptr
-                    && Check(uniqueSlot, RDGErrorCode::eBinding,
-                             prefix + "Duplicate sampler slot in '" + binding.glslName.ToString() + "'")
-                    && Check(srd->bindless || binding.arrayIndex < srd->arraySize, RDGErrorCode::eBinding,
-                             prefix + "Invalid sampler array index")
-                    && Check(binding.pSampler != nullptr, RDGErrorCode::eBinding,
-                             prefix + "Null sampler in '" + binding.glslName.ToString() + "'");
+                                                  && Check(uniqueSlot, RDGErrorCode::eBinding,
+                                                           prefix + "Duplicate sampler slot in '" + binding.glslName.ToString() + "'")
+                                                  && Check(srd->bindless || binding.arrayIndex < srd->arraySize, RDGErrorCode::eBinding,
+                                                           prefix + "Invalid sampler array index")
+                                                  && Check(binding.pSampler != nullptr, RDGErrorCode::eBinding,
+                                                           prefix + "Null sampler in '" + binding.glslName.ToString() + "'");
 
             if (allValid)
             {
@@ -2206,8 +2209,8 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
     ShaderProgram* program = valid ? ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName) : nullptr;
 
     valid                  = valid
-         && Check(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader,
-                  prefix + "Unknown or uninitialized shader '" + desc.shaderProgramName.ToString() + "'");
+                          && Check(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader,
+                                   prefix + "Unknown or uninitialized shader '" + desc.shaderProgramName.ToString() + "'");
 
     if (valid)
     {
@@ -2219,8 +2222,8 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
     {
         const BitField<RHIShaderStageFlagBits> stages = program->GetShader()->GetCreateInfo().stageFlags;
 
-        valid                                         = Check(graphics ? !stages.HasFlag(RHIShaderStageFlagBits::eCompute)
-                                                                       : (int64_t(stages) & ~int64_t(RHIShaderStageFlagBits::eCompute)) == 0,
+        valid = Check(graphics ? !stages.HasFlag(RHIShaderStageFlagBits::eCompute)
+                               : (int64_t(stages) & ~int64_t(RHIShaderStageFlagBits::eCompute)) == 0,
                       RDGErrorCode::eShader, prefix + "Shader stages are incompatible with the pass type");
     }
 
@@ -2249,9 +2252,9 @@ template <typename Output> bool RenderGraph::ResolveAttachment(Output& output)
         valid                                          = (resource != nullptr);
 
         valid                                          = valid
-             && (Check(resource->type == RDGResourceType::eTexture && resource->texFormat.mipmaps == 1
-                           && resource->texFormat.arrayLayers == 1 && resource->texFormat.depth == 1,
-                       RDGErrorCode::eAttachment, "Attachments require a single mip and layer in the current backend"));
+                                                      && (Check(resource->type == RDGResourceType::eTexture && resource->texFormat.mipmaps == 1
+                                                                    && resource->texFormat.arrayLayers == 1 && resource->texFormat.depth == 1,
+                                                                RDGErrorCode::eAttachment, "Attachments require a single mip and layer in the current backend"));
 
         if (valid)
         {
@@ -2311,12 +2314,12 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
 
         const RHITexture* physical                       = out.pTexture;
 
-        valid                                            = Check(physical == nullptr
-                                                                     || (physical->GetNumMipmaps() == 1 && physical->GetArrayLayers() == 1 && physical->GetDepth() == 1
+        valid = Check(physical == nullptr
+                          || (physical->GetNumMipmaps() == 1 && physical->GetArrayLayers() == 1 && physical->GetDepth() == 1
                               && physical->GetBaseInfo().samples == desc.pipelineStates.multiSampleState.sampleCount),
-                                                                 RDGErrorCode::eAttachment, prefix + "Attachment shape or samples do not match the pass");
+                      RDGErrorCode::eAttachment, prefix + "Attachment shape or samples do not match the pass");
 
-        valid                                            = valid
+        valid = valid
              && (Check(attachment == nullptr
                            || attachment->texFormat.sampleCount == desc.pipelineStates.multiSampleState.sampleCount,
                        RDGErrorCode::eAttachment, prefix + "Logical attachment samples do not match the pass"));
@@ -2504,8 +2507,8 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
     valid                      = static_cast<bool>(m_result);
 
     valid                      = valid
-         && (Check(m_executionState == RDGExecutionState::eBuilding, RDGErrorCode::eLifecycle,
-                   "AddGraphicsPass requires Begin"));
+                              && (Check(m_executionState == RDGExecutionState::eBuilding, RDGErrorCode::eLifecycle,
+                                        "AddGraphicsPass requires Begin"));
 
     if (valid)
     {
@@ -3061,10 +3064,10 @@ bool RenderGraph::ApplyContentAccess(std::unordered_set<int32_t>& warned,
 
         const RDGResourceManager::Allocation* sourceResource = m_resourceManager.FindResourceByIdx(access.sourceResourceId);
 
-        produced                                             = sourceResource->type == RDGResourceType::eBuffer
-                                                                 ? BufferContents(source, access.sourceBufferOffset,
+        produced = sourceResource->type == RDGResourceType::eBuffer
+                     ? BufferContents(source, access.sourceBufferOffset,
                                       access.sourceBufferSize ? access.sourceBufferSize : sourceResource->bufferSize)
-                                                                 : source.status;
+                     : source.status;
 
         if (sourceResource->type == RDGResourceType::eTexture)
         {
@@ -3633,9 +3636,9 @@ bool RenderGraph::DeclareVersionAccess(const RDGPassNode*                    nod
 
             const bool writes                                  = mode != RHIAccessMode::eRead;
 
-            valid                                              = Check(!writes || version.previous >= 0, RDGErrorCode::eVersion,
-                                                                       "Pass '" + node->tag.ToString() + "' cannot write initial version 0 of '" + resource->name.ToString()
-                                                                           + "'");
+            valid = Check(!writes || version.previous >= 0, RDGErrorCode::eVersion,
+                          "Pass '" + node->tag.ToString() + "' cannot write initial version 0 of '" + resource->name.ToString()
+                              + "'");
 
             if (valid)
             {
@@ -4117,6 +4120,128 @@ bool RenderGraph::SortNodesByVersion()
     return result;
 }
 
+bool RenderGraph::RequirePresentationState(RHITexture* texture)
+{
+    bool valid =
+        Check(!m_inExecution
+                  && (m_executionState == RDGExecutionState::eRecorded || m_executionState == RDGExecutionState::eCompiled),
+              RDGErrorCode::eLifecycle, "Presentation requires an ended graph and a color backbuffer");
+    RDGResourceManager::Allocation* resource = nullptr;
+    if (valid && texture != nullptr)
+    {
+        resource =
+            const_cast<RDGResourceManager::Allocation*>(m_executionState == RDGExecutionState::eRecorded
+                                                            ? m_resourceManager.ImportTextureAllocation(texture, true)
+                                                            : m_resourceManager.FindResourceByStableId(texture->GetStableId()));
+        valid = Check(resource != nullptr && resource->imported && resource->type == RDGResourceType::eTexture,
+                      RDGErrorCode::eBinding, "Presenting graph must access its imported color backbuffer");
+    }
+    if (valid && texture != nullptr)
+    {
+        valid = Check(m_executionState != RDGExecutionState::eCompiled || resource->hasFinalState, RDGErrorCode::eLifecycle,
+                      "Declare presentation before compiling the graph");
+    }
+    if (valid && texture != nullptr)
+    {
+        resource->hasFinalState                = true;
+        resource->finalTextureState.accessMode = RHIAccessMode::eReadWrite;
+        resource->finalTextureState.usage      = RHITextureUsage::eColorAttachment;
+        resource->finalTextureState.stages =
+            BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput);
+    }
+    return valid;
+}
+
+bool RenderGraph::AppendRequiredFinalStates()
+{
+    bool valid = true;
+    for (RDGResourceManager::Allocation* resource : m_resourceManager.m_resources)
+    {
+        if (resource->hasFinalState)
+        {
+            valid = Check(resource->usageFlags.HasFlag(uint32_t(RHITextureUsageFlagBits::eColorAttachment)),
+                          RDGErrorCode::eBinding, "Presenting backbuffer requires color attachment usage");
+            if (!valid)
+            {
+                break;
+            }
+            RDGPassNode* node = AllocNode<RDGPassNode>(sizeof(RDGPassNode));
+            node->type        = RDGNodeType::eTransferPass;
+            node->tag         = "RDG.PresentState";
+            node->neverCull   = true;
+            node->selfStages  = resource->finalTextureState.stages;
+            node->passDescIdx = static_cast<int32_t>(m_pendingTransferPassDescs.size());
+            m_pendingTransferPassDescs.push_back({node->tag});
+            RDGTransferPass* pass = ZEN_NEW() RDGTransferPass();
+            pass->passTag         = node->tag;
+            node->pCompiledPass   = pass;
+            m_compiledXferPasses.push_back(pass);
+            RDGAccess access{};
+            access.finalStateOnly          = true;
+            access.nodeId                  = node->id;
+            access.resourceId              = resource->id;
+            access.accessMode              = resource->finalTextureState.accessMode;
+            access.textureUsage            = resource->finalTextureState.usage;
+            access.pipelineStages          = resource->finalTextureState.stages;
+            access.accessFlags             = RHITextureUsageToAccessFlagBits(access.textureUsage, access.accessMode);
+            access.textureSubResourceRange = FullRange(resource);
+            for (const RDGAccess& prior : m_accesses)
+            {
+                if (prior.resourceId == resource->id)
+                {
+                    m_dependencies.push_back({prior.nodeId, node->id, resource->id, -1, RDGDependencyReason::eLayoutChange,
+                                              access.textureSubResourceRange});
+                }
+            }
+            node->accessOffset = static_cast<uint32_t>(m_accesses.size());
+            node->accessCount  = 1;
+            ++resource->accessCount;
+            m_accesses.push_back(access);
+            m_sortedNodes.push_back(node->id);
+        }
+    }
+    return valid;
+}
+
+bool RenderGraph::ValidateRequiredFinalStates()
+{
+    bool valid = true;
+    for (const RDGResourceManager::Allocation* resource : m_resourceManager.m_resources)
+    {
+        if (resource->hasFinalState)
+        {
+            const RDGAccess*      last  = nullptr;
+            RHICommandContextType queue = RHICommandContextType::eMax;
+            for (const RDGSubmissionGroup& group : m_schedule.groups)
+            {
+                for (const RDGScheduledPass& pass : group.passes)
+                {
+                    const RDGNodeBase* node = GetNodeBaseById(pass.nodeId);
+                    for (uint32_t i = 0; i < node->accessCount; ++i)
+                    {
+                        const RDGAccess& access = m_accesses[node->accessOffset + i];
+                        if (access.resourceId == resource->id)
+                        {
+                            last  = &access;
+                            queue = group.queue;
+                        }
+                    }
+                }
+            }
+            valid = Check(last != nullptr && queue == RHICommandContextType::eGraphics
+                              && last->textureUsage == RHITextureUsage::eColorAttachment
+                              && last->accessMode == RHIAccessMode::eReadWrite
+                              && last->pipelineStages.HasFlag(RHIPipelineStageFlagBits::eColorAttachmentOutput),
+                          RDGErrorCode::eBinding, "Presenting graph must finish in color attachment state on graphics");
+            if (!valid)
+            {
+                break;
+            }
+        }
+    }
+    return valid;
+}
+
 bool RenderGraph::SetOptimizations(bool cullPasses, bool reuseAllocations)
 {
     bool result{};
@@ -4358,7 +4483,7 @@ bool RenderGraph::CanPlanOnTransferQueue(const ResourceStateTracker& tracker) co
         const RDGPassNode* node = static_cast<const RDGPassNode*>(GetNodeBaseById(compiled.nodeId));
 
         compatible              = node->type == RDGNodeType::eTransferPass && TransferStages(node->selfStages)
-                  && static_cast<const RDGTransferPass*>(node->pCompiledPass)->queueCapabilities.transfer;
+                               && static_cast<const RDGTransferPass*>(node->pCompiledPass)->queueCapabilities.transfer;
 
         for (uint32_t i = 0; compatible && i < node->accessCount; ++i)
         {
@@ -4630,9 +4755,9 @@ bool RenderGraph::ValidateSchedule()
 
         for (const RDGScheduledPass& pass : group.passes)
         {
-            valid = valid
-                 && Check(nodeGroups[pass.nodeId] == UINT32_MAX, RDGErrorCode::eBinding,
-                          "Pass occurs in multiple submission groups");
+            valid                   = valid
+                                   && Check(nodeGroups[pass.nodeId] == UINT32_MAX, RDGErrorCode::eBinding,
+                                            "Pass occurs in multiple submission groups");
 
             nodeGroups[pass.nodeId] = group.id;
 
@@ -4650,10 +4775,10 @@ bool RenderGraph::ValidateSchedule()
         const uint32_t destination = nodeGroups[dependency.destination];
 
         valid                      = valid
-             && Check(source != UINT32_MAX && destination != UINT32_MAX
-                          && (source == destination ? positions[dependency.source] < positions[dependency.destination]
-                                                    : GroupHasPredecessor(m_schedule.groups, destination, source)),
-                      RDGErrorCode::eDependencyCycle, "Submission schedule lost a pass dependency");
+                                  && Check(source != UINT32_MAX && destination != UINT32_MAX
+                                               && (source == destination ? positions[dependency.source] < positions[dependency.destination]
+                                                                         : GroupHasPredecessor(m_schedule.groups, destination, source)),
+                                           RDGErrorCode::eDependencyCycle, "Submission schedule lost a pass dependency");
     }
 
     return valid;
@@ -4667,7 +4792,7 @@ bool RenderGraph::BuildSchedule(const ResourceStateTracker& tracker, bool transf
 
     BuildSubmissionGroups(transferCompatible);
 
-    return ValidateSchedule();
+    return ValidateSchedule() && ValidateRequiredFinalStates();
 }
 
 bool RenderGraph::ValidateCompiledGraph()
@@ -4736,7 +4861,7 @@ bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& tracker)
     {
         const RDGNodeBase* node = GetNodeBaseById(compiled.nodeId);
 
-        valid                   = !(node->type != RDGNodeType::eTransferPass || !TransferStages(node->selfStages)
+        valid = !(node->type != RDGNodeType::eTransferPass || !TransferStages(node->selfStages)
                   || !TransferStages(compiled.prologueSrcStages) || !TransferStages(compiled.prologueDstStages));
 
         if (valid)
@@ -4751,11 +4876,11 @@ bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& tracker)
                 {
                     const RDGResourceManager::Allocation* resource = m_resourceManager.FindResourceByIdx(access.resourceId);
 
-                    BitField<RHIPipelineStageFlagBits> stages      = resource->type == RDGResourceType::eTexture
-                                                                       ? tracker.GetTextureState(resource->pTexture).pipelineStages
-                                                                       : tracker.GetBufferState(resource->pBuffer).pipelineStages;
+                    BitField<RHIPipelineStageFlagBits> stages = resource->type == RDGResourceType::eTexture
+                                                                  ? tracker.GetTextureState(resource->pTexture).pipelineStages
+                                                                  : tracker.GetBufferState(resource->pBuffer).pipelineStages;
 
-                    valid                                          = TransferStages(stages);
+                    valid                                     = TransferStages(stages);
 
                     if (!valid)
                     {

@@ -287,6 +287,8 @@ private:
         bool                  exported{false};
         bool                  hasInitialState{false};
         RDGTextureImportState initialTextureState;
+        bool                  hasFinalState{false};
+        RDGTextureImportState finalTextureState;
         RDGBufferImportState  initialBufferState;
         RDGImportContents     initialContents{RDGImportContents::ePreserve};
         bool                  hostWritten{false}; // Explicit buffer initialization contract for this graph.
@@ -379,7 +381,7 @@ private:
 
     const Allocation* CreateBufferAllocation(const RDGBufferDesc& desc);
 
-    const Allocation* ImportTextureAllocation(RHITexture* texture);
+    const Allocation* ImportTextureAllocation(RHITexture* texture, bool finalState = false);
 
     const Allocation* ImportBufferAllocation(RHIBuffer* buffer);
 

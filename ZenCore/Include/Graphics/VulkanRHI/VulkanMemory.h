@@ -6,6 +6,8 @@
 
 namespace zen
 {
+VmaAllocationCreateInfo MakeVmaBufferAllocation(RHIBufferAllocateType allocType, bool budget);
+
 struct VulkanMemoryAllocation
 {
     VmaAllocation     handle{VK_NULL_HANDLE};

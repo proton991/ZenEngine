@@ -1,4 +1,5 @@
 #pragma once
+#include <bit>
 #include "RHICommon.h"
 #include "Templates/NameID.h"
 #include "Utils/RefCountPtr.h"
@@ -27,13 +28,13 @@ enum class RHIResourceType : uint32_t
     eMax                   = 10
 };
 
+// Factories return one owning reference; use RHIResourcePtr<T>::Adopt(created).
+// The RHIResourcePtr pointer constructor adds a reference to an existing owner.
 // Raw RHI callers own resource lifetime: retain resources until every recorded use
 // is discarded or completes on the GPU. ReleaseReference/Destroy* do not wait.
 class RHIResource
 {
 public:
-    RHIResource() = default;
-
     virtual ~RHIResource();
 
     // Immutable backend contract: this allocation permits the selected compute queue
@@ -62,6 +63,9 @@ public:
     uint32_t ReleaseReference()
     {
         uint32_t newValue = m_counter.Release();
+
+        // The atomic decrement result is checked, so concurrent double releases also abort.
+        VERIFY_EXPR_MSG(newValue != UINT32_MAX, "RHI resource reference count underflow");
 
         if (newValue == 0)
         {
@@ -151,6 +155,7 @@ struct RHIResourceRefCountPolicy
     }
 };
 
+// Adopt factory results; construction from a borrowed pointer adds a reference.
 template <class T> using RHIResourcePtr = RefCountPtr<T, RHIResourceRefCountPolicy>;
 
 class RHIShaderGroupSPIRV : public RefCounted
@@ -217,8 +222,10 @@ class RHITexture;
 class RHIViewport : public RHIResource
 {
 public:
-    virtual ~RHIViewport()                                   = default;
+    virtual ~RHIViewport() = default;
 
+    // The whole color backbuffer must be in eColorAttachment/eReadWrite on the graphics
+    // queue, with writes visible at eColorAttachmentOutput. The copy restores this state.
     virtual void PrepareForPresent(RHICommandList* pCmdList) = 0;
 
     virtual bool Present()                                   = 0;
@@ -418,26 +425,19 @@ public:
         return m_baseInfo.mipmaps;
     }
 
-    bool IsRenderTarget() const
+    static constexpr uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height, uint32_t depth)
     {
-        return m_baseInfo.usageFlags.HasFlags(RHITextureUsageFlagBits::eColorAttachment,
-                                              RHITextureUsageFlagBits::eDepthStencilAttachment);
+        return std::bit_width(std::max(1u, std::max(width, std::max(height, depth))));
     }
 
-    static uint32_t CalculateTextureMipLevels(uint32_t dim)
+    static constexpr uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height)
     {
-        return static_cast<uint32_t>(floor(log2(dim)) + 1);
+        return CalculateTextureMipLevels(width, height, 1);
     }
 
-    static uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height)
+    static constexpr uint32_t CalculateTextureMipLevels(uint32_t dim)
     {
-        return static_cast<uint32_t>(floor(log2(std::max(width, height))) + 1);
-    }
-
-    static uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height, uint32_t depth)
-    {
-        uint32_t maxDim = std::max(std::max(width, height), depth);
-        return static_cast<uint32_t>(floor(log2(maxDim)) + 1);
+        return CalculateTextureMipLevels(dim, 1, 1);
     }
 
 protected:
@@ -627,7 +627,7 @@ public:
 
     uint32_t GetSRDCountByType(RHIShaderResourceType type) const
     {
-        return m_SRDCount[ToUnderlying(type)];
+        return ToUnderlying(type) < ToUnderlying(RHIShaderResourceType::eMax) ? m_SRDCount[ToUnderlying(type)] : 0;
     }
 
     const RHIShaderResourceDescriptor* GetSRDByLocation(uint32_t set, uint32_t binding)
@@ -649,9 +649,12 @@ public:
         return pSRD;
     }
 
-    const RHIShaderResourceDescriptor* GetSRDByName(NameID glslName)
+    // Uniform/storage blocks use their block type name; other descriptors use the variable
+    // name. Nonempty names must identify one set/binding across the shader group.
+    const RHIShaderResourceDescriptor* GetSRDByName(NameID glslName) const
     {
-        return m_namedSRDLut.contains(glslName) ? m_namedSRDLut[glslName] : nullptr;
+        const HashMap<NameID, const RHIShaderResourceDescriptor*>::const_iterator found = m_namedSRDLut.find(glslName);
+        return found != m_namedSRDLut.end() ? found->second : nullptr;
     }
 
 protected:
@@ -760,8 +763,8 @@ struct RHIRenderingLayout
         const bool     firstAttachment = GetTotalNumRenderTargets() == 0;
         AddColorRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp, clearValue);
         colorRenderTargets[numColorRenderTargets - 1].pTextureView = pView;
-        numLayers                                                  = firstAttachment ? pView->GetSubResourceRange().layerCount
-                                                                                     : std::min(previousLayers, pView->GetSubResourceRange().layerCount);
+        numLayers = firstAttachment ? pView->GetSubResourceRange().layerCount
+                                    : std::min(previousLayers, pView->GetSubResourceRange().layerCount);
     }
 
     void AddDepthStencilRenderTarget(DataFormat                format,
@@ -798,8 +801,8 @@ struct RHIRenderingLayout
             const bool     firstAttachment = GetTotalNumRenderTargets() == 0;
             AddDepthStencilRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp, clearValue);
             depthStencilRenderTarget.pTextureView = pView;
-            numLayers                             = firstAttachment ? pView->GetSubResourceRange().layerCount
-                                                                    : std::min(previousLayers, pView->GetSubResourceRange().layerCount);
+            numLayers = firstAttachment ? pView->GetSubResourceRange().layerCount
+                                        : std::min(previousLayers, pView->GetSubResourceRange().layerCount);
         }
     }
 
@@ -829,15 +832,15 @@ struct RHIGeometryBuffer
 
 struct RHIGfxPipelineCreateInfo
 {
-    RHIShader*           pShader;
+    RHIShader*           pShader{nullptr};
     RHIGfxPipelineStates states;
 
-    const RHIRenderingLayout* pRenderingLayout;
+    const RHIRenderingLayout* pRenderingLayout{nullptr};
 };
 
 struct RHIComputePipelineCreateInfo
 {
-    RHIShader* pShader;
+    RHIShader* pShader{nullptr};
 };
 
 class RHIPipeline : public RHIResource

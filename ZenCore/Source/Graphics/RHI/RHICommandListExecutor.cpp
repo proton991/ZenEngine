@@ -330,8 +330,8 @@ void RHICommandListExecutor::PublishTerminalError(RHIError error)
         LOGE(
             "RHI stopped at frame {} (slot {}): {} (code {}, native {}, {}:{}, resource {}); submitted graphics={}, compute={}, transfer={}",
             ToValue(GRHIFrameState.GetFrameNumber()), ToIndex(GRHIFrameState.GetFrameSlot()),
-            error.operation != nullptr ? error.operation : "unknown operation", static_cast<uint32_t>(error.code),
-            error.nativeCode, error.source != nullptr ? error.source : "unknown source", error.line, error.resourceId,
+            RHIErrorText(error.operation, "unknown operation"), static_cast<uint32_t>(error.code), error.nativeCode,
+            RHIErrorText(error.source, "unknown source"), error.line, error.resourceId,
             submitted.serials[static_cast<uint32_t>(RHICommandContextType::eGraphics)],
             submitted.serials[static_cast<uint32_t>(RHICommandContextType::eAsyncCompute)],
             submitted.serials[static_cast<uint32_t>(RHICommandContextType::eTransfer)]);
@@ -342,7 +342,7 @@ RHIError RHICommandListExecutor::GetTerminalError() const
 {
     std::lock_guard<std::mutex> lock(m_errorMutex);
 
-    return m_terminalError.IsFailure() ? m_terminalError : GetRHIThread().GetFailure();
+    return RHIErrorOr(m_terminalError, GetRHIThread().GetFailure());
 }
 
 void RHICommandListExecutor::CollectCompletedBatches(bool force)
@@ -835,7 +835,7 @@ void RHICommandListExecutor::CancelBatch(const RefCountPtr<RHICommandBatch>& bat
             batch->result.cause = MakeRHIError(RHIErrorCode::eCancelled, "RHI job cancelled", __FILE__, __LINE__);
         }
 
-        batch->result.error = batch->result.cause.operation != nullptr ? batch->result.cause.operation : "RHI job cancelled";
+        batch->result.error = RHIErrorText(batch->result.cause.operation, "RHI job cancelled");
 
         PublishTerminalError(batch->result.cause);
 

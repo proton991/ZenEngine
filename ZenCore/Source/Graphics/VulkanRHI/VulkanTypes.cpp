@@ -308,19 +308,28 @@ VkBorderColor ToVkBorderColor(RHISamplerBorderColor color)
     return static_cast<VkBorderColor>(color);
 }
 
-VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue)
+VkClearColorValue ToVkClearColor(const Color& color, DataFormat format)
 {
-    VkClearColorValue colorValue{};
-
-    colorValue.float32[0] = clearValue.color.r;
-
-    colorValue.float32[1] = clearValue.color.g;
-
-    colorValue.float32[2] = clearValue.color.b;
-
-    colorValue.float32[3] = clearValue.color.a;
-
-    return colorValue;
+    VkClearColorValue result{};
+    const float       components[] = {color.r, color.g, color.b, color.a};
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        const double value = std::isnan(components[i]) ? 0.0 : static_cast<double>(components[i]);
+        if (FormatIsUnsignedInteger(format))
+        {
+            result.uint32[i] = static_cast<uint32_t>(std::clamp(value, 0.0, static_cast<double>(UINT32_MAX)));
+        }
+        else if (FormatIsSignedInteger(format))
+        {
+            result.int32[i] =
+                static_cast<int32_t>(std::clamp(value, static_cast<double>(INT32_MIN), static_cast<double>(INT32_MAX)));
+        }
+        else
+        {
+            result.float32[i] = components[i];
+        }
+    }
+    return result;
 }
 
 VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& clearValue)
@@ -332,19 +341,6 @@ VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& 
     depthStencilValue.stencil = clearValue.stencil;
 
     return depthStencilValue;
-}
-
-void ToVkClearColor(const Color& color, VkClearColorValue* pColorValue)
-{
-    *pColorValue            = {};
-
-    pColorValue->float32[0] = color.r;
-
-    pColorValue->float32[1] = color.g;
-
-    pColorValue->float32[2] = color.b;
-
-    pColorValue->float32[3] = color.a;
 }
 
 void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range, VkImageSubresourceRange* pVkRange)

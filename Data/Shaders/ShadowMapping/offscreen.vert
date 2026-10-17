@@ -10,7 +10,7 @@ layout (location = 6) in vec4 inWeight0;
 layout (location = 7) in vec4 inColor;
 
 
-layout (binding = 0) uniform UBO 
+layout (set = 1, binding = 0) uniform UBO
 {
 	mat4 depthMVP;
 } ubo;

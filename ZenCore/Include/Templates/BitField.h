@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <type_traits>
 
 namespace zen
 {
@@ -7,6 +8,14 @@ template <typename T> class BitField
 {
 public:
     constexpr BitField() = default;
+
+    template <typename U>
+        requires(!std::is_same_v<U, T>)
+    BitField(const BitField<U>&) = delete;
+
+    template <typename U>
+        requires(!std::is_same_v<U, T>)
+    BitField& operator=(const BitField<U>&) = delete;
 
     BitField<T>& operator=(int64_t value)
     {
@@ -22,8 +31,8 @@ public:
 
     template <typename... Flags> BitField<T>& SetFlags(Flags... flags)
     {
-        uint32_t values  = (... | static_cast<int64_t>(flags));
-        m_value         |= values;
+        int64_t values  = (... | static_cast<int64_t>(flags));
+        m_value        |= values;
         return *this;
     }
 
@@ -38,7 +47,7 @@ public:
         return m_value & static_cast<int64_t>(flag);
     }
 
-    template <typename... Flags> bool HasFlags(Flags... flags) const
+    template <typename... Flags> bool HasAnyFlag(Flags... flags) const
     {
         int64_t mask = (static_cast<int64_t>(flags) | ...);
         return (m_value & mask);

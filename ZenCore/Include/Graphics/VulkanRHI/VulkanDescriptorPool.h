@@ -34,10 +34,7 @@ struct VulkanDescriptorPoolKeyHasher
 class VulkanDescriptorPool
 {
 public:
-    VulkanDescriptorPool(VulkanDevice*                  pDevice,
-                         const VulkanDescriptorPoolKey& poolKey,
-                         uint32_t                       maxNumSets,
-                         bool                           updateAfterBind);
+    VulkanDescriptorPool(VulkanDevice* pDevice, const VulkanDescriptorPoolKey& poolKey, uint32_t maxNumSets);
 
     ~VulkanDescriptorPool();
 
@@ -45,7 +42,7 @@ public:
 
     VulkanDescriptorPool& operator=(const VulkanDescriptorPool&) = delete;
 
-    VkDescriptorSet Allocate(VkDescriptorSetLayout layout, uint32_t variableCount);
+    VkDescriptorSet Allocate(VkDescriptorSetLayout layout);
 
     void Reset();
 
@@ -59,7 +56,6 @@ private:
     VkDescriptorPool m_vkHandle{VK_NULL_HANDLE};
     uint32_t         m_maxNumSets{0};
     uint32_t         m_numAllocatedSets{0};
-    bool             m_updateAfterBind{false};
 };
 
 class VulkanDescriptorPoolSetContainer
@@ -73,10 +69,7 @@ public:
 
     VulkanDescriptorPoolSetContainer& operator=(const VulkanDescriptorPoolSetContainer&) = delete;
 
-    VkDescriptorSet Allocate(const VulkanDescriptorPoolKey& poolKey,
-                             bool                           updateAfterBind,
-                             VkDescriptorSetLayout          layout,
-                             uint32_t                       variableCount);
+    VkDescriptorSet Allocate(const VulkanDescriptorPoolKey& poolKey, VkDescriptorSetLayout layout);
 
     void Reset();
 
@@ -98,12 +91,11 @@ private:
         SmallVector<VulkanDescriptorPool*> pools;
         uint32_t                           activePoolIdx{0};
         uint32_t                           numPools{0};
-        bool                               updateAfterBind{false};
     };
 
-    PoolChain* AcquireChain(const VulkanDescriptorPoolKey& poolKey, bool updateAfterBind);
+    PoolChain* AcquireChain(const VulkanDescriptorPoolKey& poolKey);
 
-    VkDescriptorSet AllocateFromChain(PoolChain* pChain, VkDescriptorSetLayout layout, uint32_t variableCount);
+    VkDescriptorSet AllocateFromChain(PoolChain* pChain, VkDescriptorSetLayout layout);
 
     void PushPoolToChain(PoolChain* pChain);
 
@@ -115,8 +107,7 @@ private:
 
     static void ResetChains(PoolChainMap& chainMap);
 
-    PoolChainMap m_nonUABChainMap;
-    PoolChainMap m_UABChainMap;
+    PoolChainMap m_chainMap;
 
     uint64_t m_lifetimeId{0};
 };
@@ -195,12 +186,11 @@ private:
 
     VkDescriptorSet Find(const ContentKey& key, VulkanDescriptorPoolSetContainer*& outContainer);
 
-    VkDescriptorSet Insert(const ContentKey&                  key,
-                           const VulkanDescriptorPoolKey&     poolKey,
-                           VkDescriptorSetLayout              layout,
-                           bool                               updateAfterBind,
-                           uint32_t                           variableCount,
-                           VulkanDescriptorPoolSetContainer*& outContainer);
+    VkDescriptorSet Allocate(const VulkanDescriptorPoolKey&     poolKey,
+                             VkDescriptorSetLayout              layout,
+                             VulkanDescriptorPoolSetContainer*& outContainer);
+
+    void Publish(const ContentKey& key, VkDescriptorSet set, VulkanDescriptorPoolSetContainer* container);
 
     void RotateRing();
 
@@ -323,9 +313,9 @@ public:
     // recordings and submissions finish. recordedEpoch permits playback of an old registration.
     bool RegisterBindlessResource(RHIResource*       pResource,
                                   uint32_t           slotIdx,
-                                  RHIBindlessHandle* pOutHandle = nullptr,
-                                  uint64_t recordedEpoch        = 0,
-                                  uint64_t transaction          = 0);
+                                  RHIBindlessHandle* pOutHandle    = nullptr,
+                                  uint64_t           recordedEpoch = 0,
+                                  uint64_t           transaction   = 0);
 
     uint64_t BeginTransaction();
 

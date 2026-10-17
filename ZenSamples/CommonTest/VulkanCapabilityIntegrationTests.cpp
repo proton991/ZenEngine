@@ -16,6 +16,7 @@ using namespace zen;
 
 struct CapabilityDriver
 {
+    static inline PFN_vkGetPhysicalDeviceFeatures              coreFeatures;
     static inline PFN_vkGetPhysicalDeviceFeatures2             features;
     static inline PFN_vkGetPhysicalDeviceProperties            properties;
     static inline PFN_vkGetPhysicalDeviceProperties2           properties2;
@@ -55,9 +56,26 @@ struct CapabilityDriver
 
         enabledStructures.clear();
     }
+    static void FilterCoreFeatures(VkPhysicalDeviceFeatures& output)
+    {
+        if (optionalDisabled)
+        {
+            output.imageCubeArray      = VK_FALSE;
+            output.fullDrawIndexUint32 = VK_FALSE;
+        }
+    }
+
+    static VKAPI_ATTR void VKAPI_CALL CoreFeatures(VkPhysicalDevice gpu, VkPhysicalDeviceFeatures* output)
+    {
+        coreFeatures(gpu, output);
+        FilterCoreFeatures(*output);
+    }
+
     static VKAPI_ATTR void VKAPI_CALL Features(VkPhysicalDevice gpu, VkPhysicalDeviceFeatures2* output)
     {
         features(gpu, output);
+
+        FilterCoreFeatures(output->features);
 
         for (VkBaseOutStructure* node = static_cast<VkBaseOutStructure*>(output->pNext); node; node = node->pNext)
         {
@@ -286,6 +304,8 @@ protected:
         session = std::make_unique<test::VulkanSession>();
 
         CapabilityDriver::Reset();
+
+        Hook(vkGetPhysicalDeviceFeatures, CapabilityDriver::CoreFeatures, CapabilityDriver::coreFeatures);
 
         Hook(vkGetPhysicalDeviceFeatures2, CapabilityDriver::Features, CapabilityDriver::features);
 
@@ -525,7 +545,7 @@ struct TopologyReadbackBuffer
                 allocation.memoryTypeIndex = type;
 
                 valid                      = vkAllocateMemory(device, &allocation, nullptr, &memory) == VK_SUCCESS
-                     && vkBindBufferMemory(device, buffer, memory, 0) == VK_SUCCESS;
+                                          && vkBindBufferMemory(device, buffer, memory, 0) == VK_SUCCESS;
             }
         }
 
@@ -833,6 +853,11 @@ TEST_F(VulkanCapabilityIntegrationTest, MissingRequiredFeatureRejectsBeforeCreat
         SCOPED_TRACE(feature);
 
         CapabilityDriver::missingFeature = feature;
+        if (feature == 6)
+        {
+            EXPECT_TRUE(Reason().empty()); // Ordinary sets never use variable descriptor counts.
+            continue;
+        }
 
         EXPECT_FALSE(Reason().empty());
 
@@ -913,7 +938,7 @@ TEST_F(VulkanCapabilityIntegrationTest, RayTracingFollowsDeviceCapabilitiesAndDe
         ScopedTopologyDevice        device(session->rhi.GetPhysicalDevice());
         const DeviceExtensionFlags& enabled = device.device.GetExtensionFlags();
         const std::string_view      missing(scenario.missingExtension);
-        const bool                  address = supported.hasBufferDeviceAddress
+        const bool address = supported.hasBufferDeviceAddress
                           && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
         const bool acceleration =
             supported.hasAccelerationStructure && address && !scenario.disableRayTracing
@@ -923,9 +948,9 @@ TEST_F(VulkanCapabilityIntegrationTest, RayTracingFollowsDeviceCapabilitiesAndDe
         const bool pipeline = supported.hasRaytracingPipeline && acceleration
                            && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR
                            && missing != VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME;
-        const bool query = supported.hasRayQuery && acceleration
-                        && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
-                        && missing != VK_KHR_RAY_QUERY_EXTENSION_NAME;
+        const bool query    = supported.hasRayQuery && acceleration
+                           && scenario.missingFeature != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+                           && missing != VK_KHR_RAY_QUERY_EXTENSION_NAME;
         EXPECT_EQ(enabled.hasBufferDeviceAddress != 0, address);
         EXPECT_EQ(enabled.hasAccelerationStructure != 0, acceleration);
         EXPECT_EQ(enabled.hasRaytracingPipeline != 0, pipeline);
@@ -958,7 +983,8 @@ TEST_F(VulkanCapabilityIntegrationTest, OptionalFeaturesDisableTheirDependentsAn
 {
     CapabilityDriver::optionalDisabled = true;
 
-    CapabilityDriver::hiddenExtensions = {VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME};
+    CapabilityDriver::hiddenExtensions = {VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
+                                          VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME};
 
     ASSERT_TRUE(Reason().empty());
 
@@ -967,6 +993,10 @@ TEST_F(VulkanCapabilityIntegrationTest, OptionalFeaturesDisableTheirDependentsAn
     device.Init();
 
     EXPECT_FALSE(device.SupportsTimelineSemaphore());
+
+    EXPECT_FALSE(device.GetPhysicalDeviceFeatures().imageCubeArray);
+    EXPECT_FALSE(device.GetPhysicalDeviceFeatures().fullDrawIndexUint32);
+    EXPECT_FALSE(device.GetExtensionFlags().hasSamplerMirrorClampToEdge);
 
     EXPECT_FALSE(device.GetExtensionFlags().hasBufferDeviceAddress);
 

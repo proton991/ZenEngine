@@ -55,6 +55,8 @@ VulkanUniformBufferUsage CountUniformBufferDescriptors(const RHIShaderResourceDe
 
 bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage, const VkPhysicalDeviceLimits& limits);
 
+bool ValidateShaderLayout(const RHIShaderGroupInfo& info);
+
 class VulkanDevice;
 class VulkanShader : public RHIShader
 {
@@ -124,11 +126,6 @@ public:
         return m_descriptorSetLayouts[setIdx];
     }
 
-    uint32_t GetDescriptorSetVariableCount(uint32_t setIdx) const
-    {
-        return m_descriptorSetInfos[setIdx].variableCount;
-    }
-
     bool HasGlobalBindlessSet() const
     {
         return m_hasGlobalBindlessSet;
@@ -162,7 +159,6 @@ private:
     {
         VulkanDescriptorPoolKey poolKey{};
         uint32_t                layoutId{0};
-        uint32_t                variableCount{0};
         bool                    ownsLayout{false};
     };
 

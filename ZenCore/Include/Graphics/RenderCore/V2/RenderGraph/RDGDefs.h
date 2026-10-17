@@ -407,6 +407,7 @@ struct RDGAccess
     RHIAccessMode accessMode{};
 
     // Declaration metadata only; End resolves automatic accesses into versionAccesses.
+    bool                             finalStateOnly{false};
     bool                             explicitVersion{false};
     RDG_ID                           nodeId{-1};
     RDG_ID                           resourceId{-1};

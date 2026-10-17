@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Memory/Memory.h"
 #include "Utils/Errors.h"
+#include <algorithm>
 
 namespace zen::rc
 {
@@ -208,6 +209,18 @@ void ShaderProgramManager::StoreProgram(ShaderProgram* program)
     }
 }
 
+void ShaderProgramManager::StoreWarmedComputeProgram(ShaderProgram* program)
+{
+    const NameID name = program->GetName();
+
+    StoreProgram(program);
+
+    if (std::find(m_initializationWarmups.begin(), m_initializationWarmups.end(), name) == m_initializationWarmups.end())
+    {
+        m_initializationWarmups.push_back(name);
+    }
+}
+
 void ShaderProgramManager::Destroy()
 {
     for (std::pair<const NameID, ShaderProgram*>& kv : m_programCache)
@@ -216,6 +229,8 @@ void ShaderProgramManager::Destroy()
     }
 
     m_programCache.clear();
+
+    m_initializationWarmups.clear();
 }
 
 void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
@@ -356,10 +371,11 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "HybridTraceHalfCountsSP", "VoxelGI/hybrid_trace_half_counts.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackSP", "VoxelGI/hybrid_trace_fallback.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackCountsSP",
-                                         "VoxelGI/hybrid_trace_fallback_counts.comp.spv"));
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackCountsSP", "VoxelGI/hybrid_trace_fallback_counts.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridDiffuseUpsampleSP", "VoxelGI/hybrid_diffuse_upsample.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"));
+    // First used after temporal history settles; warm it so that later frame does not stall.
+    StoreWarmedComputeProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"));
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "HybridTemporalReferenceSP", "VoxelGI/hybrid_temporal_reference.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalCachedSP", "VoxelGI/hybrid_temporal_cached.comp.spv"));
@@ -517,10 +533,11 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(pShaderProgram);
     }
 
+    // Voxel debug views first use this program when selected; warm it to avoid that stall.
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() ResetDrawIndirectSP(pRenderDevice);
 
-        StoreProgram(pShaderProgram);
+        StoreWarmedComputeProgram(pShaderProgram);
     }
 
     {
@@ -541,10 +558,11 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(pShaderProgram);
     }
 
+    // Also first used by voxel debug views.
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelPreDrawSP(pRenderDevice, volumeConstants);
 
-        StoreProgram(pShaderProgram);
+        StoreWarmedComputeProgram(pShaderProgram);
     }
 
     {

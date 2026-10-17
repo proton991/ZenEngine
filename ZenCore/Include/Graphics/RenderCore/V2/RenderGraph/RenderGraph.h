@@ -218,16 +218,16 @@ private:
 
     bool ExecutePrepared(ExecutionPlan&                              plan,
                          RHICommandList*                             cmdList,
-                         const std::function<RHISubmissionResult()>& submit = {},
-                         bool deferPublication                              = false);
+                         const std::function<RHISubmissionResult()>& submit           = {},
+                         bool                                        deferPublication = false);
 
     bool BuildExecutionPlan(ExecutionPlan& plan);
 
-    bool ExecutePreparedGroups(ExecutionPlan&                          plan,
-                               VectorView<RHICommandList*>             lists,
-                               VectorView<const RDGExternalQueueState> externalStates = {},
-                               const std::function<RHISubmissionResult()>& submit     = {},
-                               bool deferPublication                                  = false);
+    bool ExecutePreparedGroups(ExecutionPlan&                              plan,
+                               VectorView<RHICommandList*>                 lists,
+                               VectorView<const RDGExternalQueueState>     externalStates   = {},
+                               const std::function<RHISubmissionResult()>& submit           = {},
+                               bool                                        deferPublication = false);
 
     bool BuildGroupBarriers(ExecutionPlan&                          plan,
                             VectorView<const RDGExternalQueueState> externalStates,
@@ -352,6 +352,9 @@ public:
 
     RDGTransferPassCmdRecorder AddTransferPass(NameID passName);
 
+    // Set before compilation of a recorded graph submitted for presentation.
+    bool RequirePresentationState(RHITexture* texture);
+
     // Preparation result with logical queue/layout requirements; native submission is separate.
     const RDGSchedule& GetSchedule() const
     {
@@ -445,27 +448,27 @@ private:
                                      const RHITextureSubResourceRange&     range,
                                      RHIAccessMode                         accessMode,
                                      BitField<RHIPipelineStageFlagBits>    shaderStages = {},
-                                     RDGContentEffect intent                            = RDGContentEffect::eAutomatic,
-                                     bool fullCoverage                                  = true,
-                                     bool discardAfter                                  = false,
-                                     RDGResource value                                  = {});
+                                     RDGContentEffect                      intent       = RDGContentEffect::eAutomatic,
+                                     bool                                  fullCoverage = true,
+                                     bool                                  discardAfter = false,
+                                     RDGResource                           value        = {});
 
     bool DeclareBufferAccessForPass(const RDGPassNode*                    pPassNode,
                                     const RDGResourceManager::Allocation* pResource,
                                     BitField<RHIBufferUsageFlagBits>      usage,
                                     RHIAccessMode                         accessMode,
                                     BitField<RHIPipelineStageFlagBits>    shaderStages = {},
-                                    RDGContentEffect intent                            = RDGContentEffect::eAutomatic,
-                                    bool fullCoverage                                  = true,
-                                    bool discardAfter                                  = false,
-                                    RDGResource value                                  = {});
+                                    RDGContentEffect                      intent       = RDGContentEffect::eAutomatic,
+                                    bool                                  fullCoverage = true,
+                                    bool                                  discardAfter = false,
+                                    RDGResource                           value        = {});
 
     bool DeclareContentAccess(const RDGPassNode*                    node,
                               const RDGResourceManager::Allocation* resource,
                               RDGContentEffect                      intent,
-                              const RHITextureSubResourceRange&     range = {},
-                              bool fullCoverage                           = true,
-                              bool discardAfter                           = false);
+                              const RHITextureSubResourceRange&     range        = {},
+                              bool                                  fullCoverage = true,
+                              bool                                  discardAfter = false);
 
     template <typename Output> bool ResolveAttachment(Output& output);
 
@@ -643,6 +646,10 @@ private:
     RDGResourceManager m_resourceManager;
 
     // nodes
+    bool AppendRequiredFinalStates();
+
+    bool ValidateRequiredFinalStates();
+
     uint32_t                    m_nodeCount{0};
     HeapVector<RDG_ID>          m_sortedNodes;
     HeapVector<RDGCompiledNode> m_compiledNodes;

@@ -1,4 +1,6 @@
 #include "Utils/Errors.h"
+#include <array>
+#include <chrono>
 // Included by RenderCoreTests.cpp to exercise the same fake backend as RDG tests.
 #if defined(ZEN_WIN32)
 #    include <Windows.h>
@@ -1349,6 +1351,10 @@ TEST_P(RHILateReleaseTest, FinalizerClosesExternalAdmissionUntilRestart)
 
     // Stopping a worker without retiring a backend preserves standalone inline use.
     EXPECT_TRUE(thread.DispatchCleanup([] {}));
+
+    EXPECT_TRUE(thread.Dispatch([] {}));
+
+    EXPECT_EQ(thread.Invoke([] { return std::this_thread::get_id(); }), std::this_thread::get_id());
 }
 
 TEST_P(RHILateReleaseDeathTest, StrictReleaseAfterExecutorDestructionStops)
@@ -1403,3 +1409,127 @@ INSTANTIATE_TEST_SUITE_P(ExecutionModes,
 INSTANTIATE_TEST_SUITE_P(ExecutionModes,
                          RHILateReleaseDeathTest,
                          testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
+
+namespace
+{
+void CountLateCleanup(std::atomic<uint32_t>& executed)
+{
+    EXPECT_TRUE(GetRHIThread().IsCurrentThread());
+    ++executed;
+}
+
+void LateCleanupNoop() {}
+
+void AccumulateBenchmarkWork(uint64_t& counter, const std::array<uint64_t, 16>& payload)
+{
+    counter += payload[0];
+}
+
+void ProduceLateCleanup(RHIThread&             thread,
+                        std::atomic<bool>&     stop,
+                        std::atomic<bool>&     started,
+                        std::atomic<uint32_t>& accepted,
+                        std::atomic<uint32_t>& executed)
+{
+    started = true;
+    do
+    {
+        if (thread.DispatchCleanup(std::bind_front(&CountLateCleanup, std::ref(executed))))
+        {
+            ++accepted;
+        }
+        thread.Invoke(&LateCleanupNoop);
+    } while (!stop.load());
+}
+} // namespace
+
+TEST(RHIThreadTest, StopWithoutFinalizerRunsLateCleanupExactlyOnce)
+{
+    RHIThread& thread = GetRHIThread();
+    for (uint32_t iteration = 0; iteration < 1000; ++iteration)
+    {
+        std::atomic<bool>     stop{false}, started{false};
+        std::atomic<uint32_t> accepted{0}, executed{0};
+        thread.Start(RHIExecutionMode::eThreaded);
+        std::thread producer(&ProduceLateCleanup, std::ref(thread), std::ref(stop), std::ref(started), std::ref(accepted),
+                             std::ref(executed));
+        while (!started.load())
+        {
+            std::this_thread::yield();
+        }
+        thread.Stop();
+        stop = true;
+        producer.join();
+        EXPECT_EQ(executed.load(), accepted.load());
+    }
+}
+
+// Explicit opt-in benchmark: timings are recorded for comparison, never asserted.
+TEST(RHIThreadTest, DISABLED_QueueThroughputBenchmark)
+{
+    RHIThread thread;
+    thread.Start(RHIExecutionMode::eThreaded, 1024);
+    uint64_t                 executed = 0;
+    std::array<uint64_t, 16> payload{};
+    payload[0]                                      = 1;
+    const std::function<void()>                 job = std::bind_front(&AccumulateBenchmarkWork, std::ref(executed), payload);
+    const std::chrono::steady_clock::time_point dispatchStart = std::chrono::steady_clock::now();
+    for (uint32_t i = 0; i < 100000; ++i)
+    {
+        ASSERT_TRUE(thread.Dispatch(job));
+    }
+    thread.Flush();
+    const std::chrono::steady_clock::time_point dispatchEnd = std::chrono::steady_clock::now();
+    for (uint32_t i = 0; i < 10000; ++i)
+    {
+        thread.Invoke(&LateCleanupNoop);
+    }
+    const std::chrono::steady_clock::time_point invokeEnd = std::chrono::steady_clock::now();
+    thread.Stop();
+    EXPECT_EQ(executed, 100000u);
+    printf("RVFIX_BENCH dispatch_ms=%.3f invoke_ms=%.3f\n",
+           std::chrono::duration<double, std::milli>(dispatchEnd - dispatchStart).count(),
+           std::chrono::duration<double, std::milli>(invokeEnd - dispatchEnd).count());
+}
+
+TEST_F(RenderCoreTest, PresentationRestoresClearOnlyBackbufferOnGraphics)
+{
+    TestViewport viewport;
+    viewport.color     = Texture();
+    RenderGraph* graph = device->GetCurrentFrameRDG();
+    ASSERT_TRUE(graph->Begin());
+    graph->AddTransferPass("clear_only").ClearTexture(viewport.color, Color(0.25f));
+    ASSERT_TRUE(graph->End());
+    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_FALSE(rhi->graphics.textureTransitions.empty());
+    const RHITextureTransition& last = rhi->graphics.textureTransitions.back();
+    EXPECT_EQ(last.pTexture, viewport.color);
+    EXPECT_EQ(last.oldUsage, RHITextureUsage::eTransferDst);
+    EXPECT_EQ(last.newUsage, RHITextureUsage::eColorAttachment);
+    EXPECT_EQ(last.newAccessMode, RHIAccessMode::eReadWrite);
+    EXPECT_TRUE(rhi->transfer.textureTransitions.empty());
+    device->DestroyTexture(viewport.color);
+    viewport.ReleaseForTeardown();
+    device->Destroy();
+}
+
+TEST_F(RenderCoreTest, MatchingPresentationStateAddsNoBarrier)
+{
+    TestViewport viewport;
+    viewport.color     = Texture();
+    RenderGraph* graph = device->GetCurrentFrameRDG();
+    ASSERT_TRUE(graph->Begin());
+    RDGTextureImportState initial{};
+    initial.usage      = RHITextureUsage::eColorAttachment;
+    initial.accessMode = RHIAccessMode::eReadWrite;
+    initial.stages     = BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput);
+    graph->GetResourceManager()->ImportTexture(viewport.color, initial);
+    ASSERT_TRUE(graph->End());
+    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_TRUE(rhi->graphics.textureTransitions.empty());
+    EXPECT_TRUE(device->GetRDGMetrics().GetLastSnapshot().validated);
+    EXPECT_EQ(device->GetRDGMetrics().GetLastSnapshot().issues[size_t(RDGMetricIssue::eMissingBarrier)], 0u);
+    device->DestroyTexture(viewport.color);
+    viewport.ReleaseForTeardown();
+    device->Destroy();
+}

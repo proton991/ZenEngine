@@ -243,8 +243,9 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
             {
                 const std::pair<RHIShader*, glm::uvec3>& dispatch = rhi->graphics.dispatches[index];
                 const std::string                        shader =
-                    dispatch.first != nullptr ? dispatch.first->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)]
-                                                                     : std::string();
+                    dispatch.first != nullptr
+                        ? dispatch.first->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)]
+                        : std::string();
                 if (shader == "VoxelGI/hybrid_temporal_reference.comp.spv")
                 {
                     EXPECT_EQ(dispatch.second, glm::uvec3((view.width + 7u) / 8u, (view.height + 7u) / 8u, 1u));

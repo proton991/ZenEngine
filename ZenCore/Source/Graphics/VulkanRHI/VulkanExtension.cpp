@@ -111,8 +111,7 @@ public:
                       && (m_descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE)
                       && (m_descriptorIndexingFeatures.descriptorBindingPartiallyBound == VK_TRUE)
                       && (m_descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending == VK_TRUE)
-                      && (m_descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE)
-                      && (m_descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount == VK_TRUE);
+                      && (m_descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE);
 
         SetSupport(supported);
 
@@ -138,7 +137,7 @@ public:
 
             enabled.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 
-            enabled.descriptorBindingVariableDescriptorCount     = VK_TRUE;
+
 
             m_descriptorIndexingFeatures                         = enabled;
 
@@ -515,6 +514,7 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     ADD_INSTANCE_EXTENSION(VK_KHR_SURFACE_EXTENSION_NAME);
 
     ADD_INSTANCE_EXTENSION(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    ADD_INSTANCE_EXTENSION(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 
     ADD_INSTANCE_EXTENSION(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
 
@@ -608,6 +608,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 #endif
 
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME);
 
     ADD_SIMPLE_DEVICE_EXTENSION(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 
@@ -711,6 +712,10 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
             pDevice->GetExtensionFlags().hasCalibratedTimestamps = extension->IsEnabledAndSupported();
         }
 
+        if (name == NameID(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME))
+        {
+            pDevice->GetExtensionFlags().hasSamplerMirrorClampToEdge = extension->IsEnabledAndSupported();
+        }
         if (name == NameID(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME))
         {
             pDevice->GetExtensionFlags().hasMemoryBudget = extension->IsEnabledAndSupported();

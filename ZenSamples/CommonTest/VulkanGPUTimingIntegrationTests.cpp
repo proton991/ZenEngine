@@ -613,4 +613,19 @@ TEST_F(VulkanGPUTimingIntegrationTest, DiscardedAndFailedFramesCannotPublishPart
         GTEST_SKIP() << "Comparable graphics timestamps unavailable";
     }
 }
+
+VKAPI_ATTR VkResult VKAPI_CALL RejectTimingBegin(VkCommandBuffer, const VkCommandBufferBeginInfo*)
+{
+    return VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+TEST_F(VulkanGPUTimingIntegrationTest, FailedRecordingBeginDiscardsPendingTiming)
+{
+    FVulkanCommandListContext                        context(RHICommandContextType::eGraphics, session->rhi.GetDevice());
+    RHIGPUTimingPtr                                  result = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    test::ScopedVulkanCall<PFN_vkBeginCommandBuffer> failure(vkBeginCommandBuffer, RejectTimingBegin);
+    context.RHIBeginGPUTiming(result);
+    context.RHIDiscardRecording();
+    EXPECT_EQ(result->GetStatus(), RHIGPUTimingStatus::eDiscarded);
+}
 } // namespace

@@ -155,8 +155,7 @@ public:
 
     RHISubmissionResult FlushAllGPUCommands() final;
 
-    void BlockSubmissions(
-        RHIError error = MakeRHIError(RHIErrorCode::eBackendFailure, "Vulkan submissions blocked", __FILE__, __LINE__))
+    void BlockSubmissions(RHIError error)
     {
         m_deviceLost |= error.code == RHIErrorCode::eDeviceLost;
 
@@ -180,12 +179,33 @@ public:
 
     RHIError GetLastSubmissionError() const override
     {
-        return m_submissionError.IsFailure() ? m_submissionError : m_terminalError;
+        return RHIErrorOr(m_submissionError, m_terminalError);
+    }
+
+    RHIError GetSubmissionFailureCause(const RHIError& fallback) const
+    {
+        return RHIErrorOr(GetLastSubmissionError(), fallback);
+    }
+
+    RHIError GetSubmissionFailureCause() const
+    {
+        return GetSubmissionFailureCause(MakeRHIError(RHIErrorCode::eBackendFailure, "Vulkan submission", __FILE__, __LINE__));
     }
 
     void SetSubmissionError(RHIError error)
     {
         m_submissionError = error;
+    }
+
+    // Native object-creation failures stay separate from submission failures.
+    RHIError GetLastCreationError() const
+    {
+        return m_creationError;
+    }
+
+    void SetCreationError(RHIError error)
+    {
+        m_creationError = error;
     }
 
     bool AreSubmissionsBlocked() const final
@@ -295,6 +315,7 @@ private:
     bool                                   m_submissionBlocked{false};
     RHIError                               m_terminalError{};
     RHIError                               m_submissionError{};
+    RHIError                               m_creationError{};
     bool                                   m_deviceLost{false};
     RHIGPUFrameTimingPtr                   m_gpuFrameTiming;
     uint32_t                               m_pendingNativeRecordings{0};

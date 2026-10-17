@@ -349,3 +349,24 @@ INSTANTIATE_TEST_SUITE_P(InlineAndThreaded,
                          testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),
                                           testing::Range(0, 8)));
 } // namespace
+
+TEST_P(RDGQueuePreferenceTest, FinalPresentationStateDependsOnAsyncWriter)
+{
+    TestTexture* texture            = static_cast<TestTexture*>(Texture());
+    texture->asyncComputeAccessible = true;
+    RenderGraph graph("async_present_state");
+    ASSERT_TRUE(graph.Begin());
+    graph.AddTransferPass("async_clear")
+        .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
+        .ClearTexture(texture, Color(0.25f));
+    ASSERT_TRUE(graph.End());
+    ASSERT_TRUE(graph.RequirePresentationState(texture));
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+    const RDGSchedule& schedule = graph.GetSchedule();
+    ASSERT_EQ(schedule.groups.size(), 2u);
+    EXPECT_EQ(schedule.groups[0].queue, RHICommandContextType::eAsyncCompute);
+    EXPECT_EQ(schedule.groups[1].queue, RHICommandContextType::eGraphics);
+    ASSERT_EQ(schedule.groups[1].predecessors.size(), 1u);
+    EXPECT_EQ(schedule.groups[1].predecessors[0], 0u);
+    device->DestroyTexture(texture);
+}

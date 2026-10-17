@@ -212,3 +212,20 @@ inline bool FormatIsDepthOnly(DataFormat format)
 
     return result;
 }
+
+inline bool FormatIsUnsignedInteger(DataFormat format)
+{
+    return format == DataFormat::eR8UInt || format == DataFormat::eR8G8B8A8UInt || format == DataFormat::eR16UInt
+        || format == DataFormat::eR16G16UInt || format == DataFormat::eR16G16B16UInt || format == DataFormat::eR16G16B16A16UInt
+        || format == DataFormat::eR32UInt || format == DataFormat::eR32G32UInt || format == DataFormat::eR32G32B32UInt
+        || format == DataFormat::eR32G32B32A32UInt || format == DataFormat::eR64UInt || format == DataFormat::eR64G64UInt
+        || format == DataFormat::eR64G64B64UInt || format == DataFormat::eR64G64B64A64UInt;
+}
+
+inline bool FormatIsSignedInteger(DataFormat format)
+{
+    return format == DataFormat::eR16SInt || format == DataFormat::eR16G16SInt || format == DataFormat::eR16G16B16SInt
+        || format == DataFormat::eR16G16B16A16SInt || format == DataFormat::eR32SInt || format == DataFormat::eR32G32SInt
+        || format == DataFormat::eR32G32B32SInt || format == DataFormat::eR32G32B32A32SInt || format == DataFormat::eR64SInt
+        || format == DataFormat::eR64G64SInt || format == DataFormat::eR64G64B64SInt || format == DataFormat::eR64G64B64A64SInt;
+}

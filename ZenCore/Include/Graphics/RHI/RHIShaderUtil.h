@@ -15,7 +15,7 @@ public:
                                                      RHIShaderGroupInfo&    shaderGroupInfo);
 };
 
-static bool ParseSpvVertexInput(const SpvReflectShaderModule* module, RHIShaderGroupInfo& info)
+inline bool ParseSpvVertexInput(const SpvReflectShaderModule* module, RHIShaderGroupInfo& info)
 {
     uint32_t count = 0;
 
@@ -66,7 +66,7 @@ static bool ParseSpvVertexInput(const SpvReflectShaderModule* module, RHIShaderG
     return valid;
 }
 
-static bool ParseSpvPushConstants(RHIShaderStage stage, const SpvReflectShaderModule* module, RHIShaderGroupInfo& info)
+inline bool ParseSpvPushConstants(RHIShaderStage stage, const SpvReflectShaderModule* module, RHIShaderGroupInfo& info)
 {
     uint32_t count = 0;
 
@@ -179,7 +179,7 @@ inline bool ParseSpvSpecializationConstant(RHIShaderStage stage, const SpvReflec
 // Member flags describe that member, including a containing struct/array. The bundled
 // reflector synthesizes NonWritable on a block when ANY member is readonly, so that
 // root block flag cannot classify the whole binding. Union member capabilities instead.
-static bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member, uint32_t forbiddenDecoration, uint32_t depth)
+inline bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member, uint32_t forbiddenDecoration, uint32_t depth)
 {
     const uint32_t typeFlags = member.type_description ? member.type_description->decoration_flags : 0;
     bool           allowed   = false;
@@ -198,7 +198,7 @@ static bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member, uint3
     return allowed;
 }
 
-static bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& binding, uint32_t forbiddenDecoration)
+inline bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& binding, uint32_t forbiddenDecoration)
 {
     const uint32_t typeFlags = binding.type_description ? binding.type_description->decoration_flags : 0;
     bool           allowed   = false;
@@ -223,7 +223,7 @@ static bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& bin
     return allowed;
 }
 
-static bool ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& reflBinding, RHIShaderResourceDescriptor& srd)
+inline bool ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& reflBinding, RHIShaderResourceDescriptor& srd)
 {
     bool needArrayDims = false;
     bool needBlockSize = false;
@@ -379,7 +379,7 @@ static bool ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     return srd.type != RHIShaderResourceType::eMax;
 }
 
-static bool MergeOrAddSRDs(RHIShaderStage stage, RHIShaderResourceDescriptor& descriptor, RHIShaderGroupInfo& info)
+inline bool MergeOrAddSRDs(RHIShaderStage stage, RHIShaderResourceDescriptor& descriptor, RHIShaderGroupInfo& info)
 {
     bool valid = descriptor.set < 32;
 
@@ -399,7 +399,7 @@ static bool MergeOrAddSRDs(RHIShaderStage stage, RHIShaderResourceDescriptor& de
                 existed = true;
 
                 valid   = previous.type == descriptor.type && previous.arraySize == descriptor.arraySize
-                     && previous.blockSize == descriptor.blockSize && previous.bindless == descriptor.bindless;
+                       && previous.blockSize == descriptor.blockSize && previous.bindless == descriptor.bindless;
 
                 previous.stageFlags.SetFlag(RHIShaderStageToFlagBits(stage));
 
@@ -420,7 +420,7 @@ static bool MergeOrAddSRDs(RHIShaderStage stage, RHIShaderResourceDescriptor& de
     return valid;
 }
 
-static bool HasValidSpirvStructure(const HeapVector<uint8_t>& code)
+inline bool HasValidSpirvStructure(const HeapVector<uint8_t>& code)
 {
     bool valid = code.size() >= 5 * sizeof(uint32_t) && code.size() % sizeof(uint32_t) == 0;
 

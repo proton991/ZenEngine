@@ -5,6 +5,10 @@
 
 namespace zen
 {
+bool              IsTextureShapeValid(const RHITextureCreateInfo& info);
+VkImageCreateInfo BuildImageCreateInfo(const RHITextureCreateInfo& info);
+float             ClampSamplerAnisotropy(float requested, float limit);
+
 class VulkanSampler : public RHISampler
 {
 public:
@@ -66,10 +70,10 @@ public:
     }
 
     static VkImageSubresourceRange GetVkSubresourceRange(VkImageAspectFlags aspect,
-                                                         uint32_t           baseMipLevel = 0,
-                                                         uint32_t levelCount             = VK_REMAINING_MIP_LEVELS,
-                                                         uint32_t baseArrayLayer         = 0,
-                                                         uint32_t layerCount             = VK_REMAINING_ARRAY_LAYERS)
+                                                         uint32_t           baseMipLevel   = 0,
+                                                         uint32_t           levelCount     = VK_REMAINING_MIP_LEVELS,
+                                                         uint32_t           baseArrayLayer = 0,
+                                                         uint32_t           layerCount     = VK_REMAINING_ARRAY_LAYERS)
     {
         VkImageSubresourceRange range{};
         range.aspectMask     = aspect;

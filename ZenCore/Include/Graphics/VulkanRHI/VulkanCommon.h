@@ -8,6 +8,9 @@ namespace zen
 {
 void ReportVulkanDeviceLoss(VkResult result, const char* operation);
 
+// Records a failed native object creation as the backend's creation error and reports device loss.
+void ReportVulkanCreationFailure(VkResult result, const char* operation, const char* source, uint32_t line);
+
 inline RHIError MakeVulkanError(VkResult result, const char* operation, const char* source = nullptr, uint32_t line = 0)
 {
     RHIError error{};

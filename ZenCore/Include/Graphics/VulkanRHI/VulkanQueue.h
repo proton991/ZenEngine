@@ -47,6 +47,11 @@ public:
     // serial is the last successfully submitted serial from this call, or zero.
     RHISubmissionResult SubmitPendingWorkloads(uint64_t& serial);
 
+    bool HasPendingSubmissions() const
+    {
+        return !m_workloadsPendingSubmit.Empty();
+    }
+
     void DiscardPendingWorkloads(bool uncertain = false);
 
     void ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSubmissionSerial = UINT64_MAX);

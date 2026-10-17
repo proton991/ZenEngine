@@ -283,7 +283,7 @@ protected:
 
         key.descriptorCount[ToUnderlying(RHIShaderResourceType::eStorageBuffer)] = 1;
 
-        return container->Allocate(key, false, reinterpret_cast<VkDescriptorSetLayout>(uintptr_t(1)), 0);
+        return container->Allocate(key, reinterpret_cast<VkDescriptorSetLayout>(uintptr_t(1)));
     }
 
     static void Enqueue(VulkanCommandContextBase& context, VulkanQueue& queue)

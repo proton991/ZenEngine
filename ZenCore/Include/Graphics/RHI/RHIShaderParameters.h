@@ -186,20 +186,7 @@ public:
 
     VectorView<const uint8_t> GetValueBytes(const RHIShaderValueParameter& param) const
     {
-        VectorView<const uint8_t> result{};
-
-        const uint32_t end = static_cast<uint32_t>(param.byteOffset) + param.byteSize;
-
-        if (param.byteSize == 0 || end > m_valueData.size())
-        {
-            result = VectorView<const uint8_t>();
-        }
-        else
-        {
-            result = MakeVecView(m_valueData.data() + param.byteOffset, static_cast<size_t>(param.byteSize));
-        }
-
-        return result;
+        return GetView().GetValueBytes(param);
     }
 
     VectorView<const RHIShaderResourceParameter> GetResourceParams() const

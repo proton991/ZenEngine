@@ -88,8 +88,13 @@ public:
     }
 
 private:
-    bool PrepareHistory(uint32_t width, uint32_t height, bool bounce, bool reflections, bool search, bool reference,
-                        bool budget);
+    bool PrepareHistory(uint32_t width,
+                        uint32_t height,
+                        bool     bounce,
+                        bool     reflections,
+                        bool     search,
+                        bool     reference,
+                        bool     budget);
     void BindGuides(RDGPassDescBase& pass) const;
     void Dispatch(RDGComputePassDesc&& pass);
 

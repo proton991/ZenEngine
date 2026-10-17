@@ -131,5 +131,6 @@ private:
     bool             m_presentAcquiredFailed{false};
     bool             m_suspended{false};
     RHIPresentResult m_presentResult{};
+    RHIError         m_recreationError{};
 };
 } // namespace zen

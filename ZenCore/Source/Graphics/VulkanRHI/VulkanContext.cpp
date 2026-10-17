@@ -235,14 +235,13 @@ static VulkanPhysicalDeviceCandidateInfo EvaluatePhysicalDeviceCandidate(VkPhysi
 
         vkGetPhysicalDeviceFeatures2(physicalDevice, &physicalDeviceFeatures2);
 
-        candidateInfo.hasGeometryShader     = physicalDeviceFeatures2.features.geometryShader == VK_TRUE;
+        candidateInfo.hasGeometryShader         = physicalDeviceFeatures2.features.geometryShader == VK_TRUE;
 
-        candidateInfo.hasSamplerAnisotropy  = physicalDeviceFeatures2.features.samplerAnisotropy == VK_TRUE;
+        candidateInfo.hasSamplerAnisotropy      = physicalDeviceFeatures2.features.samplerAnisotropy == VK_TRUE;
 
-        candidateInfo.hasDescriptorIndexing = descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE
-                                           && descriptorIndexingFeatures.descriptorBindingPartiallyBound == VK_TRUE
-                                           && descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending == VK_TRUE
-                                           && descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount == VK_TRUE;
+        candidateInfo.hasDescriptorIndexing     = descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE
+                                               && descriptorIndexingFeatures.descriptorBindingPartiallyBound == VK_TRUE
+                                               && descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending == VK_TRUE;
 
         candidateInfo.hasDynamicRendering       = dynamicRenderingFeatures.dynamicRendering == VK_TRUE;
 
@@ -348,15 +347,18 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 {
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
     {
-        LOGW("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName, pCallbackData->pMessage);
+        LOGW("{} - {}: {}", pCallbackData->messageIdNumber, RHIErrorText(pCallbackData->pMessageIdName, "unknown message"),
+             RHIErrorText(pCallbackData->pMessage, ""));
     }
     else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
-        LOGE("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName, pCallbackData->pMessage)
+        LOGE("{} - {}: {}", pCallbackData->messageIdNumber, RHIErrorText(pCallbackData->pMessageIdName, "unknown message"),
+             RHIErrorText(pCallbackData->pMessage, ""))
     }
     else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) && RHIOptions::GetInstance().DebugPrintfEnabled())
     {
-        LOGI("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName, pCallbackData->pMessage);
+        LOGI("{} - {}: {}", pCallbackData->messageIdNumber, RHIErrorText(pCallbackData->pMessageIdName, "unknown message"),
+             RHIErrorText(pCallbackData->pMessage, ""));
     }
 
     return VK_FALSE;
@@ -494,6 +496,10 @@ void VulkanRHI::SetupInstanceExtensions(VulkanInstanceExtensionArray& instanceEx
         if (extension->IsEnabledAndSupported())
         {
             m_instanceExtensions.emplace_back(extension->GetName());
+            if (extension->GetName() == NameID(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME))
+            {
+                m_instanceExtensionFlags.hasValidationFeatures = 1;
+            }
 
             LOGI("Enabled Instance Extension: {}", extension->GetName().CStr());
         }
@@ -576,10 +582,12 @@ void VulkanRHI::CreateInstance()
 
     const bool validationEnabled         = HasExtensionEnabled(m_instanceLayers, NameID("VK_LAYER_KHRONOS_validation"));
 
-    instanceInfo.pNext                   = validationEnabled ? static_cast<const void*>(&validationFeatures)
-                                                             : (m_instanceExtensionFlags.hasDebugUtils ? &debugMessengerCI : nullptr);
+    instanceInfo.pNext =
+        validationEnabled && RHIOptions::GetInstance().DebugPrintfEnabled() && m_instanceExtensionFlags.hasValidationFeatures
+            ? static_cast<const void*>(&validationFeatures)
+            : (m_instanceExtensionFlags.hasDebugUtils ? &debugMessengerCI : nullptr);
 
-    const VkResult result                = vkCreateInstance(&instanceInfo, nullptr, &m_instance);
+    const VkResult result = vkCreateInstance(&instanceInfo, nullptr, &m_instance);
 
     if (result != VK_SUCCESS)
     {
@@ -810,6 +818,9 @@ void VulkanRHI::Init()
         m_pDevice->GetPhysicalDeviceFeatures().vertexPipelineStoresAndAtomics != VK_FALSE;
 
     m_gpuInfo.supportSamplerAnisotropy         = m_pDevice->GetPhysicalDeviceFeatures().samplerAnisotropy != VK_FALSE;
+    m_gpuInfo.supportImageCubeArray            = m_pDevice->GetPhysicalDeviceFeatures().imageCubeArray != VK_FALSE;
+    m_gpuInfo.supportSamplerMirrorClampToEdge  = m_pDevice->GetExtensionFlags().hasSamplerMirrorClampToEdge != 0;
+    m_gpuInfo.maxDrawIndexedIndexValue         = m_pDevice->GetPhysicalDeviceProperties().limits.maxDrawIndexedIndexValue;
 
     m_gpuInfo.supportFillModeNonSolid          = m_pDevice->GetPhysicalDeviceFeatures().fillModeNonSolid != VK_FALSE;
 

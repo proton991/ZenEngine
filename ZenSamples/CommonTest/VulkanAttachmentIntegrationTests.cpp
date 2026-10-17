@@ -178,13 +178,13 @@ protected:
         session.reset();
     }
 
-    VulkanTexture* Texture(DataFormat format             = DataFormat::eR8G8B8A8UNORM,
-                           uint32_t mips                 = 3,
-                           uint32_t layers               = 4,
-                           RHITextureType type           = RHITextureType::e2D,
-                           SampleCount samples           = SampleCount::e1,
-                           uint32_t width                = 8,
-                           RHITextureUsageFlagBits usage = RHITextureUsageFlagBits::eColorAttachment)
+    VulkanTexture* Texture(DataFormat              format  = DataFormat::eR8G8B8A8UNORM,
+                           uint32_t                mips    = 3,
+                           uint32_t                layers  = 4,
+                           RHITextureType          type    = RHITextureType::e2D,
+                           SampleCount             samples = SampleCount::e1,
+                           uint32_t                width   = 8,
+                           RHITextureUsageFlagBits usage   = RHITextureUsageFlagBits::eColorAttachment)
     {
         RHITextureCreateInfo info{};
 
@@ -214,10 +214,10 @@ protected:
         return texture;
     }
 
-    RHITextureView* View(VulkanTexture* texture,
-                         uint32_t       mip,
-                         uint32_t       layer,
-                         uint32_t       count                      = 1,
+    RHITextureView* View(VulkanTexture*                     texture,
+                         uint32_t                           mip,
+                         uint32_t                           layer,
+                         uint32_t                           count  = 1,
                          BitField<RHITextureAspectFlagBits> aspect = {})
     {
         RHITextureViewCreateInfo info{};
@@ -1067,5 +1067,41 @@ TEST_F(VulkanAttachmentIntegrationTest, LayoutResetAndAttachmentCapacityPreserve
     EXPECT_EQ(layout.colorRenderTargets[0].pTextureView, nullptr);
 
     EXPECT_DEATH(layout.SetRenderArea(1, 0, UINT32_MAX, 1), "verification failed");
+}
+
+TEST_F(VulkanAttachmentIntegrationTest, IntegerAttachmentAndTextureClearReadBackNumericValues)
+{
+    for (bool attachment : {false, true})
+    {
+        VulkanTexture* texture = Texture(DataFormat::eR32UInt, 1, 1);
+        ASSERT_NE(texture, nullptr);
+        VulkanBuffer* buffer = Buffer();
+        ASSERT_NE(buffer, nullptr);
+        if (attachment)
+        {
+            Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            RHIRenderingLayout layout{};
+            layout.SetRenderArea(0, 0, 8, 8);
+            layout.AddColorRenderTarget(DataFormat::eR32UInt, texture, RHIRenderTargetLoadOp::eClear,
+                                        RHIRenderTargetStoreOp::eStore,
+                                        RHIRenderTargetClearValue::ColorClear(Color(7, 0, 0, 0)));
+            context->RHIBeginRendering(&layout);
+            context->RHIEndRendering();
+            Transition(texture, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        }
+        else
+        {
+            Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            context->RHIClearTexture(texture, Color(7, 0, 0, 0), texture->GetSubResourceRange());
+            Transition(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        }
+        CopyAll(texture, buffer, VK_IMAGE_ASPECT_COLOR_BIT, 4);
+        SubmitAndWait();
+        const uint32_t* pixels = reinterpret_cast<const uint32_t*>(buffer->Map());
+        for (uint32_t pixel = 0; pixel < 64; ++pixel)
+        {
+            EXPECT_EQ(pixels[pixel], 7u);
+        }
+    }
 }
 } // namespace

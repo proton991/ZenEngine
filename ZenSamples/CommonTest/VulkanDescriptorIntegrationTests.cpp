@@ -243,7 +243,7 @@ protected:
     static RHIBatchedShaderParameters Parameters(VulkanPipeline* pipeline,
                                                  RHIBuffer*      buffer,
                                                  uint32_t        binding = 0,
-                                                 uint32_t element        = 0)
+                                                 uint32_t        element = 0)
     {
         RHIBatchedShaderParameters params;
 
@@ -263,9 +263,9 @@ protected:
 
         state.FlushPendingDescriptorWrites(context, sets, firstSet, offsets);
 
-        EXPECT_EQ(firstSet, 0u);
+        EXPECT_EQ(firstSet, test::kLocalResourceSet);
 
-        EXPECT_EQ(sets.size(), test::kLocalResourceSet + 1);
+        EXPECT_EQ(sets.size(), 1u);
 
         if (dynamicOffset != nullptr)
         {
@@ -274,7 +274,7 @@ protected:
             *dynamicOffset = offsets.empty() ? UINT32_MAX : offsets[0];
         }
 
-        return sets.size() <= test::kLocalResourceSet ? VK_NULL_HANDLE : sets[test::kLocalResourceSet];
+        return sets.empty() ? VK_NULL_HANDLE : sets[0];
     }
 
     void FillCache(VulkanPipeline* pipeline, uint32_t count)

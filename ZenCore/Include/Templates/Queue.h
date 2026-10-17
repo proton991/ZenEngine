@@ -2,6 +2,7 @@
 #include <queue>
 #include <functional>
 #include <optional>
+#include <utility>
 #include "Utils/Errors.h"
 #include "Utils/Mutex.h"
 
@@ -56,6 +57,11 @@ private:
 template <class T> class Queue
 {
 public:
+    void Push(T&& value)
+    {
+        m_q.push(std::move(value));
+    }
+
     void Push(const T& value)
     {
         m_q.push(value);
@@ -87,7 +93,7 @@ public:
         return value;
     }
 
-    bool Empty()
+    bool Empty() const
     {
         return m_q.empty();
     }

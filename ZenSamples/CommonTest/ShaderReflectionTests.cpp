@@ -1,4 +1,6 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
+#include "Graphics/VulkanRHI/VulkanPipeline.h"
+#include <filesystem>
 #include "Platform/FileSystem.h"
 #include <gtest/gtest.h>
 #include "AssetLib/Types.h"
@@ -743,4 +745,64 @@ TEST(ShaderReflectionTests, AccelerationStructureUsesAnOrdinaryReadOnlyDescripto
     EXPECT_TRUE(descriptor.readable);
     EXPECT_FALSE(descriptor.writable);
     EXPECT_FALSE(descriptor.bindless);
+}
+
+namespace
+{
+RHIShaderStage ShippedShaderStage(const std::filesystem::path& source)
+{
+    const std::string extension = source.extension().string();
+    RHIShaderStage    stage     = RHIShaderStage::eMax;
+    if (extension == ".vert")
+    {
+        stage = RHIShaderStage::eVertex;
+    }
+    else if (extension == ".frag")
+    {
+        stage = RHIShaderStage::eFragment;
+    }
+    else if (extension == ".comp")
+    {
+        stage = RHIShaderStage::eCompute;
+    }
+    else if (extension == ".geom")
+    {
+        stage = RHIShaderStage::eGeometry;
+    }
+    return stage;
+}
+} // namespace
+
+// Per-stage rules over every compiled source. Cross-stage names are checked when the native
+// suite creates every registered program (VulkanPresentationReviewTests.cpp).
+TEST(ShaderReflectionTests, ShippedShaderLayoutsRespectGlobalHeapContract)
+{
+    // Walk the sources the build compiles, so SPIR-V left over from deleted sources is ignored.
+    // The build writes Data/Shaders/<path> to SPV_SHADER_PATH/<path>.spv.
+    const std::filesystem::path sources = std::filesystem::path(SPV_SHADER_PATH).parent_path().parent_path() / "Shaders";
+    std::error_code             error;
+    std::filesystem::recursive_directory_iterator entry(sources, error);
+    ASSERT_FALSE(error) << sources.string() << ": " << error.message();
+    uint32_t checked = 0;
+    for (; !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error))
+    {
+        const RHIShaderStage stage = ShippedShaderStage(entry->path());
+        if (stage != RHIShaderStage::eMax && entry->is_regular_file(error))
+        {
+            const std::string relative = std::filesystem::relative(entry->path(), sources, error).generic_string() + ".spv";
+            SCOPED_TRACE(relative);
+            ASSERT_FALSE(error) << error.message();
+            platform::FileLoadError loadError = platform::FileLoadError::eNone;
+            RHIShaderGroupSPIRVPtr  spirv     = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+            spirv->SetStageSPIRV(stage, platform::FileSystem::LoadSpvFile(relative, &loadError));
+            ASSERT_EQ(loadError, platform::FileLoadError::eNone) << "compiled shader is missing";
+            RHIShaderGroupInfo info{};
+            ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, info));
+            info.name = NameID(relative);
+            EXPECT_TRUE(ValidateShaderLayout(info));
+            ++checked;
+        }
+    }
+    EXPECT_FALSE(error) << error.message();
+    EXPECT_GT(checked, 0u);
 }

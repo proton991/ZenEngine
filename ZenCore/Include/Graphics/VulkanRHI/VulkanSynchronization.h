@@ -84,7 +84,7 @@ class VulkanSemaphore
 public:
     explicit VulkanSemaphore(VulkanDevice*   pDevice,
                              VkSemaphoreType semaphoreType = VK_SEMAPHORE_TYPE_BINARY,
-                             uint64_t initialValue         = 0);
+                             uint64_t        initialValue  = 0);
 
     virtual ~VulkanSemaphore();
 
@@ -168,8 +168,6 @@ class VulkanPipelineBarrier
 {
 public:
     // for Image-only transitions
-    void AddImageBarrier(VkImage image, VkImageLayout srcLayout, VkImageLayout dstLayout, const VkImageSubresourceRange& range);
-
     void AddImageBarrier(VkImage                        image,
                          VkImageLayout                  srcLayout,
                          VkImageLayout                  dstLayout,
@@ -181,19 +179,9 @@ public:
 
     void AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
 
-    // for Image-only transitions
-    void ExecuteImageBarriersOnly(VkCommandBuffer cmdBuffer);
-
     void Execute(VkCommandBuffer cmdBuffer, VkPipelineStageFlags srcStageFlags, VkPipelineStageFlags dstStageFlags);
 
 private:
-    static VkPipelineStageFlags VkLayoutToPipelineStageFlags(VkImageLayout layout);
-
-    static VkAccessFlags VkLayoutToAccessFlags(VkImageLayout layout);
-
-    VkPipelineStageFlags m_srcStageFlags{0};
-    VkPipelineStageFlags m_dstStageFlags{0};
-
     SmallVector<VkImageMemoryBarrier>  m_imageBarriers;
     SmallVector<VkMemoryBarrier>       m_memoryBarriers;
     SmallVector<VkBufferMemoryBarrier> m_bufferBarriers;

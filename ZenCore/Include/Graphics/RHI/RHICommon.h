@@ -98,6 +98,9 @@ struct RHIGPUInfo
     bool                  supportIndependentBlend{false};
     bool                  supportVertexPipelineStoresAndAtomics{false};
     bool                  supportSamplerAnisotropy{false};
+    bool                  supportImageCubeArray{false};
+    bool                  supportSamplerMirrorClampToEdge{false};
+    uint32_t              maxDrawIndexedIndexValue{0x00ffffff};
     bool                  supportFillModeNonSolid{false};
     bool                  supportDepthClamp{false};
     bool                  supportDepthBiasClamp{false};
@@ -190,7 +193,7 @@ inline std::string RHIShaderStageToString(RHIShaderStage stage)
     static const char* SHADER_STAGE_NAMES[ToUnderlying(RHIShaderStage::eMax)] = {
         "Vertex", "TesselationControl", "TesselationEvaluation", "Geometry", "Fragment", "Compute",
     };
-    return SHADER_STAGE_NAMES[ToUnderlying(stage)];
+    return ToUnderlying(stage) < ToUnderlying(RHIShaderStage::eMax) ? SHADER_STAGE_NAMES[ToUnderlying(stage)] : "Unknown";
 }
 
 inline std::string RHIShaderStageFlagToString(BitField<RHIShaderStageFlagBits> stageFlags)
@@ -519,6 +522,7 @@ struct RHIStencilOpState
 
 struct RHIGfxPipelineDepthStencilState
 {
+    // Depth/stencil are opt-in; callers enabling depth testing must select its comparison operation.
     bool                    enableDepthTest{false};
     bool                    enableDepthWrite{false};
     RHIDepthCompareOperator depthCompareOp{RHIDepthCompareOperator::eNever};
@@ -775,7 +779,7 @@ enum class RHIBufferAllocateType : uint32_t
     eCPUWriteGPURead = 4,
     eCPURead         = 2,
     eGPU             = 3,
-    eMax             = 4
+    eMax             = 5
 };
 
 /*****************************/
@@ -1051,7 +1055,7 @@ struct RHIRenderTargetClearValue
         };
     };
 
-    RHIRenderTargetClearValue() {}
+    RHIRenderTargetClearValue() : color(0.0f, 0.0f, 0.0f, 0.0f) {}
 
     RHIRenderTargetClearValue(Color c) : color(c) {}
 
@@ -1196,9 +1200,9 @@ enum class RHIPipelineStageFlagBits : uint32_t
     eMax                          = 0x7FFFFFFF
 };
 
-inline constexpr uint32_t kRHIAccessMask = ((ToUnderlying(RHIAccessFlagBits::eMemoryWrite) << 1) - 1)
-                                         | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureRead)
-                                         | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureWrite);
+inline constexpr uint32_t kRHIAccessMask        = ((ToUnderlying(RHIAccessFlagBits::eMemoryWrite) << 1) - 1)
+                                                | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureRead)
+                                                | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureWrite);
 inline constexpr uint32_t kRHIPipelineStageMask = ((ToUnderlying(RHIPipelineStageFlagBits::eAllCommands) << 1) - 1)
                                                 | ToUnderlying(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
 inline constexpr uint32_t kRHIIndividualPipelineStageMask =

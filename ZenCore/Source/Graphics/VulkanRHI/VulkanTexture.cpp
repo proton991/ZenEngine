@@ -10,6 +10,120 @@
 
 namespace zen
 {
+bool IsTextureShapeValid(const RHITextureCreateInfo& info)
+{
+    const bool extents = info.width > 0 && info.height > 0 && info.depth > 0 && info.arrayLayers > 0 && info.mipmaps > 0;
+    bool       shape   = false;
+    switch (info.type)
+    {
+        case RHITextureType::e1D: shape = info.height == 1 && info.depth == 1; break;
+        case RHITextureType::e2D: shape = info.depth == 1; break;
+        case RHITextureType::e3D: shape = info.arrayLayers == 1; break;
+        case RHITextureType::eCube: shape = info.width == info.height && info.depth == 1 && info.arrayLayers % 6 == 0; break;
+        default: break;
+    }
+    const bool samples = info.samples < SampleCount::eMax
+                      && (info.samples == SampleCount::e1 || (info.type == RHITextureType::e2D && info.mipmaps == 1));
+    return extents && shape && samples
+        && info.mipmaps <= RHITexture::CalculateTextureMipLevels(info.width, info.height, info.depth);
+}
+
+VkImageCreateInfo BuildImageCreateInfo(const RHITextureCreateInfo& info)
+{
+    VkImageCreateInfo imageCI;
+
+    InitVkStruct(imageCI, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
+
+    imageCI.extent.width  = info.width;
+
+    imageCI.extent.height = info.height;
+
+    imageCI.extent.depth  = info.depth;
+
+    imageCI.samples       = ToVkSampleCountFlagBits(info.samples);
+
+    imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
+
+    imageCI.arrayLayers   = info.arrayLayers;
+
+    imageCI.mipLevels     = info.mipmaps;
+
+    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (info.type == RHITextureType::eCube)
+    {
+        imageCI.imageType = VK_IMAGE_TYPE_2D;
+
+        imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    }
+    else
+    {
+        imageCI.imageType = ToVkImageType(info.type);
+    }
+
+    imageCI.usage  = ToVkImageUsageFlags(info.usageFlags);
+
+    imageCI.format = ToVkFormat(info.format);
+
+    if (info.mutableFormat != false)
+    {
+        imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+    }
+
+    return imageCI;
+}
+
+float ClampSamplerAnisotropy(float requested, float limit)
+{
+    return std::isnan(requested) ? 1.0f : std::clamp(requested, 1.0f, limit);
+}
+
+namespace
+{
+bool IsClampAddressMode(RHISamplerRepeatMode mode)
+{
+    return mode == RHISamplerRepeatMode::eClampToEdge || mode == RHISamplerRepeatMode::eClampToBorder;
+}
+
+const char* ValidateTextureDescription(const RHITextureCreateInfo& info)
+{
+    const char* error = nullptr;
+    if (info.format == DataFormat::eUndefined || GetTextureFormatPixelSize(info.format) == 0 || info.usageFlags.IsEmpty())
+    {
+        error = "format and usage must be specified";
+    }
+    else if (!IsTextureShapeValid(info))
+    {
+        error = "invalid extent, type, sample count or mip count";
+    }
+    else if (info.type == RHITextureType::eCube && info.arrayLayers > 6 && !GVulkanRHI->QueryGPUInfo().supportImageCubeArray)
+    {
+        error = "cube arrays are unsupported";
+    }
+    else
+    {
+        const VkImageCreateInfo native = BuildImageCreateInfo(info);
+        VkImageFormatProperties properties{};
+        const VkResult          result =
+            vkGetPhysicalDeviceImageFormatProperties(GVulkanRHI->GetDevice()->GetPhysicalDeviceHandle(), native.format,
+                                                     native.imageType, native.tiling, native.usage, native.flags, &properties);
+        if (result != VK_SUCCESS)
+        {
+            error = "format/type/usage combination is unsupported";
+        }
+        else if (info.width > properties.maxExtent.width || info.height > properties.maxExtent.height
+                 || info.depth > properties.maxExtent.depth || info.arrayLayers > properties.maxArrayLayers
+                 || info.mipmaps > properties.maxMipLevels || (properties.sampleCounts & native.samples) == 0)
+        {
+            error = "image exceeds device format limits";
+        }
+    }
+    return error;
+}
+} // namespace
+
 RHISampler* VulkanResourceFactory::CreateSampler(const RHISamplerCreateInfo& createInfo)
 {
     RHISampler* pSampler = GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanSampler::CreateObject(createInfo);
@@ -29,19 +143,36 @@ void VulkanRHI::DestroySampler(RHISampler* pSampler)
 
 VulkanSampler* VulkanSampler::CreateObject(const RHISamplerCreateInfo& createInfo)
 {
-    VulkanSampler* pSampler = VersatileResource::AllocMem<VulkanSampler>(GVulkanRHI->GetResourceAllocator());
-
-    new (pSampler) VulkanSampler(createInfo);
-
-    pSampler->Init();
-
-    if (pSampler->m_vkSampler == VK_NULL_HANDLE)
+    VulkanSampler* pSampler = nullptr;
+    const bool     mirror   = createInfo.repeatU == RHISamplerRepeatMode::eMirrorClampToEdge
+                           || createInfo.repeatV == RHISamplerRepeatMode::eMirrorClampToEdge
+                           || createInfo.repeatW == RHISamplerRepeatMode::eMirrorClampToEdge;
+    const bool     unnormalized =
+        !createInfo.unnormalizedUVW
+        || (createInfo.minFilter == createInfo.magFilter && createInfo.mipFilter == RHISamplerFilter::eNearest
+            && createInfo.minLod == 0 && createInfo.maxLod == 0 && !createInfo.useAnisotropy && !createInfo.enableCompare
+            && IsClampAddressMode(createInfo.repeatU) && IsClampAddressMode(createInfo.repeatV)
+            && IsClampAddressMode(createInfo.repeatW));
+    if ((!mirror || GVulkanRHI->QueryGPUInfo().supportSamplerMirrorClampToEdge) && unnormalized
+        && createInfo.maxLod >= createInfo.minLod
+        && std::abs(createInfo.lodBias) <= GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits.maxSamplerLodBias)
     {
-        pSampler->ReleaseReference();
+        pSampler = VersatileResource::AllocMem<VulkanSampler>(GVulkanRHI->GetResourceAllocator());
+        new (pSampler) VulkanSampler(createInfo);
 
-        pSampler = nullptr;
+        pSampler->Init();
+
+        if (pSampler->m_vkSampler == VK_NULL_HANDLE)
+        {
+            pSampler->ReleaseReference();
+
+            pSampler = nullptr;
+        }
     }
-
+    else
+    {
+        LOGE("Invalid sampler description: address mode, unnormalized coordinates or LOD limits");
+    }
     return pSampler;
 }
 
@@ -69,7 +200,8 @@ void VulkanSampler::Init()
     samplerCI.anisotropyEnable =
         m_baseInfo.useAnisotropy && (GVulkanRHI->GetDevice()->GetPhysicalDeviceFeatures().samplerAnisotropy == VK_TRUE);
 
-    samplerCI.maxAnisotropy           = m_baseInfo.maxAnisotropy;
+    samplerCI.maxAnisotropy = ClampSamplerAnisotropy(
+        m_baseInfo.maxAnisotropy, GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits.maxSamplerAnisotropy);
 
     samplerCI.compareEnable           = m_baseInfo.enableCompare;
 
@@ -89,7 +221,7 @@ void VulkanSampler::Init()
     {
         m_vkSampler = VK_NULL_HANDLE;
 
-        ReportVulkanDeviceLoss(result, "vkCreateSampler");
+        ReportVulkanCreationFailure(result, "vkCreateSampler", __FILE__, __LINE__);
 
         LOGE("vkCreateSampler failed: {}", GetResultString(result));
     }
@@ -139,23 +271,33 @@ void VulkanRHI::DestroyTexture(RHITexture* pTexture)
 
 VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInfo)
 {
-    VulkanTexture* pTexture = VersatileResource::AllocMem<VulkanTexture>(GVulkanRHI->GetResourceAllocator());
-
-    new (pTexture) VulkanTexture(createInfo);
-
-    pTexture->Init();
-
-    const bool needsAttachmentView = createInfo.type != RHITextureType::e3D
-                                  && (createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eColorAttachment)
-                                      || createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment));
-
-    if (pTexture->GetDefaultView() == nullptr || (needsAttachmentView && pTexture->GetAttachmentView() == nullptr))
+    VulkanTexture* pTexture = nullptr;
+    const char*    error    = ValidateTextureDescription(createInfo);
+    if (error == nullptr)
     {
-        pTexture->ReleaseReference();
+        pTexture = VersatileResource::AllocMem<VulkanTexture>(GVulkanRHI->GetResourceAllocator());
 
-        pTexture = nullptr;
+        new (pTexture) VulkanTexture(createInfo);
+
+        pTexture->Init();
+
+        const bool needsAttachmentView = createInfo.type != RHITextureType::e3D
+                                      && (createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eColorAttachment)
+                                          || createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment));
+
+        if (pTexture->GetDefaultView() == nullptr || (needsAttachmentView && pTexture->GetAttachmentView() == nullptr))
+        {
+            pTexture->ReleaseReference();
+
+            pTexture = nullptr;
+        }
     }
+    else
+    {
+        GVulkanRHI->SetCreationError(MakeRHIError(RHIErrorCode::eInvalidArgument, error, __FILE__, __LINE__));
 
+        LOGE("Texture '{}': {}", createInfo.tag.CStr(), error);
+    }
     return pTexture;
 }
 
@@ -187,6 +329,11 @@ RHITextureView* VulkanTexture::CreateViewOnRHIThread(const RHITextureViewCreateI
     else if (createInfo.type == RHITextureType::eCube && createInfo.arrayLayers % 6 != 0)
     {
         error = "Cube views require a multiple of six array layers";
+    }
+    else if (createInfo.type == RHITextureType::eCube && createInfo.arrayLayers > 6
+             && !GVulkanRHI->QueryGPUInfo().supportImageCubeArray)
+    {
+        error = "Cube-array views require imageCubeArray";
     }
     else if ((int64_t(createInfo.aspect) & ~int64_t(GetTextureFormatAspects(createInfo.format))) != 0)
     {
@@ -254,47 +401,7 @@ VkImageView VulkanTexture::GetVkImageView() const
 
 void VulkanTexture::Init()
 {
-    VkImageCreateInfo imageCI;
-
-    InitVkStruct(imageCI, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
-
-    imageCI.extent.width  = m_baseInfo.width;
-
-    imageCI.extent.height = m_baseInfo.height;
-
-    imageCI.extent.depth  = m_baseInfo.depth;
-
-    imageCI.samples       = ToVkSampleCountFlagBits(m_baseInfo.samples);
-
-    imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
-
-    imageCI.arrayLayers   = m_baseInfo.arrayLayers;
-
-    imageCI.mipLevels     = m_baseInfo.mipmaps;
-
-    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-    imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (m_baseInfo.type == RHITextureType::eCube)
-    {
-        imageCI.imageType = VK_IMAGE_TYPE_2D;
-
-        imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    }
-    else
-    {
-        imageCI.imageType = ToVkImageType(m_baseInfo.type);
-    }
-
-    imageCI.usage  = ToVkImageUsageFlags(m_baseInfo.usageFlags);
-
-    imageCI.format = ToVkFormat(m_baseInfo.format);
-
-    if (m_baseInfo.mutableFormat != false)
-    {
-        imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-    }
+    VkImageCreateInfo imageCI          = BuildImageCreateInfo(m_baseInfo);
 
     const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
 
@@ -411,7 +518,7 @@ void VulkanTextureView::Init()
     {
         m_vkImageView = VK_NULL_HANDLE;
 
-        ReportVulkanDeviceLoss(result, "vkCreateImageView");
+        ReportVulkanCreationFailure(result, "vkCreateImageView", __FILE__, __LINE__);
 
         LOGE("Texture view '{}' creation failed: {}", m_viewInfo.tag.CStr(), GetResultString(result));
     }
@@ -424,7 +531,7 @@ void VulkanTextureView::Init()
 
 void VulkanTextureView::Destroy()
 {
-    if (m_vkImageView != nullptr)
+    if (m_vkImageView != VK_NULL_HANDLE)
     {
         vkDestroyImageView(GVulkanRHI->GetVkDevice(), m_vkImageView, nullptr);
 

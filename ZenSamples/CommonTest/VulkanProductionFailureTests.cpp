@@ -295,7 +295,7 @@ TEST(VulkanProductionFailureTest, DescriptorPoolAndFenceFailureDoNotPublishOwner
             vkCreateDescriptorPool, [](VkDevice, const VkDescriptorPoolCreateInfo*, const VkAllocationCallbacks*,
                                        VkDescriptorPool*) { return VK_ERROR_OUT_OF_DEVICE_MEMORY; });
 
-        VulkanDescriptorPool pool(session.rhi.GetDevice(), {}, 32, false);
+        VulkanDescriptorPool pool(session.rhi.GetDevice(), {}, 32);
 
         EXPECT_FALSE(pool.IsValid());
     }
@@ -437,7 +437,9 @@ TEST(VulkanProductionFailureTest, ShutdownRejectsOutstandingResourcesAndCommandC
 
             RHIBufferCreateInfo info{};
 
-            info.size = 16;
+            info.allocateType = RHIBufferAllocateType::eGPU;
+
+            info.size         = 16;
 
             info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
 
@@ -482,7 +484,9 @@ TEST(VulkanProductionFailureTest, NonStrictShutdownLogsOutstandingResourcesAndCo
 
             RHIBufferCreateInfo info{};
 
-            info.size = 16;
+            info.allocateType = RHIBufferAllocateType::eGPU;
+
+            info.size         = 16;
 
             info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
 

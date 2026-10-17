@@ -60,6 +60,7 @@ struct RDGMetricAccess
     bool                       imported{true};
     bool                       hostWritten{false};        // Initialized buffer reads are visible through queue submission.
     bool                       availableFromQueue{false}; // A validated semaphore supplies foreign contents.
+    bool                       finalStateOnly{false};     // A state requirement does not execute a second resource access.
 };
 
 struct RDGMetricBarrier

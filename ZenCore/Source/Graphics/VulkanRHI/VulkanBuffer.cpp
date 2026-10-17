@@ -30,7 +30,8 @@ VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 {
     VulkanBuffer* pBuffer = nullptr;
 
-    if (createInfo.size > 0 && !createInfo.usageFlags.IsEmpty()
+    if (createInfo.allocateType > RHIBufferAllocateType::eNone && createInfo.allocateType < RHIBufferAllocateType::eMax
+        && createInfo.size > 0 && !createInfo.usageFlags.IsEmpty()
         && (!createInfo.usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress)
             || GVulkanRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress))
     {
@@ -48,6 +49,10 @@ VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
         }
     }
 
+    if (pBuffer == nullptr)
+    {
+        LOGE("Buffer creation failed: invalid description or allocation failure");
+    }
     return pBuffer;
 }
 
@@ -116,9 +121,25 @@ bool VulkanBuffer::SetTexelFormat(DataFormat format)
 
 bool VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
 {
-    bool ready = true;
-
-    if (m_bufferView == VK_NULL_HANDLE)
+    const bool         uniform   = m_usageFlags.HasFlag(RHIBufferUsageFlagBits::eTextureBuffer);
+    const bool         storage   = m_usageFlags.HasFlag(RHIBufferUsageFlagBits::eImageBuffer);
+    const uint32_t     texelSize = GetTextureFormatPixelSize(format);
+    VkFormatProperties properties{};
+    if (texelSize != 0)
+    {
+        vkGetPhysicalDeviceFormatProperties(GVulkanRHI->GetDevice()->GetPhysicalDeviceHandle(), ToVkFormat(format),
+                                            &properties);
+    }
+    bool ready =
+        (uniform || storage) && texelSize != 0 && m_requiredSize % texelSize == 0
+        && m_requiredSize / texelSize <= GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits.maxTexelBufferElements
+        && (!uniform || (properties.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0)
+        && (!storage || (properties.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0);
+    if (!ready)
+    {
+        LOGE("Invalid texel buffer view: usage, format support, range alignment or element limit");
+    }
+    else if (m_bufferView == VK_NULL_HANDLE)
     {
         VkBufferViewCreateInfo bufferViewCI;
 

@@ -17,6 +17,54 @@
 
 namespace zen
 {
+bool ValidateShaderLayout(const RHIShaderGroupInfo& info)
+{
+    bool                                                valid = true;
+    HashMap<NameID, const RHIShaderResourceDescriptor*> names;
+    for (const SmallVector<RHIShaderResourceDescriptor>& set : info.SRDTable)
+    {
+        for (const RHIShaderResourceDescriptor& descriptor : set)
+        {
+            const char* rule = nullptr;
+            if (descriptor.type >= RHIShaderResourceType::eMax)
+            {
+                rule = "unsupported descriptor type";
+            }
+            else if (descriptor.bindless && descriptor.set != kGlobalBindlessHeapIndex)
+            {
+                rule = "runtime arrays are supported only in the global heap";
+            }
+            else if (descriptor.set == kGlobalBindlessHeapIndex
+                     && !(descriptor.bindless
+                          && ((descriptor.type == RHIShaderResourceType::eTexture
+                               && (descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D
+                                   || descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBE))
+                              || (descriptor.type == RHIShaderResourceType::eSampler
+                                  && descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_SAMPLER))))
+            {
+                rule = "set 0 is reserved for the global heap bindings";
+            }
+            if (!descriptor.name.IsNone())
+            {
+                const HashMap<NameID, const RHIShaderResourceDescriptor*>::const_iterator found = names.find(descriptor.name);
+                if (found != names.end()
+                    && (found->second->set != descriptor.set || found->second->binding != descriptor.binding))
+                {
+                    rule = "descriptor names must be unique across sets and bindings";
+                }
+                names.emplace(descriptor.name, &descriptor);
+            }
+            if (rule != nullptr)
+            {
+                LOGE("Shader '{}' stages {} set {} binding {}: {}", info.name.CStr(),
+                     RHIShaderStageFlagToString(descriptor.stageFlags), descriptor.set, descriptor.binding, rule);
+                valid = false;
+            }
+        }
+    }
+    return valid;
+}
+
 VulkanUniformBufferUsage CountUniformBufferDescriptors(const RHIShaderResourceDescriptorTable& srdTable)
 {
     VulkanUniformBufferUsage usage{};
@@ -177,25 +225,15 @@ void VulkanShader::Init()
 
     if (reflected)
     {
-        for (const SmallVector<RHIShaderResourceDescriptor>& descriptors : sgInfo.SRDTable)
-        {
-            for (const RHIShaderResourceDescriptor& descriptor : descriptors)
-            {
-                reflected = reflected && ToUnderlying(descriptor.type) < ToUnderlying(RHIShaderResourceType::eMax);
-            }
-        }
+        // Layout-rule diagnostics name the shader that is rejected.
+        sgInfo.name = m_name;
 
-        if (!reflected)
-        {
-            LOGE("Shader '{}' contains an unsupported cached descriptor type", m_name.CStr());
-        }
+        reflected   = ValidateShaderLayout(sgInfo);
     }
 
     if (reflected)
     {
-        sgInfo.name = m_name;
-
-        m_SRDTable  = sgInfo.SRDTable;
+        m_SRDTable = sgInfo.SRDTable;
 
         if (m_SRDTable.size() <= kGlobalBindlessHeapIndex)
         {
@@ -208,7 +246,10 @@ void VulkanShader::Init()
             {
                 ++m_SRDCount[ToUnderlying(srd.type)];
 
-                m_namedSRDLut[srd.name] = &srd;
+                if (!srd.name.IsNone())
+                {
+                    m_namedSRDLut.emplace(srd.name, &srd);
+                }
             }
         }
 
@@ -349,26 +390,21 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
         // Set 0 is reserved for the same global heap in every pipeline layout.
         if (i == kGlobalBindlessHeapIndex)
         {
-            const VkDescriptorSetLayout dsLayout  = GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessLayout();
+            const VkDescriptorSetLayout dsLayout = GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessLayout();
 
-            ready                                 = dsLayout != VK_NULL_HANDLE;
+            ready                                = dsLayout != VK_NULL_HANDLE;
 
-            m_descriptorSetLayouts[i]             = dsLayout;
+            m_descriptorSetLayouts[i]            = dsLayout;
 
-            m_descriptorSetInfos[i].layoutId      = 0;
+            m_descriptorSetInfos[i].layoutId     = 0;
 
-            m_descriptorSetInfos[i].poolKey       = {};
+            m_descriptorSetInfos[i].poolKey      = {};
 
-            m_descriptorSetInfos[i].variableCount = 0;
 
-            m_hasGlobalBindlessSet                = true;
+            m_hasGlobalBindlessSet               = !m_SRDTable[kGlobalBindlessHeapIndex].empty();
 
             continue;
         }
-
-        uint32_t setVariableCount = 0;
-
-        bool needUABFlag          = false;
 
         VulkanDescriptorPoolKey setPoolKey{};
 
@@ -381,29 +417,14 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
         {
             VkDescriptorSetLayoutBinding binding{};
 
-            binding.binding        = srd.binding;
+            binding.binding         = srd.binding;
 
-            binding.descriptorType = ShaderResourceTypeToVkDescriptorType(srd.type);
+            binding.descriptorType  = ShaderResourceTypeToVkDescriptorType(srd.type);
 
-            binding.stageFlags     = ShaderStageFlagsBitsToVkShaderStageFlags(srd.stageFlags);
+            binding.stageFlags      = ShaderStageFlagsBitsToVkShaderStageFlags(srd.stageFlags);
 
-            if (srd.bindless)
-            {
-                binding.descriptorCount = GVulkanRHI->GetDevice()->GetDescriptorSetUpdateAfterBindLimit(binding.descriptorType);
-
-                setVariableCount        = binding.descriptorCount;
-
-                bindingFlags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
-                                       | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
-
-                needUABFlag = true;
-            }
-            else
-            {
-                binding.descriptorCount = srd.arraySize;
-
-                bindingFlags.push_back(binding.descriptorCount > 1 ? VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT : 0);
-            }
+            binding.descriptorCount = srd.arraySize;
+            bindingFlags.push_back(binding.descriptorCount > 1 ? VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT : 0);
 
             dsBindings[i].push_back(binding);
 
@@ -419,7 +440,6 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
 
         layoutCI.pBindings    = dsBindings[i].empty() ? nullptr : dsBindings[i].data();
 
-        layoutCI.flags        = needUABFlag ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT : 0;
 
         // set binding flags
         VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCreateInfo;
@@ -447,13 +467,12 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
             break;
         }
 
-        m_descriptorSetLayouts[i]             = dsLayout;
+        m_descriptorSetLayouts[i]          = dsLayout;
 
-        m_descriptorSetInfos[i].poolKey       = setPoolKey;
+        m_descriptorSetInfos[i].poolKey    = setPoolKey;
 
-        m_descriptorSetInfos[i].ownsLayout    = true;
+        m_descriptorSetInfos[i].ownsLayout = true;
 
-        m_descriptorSetInfos[i].variableCount = setVariableCount;
 
         m_descriptorSetInfos[i].layoutId =
             GVulkanRHI->GetDescriptorPoolManager2()->GetOrCreateLayoutId(layoutCI, MakeVecView(bindingFlags));
@@ -576,8 +595,7 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
         {
             if (descriptor.type == RHIShaderResourceType::eUniformBuffer)
             {
-                slots.push_back(
-                    {descriptor.binding, descriptor.bindless ? GetDescriptorSetVariableCount(set) : descriptor.arraySize});
+                slots.push_back({descriptor.binding, descriptor.arraySize});
             }
         }
 
@@ -628,8 +646,8 @@ static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
             const RHIRenderTarget& target  = layout->colorRenderTargets[i];
 
             valid                         &= target.format != DataFormat::eUndefined && target.numSamples == samples
-                  && !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format)
-                       || FormatIsDepthStencil(target.format));
+                                          && !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format)
+                                               || FormatIsDepthStencil(target.format));
         }
 
         if (layout->hasDepthStencilRT)
@@ -637,8 +655,8 @@ static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
             const RHIRenderTarget& target  = layout->depthStencilRenderTarget;
 
             valid                         &= target.numSamples == samples
-                  && (FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format)
-                      || FormatIsDepthStencil(target.format));
+                                          && (FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format)
+                                              || FormatIsDepthStencil(target.format));
         }
 
         for (uint32_t index : createInfo.states.colorBlendState.attachmentsMask)

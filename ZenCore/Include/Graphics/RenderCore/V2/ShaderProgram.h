@@ -536,9 +536,24 @@ public:
     // Takes ownership; integrations may register programs without coupling ZenCore to them.
     void StoreProgram(ShaderProgram* program);
 
+    // Also compiles the compute pipeline during renderer initialization. Register it behind the
+    // same capability gate as any other program, so unsupported programs are never warmed.
+    void StoreWarmedComputeProgram(ShaderProgram* program);
+
     ShaderProgram* RequestShaderProgram(NameID name)
     {
         return m_programCache.contains(name) ? m_programCache[name] : nullptr;
+    }
+
+    // Programs registered for this device; capability-gated programs are absent when unsupported.
+    const HashMap<NameID, ShaderProgram*>& GetPrograms() const
+    {
+        return m_programCache;
+    }
+
+    const HeapVector<NameID>& GetInitializationWarmups() const
+    {
+        return m_initializationWarmups;
     }
 
 private:
@@ -548,5 +563,6 @@ private:
     }
 
     HashMap<NameID, ShaderProgram*> m_programCache;
+    HeapVector<NameID>              m_initializationWarmups;
 };
 } // namespace zen::rc

@@ -195,9 +195,9 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
 
         pWorkload->m_signalSemaphoreInfos.clear();
 
-        for (VulkanWorkload* pWorkload : pWorkload->m_mergedWorkloads)
+        for (VulkanWorkload* merged : pWorkload->m_mergedWorkloads)
         {
-            ReleaseWorkload(pWorkload);
+            ReleaseWorkload(merged);
         }
 
         pWorkload->m_mergedWorkloads.clear();

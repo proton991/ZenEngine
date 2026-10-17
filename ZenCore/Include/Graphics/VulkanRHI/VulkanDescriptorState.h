@@ -58,7 +58,6 @@ private:
 
     bool ValidateSetState(uint32_t setIdx);
 
-    void BuildSetUpdates(uint32_t setIndex, HeapVector<RHIShaderResourceBinding>& outUpdates);
 
     void SyncCacheRevision(const VulkanDescriptorSetCache& cache);
 
@@ -92,7 +91,6 @@ private:
 
     uint64_t m_cacheRevision{0};
 
-    HeapVector<RHIShaderResourceBinding> m_updateSrbScratch;
 
     FVulkanCommandListContext*  m_lastContext{nullptr};
     uint64_t                    m_lastWorkloadGeneration{0};
