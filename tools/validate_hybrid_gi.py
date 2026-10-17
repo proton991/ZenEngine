@@ -119,8 +119,15 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                 errors=[line for line in errors if line not in baseline]
             assert result.returncode==0 and not errors,(name,result.returncode,errors[:5])
             metadata=json.loads(Path(str(prefix)+'.lighting.json').read_text())
-            expected_provider = 'legacy' if mode!=3 else 'hardware' if rt and provider in ('hardware','auto') else 'voxel'
+            features = ('sky', 'specular', 'sky_cache', 'bounce', 'reflections', 'shadows')
+            inherited = backend or ('hardware' if provider in ('hardware', 'auto') else 'compute')
+            requested_mask = sum(1 << bit for bit, feature in enumerate(features)
+                                 if (feature_backends or {}).get(feature, inherited) == 'hardware')
+            expected_mask = requested_mask if rt else 0
+            expected_provider = 'legacy' if mode!=3 else 'hardware' if expected_mask else 'voxel'
             assert metadata['ray_provider'] == expected_provider, metadata
+            if mode == 3:
+                assert metadata['hardware_feature_mask'] == expected_mask, metadata
             if expected_provider == 'hardware':
                 assert metadata['ray_scene_ready'] and metadata['ray_scene_generation'] > 0, metadata
             if expected_provider == 'legacy':

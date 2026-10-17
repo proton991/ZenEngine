@@ -535,13 +535,17 @@ public:
     std::vector<RHITextureBlitRegion>               blits;
     std::vector<RHIBufferCopyRegion>                bufferCopies;
     std::vector<std::vector<uint8_t>>               values;
+    HeapVector<glm::uvec2>                          valueBindings;
     std::vector<std::vector<uint8_t>>               pushConstants;
     std::vector<RHIResource*>                       boundResources;
     std::vector<uint32_t>                           boundArrayIndices;
     std::vector<RHIBuffer*>                         indirectDraws;
     std::vector<RHIBuffer*>                         indirectDispatches;
+    HeapVector<RHIShader*>                          indirectShaders;
     uint32_t                                        drawCount{0};
     uint32_t                                        dispatchCount{0};
+    RHIShader*                                      boundShader{nullptr};
+    HeapVector<std::pair<RHIShader*, glm::uvec3>>   dispatches;
     uint32_t                                        renderingCount{0};
     uint32_t                                        vertexBufferCount{0};
     std::vector<RHIBuffer*>                         vertexBuffers;
@@ -577,7 +581,10 @@ public:
 
     void RHISetBlendConstants(const Color& blendConstants) override {}
 
-    void RHIBindPipeline(RHIPipeline* pPipeline) override {}
+    void RHIBindPipeline(RHIPipeline* pPipeline) override
+    {
+        boundShader = pPipeline != nullptr ? pPipeline->GetShader() : nullptr;
+    }
 
     void RHISetShaderParameters(RHIShaderParameterView parameters) override
     {
@@ -586,6 +593,7 @@ public:
             VectorView<const uint8_t> bytes = parameters.GetValueBytes(value);
 
             values.emplace_back(bytes.begin(), bytes.end());
+            valueBindings.emplace_back(value.set, value.binding);
         }
 
         for (const RHIShaderResourceParameter& resource : parameters.GetResourceParams())
@@ -645,6 +653,7 @@ public:
     void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override
     {
         clearsBeforeDispatch.push_back(textureClears.size());
+        dispatches.emplace_back(boundShader, glm::uvec3(groupCountX, groupCountY, groupCountZ));
 
         ++dispatchCount;
     }
@@ -652,6 +661,7 @@ public:
     void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override
     {
         indirectDispatches.push_back(pIndirectBuffer);
+        indirectShaders.push_back(boundShader);
     }
 
     void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0) override

@@ -123,6 +123,8 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && settings.historyFrames >= 1 && settings.historyFrames <= 256
         && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
+        && static_cast<uint32_t>(settings.diffuseResolution)
+               <= static_cast<uint32_t>(VoxelGISettings::DiffuseResolution::Half)
         && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Hardware);
 }
 
@@ -195,6 +197,14 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     const char*       defaultReflections  = settings.reflections == VoxelGISettings::Reflections::Off  ? "false"
                                           : settings.reflections == VoxelGISettings::Reflections::Auto ? "auto"
                                                                                                        : "true";
+    const char* defaultResolution = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Full ? "full"
+                                  : settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half ? "half"
+                                                                                                         : "auto";
+    const std::string resolution  = config.GetString("voxel_gi_diffuse_resolution", defaultResolution);
+    valid &= resolution == "auto" || resolution == "full" || resolution == "half";
+    settings.diffuseResolution = resolution == "full"   ? VoxelGISettings::DiffuseResolution::Full
+                               : resolution == "half"   ? VoxelGISettings::DiffuseResolution::Half
+                                                        : VoxelGISettings::DiffuseResolution::Auto;
     const std::string reflections         = config.GetString("voxel_gi_reflections", defaultReflections);
     valid                                &= reflections == "auto" || reflections == "true" || reflections == "false";
     settings.reflections                  = reflections == "true"  ? VoxelGISettings::Reflections::On

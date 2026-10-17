@@ -73,6 +73,11 @@ public:
     {
         return m_valid;
     }
+    // Whether the last built frame traced diffuse rays at half resolution.
+    bool UsesHalfResolutionDiffuse() const
+    {
+        return m_halfDiffuse;
+    }
     uint32_t GetFrame() const
     {
         return m_frame;
@@ -83,7 +88,8 @@ public:
     }
 
 private:
-    bool PrepareHistory(uint32_t width, uint32_t height, bool bounce, bool reflections);
+    bool PrepareHistory(uint32_t width, uint32_t height, bool bounce, bool reflections, bool search, bool reference,
+                        bool budget);
     void BindGuides(RDGPassDescBase& pass) const;
     void Dispatch(RDGComputePassDesc&& pass);
 
@@ -98,7 +104,9 @@ private:
         Receiver,
         Bounce,
         BounceMoments,
-        Reflection, // Hit distance, luminance moments, history length; radiance is in Specular.rgb.
+        Reflection,   // Hit distance, luminance moments, history length; radiance is in Specular.rgb.
+        SearchWeight, // Geometry-only dense sky-filter denominator; zero means not cached.
+        Budget,       // Nonzero where the trace used the reduced settled ray budget.
         Count
     };
     RenderDevice* m_device;
@@ -129,9 +137,10 @@ private:
     VoxelGISettings           m_previousSettings;
     bool                      m_previousHardware{false};
     bool                      m_previousRayBounce{false};
+    bool                      m_halfDiffuse{false};
     bool                      m_previousReflections{false};
     glm::uvec2                m_extent{0};
-    uint64_t                  m_geometry{0}, m_environment{0};
+    uint64_t                  m_geometry{0}, m_environment{0}, m_surface{0};
     uint64_t                  m_radianceGeneration{0}, m_recordedRadianceGeneration{0};
     uint32_t                  m_bounceResponsiveFrames{0}; // Shared responsive window for both hit-radiance signals.
     uint32_t                  m_frame{0}, m_current{0};

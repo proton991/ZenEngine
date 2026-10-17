@@ -321,18 +321,29 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                          HybridGraphicsSP(pRenderDevice, "ForwardSoftwareShadowsCaptureSP", "SceneRenderer/offscreen.vert.spv",
                                           "SceneRenderer/forward_material_software_shadows_capture.frag.spv"));
     }
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceHalfSP", "VoxelGI/hybrid_trace_half.comp.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "HybridTraceHalfCountsSP", "VoxelGI/hybrid_trace_half_counts.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackSP", "VoxelGI/hybrid_trace_fallback.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackCountsSP",
+                                         "VoxelGI/hybrid_trace_fallback_counts.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridDiffuseUpsampleSP", "VoxelGI/hybrid_diffuse_upsample.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "HybridTemporalReferenceSP", "VoxelGI/hybrid_temporal_reference.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalCachedSP", "VoxelGI/hybrid_temporal_cached.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridFilterPrepareSP", "VoxelGI/hybrid_filter_prepare.comp.spv"));
     for (uint32_t iteration = 0; iteration < 5; ++iteration)
     {
         const HashMap<uint32_t, RHIShaderSpecializationValue> filterConstants{{0u, static_cast<int>(1u << iteration)}};
-        StoreProgram(ZEN_NEW() ComputeFileSP(
-            pRenderDevice, NameID(fmt::format("HybridFilter{}SP", iteration)),
-            iteration == 4 ? "VoxelGI/hybrid_filter_final.comp.spv" : "VoxelGI/hybrid_filter.comp.spv", filterConstants));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("HybridFilter{}SP", iteration)),
+                                             iteration == 4  ? "VoxelGI/hybrid_filter_final.comp.spv"
+                                             : iteration < 2 ? "VoxelGI/hybrid_filter_cached.comp.spv"
+                                                             : "VoxelGI/hybrid_filter.comp.spv",
+                                             filterConstants));
     }
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridSkySupportSP", "VoxelGI/hybrid_sky_support.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridSkySearchSP", "VoxelGI/hybrid_sky_search.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridSkySearchTiledSP", "VoxelGI/hybrid_sky_search_tiled.comp.spv"));
 
 
     if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)

@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--compute-reference-root', type=Path, required=True)
     parser.add_argument('--hardware-reference-root', type=Path, required=True)
     parser.add_argument('--reference-shaders', type=Path, help='Verified archived shader binaries for the canonical references')
+    parser.add_argument('--reference-exe', type=Path, help='Matching archived executable for the canonical references')
     parser.add_argument('--cameras', nargs='+', choices=('top', 'hall'), default=['top', 'hall'])
     parser.add_argument('--capture', action='store_true')
     parser.add_argument('--phases', nargs='+', choices=('static', 'switching', 'cache'), default=['static', 'switching', 'cache'])
@@ -47,11 +48,16 @@ def main():
     for camera in cameras:
         endpoints = {}
         hardware_reference = args.hardware_reference_root / f'papermill-{camera}-reference'
-        archived_reference = Path(str(hardware_reference) + '.inputs.json').exists()
-        if args.capture and not archived_reference:
-            capture(args, hardware_reference, 'papermill', camera, 'hardware', reference=True, compact=True)
-        validate_capture(args, hardware_reference, 'papermill', camera, 'hardware', True,
-                         shader_root=args.reference_shaders if archived_reference else None)
+        compute_reference = args.compute_reference_root / f'papermill-{camera}-reference'
+        for provider, reference in (('hardware', hardware_reference), ('voxel', compute_reference)):
+            archived_reference = Path(str(reference) + '.inputs.json').exists()
+            if args.capture and not archived_reference:
+                capture(args, reference, 'papermill', camera, provider, reference=True, compact=True)
+            reference_args = argparse.Namespace(**vars(args))
+            if archived_reference and args.reference_exe:
+                reference_args.exe = args.reference_exe.resolve()
+            validate_capture(reference_args, reference, 'papermill', camera, provider, True,
+                             shader_root=args.reference_shaders if archived_reference else None)
         for backend, overrides, mask in configurations if 'static' in args.phases else ():
             name = f'{camera}-{mask:02d}'
             prefix = args.output / name
@@ -71,8 +77,7 @@ def main():
                                     p99=float(np.quantile(abs(error), .99)),
                                     maximum=float(abs(error).max()))
             visibility_check['passed'] = visibility_check['rms'] <= .02 and visibility_check['p99'] <= .02
-            reference = (hardware_reference if mask & 1 else
-                         args.compute_reference_root / f'papermill-{camera}-reference')
+            reference = hardware_reference if mask & 1 else compute_reference
             sky = compare(prefix, reference)
             lighting = np.frombuffer(read_bytes(str(prefix) + '.lighting.bin'), '<f4').reshape(540, 960, 7, 4)
             composition_error = float(abs(lighting[:, :, 0, :3] - lighting[:, :, 1:5, :3].sum(2)).max())
@@ -106,8 +111,7 @@ def main():
                 routing = (first_metadata['hardware_feature_mask'] == mask
                            and metadata['hardware_feature_mask'] == mask)
                 finite = bool(np.isfinite(first).all() and np.isfinite(data).all())
-                reference = (hardware_reference if mask & 1 else
-                             args.compute_reference_root / f'papermill-{camera}-reference')
+                reference = hardware_reference if mask & 1 else compute_reference
                 sky = compare(settled, reference)
                 passed = reset and routing and finite and all(r['passed'] for r in sky.values())
                 name = f'{camera}-switch-{stage:02d}'
@@ -125,8 +129,10 @@ def main():
             folder = args.output / 'cache' / provider
             prefix = folder / 'half_wall'
             if args.capture and not (args.reuse_captures and Path(str(prefix) + '.inputs.json').exists()):
-                fixture_capture(args.exe, folder, ['half_wall'], provider=provider, rt=provider == 'hardware',
-                    indirect=1, backend='compute', feature_backends={'sky_cache': 'hardware' if mask else 'compute'},
+                # Keep cone bounce: the global backend selector also selects ray-hit bounce.
+                # Inherit Compute and override only the cache whose contribution is measured.
+                fixture_capture(args.exe, folder, ['half_wall'], provider='voxel', rt=provider == 'hardware',
+                    indirect=1, feature_backends={'sky_cache': 'hardware' if mask else 'compute'},
                     allow_present_baseline=args.allow_present_baseline)
                 compact(prefix)
             metadata, data = load(prefix)

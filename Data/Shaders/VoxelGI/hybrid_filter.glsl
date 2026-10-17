@@ -1,3 +1,4 @@
+layout(constant_id=0) const uint filterStep=1u;
 #include "hybrid_filter_common.glsl"
 layout(local_size_x=8,local_size_y=8) in;
 layout(set=1,binding=7) uniform sampler2D inputSpecular;
@@ -7,30 +8,21 @@ layout(set=1,binding=10,rgba16f) uniform writeonly image2D filteredSky;
 layout(set=1,binding=11,rgba16f) uniform writeonly image2D filteredSpecular;
 layout(set=1,binding=13,rgba32f) uniform writeonly image2D filteredVariance;
 layout(set=1,binding=15) uniform sampler2D inputBounce;
-layout(set=1,binding=16) uniform sampler2D bounceMoments;
 layout(set=1,binding=17) uniform sampler2D bounceHistory;
 layout(set=1,binding=18,rgba16f) uniform writeonly image2D filteredBounce;
 layout(set=1,binding=19) uniform sampler2D reflectionHistory;
 #ifdef FINAL_SKY_FILTER
+layout(set=1,binding=26) uniform sampler2D previousSearchWeight;
+layout(set=1,binding=27,r32f) uniform writeonly image2D nextSearchWeight;
+layout(std140,set=1,binding=28) uniform uHybridReuseData { uvec4 reuseData; };
 layout(std430,set=1,binding=21) buffer HybridSkySearchArgs { uint searchCount; uint searchX; uint searchY; uint searchZ; };
 layout(std430,set=1,binding=22) writeonly buffer HybridSkySearchPixels { uint searchPixels[]; };
 #include "hybrid_sky_support_bounds.glsl"
 #endif
-layout(constant_id=0) const uint filterStep=1u;
 // Bounce inputs are 1x1 placeholders unless ray-hit bounce is selected.
 vec4 Bounce(ivec2 p) { return hybrid.bounce.x!=0u ? texelFetch(inputBounce,p,0) : vec4(0); }
 float BounceLength(ivec2 p) { return hybrid.bounce.x!=0u ? texelFetch(bounceHistory,p,0).a : 0.0; }
 vec4 Reflection(ivec2 p) { return hybrid.reflection.x!=0u ? texelFetch(reflectionHistory,p,0) : vec4(0); }
-vec4 ReadVariance(ivec2 p)
-{
-    if(filterStep!=1u) return texelFetch(inputVariance,p,0);
-    vec4 m=texelFetch(moments,p,0);
-    vec2 b=hybrid.bounce.x!=0u ? texelFetch(bounceMoments,p,0).rg : vec2(0);
-    vec4 h=Reflection(p);
-    vec4 v=max(vec4(m.g-m.r*m.r,m.a-m.b*m.b,b.y-b.x*b.x,h.z-h.y*h.y),vec4(0));
-    vec4 lengths=vec4(texelFetch(historyLength,p,0).rg,BounceLength(p),h.w);
-    return v/max(lengths,vec4(1));
-}
 #ifdef FINAL_SKY_FILTER
 bool HasSkySupport(ivec2 p, vec3 geometric, vec3 position)
 {
@@ -44,11 +36,17 @@ bool HasSkySupport(ivec2 p, vec3 geometric, vec3 position)
 #endif
 void main()
 {
+#ifdef HYBRID_FILTER_CACHED
+    LoadFilterInputs();
+#endif
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
     if(!HybridInView(p)) return;
+#ifdef FINAL_SKY_FILTER
+    imageStore(nextSearchWeight,p,vec4(reuseData.x!=0u ? texelFetch(previousSearchWeight,p,0).r : 0.0));
+#endif
     vec4 center=texelFetch(inputSky,p,0), centerSpec=texelFetch(inputSpecular,p,0);
     vec4 centerBounce=Bounce(p);
-    uint identity=texelFetch(receiverSurface,p,0).g;
+    uint identity=FilterSurface(p).g;
     // Background has no receiver and is not consumed by lighting reconstruction.
     // In particular, it must not run the dense all-miss surface search.
     if(identity==0u)
@@ -59,7 +57,7 @@ void main()
         if(hybrid.bounce.x!=0u) imageStore(filteredBounce,p,centerBounce);
         return;
     }
-    vec3 position=FilterPosition(p), normal=HybridNormal(p), geometric=HybridGeometricNormal(p);
+    vec3 position=FilterPosition(p), normal=FilterNormal(p), geometric=FilterGeometricNormal(p);
     vec3 guide=SkyGuide(p);
     // Sky luminance and its variance are compared as ratios to the guide luminance.
     vec4 scale=vec4(1.0/HybridLuminance(guide),1,1,1);
@@ -71,19 +69,19 @@ void main()
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x)
     {
         ivec2 q=p+ivec2(x,y)*int(filterStep);
-        if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity) continue;
+        if(!HybridInView(q) || FilterSurface(q).g!=identity) continue;
         vec4 value=vec4(HybridLuminance(texelFetch(inputSky,q,0).rgb)/HybridLuminance(SkyGuide(q)),texelFetch(inputSpecular,q,0).a,
                         HybridLuminance(Bounce(q).rgb),HybridLuminance(texelFetch(inputSpecular,q,0).rgb));
         mean+=value; second+=value*value; count+=1.0;
     }
     mean/=max(count,1.0); second/=max(count,1.0);
-    vec4 variance=ReadVariance(p)*scale*scale;
+    vec4 variance=FilterVariance(p)*scale*scale;
     if(filterStep==1u)
         variance=mix(variance,max(second-mean*mean,vec4(0)),lessThan(lengths,vec4(4)));
     const float kernel[5]=float[5](1,4,6,4,1);
     vec4 sky=vec4(0), spec=vec4(0), total=vec4(0), varianceOut=vec4(0); vec3 bounce=vec3(0);
     vec4 centerValue=vec4(HybridLuminance(center.rgb)*scale.x,centerSpec.a,HybridLuminance(centerBounce.rgb),HybridLuminance(centerSpec.rgb));
-    float roughness=texelFetch(receiverRoughness,p,0).g;
+    float roughness=FilterRoughness(p);
     for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x)
     {
         ivec2 q=p+ivec2(x,y)*int(filterStep);
@@ -94,13 +92,13 @@ void main()
         vec3 sampleBounce=Bounce(q).rgb;
         vec4 sampleScale=vec4(1.0/HybridLuminance(sampleGuide),1,1,1);
         vec4 difference=abs(vec4(HybridLuminance(sampleSky.rgb)*sampleScale.x,sampleSpec.a,HybridLuminance(sampleBounce),HybridLuminance(sampleSpec.rgb))-centerValue);
-        vec4 neighborVariance=ReadVariance(q)*sampleScale*sampleScale;
+        vec4 neighborVariance=FilterVariance(q)*sampleScale*sampleScale;
         // Diffuse lighting must preserve the sharp visibility edges of small HDR sources.
         vec4 sigma=vec4(1.5,4,4,4)*sqrt(max(variance+neighborVariance,vec4(0)))+vec4(1e-4)*scale;
         vec4 w=kernel[x+2]*kernel[y+2]*normalWeight*exp(-difference/sigma);
         w.x=kernel[x+2]*kernel[y+2]*normalWeight*SkyWeight(sampleSky.rgb,sampleGuide,center.rgb,guide,sigma.x);
         // Smooth reflections keep a small footprint; roughness boundaries must not exchange lobes.
-        if(abs(roughness-texelFetch(receiverRoughness,q,0).g)>0.02
+        if(abs(roughness-FilterRoughness(q))>0.02
             || (float(filterStep)>max(1.0,roughness*roughness*128.0) && any(notEqual(q,p)))) w.a=0.0;
         varianceOut+=w*w*neighborVariance;
         sky+=w.x*vec4(sampleSky.rgb/sampleGuide,sampleSky.a);
@@ -108,21 +106,15 @@ void main()
         bounce+=w.z*sampleBounce;
     }
 #ifdef FINAL_SKY_FILTER
-    // Compute shares inputs between nearby receivers; hardware uses a packed queue.
-    // The support pass initializes the complete bitmap to zero before this pass.
+    // Both providers append only receivers that need the dense fallback.
     if(filterStep==16u && all(equal(sky.rgb,vec3(0))) && texelFetch(moments,p,0).r==0.0
         && HasSkySupport(p,geometric,position))
     {
         uint index=atomicAdd(searchCount,1u);
         uint pixel=uint(p.y*textureSize(inputSky,0).x+p.x);
-        if((hybrid.provider.z&1u)==0u)
-            searchPixels[pixel]=1u;
-        else
-        {
-            searchPixels[index]=pixel;
-            atomicMax(searchX,min(index+1u,65535u));
-            atomicMax(searchY,index/65535u+1u);
-        }
+        searchPixels[index]=pixel;
+        atomicMax(searchX,min(index+1u,65535u));
+        atomicMax(searchY,index/65535u+1u);
     }
 #endif
     imageStore(filteredVariance,p,varianceOut/max(total*total,vec4(1e-20))/(scale*scale));

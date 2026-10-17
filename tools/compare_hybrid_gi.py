@@ -18,6 +18,26 @@ def load(prefix):
     return m,np.frombuffer(read_bytes(str(prefix)+'.hybrid.bin'),'<f4').reshape(m['height'],m['width'],13,4).copy()
 
 
+def validate_reference(metadata, data, samples=65536):
+    """Check the accumulated reference window, including native companion captures.
+
+    Native motion/reset sequences keep a global frame index, so their metadata's
+    frame number alone cannot establish how many samples this reference contains.
+    """
+    per_frame = metadata.get('sample_count', 0)
+    valid = data[:, :, 8, 3] > 0
+    if (per_frame <= 4 or samples % per_frame or not valid.any()
+            or not metadata.get('temporal') or metadata.get('filter_iterations') != 0
+            or metadata.get('adaptive_sampling', False)
+            or metadata.get('sample_count_max', per_frame) != per_frame):
+        raise ValueError('Capture is not an unfiltered fixed-budget temporal reference')
+    frames = samples // per_frame
+    lengths = data[:, :, 7, 0][valid]
+    if not np.isfinite(data).all() or not np.allclose(lengths, frames, rtol=0, atol=1e-3):
+        raise ValueError(f'Reference needs {frames} accumulated frames; observed {lengths.min()}..{lengths.max()}')
+    return dict(samples_per_frame=per_frame, accumulated_frames=frames, samples=samples)
+
+
 def compare(candidate,reference,additional_regions=None,channel='sky',required=('all_receivers',)):
     cm,c=load(candidate);rm,r=load(reference)
     assert cm['projection_view_column_major']==rm['projection_view_column_major']

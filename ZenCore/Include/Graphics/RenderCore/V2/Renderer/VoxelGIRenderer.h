@@ -52,7 +52,8 @@ struct VoxelGISettings
     };
     BounceSource bounceSource{BounceSource::Auto};
     uint32_t     samples{4};
-    // Both triangle backends add two guided samples on reset and where the sky guide has support.
+    // Both triangle backends retain six rays for reset/dark/uncertain receivers;
+    // fully settled low-variance histories use the four-ray base.
     bool     adaptiveSampling{true};
     uint32_t accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
     uint32_t referenceSamples{0};              // Diagnostic: 0, 256, 1024 or 4096; static running mean, no spatial filter.
@@ -60,6 +61,17 @@ struct VoxelGISettings
     bool     temporal{true};
     bool     filter{true};
     bool     specularOcclusion{true};
+    // Diffuse (sky, source shadows, ray-hit bounce) rays per receiver. Half traces one rotating
+    // leader per 2x2 block and reconstructs the others; glossy specular stays at full resolution.
+    // Opt-in: half resolution fails the frozen P0 limits on several shipping views
+    // (Doc/HybridGI/NsightOptimizations.md), so full resolution remains the default.
+    enum class DiffuseResolution : uint32_t
+    {
+        Auto, // Half with the Compute trace; full with HW RT.
+        Full,
+        Half
+    };
+    DiffuseResolution diffuseResolution{DiffuseResolution::Full};
     enum class Reflections : uint32_t
     {
         Auto, // Radiance-cache reflections with either traversal backend.

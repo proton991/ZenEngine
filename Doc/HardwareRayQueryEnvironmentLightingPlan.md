@@ -325,6 +325,7 @@ Status (2026-10-13): accepted on the tested scope. All nine environments × two 
 | `voxel_gi_ray_provider=auto\|voxel\|hardware` | Compatibility input for archived tools; replaced in the editor by explicit backend selectors |
 | `voxel_gi_samples=1\|2\|4` | Base diffuse samples per pixel |
 | `voxel_gi_adaptive_sampling=true\|false` | P8 candidate: both triangle backends add two residual rays (guided, or environment without a guide) to the four-ray base on reset frames and where the previous sky or the angular guide has support. Reference accumulation retains its configured count. Captures record the effective budget, including fallback and mixed-provider cases. |
+| `voxel_gi_diffuse_resolution=full\|half\|auto` (default `full`) | Added 2026-10-16, opt-in: `half` traces diffuse rays for one rotating leader per 2x2 block with an upsample and a full-resolution fallback list; `auto` selects it only for the Compute trace. It is 1.7-1.8x faster for Compute at 1080p but fails the frozen P0 limits on 5 of 10 shipping views, so it is not a qualified preset ([record](HybridGI/NsightOptimizations.md#half-resolution-compute-diffuse-2026-10-16)). |
 | `voxel_gi_bounce_source=cone\|rays` | Diagnostic override of the preset's bounce source |
 | `voxel_gi_reflections` (`auto`, `true`, `false`; `auto` uses radiance-cache reflections with either triangle backend since 2026-10-14), `voxel_gi_specular_occlusion` | Enable `H` and `S` |
 | `voxel_gi_temporal`, `voxel_gi_filter` | Disable reprojection or spatial filtering, for tests and reference captures |
@@ -523,6 +524,8 @@ The timing and parity runs used executable SHA-256 `17d95783ac501c3882aaa78a1973
 The dominant recorded pass interval is now `HybridTrace`: 12.11 ms hall and 14.92 ms top. Sky-search intervals are 1.51/0.41 ms. These intervals include synchronization/overlap and must not be summed to derive frame time. Whole-renderer peak device-local allocation is 1,143.19 MiB in both views; this is not a GI-specific budget or a complete preset-memory qualification.
 
 ### Remaining P8 qualification
+
+The full Compute/HW RT Nsight candidate set is now under implementation; see the [candidate ledger and measured results](HybridGI/NsightOptimizations.md). This work does not mark P8 accepted before the unchanged quality and performance gates are evaluated.
 
 - Benchmark the final executable at the target extent on both providers with matched static, moving-light, rigid and deforming workloads, then complete the larger-grid, light-count, queue and preset matrix. The 64×40 motion correctness fixtures do not qualify production-scene update cost.
 - Measure and decide update policies for the new software BVH as well as hardware acceleration structures. The software BVH fully rebuilds on geometry revisions whenever an enabled feature uses Compute. Since 2026-10-15 it is neither built nor required when every enabled feature uses HW RT; those shaders bind one-element placeholders that miss every ray. Partial voxel updates, generation amortization, hardware refit/rebuild, compaction, scratch and async placement still need their recorded P8 decisions.

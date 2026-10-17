@@ -3,8 +3,8 @@
 The RT gate uses the frozen glossy S/hit-fraction limit (2% absolute) against the independent CUDA
 lobe reference (tools/ground_truth_specular.py, every second pixel), open PBR and static shipping
 limits, motion captures taken without a settling frame, and the light-change limits on the reflection
-channel. The reflected-emission comparison has no frozen limit and is reported. Compute results inform
-the P8 choice. Below-cutoff (roughness .1) noise is reported separately from the .2 glossy fixture.
+channel. The reflected-emission comparison has no frozen limit and is reported. Both triangle
+providers use these gates. Below-cutoff (roughness .1) noise is reported separately from the .2 glossy fixture.
 Capture runners restore engine.cfg and reject all validation errors; every capture finishes before the
 CUDA reference runs. Use --capture once, then re-analyze saved data.
 """
@@ -13,7 +13,7 @@ import hashlib
 import json
 from pathlib import Path
 import numpy as np
-from compare_hybrid_gi import compare, load
+from compare_hybrid_gi import compare, load, validate_reference
 from validate_hybrid_gi import run
 from validate_hybrid_bounce import light_changes, profile_cost
 
@@ -86,16 +86,19 @@ def capture(args):
     # Native captures finish before any independent CPU work; all config mutations are sequential.
     run(args.exe,args.output/'shipping',['glossy_floor','glossy_smooth'],reflection_motion=True,**options)
     run(args.exe,args.output/'shipping',['glossy_closed','forward_glossy_closed','glossy_open'],**options)
-    run(args.exe,args.output/'reference',['glossy_floor','glossy_smooth','glossy_closed'],reference_samples=1024,**options)
+    run(args.exe,args.output/'reference',['glossy_floor','glossy_smooth','glossy_closed'],reference_samples=256,frames=256,**options)
     run(args.exe,args.output/'occlusion',['glossy_floor','glossy_closed'],reflections=False,**options)
     run(args.exe,args.output/'pbr',['glossy_open'],mode=2,**options)
-    run(args.exe,args.output/'emissive',['glossy_emissive'],environment_lighting=False,reference_samples=1024,**options)
+    run(args.exe,args.output/'emissive',['glossy_emissive'],environment_lighting=False,reference_samples=256,frames=256,**options)
     run(args.exe,args.output/'zero-indirect',['glossy_closed'],**dict(options,indirect=0))
     # Moved, switched-off and continuously orbiting light near the glossy floor (P6 review).
     run(args.exe,args.output/'lights',['glossy_floor'],light_changes=True,**options)
 
 
 def analyze(root):
+    for name in ('glossy_floor','glossy_smooth','glossy_closed'):
+        validate_reference(*load(root/'reference'/name))
+    validate_reference(*load(root/'emissive/glossy_emissive'))
     reference=LobeReference(root)
     report=dict(lobe_reference=reference(root/'reference/glossy_floor'))
     report['lobe_reference']['passed']=report['lobe_reference']['S']['passed']
@@ -120,7 +123,8 @@ def analyze(root):
         for frame in (8,16,24,32):
             p=root/'shipping'/f'{name}-motion-frame{frame}'
             r=Path(str(p)+'-reference')
-            _,c=load(p); _,reference=load(r)
+            _,c=load(p); reference_metadata,reference=load(r)
+            validate_reference(reference_metadata,reference)
             valid=c[:,:,8,3]>0
             # Report the error in the reflected channel, including newly exposed pixels.
             result=compare(p,r,channel='reflection')
@@ -170,7 +174,7 @@ def main():
     if inputs.exists():report['provenance']=json.loads(inputs.read_text())
     (args.output/'reflection-results.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2),flush=True)
-    raise SystemExit(0 if report['passed'] or args.provider=='voxel' else 1)
+    raise SystemExit(0 if report['passed'] else 1)
 
 
 if __name__=='__main__':

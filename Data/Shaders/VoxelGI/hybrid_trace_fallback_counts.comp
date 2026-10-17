@@ -1,0 +1,5 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_TRACE_FALLBACK
+#define HYBRID_COUNT_RAYS
+#include "hybrid_trace.glsl"

@@ -179,6 +179,32 @@ TEST(VoxelGIRuntimeSettings, ReferenceSamplesAcceptOnlyTheDiagnosticBudgets)
     }
 }
 
+TEST(VoxelGIRuntimeSettings, DiffuseResolutionDefaultsToFullAndRejectsUnknownNames)
+{
+    EXPECT_EQ(VoxelGISettings{}.diffuseResolution, VoxelGISettings::DiffuseResolution::Full);
+    const std::pair<const char*, VoxelGISettings::DiffuseResolution> accepted[] = {
+        {"auto", VoxelGISettings::DiffuseResolution::Auto},
+        {"full", VoxelGISettings::DiffuseResolution::Full},
+        {"half", VoxelGISettings::DiffuseResolution::Half}};
+    for (const auto& [name, resolution] : accepted)
+    {
+        std::istringstream     stream(std::string("voxel_gi_diffuse_resolution=") + name + "\n");
+        platform::ConfigLoader config(stream);
+        VoxelGIRuntimeSettings settings;
+        ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings)) << name;
+        EXPECT_EQ(settings.cone.diffuseResolution, resolution) << name;
+    }
+    std::istringstream     stream("voxel_gi_diffuse_resolution=quarter\n");
+    platform::ConfigLoader config(stream);
+    VoxelGIRuntimeSettings settings;
+    settings.cone.diffuseResolution = VoxelGISettings::DiffuseResolution::Half;
+    EXPECT_FALSE(LoadVoxelGIRuntimeSettings(config, settings));
+    EXPECT_EQ(settings.cone.diffuseResolution, VoxelGISettings::DiffuseResolution::Half);
+    VoxelGISettings invalid;
+    invalid.diffuseResolution = static_cast<VoxelGISettings::DiffuseResolution>(3);
+    EXPECT_FALSE(ValidateVoxelGISettings(invalid));
+}
+
 TEST(VoxelGIRuntimeSettings, PresetsAllowExplicitOverridesAndRejectInvalidNamesTransactionally)
 {
     VoxelGIRuntimeSettings settings;

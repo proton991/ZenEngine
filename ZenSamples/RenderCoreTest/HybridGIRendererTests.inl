@@ -6,16 +6,22 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
+          {"HybridTraceHalfSP", "VoxelGI/hybrid_trace_half.comp.spv"},
+          {"HybridTraceHalfCountsSP", "VoxelGI/hybrid_trace_half_counts.comp.spv"},
+          {"HybridTraceFallbackSP", "VoxelGI/hybrid_trace_fallback.comp.spv"},
+          {"HybridTraceFallbackCountsSP", "VoxelGI/hybrid_trace_fallback_counts.comp.spv"},
+          {"HybridDiffuseUpsampleSP", "VoxelGI/hybrid_diffuse_upsample.comp.spv"},
           {"HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"},
+          {"HybridTemporalReferenceSP", "VoxelGI/hybrid_temporal_reference.comp.spv"},
           {"HybridTemporalCachedSP", "VoxelGI/hybrid_temporal_cached.comp.spv"},
-          {"HybridFilter0SP", "VoxelGI/hybrid_filter.comp.spv"},
-          {"HybridFilter1SP", "VoxelGI/hybrid_filter.comp.spv"},
+          {"HybridFilterPrepareSP", "VoxelGI/hybrid_filter_prepare.comp.spv"},
+          {"HybridFilter0SP", "VoxelGI/hybrid_filter_cached.comp.spv"},
+          {"HybridFilter1SP", "VoxelGI/hybrid_filter_cached.comp.spv"},
           {"HybridFilter2SP", "VoxelGI/hybrid_filter.comp.spv"},
           {"HybridFilter3SP", "VoxelGI/hybrid_filter.comp.spv"},
           {"HybridFilter4SP", "VoxelGI/hybrid_filter_final.comp.spv"},
           {"HybridSkySupportSP", "VoxelGI/hybrid_sky_support.comp.spv"},
           {"HybridSkySearchSP", "VoxelGI/hybrid_sky_search.comp.spv"},
-          {"HybridSkySearchTiledSP", "VoxelGI/hybrid_sky_search_tiled.comp.spv"},
           {"VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv"},
           {"VoxelFilterRadianceSP", "VoxelGI/filter_radiance.comp.spv"},
           {"VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv"},
@@ -56,6 +62,8 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     bounceSettings.bounceSource = VoxelGISettings::BounceSource::Rays;
     // Exercise reflected-hit histories on the compute-only test device.
     bounceSettings.reflections = VoxelGISettings::Reflections::On;
+    // Opt into half-resolution diffuse to exercise its trace, upsample and fallback passes.
+    bounceSettings.diffuseResolution = VoxelGISettings::DiffuseResolution::Half;
     ASSERT_TRUE(gi.SetSettings(bounceSettings));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
@@ -64,7 +72,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     HybridGIRenderer*      first = nullptr;
     HeapVector<RHIBuffer*> vertexGenerations;
     vertexGenerations.push_back(sceneInputs.vertices);
-    for (uint32_t frame = 0; frame < 16; ++frame)
+    for (uint32_t frame = 0; frame < 22; ++frame)
     {
         SCOPED_TRACE(frame);
         RenderGraph* graph = device->GetCurrentFrameRDG();
@@ -133,6 +141,19 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
             changed.adaptiveSampling = false;
             ASSERT_TRUE(gi.SetSettings(changed));
         }
+        if (frame == 16)
+        {
+            // Ordinary camera motion keeps temporal history, but same-pixel
+            // geometry weights and settled sampling budgets must not reuse it.
+            sceneInputs.camera.projViewMatrix[3][0] += 0.01f;
+        }
+        if (frame == 18 || frame == 20)
+        {
+            // Enter and leave FP32 reference history without keeping samples from the replaced format.
+            VoxelGISettings changed  = gi.GetSettings();
+            changed.referenceSamples = frame == 18 ? 256 : 0;
+            ASSERT_TRUE(gi.SetSettings(changed));
+        }
         if (frame >= 1 && frame <= 3)
         {
             // Replace the immutable vertex generation without replacing the scene facade.
@@ -192,9 +213,10 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         rhi->failTextureCreationAt = 0;
         EXPECT_EQ(gi.HasPreviousRadiance(), frame != 14);
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
-        EXPECT_EQ(hybrid->WereRayCountsRecorded(), frame == 15);
-        EXPECT_EQ(hybrid->IsHistoryValid(), frame == 1 || frame == 5 || (frame >= 9 && frame != 15));
-        if (frame == 2 || frame == 6 || frame == 15)
+        EXPECT_EQ(hybrid->WereRayCountsRecorded(), frame >= 15);
+        EXPECT_EQ(hybrid->IsHistoryValid(),
+                  frame == 1 || frame == 5 || (frame >= 9 && frame != 15 && frame != 18 && frame != 20));
+        if (frame == 2 || frame == 6 || frame == 15 || frame == 18 || frame == 20)
         {
             EXPECT_STREQ(hybrid->GetResetReason(), "settings");
         }
@@ -202,21 +224,85 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
         {
             EXPECT_STREQ(hybrid->GetResetReason(), "environment");
         }
+        // Compute traces diffuse at half resolution only with valid history, outside reference mode.
+        const bool half = hybrid->IsHistoryValid() && frame != 18 && frame != 19;
+        EXPECT_EQ(hybrid->UsesHalfResolutionDiffuse(), half);
         const uint32_t before = hybrid->GetFrame();
         ASSERT_TRUE(graph->End()) << graph->GetResult().message;
         const bool accepted = frame != 1;
         if (accepted)
         {
-            const size_t firstValue = rhi->graphics.values.size();
+            const size_t firstValue    = rhi->graphics.values.size();
+            const size_t firstDispatch = rhi->graphics.dispatches.size();
+            const size_t firstIndirect = rhi->graphics.indirectShaders.size();
             ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
-            bool foundUniforms = false;
+            uint32_t   referenceDispatches = 0;
+            uint32_t   fullTraces = 0, halfTraces = 0, upsamples = 0, fallbacks = 0;
+            const auto guideGroups = glm::uvec3((view.width + 15u) / 16u, (view.height + 15u) / 16u, 1u);
+            for (size_t index = firstDispatch; index < rhi->graphics.dispatches.size(); ++index)
+            {
+                const std::pair<RHIShader*, glm::uvec3>& dispatch = rhi->graphics.dispatches[index];
+                const std::string                        shader =
+                    dispatch.first != nullptr ? dispatch.first->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)]
+                                                                     : std::string();
+                if (shader == "VoxelGI/hybrid_temporal_reference.comp.spv")
+                {
+                    EXPECT_EQ(dispatch.second, glm::uvec3((view.width + 7u) / 8u, (view.height + 7u) / 8u, 1u));
+                    ++referenceDispatches;
+                }
+                // The trace runs one group per guide tile; the upsample one per 8x8 pixels.
+                if (shader == "VoxelGI/hybrid_trace.comp.spv" || shader == "VoxelGI/hybrid_trace_counts.comp.spv")
+                {
+                    EXPECT_EQ(dispatch.second, guideGroups);
+                    ++fullTraces;
+                }
+                if (shader == "VoxelGI/hybrid_trace_half.comp.spv" || shader == "VoxelGI/hybrid_trace_half_counts.comp.spv")
+                {
+                    EXPECT_EQ(dispatch.second, guideGroups);
+                    ++halfTraces;
+                }
+                if (shader == "VoxelGI/hybrid_diffuse_upsample.comp.spv")
+                {
+                    EXPECT_EQ(dispatch.second, glm::uvec3((view.width + 7u) / 8u, (view.height + 7u) / 8u, 1u));
+                    ++upsamples;
+                }
+            }
+            // The fallback pass is dispatched indirectly over the upsample's frame-wide list.
+            for (size_t index = firstIndirect; index < rhi->graphics.indirectShaders.size(); ++index)
+            {
+                RHIShader* const  shader = rhi->graphics.indirectShaders[index];
+                const std::string file =
+                    shader != nullptr ? shader->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] : "";
+                if (file == "VoxelGI/hybrid_trace_fallback.comp.spv" || file == "VoxelGI/hybrid_trace_fallback_counts.comp.spv")
+                {
+                    ++fallbacks;
+                }
+            }
+            EXPECT_EQ(referenceDispatches, frame == 18 || frame == 19 ? 1u : 0u);
+            EXPECT_EQ(fullTraces, half ? 0u : 1u);
+            EXPECT_EQ(halfTraces, half ? 1u : 0u);
+            EXPECT_EQ(upsamples, half ? 1u : 0u);
+            EXPECT_EQ(fallbacks, half ? 1u : 0u);
+            bool     foundUniforms = false;
+            uint32_t reuseValues   = 0;
             for (size_t value = firstValue; value < rhi->graphics.values.size(); ++value)
             {
+                if (rhi->graphics.valueBindings[value] == glm::uvec2(1, 28))
+                {
+                    ASSERT_EQ(rhi->graphics.values[value].size(), sizeof(glm::uvec4));
+                    glm::uvec4 reuse;
+                    std::memcpy(&reuse, rhi->graphics.values[value].data(), sizeof(reuse));
+                    const uint32_t expected =
+                        frame == 5 || (frame >= 9 && frame <= 14) || frame == 17 || frame == 19 || frame == 21 ? 1u : 0u;
+                    EXPECT_EQ(reuse, glm::uvec4(frame == 19 ? 0u : expected, expected, 0u, 0u));
+                    ++reuseValues;
+                }
                 if (rhi->graphics.values[value].size() == sizeof(HybridGIUniformData))
                 {
                     HybridGIUniformData uniforms;
                     std::memcpy(&uniforms, rhi->graphics.values[value].data(), sizeof(uniforms));
                     EXPECT_EQ(uniforms.sampling.w, hybrid->IsHistoryValid() ? 1u : 0u);
+                    EXPECT_EQ(uniforms.rejection.w, frame == 18 || frame == 19 ? 1.0f : 0.0f);
                     // Only steady history and a settings reset after a successful frame can reuse the guide.
                     // Startup, failed-frame recovery, a new view, resize, environment and scene resets cannot.
                     EXPECT_EQ(uniforms.provider.y, frame == 5 || frame == 6 || frame >= 9 ? 1u : 0u);
@@ -227,18 +313,24 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
                     {
                         // An injection change keeps bounce history for the temporal pass to test; intensity
                         // and source changes reset it. None of them touches sky.
-                        EXPECT_EQ(uniforms.sampling.w, frame == 15 ? 0u : 1u);
-                        EXPECT_EQ(uniforms.bounce.y, frame == 11 || frame == 12 || frame == 14 || frame == 15 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.sampling.w, frame == 15 || frame == 18 || frame == 20 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.bounce.y,
+                                  frame == 11 || frame == 12 || frame == 14 || frame == 15 || frame == 18 || frame == 20 ? 0u
+                                                                                                                         : 1u);
                         EXPECT_EQ(uniforms.bounce.z, 1u);
                         // Only the injection frame measures the change between the caches.
                         EXPECT_EQ(uniforms.bounce.w, frame == 9 ? 1u : 0u);
-                        EXPECT_EQ(uniforms.reflection.y, frame == 11 || frame == 13 || frame == 14 || frame == 15 ? 0u : 1u);
+                        EXPECT_EQ(uniforms.reflection.y,
+                                  frame == 11 || frame == 13 || frame == 14 || frame == 15 || frame == 18 || frame == 20 ? 0u
+                                                                                                                         : 1u);
                         EXPECT_EQ(uniforms.reflection.w, frame == 9 ? 1u : 0u);
                     }
                     foundUniforms = true;
                 }
             }
             EXPECT_TRUE(foundUniforms);
+            // The trace, the half-resolution fallback and the final filter bind it; reference captures skip the filter.
+            EXPECT_EQ(reuseValues, frame == 18 || frame == 19 ? 1u : half ? 3u : 2u);
         }
         renderer.OnRenderGraphExecuted(accepted);
         gi.OnRenderGraphExecuted(accepted);

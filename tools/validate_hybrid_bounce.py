@@ -1,6 +1,6 @@
 """P5 bounce gate: the checks the P5 exit and the review decisions of 2026-10-10 require, once per provider.
 
-- Fixtures (128^3, uniform .5 albedo, one point light, no environment): cone, ray and 64x1024-sample
+- Fixtures (128^3, uniform .5 albedo, one point light, no environment): cone, ray and 256x256-sample
   reference captures of the room and thin wall. Gates: one-bounce bias against the independent
   full-image Mitsuba reference on CUDA (tools/ground_truth_bounce.py, checked first against its analytic
   fixtures), shipping bounce limits, thin-wall leakage, and the light-change limits (move, off, emissive
@@ -10,8 +10,8 @@
   Ray bounce is gated on the composed diffuse D_sky + D_bounce; bounce-only errors and the cone
   comparison are reported.
 
-The plan's P5 exit gates the RT tier; the compute tier's results are measurements for the P8 choice, so
-Sponza does not gate it. Pass timings come from the debug build with validation and only compare
+The software-triangle amendment applies the same bounce gates to both providers.
+Pass timings use the supplied build with validation and only compare
 cone with ray bounce. Limits are frozen; failed gates are reported and return failure.
 """
 import argparse
@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 import numpy as np
-from compare_hybrid_gi import compare, load
+from compare_hybrid_gi import compare, load, validate_reference
 from validate_hybrid_gi import run
 
 TOOLS=Path(__file__).resolve().parent
@@ -79,6 +79,7 @@ def light_changes(prefix, channel='bounce'):
     report={}
     for stage,frames in STAGES.items():
         base=str(prefix)+'-lights-'+stage
+        validate_reference(*load(base+'-reference'))
         before_meta,before=load(base+'-before')
         for frame in frames:
             current_meta,current=load(f'{base}-frame{frame}')
@@ -97,14 +98,14 @@ def light_changes(prefix, channel='bounce'):
 
 FIXTURES=['point_light_room','thin_wall_light']
 CAMERAS=('top','hall')
-SPONZA=(('cone','cone',0),('rays','rays',0),('reference','rays',1024))
+SPONZA=(('cone','cone',0),('rays','rays',0),('reference','rays',256))
 
 
 def capture_fixtures(args, root):
-    for source,reference in (('cone',0),('rays',0),('rays',1024)):
+    for source,reference in (('cone',0),('rays',0),('rays',256)):
         folder=root/('reference' if reference else source)
         run(args.exe,folder,FIXTURES,provider=args.provider,rt=args.provider=='hardware',indirect=1,gpu=args.gpu,
-            reference_samples=reference,bounce_source=source,resolution=128,environment_lighting=False,shadows=True,
+            reference_samples=reference,frames=256 if reference else 64,bounce_source=source,resolution=128,environment_lighting=False,shadows=True,
             light_changes=source=='rays' and reference==0,width=args.width,height=args.height,
             allow_present_baseline=args.allow_present_baseline)
     # Forward composition of ray bounce: finite output and exact component sums (asserted by run).
@@ -118,13 +119,15 @@ def capture_sponza(args, root):
         for name,source,reference in SPONZA:
             subprocess.run([sys.executable,str(TOOLS/'capture_hybrid_gi.py'),'--exe',str(args.exe),'--scene',str(args.sponza),
                             '--output',str(root/'sponza'/f'{camera}-{name}'),'--camera',camera,'--provider',args.provider,
-                            '--bounce','1','--bounce-source',source,'--reference-samples',str(reference)]
+                            '--bounce','1','--bounce-source',source,'--reference-samples',str(reference),
+                            '--frames','256' if reference else '64']
                            +(['--rt'] if args.provider=='hardware' else []),check=True)
 
 
 def fixtures(root, independent):
     report={}
     for name in FIXTURES:
+        validate_reference(*load(root/'reference'/name))
         result=dict(shipping=compare(root/'rays'/name,root/'reference'/name,channel='bounce'),
                     cone=compare(root/'cone'/name,root/'reference'/name,channel='bounce'),
                     costs={source:profile_cost(root/source/name) for source in ('cone','rays')},
@@ -145,6 +148,7 @@ def sponza(root):
     report={}
     for camera in CAMERAS:
         prefixes={name:root/'sponza'/f'{camera}-{name}' for name,_,_ in SPONZA}
+        validate_reference(*load(prefixes['reference']))
         quality={source:{channel:compare(prefixes[source],prefixes['reference'],channel=channel)
                          for channel in ('diffuse','bounce')} for source in ('cone','rays')}
         _,reference=load(prefixes['reference'])
@@ -179,8 +183,7 @@ def main():
     gates=[v['passed'] for v in report['fixtures'].values()]
     if args.sponza:
         report['sponza']=sponza(root)
-        if args.provider=='hardware':
-            gates+=[v['passed'] for v in report['sponza'].values()]
+        gates+=[v['passed'] for v in report['sponza'].values()]
     report['passed']=all(gates)
     (root/'bounce-results.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2),flush=True)

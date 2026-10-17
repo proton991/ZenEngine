@@ -8,7 +8,6 @@ layout(set=1,binding=2,r32f) uniform writeonly image2D skySupport;
 layout(set=1,binding=4) uniform usampler2D receiverSurface;
 layout(set=1,binding=5) uniform sampler2D filterPosition;
 layout(std430,set=1,binding=21) writeonly buffer HybridSkySearchArgs { uint searchCount; uint searchX; uint searchY; uint searchZ; };
-layout(std430,set=1,binding=22) writeonly buffer HybridSkySearchPixels { uint searchPixels[]; };
 layout(std430,set=1,binding=23) writeonly buffer HybridSkySupportBounds { vec4 supportBounds[]; };
 shared uint nonzero;
 shared uint bounds[36];
@@ -30,7 +29,6 @@ void main()
     if(all(equal(p,ivec2(0)))) { searchCount=0u; searchX=0u; searchY=1u; searchZ=1u; }
     if(all(lessThan(p,textureSize(inputSky,0))))
     {
-        searchPixels[p.y*textureSize(inputSky,0).x+p.x]=0u;
         // Include visibility and variance so skipping an empty footprint preserves
         // every sky output, including the diagnostic alpha and propagated variance.
         if(any(notEqual(texelFetch(inputSky,p,0),vec4(0))) || texelFetch(inputVariance,p,0).x!=0.0)

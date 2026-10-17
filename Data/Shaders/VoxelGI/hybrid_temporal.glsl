@@ -15,11 +15,15 @@ layout(set=1,binding=12) uniform sampler2D previousPosition;
 layout(set=1,binding=13) uniform sampler2D previousNormal;
 layout(set=1,binding=14) uniform usampler2D previousReceiver;
 layout(set=1,binding=15,rgba32f) uniform writeonly image2D nextSky;
+#ifdef HYBRID_REFERENCE_HISTORY
+layout(set=1,binding=16,rgba32f) uniform writeonly image2D nextSpecular;
+#else
 layout(set=1,binding=16,rgba16f) uniform writeonly image2D nextSpecular;
+#endif
 layout(set=1,binding=17,rgba32f) uniform writeonly image2D nextMoments;
 layout(set=1,binding=18,rgba16f) uniform writeonly image2D nextLength;
 layout(set=1,binding=19,rgba32f) uniform writeonly image2D nextPosition;
-layout(set=1,binding=20,rgba16f) uniform writeonly image2D nextNormal;
+layout(set=1,binding=20,rg16f) uniform writeonly image2D nextNormal;
 layout(set=1,binding=21,rg32ui) uniform writeonly uimage2D nextReceiver;
 layout(set=1,binding=25) uniform sampler2D rawBounce;
 layout(set=1,binding=26) uniform sampler2D previousBounce;
@@ -31,6 +35,13 @@ layout(set=1,binding=31) uniform sampler2D rawReflection;
 layout(set=1,binding=32) uniform sampler2D rawReflectionPrevious;
 layout(set=1,binding=33) uniform sampler2D previousReflection;
 layout(set=1,binding=34,rgba32f) uniform writeonly image2D nextReflection;
+vec4 PreviousNormals(ivec2 p)
+{
+    // Receiver already preserves the geometric normal. Reconstruct its encoded
+    // FP16 precision, avoiding a duplicate pair of history channels.
+    vec2 geometric=EncodeGBufferNormal(DecodeGBufferNormal(unpackUnorm2x16(texelFetch(previousReceiver,p,0).r)));
+    return vec4(texelFetch(previousNormal,p,0).rg,unpackHalf2x16(packHalf2x16(geometric)));
+}
 #ifdef HYBRID_CACHE_HISTORY_GUIDES
 // A 16x16 group reuses the exact receiver guides in its 9x9 responsive-history
 // neighbourhood. Two or three loads per lane replace up to 81 position reconstructions.
@@ -129,7 +140,7 @@ vec4 ReconstructReflection(ivec2 p, vec3 position, vec3 n, vec3 ng, vec3 view, u
             ivec2 q=base+ivec2(x,y);
             if(!HybridInView(q) || texelFetch(previousReceiver,q,0).g!=identity) continue;
             vec3 oldPosition=texelFetch(previousPosition,q,0).xyz;
-            vec4 normals=texelFetch(previousNormal,q,0);
+            vec4 normals=PreviousNormals(q);
             if(abs(dot(oldPosition-position,ng))>hybrid.rejection.x*max(1.0,length(position-sceneUbo.viewPosition.xyz))
                 || dot(DecodeGBufferNormal(normals.rg),n)<0.99 || dot(DecodeGBufferNormal(normals.ba),ng)<0.99
                 || abs(texelFetch(previousLength,q,0).a-roughness)>0.02) continue;
@@ -203,7 +214,7 @@ void main()
             if(!HybridInView(q)) continue;
             if(texelFetch(previousReceiver,q,0).g!=identity.g) { reason=3.0; continue; }
             vec3 oldPosition=texelFetch(previousPosition,q,0).xyz;
-            vec4 oldNormals=texelFetch(previousNormal,q,0);
+            vec4 oldNormals=PreviousNormals(q);
             float planeDistance=abs(dot(oldPosition-position,ng));
             float threshold=hybrid.rejection.x*max(1.0,length(position-sceneUbo.viewPosition.xyz));
             if(planeDistance>threshold || dot(DecodeGBufferNormal(oldNormals.rg),n)<0.9
@@ -275,7 +286,7 @@ void main()
     }
     imageStore(nextSky,p,sky); imageStore(nextSpecular,p,spec);
     imageStore(nextMoments,p,moments); imageStore(nextLength,p,vec4(lengths,reason,roughness));
-    imageStore(nextPosition,p,vec4(position,texelFetch(receiverDepth,p,0).r));
-    imageStore(nextNormal,p,vec4(EncodeGBufferNormal(n),EncodeGBufferNormal(ng)));
+    imageStore(nextPosition,p,vec4(position,roughness));
+    imageStore(nextNormal,p,vec4(EncodeGBufferNormal(n),0,0));
     imageStore(nextReceiver,p,uvec4(identity,0,0));
 }

@@ -59,7 +59,7 @@ def main():
     parser.add_argument('--history-frames', type=int, default=32, help='Temporal history length (frozen preset: 32)')
     parser.add_argument('--bounce', type=float, default=0)
     parser.add_argument('--bounce-source', choices=('auto', 'cone', 'rays'), default='cone',
-                        help='auto, the engine default, resolves to rays with hardware queries and to cone otherwise')
+                        help='auto, the engine default, resolves to triangle ray hits on both providers')
     parser.add_argument('--environment', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--environment-texture', default='papermill.ktx',
                         help='Environment path, relative to Data/Textures or absolute')
@@ -154,7 +154,8 @@ def main():
         config.write_bytes(changed)
         with Path(str(prefix) + '.log').open('w') as log:
             result = subprocess.run(command, cwd=ROOT, env=environment, stdout=log,
-                                    stderr=subprocess.STDOUT, timeout=1200 if args.stability else 600)
+                                    stderr=subprocess.STDOUT,
+                                    timeout=3600 if args.stability or args.camera_motion else 1800 if args.reference_samples else 600)
         assert result.returncode == 0, f'Capture failed; inspect {prefix}.log'
     finally:
         if config.read_bytes() != changed:

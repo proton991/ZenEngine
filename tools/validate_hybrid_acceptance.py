@@ -1,7 +1,7 @@
 """Reproduce the frozen Sponza static and reset-settling acceptance gates.
 
-Static hardware captures gate composed diffuse with ray-hit bounce (P5 decision 2).
-Compute captures gate sky with the shipping cone default. Sky and bounce remain separately
+Both triangle providers gate composed diffuse with ray-hit bounce (P5 and the
+2026-10-14 software-triangle amendment). Sky and bounce remain separately
 reported. Reset-settling gates remain on sky; the static P5 amendment does not
 silently change those limits. Independent sky correctness is checked separately
 by ground_truth_sweep.py. Run config-mutating capture tools sequentially.
@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 from capture_hybrid_gi import ROOT, CAMERAS as CAMERA_MATRICES, fingerprint
-from compare_hybrid_gi import compare, load
+from compare_hybrid_gi import compare, load, validate_reference
 from ground_truth_sweep import CAMERAS, ENVIRONMENTS
 
 SHIPPING_ENVIRONMENTS = ('papermill', 'kloppenheim', 'qwantani', 'hotel', 'carpentry')
@@ -25,8 +25,10 @@ FRAMES = (1, 4, 8, 32)
 
 
 def capture(args, prefix, environment, camera, provider, reference=False, settling=False, motion=False,
-            reference_samples=1024, frames=64, sky_only=False, compact=False, backend=None, feature_backends=(),
+            reference_samples=None, frames=None, sky_only=False, compact=False, backend=None, feature_backends=(),
             strip_normal_maps=False, feature_switching=False):
+    reference_samples = reference_samples or getattr(args, 'reference_samples', 256)
+    frames = frames or (65536 // reference_samples if reference else 64)
     command = [sys.executable, str(ROOT / 'tools/capture_hybrid_gi.py'),
                '--exe', str(args.exe), '--scene', str(args.scene), '--output', str(prefix),
                '--camera', camera, '--provider', provider, '--environment-texture', ENVIRONMENTS[environment], '--frames', str(frames),
@@ -47,15 +49,19 @@ def capture(args, prefix, environment, camera, provider, reference=False, settli
     if provider == 'hardware' or backend == 'hardware' or any(v.endswith('=hardware') for v in feature_backends):
         command.append('--rt')
     if settling:
-        command += ['--stability', '--provider-switching']
+        command.append('--stability')
+        if provider == 'hardware':
+            command.append('--provider-switching')
     if motion:
         command.append('--camera-motion')
     subprocess.run(command, cwd=ROOT, check=True)
 
 
-def validate_capture(args, prefix, environment, camera, provider, reference=False, reference_samples=1024, frames=64,
+def validate_capture(args, prefix, environment, camera, provider, reference=False, reference_samples=None, frames=None,
                      sky_only=False, feature_mask=None, strip_normal_maps=False, shader_root=None):
     """Reject incomplete, stale or differently configured inputs before comparing."""
+    reference_samples = reference_samples or getattr(args, 'reference_samples', 256)
+    frames = frames or (65536 // reference_samples if reference else 64)
     inputs = json.loads(Path(str(prefix) + '.inputs.json').read_text())
     # The caller may supply the archived matching executable after a later build
     # replaces the original bin/ path. Its content hash, checked below, is authoritative.
@@ -95,23 +101,22 @@ def validate_capture(args, prefix, environment, camera, provider, reference=Fals
     expected = dict(width=960, height=540, frame=frames, ray_provider=provider, sample_seed=0,
                     sample_count=reference_samples if reference else 4, indirect_intensity=0 if sky_only else 1,
                     history_limit=256 if reference else 32, filter_iterations=0 if reference else 5,
-                    temporal=True, reflections=provider == 'hardware' and not sky_only,
-                    bounce_source='rays' if provider == 'hardware' and not sky_only else 'cone')
+                    temporal=True, reflections=not sky_only,
+                    bounce_source='cone' if sky_only else 'rays')
     if feature_mask is not None:
         expected.update(hardware_feature_mask=feature_mask, requested_hardware_feature_mask=feature_mask,
                         ray_provider='hardware' if feature_mask else 'voxel',
-                        receiver_position='raster_fp32' if feature_mask & 27 else 'depth',
-                        reflections=True, bounce_source='rays' if feature_mask & 8 else 'cone')
+                        receiver_position='raster_fp32', reflections=True, bounce_source='rays')
     if 'adaptive_sampling' in metadata:
-        hardware_sky = bool(feature_mask & 1) if feature_mask is not None else provider == 'hardware'
-        adaptive = (settings.get('voxel_gi_adaptive_sampling', 'true') == 'true'
-                    and not hardware_sky and not reference)
+        adaptive = settings.get('voxel_gi_adaptive_sampling', 'true') == 'true' and not reference
         expected.update(adaptive_sampling=adaptive, sample_count_max=reference_samples if reference else 6 if adaptive else 4,
                         angular_guide_resolution=8)
     if any(metadata.get(key) != value for key, value in expected.items()):
         raise ValueError(f'Wrong capture metadata for {prefix}')
     if not np.isfinite(data).all() or not (data[:, :, 8, 3] > 0).any():
         raise ValueError(f'Invalid receiver data for {prefix}')
+    if reference:
+        validate_reference(metadata, data, reference_samples * frames)
     lines = Path(str(prefix) + '.log').read_text(errors='replace').splitlines()
     errors = [line for line in lines if '[error]' in line or 'VUID-' in line or 'SYNC-HAZARD' in line]
     known = [line for line in errors if 'SYNC-HAZARD-PRESENT-AFTER-WRITE' in line]
@@ -133,14 +138,29 @@ def passed(regions):
     return all(value['passed'] for value in regions.values())
 
 
+def archived_reference(args, environment, camera, provider):
+    """Reuse an explicitly selected reference only with its matching provenance."""
+    prefix = args.reference_root / provider / 'static' / f'{environment}-{camera}-reference'
+    reference_args = argparse.Namespace(**vars(args))
+    if args.reference_exe:
+        reference_args.exe = args.reference_exe.resolve()
+    evidence = validate_capture(reference_args, prefix, environment, camera, provider, True,
+                                shader_root=args.reference_shaders)
+    return prefix, evidence
+
+
 def static_view(args, environment, camera):
     prefix = args.output / 'static' / f'{environment}-{camera}'
     reference = Path(str(prefix) + '-reference')
+    reference_evidence = None
+    if getattr(args, 'reference_root', None):
+        reference, reference_evidence = archived_reference(args, environment, camera, args.provider)
     if args.capture:
-        capture(args, reference, environment, camera, args.provider, reference=True)
+        if reference_evidence is None:
+            capture(args, reference, environment, camera, args.provider, reference=True)
         capture(args, prefix, environment, camera, args.provider)
-    evidence = [validate_capture(args, path, environment, camera, args.provider, ref)
-                for path, ref in ((prefix, False), (reference, True))]
+    evidence = [validate_capture(args, prefix, environment, camera, args.provider),
+                reference_evidence or validate_capture(args, reference, environment, camera, args.provider, True)]
     quality = metrics(prefix, reference)
     _, data = load(reference)
     mask = data[:, :, 8, 3] > 0
@@ -148,7 +168,7 @@ def static_view(args, environment, camera):
     bounce = float(data[:, :, 3, :3][mask].mean())
     if sky <= 1e-12:
         raise ValueError(f'Unlit reference cannot establish static sky acceptance: {reference}')
-    channel = 'diffuse' if args.provider == 'hardware' else 'sky'
+    channel = 'diffuse'
     return dict(quality=quality, bounce_share=bounce / max(sky + bounce, 1e-20), evidence=evidence,
                 gated_channel=channel, gated=environment in SHIPPING_ENVIRONMENTS, passed=passed(quality[channel]))
 
@@ -156,15 +176,21 @@ def static_view(args, environment, camera):
 def settling_view(args, environment, camera):
     prefix = args.output / 'settling' / f'{environment}-{camera}'
     voxel_reference = Path(str(prefix) + '-voxel-reference')
+    voxel_evidence = None
+    if args.provider == 'hardware' and getattr(args, 'reference_root', None):
+        voxel_reference, voxel_evidence = archived_reference(args, environment, camera, 'voxel')
     if args.capture:
-        capture(args, prefix, environment, camera, 'hardware', settling=True)
-        capture(args, voxel_reference, environment, camera, 'voxel', reference=True)
-    evidence = [validate_capture(args, prefix, environment, camera, 'hardware'),
-                validate_capture(args, voxel_reference, environment, camera, 'voxel', True)]
+        capture(args, prefix, environment, camera, args.provider, settling=True)
+        if args.provider == 'hardware' and voxel_evidence is None:
+            capture(args, voxel_reference, environment, camera, 'voxel', reference=True)
+    evidence = [validate_capture(args, prefix, environment, camera, args.provider)]
+    if args.provider == 'hardware':
+        evidence.append(voxel_evidence or validate_capture(args, voxel_reference, environment, camera, 'voxel', True))
     report = {}
     base_metadata, _ = load(prefix)
     for event in EVENTS:
         reference = Path(f'{prefix}-stability-{event}-reference')
+        validate_reference(*load(reference))
         for frame in FRAMES:
             candidate = Path(f'{prefix}-stability-{event}-frame{frame}')
             metadata, data = load(candidate)
@@ -188,8 +214,13 @@ def settling_view(args, environment, camera):
                 passed=passed(quality['sky']))
     # Stage 0 is already hardware, so only actual transitions 1 and 2 are gates.
     hardware_reference = args.output / 'static' / f'{environment}-{camera}-reference'
-    evidence.append(validate_capture(args, hardware_reference, environment, camera, 'hardware', True))
-    for stage, reference in ((1, voxel_reference), (2, hardware_reference)):
+    if args.provider == 'hardware':
+        if getattr(args, 'reference_root', None):
+            hardware_reference, hardware_evidence = archived_reference(args, environment, camera, 'hardware')
+        else:
+            hardware_evidence = validate_capture(args, hardware_reference, environment, camera, 'hardware', True)
+        evidence.append(hardware_evidence)
+    for stage, reference in ((1, voxel_reference), (2, hardware_reference)) if args.provider == 'hardware' else ():
         for frame in (1, 32):
             candidate = Path(f'{prefix}-switch-{stage}-frame{frame}')
             metadata, _ = load(candidate)
@@ -206,8 +237,8 @@ def settling_view(args, environment, camera):
 def motion_view(args, environment, camera):
     prefix = args.output / 'motion' / f'{environment}-{camera}'
     if args.capture:
-        capture(args, prefix, environment, camera, 'hardware', motion=True)
-    evidence = validate_capture(args, prefix, environment, camera, 'hardware')
+        capture(args, prefix, environment, camera, args.provider, motion=True)
+    evidence = validate_capture(args, prefix, environment, camera, args.provider)
     report = {}
     # CaptureReflectionMotion moves the camera 0.003 normalized world units right each frame.
     right = np.array(CAMERA_MATRICES[camera][:3], dtype=np.float64)
@@ -216,7 +247,8 @@ def motion_view(args, environment, camera):
         candidate = Path(f'{prefix}-motion-frame{frame}')
         reference = Path(str(candidate) + '-reference')
         metadata, data = load(candidate)
-        _, reference_data = load(reference)
+        reference_metadata, reference_data = load(reference)
+        validate_reference(reference_metadata, reference_data)
         identity_mismatches = int(np.count_nonzero(
             data[:, :, 12, 0].copy().view(np.uint32) != reference_data[:, :, 12, 0].copy().view(np.uint32)))
         valid = data[:, :, 8, 3] > 0
@@ -281,15 +313,19 @@ def main():
     parser.add_argument('--scene', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--provider', choices=('hardware', 'voxel'), default='hardware')
+    parser.add_argument('--reference-samples', type=int, choices=(256, 1024), default=256,
+                        help='Split 65,536 reference rays into frames below the Compute GPU watchdog')
     parser.add_argument('--environments', nargs='+', choices=ENVIRONMENTS, default=list(SHIPPING_ENVIRONMENTS))
     parser.add_argument('--cameras', nargs='+', choices=CAMERAS, default=list(CAMERAS))
     parser.add_argument('--phases', nargs='+', choices=('static', 'settling', 'motion'), default=['static'])
     parser.add_argument('--capture', action='store_true', help='Generate fresh captures before analysis')
+    parser.add_argument('--reference-root', type=Path,
+                        help='Reuse explicit <root>/<provider>/static references from the same estimator')
+    parser.add_argument('--reference-exe', type=Path, help='Matching archived executable for reused references')
+    parser.add_argument('--reference-shaders', type=Path, help='Matching archived shader directory for reused references')
     parser.add_argument('--allow-present-baseline', action='store_true',
                         help='Report only the already reproduced PRESENT_AFTER_WRITE hazard separately')
     args = parser.parse_args()
-    if any(phase != 'static' for phase in args.phases) and args.provider != 'hardware':
-        parser.error('The native sequences currently require hardware; voxel switches are included in settling')
     args.exe, args.scene, args.output = args.exe.resolve(), args.scene.resolve(), args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
     report = dict(commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),

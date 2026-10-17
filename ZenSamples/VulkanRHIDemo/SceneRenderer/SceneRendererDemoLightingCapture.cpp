@@ -18,6 +18,11 @@ namespace zen
 {
 namespace
 {
+// Keep converged captures at 65,536 rays while bounding each Compute dispatch
+// below the Windows watchdog on the frozen production scenes.
+constexpr uint32_t kCaptureReferenceSamples = 256;
+constexpr uint32_t kCaptureReferenceFrames  = 65536 / kCaptureReferenceSamples;
+
 bool CreateCaptureBuffers(rc::RenderDevice& device, uint32_t bytes, RHIBuffer*& output, RHIBuffer*& readback)
 {
     RHIBufferCreateInfo info;
@@ -173,6 +178,8 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"preset\":\"" << rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())) << "\""
         << ",\"selection_reason\":\"" << server.GetGISelectionReason() << "\""
         << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
+        << ",\"diffuse_resolution\":\"" << (hybrid != nullptr && hybrid->UsesHalfResolutionDiffuse() ? "half" : "full")
+        << "\""
         << ",\"adaptive_sampling\":" << (adaptive ? "true" : "false") << ",\"sample_count_max\":"
         << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples + (adaptive ? 2u : 0u))
         << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE
@@ -308,7 +315,7 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     const Vec3                   right       = Vec3(inverseView[0]);
     const char*                  stages[]    = {"motion", "cut", "deform", "alpha", "rotation", "resize"};
     const uint32_t               frames[]    = {1, 4, 8, 32};
-    bool                         succeeded   = settings.referenceSamples == 0 && gi->UsesHardwareQueries() && !vertices.empty();
+    bool                         succeeded   = settings.referenceSamples == 0 && !vertices.empty();
     const platform::WindowExtent extent      = m_pWindow->GetExtent2D();
     platform::ConfigLoader&      config      = platform::ConfigLoader::GetInstance();
     float                        intensity   = 1.0f;
@@ -394,11 +401,11 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
             previous  = frame;
         }
         rc::VoxelGISettings reference = settings;
-        reference.referenceSamples    = 1024;
-        succeeded                     = succeeded && gi->SetSettings(reference) && Run(63, false, 3, {}, true)
-                                     && CaptureLighting(fmt::format("{}-{}-reference", path, stages[stage]));
-        const bool restoredSettings   = gi->SetSettings(settings);
-        bool       restoredScene      = true;
+        reference.referenceSamples    = kCaptureReferenceSamples;
+        succeeded = succeeded && gi->SetSettings(reference) && Run(kCaptureReferenceFrames - 1, false, 3, {}, true)
+                 && CaptureLighting(fmt::format("{}-{}-reference", path, stages[stage]));
+        const bool restoredSettings = gi->SetSettings(settings);
+        bool       restoredScene    = true;
         m_camera->SetPose(camera, camera + front);
         if (stage == 2)
         {
@@ -420,7 +427,7 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     }
     if (!succeeded)
     {
-        LOGE("Stability capture requires the hardware shipping tier and masked materials; capture or restoration failed");
+        LOGE("Stability capture requires shipping settings and masked materials; capture or restoration failed");
     }
     return succeeded;
 }
@@ -443,13 +450,14 @@ bool SceneRendererDemo::CaptureReflectionMotion(const std::string& path)
         succeeded = frame % 8 == 0 ? CaptureLighting(fmt::format("{}-frame{}", path, frame)) : Run(1, false, 3, {}, true);
     }
     rc::VoxelGISettings reference = settings;
-    reference.referenceSamples    = 1024;
+    reference.referenceSamples    = kCaptureReferenceSamples;
     succeeded                     = succeeded && gi->SetSettings(reference);
     for (uint32_t frame = 8; frame <= 32 && succeeded; frame += 8)
     {
         const Vec3 eye = camera + right * (0.003f * static_cast<float>(frame));
         m_camera->SetPose(eye, eye + front);
-        succeeded = Run(63, false, 3, {}, true) && CaptureLighting(fmt::format("{}-frame{}-reference", path, frame));
+        succeeded = Run(kCaptureReferenceFrames - 1, false, 3, {}, true)
+                 && CaptureLighting(fmt::format("{}-frame{}-reference", path, frame));
     }
     const bool restored = gi->SetSettings(settings);
     m_camera->SetPose(camera, camera + front);
@@ -482,7 +490,7 @@ bool SceneRendererDemo::CaptureGeometryMotion(const std::string& path)
             for (uint32_t referencePass = 0; referencePass < 2 && succeeded; ++referencePass)
             {
                 rc::VoxelGISettings current = settings;
-                current.referenceSamples    = referencePass == 0 ? 0 : 1024;
+                current.referenceSamples    = referencePass == 0 ? 0 : kCaptureReferenceSamples;
                 succeeded                   = gi->SetSettings(current);
                 for (uint32_t frame = 1; frame <= 16 && succeeded; ++frame)
                 {
@@ -504,7 +512,7 @@ bool SceneRendererDemo::CaptureGeometryMotion(const std::string& path)
                     }
                     if (referencePass != 0)
                     {
-                        succeeded = succeeded && Run(63, false, 3, {}, true);
+                        succeeded = succeeded && Run(kCaptureReferenceFrames - 1, false, 3, {}, true);
                     }
                     succeeded = succeeded
                              && CaptureLighting(fmt::format("{}-{}-frame{}{}", path, stages[stage], frame,
@@ -551,14 +559,15 @@ bool SceneRendererDemo::CaptureIndependentViews(const std::string& path)
         }
     }
     rc::VoxelGISettings reference = settings;
-    reference.referenceSamples    = 1024;
+    reference.referenceSamples    = kCaptureReferenceSamples;
     succeeded                     = succeeded && gi->SetSettings(reference);
     for (uint32_t view = 1; view <= 2 && succeeded; ++view)
     {
         m_captureHistoryId = view;
         const Vec3 eye     = camera + right * (view == 1 ? -.03f : .03f);
         m_camera->SetPose(eye, eye + front);
-        succeeded = Run(63, false, 3, {}, true) && CaptureLighting(fmt::format("{}-view{}-reference", path, view));
+        succeeded = Run(kCaptureReferenceFrames - 1, false, 3, {}, true)
+                 && CaptureLighting(fmt::format("{}-view{}-reference", path, view));
     }
     const bool restored = gi->SetSettings(settings);
     m_captureHistoryId  = 0;
@@ -637,10 +646,10 @@ bool SceneRendererDemo::CaptureBounceLightChanges(const std::string& path)
                 previous  = frame;
             }
         }
-        rc::VoxelGISettings reference               = settings;
-        reference.referenceSamples                  = 1024;
-        succeeded                                   = succeeded && gi->SetSettings(reference) && Run(63, false, 3, {}, true)
-                                                   && CaptureLighting(fmt::format("{}-{}-reference", path, stages[stage]));
+        rc::VoxelGISettings reference = settings;
+        reference.referenceSamples    = kCaptureReferenceSamples;
+        succeeded = succeeded && gi->SetSettings(reference) && Run(kCaptureReferenceFrames - 1, false, 3, {}, true)
+                 && CaptureLighting(fmt::format("{}-{}-reference", path, stages[stage]));
         HeapVector<rc::LightEntry> restore          = original;
         const bool                 restoredLights   = m_renderScene->ReplaceLights(restore);
         const bool                 restoredSettings = gi->SetSettings(settings);
@@ -700,7 +709,7 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
                 stream
                     << "{\"version\":1,\"scope\":\"screen_space_hybrid_trace\",\"width\":" << width << ",\"height\":" << height
                     << ",\"frame\":" << hybrid->GetFrame()
-                    << ",\"counter_point\":\"DDA entry or rayQueryInitialize after bounds clipping\""
+                    << ",\"counter_point\":\"Software query entry before BVH culling; hardware rayQueryInitialize after scene-bounds culling\""
                     << ",\"note\":\"Shared closest queries are counted once under sky/specular; excludes voxel-cache and fragment shadow rays. Diagnostic shader timings are not production timings.\"";
                 const char* providers[] = {"compute", "hardware"};
                 const char* features[]  = {"sky", "specular", "bounce", "reflection"};
