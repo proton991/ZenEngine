@@ -456,7 +456,11 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
 
 void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 {
-    m_recordedRadiance = false;
+    m_recordedRadiance  = false;
+    m_rayTotalsCleared  = false;
+    m_rayTotalsRecorded = false;
+    m_countedSkyCache   = false;
+    m_countedInjection  = false;
     if (IsInitialized() && m_scene != nullptr)
     {
         m_uniforms.gridMinVoxelSize = Vec4(m_voxelizer->GetSceneMinPoint(), m_voxelizer->GetVoxelSize());
@@ -496,6 +500,14 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
         const glm::uvec3 groups = GetVoxelVolumeDispatchGroups(m_voxelizer->GetVoxelTexResolution(), m_device->GetGPUInfo());
 
+        if (CountsRays())
+        {
+            graph->AddTransferPass("ClearGIRayTotals")
+                .CopyBuffer(m_rayTotalsZeros, m_rayTotals, {0, 0, kRayTotalsBytes})
+                .NeverCull();
+            m_rayTotalsCleared = true;
+        }
+
         if (geometryChanged)
         {
             BuildMipChain(m_albedoMips, "VoxelFilterAlbedoSP", "VoxelOpacityMip");
@@ -512,10 +524,17 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             const bool surfaceSky  = m_scene->GetVoxelTriangleCount() != 0;
             const bool hardwareSky = UsesHardwareQueries(VoxelGISettings::Feature::SkyCache);
-            sky.SetShaderProgramName(surfaceSky ? (hardwareSky ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceSP")
-                                                : "VoxelSkyIrradianceLegacySP");
+            const char* surfaceProgram =
+                CountsRays() ? (hardwareSky ? "VoxelSkyIrradianceHardwareCountsSP" : "VoxelSkyIrradianceCountsSP")
+                             : (hardwareSky ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceSP");
+            sky.SetShaderProgramName(surfaceSky ? surfaceProgram : "VoxelSkyIrradianceLegacySP");
+            m_countedSkyCache = CountsRays();
             if (surfaceSky)
             {
+                if (CountsRays())
+                {
+                    BindRayTotals(sky);
+                }
                 BindEnvironmentSamplingInputs(sky);
                 sky.BindStorageImage("voxelOwner", textures.pOwner->GetDefaultView());
                 if (hardwareSky)
@@ -597,16 +616,25 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
                                                                                       : "VoxelInjectMeshRadianceSP")
                                         : m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectRadianceAveragedSP"
                                                                                  : "VoxelInjectRadianceSP");
+            const bool averaged = m_voxelizer->UsesAveragedReflectance();
+            m_countedInjection  = CountsRays();
             if (hardwareShadows && meshShadows)
             {
-                inject.SetShaderProgramName(m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectHardwareRadianceAveragedSP"
-                                                                                   : "VoxelInjectHardwareRadianceSP");
+                inject.SetShaderProgramName(
+                    CountsRays() ? (averaged ? "VoxelInjectHardwareRadianceAveragedCountsSP" : "VoxelInjectHardwareRadianceCountsSP")
+                                 : (averaged ? "VoxelInjectHardwareRadianceAveragedSP" : "VoxelInjectHardwareRadianceSP"));
             }
 
             if (UsesRayShadows() && !hardwareShadows && meshShadows)
             {
-                inject.SetShaderProgramName(m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectSoftwareRadianceAveragedSP"
-                                                                                   : "VoxelInjectSoftwareRadianceSP");
+                inject.SetShaderProgramName(
+                    CountsRays() ? (averaged ? "VoxelInjectSoftwareRadianceAveragedCountsSP" : "VoxelInjectSoftwareRadianceCountsSP")
+                                 : (averaged ? "VoxelInjectSoftwareRadianceAveragedSP" : "VoxelInjectSoftwareRadianceSP"));
+            }
+
+            if (CountsRays() && UsesRayShadows() && meshShadows)
+            {
+                BindRayTotals(inject);
             }
 
             inject.SetPassTag("VoxelInjectRadiance");
@@ -700,6 +728,25 @@ void VoxelGIRenderer::BindShadowInputs(RDGPassDescBase& pass, SceneShadowRendere
     {
         VERIFY_EXPR(shadows != nullptr);
         shadows->BindLightingInputs(pass);
+    }
+}
+
+void VoxelGIRenderer::BindRayTotals(RDGPassDescBase& pass) const
+{
+    VERIFY_EXPR(m_rayTotals != nullptr);
+    pass.BindStorageBuffer("GIRayTotals", m_rayTotals);
+}
+
+void VoxelGIRenderer::ReadRayTotals()
+{
+    // Totals are meaningful only in the frame that zeroed them.
+    if (m_rayTotalsCleared && m_rayTotalsReadback != nullptr)
+    {
+        m_device->GetCurrentFrameRDG()
+            ->AddTransferPass("ReadGIRayTotals")
+            .CopyBuffer(m_rayTotals, m_rayTotalsReadback, {0, 0, kRayTotalsBytes})
+            .NeverCull();
+        m_rayTotalsRecorded = true;
     }
 }
 

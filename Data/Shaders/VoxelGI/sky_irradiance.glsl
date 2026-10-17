@@ -1,6 +1,7 @@
 #include "../Common/bindless_heap.glsl"
 #include "../Common/hdr_storage.glsl"
 #include "hybrid_provider.glsl"
+#include "gi_ray_totals.glsl"
 #include "hybrid_sampling.glsl"
 #include "environment_sampling.glsl"
 #define VOXEL_GEOMETRY_SET 5
@@ -64,4 +65,7 @@ void main()
         irradiance*=3.14159265359*sceneUbo.environment.x;
     }
     imageStore(skyIrradiance,p,vec4(ClampHDRStorage(irradiance),receiverKind));
+#ifdef GI_COUNT_RAY_SLOT
+    RecordGIRays();
+#endif
 }

@@ -1,6 +1,6 @@
 # Nsight optimization implementation
 
-Started 2026-10-15. **In progress; no candidate is qualified yet.** This work implements and evaluates every candidate in the Compute and HW RT lists in [P8.md](P8.md#compute-optimization-candidates). The P0 quality limits remain unchanged. Baseline revision: `5e074acb7a6728f0ced316ed317941a8c8b99ab4`.
+Started 2026-10-15. Closed 2026-10-17 with P8: the retained candidates are in the final build, which passes the static and HW RT motion gates; the remaining reruns stopped by user decision are listed in the [P8 close-out](P8Closeout.md). Originally: **in progress; no candidate is qualified yet.** This work implements and evaluates every candidate in the Compute and HW RT lists in [P8.md](P8.md#compute-optimization-candidates). The P0 quality limits remain unchanged. Baseline revision: `5e074acb7a6728f0ced316ed317941a8c8b99ab4`.
 
 ## Candidate ledger
 

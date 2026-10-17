@@ -520,11 +520,19 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
             }
             if (voxelGI != nullptr && voxelGI->UsesRayShadows())
             {
+                // Ray-count diagnostics never coincide with a lighting capture.
+                const bool counts = !capture && voxelGI->CountsRays();
                 lighting.SetShaderProgramName(
                     voxelGI->UsesHardwareShadows()
-                        ? (capture ? "DeferredHardwareShadowsCaptureSP" : "DeferredHardwareShadowsSP")
-                        : (capture ? "DeferredSoftwareShadowsCaptureSP" : "DeferredSoftwareShadowsSP"));
+                        ? (capture ? "DeferredHardwareShadowsCaptureSP"
+                                   : counts ? "DeferredHardwareShadowsCountsSP" : "DeferredHardwareShadowsSP")
+                        : (capture ? "DeferredSoftwareShadowsCaptureSP"
+                                   : counts ? "DeferredSoftwareShadowsCountsSP" : "DeferredSoftwareShadowsSP"));
                 lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
+                if (counts)
+                {
+                    voxelGI->BindRayTotals(lighting);
+                }
             }
 
             lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
@@ -601,6 +609,10 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
         }
 
         BuildLightMarkers(view);
+    }
+    if (voxelGI != nullptr)
+    {
+        voxelGI->ReadRayTotals();
     }
 }
 
@@ -843,8 +855,15 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 source.SetShaderProgramName(voxelGI == nullptr ? "ForwardScatterSP" : "ForwardScatterVoxelGISP");
                 if (voxelGI != nullptr && voxelGI->UsesRayShadows())
                 {
-                    source.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? "ForwardScatterHardwareShadowsSP"
-                                                                               : "ForwardScatterSoftwareShadowsSP");
+                    const bool counts = voxelGI->CountsRays();
+                    source.SetShaderProgramName(
+                        voxelGI->UsesHardwareShadows()
+                            ? (counts ? "ForwardScatterHardwareShadowsCountsSP" : "ForwardScatterHardwareShadowsSP")
+                            : (counts ? "ForwardScatterSoftwareShadowsCountsSP" : "ForwardScatterSoftwareShadowsSP"));
+                    if (counts)
+                    {
+                        voxelGI->BindRayTotals(source);
+                    }
                 }
 
                 source.SetPassTag("ForwardScatterSource");
@@ -1018,9 +1037,17 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             }
             if (voxelGI != nullptr && voxelGI->UsesRayShadows())
             {
-                forward.SetShaderProgramName(voxelGI->UsesHardwareShadows()
-                                                 ? (capture ? "ForwardHardwareShadowsCaptureSP" : "ForwardHardwareShadowsSP")
-                                                 : (capture ? "ForwardSoftwareShadowsCaptureSP" : "ForwardSoftwareShadowsSP"));
+                const bool counts = !capture && voxelGI->CountsRays();
+                forward.SetShaderProgramName(
+                    voxelGI->UsesHardwareShadows()
+                        ? (capture ? "ForwardHardwareShadowsCaptureSP"
+                                   : counts ? "ForwardHardwareShadowsCountsSP" : "ForwardHardwareShadowsSP")
+                        : (capture ? "ForwardSoftwareShadowsCaptureSP"
+                                   : counts ? "ForwardSoftwareShadowsCountsSP" : "ForwardSoftwareShadowsSP"));
+                if (counts)
+                {
+                    voxelGI->BindRayTotals(forward);
+                }
             }
 
             forward.SetPassTag(stage < 3 ? "ForwardOpaque" : "ForwardTranslucent");

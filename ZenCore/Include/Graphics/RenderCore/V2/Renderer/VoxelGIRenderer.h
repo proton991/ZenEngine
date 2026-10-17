@@ -232,6 +232,51 @@ public:
         return m_skyIrradiance;
     }
 
+    // Diagnostic count of rays issued outside the hybrid trace (gi_ray_totals.glsl): two
+    // totals per slot, Compute then HW RT. While a capture is set, the sky-cache, injection
+    // and receiver-shadow passes select their counting variants. `totals` is zeroed from
+    // `zeros` when the frame starts and copied to `readback` after its last shadow pass.
+    enum class RayTotalSlot : uint32_t
+    {
+        SkyCache,
+        Injection,
+        DeferredShadows,
+        ForwardShadows,
+        Count
+    };
+    static constexpr uint64_t kRayTotalsBytes = static_cast<uint64_t>(RayTotalSlot::Count) * 2 * sizeof(uint32_t);
+
+    void SetRayTotalsCapture(RHIBuffer* totals, RHIBuffer* zeros, RHIBuffer* readback)
+    {
+        m_rayTotals         = totals;
+        m_rayTotalsZeros    = zeros;
+        m_rayTotalsReadback = readback;
+        m_rayTotalsCleared  = false;
+        m_rayTotalsRecorded = false;
+        m_countedSkyCache   = false;
+        m_countedInjection  = false;
+    }
+    bool CountsRays() const
+    {
+        return m_rayTotals != nullptr;
+    }
+    void BindRayTotals(RDGPassDescBase& pass) const;
+    // Records the readback; DeferredLightingRenderer calls it after the frame's last shadow pass.
+    void ReadRayTotals();
+    bool WereRayTotalsRecorded() const
+    {
+        return m_rayTotalsRecorded;
+    }
+    // Whether the counted frame recorded the sky-cache update or a radiance injection.
+    bool CountedSkyCache() const
+    {
+        return m_countedSkyCache;
+    }
+    bool CountedInjection() const
+    {
+        return m_countedInjection;
+    }
+
 private:
     void LoadSettings();
 
@@ -275,5 +320,12 @@ private:
     uint64_t                    m_recordedEnvironment{0};
     uint64_t                    m_radianceGeneration{0};
     bool                        m_recordedRadiance{false};
+    RHIBuffer*                  m_rayTotals{nullptr};
+    RHIBuffer*                  m_rayTotalsZeros{nullptr};
+    RHIBuffer*                  m_rayTotalsReadback{nullptr};
+    bool                        m_rayTotalsCleared{false};
+    bool                        m_rayTotalsRecorded{false};
+    bool                        m_countedSkyCache{false};
+    bool                        m_countedInjection{false};
 };
 } // namespace zen::rc

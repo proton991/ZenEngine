@@ -6,6 +6,7 @@
 #define VOXEL_GEOMETRY_SET 5
 #include "voxel_geometry.glsl"
 #include "../ShadowMapping/scene_shadows.glsl"
+#include "gi_ray_totals.glsl"
 layout(set=1,binding=6,r32ui) uniform readonly uimage3D voxelOwner;
 #endif
 layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
@@ -80,4 +81,7 @@ void main()
         radiance=vec4(texelFetch(voxelEmissive,p,0).rgb*gi.lighting.z+diffuseReflectance*irradiance/3.14159265359,1);
     }
     imageStore(voxelRadiance,p,vec4(ClampHDRStorage(radiance.rgb),radiance.a));
+#ifdef GI_COUNT_RAY_SLOT
+    RecordGIRays();
+#endif
 }

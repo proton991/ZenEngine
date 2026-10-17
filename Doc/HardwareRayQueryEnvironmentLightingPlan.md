@@ -506,7 +506,9 @@ Per the [decisions of 2026-10-10](HybridGI/P4Gaps.md#decisions-2026-10-10), shad
 
 ## P8 Tiers, performance, memory and automatic selection
 
-Status (2026-10-14): **incomplete; not accepted**. The software-triangle correction and optimized BVH materially change the compute workload; shared adaptive sampling also replaces the earlier hardware four-ray policy. The earlier static 62.51–64.60 / 73.17–89.53 FPS and deformation 63.97 / 63.11 FPS pairs are historical, not qualifications of this implementation. Their evidence and rejected experiments remain in the [earlier P8 checkpoint](HybridGI/P8.md). The current traversal and its verification are recorded in [ComputeTriangleVisibility.md](HybridGI/ComputeTriangleVisibility.md).
+2026-10-17: **P8 closed with documented shortfalls** by user decision; see [P8 close-out](HybridGI/P8Closeout.md). The per-tier performance targets are not met, and the final qualification run was stopped partway; the close-out lists what ran on the final build and what did not.
+
+Status (2026-10-14, historical): **incomplete; not accepted**. The software-triangle correction and optimized BVH materially change the compute workload; shared adaptive sampling also replaces the earlier hardware four-ray policy. The earlier static 62.51–64.60 / 73.17–89.53 FPS and deformation 63.97 / 63.11 FPS pairs are historical, not qualifications of this implementation. Their evidence and rejected experiments remain in the [earlier P8 checkpoint](HybridGI/P8.md). The current traversal and its verification are recorded in [ComputeTriangleVisibility.md](HybridGI/ComputeTriangleVisibility.md).
 
 ### Latest measured checkpoint
 
@@ -524,6 +526,8 @@ The timing and parity runs used executable SHA-256 `17d95783ac501c3882aaa78a1973
 The dominant recorded pass interval is now `HybridTrace`: 12.11 ms hall and 14.92 ms top. Sky-search intervals are 1.51/0.41 ms. These intervals include synchronization/overlap and must not be summed to derive frame time. Whole-renderer peak device-local allocation is 1,143.19 MiB in both views; this is not a GI-specific budget or a complete preset-memory qualification.
 
 ### Remaining P8 qualification
+
+Superseded 2026-10-17 by the [P8 close-out](HybridGI/P8Closeout.md): the items below were closed by recorded decisions or left as later candidates there.
 
 The full Compute/HW RT Nsight candidate set is now under implementation; see the [candidate ledger and measured results](HybridGI/NsightOptimizations.md). This work does not mark P8 accepted before the unchanged quality and performance gates are evaluated.
 
@@ -671,7 +675,7 @@ The checked phase exits retain their dated acceptance scope. The October 14 soft
 - [x] P5 ray-hit bounce passes on the RT tier; compute-tier bounce source measured. (2026-10-10, RTX 5080; ray-hit bounce is the RT-tier default)
 - [x] P6 glossy reflections pass on the RT tier; compute-tier choice measured. (2026-10-10, RTX 5080; [results and limits](HybridGI/P6.md))
 - [x] P7 hardware shadows evaluated and the adoption decision recorded (optional). (2026-10-11, RTX 5080; enabled by default when supported, shadow-map fallback; [results and limits](HybridGI/P7.md))
-- [ ] P8 performance and memory reports per tier, preset and platform; presets and automatic selection documented.
+- [x] P8 closed with documented shortfalls (2026-10-17, user decision; RTX 5080). Performance targets missed on both tiers; presets, Compute default, update policies and capability-based automatic selection recorded; per-preset/platform reports and several final-build gate reruns not done. See [P8 close-out](HybridGI/P8Closeout.md).
 - [ ] Functional report records current correctness evidence and limitations per tier, reconciles the software-triangle amendment with historical voxel-provider records, and identifies which final-build and platform checks remain unverified.
 
-This document retains the acceptance gates and scope decisions. P0–P7 phase exits are accepted on the recorded scope; P8 and the broader platform/performance/ground-truth checklist are not implied complete. See [remaining work](HybridGI/README.md#remaining-acceptance-work).
+This document retains the acceptance gates and scope decisions. P0–P7 phase exits are accepted on the recorded scope; P8 is closed with the shortfalls in its close-out. The broader platform/performance/ground-truth checklist is not implied complete. See [remaining work](HybridGI/README.md#remaining-acceptance-work).

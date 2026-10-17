@@ -62,21 +62,26 @@ def cases(args):
                 result.append((f'{camera}-{backend}-graphics-queue', backend, base, ['--async-compute', '0']))
         if 'lighting' in args.groups:
             for count in (1, 4, 16, 32):
-                lights = environment | {'default_model_path': views['hall'].as_posix(), 'light_count': count}
-                for index in range(count):
-                    angle = 2 * math.pi * index / count
-                    lights.update({f'light.{index}.type': 'point',
-                        f'light.{index}.position': f'{.65 * math.cos(angle)},-.2,{.12 * math.sin(angle)}',
-                        f'light.{index}.color': '1,1,1', f'light.{index}.intensity': 20 / count,
-                        f'light.{index}.range': 1000, f'light.{index}.enabled': 'true',
-                        f'light.{index}.casts_shadows': 'true'})
                 for moving in (False, True):
-                    settings = lights | {'dynamic_light.enabled': str(moving).lower(),
-                        'dynamic_light.index': count - 1, 'dynamic_light.orbit_center': '0,-.2,0',
-                        'dynamic_light.orbit_radius': .12, 'dynamic_light.angular_speed_degrees': 45}
+                    settings = light_settings(environment | {'default_model_path': views['hall'].as_posix()}, count, moving)
                     result.append((f'hall-{backend}-{count}-lights-{"one-moving" if moving else "static"}',
                                    backend, settings, []))
     return result
+
+
+def light_settings(base, count, moving):
+    """Shadow-casting point lights in a ring through the hall; one orbits when moving."""
+    lights = base | {'light_count': count}
+    for index in range(count):
+        angle = 2 * math.pi * index / count
+        lights.update({f'light.{index}.type': 'point',
+            f'light.{index}.position': f'{.65 * math.cos(angle)},-.2,{.12 * math.sin(angle)}',
+            f'light.{index}.color': '1,1,1', f'light.{index}.intensity': 20 / count,
+            f'light.{index}.range': 1000, f'light.{index}.enabled': 'true',
+            f'light.{index}.casts_shadows': 'true'})
+    return lights | {'dynamic_light.enabled': str(moving).lower(),
+        'dynamic_light.index': max(count - 1, 0), 'dynamic_light.orbit_center': '0,-.2,0',
+        'dynamic_light.orbit_radius': .12, 'dynamic_light.angular_speed_degrees': 45}
 
 
 def main():

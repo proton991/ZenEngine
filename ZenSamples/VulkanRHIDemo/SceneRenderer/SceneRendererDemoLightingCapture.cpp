@@ -10,6 +10,7 @@
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Platform/ConfigLoader.h"
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -668,13 +669,19 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
     rc::RendererServer*           server   = m_renderDevice->GetRendererServer();
     rc::DeferredLightingRenderer* renderer = server->RequestDeferredLightingRenderer();
     rc::HybridGIRenderer*         hybrid   = renderer->GetHybridGI();
+    rc::VoxelGIRenderer*          voxelGI  = server->RequestVoxelGI();
     const uint32_t                width = m_pViewport->GetWidth(), height = m_pViewport->GetHeight();
     const uint64_t                requestedBytes = rc::HybridGIRenderer::GetRayCountCaptureBytes(width, height);
+    const uint64_t                totalsBytes    = rc::VoxelGIRenderer::kRayTotalsBytes;
     uint64_t                      bytes          = 0;
     RHIBuffer*                    output         = nullptr;
     RHIBuffer*                    readback       = nullptr;
-    bool                          succeeded =
-        server->GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && width != 0 && height != 0
+    RHIBuffer*                    rayTotals      = nullptr;
+    RHIBuffer*                    zeros          = nullptr;
+    RHIBuffer*                    totalsReadback = nullptr;
+    // Receiver-shadow counting variants write from fragment shaders.
+    bool succeeded = server->GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && voxelGI != nullptr
+        && width != 0 && height != 0 && m_renderDevice->GetGPUInfo().supportFragmentStoresAndAtomics
         && rc::ValidateGIStorageBuffer(requestedBytes, 1, m_renderDevice->GetGPUInfo(), bytes) == rc::GIResourceStatus::eSuccess
         && bytes <= std::numeric_limits<uint32_t>::max() && !m_renderDevice->AreSubmissionsBlocked();
     if (succeeded)
@@ -683,17 +690,51 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
     }
     if (succeeded)
     {
+        RHIBufferCreateInfo info;
+        info.size         = static_cast<uint32_t>(totalsBytes);
+        info.allocateType = RHIBufferAllocateType::eGPU;
+        info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer,
+                                 RHIBufferUsageFlagBits::eTransferDstBuffer);
+        info.tag          = "gi_ray_totals";
+        rayTotals         = m_renderDevice->CreateBuffer(info);
+        info.allocateType = RHIBufferAllocateType::eCPUWrite;
+        info.usageFlags   = 0;
+        info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        info.tag          = "gi_ray_totals_zeros";
+        zeros             = m_renderDevice->CreateBuffer(info);
+        info.allocateType = RHIBufferAllocateType::eCPURead;
+        info.usageFlags   = 0;
+        info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+        info.tag          = "gi_ray_totals_readback";
+        totalsReadback    = m_renderDevice->CreateBuffer(info);
+        uint8_t* zeroData = zeros != nullptr ? zeros->Map() : nullptr;
+        succeeded         = rayTotals != nullptr && zeroData != nullptr && totalsReadback != nullptr;
+        if (zeroData != nullptr)
+        {
+            std::memset(zeroData, 0, totalsBytes);
+            zeros->Unmap();
+        }
+    }
+    bool skyCache = false, injected = false;
+    if (succeeded)
+    {
         hybrid->SetRayCountCapture(output, readback);
-        succeeded = Run(1, false, 3, {}, true) && renderer->GetHybridGI() == hybrid && hybrid->WereRayCountsRecorded();
+        voxelGI->SetRayTotalsCapture(rayTotals, zeros, totalsReadback);
+        succeeded = Run(1, false, 3, {}, true) && renderer->GetHybridGI() == hybrid && server->RequestVoxelGI() == voxelGI
+            && hybrid->WereRayCountsRecorded() && voxelGI->WereRayTotalsRecorded();
+        skyCache = voxelGI->CountedSkyCache();
+        injected = voxelGI->CountedInjection();
         hybrid->SetRayCountCapture(nullptr, nullptr);
+        voxelGI->SetRayTotalsCapture(nullptr, nullptr, nullptr);
         m_renderDevice->FlushRHIThread();
         m_renderDevice->WaitForIdle();
         succeeded = succeeded && !m_renderDevice->AreSubmissionsBlocked();
     }
     if (succeeded)
     {
-        const uint32_t* values = reinterpret_cast<const uint32_t*>(readback->Map());
-        succeeded              = values != nullptr;
+        const uint32_t* values        = reinterpret_cast<const uint32_t*>(readback->Map());
+        const uint32_t* outsideValues = reinterpret_cast<const uint32_t*>(totalsReadback->Map());
+        succeeded                     = values != nullptr && outsideValues != nullptr;
         if (succeeded)
         {
             uint64_t totals[8]{};
@@ -701,16 +742,19 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
             {
                 totals[index % 8] += values[index];
             }
+            uint32_t outside[rc::VoxelGIRenderer::kRayTotalsBytes / sizeof(uint32_t)]{};
+            std::memcpy(outside, outsideValues, sizeof(outside));
             readback->Unmap();
+            totalsReadback->Unmap();
             std::ofstream stream(path);
             succeeded = stream.is_open();
             if (succeeded)
             {
                 stream
-                    << "{\"version\":1,\"scope\":\"screen_space_hybrid_trace\",\"width\":" << width << ",\"height\":" << height
+                    << "{\"version\":2,\"scope\":\"screen_space_hybrid_trace\",\"width\":" << width << ",\"height\":" << height
                     << ",\"frame\":" << hybrid->GetFrame()
                     << ",\"counter_point\":\"Software query entry before BVH culling; hardware rayQueryInitialize after scene-bounds culling\""
-                    << ",\"note\":\"Shared closest queries are counted once under sky/specular; excludes voxel-cache and fragment shadow rays. Diagnostic shader timings are not production timings.\"";
+                    << ",\"note\":\"Shared closest queries are counted once under sky/specular. Rays issued outside the hybrid trace are under outside_trace. Diagnostic shader timings are not production timings.\"";
                 const char* providers[] = {"compute", "hardware"};
                 const char* features[]  = {"sky", "specular", "bounce", "reflection"};
                 for (uint32_t provider = 0; provider < 2; ++provider)
@@ -723,7 +767,21 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
                     }
                     stream << '}';
                 }
-                stream << "}\n";
+                // Sky-cache and injection rays are issued only on frames that update them.
+                stream << ",\"outside_trace\":{\"sky_cache_updated\":" << (skyCache ? "true" : "false")
+                       << ",\"radiance_injected\":" << (injected ? "true" : "false")
+                       << ",\"note\":\"Excludes the legacy sky cache of scenes without voxel triangles, which marches voxel occupancy\"";
+                const char* slots[] = {"sky_cache", "injection_shadows", "deferred_shadows", "forward_shadows"};
+                for (uint32_t provider = 0; provider < 2; ++provider)
+                {
+                    stream << ",\"" << providers[provider] << "\":{";
+                    for (uint32_t slot = 0; slot < 4; ++slot)
+                    {
+                        stream << (slot == 0 ? "" : ",") << '"' << slots[slot] << "\":" << outside[slot * 2 + provider];
+                    }
+                    stream << '}';
+                }
+                stream << "}}\n";
                 stream.flush();
                 succeeded = stream.good();
             }
@@ -731,6 +789,9 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
     }
     m_renderDevice->DestroyBuffer(output);
     m_renderDevice->DestroyBuffer(readback);
+    m_renderDevice->DestroyBuffer(rayTotals);
+    m_renderDevice->DestroyBuffer(zeros);
+    m_renderDevice->DestroyBuffer(totalsReadback);
     if (!succeeded)
     {
         LOGE("Hybrid ray-count capture failed: {}", path);

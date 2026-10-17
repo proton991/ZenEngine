@@ -1,4 +1,4 @@
-"""Measure warmed mode-3 throughput and NVIDIA GPU activity with optional serial engine.cfg ownership and exact restoration."""
+"""Measure warmed mode-3 (or GI-off mode-2) throughput and NVIDIA GPU activity with optional serial engine.cfg ownership and exact restoration."""
 import argparse
 import csv
 import datetime
@@ -31,6 +31,9 @@ def main():
                         help='Use the provider selector so explicit bounce-source/reflection settings remain effective')
     parser.add_argument('--profile', action='store_true', help='Also record native GPU frame/pass timings')
     parser.add_argument('--motion-fixture', action='store_true')
+    parser.add_argument('--mode', type=int, choices=(2, 3), default=3,
+                        help='3 renders voxel GI; 2 renders the same PBR frame without GI, the baseline for GI-exclusive cost')
+    parser.add_argument('--gpu', help='Adapter name substring (demo --gpu); NVIDIA activity is sampled only for NVIDIA adapters')
     parser.add_argument('--config', type=Path)
     parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE')
     args = parser.parse_args()
@@ -63,7 +66,7 @@ def measure(args):
     config = ROOT/'Data/engine.cfg'
     original = config.read_bytes()
     (out/'engine.cfg').write_bytes(original)
-    command = [str(executable), '--mode=3', '--fixed-step', '--no-ui', '--vsync=0', '--gpu-memory-stats', f'--warmup={args.warmup}',
+    command = [str(executable), f'--mode={args.mode}', '--fixed-step', '--no-ui', '--vsync=0', '--gpu-memory-stats', f'--warmup={args.warmup}',
                f'--frames={args.frames}', f'--width={args.width}', f'--height={args.height}',
                f'--rhi-thread={args.thread}', f'--async-compute={args.async_compute}',
                f'--frame-times={out / "frames.csv"}']
@@ -75,23 +78,28 @@ def measure(args):
         command.append('--disable-validation')
     if args.motion_fixture:
         command.append('--gi-motion-fixture')
+    if args.gpu:
+        command.append(f'--gpu={args.gpu}')
+    nvidia = not args.gpu or any(name in args.gpu.lower() for name in ('nvidia', 'geforce', 'rtx'))
     env = os.environ.copy()
     env.update(DISABLE_RTSS_LAYER='1', VK_LOADER_LAYERS_DISABLE='~implicit~')
     (out/'command.json').write_text(json.dumps(command, indent=2), encoding='utf-8')
-    hardware = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv'],
-                              capture_output=True, text=True, check=True).stdout
-    (out/'gpu-info.csv').write_text(hardware, encoding='utf-8')
+    if nvidia:
+        hardware = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv'],
+                                  capture_output=True, text=True, check=True).stdout
+        (out/'gpu-info.csv').write_text(hardware, encoding='utf-8')
     (out/'inputs.sha256.json').write_text(json.dumps({str(p):hashlib.sha256(p.read_bytes()).hexdigest()
         for p in [executable, *sorted((ROOT/'Data/SpvShaders').rglob('*.spv'))]}, indent=2), encoding='utf-8')
     with (out/'gpu.csv').open('w') as gpu, (out/'run.log').open('w') as log:
         monitor = subprocess.Popen(['nvidia-smi', '--query-gpu=timestamp,utilization.gpu,utilization.memory,clocks.gr,power.draw',
-            '--format=csv,noheader,nounits', '-lms', '100'], stdout=gpu, stderr=subprocess.STDOUT)
+            '--format=csv,noheader,nounits', '-lms', '100'], stdout=gpu, stderr=subprocess.STDOUT) if nvidia else None
         try:
             run = subprocess.run(command, cwd=ROOT, env=env, stdout=log,
-                                 stderr=subprocess.STDOUT, timeout=300)
+                                 stderr=subprocess.STDOUT, timeout=300 if nvidia else 1800)
         finally:
-            monitor.terminate()
-            monitor.wait()
+            if monitor is not None:
+                monitor.terminate()
+                monitor.wait()
     assert config.read_bytes() == original, 'Configuration changed during the benchmark'
     text = (out/'run.log').read_text(errors='replace')
     errors = [line for line in text.splitlines() if any(x in line for x in (
@@ -112,17 +120,17 @@ def measure(args):
             timestamp = datetime.datetime.strptime(row[0].strip(), '%Y/%m/%d %H:%M:%S.%f')
             if start <= timestamp <= end:
                 samples.append([float(value.strip()) for value in row[1:]])
-    assert samples, 'No warmed NVIDIA activity samples; increase --frames'
+    assert samples or not nvidia, 'No warmed NVIDIA activity samples; increase --frames'
+    def activity(column, reduce=statistics.mean):
+        return reduce(row[column] for row in samples) if samples else None
     native = json.loads((out/'native.profile.json').read_text()) if args.profile else None
     ordered = sorted(frames)
     report = dict(frames=len(frames), warmup=args.warmup, fps=1000/statistics.mean(frames),
         mean_frame_ms=statistics.mean(frames), median_frame_ms=statistics.median(frames),
         p95_frame_ms=ordered[int(.95*(len(ordered)-1))],
-        gpu_activity_percent_mean=statistics.mean(row[0] for row in samples),
-        gpu_activity_percent_median=statistics.median(row[0] for row in samples),
-        memory_activity_percent_mean=statistics.mean(row[1] for row in samples),
-        graphics_clock_mhz_mean=statistics.mean(row[2] for row in samples),
-        power_watts_mean=statistics.mean(row[3] for row in samples), gpu_samples=len(samples),
+        gpu_activity_percent_mean=activity(0), gpu_activity_percent_median=activity(0, statistics.median),
+        memory_activity_percent_mean=activity(1), graphics_clock_mhz_mean=activity(2),
+        power_watts_mean=activity(3), gpu_samples=len(samples), mode=args.mode, gpu=args.gpu,
         resolved_method=native['settings']['gi_method'] if native else None, backend=args.backend,
         configuration_sha256=hashlib.sha256(original).hexdigest(),
         metric_note='CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. '

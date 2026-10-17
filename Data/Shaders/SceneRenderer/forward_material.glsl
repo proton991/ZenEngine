@@ -4,6 +4,7 @@
 #ifdef VOXEL_GI
 #include "../VoxelGI/cone_trace.glsl"
 #include "../ShadowMapping/scene_shadows.glsl"
+#include "../VoxelGI/gi_ray_totals.glsl"
 #endif
 layout(set=1,binding=0) uniform uCameraData { mat4 uProjViewMatrix; mat4 uProjMatrix; mat4 uViewMatrix; };
 #if !defined(HARDWARE_SHADOWS) && !defined(SOFTWARE_SHADOWS)
@@ -286,4 +287,7 @@ void main()
         color = color / (color + vec3(1.0));
     }
     outColor = vec4(clamp(color, 0.0, 65504.0), clamp(alpha, 0.0, 1.0));
+#ifdef GI_COUNT_RAY_SLOT
+    RecordGIRays();
+#endif
 }

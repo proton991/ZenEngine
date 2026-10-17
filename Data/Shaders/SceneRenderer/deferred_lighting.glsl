@@ -26,6 +26,7 @@ layout(push_constant) uniform CaptureConstants { uvec2 extent; } capture;
 #ifdef VOXEL_GI
 #include "../VoxelGI/cone_trace.glsl"
 #include "../ShadowMapping/scene_shadows.glsl"
+#include "../VoxelGI/gi_ray_totals.glsl"
 #endif
 #ifdef HYBRID_GI
 #include "../VoxelGI/hybrid_composition.glsl"
@@ -194,4 +195,7 @@ void main() {
 	color = LinearToSRGB(color);
 
 	outFragColor = vec4(color, 1.0);
+#ifdef GI_COUNT_RAY_SLOT
+	RecordGIRays();
+#endif
 }
