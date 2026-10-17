@@ -335,7 +335,7 @@ private:
 
     bool ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
                                RHIViewport*                viewport = nullptr,
-                               PendingFrame* pending                = nullptr);
+                               PendingFrame*               pending  = nullptr);
 
     RHISubmissionResult SubmitRecordedGroups(RenderGraph&                graph,
                                              const RDGSchedule&          schedule,
@@ -440,9 +440,9 @@ private:
 
     void RecordPipelineFailure(const PipelineKey& key);
 
-    static PipelineKey MakePipelineKey(RHIShader*                  shader,
-                                       const RHIGfxPipelineStates* states                               = nullptr,
-                                       const RHIRenderingLayout* layout                                 = nullptr,
+    static PipelineKey MakePipelineKey(RHIShader*                                             shader,
+                                       const RHIGfxPipelineStates*                            states    = nullptr,
+                                       const RHIRenderingLayout*                              layout    = nullptr,
                                        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {});
 
     friend struct PipelineCacheTestAccess;

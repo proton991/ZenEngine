@@ -153,12 +153,12 @@ bool RHIGPUFrameTiming::CalculateEnvelope(double& microseconds) const
 
             int64_t end                         = 0;
 
-            valid &= duration < halfRange && UnwrapTimestamp(ticks.begin, anchor.begin, nativeMask, nativeHalfRange, begin)
-                  && UnwrapTimestamp(ticks.end, anchor.begin, nativeMask, nativeHalfRange, end) && end >= begin;
+            valid    &= duration < halfRange && UnwrapTimestamp(ticks.begin, anchor.begin, nativeMask, nativeHalfRange, begin)
+                     && UnwrapTimestamp(ticks.end, anchor.begin, nativeMask, nativeHalfRange, end) && end >= begin;
 
-            earliest = std::min(earliest, begin);
+            earliest  = std::min(earliest, begin);
 
-            latest   = std::max(latest, end);
+            latest    = std::max(latest, end);
         }
 
         // Unsigned subtraction preserves the exact positive span even across signed zero.

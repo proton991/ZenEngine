@@ -63,14 +63,14 @@ bool ValidKTXEnvironment(const HeapVector<char>& bytes)
         const uint32_t typeSize = ReadContainerWord(bytes, 20);
 
         const bool half         = ReadContainerWord(bytes, 16) == 0x140b && (typeSize == 2 || typeSize == 8)
-                       && ReadContainerWord(bytes, 28) == 0x881a;
+                               && ReadContainerWord(bytes, 28) == 0x881a;
 
-        const bool full = ReadContainerWord(bytes, 16) == 0x1406 && (typeSize == 4 || typeSize == 16)
-                       && ReadContainerWord(bytes, 28) == 0x8814;
+        const bool full         = ReadContainerWord(bytes, 16) == 0x1406 && (typeSize == 4 || typeSize == 16)
+                               && ReadContainerWord(bytes, 28) == 0x8814;
 
-        valid = ReadContainerWord(bytes, 12) == 0x04030201 && (half || full) && ReadContainerWord(bytes, 24) == 0x1908
-             && ReadContainerWord(bytes, 32) == 0x1908 && ValidCubeExtent(width, ReadContainerWord(bytes, 40), levels)
-             && ReadContainerWord(bytes, 44) == 0 && ReadContainerWord(bytes, 48) == 0 && ReadContainerWord(bytes, 52) == 6;
+        valid         = ReadContainerWord(bytes, 12) == 0x04030201 && (half || full) && ReadContainerWord(bytes, 24) == 0x1908
+                     && ReadContainerWord(bytes, 32) == 0x1908 && ValidCubeExtent(width, ReadContainerWord(bytes, 40), levels)
+                     && ReadContainerWord(bytes, 44) == 0 && ReadContainerWord(bytes, 48) == 0 && ReadContainerWord(bytes, 52) == 6;
 
         size_t offset = size_t(64) + ReadContainerWord(bytes, 60);
 
@@ -83,8 +83,8 @@ bool ValidKTXEnvironment(const HeapVector<char>& bytes)
             const uint32_t imageBytes = ReadContainerWord(bytes, offset);
 
             // Standard KTX stores one face size; GLI's writer stores the six-face sum.
-            valid = offset <= bytes.size() && bytes.size() - offset >= 4
-                 && (imageBytes == faceBytes || imageBytes == faceBytes * 6);
+            valid   = offset <= bytes.size() && bytes.size() - offset >= 4
+                   && (imageBytes == faceBytes || imageBytes == faceBytes * 6);
 
             offset += 4;
 

@@ -33,7 +33,7 @@ struct NativeBuild
         info.type  = static_cast<VkAccelerationStructureTypeKHR>(desc.type);
         info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
                    | (desc.allowUpdate ? VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : 0);
-        info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        info.mode  = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         if (desc.type == RHIAccelerationStructureType::eTopLevel)
         {
             VkAccelerationStructureGeometryKHR geometry{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
@@ -103,22 +103,22 @@ bool VulkanAccelerationStructure::ValidateDescription(const RHIAccelerationStruc
     }
     else
     {
-        valid &= desc.type == RHIAccelerationStructureType::eBottomLevel && !desc.geometries.empty()
-              && desc.geometries.size() <= capabilities.maxGeometries && desc.instanceCount == 0;
-        uint64_t primitives = 0;
+        valid               &= desc.type == RHIAccelerationStructureType::eBottomLevel && !desc.geometries.empty()
+                            && desc.geometries.size() <= capabilities.maxGeometries && desc.instanceCount == 0;
+        uint64_t primitives  = 0;
         for (const RHIAccelerationStructureGeometry& geometry : desc.geometries)
         {
-            valid &= geometry.vertexFormat == DataFormat::eR32G32B32SFloat && geometry.vertexCount > 0
-                  && geometry.vertexStride >= 12 && geometry.vertexStride % 4 == 0 && geometry.indexCount % 3 == 0
-                  && (geometry.indexFormat == DataFormat::eR16UInt || geometry.indexFormat == DataFormat::eR32UInt);
+            valid      &= geometry.vertexFormat == DataFormat::eR32G32B32SFloat && geometry.vertexCount > 0
+                       && geometry.vertexStride >= 12 && geometry.vertexStride % 4 == 0 && geometry.indexCount % 3 == 0
+                       && (geometry.indexFormat == DataFormat::eR16UInt || geometry.indexFormat == DataFormat::eR32UInt);
             primitives += geometry.indexCount / 3;
             if (requireBuffers && valid)
             {
                 const uint32_t indexSize  = geometry.indexFormat == DataFormat::eR16UInt ? 2 : 4;
                 valid                    &= ValidInput(geometry.pVertexBuffer, geometry.vertexOffset,
                                                        uint64_t(geometry.vertexCount - 1) * geometry.vertexStride + 12, 4)
-                      && ValidInput(geometry.pIndexBuffer, geometry.indexOffset, uint64_t(geometry.indexCount) * indexSize,
-                                    indexSize);
+                                         && ValidInput(geometry.pIndexBuffer, geometry.indexOffset, uint64_t(geometry.indexCount) * indexSize,
+                                                       indexSize);
             }
         }
         valid &= primitives <= capabilities.maxPrimitives;
@@ -237,9 +237,9 @@ bool VulkanAccelerationStructure::ValidateBuild(const RHIAccelerationStructureBu
         const uint64_t scratchSize = info.pSource == nullptr ? sizes.buildScratchSize : sizes.updateScratchSize;
         const uint64_t address     = info.pScratchBuffer->GetDeviceAddress();
         valid                      = sizes.IsValid() && sizes.storageSize <= m_size && address != 0
-             && info.scratchOffset <= info.pScratchBuffer->GetRequiredSize()
-             && scratchSize <= info.pScratchBuffer->GetRequiredSize() - info.scratchOffset
-             && (address + info.scratchOffset) % GVulkanRHI->QueryGPUInfo().rayQuery.scratchAlignment == 0;
+                                  && info.scratchOffset <= info.pScratchBuffer->GetRequiredSize()
+                                  && scratchSize <= info.pScratchBuffer->GetRequiredSize() - info.scratchOffset
+                                  && (address + info.scratchOffset) % GVulkanRHI->QueryGPUInfo().rayQuery.scratchAlignment == 0;
         if (info.pSource != nullptr)
         {
             valid &= static_cast<const VulkanAccelerationStructure*>(info.pSource)->IsUpdateCompatible(info.description);

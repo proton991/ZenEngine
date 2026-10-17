@@ -63,8 +63,8 @@ TEST_P(RHIScheduledSubmissionTest, ReadyGroupsSubmitInOrderAndRetainExactLogical
                                                        RHICommandContextType::eGraphics, RHICommandContextType::eTransfer};
     TestOwnedSchedule                           schedule(*executor, queues);
     RHIResourcePtr<RHIBuffer>                   prefix = Buffer(), source = Buffer(), produced = Buffer(), graphics = Buffer(),
-                              transfer = Buffer();
-    TestBuffer* input                  = static_cast<TestBuffer*>(source.Get());
+                                                transfer = Buffer();
+    TestBuffer*                                 input    = static_cast<TestBuffer*>(source.Get());
     for (size_t i = 0; i < input->bytes.size(); ++i)
     {
         input->bytes[i] = uint8_t(i + 7);

@@ -294,9 +294,9 @@ void SoftwareSceneRayQuery::Destroy()
 {
     m_device->DestroyBuffer(m_nodes);
     m_device->DestroyBuffer(m_triangles);
-    m_nodes     = nullptr;
-    m_triangles = nullptr;
-    m_scene     = nullptr;
+    m_nodes       = nullptr;
+    m_triangles   = nullptr;
+    m_scene       = nullptr;
     m_revision    = 0;
     m_nodeCount   = 0;
     m_placeholder = false;

@@ -8,7 +8,7 @@
         binding.type    = type_;                                           \
         {                                                                  \
             std::initializer_list<RHIResource*> resources = {__VA_ARGS__}; \
-            for (RHIResource * resource : resources)                       \
+            for (RHIResource* resource : resources)                        \
             {                                                              \
                 binding.resources.push_back(resource);                     \
             }                                                              \
@@ -21,7 +21,7 @@
         RHIShaderResourceBinding binding{};                                             \
         binding.binding = index_;                                                       \
         binding.type    = type_;                                                        \
-        for (RHITexture * texture : (textures_))                                        \
+        for (RHITexture* texture : (textures_))                                         \
         {                                                                               \
             binding.resources.push_back(sampler_);                                      \
             binding.resources.push_back(texture);                                       \

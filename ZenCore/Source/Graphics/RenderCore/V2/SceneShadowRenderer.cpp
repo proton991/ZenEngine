@@ -103,11 +103,11 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light, uint32_t index, co
 
     const uint32_t faceCount  = type == SceneLightType::ePoint ? 6 : 1;
 
-    const float halfAngle     = type == SceneLightType::eSpot
-                                  ? std::clamp(std::acos(std::clamp(light.coneShadow.y, 0.0f, 1.0f)), 0.001f, glm::radians(89.9f))
-                                  : glm::radians(45.0f);
+    const float halfAngle  = type == SceneLightType::eSpot
+                               ? std::clamp(std::acos(std::clamp(light.coneShadow.y, 0.0f, 1.0f)), 0.001f, glm::radians(89.9f))
+                               : glm::radians(45.0f);
 
-    const float depthRange    = type == SceneLightType::eDirectional ? radius * 2.0f : farPlane;
+    const float depthRange = type == SceneLightType::eDirectional ? radius * 2.0f : farPlane;
 
     const float texelWidth =
         2.0f * (type == SceneLightType::eDirectional ? radius : std::tan(halfAngle)) / static_cast<float>(m_resolution);
@@ -134,10 +134,10 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light, uint32_t index, co
 
         FaceData data;
 
-        data.viewProjection        = projection * glm::lookAt(eye, eye + forward, up);
+        data.viewProjection                         = projection * glm::lookAt(eye, eye + forward, up);
 
-        data.lightPositionInvRange = Vec4(type == SceneLightType::eDirectional ? -direction : position,
-                                          type == SceneLightType::eDirectional ? 0.0f : 1.0f / farPlane);
+        data.lightPositionInvRange                  = Vec4(type == SceneLightType::eDirectional ? -direction : position,
+                                                           type == SceneLightType::eDirectional ? 0.0f : 1.0f / farPlane);
 
         m_uniforms.viewProjection[firstFace + face] = data.viewProjection;
 

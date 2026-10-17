@@ -26,7 +26,7 @@ struct HistoryInput
         access.access.accessMode   = mode;
         access.access.textureUsage = usage;
         access.access.bufferUsage.SetFlag(queue != RHICommandContextType::eTransfer ? RHIBufferUsageFlagBits::eStorageBuffer
-                                          : mode == RHIAccessMode::eRead            ? RHIBufferUsageFlagBits::eTransferSrcBuffer
+                                          : mode == RHIAccessMode::eRead ? RHIBufferUsageFlagBits::eTransferSrcBuffer
                                                                          : RHIBufferUsageFlagBits::eTransferDstBuffer);
         access.access.pipelineStages.SetFlag(
             queue == RHICommandContextType::eGraphics       ? RHIPipelineStageFlagBits::eFragmentShader
@@ -518,8 +518,8 @@ TEST_P(RDGSubmissionHistoryTest, LaterUploadWaitsForBothGraphicsAndComputeReader
     {
         graphics |= wait.consumer == RHICommandContextType::eTransfer && wait.producer.queue == RHICommandContextType::eGraphics
                  && wait.producer.serial == 3;
-        compute |= wait.consumer == RHICommandContextType::eTransfer
-                && wait.producer.queue == RHICommandContextType::eAsyncCompute && wait.producer.serial == 7;
+        compute  |= wait.consumer == RHICommandContextType::eTransfer
+                 && wait.producer.queue == RHICommandContextType::eAsyncCompute && wait.producer.serial == 7;
     }
     EXPECT_TRUE(graphics);
     EXPECT_TRUE(compute);

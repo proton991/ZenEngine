@@ -39,10 +39,10 @@ public:
 
     static constexpr size_type kDefaultCapacity = 256;
 
-    explicit LRUCache(size_type capacity          = kDefaultCapacity,
+    explicit LRUCache(size_type        capacity   = kDefaultCapacity,
                       EvictionCallback onEviction = {},
-                      const Hasher& hash          = Hasher(),
-                      const KeyEqual& equal       = KeyEqual()) :
+                      const Hasher&    hash       = Hasher(),
+                      const KeyEqual&  equal      = KeyEqual()) :
         m_index(0, hash, equal), m_capacity(capacity), m_onEviction(std::move(onEviction))
     {}
 

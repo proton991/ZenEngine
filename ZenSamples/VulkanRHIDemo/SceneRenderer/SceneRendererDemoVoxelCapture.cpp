@@ -74,11 +74,11 @@ bool SceneRendererDemo::CaptureVoxelOutput(const std::string& path, rc::Voxelize
 
     const uint64_t bytes              = uint64_t(resolution) * resolution * resolution * 32;
 
-    bool succeeded = !m_renderDevice->AreSubmissionsBlocked() && voxelizer->IsReady() && voxelizer->ProducesRadianceInputs()
-                  && voxelizer->GetGeometryRevision() != 0 && bytes <= std::numeric_limits<uint32_t>::max()
-                  && bytes <= m_renderDevice->GetGPUInfo().maxStorageBufferRange;
+    bool succeeded    = !m_renderDevice->AreSubmissionsBlocked() && voxelizer->IsReady() && voxelizer->ProducesRadianceInputs()
+                     && voxelizer->GetGeometryRevision() != 0 && bytes <= std::numeric_limits<uint32_t>::max()
+                     && bytes <= m_renderDevice->GetGPUInfo().maxStorageBufferRange;
 
-    RHIBuffer* packed            = nullptr;
+    RHIBuffer* packed = nullptr;
 
     RHIBuffer* reflectancePacked = nullptr;
 
@@ -589,7 +589,7 @@ bool SceneRendererDemo::CaptureVoxelReference(const std::string& path)
     RHIBuffer* readback = m_renderDevice->CreateBuffer(info);
 
     succeeded           = succeeded && owner != nullptr && attachment != nullptr && packed != nullptr && readback != nullptr
-             && !m_renderDevice->AreSubmissionsBlocked();
+                       && !m_renderDevice->AreSubmissionsBlocked();
 
     if (succeeded)
     {

@@ -32,10 +32,10 @@ bool AppendCommands(const ImDrawData&          data,
         }
         else if (draw.ElemCount != 0)
         {
-            valid = valid && draw.GetTexID() != ImTextureID_Invalid
-                 && draw.IdxOffset <= static_cast<uint32_t>(list.IdxBuffer.Size)
-                 && draw.ElemCount <= static_cast<uint32_t>(list.IdxBuffer.Size) - draw.IdxOffset
-                 && draw.VtxOffset < static_cast<uint32_t>(list.VtxBuffer.Size);
+            valid          = valid && draw.GetTexID() != ImTextureID_Invalid
+                          && draw.IdxOffset <= static_cast<uint32_t>(list.IdxBuffer.Size)
+                          && draw.ElemCount <= static_cast<uint32_t>(list.IdxBuffer.Size) - draw.IdxOffset
+                          && draw.VtxOffset < static_cast<uint32_t>(list.VtxBuffer.Size);
 
             const float x1 = (draw.ClipRect.x - data.DisplayPos.x) * data.FramebufferScale.x;
 
@@ -89,11 +89,11 @@ bool BuildUIDrawPacket(const ImDrawData& data, uint32_t width, uint32_t height, 
 
     static_assert(IM_COL32_R_SHIFT == 0 && IM_COL32_G_SHIFT == 8 && IM_COL32_B_SHIFT == 16 && IM_COL32_A_SHIFT == 24);
 
-    output     = {};
+    output             = {};
 
-    bool valid = data.Valid && data.TotalVtxCount >= 0 && data.TotalIdxCount >= 0 && IsFinite(data.DisplayPos)
-              && IsFinite(data.DisplaySize) && IsFinite(data.FramebufferScale) && data.FramebufferScale.x > 0
-              && data.FramebufferScale.y > 0;
+    bool valid         = data.Valid && data.TotalVtxCount >= 0 && data.TotalIdxCount >= 0 && IsFinite(data.DisplayPos)
+                      && IsFinite(data.DisplaySize) && IsFinite(data.FramebufferScale) && data.FramebufferScale.x > 0
+                      && data.FramebufferScale.y > 0;
 
     const bool visible = width > 0 && height > 0 && data.DisplaySize.x > 0 && data.DisplaySize.y > 0;
 
@@ -115,8 +115,8 @@ bool BuildUIDrawPacket(const ImDrawData& data, uint32_t width, uint32_t height, 
         const uint64_t indexBytes  = indexCount * sizeof(uint32_t);
 
         valid                      = vertexCount == static_cast<uint64_t>(data.TotalVtxCount)
-             && indexCount == static_cast<uint64_t>(data.TotalIdxCount) && vertexBytes <= UINT32_MAX && indexBytes <= UINT32_MAX
-             && vertexCount <= INT32_MAX;
+                                  && indexCount == static_cast<uint64_t>(data.TotalIdxCount) && vertexBytes <= UINT32_MAX && indexBytes <= UINT32_MAX
+                                  && vertexCount <= INT32_MAX;
 
         if (valid)
         {

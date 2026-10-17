@@ -25,8 +25,8 @@ RenderObject::RenderObject(RenderDevice* pRenderDevice, const std::string& model
         m_nodesData.emplace_back(pNode->GetData());
     }
 
-    m_pNodeSSBO     = m_pRenderDevice->CreateStorageBuffer(sizeof(sg::NodeData) * m_nodesData.size(),
-                                                           reinterpret_cast<const uint8_t*>(m_nodesData.data()), "node_data_ssbo");
+    m_pNodeSSBO = m_pRenderDevice->CreateStorageBuffer(sizeof(sg::NodeData) * m_nodesData.size(),
+                                                       reinterpret_cast<const uint8_t*>(m_nodesData.data()), "node_data_ssbo");
 
     m_pVertexBuffer = m_pRenderDevice->CreateVertexBuffer(vertices.size() * sizeof(asset::Vertex),
                                                           reinterpret_cast<const uint8_t*>(vertices.data()));

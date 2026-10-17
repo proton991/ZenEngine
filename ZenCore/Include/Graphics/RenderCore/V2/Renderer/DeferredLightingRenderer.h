@@ -52,8 +52,8 @@ public:
 
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection);
 
-    void BuildCompositionGraph(const RenderView& view,
-                               VoxelGIRenderer*  voxelGI    = nullptr,
+    void BuildCompositionGraph(const RenderView&    view,
+                               VoxelGIRenderer*     voxelGI = nullptr,
                                SceneShadowRenderer* shadows = nullptr);
 
     void Destroy();
@@ -117,7 +117,7 @@ private:
     HybridGIRenderer*      m_hybrid{nullptr};
     RHIBuffer*             m_hybridCaptureOutput{nullptr};
     RHIBuffer*             m_hybridCaptureReadback{nullptr};
-    RenderDevice* m_pRenderDevice{nullptr};
+    RenderDevice*          m_pRenderDevice{nullptr};
 
     RenderScene* m_pScene{nullptr};
 

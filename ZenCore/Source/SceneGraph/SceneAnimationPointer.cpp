@@ -102,8 +102,8 @@ bool NumericUpdate(const NumericProperty&  property,
                    const std::string&      path,
                    VectorView<const float> values,
                    bool                    apply,
-                   float                   scale = 1.0f,
-                   bool arrayElements            = false)
+                   float                   scale         = 1.0f,
+                   bool                    arrayElements = false)
 {
     uint32_t first                    = 0;
 

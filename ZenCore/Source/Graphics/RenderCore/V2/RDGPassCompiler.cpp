@@ -1162,12 +1162,12 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITextu
     valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     valid      = valid
-         && (Check(pTexture != nullptr && pTexture->GetNumMipmaps() > 0 && pTexture->GetNumMipmaps() <= 32,
-                   RDGErrorCode::eRange, "Invalid mipmap texture"));
+              && (Check(pTexture != nullptr && pTexture->GetNumMipmaps() > 0 && pTexture->GetNumMipmaps() <= 32,
+                        RDGErrorCode::eRange, "Invalid mipmap texture"));
 
-    valid = valid
-         && (Check(pTexture->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferSrc), RDGErrorCode::eBinding,
-                   "Mipmap texture lacks transfer-source creation usage"));
+    valid      = valid
+              && (Check(pTexture->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferSrc), RDGErrorCode::eBinding,
+                        "Mipmap texture lacks transfer-source creation usage"));
 
     if (valid)
     {
@@ -1319,20 +1319,20 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RHIBuffer*   
     valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     valid      = valid
-         && (Check(pSrcBuffer != nullptr && pDstBuffer != nullptr && region.size > 0, RDGErrorCode::eRange,
-                   "Buffer copy requires two buffers and a nonempty region"));
+              && (Check(pSrcBuffer != nullptr && pDstBuffer != nullptr && region.size > 0, RDGErrorCode::eRange,
+                        "Buffer copy requires two buffers and a nonempty region"));
 
-    valid = valid
-         && (Check(region.srcOffset <= pSrcBuffer->GetRequiredSize()
-                       && region.size <= pSrcBuffer->GetRequiredSize() - region.srcOffset
-                       && region.dstOffset <= pDstBuffer->GetRequiredSize()
-                       && region.size <= pDstBuffer->GetRequiredSize() - region.dstOffset,
-                   RDGErrorCode::eRange, "Buffer copy region is out of bounds"));
+    valid      = valid
+              && (Check(region.srcOffset <= pSrcBuffer->GetRequiredSize()
+                            && region.size <= pSrcBuffer->GetRequiredSize() - region.srcOffset
+                            && region.dstOffset <= pDstBuffer->GetRequiredSize()
+                            && region.size <= pDstBuffer->GetRequiredSize() - region.dstOffset,
+                        RDGErrorCode::eRange, "Buffer copy region is out of bounds"));
 
-    valid = valid
-         && (Check(pSrcBuffer != pDstBuffer || region.srcOffset + region.size <= region.dstOffset
-                       || region.dstOffset + region.size <= region.srcOffset,
-                   RDGErrorCode::eRange, "Overlapping regions in a buffer copy"));
+    valid      = valid
+              && (Check(pSrcBuffer != pDstBuffer || region.srcOffset + region.size <= region.dstOffset
+                            || region.dstOffset + region.size <= region.srcOffset,
+                        RDGErrorCode::eRange, "Overlapping regions in a buffer copy"));
 
     if ((valid) && (pSrcBuffer != nullptr && pDstBuffer != nullptr))
     {
@@ -1440,8 +1440,8 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(RHIB
                     m_pNode, pDstResource, RHITextureUsage::eTransferDst, CopyRange(region.textureSubresources),
                     RHIAccessMode::eReadWrite, {},
                     CoversMip(pDstTexture, region.textureSubresources.mipmap, region.textureOffset, region.textureSize)
-                                                               ? RDGContentEffect::eFullWrite
-                                                               : RDGContentEffect::eWrite);
+                        ? RDGContentEffect::eFullWrite
+                        : RDGContentEffect::eWrite);
             }
 
             if (valid)
@@ -1469,8 +1469,8 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RHITexture*
     valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     valid      = valid
-         && (Check(pTexture != nullptr && pTexture->GetSubResourceRange().aspect.HasFlag(RHITextureAspectFlagBits::eColor),
-                   RDGErrorCode::eRange, "ClearTexture requires a color texture"));
+              && (Check(pTexture != nullptr && pTexture->GetSubResourceRange().aspect.HasFlag(RHITextureAspectFlagBits::eColor),
+                        RDGErrorCode::eRange, "ClearTexture requires a color texture"));
 
     if ((valid) && (pTexture != nullptr))
     {
@@ -1507,8 +1507,8 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
         valid                                          = (resource != nullptr);
 
         valid                                          = valid
-             && (Check(resource->texFormat.mipmaps > 0 && resource->texFormat.mipmaps <= 32, RDGErrorCode::eRange,
-                       "Invalid logical mipmap texture"));
+                                                      && (Check(resource->texFormat.mipmaps > 0 && resource->texFormat.mipmaps <= 32, RDGErrorCode::eRange,
+                                                                "Invalid logical mipmap texture"));
 
         if (valid)
         {
@@ -1619,8 +1619,8 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(RDGB
                     m_pNode, dst, RHITextureUsage::eTransferDst, CopyRange(region.textureSubresources),
                     RHIAccessMode::eReadWrite, {},
                     CoversMip(info, region.textureSubresources.mipmap, region.textureOffset, region.textureSize)
-                                                               ? RDGContentEffect::eFullWrite
-                                                               : RDGContentEffect::eWrite,
+                        ? RDGContentEffect::eFullWrite
+                        : RDGContentEffect::eWrite,
                     true, false, destination);
             }
 
@@ -1657,9 +1657,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture 
         valid                                          = (resource != nullptr);
 
         valid                                          = valid
-             && (Check(!FormatIsDepthOnly(resource->texFormat.format) && !FormatIsDepthStencil(resource->texFormat.format)
-                           && !FormatIsStencilOnly(resource->texFormat.format),
-                       RDGErrorCode::eRange, "ClearTexture requires a color texture"));
+                                                      && (Check(!FormatIsDepthOnly(resource->texFormat.format) && !FormatIsDepthStencil(resource->texFormat.format)
+                                                                    && !FormatIsStencilOnly(resource->texFormat.format),
+                                                                RDGErrorCode::eRange, "ClearTexture requires a color texture"));
 
         if (valid)
         {
@@ -1671,9 +1671,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture 
 
             range.layerCount = resource->texFormat.arrayLayers;
 
-            valid            = m_pRDG->DeclareTextureAccessForPass(m_pNode, resource, RHITextureUsage::eTransferDst, range,
-                                                                   RHIAccessMode::eReadWrite, {}, RDGContentEffect::eFullWrite, true,
-                                                                   false, texture);
+            valid = m_pRDG->DeclareTextureAccessForPass(m_pNode, resource, RHITextureUsage::eTransferDst, range,
+                                                        RHIAccessMode::eReadWrite, {}, RDGContentEffect::eFullWrite, true,
+                                                        false, texture);
 
             if (valid)
             {
@@ -1706,15 +1706,15 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RDGBuffer    
         valid                                     = !(src == nullptr || dst == nullptr);
 
         valid                                     = valid
-             && (Check(region.size > 0 && region.srcOffset <= src->bufferSize
-                           && region.size <= src->bufferSize - region.srcOffset && region.dstOffset <= dst->bufferSize
-                           && region.size <= dst->bufferSize - region.dstOffset
-                           && (src != dst || region.srcOffset + region.size <= region.dstOffset
-                               || region.dstOffset + region.size <= region.srcOffset),
-                       RDGErrorCode::eRange, "Invalid logical buffer copy range"));
+                                                 && (Check(region.size > 0 && region.srcOffset <= src->bufferSize
+                                                               && region.size <= src->bufferSize - region.srcOffset && region.dstOffset <= dst->bufferSize
+                                                               && region.size <= dst->bufferSize - region.dstOffset
+                                                               && (src != dst || region.srcOffset + region.size <= region.dstOffset
+                                                                   || region.dstOffset + region.size <= region.srcOffset),
+                                                           RDGErrorCode::eRange, "Invalid logical buffer copy range"));
 
-        valid = valid
-             && (m_pRDG->DeclareBufferAccessForPass(
+        valid                                     = valid
+                                                 && (m_pRDG->DeclareBufferAccessForPass(
                  m_pNode, src, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
                  RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
 
@@ -1728,7 +1728,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RDGBuffer    
                 m_pNode, dst, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
                 RHIAccessMode::eReadWrite, {},
                 region.dstOffset == 0 && region.size == dst->bufferSize ? RDGContentEffect::eFullWrite
-                                                                                                               : RDGContentEffect::eWrite,
+                                                                        : RDGContentEffect::eWrite,
                 true, false, destination);
         }
 
@@ -1771,9 +1771,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(RDGTexture  
         valid                                     = !(src == nullptr || dst == nullptr);
 
         valid                                     = valid
-             && (Check(!regions.empty() && regions.data() != nullptr && src->texFormat.format == dst->texFormat.format
-                           && src->texFormat.sampleCount == dst->texFormat.sampleCount,
-                       RDGErrorCode::eRange, "Logical texture copy requires matching formats/samples and regions"));
+                                                 && (Check(!regions.empty() && regions.data() != nullptr && src->texFormat.format == dst->texFormat.format
+                                                               && src->texFormat.sampleCount == dst->texFormat.sampleCount,
+                                                           RDGErrorCode::eRange, "Logical texture copy requires matching formats/samples and regions"));
 
         if (valid)
         {
@@ -1808,9 +1808,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(RDGTexture  
 
                     const bool full    = region.dstOffset == Vec3i(0) && region.size == extent;
 
-                    valid              = !((!m_pRDG->DeclareTextureAccessForPass(m_pNode, src, RHITextureUsage::eTransferSrc,
-                                                                                 CopyRange(region.srcSubresources), RHIAccessMode::eRead, {},
-                                                                                 RDGContentEffect::eRead, true, false, source)
+                    valid = !((!m_pRDG->DeclareTextureAccessForPass(m_pNode, src, RHITextureUsage::eTransferSrc,
+                                                                    CopyRange(region.srcSubresources), RHIAccessMode::eRead, {},
+                                                                    RDGContentEffect::eRead, true, false, source)
                                || !m_pRDG->DeclareTextureAccessForPass(
                                    m_pNode, dst, RHITextureUsage::eTransferDst, CopyRange(region.dstSubresources),
                                    RHIAccessMode::eReadWrite, {},

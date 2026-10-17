@@ -102,8 +102,8 @@ inline bool ValidateBufferTextureFootprint(RDGResult&                        res
         valid                    = result.Check(bytes != 0 && texture.samples == SampleCount::e1, RDGErrorCode::eRange,
                                                 "Unsupported buffer-to-texture copy format or sample count");
         valid                    = valid
-             && (result.Check(aspect != 0 && (aspect & (aspect - 1)) == 0 && region.bufferOffset % alignment == 0,
-                              RDGErrorCode::eRange, "Buffer-to-texture copy requires one aspect and an aligned buffer offset"));
+                                && (result.Check(aspect != 0 && (aspect & (aspect - 1)) == 0 && region.bufferOffset % alignment == 0,
+                                                 RDGErrorCode::eRange, "Buffer-to-texture copy requires one aspect and an aligned buffer offset"));
 
         if (valid)
         {

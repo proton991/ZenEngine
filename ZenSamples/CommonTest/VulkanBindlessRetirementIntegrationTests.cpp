@@ -258,8 +258,8 @@ protected:
         output->Unmap();
     }
 
-    void SubmitAndWait(VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VkAccessFlags access       = VK_ACCESS_SHADER_WRITE_BIT)
+    void SubmitAndWait(VkPipelineStageFlags stage  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VkAccessFlags        access = VK_ACCESS_SHADER_WRITE_BIT)
     {
         VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
 

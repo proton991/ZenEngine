@@ -150,7 +150,7 @@ public:
             const std::string&           text   = entry->second;
             const std::from_chars_result result = std::from_chars(text.data(), text.data() + text.size(), parsed);
             valid                               = result.ec == std::errc{} && result.ptr == text.data() + text.size()
-                 && std::isfinite(static_cast<double>(parsed));
+                                               && std::isfinite(static_cast<double>(parsed));
             if (valid)
             {
                 value = parsed;

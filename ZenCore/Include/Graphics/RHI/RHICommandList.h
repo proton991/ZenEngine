@@ -278,7 +278,7 @@ public:
                                 uint32_t   instanceCount,
                                 uint32_t   firstIndex,
                                 int32_t    vertexOffset,
-                                uint32_t   firstInstance)                                                              = 0;
+                                uint32_t   firstInstance)                                                            = 0;
 
     virtual void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                         RHIBuffer* pIndexBuffer,
@@ -286,7 +286,7 @@ public:
                                         uint64_t   indexBufferOffset,
                                         uint64_t   offset,
                                         uint32_t   drawCount,
-                                        uint32_t   stride)                                                             = 0;
+                                        uint32_t   stride)                                                           = 0;
 
     virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)                       = 0;
 
@@ -298,7 +298,7 @@ public:
                                    BitField<RHIPipelineStageFlagBits> dstStages,
                                    VectorView<RHIMemoryTransition>    memoryTransitions,
                                    VectorView<RHIBufferTransition>    bufferTransitions,
-                                   VectorView<RHITextureTransition>   textureTransitions)                              = 0;
+                                   VectorView<RHITextureTransition>   textureTransitions)                            = 0;
 
     virtual void RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info)
     {
@@ -316,7 +316,7 @@ public:
     virtual void RHIBlitTexture(RHITexture*                      pSrcTexture,
                                 RHITexture*                      pDstTexture,
                                 VectorView<RHITextureBlitRegion> regions,
-                                RHISamplerFilter                 filter)                                                                    = 0;
+                                RHISamplerFilter                 filter)                                                    = 0;
 
     virtual void RHICopyTextureToBuffer(RHITexture*                            pSrcTex,
                                         RHIBuffer*                             pDstBuffer,
@@ -331,7 +331,7 @@ public:
                                    uint32_t    srcLayer,
                                    uint32_t    srcMipmap,
                                    uint32_t    dstLayer,
-                                   uint32_t    dstMipmap)                                                                      = 0;
+                                   uint32_t    dstMipmap)                                                                   = 0;
 
     virtual void RHIWaitUntilCompleted()                                                                                    = 0;
 

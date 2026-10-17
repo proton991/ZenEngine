@@ -68,12 +68,12 @@ std::string PaddedTriangleJson(size_t byteLength, bool embeddedBuffer)
                                "\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],"
                                "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
                                "\"buffers\":["
-                       + buffer
-                       + "],"
-                         "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
-                         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
-                         "\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]}],"
-                         "\"extras\":{\"padding\":\"";
+                             + buffer
+                             + "],"
+                               "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
+                               "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                               "\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]}],"
+                               "\"extras\":{\"padding\":\"";
 
     const std::string suffix = "\"}}";
 

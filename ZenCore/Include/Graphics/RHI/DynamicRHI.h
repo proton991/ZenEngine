@@ -300,9 +300,9 @@ public:
                                    uint64_t              submissionSerial,
                                    uint64_t              timeoutNS = UINT64_MAX) = 0;
 
-    virtual void WaitDeviceIdle()                                   = 0;
+    virtual void WaitDeviceIdle()                                                = 0;
 
-    virtual const RHIGPUInfo& QueryGPUInfo() const                  = 0;
+    virtual const RHIGPUInfo& QueryGPUInfo() const                               = 0;
 
     // Safe to read while the initialized backend is alive, including from the render
     // thread. Reads published counters only; never waits for RHI/GPU work or polls a driver.

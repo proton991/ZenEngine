@@ -48,20 +48,20 @@ public:
 
     static UniquePtr<Camera> CreateOrthoOnAABB(const sg::AABB& aabb);
 
-    static UniquePtr<Camera> CreateUnique(const Vec3& eye,
-                                          const Vec3& target,
-                                          float       aspect,
-                                          CameraType  type                    = CameraType::eFirstPerson,
+    static UniquePtr<Camera> CreateUnique(const Vec3&          eye,
+                                          const Vec3&          target,
+                                          float                aspect,
+                                          CameraType           type           = CameraType::eFirstPerson,
                                           CameraProjectionType projectionType = CameraProjectionType::ePerspective);
 
     Camera(const Vec3& eye,
            const Vec3& target,
            float       aspect,
-           float       fov = 70.0f,
-           float near      = 0.001f,
-           float far       = 100.0f,
-           float speed     = 2.0f,
-           CameraType type = CameraType::eFirstPerson,
+           float       fov   = 70.0f,
+           float       near  = 0.001f,
+           float       far   = 100.0f,
+           float       speed = 2.0f,
+           CameraType  type  = CameraType::eFirstPerson,
            // use perspective projection by default
            CameraProjectionType projectionType = CameraProjectionType::ePerspective);
 

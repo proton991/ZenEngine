@@ -11,8 +11,8 @@ using namespace zen;
 RHIGPUTimingPtr AddPublishedInterval(RHIGPUFrameTiming& frame,
                                      uint64_t           begin,
                                      uint64_t           end,
-                                     uint32_t           validBits = 64,
-                                     double periodNanoseconds     = 1000)
+                                     uint32_t           validBits         = 64,
+                                     double             periodNanoseconds = 1000)
 {
     RHIGPUTimingPtr interval = frame.AddInterval();
 

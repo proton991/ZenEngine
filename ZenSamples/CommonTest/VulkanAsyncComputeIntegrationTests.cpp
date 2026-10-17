@@ -333,8 +333,8 @@ protected:
                   VulkanBuffer*              output,
                   uint32_t                   expectedBuffer,
                   uint32_t                   expectedImage,
-                  VkPipelineStageFlags       srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                  VkAccessFlags srcAccess             = VK_ACCESS_SHADER_WRITE_BIT)
+                  VkPipelineStageFlags       srcStage  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                  VkAccessFlags              srcAccess = VK_ACCESS_SHADER_WRITE_BIT)
     {
         VulkanPipelineBarrier barrier;
 

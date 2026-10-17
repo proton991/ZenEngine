@@ -20,8 +20,8 @@ void ConfigureScheduledBufferPass(RDGPassDescBase& pass, NameID tag, RDGBuffer i
 void AddScheduledBufferPass(RenderGraph&          graph,
                             NameID                tag,
                             RHICommandContextType queue,
-                            RDGBuffer             input = {},
-                            RDGBuffer output            = {})
+                            RDGBuffer             input  = {},
+                            RDGBuffer             output = {})
 {
     if (queue == RHICommandContextType::eGraphics)
     {

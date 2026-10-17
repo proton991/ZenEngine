@@ -132,8 +132,8 @@ protected:
             std::filesystem::relative(std::filesystem::path(RDG_REFLECTION_TEST_PATH) / file, SPV_SHADER_PATH).generic_string();
     }
 
-    VulkanShader* Shader(bool compute                                                     = false,
-                         bool depthOnly                                                   = false,
+    VulkanShader* Shader(bool                                                   compute   = false,
+                         bool                                                   depthOnly = false,
                          const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {})
     {
         RHIShaderCreateInfo info{};

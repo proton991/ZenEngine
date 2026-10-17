@@ -229,7 +229,7 @@ protected:
     }
 
     VulkanShader* Shader(const char* fragment   = "recording_uniform.frag.spv",
-                         bool compute           = false,
+                         bool        compute    = false,
                          const char* vertexFile = "pipeline.vert.spv")
     {
         RHIShaderCreateInfo info{};

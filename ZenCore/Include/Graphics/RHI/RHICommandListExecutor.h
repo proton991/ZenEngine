@@ -180,9 +180,9 @@ public:
 
     RHICommandListExecutor& operator=(const RHICommandListExecutor&) = delete;
 
-    RHISubmissionTicket SubmitFrame(RHICommandList&                 commands,
-                                    RHIViewport*                    viewport,
-                                    RefCountPtr<RHISubmissionState> state             = {},
+    RHISubmissionTicket SubmitFrame(RHICommandList&                      commands,
+                                    RHIViewport*                         viewport,
+                                    RefCountPtr<RHISubmissionState>      state        = {},
                                     VectorView<const RHISubmissionPoint> predecessors = {});
 
     RHISubmissionTicket SubmitFrame(VectorView<const RHISubmissionGroup> groups,

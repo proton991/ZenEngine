@@ -648,7 +648,7 @@ bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
     m_acquiredSuboptimal = false;
 
     m_presentResult      = {SurfaceOutcome(m_lastResult),
-                       sync.pending ? RHIPresentAcceptance::eEnqueued
+                            sync.pending ? RHIPresentAcceptance::eEnqueued
                             : (m_lastResult == VK_ERROR_OUT_OF_HOST_MEMORY || m_lastResult == VK_ERROR_OUT_OF_DEVICE_MEMORY)
                                 ? RHIPresentAcceptance::eRejected
                                 : RHIPresentAcceptance::eUncertain,

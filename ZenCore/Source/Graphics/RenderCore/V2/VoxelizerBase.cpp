@@ -150,11 +150,11 @@ void VoxelizerBase::PrepareTextures()
         uint64_t budgetMiB                   = 0;
 
         const bool valid                     = config.ReadNumber("voxel_reflectance_budget_mb", budgetMiB)
-                        && budgetMiB <= std::numeric_limits<uint64_t>::max() / (1024 * 1024);
+                                            && budgetMiB <= std::numeric_limits<uint64_t>::max() / (1024 * 1024);
 
-        m_requestAveragedReflectance = policy == "averaged" && valid && budgetMiB != 0;
+        m_requestAveragedReflectance         = policy == "averaged" && valid && budgetMiB != 0;
 
-        m_reflectanceBudgetBytes     = valid ? budgetMiB * 1024 * 1024 : 0;
+        m_reflectanceBudgetBytes             = valid ? budgetMiB * 1024 * 1024 : 0;
 
         if ((policy != "owner" && policy != "averaged") || (policy == "averaged" && !m_requestAveragedReflectance))
         {
@@ -424,7 +424,7 @@ sg::AABB VoxelizerBase::GetVoxelBounds() const
     const sg::AABB& bounds = m_pScene->GetVoxelSceneBounds();
 
     const float side       = std::max(bounds.GetMaxExtent(), 0.001f) * static_cast<float>(m_voxelTexResolution)
-                     / static_cast<float>(m_voxelTexResolution - 2);
+                           / static_cast<float>(m_voxelTexResolution - 2);
 
     const Vec3 halfSize(side * 0.5f);
 

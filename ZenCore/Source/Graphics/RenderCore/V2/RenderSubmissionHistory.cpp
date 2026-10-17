@@ -74,7 +74,7 @@ bool RenderSubmissionHistory::IncludeDependency(RenderSubmissionUpdate&     upda
         const bool local                      = queues.AreQueuesShared(point.queue, group.queue);
 
         valid                                 = status != RHISubmissionPointStatus::eFailed
-             && (local || serializeReads || (queues.asyncSubmissionDependencies && shared));
+                                             && (local || serializeReads || (queues.asyncSubmissionDependencies && shared));
 
         if (valid && point.state.Get() == update.state.Get())
         {
@@ -115,9 +115,9 @@ void RenderSubmissionHistory::MergeUse(RenderResourceUse& use, const RHISubmissi
                         || (use.point.queue == point.queue && previous.accessMode == RHIAccessMode::eRead
                             && access.accessMode == RHIAccessMode::eRead && compatibleLayout));
 
-    use.point  = point;
+    use.point        = point;
 
-    use.access = access;
+    use.access       = access;
 
     if (merge)
     {

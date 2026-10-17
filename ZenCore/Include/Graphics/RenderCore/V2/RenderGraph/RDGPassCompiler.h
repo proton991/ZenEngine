@@ -317,10 +317,10 @@ struct RDGPassDescBase
                       MakeVecView(&selectedView, 1));
     }
 
-    void BindStorageImage(NameID                       name,
-                          VectorView<const RDGTexture> textures,
-                          RDGContentGuarantee          contents      = RDGContentGuarantee::eNone,
-                          VectorView<const RDGTextureViewDesc> views = {})
+    void BindStorageImage(NameID                               name,
+                          VectorView<const RDGTexture>         textures,
+                          RDGContentGuarantee                  contents = RDGContentGuarantee::eNone,
+                          VectorView<const RDGTextureViewDesc> views    = {})
     {
         BindResources(name, RDGBindingType::eStorageImage, textures, contents, nullptr, views);
     }
@@ -385,12 +385,12 @@ struct RDGPassDescBase
     }
 
 private:
-    template <typename Resource> void BindResources(NameID               name,
-                                                    RDGBindingType       type,
-                                                    VectorView<Resource> resources,
-                                                    RDGContentGuarantee  contents              = RDGContentGuarantee::eNone,
-                                                    RHISampler* sampler                        = nullptr,
-                                                    VectorView<const RDGTextureViewDesc> views = {})
+    template <typename Resource> void BindResources(NameID                               name,
+                                                    RDGBindingType                       type,
+                                                    VectorView<Resource>                 resources,
+                                                    RDGContentGuarantee                  contents = RDGContentGuarantee::eNone,
+                                                    RHISampler*                          sampler  = nullptr,
+                                                    VectorView<const RDGTextureViewDesc> views    = {})
     {
         if (resources.empty() || resources.data() == nullptr || resourceStorage.size() > UINT32_MAX
             || resources.size() > UINT32_MAX - resourceStorage.size()
@@ -522,11 +522,11 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         geometryBuffer.indexBufferOffset = offset;
     }
 
-    void AddColorOutput(DataFormat            format,
-                        uint32_t              width,
-                        uint32_t              height,
-                        NameID                tag,
-                        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+    void AddColorOutput(DataFormat             format,
+                        uint32_t               width,
+                        uint32_t               height,
+                        NameID                 tag,
+                        RHIRenderTargetLoadOp  loadOp  = RHIRenderTargetLoadOp::eClear,
                         RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
         if (colorOutputCount >= MAX_NUM_COLOR_ATTACHMENTS)
@@ -550,8 +550,8 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         }
     }
 
-    void AddColorOutput(RHITexture*           pTexture,
-                        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+    void AddColorOutput(RHITexture*            pTexture,
+                        RHIRenderTargetLoadOp  loadOp  = RHIRenderTargetLoadOp::eClear,
                         RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
         if (colorOutputCount >= MAX_NUM_COLOR_ATTACHMENTS)
@@ -580,11 +580,11 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         }
     }
 
-    void AddDepthStencilOutput(DataFormat            format,
-                               uint32_t              width,
-                               uint32_t              height,
-                               NameID                tag,
-                               RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+    void AddDepthStencilOutput(DataFormat             format,
+                               uint32_t               width,
+                               uint32_t               height,
+                               NameID                 tag,
+                               RHIRenderTargetLoadOp  loadOp  = RHIRenderTargetLoadOp::eClear,
                                RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
         depthStencilOutput.format  = format;
@@ -597,8 +597,8 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         outputMask.Set(MAX_NUM_COLOR_ATTACHMENTS);
     }
 
-    void AddDepthStencilOutput(RHITexture*           pTexture,
-                               RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+    void AddDepthStencilOutput(RHITexture*            pTexture,
+                               RHIRenderTargetLoadOp  loadOp  = RHIRenderTargetLoadOp::eClear,
                                RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
         if (pTexture == nullptr)
@@ -619,10 +619,10 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         }
     }
 
-    void AddColorOutput(RDGTexture            texture,
-                        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
-                        RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore,
-                        bool fullWrite                 = false)
+    void AddColorOutput(RDGTexture             texture,
+                        RHIRenderTargetLoadOp  loadOp    = RHIRenderTargetLoadOp::eClear,
+                        RHIRenderTargetStoreOp storeOp   = RHIRenderTargetStoreOp::eStore,
+                        bool                   fullWrite = false)
     {
         if (!texture || colorOutputCount >= MAX_NUM_COLOR_ATTACHMENTS)
         {
@@ -640,10 +640,10 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         }
     }
 
-    void AddDepthStencilOutput(RDGTexture            texture,
-                               RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
-                               RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore,
-                               bool fullWrite                 = false)
+    void AddDepthStencilOutput(RDGTexture             texture,
+                               RHIRenderTargetLoadOp  loadOp    = RHIRenderTargetLoadOp::eClear,
+                               RHIRenderTargetStoreOp storeOp   = RHIRenderTargetStoreOp::eStore,
+                               bool                   fullWrite = false)
     {
         if (!texture)
         {
@@ -796,9 +796,9 @@ private:
 class RDGPassCmdEncoder
 {
 public:
-    RDGPassCmdEncoder(RHICommandList* pCmdList,
-                      RDGShaderPass*  pPass,
-                      RDGNodeMetrics* pMetrics            = nullptr,
+    RDGPassCmdEncoder(RHICommandList*        pCmdList,
+                      RDGShaderPass*         pPass,
+                      RDGNodeMetrics*        pMetrics     = nullptr,
                       const RDGPassDescBase* pDescription = nullptr);
 
     // Keep the first failure; subsequent encoder commands are ignored.
