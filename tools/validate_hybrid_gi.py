@@ -11,6 +11,7 @@ import subprocess
 import numpy as np
 from hybrid_gi_fixtures import generate
 from capture_hybrid_gi import fingerprint, capture_configuration
+import reference_cache
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -39,7 +40,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
         bounce_source='cone',resolution=64,environment_lighting=True,shadows=False,light_changes=False,spatial_filter=True,
         width=320,height=180,reflections=True,reflection_motion=False,mode=3,rt_shadows=False,
         geometry_motion=False,independent_views=False,analytic_lighting=None,voxelizer=None,
-        backend=None,feature_backends=None):
+        backend=None,feature_backends=None,previous_frame_radiance=False):
     exe=exe.resolve();folder=folder.resolve()
     fixtures=folder/'fixtures'
     generate(fixtures)
@@ -71,6 +72,7 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                           voxel_gi_shadow_enabled='false',voxel_gi_ray_provider=provider,voxel_gi_samples=samples,
                           voxel_gi_reference_samples=reference_samples,
                           voxel_gi_temporal='true',voxel_gi_filter=str(spatial_filter).lower(),voxel_gi_specular_occlusion='true',
+                          voxel_gi_previous_frame_radiance=str(previous_frame_radiance).lower(),
                           async_compute='auto')
             settings.update(voxel_gi_bounce_source=bounce_source,environment_lighting=str(environment_lighting).lower(),
                             voxel_gi_rt_shadows=str(rt_shadows).lower(),
@@ -109,16 +111,29 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                         shaders=[fingerprint(path) for path in sorted((ROOT/'Data/SpvShaders').rglob('*.spv'))],
                         config=fingerprint(config))
             Path(str(prefix)+'.inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
-            with prefix.with_suffix('.log').open('w') as log:
-                result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,
-                                      timeout=1800 if light_changes or reflection_motion or geometry_motion or independent_views else 300)
+            # Converged references (standalone, light-change or reflection-motion passes) replay by exact inputs.
+            cache_key=None
+            cache_hit=False
+            if reference_cache.enabled() and (reference_samples or light_changes or reflection_motion):
+                cache_key,cache_material=reference_cache.key(prefix,command,active,
+                                                             [fixtures/(name+'.gltf'),Path(settings['environment_texture'])],exe)
+                cache_hit=reference_cache.restore(cache_key,prefix)
+            returncode=0
+            if not cache_hit:
+                with prefix.with_suffix('.log').open('w') as log:
+                    result=subprocess.run(command,cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,
+                                          timeout=1800 if light_changes or reflection_motion or geometry_motion or independent_views else 300)
+                returncode=result.returncode
             log=prefix.with_suffix('.log').read_text(errors='replace')
             errors=[line for line in log.splitlines() if '[error]' in line or 'VUID-' in line or 'SYNC-HAZARD' in line]
             baseline=[line for line in errors if 'SYNC-HAZARD-PRESENT-AFTER-WRITE' in line]
             if allow_present_baseline:
                 errors=[line for line in errors if line not in baseline]
-            assert result.returncode==0 and not errors,(name,result.returncode,errors[:5])
+            assert returncode==0 and not errors,(name,returncode,errors[:5])
+            if cache_key is not None and not cache_hit and reference_cache.clean_log(prefix.with_suffix('.log')):
+                reference_cache.store(cache_key,cache_material,prefix)
             metadata=json.loads(Path(str(prefix)+'.lighting.json').read_text())
+            assert metadata.get('previous_frame_radiance', False) == previous_frame_radiance, metadata
             features = ('sky', 'specular', 'sky_cache', 'bounce', 'reflections', 'shadows')
             inherited = backend or ('hardware' if provider in ('hardware', 'auto') else 'compute')
             requested_mask = sum(1 << bit for bit, feature in enumerate(features)
@@ -223,6 +238,7 @@ if __name__=='__main__':
     parser.add_argument('--environment-lighting',action=argparse.BooleanOptionalAction,default=True)
     parser.add_argument('--shadows',action='store_true')
     parser.add_argument('--light-changes',action='store_true')
+    parser.add_argument('--previous-frame-radiance',action='store_true')
     parser.add_argument('--spatial-filter',action=argparse.BooleanOptionalAction,default=True)
     parser.add_argument('--width',type=int,default=320)
     parser.add_argument('--height',type=int,default=180)
@@ -236,4 +252,5 @@ if __name__=='__main__':
         run(args.exe.resolve(),args.output.resolve(),args.fixtures,args.frames,args.provider,args.allow_present_baseline,args.rt,args.samples,
             indirect=args.indirect,gpu=args.gpu,reference_samples=args.reference_samples,bounce_source=args.bounce_source,
             resolution=args.resolution,environment_lighting=args.environment_lighting,shadows=args.shadows,light_changes=args.light_changes,
-            spatial_filter=args.spatial_filter,width=args.width,height=args.height)
+            spatial_filter=args.spatial_filter,width=args.width,height=args.height,
+            previous_frame_radiance=args.previous_frame_radiance)

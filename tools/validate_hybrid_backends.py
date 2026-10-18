@@ -30,6 +30,8 @@ def main():
     parser.add_argument('--hardware-reference-root', type=Path, required=True)
     parser.add_argument('--reference-shaders', type=Path, help='Verified archived shader binaries for the canonical references')
     parser.add_argument('--reference-exe', type=Path, help='Matching archived executable for the canonical references')
+    parser.add_argument('--allow-reference-present-baseline', action='store_true',
+                        help='Allow the recorded legacy presentation hazard only in reused archived references')
     parser.add_argument('--cameras', nargs='+', choices=('top', 'hall'), default=['top', 'hall'])
     parser.add_argument('--capture', action='store_true')
     parser.add_argument('--phases', nargs='+', choices=('static', 'switching', 'cache'), default=['static', 'switching', 'cache'])
@@ -54,6 +56,8 @@ def main():
             if args.capture and not archived_reference:
                 capture(args, reference, 'papermill', camera, provider, reference=True, compact=True)
             reference_args = argparse.Namespace(**vars(args))
+            reference_args.allow_present_baseline = (args.allow_present_baseline
+                or (archived_reference and args.allow_reference_present_baseline))
             if archived_reference and args.reference_exe:
                 reference_args.exe = args.reference_exe.resolve()
             validate_capture(reference_args, reference, 'papermill', camera, provider, True,

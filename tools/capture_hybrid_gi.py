@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 from urllib.parse import unquote
 from hybrid_capture_io import compact, read_bytes
+import reference_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_KEYS = {'voxel_gi_backend'} | {f'voxel_gi_{name}_backend' for name in
@@ -150,21 +151,33 @@ def main():
         command.append(f'--capture-stability={prefix}-stability')
     if args.camera_motion:
         command.append(f'--capture-reflection-motion={prefix}-motion')
-    try:
-        config.write_bytes(changed)
-        with Path(str(prefix) + '.log').open('w') as log:
-            result = subprocess.run(command, cwd=ROOT, env=environment, stdout=log,
-                                    stderr=subprocess.STDOUT,
-                                    timeout=3600 if args.stability or args.camera_motion else 1800 if args.reference_samples else 600)
-        assert result.returncode == 0, f'Capture failed; inspect {prefix}.log'
-    finally:
-        if config.read_bytes() != changed:
-            raise RuntimeError('External engine.cfg edit; leaving it untouched')
-        config.write_bytes(original)
+    # Converged references (standalone or rendered after stability/motion events) replay by exact inputs.
+    cache_key = None
+    cache_hit = False
+    if reference_cache.enabled() and (args.reference_samples or args.stability or args.camera_motion):
+        cache_key, cache_material = reference_cache.key(prefix, command, changed,
+                                                        [Path(item['path']) for item in inputs] + [scene],
+                                                        args.exe.resolve())
+        cache_hit = reference_cache.restore(cache_key, prefix)
+    if not cache_hit:
+        try:
+            config.write_bytes(changed)
+            with Path(str(prefix) + '.log').open('w') as log:
+                result = subprocess.run(command, cwd=ROOT, env=environment, stdout=log,
+                                        stderr=subprocess.STDOUT,
+                                        timeout=3600 if args.stability or args.camera_motion else 1800 if args.reference_samples else 600)
+            assert result.returncode == 0, f'Capture failed; inspect {prefix}.log'
+        finally:
+            if config.read_bytes() != changed:
+                raise RuntimeError('External engine.cfg edit; leaving it untouched')
+            config.write_bytes(original)
+        if cache_key is not None and reference_cache.clean_log(Path(str(prefix) + '.log')):
+            reference_cache.store(cache_key, cache_material, prefix)
     manifest = dict(command=command, settings=settings, source_inputs=inputs,
                     configuration_sha256=hashlib.sha256(changed).hexdigest(),
                     executable=fingerprint(args.exe.resolve()),
-                    shaders=[fingerprint(p) for p in sorted((ROOT / 'Data/SpvShaders').rglob('*.spv'))])
+                    shaders=[fingerprint(p) for p in sorted((ROOT / 'Data/SpvShaders').rglob('*.spv'))],
+                    reference_cache=dict(key=cache_key, hit=cache_hit) if cache_key else None)
     if args.compact:
         manifest['buffers'] = compact(prefix)
         if args.feature_switching or args.provider_switching:

@@ -142,6 +142,8 @@ def archived_reference(args, environment, camera, provider):
     """Reuse an explicitly selected reference only with its matching provenance."""
     prefix = args.reference_root / provider / 'static' / f'{environment}-{camera}-reference'
     reference_args = argparse.Namespace(**vars(args))
+    reference_args.allow_present_baseline = (args.allow_present_baseline
+        or getattr(args, 'allow_reference_present_baseline', False))
     if args.reference_exe:
         reference_args.exe = args.reference_exe.resolve()
     evidence = validate_capture(reference_args, prefix, environment, camera, provider, True,
@@ -323,6 +325,8 @@ def main():
                         help='Reuse explicit <root>/<provider>/static references from the same estimator')
     parser.add_argument('--reference-exe', type=Path, help='Matching archived executable for reused references')
     parser.add_argument('--reference-shaders', type=Path, help='Matching archived shader directory for reused references')
+    parser.add_argument('--allow-reference-present-baseline', action='store_true',
+                        help='Allow the recorded legacy presentation hazard only in reused archived references')
     parser.add_argument('--allow-present-baseline', action='store_true',
                         help='Report only the already reproduced PRESENT_AFTER_WRITE hazard separately')
     args = parser.parse_args()
