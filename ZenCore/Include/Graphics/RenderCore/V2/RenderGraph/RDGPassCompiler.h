@@ -779,7 +779,17 @@ public:
     }
 
 private:
-    bool Check(bool condition, RDGErrorCode code, const std::string& message);
+    // Without a graph, every check logs its message and fails.
+    bool Check(bool condition, RDGErrorCode code, std::string_view message);
+
+    // Formats only when that message is reported: a failed condition or a missing graph.
+    template <typename... Args>
+    bool CheckFormat(bool condition, RDGErrorCode code, fmt::format_string<Args...> format, Args&&... args)
+    {
+        const bool reported = !condition || m_pRDG == nullptr;
+
+        return Check(condition, code, reported ? fmt::format(format, std::forward<Args>(args)...) : std::string());
+    }
 
     bool BuildIndirectBindings(const RDGPassDescBase& desc, RDGShaderPass& pass);
 
@@ -882,9 +892,15 @@ private:
 
     RDGResult m_result;
 
-    bool Check(bool condition, RDGErrorCode code, const std::string& message)
+    bool Check(bool condition, RDGErrorCode code, std::string_view message)
     {
         return m_result.Check(condition, code, message);
+    }
+
+    template <typename... Args>
+    bool CheckFormat(bool condition, RDGErrorCode code, fmt::format_string<Args...> format, Args&&... args)
+    {
+        return m_result.CheckFormat(condition, code, format, std::forward<Args>(args)...);
     }
 
     RHICommandList* m_pCmdList{nullptr};
@@ -952,7 +968,7 @@ public:
     RDGTransferPassCmdRecorder& CopyBuffer(RDGBuffer source, RDGBuffer destination, const RHIBufferCopyRegion& region);
 
 private:
-    bool Check(bool condition, RDGErrorCode code, const std::string& message);
+    bool Check(bool condition, RDGErrorCode code, std::string_view message);
 
     RenderGraph*                                        m_pRDG{nullptr};
     RDGPassNode*                                        m_pNode{nullptr};

@@ -54,7 +54,7 @@ public:
         return m_geometryRevision + (m_voxelizationPending ? 1 : 0);
     }
 
-    virtual void OnRenderGraphExecuted(bool succeeded);
+    virtual void OnRenderGraphExecuted(RenderFrameResult result);
 
     sg::AABB GetVoxelBounds() const;
 

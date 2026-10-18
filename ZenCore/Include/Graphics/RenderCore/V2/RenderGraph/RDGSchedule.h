@@ -43,6 +43,7 @@ struct RDGSchedule
     HeapVector<RDGSubmissionGroup> groups;
     HeapVector<RDGDependency>      dependencies;
     bool                           usesMultipleQueues{false};
-    bool                           allowsAllocationReuse{true};
+    // Reuse remains restricted to disjoint lifetimes on the same logical queue.
+    bool allowsAllocationReuse{true};
 };
 } // namespace zen::rc

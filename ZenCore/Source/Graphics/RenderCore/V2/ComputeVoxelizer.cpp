@@ -57,9 +57,11 @@ void ComputeVoxelizer::Destroy()
     }
 }
 
-void ComputeVoxelizer::OnRenderGraphExecuted(bool succeeded)
+void ComputeVoxelizer::OnRenderGraphExecuted(RenderFrameResult result)
 {
-    VoxelizerBase::OnRenderGraphExecuted(succeeded);
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
+
+    VoxelizerBase::OnRenderGraphExecuted(result);
 
     if (!succeeded)
     {

@@ -111,7 +111,7 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
                 // A replacement voxelizer restarts its revision counter. Do not let it
                 // collide with a cached shadow generation after pending geometry edits.
-                m_pSceneShadows->OnRenderGraphExecuted(false);
+                m_pSceneShadows->OnRenderGraphExecuted(RenderFrameResult::eFailed);
 
                 // Free retired allocations before planning/allocating the replacement budget.
                 m_pRenderDevice->CollectCompletedResources();
@@ -139,7 +139,7 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
             if (resizeShadows)
             {
-                m_pVoxelGI->OnRenderGraphExecuted(false);
+                m_pVoxelGI->OnRenderGraphExecuted(RenderFrameResult::eFailed);
             }
 
             m_pRenderDevice->CollectCompletedResources();

@@ -286,6 +286,12 @@ TEST_F(RenderCoreEnvironmentTest, SceneReadinessRejectsMissingBuffersTexturesAnd
 
     complete.Destroy();
 
+    // The facade only hands the index buffer to the scene; it owns the ring-backed inputs.
+    for (RHIBuffer* buffer : {sceneInputs.vertices, sceneInputs.uv, sceneInputs.nodes, sceneInputs.materials})
+    {
+        device->DestroyBuffer(buffer);
+    }
+
     sceneInputs = {};
 }
 
@@ -372,17 +378,13 @@ TEST_F(RenderCoreEnvironmentTest, ProductionSceneDestroyRetiresBuffersAndAliased
 
     AddLifetimeEnvironment(source);
 
-    RHIBuffer** slots[] = {&sceneInputs.vertices, &sceneInputs.indices, &sceneInputs.uv, &sceneInputs.nodes,
-                           &sceneInputs.materials};
-
+    // Ring-backed scene storage is covered by the FrameBufferRing tests; the facade
+    // hands only the index buffer to the scene.
     HeapVector<uint64_t> ids;
 
-    for (RHIBuffer** slot : slots)
-    {
-        *slot = device->CreateStorageBuffer(64, nullptr, "scene_lifetime_buffer");
+    sceneInputs.indices = device->CreateStorageBuffer(64, nullptr, "scene_lifetime_buffer");
 
-        ids.push_back((*slot)->GetStableId());
-    }
+    ids.push_back(sceneInputs.indices->GetStableId());
 
     device->LoadSceneTextures(&source, sceneInputs.textures);
 
@@ -418,15 +420,7 @@ TEST_F(RenderCoreEnvironmentTest, ProductionSceneDestroyRetiresBuffersAndAliased
 
     scene.Destroy();
 
-    EXPECT_EQ(scene.GetVertexBuffer(), nullptr);
-
     EXPECT_EQ(scene.GetIndexBuffer(), nullptr);
-
-    EXPECT_EQ(scene.GetUVBuffer(), nullptr);
-
-    EXPECT_EQ(scene.GetNodesDataSSBO(), nullptr);
-
-    EXPECT_EQ(scene.GetMaterialsDataSSBO(), nullptr);
 
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), nullptr);
 
@@ -450,12 +444,10 @@ TEST_F(RenderCoreTest, ProductionSceneDestroyAcceptsPartiallyInitializedAndEmpty
 {
     sg::Scene source;
 
-    sceneInputs.nodes = device->CreateStorageBuffer(64, nullptr, "partial_scene_nodes");
+    // A failed initialization can leave the index buffer without its other scene buffers.
+    sceneInputs.indices = device->CreateStorageBuffer(64, nullptr, "partial_scene_indices");
 
-    const uint64_t id = sceneInputs.nodes->GetStableId();
-
-    // Exercise duplicate and absent handles from a failed initialization.
-    sceneInputs.materials = sceneInputs.nodes;
+    const uint64_t id   = sceneInputs.indices->GetStableId();
 
     SceneData data{};
 
@@ -535,7 +527,7 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
     // A rejected old frame must not requeue preprocessing after its scene is retired.
     skybox->CancelEnvironmentPreprocessing(&sceneInputs.environment);
 
-    skybox->OnRenderGraphExecuted(false);
+    skybox->OnRenderGraphExecuted(RenderFrameResult::eFailed);
 
     ASSERT_TRUE(device->PrepareForResourceReconfiguration());
 
@@ -551,7 +543,7 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
 
     EXPECT_EQ(rhi->graphics.drawCount - before, 1u);
 
-    skybox->OnRenderGraphExecuted(true);
+    skybox->OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
 
     EnvTexture abandoned;
 
@@ -573,7 +565,7 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
 
     EXPECT_EQ(rhi->graphics.drawCount - after, 1u);
 
-    skybox->OnRenderGraphExecuted(true);
+    skybox->OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
 
     ASSERT_TRUE(device->PrepareForResourceReconfiguration());
 

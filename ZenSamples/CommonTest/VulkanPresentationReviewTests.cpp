@@ -87,7 +87,7 @@ TEST_P(VulkanPresentationReviewTest, ClearOnlyGraphPresentsAndNextAttachmentFram
     ASSERT_TRUE(graph.Begin());
     graph.AddTransferPass("WorkspaceClear").ClearTexture(viewport->GetColorBackBuffer(), Color(1.0f));
     ASSERT_TRUE(graph.End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(viewport), RenderFrameResult::eSubmitted);
     device->WaitForIdle();
     ASSERT_TRUE(device->PollFrameSubmissions(true));
 

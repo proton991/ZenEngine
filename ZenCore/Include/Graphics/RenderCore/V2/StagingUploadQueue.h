@@ -2,6 +2,7 @@
 
 #include "Graphics/RHI/RHIResource.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
+#include "Graphics/RenderCore/V2/ResourceRetirement.h"
 #include "Templates/HeapVector.h"
 #include "Templates/VectorView.h"
 #include <algorithm>
@@ -37,7 +38,7 @@ public:
 
     StagingFlushAction Allocate(uint32_t size, uint32_t alignment, StagingAllocation* pAllocation);
 
-    void Release(const StagingAllocation& allocation, const RHICompletionSet& requiredSerials);
+    void Release(const StagingAllocation& allocation, const ResourceRetirement& retirement);
 
     void Reclaim();
 
@@ -60,11 +61,11 @@ private:
     RenderDevice* m_pRenderDevice{nullptr};
     struct Block
     {
-        RHIBuffer*       pBuffer{nullptr};
-        uint32_t         capacity{0};
-        uint32_t         occupiedSize{0};
-        uint32_t         outstandingAllocCount{0};
-        RHICompletionSet requiredSerials{};
+        RHIBuffer*         pBuffer{nullptr};
+        uint32_t           capacity{0};
+        uint32_t           occupiedSize{0};
+        uint32_t           outstandingAllocCount{0};
+        ResourceRetirement retirement;
     };
 
     HeapVector<Block> m_blocks;
@@ -73,6 +74,9 @@ private:
     uint64_t          m_allocatedSize{0};
 };
 
+// VERIFY_EXPR* preconditions abort in both Debug and Release. Dependencies must be initialized
+// and buffer payloads/ranges validated by the content-facing caller. A false result reports
+// staging/submission failure, not recovery from a violated programmer precondition.
 class StagingUploadQueue
 {
 public:
@@ -86,6 +90,8 @@ public:
     // its completion gates; the device and staging manager must outlive this call.
     void Destroy();
 
+    // A nonempty payload requires a live destination and offset + size within its allocation.
+    // The caller supplies at least dataSize readable bytes. Null/empty payloads are no-ops.
     bool EnqueueBuffer(RHIBuffer* pDstBuffer, uint32_t dstOffset, uint32_t dataSize, const uint8_t* pData);
 
     // Validate payload bounds, copy alignment/format, and requested mip-blit capabilities
@@ -96,12 +102,18 @@ public:
                         const uint8_t*                         pData,
                         bool                                   generateMipmaps = false);
 
-    // Success establishes submission, not GPU completion on timeline-capable backends.
+    // Success establishes queued handoff, not CPU or GPU completion on threaded timeline backends.
     // Dependent graphs wait on the GPU; staging/resources remain retained until completion.
-    // False retains unsubmitted payloads for retry and prevents dependent graph execution.
+    // Rejection before handoff retains payloads for retry; failure after handoff blocks dependent work.
     bool Flush();
 
     void ReclaimResources();
+
+    // Bytes copied into staging, including partial requests; a submission retry does not add bytes.
+    uint64_t GetStagedBytes() const
+    {
+        return m_stagedBytes;
+    }
 
     bool HasPending() const
     {
@@ -118,7 +130,7 @@ private:
     struct PendingUpload
     {
         StagingAllocation   stagingAlloc{};
-        RHICompletionSet    attemptedSerials{};
+        ResourceRetirement  attemptedRetirement;
         RHIBuffer*          pDstBuffer{nullptr};
         RHITexture*         pDstTexture{nullptr};
         RHIBufferCopyRegion bufferCopyRegion{};
@@ -129,8 +141,8 @@ private:
 
     struct RetainedResource
     {
-        RHIResource*     pResource{nullptr};
-        RHICompletionSet requiredSerials{};
+        RHIResource*       pResource{nullptr};
+        ResourceRetirement retirement;
     };
 
     bool StageBytes(uint32_t size, uint32_t alignment, const uint8_t* pData, StagingAllocation* pOutAlloc);
@@ -142,5 +154,6 @@ private:
     HeapVector<RetainedResource>           m_retainedResources;
     RenderGraph                            m_uploadRDG;
     bool                                   m_flushing{false};
+    uint64_t                               m_stagedBytes{0};
 };
 } // namespace zen::rc

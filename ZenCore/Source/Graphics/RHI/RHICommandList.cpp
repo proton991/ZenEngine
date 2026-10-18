@@ -228,6 +228,10 @@ void RHICommandListBase::Reset()
     m_resources.Reset();
 
     m_submissionDependencies.clear();
+
+    m_submittedSerial    = 0;
+
+    m_submissionBoundary = false;
 }
 
 void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)

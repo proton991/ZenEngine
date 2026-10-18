@@ -884,6 +884,8 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
 
     pOtherWorkload->m_lifetimeIds.clear();
 
+    m_submissionBoundary          = pOtherWorkload->m_submissionBoundary;
+
     pOtherWorkload->m_pMergedInto = this;
 
     m_mergedWorkloads.push_back(pOtherWorkload);
@@ -2188,7 +2190,7 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*>          c
 
     const uint64_t transaction = m_pBindlessDescriptorPoolManager->BeginTransaction();
 
-    if (m_submissionBlocked || !PrepareCommandListDependencies(cmdLists))
+    if (m_submissionBlocked)
     {
         status.error = GetSubmissionFailureCause();
 
@@ -2197,6 +2199,22 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*>          c
 
     for (RHICommandList* commands : cmdLists)
     {
+        if (commands != nullptr)
+        {
+            commands->SetSubmittedSerial(0);
+        }
+
+        // Shared contexts must acquire each list's waits immediately before that list,
+        // rather than accumulating later waits in front of earlier recorded commands.
+        if (status
+            && (commands == nullptr
+                || !PrepareSubmissionDependencies(commands->GetContext(), commands->GetSubmissionDependencies())))
+        {
+            status.error = GetSubmissionFailureCause();
+
+            BlockSubmissions(status.error);
+        }
+
         if (status)
         {
             FVulkanCommandListContext* context = static_cast<FVulkanCommandListContext*>(commands->GetContext());
@@ -2211,9 +2229,22 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*>          c
 
             status.error = context->GetRecordingError();
 
+            if (status && commands->HasSubmissionBoundary())
+            {
+                // An empty group can relay an earlier same-queue producer to another
+                // queue. Keep its signal without allocating an empty command buffer.
+                if (platform->m_workloads.empty())
+                {
+                    platform->m_workloads.push_back(context->GetQueue()->AcquireWorkload());
+                }
+
+                platform->m_workloads.back()->m_submissionBoundary = true;
+            }
+
             platform->m_transactions.push_back(context->DetachRecordingTransaction());
 
-            platform->m_contextWorkloadRanges.push_back({context, 0, static_cast<uint32_t>(platform->m_workloads.size())});
+            platform->m_contextWorkloadRanges.push_back(
+                {context, commands, 0, static_cast<uint32_t>(platform->m_workloads.size())});
 
             outCommandLists.push_back(platform);
         }
@@ -2333,6 +2364,8 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
             }
 
             range.pContext->SetLastSubmittedSerial(serial);
+
+            range.pCommands->SetSubmittedSerial(serial);
         }
 
         for (uint64_t owner : platform->m_transactions)

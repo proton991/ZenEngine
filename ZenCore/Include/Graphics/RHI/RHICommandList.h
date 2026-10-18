@@ -443,6 +443,30 @@ public:
         return m_submissionDependencies;
     }
 
+    // Executor/backend metadata, accessed only on the RHI thread. A group boundary
+    // keeps this list's completion signal separate when native calls are packed.
+    void SetSubmissionBoundary(bool boundary)
+    {
+        m_submissionBoundary = boundary;
+    }
+
+    bool HasSubmissionBoundary() const
+    {
+        return m_submissionBoundary;
+    }
+
+    // Flush publishes this list's actual accepted work, independently of its context.
+    // Zero means no native workload was accepted for this list.
+    void SetSubmittedSerial(uint64_t serial)
+    {
+        m_submittedSerial = serial;
+    }
+
+    uint64_t GetSubmittedSerial() const
+    {
+        return m_submittedSerial;
+    }
+
     struct CommandCheckpoint
     {
         RHICommandBase** tail;
@@ -483,6 +507,8 @@ protected:
     RHIResourceReferences               m_resources;
     HeapVector<RHISubmissionDependency> m_submissionDependencies;
     SmallVector<uint64_t, 4>            m_bindlessEpochs;
+    uint64_t                            m_submittedSerial{0};
+    bool                                m_submissionBoundary{false};
 };
 
 struct RHICommand : public RHICommandBase

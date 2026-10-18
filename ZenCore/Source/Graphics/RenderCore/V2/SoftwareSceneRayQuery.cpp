@@ -170,7 +170,7 @@ bool SoftwareSceneRayQuery::Prepare(RenderScene& scene)
         m_scene = &scene;
     }
     bool ready = !scene.HasUncommittedVertices() && !m_device->AreSubmissionsBlocked();
-    if (ready && (m_nodes == nullptr || m_placeholder || m_revision != scene.GetGeometryRevision()))
+    if (ready && (m_nodeBuffers.GetBuffer() == nullptr || m_placeholder || m_revision != scene.GetGeometryRevision()))
     {
         const HeapVector<glm::uvec4>     records = scene.BuildTriangleRecords();
         HeapVector<SoftwareRayTriangle>  triangles;
@@ -222,18 +222,14 @@ bool SoftwareSceneRayQuery::Prepare(RenderScene& scene)
         }
         if (ready)
         {
-            RHIBuffer* nodeBuffer =
-                m_device->CreateStorageBuffer(static_cast<uint32_t>(nodes.size() * sizeof(SoftwareRayNode)),
-                                              reinterpret_cast<const uint8_t*>(nodes.data()), "software_ray_nodes");
-            RHIBuffer* triangleBuffer =
-                m_device->CreateStorageBuffer(static_cast<uint32_t>(triangles.size() * sizeof(SoftwareRayTriangle)),
-                                              reinterpret_cast<const uint8_t*>(triangles.data()), "software_ray_triangles");
-            ready = nodeBuffer != nullptr && triangleBuffer != nullptr;
-            // DestroyBuffer retires old storage after all submitted readers finish.
-            m_device->DestroyBuffer(m_nodes);
-            m_device->DestroyBuffer(m_triangles);
-            m_nodes       = nodeBuffer;
-            m_triangles   = triangleBuffer;
+            const uint32_t nodeBytes     = static_cast<uint32_t>(nodes.size() * sizeof(SoftwareRayNode));
+            const uint32_t triangleBytes = static_cast<uint32_t>(triangles.size() * sizeof(SoftwareRayTriangle));
+            // BVH construction can reorder every node and triangle, so both payloads
+            // change as a whole. Keep their GPU allocations stable across updates.
+            m_nodeBuffers.MarkDirty(0, nodeBytes);
+            m_triangleBuffers.MarkDirty(0, triangleBytes);
+            ready         = m_nodeBuffers.Update(*m_device, nodes.data(), nodeBytes, "software_ray_nodes")
+                         && m_triangleBuffers.Update(*m_device, triangles.data(), triangleBytes, "software_ray_triangles");
             m_revision    = scene.GetGeometryRevision();
             m_nodeCount   = static_cast<uint32_t>(nodes.size());
             m_placeholder = false;
@@ -249,16 +245,14 @@ bool SoftwareSceneRayQuery::Prepare(RenderScene& scene)
 
 bool SoftwareSceneRayQuery::PrepareUnused()
 {
-    if (!m_placeholder || m_nodes == nullptr || m_triangles == nullptr)
+    if (!m_placeholder || m_nodeBuffers.GetBuffer() == nullptr || m_triangleBuffers.GetBuffer() == nullptr)
     {
         Destroy();
         // A zero node count makes every traversal miss without reading these records.
         const SoftwareRayNode     node{};
         const SoftwareRayTriangle triangle{};
-        m_nodes =
-            m_device->CreateStorageBuffer(sizeof(node), reinterpret_cast<const uint8_t*>(&node), "software_ray_nodes_unused");
-        m_triangles   = m_device->CreateStorageBuffer(sizeof(triangle), reinterpret_cast<const uint8_t*>(&triangle),
-                                                      "software_ray_triangles_unused");
+        m_nodeBuffers.Update(*m_device, &node, sizeof(node), "software_ray_nodes_unused");
+        m_triangleBuffers.Update(*m_device, &triangle, sizeof(triangle), "software_ray_triangles_unused");
         m_placeholder = true;
     }
     return IsReady();
@@ -266,14 +260,15 @@ bool SoftwareSceneRayQuery::PrepareUnused()
 
 bool SoftwareSceneRayQuery::IsReady() const
 {
-    return m_nodes != nullptr && m_triangles != nullptr && !m_device->AreSubmissionsBlocked();
+    return m_nodeBuffers.GetBuffer() != nullptr && m_triangleBuffers.GetBuffer() != nullptr
+        && !m_device->AreSubmissionsBlocked();
 }
 
 void SoftwareSceneRayQuery::BindTraversalInputs(RDGPassDescBase& pass) const
 {
     pass.BindValue("uSoftwareRayData", glm::uvec4(m_nodeCount, 0, 0, 0));
-    pass.BindStorageBuffer("SoftwareRayNodes", m_nodes);
-    pass.BindStorageBuffer("SoftwareRayTriangles", m_triangles);
+    pass.BindStorageBuffer("SoftwareRayNodes", m_nodeBuffers.GetBuffer());
+    pass.BindStorageBuffer("SoftwareRayTriangles", m_triangleBuffers.GetBuffer());
 }
 
 void SoftwareSceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound) const
@@ -282,9 +277,10 @@ void SoftwareSceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene
     BindSceneRayGeometry(pass, *m_device, scene, forwardMaterialBound);
 }
 
-void SoftwareSceneRayQuery::OnRenderGraphExecuted(bool succeeded)
+void SoftwareSceneRayQuery::OnRenderGraphExecuted(RenderFrameResult result)
 {
-    if (!succeeded)
+    // These buffers are prepared by staging uploads, independently of frame acceptance.
+    if (result == RenderFrameResult::eFailed || result == RenderFrameResult::eBlocked)
     {
         Destroy();
     }
@@ -292,10 +288,8 @@ void SoftwareSceneRayQuery::OnRenderGraphExecuted(bool succeeded)
 
 void SoftwareSceneRayQuery::Destroy()
 {
-    m_device->DestroyBuffer(m_nodes);
-    m_device->DestroyBuffer(m_triangles);
-    m_nodes       = nullptr;
-    m_triangles   = nullptr;
+    m_nodeBuffers.Destroy(*m_device);
+    m_triangleBuffers.Destroy(*m_device);
     m_scene       = nullptr;
     m_revision    = 0;
     m_nodeCount   = 0;

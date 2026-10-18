@@ -182,20 +182,8 @@ public:
 
     virtual void DestroyBuffer(RHIBuffer* pBuffer)                         = 0;
 
-    bool PrepareCommandListDependencies(VectorView<RHICommandList*> lists)
-    {
-        bool result = true;
-        for (RHICommandList* list : lists)
-        {
-            if (result)
-            {
-                result =
-                    list != nullptr && PrepareSubmissionDependencies(list->GetContext(), list->GetSubmissionDependencies());
-            }
-        }
-        return result;
-    }
-
+    // Input lists remain alive through FlushAllGPUCommands. Backends preserve marked
+    // group boundaries and publish each list's accepted serial before releasing outputs.
     virtual RHIStatus FinalizeCommandLists(VectorView<RHICommandList*>          cmdLists,
                                            HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
 

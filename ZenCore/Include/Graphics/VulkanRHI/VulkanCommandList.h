@@ -312,6 +312,7 @@ private:
     VulkanQueue*                      m_pQueue{nullptr};
     HeapVector<FVulkanCommandBuffer*> m_commandBuffers;
     uint64_t                          m_submissionSerial{0};
+    bool                              m_submissionBoundary{false};
     VulkanWorkload*                   m_pMergedInto{nullptr};
     HeapVector<VulkanWorkload*>       m_mergedWorkloads;
     HeapVector<uint64_t>              m_lifetimeIds;

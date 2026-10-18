@@ -77,7 +77,10 @@ struct RDGResourceContent
 class ResourceStateTracker
 {
 public:
-    explicit ResourceStateTracker(RDGMetrics* metrics = nullptr) : m_metrics(metrics) {}
+    // The base must outlive the overlay and stay unchanged until commit or rollback.
+    explicit ResourceStateTracker(RDGMetrics* metrics = nullptr, const ResourceStateTracker* base = nullptr) :
+        m_base(base), m_metrics(metrics)
+    {}
 
     ResourceStateTracker(const ResourceStateTracker&) = default;
 
@@ -86,8 +89,15 @@ public:
     ResourceStateTracker& operator=(ResourceStateTracker other)
     {
         m_contents      = std::move(other.m_contents);
+
         m_textureStates = std::move(other.m_textureStates);
+
         m_bufferStates  = std::move(other.m_bufferStates);
+
+        m_removed       = std::move(other.m_removed);
+
+        m_base          = other.m_base;
+
         // Keep the receiving executor's metrics and invalidate plans on assignment/rollback.
         // Independent trackers can have the same numeric revision but different contents.
         ++m_revision;
@@ -116,6 +126,9 @@ public:
     // Explicit invalidation can advance the revision even when no state was tracked.
     void RemoveResourceState(uint64_t resourceId, bool invalidatePlans = false);
 
+    // Consume only the transaction's changes, leaving unrelated entries in place.
+    void CommitOverlay(ResourceStateTracker&& overlay);
+
     uint64_t GetRevision() const
     {
         return m_revision;
@@ -126,11 +139,15 @@ private:
     friend struct RDGSubmissionTestAccess;
     uint64_t m_revision{0};
 
+    bool HasResourceState(uint64_t resourceId) const;
+
     // Graph accesses have already been observed by metrics. External updates invalidate history.
     void SetTextureState(const RHITexture* texture, const RDGTextureResourceState& state);
 
     void SetBufferState(const RHIBuffer* buffer, const RDGBufferResourceState& state);
 
+    const ResourceStateTracker*           m_base{nullptr};
+    std::unordered_set<uint64_t>          m_removed;
     HashMap<uint64_t, RDGResourceContent> m_contents;
     RDGMetrics*                           m_metrics{nullptr};
 
@@ -416,7 +433,22 @@ private:
 
     bool Fail(RDGErrorCode code, const std::string& message);
 
-    bool Check(bool condition, RDGErrorCode code, const std::string& message);
+    // Builds the failure message only when the check fails.
+    bool Check(bool condition, RDGErrorCode code, std::string_view message);
+
+    template <typename... Args>
+    bool CheckFormat(bool condition, RDGErrorCode code, fmt::format_string<Args...> format, Args&&... args)
+    {
+        return m_result && (condition || Fail(code, fmt::format(format, std::forward<Args>(args)...)));
+    }
+
+    template <typename... Args>
+    bool CheckPass(bool condition, RDGErrorCode code, NameID tag, fmt::format_string<Args...> format, Args&&... args)
+    {
+        return m_result
+            && (condition
+                || Fail(code, fmt::format("Pass '{}': {}", tag.CStr(), fmt::format(format, std::forward<Args>(args)...))));
+    }
 
     void ReleaseCompiledShaderPasses();
 
@@ -473,7 +505,6 @@ private:
     template <typename Output> bool ResolveAttachment(Output& output);
 
     template <typename Output> bool ValidateAttachment(const RDGGraphicsPassDesc&  desc,
-                                                       const std::string&          prefix,
                                                        std::unordered_set<NameID>& tags,
                                                        const Output&               out,
                                                        bool                        depth,
@@ -561,6 +592,8 @@ private:
 
     bool SortNodesByVersion();
 
+    void OrderNodesForQueues(const HeapVector<HeapVector<uint32_t>>& adjacency);
+
     void DetermineLiveness();
 
     bool m_cullPasses{true};
@@ -579,7 +612,11 @@ private:
 
     void BuildSubmissionGroups(bool transferCompatible);
 
+    bool OrderSubmissionGroups();
+
     bool ValidateSchedule();
+
+    HeapVector<uint32_t> GetResourceQueueMasks() const;
 
     RDGAccess GetInitialScheduleAccess(RDG_ID resource, const ResourceStateTracker& tracker) const;
 

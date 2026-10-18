@@ -187,6 +187,7 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"environment_generation\":" << scene.GetEnvironmentRevision()
         << ",\"lighting_generation\":" << scene.GetLightingRevision()
         << ",\"temporal\":" << (settings.temporal ? "true" : "false")
+        << ",\"previous_frame_radiance\":" << (settings.previousFrameRadiance ? "true" : "false")
         << ",\"static_reference_accumulation\":" << (settings.referenceSamples != 0 ? "true" : "false")
         << ",\"history_valid\":" << (hybrid != nullptr && hybrid->IsHistoryValid() ? "true" : "false")
         << ",\"history_limit\":" << (settings.referenceSamples != 0 ? 256u : settings.historyFrames)

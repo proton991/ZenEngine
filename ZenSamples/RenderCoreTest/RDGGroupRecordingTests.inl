@@ -92,13 +92,29 @@ TEST_P(RDGGroupRecordingTest, GraphicsComputeGraphicsUsesExactGroupsAndQueuePool
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     ASSERT_EQ(plan.schedule.groups.size(), 3u);
-    EXPECT_EQ(plan.schedule.groups[1].predecessors[0], 0u);
+
+    const uint32_t computeGroup   = ScheduledGroup(plan.schedule, RDG_ID(1));
+
+    const uint32_t graphicsReader = ScheduledGroup(plan.schedule, RDG_ID(2));
+
+    ASSERT_LT(computeGroup, plan.schedule.groups.size());
+
+    ASSERT_LT(graphicsReader, plan.schedule.groups.size());
+
+    ExpectPredecessor(plan.schedule, 0, computeGroup);
+
+    ExpectPredecessor(plan.schedule, 0, graphicsReader);
+
     RHICommandList* computeList = nullptr;
     {
         RecordedGroupLists recorded(*device, plan.schedule);
-        computeList = recorded.lists[1];
+        computeList = recorded.lists[computeGroup];
         EXPECT_EQ(computeList->GetContext()->GetContextType(), RHICommandContextType::eAsyncCompute);
-        EXPECT_NE(recorded.lists[0], recorded.lists[2]);
+
+        EXPECT_EQ(recorded.lists[graphicsReader]->GetContext()->GetContextType(), RHICommandContextType::eGraphics);
+
+        EXPECT_NE(recorded.lists[0], recorded.lists[graphicsReader]);
+
         const uint64_t progressQueries = rhi->progressQueries;
         ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists));
         EXPECT_EQ(rhi->progressQueries, progressQueries);
@@ -109,7 +125,7 @@ TEST_P(RDGGroupRecordingTest, GraphicsComputeGraphicsUsesExactGroupsAndQueuePool
         EXPECT_FALSE(rhi->graphics.bufferTransitions.empty());
     }
     RecordedGroupLists recycled(*device, plan.schedule);
-    EXPECT_EQ(recycled.lists[1], computeList);
+    EXPECT_EQ(recycled.lists[computeGroup], computeList);
     for (RHICommandList* list : recycled.lists)
     {
         EXPECT_EQ(list->GetCommandCount(), 0u);
@@ -140,8 +156,14 @@ TEST_P(RDGGroupRecordingTest, LayoutTransitionHasOneOwnerAndNoForeignGraphicsSco
     ConfigureGroupMetrics(executor);
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
-    ASSERT_EQ(plan.schedule.groups.size(), 4u);
-    ExpectPredecessor(plan.schedule, 2, 3);
+    ASSERT_EQ(plan.schedule.groups.size(), 3u);
+
+    // The compute reader now owns the sampled-layout transition before the graphics reader.
+    const uint32_t sampledOwner = ScheduledGroup(plan.schedule, 3);
+
+    EXPECT_EQ(sampledOwner, ScheduledGroup(plan.schedule, 1));
+
+    ExpectPredecessor(plan.schedule, sampledOwner, ScheduledGroup(plan.schedule, 2));
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists));
     ExpectValidGroupMetrics(executor);

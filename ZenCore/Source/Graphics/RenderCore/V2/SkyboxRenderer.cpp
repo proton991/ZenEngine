@@ -299,8 +299,10 @@ void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
     pRDG->AddGraphicsPass(std::move(desc)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
 }
 
-void SkyboxRenderer::OnRenderGraphExecuted(bool succeeded)
+void SkyboxRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
+
     if (!succeeded)
     {
         for (EnvTexture* environment : m_recordedPreprocessEnvironments)

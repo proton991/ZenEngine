@@ -9,6 +9,8 @@
 #include "Utils/Errors.h"
 
 #include <algorithm>
+#include <bit>
+#include <functional>
 #include <limits>
 #include <queue>
 #include <unordered_set>
@@ -592,21 +594,66 @@ template <typename Allocation> RHITextureSubResourceRange FullRange(const Alloca
 
     return result;
 }
+
+// Ready list for the queue-aware schedulers: the smallest key leaves first. Keys pack a
+// tie-break order above a 32-bit item index, so equal priorities stay deterministic.
+struct ReadyQueue
+{
+    HeapVector<uint64_t> keys;
+
+    static uint64_t MakeKey(uint32_t order, uint32_t item)
+    {
+        return (uint64_t(order) << 32) | item;
+    }
+
+    bool Empty() const
+    {
+        return keys.empty();
+    }
+
+    uint32_t Top() const
+    {
+        return uint32_t(keys.front());
+    }
+
+    void Push(uint64_t key)
+    {
+        keys.push_back(key);
+
+        std::push_heap(keys.begin(), keys.end(), std::greater<uint64_t>());
+    }
+
+    uint32_t Pop()
+    {
+        std::pop_heap(keys.begin(), keys.end(), std::greater<uint64_t>());
+
+        const uint32_t item = uint32_t(keys.back());
+
+        keys.pop_back();
+
+        return item;
+    }
+};
 } // namespace
 
 RDGTextureResourceState ResourceStateTracker::GetTextureState(const RHITexture* texture) const
 {
     RDGTextureResourceState result{};
 
-    if (texture == nullptr)
+    if (texture != nullptr)
     {
-        result = {};
-    }
-    else
-    {
-        std::unordered_map<uint64_t, RDGTextureResourceState>::const_iterator it = m_textureStates.find(texture->GetStableId());
+        const uint64_t id                                                   = texture->GetStableId();
 
-        result = it == m_textureStates.end() ? RDGTextureResourceState{} : it->second;
+        const HashMap<uint64_t, RDGTextureResourceState>::const_iterator it = m_textureStates.find(id);
+
+        if (it != m_textureStates.end())
+        {
+            result = it->second;
+        }
+        else if (m_base != nullptr && !m_removed.contains(id))
+        {
+            result = m_base->GetTextureState(texture);
+        }
     }
 
     return result;
@@ -616,15 +663,20 @@ RDGBufferResourceState ResourceStateTracker::GetBufferState(const RHIBuffer* buf
 {
     RDGBufferResourceState result{};
 
-    if (buffer == nullptr)
+    if (buffer != nullptr)
     {
-        result = {};
-    }
-    else
-    {
-        std::unordered_map<uint64_t, RDGBufferResourceState>::const_iterator it = m_bufferStates.find(buffer->GetStableId());
+        const uint64_t id                                                  = buffer->GetStableId();
 
-        result = it == m_bufferStates.end() ? RDGBufferResourceState{} : it->second;
+        const HashMap<uint64_t, RDGBufferResourceState>::const_iterator it = m_bufferStates.find(id);
+
+        if (it != m_bufferStates.end())
+        {
+            result = it->second;
+        }
+        else if (m_base != nullptr && !m_removed.contains(id))
+        {
+            result = m_base->GetBufferState(buffer);
+        }
     }
 
     return result;
@@ -690,15 +742,20 @@ RDGResourceContent ResourceStateTracker::GetContents(const RHIResource* resource
 {
     RDGResourceContent result{};
 
-    if (resource == nullptr)
+    if (resource != nullptr)
     {
-        result = {};
-    }
-    else
-    {
-        const std::unordered_map<uint64_t, RDGResourceContent>::const_iterator found = m_contents.find(resource->GetStableId());
+        const uint64_t id                                                 = resource->GetStableId();
 
-        result = found == m_contents.end() ? RDGResourceContent{} : found->second;
+        const HashMap<uint64_t, RDGResourceContent>::const_iterator found = m_contents.find(id);
+
+        if (found != m_contents.end())
+        {
+            result = found->second;
+        }
+        else if (m_base != nullptr && !m_removed.contains(id))
+        {
+            result = m_base->GetContents(resource);
+        }
     }
 
     return result;
@@ -706,13 +763,21 @@ RDGResourceContent ResourceStateTracker::GetContents(const RHIResource* resource
 
 void ResourceStateTracker::RemoveResourceState(uint64_t resourceId, bool invalidatePlans)
 {
-    size_t removed  = m_textureStates.erase(resourceId);
+    const bool removed = HasResourceState(resourceId);
 
-    removed        += m_bufferStates.erase(resourceId);
+    m_textureStates.erase(resourceId);
 
-    removed        += m_contents.erase(resourceId);
+    m_bufferStates.erase(resourceId);
 
-    if (removed != 0 || invalidatePlans)
+    m_contents.erase(resourceId);
+
+    if (m_base != nullptr)
+    {
+        // Keep the tombstone after later writes: a new barrier state must not resurrect old contents.
+        m_removed.insert(resourceId);
+    }
+
+    if (removed || invalidatePlans)
     {
         ++m_revision;
     }
@@ -721,6 +786,45 @@ void ResourceStateTracker::RemoveResourceState(uint64_t resourceId, bool invalid
     {
         m_metrics->ForgetResource(resourceId);
     }
+}
+
+bool ResourceStateTracker::HasResourceState(uint64_t resourceId) const
+{
+    const bool local =
+        m_textureStates.contains(resourceId) || m_bufferStates.contains(resourceId) || m_contents.contains(resourceId);
+
+    return local || (m_base != nullptr && !m_removed.contains(resourceId) && m_base->HasResourceState(resourceId));
+}
+
+void ResourceStateTracker::CommitOverlay(ResourceStateTracker&& overlay)
+{
+    VERIFY_EXPR(overlay.m_base == this && m_base == nullptr);
+
+    for (uint64_t id : overlay.m_removed)
+    {
+        m_textureStates.erase(id);
+
+        m_bufferStates.erase(id);
+
+        m_contents.erase(id);
+    }
+
+    for (HashMap<uint64_t, RDGTextureResourceState>::value_type& entry : overlay.m_textureStates)
+    {
+        m_textureStates.insert_or_assign(entry.first, std::move(entry.second));
+    }
+
+    for (HashMap<uint64_t, RDGBufferResourceState>::value_type& entry : overlay.m_bufferStates)
+    {
+        m_bufferStates.insert_or_assign(entry.first, std::move(entry.second));
+    }
+
+    for (HashMap<uint64_t, RDGResourceContent>::value_type& entry : overlay.m_contents)
+    {
+        m_contents.insert_or_assign(entry.first, std::move(entry.second));
+    }
+
+    ++m_revision;
 }
 
 void ResourceStateTracker::SetContents(const RHIResource* resource, const RDGResourceContent& contents)
@@ -971,11 +1075,11 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
             graph->m_executorIdentity = m_identity;
 
             // Record into private state. Upload submissions before this checkpoint remain committed.
-            ResourceStateTracker nextTracker = m_resourceStateTracker;
+            ResourceStateTracker nextTracker(&m_metrics, &m_resourceStateTracker);
 
-            RDGMetrics previousMetrics       = m_metrics;
+            RDGMetrics previousMetrics = m_metrics;
 
-            const bool observe               = m_metrics.Begin(*graph, plan.precompiled);
+            const bool observe         = m_metrics.Begin(*graph, plan.precompiled);
 
             for (RDGResult const& warning : graph->m_pendingContentWarnings)
             {
@@ -1046,7 +1150,8 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
 
                 if (submissionResult != RHISubmissionResult::eSuccess)
                 {
-                    success = graph->Fail(RDGErrorCode::eSubmission,
+                    success = graph->Fail(submissionResult == RHISubmissionResult::eRejected ? RDGErrorCode::eSubmissionRejected
+                                                                                             : RDGErrorCode::eSubmission,
                                           submissionResult == RHISubmissionResult::eRejected
                                               ? "GPU submission rejected; recorded state was not committed"
                                               : "GPU submission or completion failed; recreate the device before continuing");
@@ -1057,7 +1162,7 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
             {
                 graph->CommitContents(nextTracker);
 
-                m_resourceStateTracker = std::move(nextTracker);
+                m_resourceStateTracker.CommitOverlay(std::move(nextTracker));
 
                 if (submit && !deferPublication)
                 {
@@ -1217,9 +1322,10 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
         {
             valid = std::all_of(graph->m_resourceManager.m_resources.begin(), graph->m_resourceManager.m_resources.end(),
                                 [graph](const RDGResourceManager::Allocation* resource) {
-                                    return graph->Check(resource->liveAccessCount == 0 || PhysicalResource(resource) != nullptr,
-                                                        RDGErrorCode::eAllocation,
-                                                        "Failed to materialize resource '" + resource->name.ToString() + "'");
+                                    return graph->CheckFormat(resource->liveAccessCount == 0
+                                                                  || PhysicalResource(resource) != nullptr,
+                                                              RDGErrorCode::eAllocation, "Failed to materialize resource '{}'",
+                                                              resource->name.CStr());
                                 });
         }
 
@@ -1279,7 +1385,7 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
     }
 
     // Materialization can select pooled objects with prior graphics state. Refresh placement
-    // and initial boundaries using that state; the conservative reuse gate was chosen earlier.
+    // and initial boundaries, then revalidate that shared transient storage stays on one queue.
     valid = valid && (!alreadyCompiled || graph->ValidateContents(m_resourceStateTracker)) && AttachGraphBarriers(graph);
 
     valid = valid && graph->BuildSchedule(m_resourceStateTracker, graph->CanExecuteOnTransferQueue(m_resourceStateTracker));
@@ -1482,10 +1588,10 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                     const HashMap<uint64_t, HeapVector<RDGExternalQueueState>>::const_iterator producer = external.find(id);
 
-                    valid                                                                               = graph.Check(
+                    valid                                                                               = graph.CheckFormat(
                         !priorAccess || resource->hasInitialState || producer != external.end(), RDGErrorCode::eLifecycle,
-                        fmt::format("Initial resource state requires queue provenance before group recording: {} (id {})",
-                                    PhysicalResource(resource)->GetResourceTag().CStr(), id));
+                        "Initial resource state requires queue provenance before group recording: {} (id {})",
+                        PhysicalResource(resource)->GetResourceTag().CStr(), id);
 
                     if (producer != external.end())
                     {
@@ -1807,16 +1913,9 @@ bool RenderGraph::Fail(RDGErrorCode code, const std::string& message)
     return false;
 }
 
-bool RenderGraph::Check(bool condition, RDGErrorCode code, const std::string& message)
+bool RenderGraph::Check(bool condition, RDGErrorCode code, std::string_view message)
 {
-    bool result{};
-
-    if (m_result)
-    {
-        result = condition || Fail(code, message);
-    }
-
-    return result;
+    return m_result && (condition || Fail(code, std::string(message)));
 }
 
 bool RenderGraph::CheckRecorder(const RDGPassNode* node, uint64_t generation)
@@ -1850,11 +1949,11 @@ bool RenderGraph::ValidateTextureRange(const RDGResourceManager::Allocation* res
 
         const RHITextureSubResourceRange full = FullRange(resource);
 
-        if (Check(!range.aspect.IsEmpty() && (int64_t(range.aspect) & ~int64_t(full.aspect)) == 0 && range.levelCount > 0
-                      && range.baseMipLevel < format.mipmaps && range.levelCount <= format.mipmaps - range.baseMipLevel
-                      && range.layerCount > 0 && range.baseArrayLayer < format.arrayLayers
-                      && range.layerCount <= format.arrayLayers - range.baseArrayLayer,
-                  RDGErrorCode::eRange, "Invalid subresource range for '" + resource->name.ToString() + "'"))
+        if (CheckFormat(!range.aspect.IsEmpty() && (int64_t(range.aspect) & ~int64_t(full.aspect)) == 0 && range.levelCount > 0
+                            && range.baseMipLevel < format.mipmaps && range.levelCount <= format.mipmaps - range.baseMipLevel
+                            && range.layerCount > 0 && range.baseArrayLayer < format.arrayLayers
+                            && range.layerCount <= format.arrayLayers - range.baseArrayLayer,
+                        RDGErrorCode::eRange, "Invalid subresource range for '{}'", resource->name.CStr()))
         {
             result = true;
         }
@@ -1912,26 +2011,25 @@ struct RenderGraph::PassBindingValidator
     RenderGraph&               graph;
     ShaderProgram*             program;
     const RDGPassDescBase&     desc;
-    const std::string&         prefix;
     std::unordered_set<NameID> names;
 
-    bool Check(bool condition, RDGErrorCode code, const std::string& message)
+    template <typename... Args>
+    bool Check(bool condition, RDGErrorCode code, fmt::format_string<Args...> format, Args&&... args)
     {
-        return graph.Check(condition, code, message);
+        return graph.CheckPass(condition, code, desc.passTag, format, std::forward<Args>(args)...);
     }
 
     const RHIShaderResourceDescriptor* Descriptor(NameID name, RHIShaderResourceType type, uint32_t count)
     {
         const RHIShaderResourceDescriptor* result = program->GetShaderResourceDescriptor(name);
 
-        const bool compatible =
-            Check(result != nullptr && result->type == type, RDGErrorCode::eBinding,
-                  prefix + "Unknown or incompatible binding '" + name.ToString() + "'")
-            && Check(names.insert(name).second, RDGErrorCode::eBinding, prefix + "Duplicate binding '" + name.ToString() + "'")
-            && Check(count > 0
-                         && (type == RHIShaderResourceType::eUniformBuffer || result->bindless
-                             || (result->arraySize > 0 && count <= result->arraySize)),
-                     RDGErrorCode::eBinding, prefix + "Invalid array count for '" + name.ToString() + "'");
+        const bool compatible                     = Check(result != nullptr && result->type == type, RDGErrorCode::eBinding,
+                                                          "Unknown or incompatible binding '{}'", name.CStr())
+                                                 && Check(names.insert(name).second, RDGErrorCode::eBinding, "Duplicate binding '{}'", name.CStr())
+                                                 && Check(count > 0
+                                                              && (type == RHIShaderResourceType::eUniformBuffer || result->bindless
+                                                                  || (result->arraySize > 0 && count <= result->arraySize)),
+                                                          RDGErrorCode::eBinding, "Invalid array count for '{}'", name.CStr());
 
         return compatible ? result : nullptr;
     }
@@ -1939,7 +2037,7 @@ struct RenderGraph::PassBindingValidator
     bool Slice(RDGBindingSlice slice, size_t size)
     {
         return Check(slice.count > 0 && slice.offset <= size && slice.count <= size - slice.offset, RDGErrorCode::eBinding,
-                     prefix + "Invalid binding slice");
+                     "Invalid binding slice");
     }
 
     bool ValidateValues()
@@ -1952,7 +2050,7 @@ struct RenderGraph::PassBindingValidator
 
             allValid                               = srd != nullptr && Slice(binding.bytes, desc.valueByteStorage.size())
                                                   && Check(srd->blockSize == 0 || binding.bytes.count <= srd->blockSize, RDGErrorCode::eBinding,
-                                                           prefix + "Value exceeds uniform block '" + binding.glslName.ToString() + "'");
+                                                           "Value exceeds uniform block '{}'", binding.glslName.CStr());
 
             if (!allValid)
             {
@@ -1973,7 +2071,7 @@ struct RenderGraph::PassBindingValidator
             valid = valid && srd != nullptr
                  && Check(binding.pStructure != nullptr
                               && binding.pStructure->GetType() == RHIAccelerationStructureType::eTopLevel,
-                          RDGErrorCode::eBinding, prefix + "Query binding requires a top-level acceleration structure");
+                          RDGErrorCode::eBinding, "Query binding requires a top-level acceleration structure");
         }
         return valid;
     }
@@ -1989,13 +2087,13 @@ struct RenderGraph::PassBindingValidator
 
             bool compatible = srd != nullptr
                            && Check(ValidContentGuarantee(*srd, binding.contents), RDGErrorCode::eBinding,
-                                    prefix + "Storage-buffer content guarantee conflicts with reflection")
+                                    "Storage-buffer content guarantee conflicts with reflection")
                            && Slice(binding.buffers, desc.bufferStorage.size());
 
             for (uint32_t i = 0; compatible && i < binding.buffers.count; ++i)
             {
                 compatible = Check(desc.bufferStorage[binding.buffers.offset + i] != nullptr, RDGErrorCode::eBinding,
-                                   prefix + "Null buffer in '" + binding.glslName.ToString() + "'");
+                                   "Null buffer in '{}'", binding.glslName.CStr());
             }
 
             allValid = compatible;
@@ -2019,7 +2117,7 @@ struct RenderGraph::PassBindingValidator
 
             bool compatible                        = srd != nullptr
                                                   && Check(ValidContentGuarantee(*srd, binding.contents), RDGErrorCode::eBinding,
-                                                           prefix + "Texture content guarantee conflicts with reflection")
+                                                           "Texture content guarantee conflicts with reflection")
                                                   && Slice(binding.views, desc.textureViewStorage.size());
 
             for (uint32_t i = 0; compatible && i < binding.views.count; ++i)
@@ -2027,7 +2125,7 @@ struct RenderGraph::PassBindingValidator
                 RHITextureView* view = desc.textureViewStorage[binding.views.offset + i];
 
                 compatible           = Check(view != nullptr && view->GetTexture() != nullptr, RDGErrorCode::eBinding,
-                                             prefix + "Null texture view in '" + binding.glslName.ToString() + "'");
+                                             "Null texture view in '{}'", binding.glslName.CStr());
 
                 if (compatible)
                 {
@@ -2035,12 +2133,12 @@ struct RenderGraph::PassBindingValidator
 
                     const RHITextureSubResourceRange& full  = view->GetTexture()->GetSubResourceRange();
 
-                    compatible                              = Check(
-                        !range.aspect.IsEmpty() && (int64_t(range.aspect) & ~int64_t(full.aspect)) == 0 && range.levelCount > 0
-                            && range.baseMipLevel < full.levelCount && range.levelCount <= full.levelCount - range.baseMipLevel
-                            && range.layerCount > 0 && range.baseArrayLayer < full.layerCount
-                            && range.layerCount <= full.layerCount - range.baseArrayLayer,
-                        RDGErrorCode::eRange, prefix + "Invalid texture view range in '" + binding.glslName.ToString() + "'");
+                    compatible = Check(!range.aspect.IsEmpty() && (int64_t(range.aspect) & ~int64_t(full.aspect)) == 0
+                                           && range.levelCount > 0 && range.baseMipLevel < full.levelCount
+                                           && range.levelCount <= full.levelCount - range.baseMipLevel && range.layerCount > 0
+                                           && range.baseArrayLayer < full.layerCount
+                                           && range.layerCount <= full.layerCount - range.baseArrayLayer,
+                                       RDGErrorCode::eRange, "Invalid texture view range in '{}'", binding.glslName.CStr());
                 }
             }
 
@@ -2081,13 +2179,12 @@ struct RenderGraph::PassBindingValidator
                                                        ? Descriptor(binding.glslName, RHIShaderResourceType::eSampler, 1)
                                                        : program->GetShaderResourceDescriptor(binding.glslName);
 
-            allValid                               = srd != nullptr
-                                                  && Check(uniqueSlot, RDGErrorCode::eBinding,
-                                                           prefix + "Duplicate sampler slot in '" + binding.glslName.ToString() + "'")
-                                                  && Check(srd->bindless || binding.arrayIndex < srd->arraySize, RDGErrorCode::eBinding,
-                                                           prefix + "Invalid sampler array index")
-                                                  && Check(binding.pSampler != nullptr, RDGErrorCode::eBinding,
-                                                           prefix + "Null sampler in '" + binding.glslName.ToString() + "'");
+            allValid =
+                srd != nullptr
+                && Check(uniqueSlot, RDGErrorCode::eBinding, "Duplicate sampler slot in '{}'", binding.glslName.CStr())
+                && Check(srd->bindless || binding.arrayIndex < srd->arraySize, RDGErrorCode::eBinding,
+                         "Invalid sampler array index")
+                && Check(binding.pSampler != nullptr, RDGErrorCode::eBinding, "Null sampler in '{}'", binding.glslName.CStr());
 
             if (allValid)
             {
@@ -2109,7 +2206,7 @@ struct RenderGraph::PassBindingValidator
         for (const RDGResourceBinding& binding : desc.resourceBindings)
         {
             bool compatible = Check(binding.resourceType > RDGBindingType::eNone && binding.resourceType < RDGBindingType::eMax,
-                                    RDGErrorCode::eBinding, prefix + "Invalid logical binding type")
+                                    RDGErrorCode::eBinding, "Invalid logical binding type")
                            && Slice(binding.resources, desc.resourceStorage.size());
 
             if (compatible)
@@ -2123,12 +2220,12 @@ struct RenderGraph::PassBindingValidator
 
                 compatible = srd != nullptr
                           && Check(ValidContentGuarantee(*srd, binding.contents), RDGErrorCode::eBinding,
-                                   prefix + "Logical content guarantee conflicts with reflection");
+                                   "Logical content guarantee conflicts with reflection");
 
                 compatible = compatible
                           && (type != RHIShaderResourceType::eUniformBuffer
                               || Check(srd->arraySize >= binding.resources.count, RDGErrorCode::eRange,
-                                       prefix + "Logical uniform array exceeds reflected count"));
+                                       "Logical uniform array exceeds reflected count"));
 
                 for (uint32_t i = 0; compatible && i < binding.resources.count; ++i)
                 {
@@ -2150,7 +2247,7 @@ struct RenderGraph::PassBindingValidator
 
                         compatible =
                             Check(binding.resources.count == 1 && found != graph.m_transientRTMap.end(), RDGErrorCode::eBinding,
-                                  prefix + "No preceding producer for '" + binding.producerOutputTag.ToString() + "'");
+                                  "No preceding producer for '{}'", binding.producerOutputTag.CStr());
 
                         if (compatible)
                         {
@@ -2158,16 +2255,15 @@ struct RenderGraph::PassBindingValidator
                         }
                     }
 
-                    compatible =
-                        compatible
-                        && Check(resource->type == (buffer ? RDGResourceType::eBuffer : RDGResourceType::eTexture)
-                                     && (!buffer || !element.view.range),
-                                 RDGErrorCode::eBinding, prefix + "Logical binding has an incompatible resource or view type");
+                    compatible = compatible
+                              && Check(resource->type == (buffer ? RDGResourceType::eBuffer : RDGResourceType::eTexture)
+                                           && (!buffer || !element.view.range),
+                                       RDGErrorCode::eBinding, "Logical binding has an incompatible resource or view type");
 
                     compatible = compatible
                               && (type != RHIShaderResourceType::eUniformBuffer
                                   || Check(resource->bufferSize >= srd->blockSize, RDGErrorCode::eRange,
-                                           prefix + "Logical uniform buffer is smaller than its reflected block"));
+                                           "Logical uniform buffer is smaller than its reflected block"));
                 }
             }
 
@@ -2188,7 +2284,7 @@ struct RenderGraph::PassBindingValidator
 
         for (const RHIBuffer* buffer : desc.indirectBuffers)
         {
-            allValid = Check(buffer != nullptr, RDGErrorCode::eBinding, prefix + "Null indirect buffer");
+            allValid = Check(buffer != nullptr, RDGErrorCode::eBinding, "Null indirect buffer");
 
             if (!allValid)
             {
@@ -2202,34 +2298,33 @@ struct RenderGraph::PassBindingValidator
 
 ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc, bool graphics)
 {
-    const std::string prefix = "Pass '" + desc.passTag.ToString() + "': ";
-
-    bool valid = Check(bool(desc.validationResult), desc.validationResult.code, prefix + desc.validationResult.message);
+    bool valid =
+        CheckPass(bool(desc.validationResult), desc.validationResult.code, desc.passTag, "{}", desc.validationResult.message);
 
     ShaderProgram* program = valid ? ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName) : nullptr;
 
     valid                  = valid
-                          && Check(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader,
-                                   prefix + "Unknown or uninitialized shader '" + desc.shaderProgramName.ToString() + "'");
+                          && CheckPass(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader, desc.passTag,
+                                       "Unknown or uninitialized shader '{}'", desc.shaderProgramName.CStr());
 
     if (valid)
     {
-        valid = Check(desc.shaderIdentity == 0 || desc.shaderIdentity == program->GetShader()->GetStableId(),
-                      RDGErrorCode::eShader, prefix + "Shader changed; rebuild the graph");
+        valid = CheckPass(desc.shaderIdentity == 0 || desc.shaderIdentity == program->GetShader()->GetStableId(),
+                          RDGErrorCode::eShader, desc.passTag, "Shader changed; rebuild the graph");
     }
 
     if (valid)
     {
         const BitField<RHIShaderStageFlagBits> stages = program->GetShader()->GetCreateInfo().stageFlags;
 
-        valid = Check(graphics ? !stages.HasFlag(RHIShaderStageFlagBits::eCompute)
-                               : (int64_t(stages) & ~int64_t(RHIShaderStageFlagBits::eCompute)) == 0,
-                      RDGErrorCode::eShader, prefix + "Shader stages are incompatible with the pass type");
+        valid = CheckPass(graphics ? !stages.HasFlag(RHIShaderStageFlagBits::eCompute)
+                                   : (int64_t(stages) & ~int64_t(RHIShaderStageFlagBits::eCompute)) == 0,
+                          RDGErrorCode::eShader, desc.passTag, "Shader stages are incompatible with the pass type");
     }
 
     if (valid)
     {
-        PassBindingValidator validator{*this, program, desc, prefix, {}};
+        PassBindingValidator validator{*this, program, desc, {}};
 
         valid = validator.ValidateValues() && validator.ValidateBuffers() && validator.ValidateAccelerationStructures()
              && validator.ValidateTextures(desc.sampledTexBindings, RHIShaderResourceType::eSamplerWithTexture)
@@ -2297,7 +2392,6 @@ bool RenderGraph::ResolveAttachments(RDGGraphicsPassDesc& desc)
 }
 
 template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphicsPassDesc&  desc,
-                                                                const std::string&          prefix,
                                                                 std::unordered_set<NameID>& tags,
                                                                 const Output&               out,
                                                                 bool                        depth,
@@ -2305,8 +2399,8 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
 {
     bool valid = true;
 
-    valid      = Check(out.format != DataFormat::eUndefined && out.width > 0 && out.height > 0, RDGErrorCode::eAttachment,
-                       prefix + "Invalid attachment format or extent");
+    valid      = CheckPass(out.format != DataFormat::eUndefined && out.width > 0 && out.height > 0, RDGErrorCode::eAttachment,
+                           desc.passTag, "Invalid attachment format or extent");
 
     if (valid)
     {
@@ -2314,37 +2408,37 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
 
         const RHITexture* physical                       = out.pTexture;
 
-        valid = Check(physical == nullptr
-                          || (physical->GetNumMipmaps() == 1 && physical->GetArrayLayers() == 1 && physical->GetDepth() == 1
-                              && physical->GetBaseInfo().samples == desc.pipelineStates.multiSampleState.sampleCount),
-                      RDGErrorCode::eAttachment, prefix + "Attachment shape or samples do not match the pass");
+        valid = CheckPass(physical == nullptr
+                              || (physical->GetNumMipmaps() == 1 && physical->GetArrayLayers() == 1 && physical->GetDepth() == 1
+                                  && physical->GetBaseInfo().samples == desc.pipelineStates.multiSampleState.sampleCount),
+                          RDGErrorCode::eAttachment, desc.passTag, "Attachment shape or samples do not match the pass");
 
         valid = valid
-             && (Check(attachment == nullptr
-                           || attachment->texFormat.sampleCount == desc.pipelineStates.multiSampleState.sampleCount,
-                       RDGErrorCode::eAttachment, prefix + "Logical attachment samples do not match the pass"));
+             && (CheckPass(attachment == nullptr
+                               || attachment->texFormat.sampleCount == desc.pipelineStates.multiSampleState.sampleCount,
+                           RDGErrorCode::eAttachment, desc.passTag, "Logical attachment samples do not match the pass"));
 
         if (valid)
         {
             const bool depthFormat =
                 FormatIsDepthOnly(out.format) || FormatIsDepthStencil(out.format) || FormatIsStencilOnly(out.format);
 
-            valid =
-                Check(depth == depthFormat, RDGErrorCode::eAttachment, prefix + "Attachment format does not match its slot");
+            valid = CheckPass(depth == depthFormat, RDGErrorCode::eAttachment, desc.passTag,
+                              "Attachment format does not match its slot");
 
             valid = valid
-                 && (Check(
+                 && (CheckPass(
                      (out.loadOp == RHIRenderTargetLoadOp::eClear || out.loadOp == RHIRenderTargetLoadOp::eLoad
                       || out.loadOp == RHIRenderTargetLoadOp::eNone)
                          && (out.storeOp == RHIRenderTargetStoreOp::eStore || out.storeOp == RHIRenderTargetStoreOp::eNone),
-                     RDGErrorCode::eAttachment, prefix + "Invalid attachment load/store operation"));
+                     RDGErrorCode::eAttachment, desc.passTag, "Invalid attachment load/store operation"));
 
-            valid =
-                valid
-                && (Check(desc.renderArea.minX >= 0 && desc.renderArea.minY >= 0 && desc.renderArea.maxX >= 0
-                              && desc.renderArea.maxY >= 0 && uint64_t(desc.renderArea.minX) + desc.renderArea.maxX <= out.width
-                              && uint64_t(desc.renderArea.minY) + desc.renderArea.maxY <= out.height,
-                          RDGErrorCode::eAttachment, prefix + "Render area exceeds attachment"));
+            valid = valid
+                 && (CheckPass(desc.renderArea.minX >= 0 && desc.renderArea.minY >= 0 && desc.renderArea.maxX >= 0
+                                   && desc.renderArea.maxY >= 0
+                                   && uint64_t(desc.renderArea.minX) + desc.renderArea.maxX <= out.width
+                                   && uint64_t(desc.renderArea.minY) + desc.renderArea.maxY <= out.height,
+                               RDGErrorCode::eAttachment, desc.passTag, "Render area exceeds attachment"));
 
             if (valid)
             {
@@ -2362,15 +2456,14 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
                                         || desc.pipelineStates.colorBlendState.attachments[slot].enableBlend;
                     }
 
-                    valid = Check(
-                        !readsDestination, RDGErrorCode::eUninitialized,
-                        prefix + "Attachment Load=None cannot supply destination reads from blending/depth/stencil tests");
+                    valid = CheckPass(!readsDestination, RDGErrorCode::eUninitialized, desc.passTag,
+                                      "Attachment Load=None cannot supply destination reads from blending/depth/stencil tests");
                 }
 
                 if ((valid) && (!out.tag.IsNone()))
                 {
-                    valid = Check(tags.insert(out.tag).second, RDGErrorCode::eDuplicateTag,
-                                  prefix + "Duplicate output tag '" + out.tag.ToString() + "'");
+                    valid = CheckPass(tags.insert(out.tag).second, RDGErrorCode::eDuplicateTag, desc.passTag,
+                                      "Duplicate output tag '{}'", out.tag.CStr());
 
                     if (valid)
                     {
@@ -2379,10 +2472,10 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
 
                         // Repeated writes to the same imported attachment keep ordered-mutation semantics.
                         valid =
-                            Check(existing == m_transientRTMap.end()
-                                      || (out.pTexture != nullptr && existing->second.pResource->imported
-                                          && existing->second.pResource->pTexture == out.pTexture),
-                                  RDGErrorCode::eDuplicateTag, prefix + "Duplicate output tag '" + out.tag.ToString() + "'");
+                            CheckPass(existing == m_transientRTMap.end()
+                                          || (out.pTexture != nullptr && existing->second.pResource->imported
+                                              && existing->second.pResource->pTexture == out.pTexture),
+                                      RDGErrorCode::eDuplicateTag, desc.passTag, "Duplicate output tag '{}'", out.tag.CStr());
                     }
                 }
             }
@@ -2394,12 +2487,10 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
 
 bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
 {
-    bool valid               = true;
+    bool valid = true;
 
-    const std::string prefix = "Pass '" + desc.passTag.ToString() + "': ";
-
-    valid                    = Check(desc.colorOutputCount <= MAX_NUM_COLOR_ATTACHMENTS, RDGErrorCode::eAttachment,
-                                     prefix + "Too many color attachments");
+    valid      = CheckPass(desc.colorOutputCount <= MAX_NUM_COLOR_ATTACHMENTS, RDGErrorCode::eAttachment, desc.passTag,
+                           "Too many color attachments");
 
     if (valid)
     {
@@ -2407,12 +2498,12 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
 
         for (uint32_t i = 0; i < MAX_NUM_COLOR_ATTACHMENTS; ++i)
         {
-            valid = Check(desc.HasColorOutput(i) == (i < desc.colorOutputCount), RDGErrorCode::eAttachment,
-                          prefix + "Color attachment count/mask mismatch");
+            valid = CheckPass(desc.HasColorOutput(i) == (i < desc.colorOutputCount), RDGErrorCode::eAttachment, desc.passTag,
+                              "Color attachment count/mask mismatch");
 
             if ((valid) && (i < desc.colorOutputCount))
             {
-                valid = ValidateAttachment(desc, prefix, tags, desc.colorOutputs[i], false, i);
+                valid = ValidateAttachment(desc, tags, desc.colorOutputs[i], false, i);
             }
 
             if (!valid)
@@ -2425,14 +2516,14 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
         {
             if (desc.HasDepthStencilOutput())
             {
-                valid = ValidateAttachment(desc, prefix, tags, desc.depthStencilOutput, true, 0);
+                valid = ValidateAttachment(desc, tags, desc.depthStencilOutput, true, 0);
             }
 
             valid = valid
-                 && (!((!Check(desc.vertexBuffers.empty() || desc.geometryBuffer.vertexBuffers.empty(), RDGErrorCode::eBinding,
-                               prefix + "Cannot mix logical and raw vertex binding lists")
-                        || !Check(!desc.indexBuffer || desc.geometryBuffer.pIndexBuffer == nullptr, RDGErrorCode::eBinding,
-                                  prefix + "Cannot specify two index buffers"))));
+                 && (!((!CheckPass(desc.vertexBuffers.empty() || desc.geometryBuffer.vertexBuffers.empty(),
+                                   RDGErrorCode::eBinding, desc.passTag, "Cannot mix logical and raw vertex binding lists")
+                        || !CheckPass(!desc.indexBuffer || desc.geometryBuffer.pIndexBuffer == nullptr, RDGErrorCode::eBinding,
+                                      desc.passTag, "Cannot specify two index buffers"))));
         }
 
         if (valid)
@@ -2460,10 +2551,10 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
                 {
                     const uint32_t stride = desc.indexBufferFormat == DataFormat::eR16UInt ? 2 : 4;
 
-                    valid =
-                        Check((desc.indexBufferFormat == DataFormat::eR16UInt || desc.indexBufferFormat == DataFormat::eR32UInt)
-                                  && desc.indexBufferOffset % stride == 0 && desc.indexBufferOffset < resource->bufferSize,
-                              RDGErrorCode::eRange, prefix + "Invalid logical index buffer format or offset");
+                    valid                 = CheckPass(
+                        (desc.indexBufferFormat == DataFormat::eR16UInt || desc.indexBufferFormat == DataFormat::eR32UInt)
+                            && desc.indexBufferOffset % stride == 0 && desc.indexBufferOffset < resource->bufferSize,
+                        RDGErrorCode::eRange, desc.passTag, "Invalid logical index buffer format or offset");
                 }
             }
         }
@@ -2472,7 +2563,7 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
         {
             for (RHIBuffer* buffer : desc.geometryBuffer.vertexBuffers)
             {
-                valid = Check(buffer != nullptr, RDGErrorCode::eBinding, prefix + "Null vertex buffer");
+                valid = CheckPass(buffer != nullptr, RDGErrorCode::eBinding, desc.passTag, "Null vertex buffer");
 
                 if (!valid)
                 {
@@ -2486,11 +2577,11 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
 
                 const uint32_t stride             = geometry.indexBufferFormat == DataFormat::eR16UInt ? 2 : 4;
 
-                valid                             = Check(
+                valid                             = CheckPass(
                     (geometry.indexBufferFormat == DataFormat::eR16UInt || geometry.indexBufferFormat == DataFormat::eR32UInt)
                         && geometry.indexBufferOffset % stride == 0
                         && geometry.indexBufferOffset < geometry.pIndexBuffer->GetRequiredSize(),
-                    RDGErrorCode::eRange, prefix + "Invalid index buffer format or offset");
+                    RDGErrorCode::eRange, desc.passTag, "Invalid index buffer format or offset");
             }
         }
     }
@@ -2828,8 +2919,8 @@ bool RenderGraph::DeclareTextureAccessForPass(const RDGPassNode*                
     {
         const uint32_t required = 1u << (uint32_t(usage) - 1);
 
-        if (Check(!resource->imported || (int64_t(resource->usageFlags) & required) == required, RDGErrorCode::eBinding,
-                  "Resource '" + resource->name.ToString() + "' lacks required creation usage"))
+        if (CheckFormat(!resource->imported || (int64_t(resource->usageFlags) & required) == required, RDGErrorCode::eBinding,
+                        "Resource '{}' lacks required creation usage", resource->name.CStr()))
         {
             if (!resource->imported)
             {
@@ -2895,8 +2986,8 @@ bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                 
         if (Check(required != 0 && (required & ~kRHIBufferAccessUsageMask) == 0, RDGErrorCode::eBinding,
                   "Invalid buffer usage"))
         {
-            if (Check(!resource->imported || (int64_t(resource->usageFlags) & required) == required, RDGErrorCode::eBinding,
-                      "Resource '" + resource->name.ToString() + "' lacks required creation usage"))
+            if (CheckFormat(!resource->imported || (int64_t(resource->usageFlags) & required) == required,
+                            RDGErrorCode::eBinding, "Resource '{}' lacks required creation usage", resource->name.CStr()))
             {
                 if (!resource->imported)
                 {
@@ -3636,9 +3727,8 @@ bool RenderGraph::DeclareVersionAccess(const RDGPassNode*                    nod
 
             const bool writes                                  = mode != RHIAccessMode::eRead;
 
-            valid = Check(!writes || version.previous >= 0, RDGErrorCode::eVersion,
-                          "Pass '" + node->tag.ToString() + "' cannot write initial version 0 of '" + resource->name.ToString()
-                              + "'");
+            valid = CheckFormat(!writes || version.previous >= 0, RDGErrorCode::eVersion,
+                                "Pass '{}' cannot write initial version 0 of '{}'", node->tag.CStr(), resource->name.CStr());
 
             if (valid)
             {
@@ -3654,12 +3744,13 @@ bool RenderGraph::DeclareVersionAccess(const RDGPassNode*                    nod
                     }
 
                     valid =
-                        Check(node->type != RDGNodeType::eTransferPass || prior.writes == writes, RDGErrorCode::eVersion,
-                              "Transfer pass '" + node->tag.ToString() + "' reads and writes versions of the same allocation '"
-                                  + resource->name.ToString() + "'; split the passes to preserve the selected contents")
-                        && Check(!writes || !prior.writes || prior.version == value.m_version, RDGErrorCode::eVersion,
-                                 "Pass '" + node->tag.ToString() + "' writes multiple versions of '" + resource->name.ToString()
-                                     + "'; split the passes");
+                        CheckFormat(
+                            node->type != RDGNodeType::eTransferPass || prior.writes == writes, RDGErrorCode::eVersion,
+                            "Transfer pass '{}' reads and writes versions of the same allocation '{}'; split the passes to preserve the selected contents",
+                            node->tag.CStr(), resource->name.CStr())
+                        && CheckFormat(!writes || !prior.writes || prior.version == value.m_version, RDGErrorCode::eVersion,
+                                       "Pass '{}' writes multiple versions of '{}'; split the passes", node->tag.CStr(),
+                                       resource->name.CStr());
 
                     found = prior.version == value.m_version && prior.writes == writes;
 
@@ -3790,10 +3881,10 @@ bool RenderGraph::BuildVersionDependencies(HeapVector<HeapVector<uint32_t>>& adj
             {
                 for (RDG_ID reader : use.readers)
                 {
-                    valid = Check(reader != use.producer, RDGErrorCode::eVersion,
-                                  "Pass '" + GetNodeBaseById(reader)->tag.ToString() + "' reads its own output version "
-                                      + std::to_string(version.number) + " of '" + resource->name.ToString()
-                                      + "'; use ReadWrite on the output to read its predecessor, or split the passes");
+                    valid = CheckFormat(
+                        reader != use.producer, RDGErrorCode::eVersion,
+                        "Pass '{}' reads its own output version {} of '{}'; use ReadWrite on the output to read its predecessor, or split the passes",
+                        GetNodeBaseById(reader)->tag.CStr(), version.number, resource->name.CStr());
 
                     if (valid)
                     {
@@ -4072,35 +4163,27 @@ bool RenderGraph::SortNodesByVersion()
 
     if (BuildVersionDependencies(adjacency, edges))
     {
-        // Readiness comes exclusively from version dependencies. IDs are lookup keys, never
-        // priorities. Newly ready passes join the work queue without preempting other ready work.
-        // Independent passes have no required relative order; layouts are handled by barriers
-        // generated after this schedule, not by artificial reader-to-reader dependencies.
-        std::queue<const RDGNodeBase*> ready;
+        // First establish an acyclic version order for queue-path analysis. The output itself
+        // is the FIFO work list; single-queue graphs keep this order without further work.
+        m_sortedNodes.reserve(m_nodeCount);
 
         for (const RDGNodeBase* node : m_nodes)
         {
             if (m_inDegrees[node->id] == 0)
             {
-                ready.push(node);
+                m_sortedNodes.push_back(node->id);
             }
         }
 
-        while (!ready.empty())
+        for (size_t order = 0; order < m_sortedNodes.size(); ++order)
         {
-            const RDGNodeBase* node = ready.front();
-
-            ready.pop();
-
-            m_sortedNodes.push_back(node->id);
-
-            for (uint32_t const edgeIndex : adjacency[node->id])
+            for (uint32_t const edgeIndex : adjacency[m_sortedNodes[order]])
             {
                 const RDG_ID next = m_dependencies[edgeIndex].destination;
 
                 if (--m_inDegrees[next] == 0)
                 {
-                    ready.push(GetNodeBaseById(next));
+                    m_sortedNodes.push_back(next);
                 }
             }
         }
@@ -4111,6 +4194,11 @@ bool RenderGraph::SortNodesByVersion()
         }
         else
         {
+            if (m_pRenderDevice->GetAsyncComputeStatus() == AsyncComputeStatus::eAvailable)
+            {
+                OrderNodesForQueues(adjacency);
+            }
+
             m_compileStats.dependencyEdgeCount = static_cast<uint32_t>(edges.size());
 
             result                             = true;
@@ -4118,6 +4206,116 @@ bool RenderGraph::SortNodesByVersion()
     }
 
     return result;
+}
+
+void RenderGraph::OrderNodesForQueues(const HeapVector<HeapVector<uint32_t>>& adjacency)
+{
+    struct QueuePath
+    {
+        bool compute{false};
+        bool feedsCompute{false};
+        bool afterCompute{false};
+
+        uint32_t Category() const
+        {
+            return (feedsCompute && !afterCompute ? 0u : 4u) | (compute ? 2u : 0u) | (afterCompute ? 1u : 0u);
+        }
+    };
+
+    HeapVector<QueuePath> paths(m_nodeCount);
+
+    uint32_t computeCount = 0;
+
+    for (const RDGNodeBase* base : m_nodes)
+    {
+        QueuePath& path    = paths[base->id];
+
+        path.compute       = m_pRenderDevice->ResolveAsyncComputeEligibility(*this, *static_cast<const RDGPassNode*>(base))
+                          == RDGAsyncComputeEligibility::eEligible;
+
+        path.feedsCompute  = path.compute;
+
+        computeCount      += path.compute;
+    }
+
+    if (computeCount != 0 && computeCount != m_nodeCount)
+    {
+        // A fork starts before the first compute ancestor. A graphics pass between two
+        // compute chains is already a join, so it must not outrank independent graphics.
+        for (RDG_ID id : m_sortedNodes)
+        {
+            for (uint32_t edge : adjacency[id])
+            {
+                const RDG_ID next         = m_dependencies[edge].destination;
+
+                paths[next].afterCompute |= paths[id].compute || paths[id].afterCompute;
+
+                ++m_inDegrees[next];
+            }
+        }
+
+        for (size_t remaining = m_sortedNodes.size(); remaining != 0; --remaining)
+        {
+            const RDG_ID id = m_sortedNodes[remaining - 1];
+
+            for (uint32_t edge : adjacency[id])
+            {
+                paths[id].feedsCompute |= paths[m_dependencies[edge].destination].feedsCompute;
+            }
+        }
+
+        // Static path categories use FIFO-ready heaps. Only the preference for the open
+        // queue changes, so selecting among eight heads avoids rescanning ready passes.
+        SmallVector<ReadyQueue, 8> ready(8);
+
+        uint32_t readyOrder = 0;
+
+        for (const RDGNodeBase* node : m_nodes)
+        {
+            if (m_inDegrees[node->id] == 0)
+            {
+                ready[paths[node->id].Category()].Push(ReadyQueue::MakeKey(readyOrder++, uint32_t(node->id)));
+            }
+        }
+
+        m_sortedNodes.clear();
+
+        bool openCompute = false;
+
+        while (m_sortedNodes.size() != m_nodeCount)
+        {
+            uint32_t selected = 0;
+
+            for (uint32_t rank = 0; rank < ready.size(); ++rank)
+            {
+                // Fork path first, then open queue, then independent work before joins.
+                selected = rank ^ (openCompute ? 2u : 0u);
+
+                if (!ready[selected].Empty())
+                {
+                    break;
+                }
+            }
+
+            VERIFY_EXPR(!ready[selected].Empty()); // The first version traversal proved this graph acyclic.
+
+            const RDG_ID id = int32_t(ready[selected].Pop());
+
+            m_sortedNodes.push_back(id);
+
+            openCompute = paths[id].compute;
+
+            for (uint32_t edge : adjacency[id])
+            {
+                const RDG_ID next = m_dependencies[edge].destination;
+
+                if (--m_inDegrees[next] == 0)
+                {
+                    ready[paths[next].Category()].Push(ReadyQueue::MakeKey(readyOrder++, uint32_t(next)));
+                }
+            }
+        }
+    }
 }
 
 bool RenderGraph::RequirePresentationState(RHITexture* texture)
@@ -4399,6 +4597,50 @@ void RenderGraph::BuildCompiledNodeList()
 
 namespace
 {
+bool ConsumersDependOnPass(uint32_t                              pass,
+                           const HeapVector<uint32_t>&           consumers,
+                           const HeapVector<HeapVector<RDG_ID>>& successors,
+                           HeapVector<uint32_t>&                 visited,
+                           HeapVector<uint32_t>&                 pending)
+{
+    if (visited.empty())
+    {
+        visited = HeapVector<uint32_t>(successors.size(), UINT32_MAX);
+    }
+
+    pending.clear();
+
+    pending.push_back(pass);
+
+    visited[pass]    = pass;
+
+    size_t remaining = consumers.size();
+
+    while (!pending.empty() && remaining != 0)
+    {
+        const uint32_t current = pending.back();
+
+        pending.pop_back();
+
+        for (RDG_ID next : successors[current])
+        {
+            if (visited[next] != pass)
+            {
+                visited[next] = pass;
+
+                pending.push_back(uint32_t(next));
+
+                if (std::binary_search(consumers.begin(), consumers.end(), uint32_t(next)))
+                {
+                    --remaining;
+                }
+            }
+        }
+    }
+
+    return remaining == 0;
+}
+
 bool GroupHasPredecessor(const HeapVector<RDGSubmissionGroup>& groups, uint32_t group, uint32_t predecessor)
 {
     bool found = false;
@@ -4598,6 +4840,10 @@ void RenderGraph::BuildSubmissionGroups(bool transferCompatible)
 
     HeapVector<uint8_t> sealed;
 
+    HeapVector<uint32_t> visitedConsumers;
+
+    HeapVector<uint32_t> pendingConsumers;
+
     for (const RDGDependency& dependency : m_schedule.dependencies)
     {
         predecessors[dependency.destination].push_back(dependency.source);
@@ -4613,8 +4859,8 @@ void RenderGraph::BuildSubmissionGroups(bool transferCompatible)
                                                             : RHICommandContextType::eGraphics;
     }
 
-    // Equal first foreign consumers are required for coalescing. This prevents unrelated
-    // ready work from delaying a producer's signal, even before its consumer is visited.
+    // Track each pass's first foreign consumers. A later pass can extend an open
+    // group only when all of its earlier consumers already depend on that pass.
     for (size_t i = m_compiledNodes.size(); i > 0; --i)
     {
         const RDG_ID node = m_compiledNodes[i - 1].nodeId;
@@ -4660,7 +4906,16 @@ void RenderGraph::BuildSubmissionGroups(bool transferCompatible)
 
             const HeapVector<uint32_t>& next     = consumers[compiled.nodeId];
 
-            append = previous.size() == next.size() && std::equal(previous.begin(), previous.end(), next.begin());
+            append                               = std::includes(next.begin(), next.end(), previous.begin(), previous.end());
+
+            if (!append && !next.empty())
+            {
+                append =
+                    ConsumersDependOnPass(uint32_t(compiled.nodeId), previous, successors, visitedConsumers, pendingConsumers);
+            }
+
+            // After a successful append, the new pass's frontier dominates the old
+            // frontier, so the last pass continues to represent the whole group's consumers.
         }
 
         for (uint32_t predecessor : incoming)
@@ -4728,13 +4983,185 @@ void RenderGraph::BuildSubmissionGroups(bool transferCompatible)
     // Conservative even when logical queue classes alias one native queue.
     m_schedule.usesMultipleQueues    = usedQueues > 1;
 
-    m_schedule.allowsAllocationReuse = m_reuseAllocations && !m_schedule.usesMultipleQueues;
+    m_schedule.allowsAllocationReuse = m_reuseAllocations;
+}
+
+bool RenderGraph::OrderSubmissionGroups()
+{
+    bool valid = true;
+
+    if (m_schedule.usesMultipleQueues && m_schedule.groups.size() > 2)
+    {
+        HeapVector<HeapVector<uint32_t>> successors(m_schedule.groups.size());
+
+        HeapVector<uint32_t> remaining(m_schedule.groups.size());
+
+        ReadyQueue ready[size_t(RHICommandContextType::eMax)];
+
+        HeapVector<uint32_t> order;
+
+        order.reserve(m_schedule.groups.size());
+
+        for (const RDGSubmissionGroup& group : m_schedule.groups)
+        {
+            remaining[group.id] = uint32_t(group.predecessors.size());
+
+            for (uint32_t predecessor : group.predecessors)
+            {
+                successors[predecessor].push_back(group.id);
+            }
+
+            if (remaining[group.id] == 0)
+            {
+                ready[size_t(group.queue)].Push(group.id);
+            }
+        }
+
+        while (order.size() < m_schedule.groups.size())
+        {
+            uint32_t selected = UINT32_MAX;
+
+            bool sameQueue    = false;
+
+            // Only ready groups can extend the current native-queue run. Original IDs
+            // break ties, preserving deterministic order across builds and queue aliases.
+            for (const ReadyQueue& queue : ready)
+            {
+                if (!queue.Empty())
+                {
+                    const uint32_t candidate = queue.Top();
+
+                    const bool matches       = !order.empty()
+                                            && m_schedule.groups[candidate].queueEquivalenceId
+                                                   == m_schedule.groups[order.back()].queueEquivalenceId;
+
+                    if (selected == UINT32_MAX || (matches && !sameQueue) || (matches == sameQueue && candidate < selected))
+                    {
+                        selected  = candidate;
+
+                        sameQueue = matches;
+                    }
+                }
+            }
+
+            if (selected == UINT32_MAX)
+            {
+                break;
+            }
+
+            ready[size_t(m_schedule.groups[selected].queue)].Pop();
+
+            order.push_back(selected);
+
+            for (uint32_t successor : successors[selected])
+            {
+                if (--remaining[successor] == 0)
+                {
+                    ready[size_t(m_schedule.groups[successor].queue)].Push(successor);
+                }
+            }
+        }
+
+        valid = Check(order.size() == m_schedule.groups.size(), RDGErrorCode::eDependencyCycle,
+                      "Submission groups have an incomplete dependency schedule");
+
+        if (valid)
+        {
+            HeapVector<uint32_t> remap(order.size());
+
+            HeapVector<RDGSubmissionGroup> groups;
+
+            groups.reserve(order.size());
+
+            for (uint32_t previous : order)
+            {
+                remap[previous] = uint32_t(groups.size());
+
+                groups.push_back(std::move(m_schedule.groups[previous]));
+
+                RDGSubmissionGroup& group = groups.back();
+
+                group.id                  = remap[previous];
+
+                for (uint32_t& predecessor : group.predecessors)
+                {
+                    predecessor = remap[predecessor];
+                }
+
+                std::sort(group.predecessors.begin(), group.predecessors.end());
+            }
+
+            m_schedule.groups = std::move(groups);
+
+            for (RDGCompiledNode& compiled : m_compiledNodes)
+            {
+                compiled.submissionGroup = remap[compiled.submissionGroup];
+            }
+        }
+    }
+
+    return valid;
+}
+
+HeapVector<uint32_t> RenderGraph::GetResourceQueueMasks() const
+{
+    HeapVector<uint32_t> masks(m_resourceManager.m_resources.size());
+
+    for (const RDGCompiledNode& compiled : m_compiledNodes)
+    {
+        const RDGNodeBase* node = GetNodeBaseById(compiled.nodeId);
+
+        for (uint32_t i = 0; i < node->accessCount; ++i)
+        {
+            masks[m_accesses[node->accessOffset + i].resourceId] |= 1u << uint32_t(compiled.plannedQueue);
+        }
+    }
+
+    return masks;
 }
 
 bool RenderGraph::ValidateSchedule()
 {
-    bool valid = Check(!m_schedule.usesMultipleQueues || m_compileStats.reusedAllocationCount == 0, RDGErrorCode::eAllocation,
-                       "Multi-queue schedule cannot reuse linear transient allocations");
+    bool valid = true;
+
+    if (m_compileStats.reusedAllocationCount != 0)
+    {
+        struct PhysicalUses
+        {
+            uint32_t queues{0};
+
+            uint32_t allocations{0};
+        };
+
+        FlatHashMap<uint64_t, PhysicalUses> uses;
+
+        const HeapVector<uint32_t> queueMasks = GetResourceQueueMasks();
+
+        for (const RDGResourceManager::Allocation* resource : m_resourceManager.m_resources)
+        {
+            const RHIResource* physical = PhysicalResource(resource);
+
+            if (!resource->imported && resource->liveAccessCount != 0 && physical != nullptr)
+            {
+                PhysicalUses& use  = uses[physical->GetStableId()];
+
+                use.queues        |= queueMasks[resource->id];
+
+                ++use.allocations;
+            }
+        }
+
+        for (const std::pair<const uint64_t, PhysicalUses>& entry : uses)
+        {
+            valid = Check(entry.second.allocations < 2 || std::has_single_bit(entry.second.queues), RDGErrorCode::eAllocation,
+                          "Reused transient allocation spans multiple queues after schedule refresh");
+
+            if (!valid)
+            {
+                break;
+            }
+        }
+    }
 
     HeapVector<uint32_t> nodeGroups(m_nodeCount, UINT32_MAX);
 
@@ -4792,7 +5219,7 @@ bool RenderGraph::BuildSchedule(const ResourceStateTracker& tracker, bool transf
 
     BuildSubmissionGroups(transferCompatible);
 
-    return ValidateSchedule() && ValidateRequiredFinalStates();
+    return OrderSubmissionGroups() && ValidateSchedule() && ValidateRequiredFinalStates();
 }
 
 bool RenderGraph::ValidateCompiledGraph()

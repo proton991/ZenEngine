@@ -78,6 +78,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RHI/RHIGPUFrameTiming.cpp
     ../ZenCore/Source/Graphics/RHI/RHIThread.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/FrameBufferRing.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/ShaderProgram.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp
@@ -110,6 +111,8 @@ target_link_libraries(RenderCoreTest PRIVATE gtest_main spdlog::spdlog gli glm s
 set_source_files_properties(RenderCoreTest/RenderCoreTests.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/bigobj>")
 add_dependencies(RenderCoreTest SpvShaders)
+add_executable(EncoderAllocationBenchmark RenderCoreTest/EncoderAllocationBenchmark.cpp)
+target_link_libraries(EncoderAllocationBenchmark PRIVATE ZenCore)
 add_executable(LRUCacheTest LRUCacheTest/LRUCacheTests.cpp)
 target_include_directories(LRUCacheTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Include)
 target_link_libraries(LRUCacheTest PRIVATE gtest_main spdlog::spdlog)

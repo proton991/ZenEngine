@@ -71,7 +71,8 @@ public:
 
     void ResetRenderingSetup();
 
-    void RecordRenderingResult(bool succeeded);
+    // Returns whether the application loop may continue. Recoverable errors remain visible in the renderer status.
+    bool RecordRenderingResult(rc::RenderFrameResult result);
 
     bool CanRestoreRenderingSettings() const;
 
@@ -165,6 +166,7 @@ private:
     rc::RenderingSettings          m_renderDefaults;
     rc::RenderingSettings          m_lastSuccessfulRendering;
     bool                           m_hasSuccessfulRendering{false};
+    uint32_t                       m_consecutiveDeclines{0};
     uint64_t                       m_successfulRenderingRevision{0};
     bool                           m_renderApplyRequested{false};
     bool                           m_renderResourcesRequested{false};

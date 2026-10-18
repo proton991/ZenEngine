@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <fstream>
 #include <cctype>
+#include <cstring>
+#include <limits>
 
 namespace zen::rc
 {
@@ -350,34 +352,71 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
                 }
                 else
                 {
-                    HeapVector<RHIBufferTextureCopyRegion> regions;
+                    uint32_t payloadSize = 0;
 
-                    HeapVector<uint8_t> pixels;
+                    bool payloadFits     = true;
 
-                    for (uint32_t level = 0; level < texFormat.mipmaps; ++level)
+                    for (const HeapVector<uint8_t>& mip : pSgTexture->mipBytes)
                     {
-                        RHIBufferTextureCopyRegion region{};
-
-                        region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-
-                        region.textureSubresources.mipmap     = level;
-
-                        region.textureSubresources.layerCount = 1;
-
-                        region.textureSize  = {std::max(1u, texFormat.width >> level), std::max(1u, texFormat.height >> level),
-                                               1};
-
-                        region.bufferOffset = static_cast<uint32_t>(pixels.size());
-
-                        regions.push_back(region);
-
-                        for (uint8_t value : pSgTexture->mipBytes[level])
+                        if (mip.size() > std::numeric_limits<uint32_t>::max() - payloadSize)
                         {
-                            pixels.push_back(value);
+                            payloadFits = false;
+
+                            break;
                         }
+
+                        payloadSize += static_cast<uint32_t>(mip.size());
                     }
 
-                    UpdateTextureCube(pTexture, regions, static_cast<uint32_t>(pixels.size()), pixels.data());
+                    if (!payloadFits)
+                    {
+                        LOGE("Scene texture '{}' mip payload exceeds the upload size limit", pSgTexture->GetName());
+
+                        ReleaseSceneTexture(pTexture);
+
+                        pTexture = nullptr;
+                    }
+                    else
+                    {
+                        HeapVector<RHIBufferTextureCopyRegion> regions;
+
+                        HeapVector<uint8_t> pixels;
+
+                        regions.reserve(texFormat.mipmaps);
+
+                        pixels.resize(payloadSize);
+
+                        uint32_t offset = 0;
+
+                        for (uint32_t level = 0; level < texFormat.mipmaps; ++level)
+                        {
+                            RHIBufferTextureCopyRegion region{};
+
+                            region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
+                            region.textureSubresources.mipmap     = level;
+
+                            region.textureSubresources.layerCount = 1;
+
+                            region.textureSize                    = {std::max(1u, texFormat.width >> level),
+                                                                     std::max(1u, texFormat.height >> level), 1};
+
+                            region.bufferOffset                   = offset;
+
+                            regions.push_back(region);
+
+                            const HeapVector<uint8_t>& mip = pSgTexture->mipBytes[level];
+
+                            if (!mip.empty())
+                            {
+                                std::memcpy(pixels.data() + offset, mip.data(), mip.size());
+                            }
+
+                            offset += static_cast<uint32_t>(mip.size());
+                        }
+
+                        UpdateTextureCube(pTexture, regions, static_cast<uint32_t>(pixels.size()), pixels.data());
+                    }
                 }
             }
 

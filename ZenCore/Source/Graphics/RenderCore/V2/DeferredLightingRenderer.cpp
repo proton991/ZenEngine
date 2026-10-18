@@ -174,11 +174,11 @@ void DeferredLightingRenderer::SetRenderScene(RenderScene* scene)
     m_pScene = scene;
 }
 
-void DeferredLightingRenderer::OnRenderGraphExecuted(bool succeeded)
+void DeferredLightingRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
     if (m_hybrid != nullptr)
     {
-        m_hybrid->OnRenderGraphExecuted(succeeded);
+        m_hybrid->OnRenderGraphExecuted(result);
     }
 }
 

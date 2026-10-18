@@ -131,7 +131,9 @@ void EditorController::Destroy()
 
     m_loadCandidate.Reset();
 
-    m_loadState = {};
+    m_loadState           = {};
+
+    m_consecutiveDeclines = 0;
 }
 
 void EditorController::RegisterActions()
@@ -388,8 +390,12 @@ void EditorController::ResetRenderingSetup()
     RequestEnvironmentTexture("");
 }
 
-void EditorController::RecordRenderingResult(bool succeeded)
+bool EditorController::RecordRenderingResult(rc::RenderFrameResult result)
 {
+    const bool succeeded                = result == rc::RenderFrameResult::eSubmitted;
+
+    const bool retryDeclines            = rc::TrackDeclinedFrames(result, m_consecutiveDeclines);
+
     const EditorRenderSnapshot snapshot = m_viewport.GetSnapshot();
 
     if ((!m_hasSuccessfulRendering || m_successfulRenderingRevision != m_rendering.GetAppliedRevision()) && succeeded
@@ -402,6 +408,8 @@ void EditorController::RecordRenderingResult(bool succeeded)
 
         m_successfulRenderingRevision = m_rendering.GetAppliedRevision();
     }
+
+    return result != rc::RenderFrameResult::eBlocked && retryDeclines;
 }
 
 bool EditorController::CanRestoreRenderingSettings() const

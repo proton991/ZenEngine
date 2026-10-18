@@ -69,6 +69,7 @@ struct RDGPoolStats
     uint32_t assignedCount{0};
     uint32_t availableCount{0};
     uint32_t descriptorCount{0};
+    uint32_t cachedViewCount{0}; // Borrowed views of assigned, pooled or retained imported textures.
 };
 struct RDGPoolBucketStats
 {
@@ -362,6 +363,8 @@ private:
     };
     HeapVector<CachedView> m_viewCache;
 
+    void RemoveCachedViews(uint64_t textureId);
+
     RefCountPtr<RDGExtractionState> QueueExtraction(RDGResource                      resource,
                                                     RDGResourceType                  type,
                                                     RHITextureUsage                  textureUsage,
@@ -458,6 +461,7 @@ private:
         uint64_t           bytes{0};
         uint64_t           lastUsedBuild{0};
         ResourceRetirement retirement;
+        NameID             name;
     };
     struct RetiredPoolBytes
     {
@@ -471,7 +475,7 @@ private:
 
     ResourceRetirement CaptureRetirement() const;
 
-    RHIResource* AcquirePoolEntry(HeapVector<PoolEntry>& entries);
+    RHIResource* AcquirePoolEntry(HeapVector<PoolEntry>& entries, NameID name);
 
     void RetirePoolEntry(const PoolEntry& entry);
 

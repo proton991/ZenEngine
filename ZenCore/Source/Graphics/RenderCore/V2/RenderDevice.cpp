@@ -10,6 +10,9 @@
 #include <bit>
 #include <limits>
 #include <filesystem>
+#include <charconv>
+#include <cstdlib>
+#include <cstring>
 
 zen::rc::RenderFrameState GRenderFrameState;
 
@@ -77,6 +80,25 @@ RenderDevice::RenderDevice(RHIAPIType       APIType,
     })
 {
     GRenderFrameState.Init(m_numFrames);
+
+#if defined(ZEN_DEBUG)
+    // A debug-only smoke hook shared by the editor and demo, without changing window size.
+    const char* interval = std::getenv("ZEN_FORCE_VIEWPORT_RECREATION_INTERVAL");
+
+    if (interval != nullptr)
+    {
+        const char* end                     = interval + std::strlen(interval);
+
+        const std::from_chars_result parsed = std::from_chars(interval, end, m_forceRecreationInterval);
+
+        if (parsed.ec != std::errc{} || parsed.ptr != end)
+        {
+            m_forceRecreationInterval = 0;
+
+            LOGE("Invalid ZEN_FORCE_VIEWPORT_RECREATION_INTERVAL; expected an unsigned frame count");
+        }
+    }
+#endif
 
     if (GDynamicRHI == nullptr)
     {
@@ -286,82 +308,21 @@ void RenderDevice::Destroy()
     }
 }
 
-bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
+RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
 {
-    bool result{};
-
-    if (m_executionMode == RHIExecutionMode::eThreaded || m_asyncComputeStatus == AsyncComputeStatus::eAvailable)
-    {
-        result = ExecuteFrameGraph(viewport);
-    }
-    else if ((((viewport != nullptr) && (m_frameRDG.Get() != nullptr)) && (m_pImmediateTransferCmdList != nullptr))
-             && (!m_frameWaitFailed))
-    {
-        RenderGraph& graph = *m_frameRDG;
-
-        if (m_submissionBlocked)
-        {
-            result =
-                graph.Fail(RDGErrorCode::eSubmission, "GPU execution is blocked; recreate the device after submission failure");
-        }
-        else
-        {
-            RDGExecutor::ExecutionPlan plan;
-
-            if (!graph.RequirePresentationState(viewport->GetColorBackBuffer())
-                || !m_rdgExecutor.PrepareExecution(&graph, plan))
-            {
-                result = false;
-            }
-            else if (!m_pUploadQueue->Flush())
-            {
-                result = graph.Fail(RDGErrorCode::eSubmission, "Pending uploads failed before frame execution");
-            }
-            else if (!m_rdgExecutor.RefreshExecution(plan))
-            {
-                result = false;
-            }
-            else
-            {
-                // The executor submits the presentation copy with the graph, so a rejected
-                // submission accepts neither and keeps the acquired image for a retry.
-                RHICommandList* commands = m_graphicsCmdListPool.Acquire();
-
-                bool presented           = false;
-
-                const bool executed =
-                    commands != nullptr
-                    && m_rdgExecutor.ExecutePrepared(plan, commands,
-                                                     std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                                                     std::ref(*commands), viewport, nullptr, &presented));
-
-                m_graphicsCmdListPool.Release(commands);
-
-                if (executed)
-                {
-                    m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
-                        viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite, RHITextureUsage::eColorAttachment,
-                        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput));
-
-                    EndFrame();
-
-                    result = presented && !m_frameActive;
-                }
-            }
-        }
-    }
-
-    return result;
-}
-
-bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
-{
-    bool result = false;
+    RenderFrameResult result = RenderFrameResult::eFailed;
 
     PollFrameSubmissions(false);
 
-    if (viewport != nullptr && m_frameRDG.Get() != nullptr && m_frameActive && !m_frameWaitFailed && !AreSubmissionsBlocked()
-        && m_pRecreateViewport == nullptr)
+    if (AreSubmissionsBlocked())
+    {
+        result = RenderFrameResult::eBlocked;
+    }
+    else if (m_pRecreateViewport != nullptr)
+    {
+        result = RenderFrameResult::eDeclined;
+    }
+    else if (viewport != nullptr && m_frameRDG.Get() != nullptr && m_frameActive && !m_frameWaitFailed)
     {
         RenderGraph& graph = *m_frameRDG;
 
@@ -370,74 +331,106 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
         if (graph.RequirePresentationState(viewport->GetColorBackBuffer()) && m_rdgExecutor.PrepareExecution(&graph, plan)
             && (m_pUploadQueue == nullptr || m_pUploadQueue->Flush()) && m_rdgExecutor.RefreshExecution(plan))
         {
-            PendingFrame pending;
+            PendingSubmission pending;
 
-            pending.frame    = &m_frames[ToIndex(GRenderFrameState.GetFrameSlot())];
+            pending.frame              = &m_frames[ToIndex(GRenderFrameState.GetFrameSlot())];
 
-            pending.viewport = viewport;
+            pending.viewport           = viewport;
+
+            PendingSubmission* handoff = m_executionMode == RHIExecutionMode::eThreaded ? &pending : nullptr;
+
+            bool executed              = false;
 
             if (m_asyncComputeStatus == AsyncComputeStatus::eAvailable)
             {
-                result = ExecuteScheduledGraph(plan, viewport, &pending);
+                executed = ExecuteScheduledGraph(plan, viewport, handoff);
             }
             else
             {
                 RHICommandList* commands = m_graphicsCmdListPool.Acquire();
 
-                result =
+                executed =
                     commands != nullptr
                     && m_rdgExecutor.ExecutePrepared(plan, commands,
                                                      std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                                                     std::ref(*commands), viewport, &pending, nullptr),
-                                                     true);
+                                                                     std::ref(*commands), viewport, handoff, nullptr, nullptr),
+                                                     handoff != nullptr);
 
                 m_graphicsCmdListPool.Release(commands);
             }
 
-            if (result)
+            if (executed)
             {
-                // Scheduled state belongs to RenderCore. Confirmation comes back through
-                // the ticket; the worker never touches this graph or its pass callbacks.
+                // Scheduled state belongs to RenderCore. Threaded confirmation comes back
+                // through the ticket; the worker never touches the graph or its callbacks.
                 m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
                     viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite, RHITextureUsage::eColorAttachment,
                     BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput));
+
+                if (handoff == nullptr)
+                {
+                    EndFrame();
+                }
+
+                // An inline frame is complete only once EndFrame closes it; threaded handoff
+                // closes the frame below and the batch ends it natively.
+                result = handoff == nullptr && m_frameActive ? RenderFrameResult::eFailed : RenderFrameResult::eSubmitted;
+            }
+            else if (graph.GetResult().code == RDGErrorCode::eSubmissionRejected)
+            {
+                result = RenderFrameResult::eDeclined;
             }
 
             if (pending.ticket.IsValid())
             {
-                // Handoff owns the frame even if inline execution or history commit failed.
-                // Always consume its result so accepted serials reach frame retirement.
+                // Handoff owns the frame even if history commit failed. Always consume
+                // its result so accepted serials reach frame retirement.
                 pending.frame->submission = pending.ticket;
 
-                m_pendingFrames.push_back(std::move(pending));
+                m_pendingSubmissions.push_back(std::move(pending));
 
-                // The queued frame batch owns native EndFrame, including on the slow path.
                 m_frameActive = false;
-
-                if (m_executionMode == RHIExecutionMode::eInline)
-                {
-                    const RHIBatchResult native = m_pendingFrames.back().ticket.Wait();
-
-                    const bool confirmed        = PollFrameSubmissions(true);
-
-                    result = result && confirmed && native.submission == RHISubmissionResult::eSuccess && native.presented;
-                }
             }
         }
     }
+
+    if (AreSubmissionsBlocked())
+    {
+        result = RenderFrameResult::eBlocked;
+    }
+
+#if defined(ZEN_DEBUG)
+    if (result == RenderFrameResult::eSubmitted && m_forceRecreationInterval != 0
+        && ++m_framesSinceRecreation >= m_forceRecreationInterval)
+    {
+        m_framesSinceRecreation = 0;
+
+        m_pRecreateViewport     = viewport;
+
+        LOGI("Forced viewport recreation after {} submitted frames", m_forceRecreationInterval);
+    }
+#endif
 
     CollectDestroyedResourceHistory();
 
     return result;
 }
 
-void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& result)
+void RenderDevice::PrepareFrame()
 {
-    RenderFrame& frame = *pending.frame;
+    PollFrameSubmissions(false);
 
-    frame.retirement.requiredSerials.Extend(result.requiredSerials);
+    ProcessDeferredViewportResize();
+}
 
-    frame.submission = {};
+void RenderDevice::CompleteSubmission(PendingSubmission& pending, const RHIBatchResult& result)
+{
+    if (pending.frame != nullptr)
+    {
+        pending.frame->retirement.requiredSerials.Extend(result.requiredSerials);
+
+        pending.frame->submission = {};
+    }
 
     if (result.submission == RHISubmissionResult::eSuccess && !m_submissionBlocked && m_submissionHistory.ResolveAccepted())
     {
@@ -477,18 +470,27 @@ void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& re
 
 bool RenderDevice::PollFrameSubmissions(bool wait)
 {
-    while (!m_pendingFrames.empty() && (wait || m_pendingFrames[0].ticket.IsReady()))
+    const std::chrono::steady_clock::time_point start =
+        wait ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+
+    while (!m_pendingSubmissions.empty() && (wait || m_pendingSubmissions[0].ticket.IsReady()))
     {
-        PendingFrame& pending       = m_pendingFrames[0];
+        PendingSubmission& pending  = m_pendingSubmissions[0];
 
         const RHIBatchResult result = pending.ticket.Wait();
 
-        CompleteFrame(pending, result);
+        CompleteSubmission(pending, result);
 
-        m_pendingFrames.pop_front();
+        m_pendingSubmissions.pop_front();
     }
 
     CollectDestroyedResourceHistory();
+
+    if (wait)
+    {
+        m_frameSubmissionWaitNS +=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
+    }
 
     return !AreSubmissionsBlocked();
 }
@@ -612,17 +614,27 @@ void RenderDevice::ProcessDeferredViewportResize()
     {
         RHIViewport* viewport = m_pRecreateViewport;
 
-        m_pRecreateViewport   = nullptr;
-
         ResizeViewport(viewport, viewport->GetWidth(), viewport->GetHeight());
     }
 }
 
-bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
+bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph, ResourceRetirement* retirement)
 {
     bool result{};
 
-    PollFrameSubmissions(true);
+    PollFrameSubmissions(false);
+
+    if (retirement != nullptr)
+    {
+        *retirement = {};
+    }
+
+    PendingSubmission pending;
+
+    PendingSubmission* handoff = retirement != nullptr && m_executionMode == RHIExecutionMode::eThreaded
+                                      && m_queueCapabilities.asyncSubmissionDependencies
+                                   ? &pending
+                                   : nullptr;
 
     if (m_submissionBlocked)
     {
@@ -657,7 +669,7 @@ bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
         }
         else if (m_asyncComputeStatus == AsyncComputeStatus::eAvailable)
         {
-            result = ExecuteScheduledGraph(plan);
+            result = ExecuteScheduledGraph(plan, nullptr, handoff, retirement);
         }
         else
         {
@@ -674,7 +686,8 @@ bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
                 const bool executed =
                     m_rdgExecutor.ExecutePrepared(plan, list,
                                                   std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                                                  std::ref(*list), nullptr, nullptr, nullptr));
+                                                                  std::ref(*list), nullptr, handoff, nullptr, retirement),
+                                                  handoff != nullptr);
 
                 // Keep CPU command storage alive through rollback, then discard it on both paths.
                 if (transfer)
@@ -691,12 +704,22 @@ bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
         }
     }
 
+    if (pending.ticket.IsValid())
+    {
+        m_pendingSubmissions.push_back(std::move(pending));
+
+        StampOutgoingFrameSerials();
+    }
+
     CollectDestroyedResourceHistory();
 
     return result;
 }
 
-bool RenderDevice::ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan, RHIViewport* viewport, PendingFrame* pending)
+bool RenderDevice::ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
+                                         RHIViewport*                viewport,
+                                         PendingSubmission*          pending,
+                                         ResourceRetirement*         retirement)
 {
     RenderSubmissionUpdate update;
 
@@ -714,7 +737,7 @@ bool RenderDevice::ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan, RHIVi
               && m_rdgExecutor.ExecutePreparedGroups(
                   plan, lists, update.initialStates,
                   std::bind_front(&RenderDevice::SubmitRecordedGroups, this, std::ref(*plan.graph), std::cref(plan.schedule),
-                                  std::ref(update), VectorView<RHICommandList*>(lists), viewport, pending, nullptr),
+                                  std::ref(update), VectorView<RHICommandList*>(lists), viewport, pending, nullptr, retirement),
                   pending != nullptr);
 
         ReleaseScheduledCmdLists(lists);
@@ -728,19 +751,16 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph&             
                                                        RenderSubmissionUpdate&     update,
                                                        VectorView<RHICommandList*> lists,
                                                        RHIViewport*                viewport,
-                                                       PendingFrame*               pending,
-                                                       bool*                       pPresented)
+                                                       PendingSubmission*          pending,
+                                                       bool*                       pPresented,
+                                                       ResourceRetirement*         retirement)
 {
-    if (pending != nullptr)
-    {
-        // The only render-thread backpressure point. Recording and group submission add no GPU wait.
-        PollFrameSubmissions(true);
-    }
+    PollFrameSubmissions(false);
 
     RHISubmissionResult result = RHISubmissionResult::eRejected;
 
-    bool valid = !AreSubmissionsBlocked() && m_pRecreateViewport == nullptr && m_submissionHistory.CanCommit(update)
-              && lists.size() == schedule.groups.size();
+    bool valid                 = !AreSubmissionsBlocked() && (viewport == nullptr || m_pRecreateViewport == nullptr)
+                              && m_submissionHistory.CanCommit(update) && lists.size() == schedule.groups.size();
 
     HeapVector<RHISubmissionGroup> submissions;
 
@@ -788,16 +808,27 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph&             
 
         graph.m_resourceManager.StageExtractions(pending->extractions);
 
-        pending->ticket = m_pRHIExecutor->SubmitFrame(submissions, viewport, update.state);
+        pending->ticket = pending->frame != nullptr ? m_pRHIExecutor->SubmitFrame(submissions, viewport, update.state)
+                                                    : m_pRHIExecutor->SubmitQueuedGroups(submissions, update.state);
 
         if (pending->ticket.IsValid())
         {
+            if (retirement != nullptr)
+            {
+                retirement->pending.push_back(pending->ticket);
+            }
+
             result = m_submissionHistory.Commit(update) ? RHISubmissionResult::eSuccess : RHISubmissionResult::eFatal;
         }
     }
     else if (valid)
     {
         const RHIBatchResult native = m_pRHIExecutor->SubmitGroups(submissions, update.state, viewport);
+
+        if (retirement != nullptr)
+        {
+            retirement->requiredSerials.Extend(native.requiredSerials);
+        }
 
         StampOutgoingFrameSerials();
 
@@ -957,11 +988,12 @@ bool RenderDevice::PrepareGraphSubmission(const RenderGraph& graph, RHICommandLi
     return valid;
 }
 
-RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph&    graph,
-                                                      RHICommandList& commands,
-                                                      RHIViewport*    viewport,
-                                                      PendingFrame*   pending,
-                                                      bool*           pPresented)
+RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph&        graph,
+                                                      RHICommandList&     commands,
+                                                      RHIViewport*        viewport,
+                                                      PendingSubmission*  pending,
+                                                      bool*               pPresented,
+                                                      ResourceRetirement* retirement)
 {
     RenderSubmissionUpdate update;
 
@@ -971,7 +1003,8 @@ RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph&    graph,
     {
         RHICommandList* list = &commands;
 
-        result = SubmitRecordedGroups(graph, update.schedule, update, MakeVecView(&list, 1), viewport, pending, pPresented);
+        result = SubmitRecordedGroups(graph, update.schedule, update, MakeVecView(&list, 1), viewport, pending, pPresented,
+                                      retirement);
     }
     else if (AreSubmissionsBlocked())
     {
@@ -1195,11 +1228,6 @@ void RenderDevice::DestroyTexture(RHITexture* texture)
 {
     if (texture != nullptr)
     {
-        if (m_pUploadQueue != nullptr)
-        {
-            m_pUploadQueue->Flush();
-        }
-
         m_frames[GetCurrentFrameSlot()].texturesPendingFree.push_back(texture);
 
         StampOutgoingFrameSerials();
@@ -1293,11 +1321,6 @@ void RenderDevice::DestroyBuffer(RHIBuffer* buffer)
 {
     if (buffer != nullptr)
     {
-        if (m_pUploadQueue != nullptr)
-        {
-            m_pUploadQueue->Flush();
-        }
-
         HeapVector<RHIBuffer*>::iterator it = std::find(m_buffers.begin(), m_buffers.end(), buffer);
 
         if (it != m_buffers.end())
@@ -1600,7 +1623,7 @@ void RenderDevice::DestroyViewport(RHIViewport* viewport)
 void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height)
 {
     if (viewport != nullptr && width != 0 && height != 0
-        && (viewport->GetWidth() != width || viewport->GetHeight() != height
+        && (m_pRecreateViewport == viewport || viewport->GetWidth() != width || viewport->GetHeight() != height
             || GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport)))
     {
         if (m_pUploadQueue != nullptr)
@@ -1654,9 +1677,7 @@ void RenderDevice::StampOutgoingFrameSerials()
 
     ResourceRetirement latest = CaptureResourceRetirement();
 
-    frame.retirement.requiredSerials.Extend(latest.requiredSerials);
-
-    frame.retirement.pending = std::move(latest.pending);
+    frame.retirement.Extend(latest);
 }
 
 void RenderDevice::CollectCompletedResources()
@@ -1775,14 +1796,24 @@ void RenderDevice::BeginFrame()
 
         RenderFrame& frame         = m_frames[ToIndex(slot)];
 
-        if (frame.submission.IsValid() || frame.retirement.pending.IsValid())
-        {
-            PollFrameSubmissions(true);
-        }
+        frame.retirement.Resolve();
 
-        if (frame.retirement.pending.IsValid())
+        if (frame.submission.IsValid() || !frame.retirement.pending.empty())
         {
-            frame.retirement.pending.Wait();
+            const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+            if (frame.submission.IsValid())
+            {
+                frame.submission.Wait();
+            }
+
+            frame.retirement.Wait();
+
+            // Confirm this slot's results without waiting for newer frames or uploads.
+            PollFrameSubmissions(false);
+
+            m_frameSubmissionWaitNS +=
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
         }
 
         bool ready = !AreSubmissionsBlocked() && frame.retirement.Resolve();
@@ -1873,17 +1904,9 @@ ResourceRetirement RenderDevice::CaptureResourceRetirement()
     // frame boundaries, submissions, explicit collection, and completion waits.
     result.requiredSerials = m_pRHIExecutor->GetCachedSubmittedSerials();
 
-    if (m_pendingFrames.size() > 1)
+    for (const PendingSubmission& pending : m_pendingSubmissions)
     {
-        // RenderDevice drains the previous frame at handoff. Never discard an
-        // unexpected second ticket and then permit resource reuse in release builds.
-        m_submissionBlocked = true;
-
-        LOGE("RenderDevice: more than one pending frame; resource reuse is blocked");
-    }
-    else if (!m_pendingFrames.empty())
-    {
-        result.pending = m_pendingFrames[0].ticket;
+        result.pending.push_back(pending.ticket);
     }
 
     return result;

@@ -6,7 +6,7 @@ struct SoftwareRayTriangle { vec4 a; vec4 b; vec4 c; uvec4 record; };
 layout(std430,set=6,binding=6) readonly buffer SoftwareRayNodes { SoftwareRayNode softwareNodes[]; };
 layout(std430,set=6,binding=7) readonly buffer SoftwareRayTriangles { SoftwareRayTriangle softwareTriangles[]; };
 
-layout(std140,set=6,binding=8) uniform uSoftwareRayData { uvec4 counts; } softwareRay;
+layout(std140,set=2,binding=4) uniform uSoftwareRayData { uvec4 counts; } softwareRay;
 
 bool SoftwareRayBox(SoftwareRayNode node, vec3 origin, vec3 direction, vec3 inverseDirection, float maximumDistance)
 {

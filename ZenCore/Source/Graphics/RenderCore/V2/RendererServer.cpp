@@ -98,16 +98,39 @@ void RendererServer::Destroy()
     ZEN_DELETE(m_pSkyboxRenderer);
 }
 
-bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay, bool drawScene)
+RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requestedView,
+                                                          RenderOverlay*    overlay,
+                                                          bool              drawScene)
 {
-    m_status.requested  = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
+    RenderView view = requestedView;
 
-    m_frameRenderOption = m_status.fallbackReason.empty() ? m_renderOption : RenderOption::ePBR;
+    const bool presentationView =
+        m_pPresentationViewport != nullptr && view.color == m_pPresentationViewport->GetColorBackBuffer();
+
+    m_pRenderDevice->PrepareFrame();
+
+    if (presentationView)
+    {
+        // Recreation can replace the native attachments after the caller captured its view.
+        view.color  = m_pPresentationViewport->GetColorBackBuffer();
+
+        view.depth  = m_pPresentationViewport->GetDepthStencilBackBuffer();
+
+        view.width  = m_pPresentationViewport->GetWidth();
+
+        view.height = m_pPresentationViewport->GetHeight();
+    }
+
+    RenderFrameResult result = RenderFrameResult::eFailed;
+
+    m_status.requested       = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
+
+    m_frameRenderOption      = m_status.fallbackReason.empty() ? m_renderOption : RenderOption::ePBR;
 
     const bool renderScene =
         drawScene && m_pScene != nullptr && view.color != nullptr && view.depth != nullptr && view.width > 0 && view.height > 0;
 
-    bool succeeded         = !renderScene || m_pScene->Update();
+    bool succeeded         = !m_pRenderDevice->AreSubmissionsBlocked() && (!renderScene || m_pScene->Update());
 
     RenderGraph* pFrameRDG = m_pRenderDevice->GetCurrentFrameRDG();
 
@@ -250,39 +273,46 @@ bool RendererServer::DispatchRenderWorkloads(const RenderView& view, RenderOverl
 
         if (succeeded)
         {
-            succeeded = m_pPresentationViewport != nullptr ? m_pRenderDevice->ExecuteRenderGraph(m_pPresentationViewport)
-                                                           : m_pRenderDevice->ExecuteRenderGraph(*pFrameRDG);
+            result = m_pPresentationViewport != nullptr ? m_pRenderDevice->ExecuteRenderGraph(m_pPresentationViewport)
+                   : m_pRenderDevice->ExecuteRenderGraph(*pFrameRDG) ? RenderFrameResult::eSubmitted
+                                                                     : RenderFrameResult::eFailed;
         }
+    }
+
+    if (m_pRenderDevice->AreSubmissionsBlocked())
+    {
+        result = RenderFrameResult::eBlocked;
     }
 
     if (m_pVoxelizer != nullptr)
     {
-        m_pVoxelizer->OnRenderGraphExecuted(succeeded);
+        m_pVoxelizer->OnRenderGraphExecuted(result);
     }
 
-    m_pSkyboxRenderer->OnRenderGraphExecuted(succeeded);
-    m_pDeferredLightingRenderer->OnRenderGraphExecuted(succeeded);
+    m_pSkyboxRenderer->OnRenderGraphExecuted(result);
+    m_pDeferredLightingRenderer->OnRenderGraphExecuted(result);
 
     if (m_frameGI)
     {
-        m_pVoxelGI->OnRenderGraphExecuted(succeeded);
+        m_pVoxelGI->OnRenderGraphExecuted(result);
     }
 
     if (m_frameShadows)
     {
-        m_pSceneShadows->OnRenderGraphExecuted(succeeded);
+        m_pSceneShadows->OnRenderGraphExecuted(result);
     }
 
-    if (!succeeded)
+    if (result != RenderFrameResult::eSubmitted)
     {
         m_debugDescription.available = false;
 
-        m_debugDescription.reason    = "Frame submission failed.";
+        m_debugDescription.reason =
+            result == RenderFrameResult::eDeclined ? "Waiting for swapchain recreation." : "Frame submission failed.";
     }
 
     m_status.effective = m_frameRenderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
 
-    return succeeded;
+    return result;
 }
 
 void RendererServer::SetRenderingSelection(RenderAlgorithm algorithm, const DebugSelection& selection)
@@ -293,7 +323,7 @@ void RendererServer::SetRenderingSelection(RenderAlgorithm algorithm, const Debu
     {
         ResetRenderingFailure();
 
-        m_pSceneShadows->OnRenderGraphExecuted(false);
+        m_pSceneShadows->OnRenderGraphExecuted(RenderFrameResult::eFailed);
     }
 
     m_renderOption            = option;
@@ -356,7 +386,7 @@ void RendererServer::SetRenderScene(RenderScene* pScene)
 
     m_debugDescription.output = m_debug.output;
 
-    m_pSceneShadows->OnRenderGraphExecuted(false);
+    m_pSceneShadows->OnRenderGraphExecuted(RenderFrameResult::eFailed);
 
     m_pSkyboxRenderer->SetRenderScene(pScene);
 

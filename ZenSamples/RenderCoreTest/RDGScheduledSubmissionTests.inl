@@ -97,6 +97,202 @@ TEST_P(RHIScheduledSubmissionTest, ReadyGroupsSubmitInOrderAndRetainExactLogical
     EXPECT_EQ(static_cast<TestBuffer*>(transfer.Get())->bytes, input->bytes);
 }
 
+TEST_P(RHIScheduledSubmissionTest, SameQueueRunsKeepEveryGroupSerialAndEarlierProducerWait)
+{
+    const RHICommandContextType queues[] = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics,
+                                            RHICommandContextType::eAsyncCompute, RHICommandContextType::eGraphics,
+                                            RHICommandContextType::eGraphics};
+
+    TestOwnedSchedule schedule(*executor, MakeVecView(queues, 5));
+
+    for (RHICommandListPtr& list : schedule.lists)
+    {
+        list->Dispatch(1, 1, 1);
+    }
+
+    schedule.Depends(1, 0);
+
+    schedule.Depends(2, 0);
+
+    schedule.Depends(4, 2);
+
+    schedule.Depends(4, 3);
+
+    const RHIBatchResult result = executor->SubmitGroups(schedule.groups, schedule.state);
+
+    ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
+
+    ASSERT_EQ(result.groups.size(), 5u);
+
+    const uint64_t serials[] = {1, 2, 1, 3, 4};
+
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        EXPECT_EQ(result.groups[i].accepted.queue, queues[i]);
+
+        EXPECT_EQ(result.groups[i].accepted.serial, serials[i]);
+
+        RHISubmissionDependency accepted;
+
+        EXPECT_EQ(schedule.state->Resolve(i, accepted), RHISubmissionPointStatus::eAccepted);
+
+        EXPECT_EQ(accepted.serial, serials[i]);
+    }
+
+    EXPECT_EQ(rhi->submissionAttempts, 3u);
+
+    ASSERT_EQ(rhi->gpuDependencies.size(), 2u);
+
+    EXPECT_EQ(rhi->gpuDependencies[0].producer.serial, 1u);
+
+    EXPECT_EQ(rhi->gpuDependencies[0].producer.queue, RHICommandContextType::eGraphics);
+
+    EXPECT_EQ(rhi->gpuDependencies[1].producer.queue, RHICommandContextType::eAsyncCompute);
+}
+
+TEST_P(RHIScheduledSubmissionTest, AliasedNativeQueueRunsRetainDistinctLogicalTimelines)
+{
+    const RHICommandContextType queues[] = {RHICommandContextType::eAsyncCompute, RHICommandContextType::eTransfer,
+                                            RHICommandContextType::eTransfer, RHICommandContextType::eAsyncCompute};
+
+    TestOwnedSchedule schedule(*executor, MakeVecView(queues, 4));
+
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        schedule.lists[i]->Dispatch(1, 1, 1);
+
+        if (i != 0)
+        {
+            schedule.Depends(i, i - 1);
+        }
+    }
+
+    const RHIBatchResult result = executor->SubmitGroups(schedule.groups, schedule.state);
+
+    ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
+
+    ASSERT_EQ(result.groups.size(), 4u);
+
+    const uint64_t serials[] = {1, 1, 2, 2};
+
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ(result.groups[i].accepted.queue, queues[i]);
+
+        EXPECT_EQ(result.groups[i].accepted.serial, serials[i]);
+    }
+
+    EXPECT_EQ(rhi->submissionAttempts, std::get<1>(GetParam()) ? 1u : 3u);
+
+    EXPECT_EQ(rhi->gpuDependencies.size(), std::get<1>(GetParam()) ? 0u : 2u);
+
+    EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eAsyncCompute), 2u);
+
+    EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eTransfer), 2u);
+}
+
+TEST_P(RHIScheduledSubmissionTest, RejectedFirstRunRejectsEveryGroupAndCanRetry)
+{
+    const RHICommandContextType queues[] = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics};
+
+    TestOwnedSchedule rejected(*executor, MakeVecView(queues, 2));
+
+    for (RHICommandListPtr& list : rejected.lists)
+    {
+        list->Dispatch(1, 1, 1);
+    }
+
+    rejected.Depends(1, 0);
+
+    rhi->failSubmissionAt       = 1;
+
+    const RHIBatchResult failed = executor->SubmitGroups(rejected.groups, rejected.state);
+
+    ASSERT_EQ(failed.submission, RHISubmissionResult::eRejected);
+
+    ASSERT_EQ(failed.groups.size(), 2u);
+
+    for (const RHISubmissionGroupResult& group : failed.groups)
+    {
+        EXPECT_EQ(group.submission, RHISubmissionResult::eRejected);
+
+        EXPECT_EQ(group.accepted.serial, 0u);
+    }
+
+    EXPECT_EQ(rhi->submissionAttempts, 1u);
+
+    EXPECT_EQ(rhi->graphics.dispatchCount, 0u);
+
+    EXPECT_FALSE(executor->AreSubmissionsBlocked());
+
+    TestOwnedSchedule retry(*executor, MakeVecView(queues, 2));
+
+    for (RHICommandListPtr& list : retry.lists)
+    {
+        list->Dispatch(1, 1, 1);
+    }
+
+    retry.Depends(1, 0);
+
+    const RHIBatchResult accepted = executor->SubmitGroups(retry.groups, retry.state);
+
+    ASSERT_EQ(accepted.submission, RHISubmissionResult::eSuccess);
+
+    EXPECT_EQ(accepted.groups[0].accepted.serial, 1u);
+
+    EXPECT_EQ(accepted.groups[1].accepted.serial, 2u);
+
+    EXPECT_EQ(rhi->submissionAttempts, 2u);
+}
+
+TEST_P(RHIScheduledSubmissionTest, RejectedLaterRunKeepsEarlierAcceptedResultsAndStopsItsConsumers)
+{
+    const RHICommandContextType queues[] = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics,
+                                            RHICommandContextType::eAsyncCompute, RHICommandContextType::eAsyncCompute,
+                                            RHICommandContextType::eGraphics};
+
+    TestOwnedSchedule schedule(*executor, MakeVecView(queues, 5));
+
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        schedule.lists[i]->Dispatch(1, 1, 1);
+
+        if (i != 0)
+        {
+            schedule.Depends(i, i - 1);
+        }
+    }
+
+    rhi->failSubmissionAt       = 2;
+
+    const RHIBatchResult result = executor->SubmitGroups(schedule.groups, schedule.state);
+
+    ASSERT_EQ(result.submission, RHISubmissionResult::eFatal);
+
+    ASSERT_EQ(result.groups.size(), 5u);
+
+    for (uint32_t i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(result.groups[i].submission, RHISubmissionResult::eSuccess);
+
+        EXPECT_EQ(result.groups[i].accepted.serial, i + 1);
+
+        EXPECT_EQ(result.groups[i + 2].submission, RHISubmissionResult::eFatal);
+
+        EXPECT_EQ(result.groups[i + 2].accepted.serial, 0u);
+    }
+
+    EXPECT_EQ(result.groups[4].submission, RHISubmissionResult::eRejected);
+
+    EXPECT_EQ(rhi->graphics.dispatchCount, 2u);
+
+    EXPECT_EQ(rhi->compute.dispatchCount, 0u);
+
+    EXPECT_EQ(rhi->submissionAttempts, 2u);
+
+    EXPECT_TRUE(executor->AreSubmissionsBlocked());
+}
+
 TEST_P(RHIScheduledSubmissionTest, InvalidScheduleDoesNotDetachAnyCommands)
 {
     const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute};
@@ -218,7 +414,7 @@ TEST_P(RDGScheduledSubmissionTest, FrameSubmitsIndependentPrefixComputeAndConsum
     RDGExtractedBuffer extracted = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
     const uint64_t batches = device->GetRHIThreadMetrics().submittedBatches;
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     EXPECT_TRUE(extracted);
     EXPECT_EQ(rhi->graphics.dispatchCount, 1u);
@@ -236,7 +432,7 @@ TEST_P(RDGScheduledSubmissionTest, FrameSubmitsIndependentPrefixComputeAndConsum
         encoder.Dispatch(1, 1, 1);
     });
     ASSERT_TRUE(graph.End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     EXPECT_EQ(rhi->submitted[1], 1u); // No empty compute submission on an ordinary frame.
     EXPECT_EQ(viewport.presents, 2u);
@@ -291,7 +487,7 @@ TEST_F(ThreadedScheduledGraphTest, NextFrameRecordsAfterGraphResetWhileOwnedProd
     RDGExtractedBuffer extracted = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     EXPECT_FALSE(extracted);
     device->NextFrame();
@@ -309,7 +505,7 @@ TEST_F(ThreadedScheduledGraphTest, NextFrameRecordsAfterGraphResetWhileOwnedProd
         gate.Open();
     });
     ASSERT_TRUE(graph.End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     EXPECT_TRUE(recorded);
     EXPECT_TRUE(extracted);

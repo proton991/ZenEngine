@@ -211,9 +211,8 @@ bool EditorViewport::PrepareScene(const LoadedScene& candidate, std::string& err
 {
     DiscardScene();
 
-    error      = rc::GetSceneBindlessCapacityError(m_device.GetGPUInfo().bindlessHeapCapacities,
-                                                   candidate.scene->GetComponents<sg::Texture>().size(),
-                                                   candidate.scene->GetComponents<sg::Sampler>().size());
+    error      = rc::RenderScene::GetResourceError(m_device.GetGPUInfo(), *candidate.scene, candidate.vertices.size(),
+                                                   candidate.indices.size());
 
     bool valid = error.empty() && m_device.PrepareForResourceReconfiguration();
 

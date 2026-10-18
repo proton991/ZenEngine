@@ -25,6 +25,7 @@ protected:
     HeapVector<RHIBuffer*>                buffers;
     HeapVector<RHIAccelerationStructure*> structures;
     VkDebugUtilsMessengerEXT              messenger{VK_NULL_HANDLE};
+    bool                                  countersEnabled{false};
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL Validation(VkDebugUtilsMessageSeverityFlagBitsEXT,
                                                      VkDebugUtilsMessageTypeFlagsEXT,
@@ -37,6 +38,8 @@ protected:
 
     void SetUp() override
     {
+        countersEnabled = RHIOptions::GetInstance().ExecutionCountersEnabled();
+        RHIOptions::GetInstance().SetExecutionCountersEnabled(true);
         RHIOptions::GetInstance().SetRayTracingDisabled(false);
         device = ZEN_NEW()
             RenderDevice(RHIAPIType::eVulkan, 2, (GetParam() & 1) ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
@@ -72,6 +75,7 @@ protected:
         vkDestroyDebugUtilsMessengerEXT(GVulkanRHI->GetInstance(), messenger, nullptr);
         device->Destroy();
         ZEN_DELETE(device);
+        RHIOptions::GetInstance().SetExecutionCountersEnabled(countersEnabled);
     }
 
     RHIBuffer* Buffer(uint32_t                         size,
@@ -106,6 +110,83 @@ protected:
         return result;
     }
 
+    void CheckQueryQueue(const RenderGraph& graph) const
+    {
+        const bool compute = device->GetAsyncComputeStatus() == AsyncComputeStatus::eAvailable;
+
+        uint32_t queries   = 0;
+
+        for (const RDGSubmissionGroup& group : graph.GetSchedule().groups)
+        {
+            for (const RDGScheduledPass& pass : group.passes)
+            {
+                if (pass.preference == RDGQueuePreference::ePreferAsyncCompute)
+                {
+                    ++queries;
+
+                    EXPECT_EQ(group.queue, compute ? RHICommandContextType::eAsyncCompute : RHICommandContextType::eGraphics);
+
+                    EXPECT_EQ(pass.eligibility == RDGAsyncComputeEligibility::eEligible, compute);
+                }
+            }
+        }
+
+        EXPECT_EQ(queries, 1u);
+    }
+
+    void CheckSceneHits(RenderScene& scene, SceneRayQuery& queries, float dynamicDistance, bool rawIntersection = false)
+    {
+        RenderGraph&                     graph = *device->GetCurrentFrameRDG();
+        BitField<RHIBufferUsageFlagBits> usage;
+        usage.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        RHIBuffer* output = Buffer(4 * sizeof(Vec4), usage, nullptr, RHIBufferAllocateType::eGPU);
+        RHIBuffer* readback =
+            Buffer(4 * sizeof(Vec4), BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer), nullptr,
+                   RHIBufferAllocateType::eCPURead);
+        RDGComputePassDesc pass;
+        pass.SetShaderProgramName(rawIntersection ? "RayQueryCheckSP" : "SceneRayQueryCheckSP");
+        pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
+        pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
+        if (rawIntersection)
+        {
+            // The renderer reconstructs surface positions from current scene buffers.
+            // Read the native intersection distance to inspect the committed AS alone.
+            RDGComputePassDesc bindings;
+            queries.BindInputs(bindings, scene);
+            ASSERT_EQ(bindings.accelerationStructureBindings.size(), 1u);
+            pass.BindAccelerationStructure("testScene", bindings.accelerationStructureBindings[0].pStructure);
+        }
+        else
+        {
+            const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0)};
+            pass.BindValue("uGISettings", gi, sizeof(gi));
+            pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+            queries.BindInputs(pass, scene);
+        }
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([rawIntersection](RDGPassCmdEncoder& encoder) {
+            if (!rawIntersection)
+            {
+                encoder.SetPushConstants(Vec4(0));
+            }
+            encoder.Dispatch(4, 1, 1);
+        });
+        graph.AddTransferPass("ReadSceneQueries").CopyBuffer(output, readback, {0, 0, 4 * sizeof(Vec4)});
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        const bool succeeded = device->ExecuteRenderGraph(graph);
+        queries.OnRenderGraphExecuted(succeeded ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
+        ASSERT_TRUE(succeeded);
+        CheckQueryQueue(graph);
+        device->WaitForIdle();
+        const Vec4* result = reinterpret_cast<const Vec4*>(readback->Map());
+        EXPECT_NEAR(result[0].x, dynamicDistance, 1e-5f);
+        EXPECT_NEAR(result[rawIntersection ? 2 : 1].x, 1.5f, 1e-5f);
+        if (!rawIntersection)
+        {
+            EXPECT_EQ(result[0].w, float(queries.GetGeneration()));
+        }
+        readback->Unmap();
+    }
+
     void Query(RenderGraph& graph, RHIAccelerationStructure* tlas, RHIBuffer* output)
     {
         BitField<RHIBufferUsageFlagBits> usage;
@@ -114,6 +195,7 @@ protected:
         RDGComputePassDesc pass;
         pass.SetShaderProgramName("RayQueryCheckSP");
         pass.SetPassTag("RayQueryCheck");
+        pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
         pass.BindAccelerationStructure("testScene", tlas);
         pass.BindStorageBuffer("Results", result, RDGContentGuarantee::eFullWrite);
         graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(4, 1, 1); });
@@ -262,7 +344,7 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
             graph.AddTransferPass("ReadSceneQueries").CopyBuffer(output, readback, {0, 0, 4 * sizeof(Vec4)});
             ASSERT_TRUE(graph.End()) << graph.GetResult().message;
             const bool succeeded = device->ExecuteRenderGraph(graph);
-            queries.OnRenderGraphExecuted(succeeded);
+            queries.OnRenderGraphExecuted(succeeded ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
             ASSERT_TRUE(succeeded);
             device->WaitForIdle();
             const Vec4* result = reinterpret_cast<const Vec4*>(readback->Map());
@@ -355,50 +437,74 @@ TEST_P(RayQueryIntegrationTest, DeformingOneMeshRefitsOnlyItInPlaceAndRebuildsAf
         const float offset = 0.01f * float(frame);
         if (frame != 0)
         {
-            // Only the first mesh deforms; the scene-wide vertex buffer is still replaced.
+            // Only the first mesh deforms. Repeated commits in this frame reuse
+            // the same buffer, so BLAS reuse must compare its content generation.
             for (uint32_t i = 0; i < 3; ++i)
             {
                 vertices[i].pos.z = offset;
             }
             ASSERT_TRUE(scene.UpdateVertices(0, MakeVecView(vertices, 3)));
         }
+        if (frame == 1)
+        {
+            ASSERT_TRUE(scene.SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0, 0, 3))));
+        }
         ASSERT_TRUE(scene.Update());
         RenderGraph& graph = *device->GetCurrentFrameRDG();
         ASSERT_TRUE(graph.Begin());
+        const RHIExecutionCounters beforeBuild = device->GetRHIThreadMetrics().native;
+
+        ASSERT_GT(beforeBuild.buffersCreated, 0u);
+
+        const uint64_t beforeUploads = device->GetStagedUploadBytes();
+        const uint64_t beforeMemory  = queries.GetMemoryBytes();
         ASSERT_TRUE(queries.BuildRenderGraph(scene));
+        if (frame >= 2)
+        {
+            // Two inactive/active snapshots suffice even when every edit uses
+            // the same frame slot. Deformation leaves instance metadata unchanged.
+            EXPECT_EQ(device->GetRHIThreadMetrics().native.buffersCreated, beforeBuild.buffersCreated);
+            EXPECT_EQ(device->GetStagedUploadBytes(), beforeUploads);
+            EXPECT_EQ(queries.GetMemoryBytes(), beforeMemory);
+        }
+        if (frame == 1)
+        {
+            const uint64_t recordedGeneration = queries.GetGeneration();
+
+            ASSERT_TRUE(graph.End());
+
+            queries.OnRenderGraphExecuted(RenderFrameResult::eDeclined);
+
+            EXPECT_TRUE(queries.IsReady());
+
+            EXPECT_EQ(queries.GetGeneration(), recordedGeneration - 1);
+
+            ASSERT_TRUE(graph.Begin());
+
+            // Upload the declined candidate's changed instances, then query the
+            // committed TLAS. Its contents must still describe the previous frame.
+            CheckSceneHits(scene, queries, 1.0f, true);
+
+            ASSERT_TRUE(scene.SetInstanceTransform(0, Mat4(1)));
+            ASSERT_TRUE(scene.Update());
+            ASSERT_TRUE(graph.Begin());
+
+            ASSERT_TRUE(queries.BuildRenderGraph(scene));
+
+            EXPECT_EQ(queries.GetGeneration(), recordedGeneration);
+        }
+
         const SceneRayQuery::BuildStatistics statistics = queries.GetBuildStatistics();
         // Refits 1..kMaxRefits run in place; the next deformation rebuilds the same BLAS.
         const bool rebuild = frame == SceneRayQuery::kMaxRefits + 1;
         EXPECT_EQ(statistics.built, frame == 0 ? 2u : rebuild ? 1u : 0u);
         EXPECT_EQ(statistics.updated, frame == 0 || rebuild ? 0u : 1u);
         EXPECT_EQ(statistics.reused, frame == 0 ? 0u : 1u);
-        BitField<RHIBufferUsageFlagBits> usage;
-        usage.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-        RHIBuffer* output = Buffer(4 * sizeof(Vec4), usage, nullptr, RHIBufferAllocateType::eGPU);
-        RHIBuffer* readback =
-            Buffer(4 * sizeof(Vec4), BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer), nullptr,
-                   RHIBufferAllocateType::eCPURead);
-        RDGComputePassDesc pass;
-        pass.SetShaderProgramName("SceneRayQueryCheckSP");
-        pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
-        const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0)};
-        pass.BindValue("uGISettings", gi, sizeof(gi));
-        pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
-        queries.BindInputs(pass, scene);
-        graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
-            encoder.SetPushConstants(Vec4(0));
-            encoder.Dispatch(4, 1, 1);
-        });
-        graph.AddTransferPass("ReadSceneQueries").CopyBuffer(output, readback, {0, 0, 4 * sizeof(Vec4)});
-        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
-        const bool succeeded = device->ExecuteRenderGraph(graph);
-        queries.OnRenderGraphExecuted(succeeded);
-        ASSERT_TRUE(succeeded);
-        device->WaitForIdle();
-        const Vec4* result = reinterpret_cast<const Vec4*>(readback->Map());
-        EXPECT_NEAR(result[0].x, 1.0f + offset, 1e-5f);
-        EXPECT_NEAR(result[1].x, 1.5f, 1e-5f);
-        readback->Unmap();
+        CheckSceneHits(scene, queries, 1.0f + offset);
+        if (frame >= 3)
+        {
+            device->NextFrame();
+        }
     }
     queries.Destroy();
     scene.Destroy();
@@ -472,6 +578,7 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         geometry.indexCount = 0;
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        CheckQueryQueue(graph);
         device->WaitForIdle();
         Vec4 result[4];
         std::memcpy(result, output->Map(), sizeof(result));
@@ -499,6 +606,7 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         Query(graph, tlas.pDestination, output);
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        CheckQueryQueue(graph);
         device->WaitForIdle();
         std::memcpy(result, output->Map(), sizeof(result));
         output->Unmap();
@@ -530,6 +638,7 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         Query(graph, tlas.pDestination, output);
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        CheckQueryQueue(graph);
         device->WaitForIdle();
         std::memcpy(result, output->Map(), sizeof(result));
         output->Unmap();
@@ -546,6 +655,7 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         Query(graph, tlas.pDestination, output);
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        CheckQueryQueue(graph);
         device->WaitForIdle();
         std::memcpy(result, output->Map(), sizeof(result));
         output->Unmap();
@@ -835,7 +945,7 @@ TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle
         graph.AddTransferPass("ReadSoftwareQueries").CopyBuffer(output, readback, {0, 0, resultBytes});
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
         const bool succeeded = device->ExecuteRenderGraph(graph);
-        queries.OnRenderGraphExecuted(succeeded);
+        queries.OnRenderGraphExecuted(succeeded ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
         ASSERT_TRUE(succeeded);
         device->WaitForIdle();
         values.resize(kRays * 4);

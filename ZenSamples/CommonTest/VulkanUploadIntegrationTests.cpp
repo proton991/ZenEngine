@@ -29,9 +29,15 @@ protected:
 
     static VKAPI_ATTR VkResult VKAPI_CALL Submit(VkQueue queue, uint32_t count, const VkSubmitInfo* infos, VkFence fence)
     {
+        submitBatchCounts.push_back(count);
+
         for (uint32_t i = 0; i < count; ++i)
         {
-            gpuWaitCount += infos[i].waitSemaphoreCount;
+            batchWaitCounts.push_back(infos[i].waitSemaphoreCount);
+
+            gpuWaitCount    += infos[i].waitSemaphoreCount;
+
+            emptyBatchCount += infos[i].commandBufferCount == 0;
 
             if (infos[i].waitSemaphoreCount != 0)
             {
@@ -50,7 +56,24 @@ protected:
             }
         }
 
-        return originalSubmit(queue, count, infos, fence);
+        return submitBatchCounts.size() == failSubmitAt ? VK_ERROR_OUT_OF_HOST_MEMORY
+                                                        : originalSubmit(queue, count, infos, fence);
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL End(VkCommandBuffer commands)
+    {
+        ++endCalls;
+
+        return endCalls == failEndAt ? VK_ERROR_OUT_OF_HOST_MEMORY : originalEnd(commands);
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL KeepTimelinePending(VkDevice, VkSemaphore, uint64_t* value)
+    {
+        // Keep cached completion behind the producer so the dependency-placement
+        // regression observes real queue waits even on a fast, otherwise idle GPU.
+        *value = 0;
+
+        return VK_SUCCESS;
     }
 
     static VKAPI_ATTR VkResult VKAPI_CALL Wait(VkDevice device, const VkSemaphoreWaitInfo* info, uint64_t timeout)
@@ -62,6 +85,10 @@ protected:
 
     void SetUp() override
     {
+        countersWereEnabled = RHIOptions::GetInstance().ExecutionCountersEnabled();
+
+        RHIOptions::GetInstance().SetExecutionCountersEnabled(true);
+
         backend = static_cast<VulkanRHI*>(DynamicRHI::Create(RHIAPIType::eVulkan));
 
         if (std::get<1>(GetParam()))
@@ -108,15 +135,29 @@ protected:
 
         source->Unmap();
 
-        originalSubmit = vkQueueSubmit;
+        originalSubmit  = vkQueueSubmit;
 
-        originalWait   = vkWaitSemaphores;
+        originalWait    = vkWaitSemaphores;
 
-        gpuWaitCount   = 0;
+        originalEnd     = vkEndCommandBuffer;
 
-        hostWaitCount  = 0;
+        failSubmitAt    = 0;
+
+        failEndAt       = 0;
+
+        endCalls        = 0;
+
+        gpuWaitCount    = 0;
+
+        hostWaitCount   = 0;
+
+        emptyBatchCount = 0;
 
         waitValues.clear();
+
+        submitBatchCounts.clear();
+
+        batchWaitCounts.clear();
     }
 
     void TearDown() override
@@ -151,7 +192,13 @@ protected:
         GVulkanRHI  = nullptr;
 
         // Release the static capture buffer before the allocator's shutdown report.
-        waitValues = {};
+        waitValues        = {};
+
+        submitBatchCounts = {};
+
+        batchWaitCounts   = {};
+
+        RHIOptions::GetInstance().SetExecutionCountersEnabled(countersWereEnabled);
     }
 
     RHIBuffer* Buffer(RHIBufferAllocateType allocation, bool storage = false)
@@ -217,19 +264,420 @@ protected:
         EXPECT_EQ(emitted, waitValues.size());
     }
 
-    VulkanRHI*                         backend{nullptr};
-    RHICommandListExecutor*            executor{nullptr};
-    VkDebugUtilsMessengerEXT           messenger{VK_NULL_HANDLE};
-    RHIBuffer*                         source{nullptr};
-    RHIBuffer*                         destination{nullptr};
-    RHIBuffer*                         readback{nullptr};
-    std::array<uint8_t, 64>            bytes{};
-    static inline PFN_vkQueueSubmit    originalSubmit;
-    static inline PFN_vkWaitSemaphores originalWait;
-    static inline uint32_t             gpuWaitCount{0};
-    static inline uint32_t             hostWaitCount{0};
-    static inline HeapVector<uint64_t> waitValues;
+    VulkanRHI*                           backend{nullptr};
+    RHICommandListExecutor*              executor{nullptr};
+    VkDebugUtilsMessengerEXT             messenger{VK_NULL_HANDLE};
+    RHIBuffer*                           source{nullptr};
+    RHIBuffer*                           destination{nullptr};
+    RHIBuffer*                           readback{nullptr};
+    std::array<uint8_t, 64>              bytes{};
+    bool                                 countersWereEnabled{false};
+    static inline PFN_vkQueueSubmit      originalSubmit;
+    static inline PFN_vkWaitSemaphores   originalWait;
+    static inline PFN_vkEndCommandBuffer originalEnd;
+    static inline uint32_t               failSubmitAt{0};
+    static inline uint32_t               failEndAt{0};
+    static inline uint32_t               endCalls{0};
+    static inline uint32_t               gpuWaitCount{0};
+    static inline uint32_t               hostWaitCount{0};
+    static inline uint32_t               emptyBatchCount{0};
+    static inline HeapVector<uint64_t>   waitValues;
+    static inline HeapVector<uint32_t>   submitBatchCounts;
+    static inline HeapVector<uint32_t>   batchWaitCounts;
 };
+
+TEST_P(VulkanUploadIntegrationTest, PackedRunRejectsAtomicallyAndRetriesAfterNativeOrRecordingFailure)
+{
+    if (!std::get<1>(GetParam()))
+    {
+        GTEST_SKIP() << "Packing requires timeline submissions";
+    }
+
+    const RHICommandContextType queues[] = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics};
+
+    RHICommandListPtr first(RHICommandList::Create(executor->GetCommandContext(queues[0])));
+
+    RHICommandListPtr second(RHICommandList::Create(first->GetContext()));
+
+    for (bool recordingFailure : {false, true})
+    {
+        SCOPED_TRACE(recordingFailure);
+
+        RefCountPtr<RHISubmissionState> state = MakeRefCountPtr<RHISubmissionState>(MakeVecView(queues, 2));
+
+        RHISubmissionGroup groups[]           = {{first.get()}, {second.get()}};
+
+        groups[1].predecessors.push_back({queues[0], 0, state, 0});
+
+        first->CopyBuffer(source, destination, {0, 0, bytes.size()});
+
+        second->CopyBuffer(source, readback, {0, 0, bytes.size()});
+
+        const uint64_t before = executor->GetLastSubmittedSerial(queues[0]);
+
+        submitBatchCounts.clear();
+
+        endCalls     = 0;
+
+        failSubmitAt = recordingFailure ? 0 : 1;
+
+        failEndAt    = recordingFailure ? 2 : 0;
+
+        RHIBatchResult rejected;
+
+        {
+            test::ScopedVulkanCall submitHook(vkQueueSubmit, &Submit);
+
+            test::ScopedVulkanCall endHook(vkEndCommandBuffer, &End);
+
+            rejected = executor->SubmitGroups(MakeVecView(groups, 2), state);
+        }
+
+        EXPECT_EQ(rejected.submission, RHISubmissionResult::eRejected);
+
+        ASSERT_EQ(rejected.groups.size(), 2u);
+
+        for (const RHISubmissionGroupResult& group : rejected.groups)
+        {
+            EXPECT_EQ(group.submission, RHISubmissionResult::eRejected);
+
+            EXPECT_EQ(group.accepted.serial, 0u);
+        }
+
+        EXPECT_EQ(executor->GetLastSubmittedSerial(queues[0]), before);
+
+        EXPECT_FALSE(executor->AreSubmissionsBlocked());
+
+        ASSERT_EQ(submitBatchCounts.size(), recordingFailure ? 0u : 1u);
+
+        if (!recordingFailure)
+        {
+            EXPECT_EQ(submitBatchCounts[0], 2u);
+        }
+
+        RHISubmissionDependency point;
+
+        EXPECT_EQ(state->Resolve(0, point), RHISubmissionPointStatus::eFailed);
+
+        state = MakeRefCountPtr<RHISubmissionState>(MakeVecView(queues, 2));
+
+        groups[1].predecessors.clear();
+
+        groups[1].predecessors.push_back({queues[0], 0, state, 0});
+
+        first->CopyBuffer(source, destination, {0, 0, bytes.size()});
+
+        second->CopyBuffer(source, readback, {0, 0, bytes.size()});
+
+        submitBatchCounts.clear();
+
+        failSubmitAt = 0;
+
+        RHIBatchResult retry;
+
+        {
+            test::ScopedVulkanCall submitHook(vkQueueSubmit, &Submit);
+
+            retry = executor->SubmitGroups(MakeVecView(groups, 2), state);
+        }
+
+        ASSERT_EQ(retry.submission, RHISubmissionResult::eSuccess);
+
+        ASSERT_EQ(retry.groups.size(), 2u);
+
+        ASSERT_EQ(submitBatchCounts.size(), 1u);
+
+        EXPECT_EQ(submitBatchCounts[0], 2u);
+
+        EXPECT_EQ(retry.groups[0].accepted.serial, before + 1);
+
+        EXPECT_EQ(retry.groups[1].accepted.serial, before + 2);
+
+        ASSERT_TRUE(executor->WaitForCompletion(queues[0], retry.groups[1].accepted.serial));
+
+        const uint8_t* mapped = readback->Map();
+
+        ASSERT_NE(mapped, nullptr);
+
+        EXPECT_EQ(std::memcmp(mapped, bytes.data(), bytes.size()), 0);
+
+        readback->Unmap();
+    }
+}
+
+TEST_P(VulkanUploadIntegrationTest, RejectedPackedRunKeepsAcceptedPrefixAndNeverSubmitsItsConsumer)
+{
+    const RHIQueueCapabilities capabilities = executor->GetQueueCapabilities();
+
+    if (!std::get<1>(GetParam()) || !capabilities.computeSupported
+        || capabilities.AreQueuesShared(RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute))
+    {
+        GTEST_SKIP() << "Requires timeline submissions and distinct graphics/compute queues";
+    }
+
+    const RHICommandContextType queues[]  = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics,
+                                             RHICommandContextType::eAsyncCompute, RHICommandContextType::eAsyncCompute,
+                                             RHICommandContextType::eGraphics};
+
+    RefCountPtr<RHISubmissionState> state = MakeRefCountPtr<RHISubmissionState>(MakeVecView(queues, 5));
+
+    HeapVector<RHICommandListPtr> lists;
+
+    HeapVector<RHISubmissionGroup> groups;
+
+    HeapVector<RHIResourcePtr<RHIBuffer>> outputs;
+
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        lists.emplace_back(RHICommandList::Create(executor->GetCommandContext(queues[i])));
+
+        outputs.emplace_back(Buffer(RHIBufferAllocateType::eGPU), false);
+
+        lists.back()->CopyBuffer(source, outputs.back().Get(), {0, 0, bytes.size()});
+
+        groups.push_back({lists.back().get()});
+
+        if (i != 0)
+        {
+            groups.back().predecessors.push_back({queues[i - 1], 0, state, i - 1});
+        }
+    }
+
+    const uint64_t graphicsBefore = executor->GetLastSubmittedSerial(queues[0]);
+
+    const uint64_t computeBefore  = executor->GetLastSubmittedSerial(queues[2]);
+
+    failSubmitAt                  = 2;
+
+    RHIBatchResult result;
+
+    {
+        test::ScopedVulkanCall submitHook(vkQueueSubmit, &Submit);
+
+        result = executor->SubmitGroups(groups, state);
+    }
+
+    ASSERT_EQ(result.submission, RHISubmissionResult::eFatal);
+
+    ASSERT_EQ(result.groups.size(), 5u);
+
+    ASSERT_EQ(submitBatchCounts.size(), 2u);
+
+    for (uint32_t i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(submitBatchCounts[i], 2u);
+
+        EXPECT_EQ(result.groups[i].submission, RHISubmissionResult::eSuccess);
+
+        EXPECT_EQ(result.groups[i].accepted.serial, graphicsBefore + i + 1);
+
+        EXPECT_EQ(result.groups[i + 2].submission, RHISubmissionResult::eFatal);
+
+        EXPECT_EQ(result.groups[i + 2].accepted.serial, 0u);
+    }
+
+    EXPECT_EQ(result.groups[4].submission, RHISubmissionResult::eRejected);
+
+    EXPECT_EQ(result.groups[4].accepted.serial, 0u);
+
+    EXPECT_EQ(executor->GetLastSubmittedSerial(queues[0]), graphicsBefore + 2);
+
+    EXPECT_EQ(executor->GetLastSubmittedSerial(queues[2]), computeBefore);
+
+    EXPECT_TRUE(executor->AreSubmissionsBlocked());
+
+    executor->WaitDeviceIdle();
+}
+
+TEST_P(VulkanUploadIntegrationTest, PackedRunsKeepDistinctSignalsAndLaterWaitsOnSharedContexts)
+{
+    const RHIQueueCapabilities capabilities = executor->GetQueueCapabilities();
+
+    if (!capabilities.computeSupported
+        || capabilities.AreQueuesShared(RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute))
+    {
+        GTEST_SKIP() << "A native compute queue distinct from graphics is required";
+    }
+
+    const RHICommandContextType queues[]  = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics,
+                                             RHICommandContextType::eAsyncCompute, RHICommandContextType::eGraphics,
+                                             RHICommandContextType::eGraphics};
+
+    RefCountPtr<RHISubmissionState> state = MakeRefCountPtr<RHISubmissionState>(MakeVecView(queues, 5));
+
+    HeapVector<RHICommandListPtr> lists;
+
+    HeapVector<RHISubmissionGroup> groups;
+
+    HeapVector<RHIResourcePtr<RHIBuffer>> outputs;
+
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        IRHICommandContext* context = i == 0 || i == 2 ? executor->GetCommandContext(queues[i]) : lists[0]->GetContext();
+
+        lists.emplace_back(RHICommandList::Create(context));
+
+        if (i < 4)
+        {
+            outputs.emplace_back(Buffer(RHIBufferAllocateType::eGPU), false);
+        }
+
+        lists.back()->CopyBuffer(source, i < 4 ? outputs.back().Get() : readback, {0, 0, bytes.size()});
+
+        groups.push_back({lists.back().get()});
+    }
+
+    groups[1].predecessors.push_back({queues[0], 0, state, 0});
+
+    groups[2].predecessors.push_back({queues[0], 0, state, 0});
+
+    groups[4].predecessors.push_back({queues[2], 0, state, 2});
+
+    groups[4].predecessors.push_back({queues[3], 0, state, 3});
+
+    const uint64_t beforeCalls    = backend->GetExecutionCounters().submissions;
+
+    const uint64_t beforeGraphics = executor->GetLastSubmittedSerial(RHICommandContextType::eGraphics);
+
+    const uint64_t beforeCompute  = executor->GetLastSubmittedSerial(RHICommandContextType::eAsyncCompute);
+
+    RHIBatchResult result;
+
+    {
+        test::ScopedVulkanCall submitHook(vkQueueSubmit, &Submit);
+
+        test::ScopedVulkanCall completionHook(vkGetSemaphoreCounterValue, &KeepTimelinePending);
+
+        result = executor->SubmitFrame(groups, nullptr, state).Wait();
+    }
+
+    ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
+
+    ASSERT_EQ(result.groups.size(), 5u);
+
+    const uint64_t serials[] = {beforeGraphics + 1, beforeGraphics + 2, beforeCompute + 1, beforeGraphics + 3,
+                                beforeGraphics + 4};
+
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        EXPECT_EQ(result.groups[i].accepted.queue, queues[i]);
+
+        EXPECT_EQ(result.groups[i].accepted.serial, serials[i]);
+    }
+
+    const bool timeline = std::get<1>(GetParam());
+
+    EXPECT_EQ(backend->GetExecutionCounters().submissions - beforeCalls, timeline ? 3u : 5u);
+
+    ASSERT_EQ(submitBatchCounts.size(), timeline ? 3u : 5u);
+
+    ASSERT_EQ(batchWaitCounts.size(), 5u);
+
+    if (timeline)
+    {
+        EXPECT_EQ(submitBatchCounts[0], 2u);
+
+        EXPECT_EQ(submitBatchCounts[1], 1u);
+
+        EXPECT_EQ(submitBatchCounts[2], 2u);
+
+        ASSERT_EQ(waitValues.size(), 2u);
+
+        EXPECT_EQ(waitValues[0], result.groups[0].accepted.serial);
+
+        EXPECT_EQ(waitValues[1], result.groups[2].accepted.serial);
+    }
+
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        EXPECT_EQ(batchWaitCounts[i], timeline && (i == 2 || i == 4) ? 1u : 0u);
+    }
+
+    ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics, serials[4]));
+
+    uint8_t* mapped = readback->Map();
+
+    ASSERT_NE(mapped, nullptr);
+
+    EXPECT_EQ(std::memcmp(mapped, bytes.data(), bytes.size()), 0);
+
+    readback->Unmap();
+}
+
+TEST_P(VulkanUploadIntegrationTest, EmptyGroupRelaysItsSameQueueProducerToAnotherQueue)
+{
+    const RHIQueueCapabilities capabilities = executor->GetQueueCapabilities();
+
+    if (!capabilities.computeSupported
+        || capabilities.AreQueuesShared(RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute))
+    {
+        GTEST_SKIP() << "Requires distinct graphics and compute queues";
+    }
+
+    const RHICommandContextType queues[]  = {RHICommandContextType::eGraphics, RHICommandContextType::eGraphics,
+                                             RHICommandContextType::eAsyncCompute};
+
+    RefCountPtr<RHISubmissionState> state = MakeRefCountPtr<RHISubmissionState>(MakeVecView(queues, 3));
+
+    RHICommandListPtr producer(RHICommandList::Create(executor->GetCommandContext(queues[0])));
+
+    RHICommandListPtr empty(RHICommandList::Create(producer->GetContext()));
+
+    RHICommandListPtr consumer(RHICommandList::Create(executor->GetCommandContext(queues[2])));
+
+    producer->CopyBuffer(source, destination, {0, 0, bytes.size()});
+
+    consumer->CopyBuffer(destination, readback, {0, 0, bytes.size()});
+
+    RHISubmissionGroup groups[] = {{producer.get()}, {empty.get()}, {consumer.get()}};
+
+    groups[1].predecessors.push_back({queues[0], 0, state, 0});
+
+    groups[2].predecessors.push_back({queues[1], 0, state, 1});
+
+    const uint64_t before = executor->GetLastSubmittedSerial(queues[0]);
+
+    RHIBatchResult result;
+
+    {
+        test::ScopedVulkanCall submitHook(vkQueueSubmit, &Submit);
+
+        test::ScopedVulkanCall completionHook(vkGetSemaphoreCounterValue, &KeepTimelinePending);
+
+        result = executor->SubmitFrame(MakeVecView(groups, 3), nullptr, state).Wait();
+    }
+
+    ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
+
+    ASSERT_EQ(result.groups.size(), 3u);
+
+    EXPECT_EQ(result.groups[0].accepted.serial, before + 1);
+
+    EXPECT_EQ(result.groups[1].accepted.serial, before + 2);
+
+    const bool timeline = std::get<1>(GetParam());
+
+    EXPECT_EQ(submitBatchCounts.size(), timeline ? 2u : 3u);
+
+    EXPECT_EQ(emptyBatchCount, 1u);
+
+    if (timeline)
+    {
+        ASSERT_EQ(waitValues.size(), 1u);
+
+        EXPECT_EQ(waitValues[0], result.groups[1].accepted.serial);
+    }
+
+    ASSERT_TRUE(executor->WaitForCompletion(queues[2], result.groups[2].accepted.serial));
+
+    const uint8_t* mapped = readback->Map();
+
+    ASSERT_NE(mapped, nullptr);
+
+    EXPECT_EQ(std::memcmp(mapped, bytes.data(), bytes.size()), 0);
+
+    readback->Unmap();
+}
 
 TEST_P(VulkanUploadIntegrationTest, TransferContextsCanBeDestroyedAndRecreated)
 {

@@ -24,7 +24,7 @@ public:
 
     void BuildVisualizationGraph(const RenderView& view) final;
 
-    void OnRenderGraphExecuted(bool succeeded) final;
+    void OnRenderGraphExecuted(RenderFrameResult result) final;
 
     void Destroy() final;
 

@@ -1,7 +1,9 @@
 #pragma once
 #include "Graphics/RHI/RHIAccelerationStructure.h"
+#include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
+#include "Graphics/RenderCore/V2/RenderFrameState.h"
 
 namespace zen::sg
 {
@@ -26,7 +28,7 @@ public:
 
     bool BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes = 0);
     void BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound = false) const;
-    void OnRenderGraphExecuted(bool succeeded);
+    void OnRenderGraphExecuted(RenderFrameResult result);
     void Destroy();
 
     bool        IsReady() const;
@@ -57,8 +59,8 @@ private:
         RHIAccelerationStructureBuildSizes           sizes;
         RHIAccelerationStructure*                    structure{nullptr};
         uint32_t                                     metadataOffset{0};
-        // Referenced vertex range and a hash of its committed positions. Deformation
-        // replaces the scene-wide vertex buffer, so per-mesh changes are detected here.
+        // Referenced vertex range and a hash of its committed positions. Buffer
+        // identity alone cannot detect deformation of persistent scene storage.
         uint32_t vertexBegin{0};
         uint32_t vertexEnd{0};
         uint64_t positionHash{0};
@@ -77,10 +79,14 @@ private:
         uint64_t                  geometryRevision{0};
         uint64_t                  surfaceRevision{0};
         uint64_t                  vertexIdentity{0};
+        uint64_t                  vertexGeneration{0};
         uint64_t                  indexIdentity{0};
         uint64_t                  generation{0};
-        uint64_t                  bytes{0};
         uint32_t                  instanceCount{0};
+        uint32_t                  slot{0};
+        HeapVector<uint8_t>       instancePayload;
+        HeapVector<uint8_t>       geometryMetadataPayload;
+        HeapVector<uint8_t>       instanceMetadataPayload;
     };
 
     struct RetiredMemory
@@ -89,17 +95,30 @@ private:
         ResourceRetirement retirement;
     };
 
-    bool              Prepare(RenderScene& scene, uint64_t budgetBytes);
-    bool              PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& metadata);
-    RHIBuffer*        CreateInputBuffer(NameID name, uint64_t size, const void* data);
-    void              RecordBuilds(RenderScene& scene);
+    bool       Prepare(RenderScene& scene, uint64_t budgetBytes);
+    bool       PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& metadata);
+    RHIBuffer* CreateInputBuffer(NameID name, uint64_t size, const void* data);
+    bool       UpdateInput(RHIBuffer*&          buffer,
+                           HeapVector<uint8_t>& payload,
+                           NameID               name,
+                           uint32_t             size,
+                           const void*          data,
+                           bool                 instances = false);
+    void       RecordBuilds(RenderScene& scene);
+    // Callers bracket releases with GetMemoryBytes()/RetireReleasedMemory().
     void              Release(Generation& generation);
+    void              ReleaseGenerations();
+    void              Cache(Generation& generation);
+    void              RetireReleasedMemory(uint64_t previousBytes);
     const Generation& Current() const;
 
-    RenderDevice*             m_device;
-    RenderScene*              m_scene{nullptr};
-    Generation                m_active;
-    Generation                m_pending;
+    RenderDevice* m_device;
+    RenderScene*  m_scene{nullptr};
+    Generation    m_active;
+    Generation    m_pending;
+    // An inactive snapshot per frame slot. At least two slots keep preparation
+    // from uploading over the committed snapshot, including after a declined frame.
+    Generation                m_cached[RenderFrameState::kMaxFramesInFlight];
     HeapVector<RetiredMemory> m_retired;
     // Grow-only build scratch shared by generations; the graph orders its reuse.
     RHIBuffer*      m_scratch{nullptr};

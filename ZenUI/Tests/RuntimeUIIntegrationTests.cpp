@@ -926,7 +926,7 @@ bool ExecuteVoxelGeneration(rc::RenderDevice& device, rc::RendererServer& server
 
         succeeded = graph.End() && device.ExecuteRenderGraph(graph);
 
-        voxelizer->OnRenderGraphExecuted(succeeded);
+        voxelizer->OnRenderGraphExecuted(succeeded ? rc::RenderFrameResult::eSubmitted : rc::RenderFrameResult::eFailed);
 
         device.NextFrame();
     }

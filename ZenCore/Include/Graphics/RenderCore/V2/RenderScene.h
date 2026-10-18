@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "SceneGraph/Scene.h"
 #include "SceneLighting.h"
 #include "AssetLib/Types.h"
@@ -35,6 +36,10 @@ struct SceneData
 class RenderScene
 {
 public:
+    // Check loaded content before narrowing counts or constructing GPU resources.
+    // Geometry/index/deformation validity remains the asset loader's contract.
+    static std::string GetResourceError(const RHIGPUInfo& gpu, const sg::Scene& scene, uint64_t vertices, uint64_t indices);
+
     RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData);
 
     // False leaves a partially initialized scene that must be destroyed, never published.
@@ -61,10 +66,8 @@ public:
 
     bool SetMaterialVariant(int32_t variant);
 
-    RHIBuffer* GetUVBuffer() const
-    {
-        return m_pUVBuffer;
-    }
+    // Scene storage buffers are the newest generation of their FrameBufferRing.
+    RHIBuffer* GetUVBuffer() const;
 
     const Mat4& GetInstanceTransform(uint32_t instance) const
     {
@@ -158,10 +161,11 @@ public:
         return m_lights;
     }
 
-    RHIBuffer* GetVertexBuffer() const
-    {
-        return m_pVertexBuffer;
-    }
+    RHIBuffer* GetVertexBuffer() const;
+
+    uint64_t GetVertexGeneration() const;
+
+    bool HasVertexGeneration(const RHIBuffer* buffer, uint64_t generation) const;
 
     RHIBuffer* GetIndexBuffer() const
     {
@@ -186,15 +190,9 @@ public:
         return m_numIndices;
     }
 
-    RHIBuffer* GetNodesDataSSBO() const
-    {
-        return m_pNodeSSBO;
-    }
+    RHIBuffer* GetNodesDataSSBO() const;
 
-    RHIBuffer* GetMaterialsDataSSBO() const
-    {
-        return m_pMaterialSSBO;
-    }
+    RHIBuffer* GetMaterialsDataSSBO() const;
 
     const EnvTexture& GetEnvTexture() const
     {
@@ -243,6 +241,10 @@ private:
 
     void BuildMeshVertexIndices();
 
+    void MarkVertexChanges(VectorView<const asset::Vertex> vertices, uint32_t first);
+
+    bool RefreshUVCoordinates();
+
     bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2]) const;
 
     HeapVector<asset::Vertex> m_vertices;
@@ -251,7 +253,10 @@ private:
 
     HeapVector<Vec4> m_uvCoordinates;
 
-    RHIBuffer* m_pUVBuffer{nullptr};
+    FrameBufferRing m_vertexBuffers;
+    FrameBufferRing m_uvBuffers;
+    FrameBufferRing m_nodeBuffers;
+    FrameBufferRing m_materialBuffers;
 
     int32_t m_animation{-1};
 
@@ -286,10 +291,8 @@ private:
     sg::Camera*   m_pCamera{nullptr};
 
     HeapVector<sg::NodeData> m_nodesData;
-    RHIBuffer*               m_pNodeSSBO{nullptr};
 
     HeapVector<sg::MaterialData> m_materialsData;
-    RHIBuffer*                   m_pMaterialSSBO{nullptr};
 
     SceneUniformData    m_sceneUniformData{};
     SceneLights         m_lights;
@@ -300,7 +303,6 @@ private:
     float               m_environmentIntensity{1.0f};
     float               m_sceneUnitScale{1.0f};
 
-    RHIBuffer* m_pVertexBuffer{nullptr};
     RHIBuffer* m_pIndexBuffer{nullptr};
 
     uint32_t   m_numIndices{0};

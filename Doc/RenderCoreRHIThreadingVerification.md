@@ -51,7 +51,7 @@ recycling arenas immediately after translation is a future optimization.
 constructor also accepts an explicit mode. Select the mode before constructing the device;
 runtime switching is not supported.
 
-In threaded mode, `ExecuteRenderGraph(viewport)` returning true means **queued successfully**.
+In threaded mode, `ExecuteRenderGraph(viewport)` returning `RenderFrameResult::eSubmitted` means **queued successfully**. A declined frame preserves committed state and retries after `NextFrame`; a failed frame is rebuilt, and a blocked device requires teardown.
 Use `PollFrameSubmissions()` to consume ready results, or `FlushRHIThread()` to wait for RHI
 execution and consume all results. Neither operation by itself establishes GPU completion.
 `WaitForPreviousFrames()` additionally waits for the GPU. `AreSubmissionsBlocked()` reports

@@ -30,11 +30,32 @@ namespace zen
 {
 namespace
 {
-constexpr size_t MaxProfileFrames    = 100000;
+constexpr size_t MaxProfileFrames = 100000;
 
-constexpr size_t MaxProfileGraphs    = 16384;
+constexpr size_t MaxProfileGraphs = 16384;
 
-constexpr size_t MaxProfilePasses    = 1000000;
+constexpr size_t MaxProfilePasses = 1000000;
+
+struct ProfileNativeCounters
+{
+    RHIThreadMetrics  start;
+    RHIThreadMetrics  end;
+    std::atomic<bool> ready{false};
+};
+
+using ProfileNativeCountersPtr = SharedPtr<ProfileNativeCounters, MultiThreadCounter>;
+
+void BeginNativeCounters(ProfileNativeCountersPtr counters, const rc::RenderDevice* device)
+{
+    counters->start = device->GetRHIThreadMetrics();
+}
+
+void EndNativeCounters(ProfileNativeCountersPtr counters, const rc::RenderDevice* device)
+{
+    counters->end = device->GetRHIThreadMetrics();
+
+    counters->ready.store(true, std::memory_order_release);
+}
 
 constexpr size_t MaxPendingGPUFrames = 32;
 
@@ -283,11 +304,17 @@ struct SceneRendererProfiling::State
 
         double cpuUs{0};
 
-        uint64_t rhiStartUs{0};
+        RHIThreadMetrics threadStart;
+
+        ProfileNativeCountersPtr nativeCounters;
+
+        bool nativeCountersAvailable{false};
 
         uint64_t rhiCPUUs{0};
 
-        RHIExecutionCounters counterStart;
+        uint64_t pollStartNS{0}, pollNS{0}, submitWaitNS{0};
+
+        uint64_t uploadStartBytes{0}, uploadBytes{0}, buffersCreated{0}, buffersDestroyed{0};
 
         RHIExecutionCounters counters;
 
@@ -446,8 +473,43 @@ void SceneRendererProfiling::State::CollectGPUFrames(bool abandon)
 
         const RHIGPUTimingStatus status = frame.gpuTiming->GetStatus();
 
-        if (status != RHIGPUTimingStatus::ePending || abandon)
+        const bool countersReady        = frame.nativeCounters->ready.load(std::memory_order_acquire);
+
+        if ((status != RHIGPUTimingStatus::ePending && countersReady) || abandon)
         {
+            if (countersReady)
+            {
+                const RHIThreadMetrics& start        = frame.nativeCounters->start;
+
+                const RHIThreadMetrics& end          = frame.nativeCounters->end;
+
+                frame.nativeCountersAvailable        = true;
+
+                frame.rhiCPUUs                       = end.executionCPUUs - start.executionCPUUs;
+
+                frame.buffersCreated                 = end.native.buffersCreated - start.native.buffersCreated;
+
+                frame.buffersDestroyed               = end.native.buffersDestroyed - start.native.buffersDestroyed;
+
+                frame.counters.draws                 = end.native.draws - start.native.draws;
+
+                frame.counters.dispatches            = end.native.dispatches - start.native.dispatches;
+
+                frame.counters.submissions           = end.native.submissions - start.native.submissions;
+
+                frame.counters.descriptorHits        = end.native.descriptorHits - start.native.descriptorHits;
+
+                frame.counters.descriptorMisses      = end.native.descriptorMisses - start.native.descriptorMisses;
+
+                frame.counters.descriptorInserts     = end.native.descriptorInserts - start.native.descriptorInserts;
+
+                frame.counters.descriptorRetirements = end.native.descriptorRetirements - start.native.descriptorRetirements;
+
+                frame.counters.bindlessCaptures      = end.native.bindlessCaptures - start.native.bindlessCaptures;
+            }
+
+            frame.nativeCounters.Reset();
+
             frame.gpuStatus = status;
 
             if (status == RHIGPUTimingStatus::ePending)
@@ -491,6 +553,8 @@ void SceneRendererProfiling::State::RetainCurrentFrame()
 
             oldest.gpuTiming.Reset();
 
+            oldest.nativeCounters.Reset();
+
             pendingGPUFrames.erase(pendingGPUFrames.begin());
 
             ++droppedGPUFrames;
@@ -507,13 +571,15 @@ void SceneRendererProfiling::State::RetainCurrentFrame()
 
     current.gpuTiming.Reset();
 
+    current.nativeCounters.Reset();
+
     CollectGPUFrames();
 }
 
 void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output, ProfileFrameSummary& summary) const
 {
     output
-        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,rhi_execution_ms,draws,dispatches,submissions,descriptor_hits,descriptor_misses,descriptor_inserts,descriptor_retirements,bindless_captures\n";
+        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,rhi_execution_ms,draws,dispatches,submissions,descriptor_hits,descriptor_misses,descriptor_inserts,descriptor_retirements,bindless_captures,frame_poll_ms,submit_groups_wait_ms,buffers_created,buffers_destroyed,staged_upload_bytes,native_counters_available\n";
 
     for (const State::Frame& frame : frames)
     {
@@ -543,7 +609,9 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output, Profile
                << frame.endUs / 1000 << ',' << frame.rhiCPUUs / 1000.0 << ',' << frame.counters.draws << ','
                << frame.counters.dispatches << ',' << frame.counters.submissions << ',' << frame.counters.descriptorHits << ','
                << frame.counters.descriptorMisses << ',' << frame.counters.descriptorInserts << ','
-               << frame.counters.descriptorRetirements << ',' << frame.counters.bindlessCaptures;
+               << frame.counters.descriptorRetirements << ',' << frame.counters.bindlessCaptures << ',' << frame.pollNS / 1.0e6
+               << ',' << frame.submitWaitNS / 1.0e6 << ',' << frame.buffersCreated << ',' << frame.buffersDestroyed << ','
+               << frame.uploadBytes << ',' << frame.nativeCountersAvailable;
 
         output << '\n';
 
@@ -886,6 +954,8 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
         {
             GDynamicRHI->EndGPUFrameTiming(state.current.gpuTiming, false);
 
+            GetRHIThread().DispatchCleanup(std::bind_front(&EndNativeCounters, state.current.nativeCounters, &device));
+
             state.RetainCurrentFrame();
         }
 
@@ -895,9 +965,11 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         const RHIThreadMetrics metrics                  = device.GetRHIThreadMetrics();
 
-        state.current.rhiStartUs                        = metrics.executionCPUUs;
+        state.current.threadStart                       = metrics;
 
-        state.current.counterStart                      = metrics.native;
+        state.current.pollStartNS                       = device.GetFrameSubmissionWaitNS();
+
+        state.current.uploadStartBytes                  = device.GetStagedUploadBytes();
 
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 
@@ -927,6 +999,10 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         device.GetRDGMetrics().SetFrameIndex(state.current.index);
 
+        state.current.nativeCounters = MakeShared<ProfileNativeCounters, MultiThreadCounter>();
+
+        GetRHIThread().Dispatch(std::bind_front(&BeginNativeCounters, state.current.nativeCounters, &device));
+
         state.current.gpuTiming = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
         state.frameOpen         = true;
@@ -949,29 +1025,19 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device, RHIViewport& 
 
         frame.endUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - state.frameOrigin).count();
 
-        const RHIThreadMetrics metrics       = device.GetRHIThreadMetrics();
+        const RHIThreadMetrics metrics = device.GetRHIThreadMetrics();
 
-        frame.rhiCPUUs                       = metrics.executionCPUUs - frame.rhiStartUs;
+        frame.pollNS                   = device.GetFrameSubmissionWaitNS() - frame.pollStartNS;
 
-        frame.counters.draws                 = metrics.native.draws - frame.counterStart.draws;
+        frame.submitWaitNS             = metrics.submitGroupsWaitNS - frame.threadStart.submitGroupsWaitNS;
 
-        frame.counters.dispatches            = metrics.native.dispatches - frame.counterStart.dispatches;
+        frame.uploadBytes              = device.GetStagedUploadBytes() - frame.uploadStartBytes;
 
-        frame.counters.submissions           = metrics.native.submissions - frame.counterStart.submissions;
-
-        frame.counters.descriptorHits        = metrics.native.descriptorHits - frame.counterStart.descriptorHits;
-
-        frame.counters.descriptorMisses      = metrics.native.descriptorMisses - frame.counterStart.descriptorMisses;
-
-        frame.counters.descriptorInserts     = metrics.native.descriptorInserts - frame.counterStart.descriptorInserts;
-
-        frame.counters.descriptorRetirements = metrics.native.descriptorRetirements - frame.counterStart.descriptorRetirements;
-
-        frame.counters.bindlessCaptures      = metrics.native.bindlessCaptures - frame.counterStart.bindlessCaptures;
-
-        frame.succeeded                      = succeeded && !device.AreSubmissionsBlocked();
+        frame.succeeded                = succeeded && !device.AreSubmissionsBlocked();
 
         GDynamicRHI->EndGPUFrameTiming(frame.gpuTiming, frame.succeeded);
+
+        GetRHIThread().DispatchCleanup(std::bind_front(&EndNativeCounters, frame.nativeCounters, &device));
 
         state.frameOpen     = false;
 
@@ -1066,6 +1132,7 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
                << (cone.referenceSamples != 0 ? cone.referenceSamples : cone.samples + (adaptive ? 2u : 0u))
                << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE << ",\"history_frames\":" << cone.historyFrames
                << ",\"temporal\":" << cone.temporal << ",\"filter\":" << cone.filter
+               << ",\"previous_frame_radiance\":" << cone.previousFrameRadiance
                << ",\"specular_occlusion\":" << cone.specularOcclusion
                << ",\"reflections\":" << server.RequestVoxelGI()->UsesReflections()
                << ",\"rt_shadows_requested\":" << cone.rtShadows

@@ -291,7 +291,7 @@ TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGe
 
     ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
 
-    skybox->OnRenderGraphExecuted(true);
+    skybox->OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
 
     EXPECT_EQ(rhi->graphics.renderingLayouts.size(), 2u);
 

@@ -13,6 +13,7 @@ enum class GIResourceStatus
     eBudget
 };
 
+// Validate the payload and room for RenderDevice's allocation alignment before narrowing.
 GIResourceStatus ValidateGIStorageBuffer(uint64_t elements, uint32_t stride, const RHIGPUInfo& gpu, uint64_t& bytes);
 
 // Incremental scratch and output storage; zero for an unsupported resolution.

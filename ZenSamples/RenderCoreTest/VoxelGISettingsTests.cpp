@@ -22,6 +22,7 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
                               "voxel_gi_history_frames=0",
                               "voxel_gi_history_frames=257",
                               "voxel_gi_temporal=1",
+                              "voxel_gi_previous_frame_radiance=1",
                               "voxel_gi_filter=invalid",
                               "voxel_gi_ray_provider=invalid",
                               "voxel_gi_ray_provider=legacy",
@@ -117,6 +118,7 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
 {
     std::istringstream     stream("voxel_gi_samples=4\nvoxel_gi_history_frames=64\nvoxel_gi_ray_provider=hardware\n"
                                   "voxel_gi_adaptive_sampling=false\n"
+                                  "voxel_gi_previous_frame_radiance=true\n"
                                   "voxel_gi_temporal=false\nvoxel_gi_filter=false\nvoxel_gi_specular_occlusion=false\n"
                                   "voxel_gi_reflections=false\nvoxel_gi_rt_shadows=false\n");
     platform::ConfigLoader config(stream);
@@ -129,6 +131,7 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
     EXPECT_EQ(settings.cone.historyFrames, 64u);
     EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Hardware);
     EXPECT_FALSE(settings.cone.temporal);
+    EXPECT_TRUE(settings.cone.previousFrameRadiance);
     EXPECT_FALSE(settings.cone.filter);
     EXPECT_FALSE(settings.cone.specularOcclusion);
     EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::Off);
@@ -138,6 +141,7 @@ TEST(VoxelGIRuntimeSettings, LoadsHybridControlsTransactionally)
     std::istringstream     bounceStream("voxel_gi_bounce_source=rays\n");
     platform::ConfigLoader bounceConfig(bounceStream);
     ASSERT_TRUE(LoadVoxelGIRuntimeSettings(bounceConfig, settings));
+    EXPECT_FALSE(settings.cone.previousFrameRadiance);
     EXPECT_EQ(settings.cone.bounceSource, VoxelGISettings::BounceSource::Rays);
     EXPECT_TRUE(settings.cone.rtShadows);
     // Explicit backends support reflections on both providers.

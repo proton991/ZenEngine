@@ -165,6 +165,24 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
     for (uint32_t frame = 0; frame < std::size(expectedFaces); ++frame)
     {
         SCOPED_TRACE(frame);
+        if (frame == 1)
+        {
+            // Record a moved light, then decline it. Restoring the light must reuse the committed faces.
+            sceneInputs.uniforms.lights[1].positionRange.x = 1.0f;
+
+            ASSERT_TRUE(shadows.Prepare(scene, true));
+
+            ASSERT_TRUE(graph->Begin());
+
+            shadows.BuildRenderGraph(scene, 1);
+
+            ASSERT_TRUE(graph->End());
+
+            shadows.OnRenderGraphExecuted(RenderFrameResult::eDeclined);
+
+            sceneInputs.uniforms.lights[1].positionRange.x = 0.0f;
+        }
+
         switch (frame)
         {
             case 2: sceneInputs.uniforms.lights[1].positionRange.x = 0.25f; break;
@@ -192,7 +210,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
         metrics.RequestCapture();
         ASSERT_TRUE(graph->End()) << graph->GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
-        shadows.OnRenderGraphExecuted(frame != 3);
+        shadows.OnRenderGraphExecuted(frame != 3 ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
         EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"), expectedFaces[frame]);
     }
     shadows.Destroy();

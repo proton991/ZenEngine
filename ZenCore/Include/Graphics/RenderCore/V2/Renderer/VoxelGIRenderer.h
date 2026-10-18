@@ -59,8 +59,10 @@ struct VoxelGISettings
     uint32_t referenceSamples{0};              // Diagnostic: 0, 256, 1024 or 4096; static running mean, no spatial filter.
     uint32_t historyFrames{32};
     bool     temporal{true};
-    bool     filter{true};
-    bool     specularOcclusion{true};
+    // Opt in to one-frame voxel-radiance latency so updates can overlap receiver lighting.
+    bool previousFrameRadiance{false};
+    bool filter{true};
+    bool specularOcclusion{true};
     // Diffuse (sky, source shadows, ray-hit bounce) rays per receiver. Half traces one rotating
     // leader per 2x2 block and reconstructs the others; glossy specular stays at full resolution.
     // Opt-in: half resolution fails the frozen P0 limits on several shipping views
@@ -134,7 +136,7 @@ public:
 
     void BuildRenderGraph(SceneShadowRenderer* shadows = nullptr);
 
-    void OnRenderGraphExecuted(bool succeeded);
+    void OnRenderGraphExecuted(RenderFrameResult result);
 
     void SetRenderScene(RenderScene* scene);
 
@@ -153,7 +155,7 @@ public:
 
     uint64_t GetRadianceGeneration() const
     {
-        return m_radianceGeneration + (m_recordedRadiance ? 1 : 0);
+        return m_radianceGeneration + (m_recordedRadiance && !m_recordedDelayedRadiance ? 1 : 0);
     }
 
     bool HasPreviousRadiance() const
@@ -284,6 +286,8 @@ private:
 
     bool PrepareMipViews(RHITexture* texture, HeapVector<RHITextureView*>& views);
 
+    void PrepareRadianceHistory(bool update);
+
     void BindFrameData(RDGPassDescBase& pass) const;
 
     void BuildEnvironmentDistribution();
@@ -296,8 +300,15 @@ private:
     RenderScene*          m_scene{nullptr};
     VoxelizerBase*        m_voxelizer{nullptr};
     RHITexture*           m_radiance{nullptr};
-    // Base level before the latest injection, for ray-hit bounce/reflection history; 1x1x1 otherwise.
+    // Base-level hit history normally; alternate full mip chain with previous-frame radiance enabled.
     RHITexture*                 m_previousRadiance{nullptr};
+    HeapVector<RHITextureView*> m_previousRadianceMips;
+    // Preserve the older base level before the alternate chain is overwritten on compute.
+    RHITexture*                 m_hitRadiancePrevious{nullptr};
+    bool                        m_previousRadianceInitialized{false};
+    bool                        m_recordedPreviousRadianceInitialization{false};
+    bool                        m_radianceValid{false};
+    bool                        m_recordedDelayedRadiance{false};
     RHITexture*                 m_skyIrradiance{nullptr};
     RHIBuffer*                  m_environmentColumns{nullptr};
     RHIBuffer*                  m_environmentRows{nullptr};

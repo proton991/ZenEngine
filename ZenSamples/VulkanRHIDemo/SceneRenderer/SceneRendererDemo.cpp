@@ -190,7 +190,18 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
         // carrying over when the next model relies on automatic framing.
         camera = sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
 
-        if (m_renderDevice->PrepareForResourceReconfiguration())
+        const std::string resourceError = rc::RenderScene::GetResourceError(
+            m_renderDevice->GetGPUInfo(), *scene, loader.GetVertices().size(), loader.GetIndices().size());
+
+        if (!resourceError.empty())
+        {
+            LOGE("Cannot load scene '{}': {}", path, resourceError);
+
+#if defined(ZEN_RUNTIME_UI)
+            m_modelState.error = resourceError;
+#endif
+        }
+        else if (m_renderDevice->PrepareForResourceReconfiguration())
         {
             rc::SceneData data{};
 
@@ -749,9 +760,11 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
         }
     }
 
-    uint32_t frames       = 0;
+    uint32_t frames              = 0;
 
-    double renderThreadUs = 0;
+    uint32_t consecutiveDeclines = 0;
+
+    double renderThreadUs        = 0;
 
     while (succeeded && !m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit)
            && !m_renderDevice->AreSubmissionsBlocked() && !windowTest.Complete())
@@ -777,12 +790,14 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
             RunSmokeStep(frames);
         }
 
-        float frameTime           = static_cast<float>(m_timer->Tick());
+        float frameTime = static_cast<float>(m_timer->Tick());
 
-        bool routeWindowShortcuts = true;
+        // Frame-limited runs are scripted captures, profiles and smokes: a stray Escape or Tab
+        // in their focused window must not end or alter the run.
+        bool routeWindowShortcuts = frameLimit == 0;
 
 #if defined(ZEN_RUNTIME_UI)
-        routeWindowShortcuts = !m_runtimeUI;
+        routeWindowShortcuts = routeWindowShortcuts && !m_runtimeUI;
 #endif
 
         m_pWindow->Update(routeWindowShortcuts);
@@ -878,10 +893,15 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
         overlay = m_runtimeUI.Get();
 #endif
 
-        rc::RenderView view  = rc::RenderView::FromViewport(*m_pViewport);
-        view.historyId       = m_captureHistoryId;
+        rc::RenderView view                = rc::RenderView::FromViewport(*m_pViewport);
+        view.historyId                     = m_captureHistoryId;
 
-        succeeded           &= m_renderDevice->GetRendererServer()->DispatchRenderWorkloads(view, overlay);
+        const rc::RenderFrameResult result = m_renderDevice->GetRendererServer()->DispatchRenderWorkloads(view, overlay);
+
+        const bool retryDeclines           = rc::TrackDeclinedFrames(result, consecutiveDeclines);
+
+        succeeded &=
+            (result == rc::RenderFrameResult::eSubmitted || result == rc::RenderFrameResult::eDeclined) && retryDeclines;
 
         if (smokeTest)
         {
@@ -911,6 +931,13 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
     }
 
     m_renderDevice->FlushRHIThread();
+
+    if (frameLimit != 0 && frames < frameLimit && m_pWindow->ShouldClose())
+    {
+        LOGE("Run stopped after {} of {} frames because the window was closed", frames, frameLimit);
+
+        succeeded = false;
+    }
 
     if (smokeTest)
     {

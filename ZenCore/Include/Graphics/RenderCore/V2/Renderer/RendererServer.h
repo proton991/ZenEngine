@@ -51,7 +51,7 @@ public:
 
     // Scene targets are explicit. Presentation and UI use the native viewport separately.
     // drawScene=false keeps UI alive while the scene panel is hidden.
-    bool DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay = nullptr, bool drawScene = true);
+    RenderFrameResult DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay = nullptr, bool drawScene = true);
 
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {

@@ -480,11 +480,13 @@ TEST_P(RHIWindowSurfaceIntegrationTest, RejectedRequiredFrameStopsWithoutAnother
 
     RHISubmissionGroup group{commands.get(), {}};
 
-    const RHIBatchResult rejected = executor->SubmitGroups(MakeVecView(&group, 1), {}, viewport);
+    const RHIBatchResult rejected = executor->SubmitFrame(MakeVecView(&group, 1), viewport).Wait();
 
     EXPECT_EQ(rejected.submission, RHISubmissionResult::eRejected);
 
-    EXPECT_EQ(rejected.requiredSerials.Get(graphics), before);
+    EXPECT_EQ(rejected.requiredSerials.Get(graphics), 0u);
+
+    EXPECT_EQ(executor->GetLastSubmittedSerial(graphics), before);
 
     EXPECT_FALSE(rejected.presented);
 
@@ -503,6 +505,49 @@ TEST_P(RHIWindowSurfaceIntegrationTest, RejectedRequiredFrameStopsWithoutAnother
     EXPECT_EQ(submitCalls, 1u);
 
     EXPECT_EQ(acquireCalls, 1u);
+}
+
+TEST_P(RHIWindowSurfaceIntegrationTest, SynchronousFrameRejectionCanRetryWithoutAnotherAcquisition)
+{
+    CreateViewport();
+
+    ASSERT_NE(viewport, nullptr);
+
+    test::ScopedVulkanCall<PFN_vkQueueSubmit> counted(vkQueueSubmit, &CountSubmit);
+
+    test::ScopedVulkanCall<PFN_vkQueuePresentKHR> presented(vkQueuePresentKHR, &CountPresent);
+
+    test::ScopedVulkanCall<PFN_vkAcquireNextImageKHR> acquired(vkAcquireNextImageKHR, &CountAcquire);
+
+    failSubmitAt               = 1;
+
+    RHICommandListPtr commands = RecordFrame();
+
+    RHISubmissionGroup group{commands.get(), {}};
+
+    const RHIBatchResult rejected = executor->SubmitGroups(MakeVecView(&group, 1), {}, viewport);
+
+    EXPECT_EQ(rejected.submission, RHISubmissionResult::eRejected);
+
+    EXPECT_FALSE(executor->AreSubmissionsBlocked());
+
+    EXPECT_EQ(acquireCalls, 1u);
+
+    EXPECT_EQ(presentCalls, 0u);
+
+    commands                   = RecordFrame();
+
+    group.commands             = commands.get();
+
+    const RHIBatchResult retry = executor->SubmitGroups(MakeVecView(&group, 1), {}, viewport);
+
+    EXPECT_EQ(retry.submission, RHISubmissionResult::eSuccess);
+
+    EXPECT_TRUE(retry.presented);
+
+    EXPECT_EQ(acquireCalls, 1u);
+
+    EXPECT_EQ(presentCalls, 1u);
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPrefix)
@@ -549,9 +594,10 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
 
     const uint64_t accepted = before + (timeline ? 0 : 1);
 
-    EXPECT_EQ(result.groups[0].accepted.serial, accepted);
+    // A rejected group has no receipt, even if viewport initialization advanced the queue.
+    EXPECT_EQ(result.groups[0].accepted.serial, timeline ? 0u : accepted);
 
-    EXPECT_EQ(result.requiredSerials.Get(graphics), accepted);
+    EXPECT_EQ(result.requiredSerials.Get(graphics), timeline ? 0u : accepted);
 
     EXPECT_EQ(executor->GetLastSubmittedSerial(graphics), accepted);
 

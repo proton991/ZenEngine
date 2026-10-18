@@ -2,6 +2,8 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
+#include "Templates/SmallVector.h"
 #include <bit>
 #include <cstring>
 
@@ -54,20 +56,40 @@ uint64_t SceneRayQuery::GetGeneration() const
 
 uint64_t SceneRayQuery::GetMemoryBytes() const
 {
-    // Generations share unchanged and refit BLASes; count each structure once.
-    uint64_t bytes = m_active.bytes + m_pending.bytes + m_scratchBytes;
-    for (const MeshBuild& mesh : m_active.meshes)
+    // Cached TLASes retain their immutable BLAS dependencies even when the current
+    // scene no longer contains those meshes. Count those allocations too, once.
+    SmallVector<RHIAccelerationStructure*, 64> structures;
+    uint64_t                                   bytes = m_scratchBytes;
+    for (uint32_t i = 0; i < RenderFrameState::kMaxFramesInFlight + 2; ++i)
     {
-        bytes += mesh.structure != nullptr ? mesh.sizes.storageSize : 0;
-    }
-    for (const MeshBuild& mesh : m_pending.meshes)
-    {
-        bool shared = false;
-        for (const MeshBuild& active : m_active.meshes)
+        const Generation& generation = i == 0 ? m_active : i == 1 ? m_pending : m_cached[i - 2];
+        for (RHIBuffer* buffer : {generation.instances, generation.geometryMetadata, generation.instanceMetadata})
         {
-            shared |= active.structure == mesh.structure;
+            bytes += buffer != nullptr ? buffer->GetRequiredSize() : 0;
         }
-        bytes += mesh.structure != nullptr && !shared ? mesh.sizes.storageSize : 0;
+        if (generation.tlas != nullptr)
+        {
+            structures.push_back(generation.tlas);
+            for (RHIAccelerationStructure* dependency : generation.tlas->GetReferencedStructures())
+            {
+                structures.push_back(dependency);
+            }
+        }
+        for (const MeshBuild& mesh : generation.meshes)
+        {
+            if (mesh.structure != nullptr)
+            {
+                structures.push_back(mesh.structure);
+            }
+        }
+    }
+    std::sort(structures.begin(), structures.end(), std::less<RHIAccelerationStructure*>());
+    for (size_t i = 0; i < structures.size(); ++i)
+    {
+        if (i == 0 || structures[i] != structures[i - 1])
+        {
+            bytes += structures[i]->GetStorageBuffer()->GetRequiredSize();
+        }
     }
     for (const RetiredMemory& retired : m_retired)
     {
@@ -76,24 +98,18 @@ uint64_t SceneRayQuery::GetMemoryBytes() const
     return bytes;
 }
 
+void SceneRayQuery::RetireReleasedMemory(uint64_t previousBytes)
+{
+    const uint64_t currentBytes = GetMemoryBytes();
+    VERIFY_EXPR(currentBytes <= previousBytes);
+    if (currentBytes < previousBytes)
+    {
+        m_retired.push_back({previousBytes - currentBytes, m_device->CaptureResourceRetirement()});
+    }
+}
+
 void SceneRayQuery::Release(Generation& generation)
 {
-    // Structures kept by the other generation are not retiring.
-    const Generation& other   = &generation == &m_active ? m_pending : m_active;
-    uint64_t          retired = generation.bytes;
-    for (const MeshBuild& mesh : generation.meshes)
-    {
-        bool shared = false;
-        for (const MeshBuild& kept : other.meshes)
-        {
-            shared |= kept.structure == mesh.structure;
-        }
-        retired += mesh.structure != nullptr && !shared ? mesh.sizes.storageSize : 0;
-    }
-    if (retired != 0)
-    {
-        m_retired.push_back({retired, m_device->CaptureResourceRetirement()});
-    }
     m_device->DeferReleaseResource(generation.tlas);
     for (MeshBuild& mesh : generation.meshes)
     {
@@ -105,10 +121,33 @@ void SceneRayQuery::Release(Generation& generation)
     generation = Generation{};
 }
 
-void SceneRayQuery::Destroy()
+void SceneRayQuery::ReleaseGenerations()
 {
+    // Generations share BLASes, so account for the whole release at once.
+    const uint64_t previousBytes = GetMemoryBytes();
     Release(m_pending);
     Release(m_active);
+    for (Generation& generation : m_cached)
+    {
+        Release(generation);
+    }
+    RetireReleasedMemory(previousBytes);
+    m_recorded = false;
+}
+
+void SceneRayQuery::Cache(Generation& generation)
+{
+    if (generation.tlas != nullptr)
+    {
+        VERIFY_EXPR(m_cached[generation.slot].tlas == nullptr);
+        m_cached[generation.slot] = std::move(generation);
+        generation                = Generation{};
+    }
+}
+
+void SceneRayQuery::Destroy()
+{
+    ReleaseGenerations();
     if (m_scratchBytes != 0)
     {
         m_retired.push_back({m_scratchBytes, m_device->CaptureResourceRetirement()});
@@ -136,6 +175,41 @@ RHIBuffer* SceneRayQuery::CreateInputBuffer(NameID name, uint64_t size, const vo
         buffer = nullptr;
     }
     return buffer;
+}
+
+bool SceneRayQuery::UpdateInput(RHIBuffer*&          buffer,
+                                HeapVector<uint8_t>& payload,
+                                NameID               name,
+                                uint32_t             size,
+                                const void*          data,
+                                bool                 instances)
+{
+    bool valid = true;
+    if (buffer == nullptr || buffer->GetRequiredSize() < size)
+    {
+        RHIBuffer* replacement = instances ? CreateInputBuffer(name, size, data)
+                                           : m_device->CreateStorageBuffer(size, static_cast<const uint8_t*>(data), name);
+        valid                  = replacement != nullptr;
+        if (valid)
+        {
+            if (buffer != nullptr)
+            {
+                m_retired.push_back({buffer->GetRequiredSize(), m_device->CaptureResourceRetirement()});
+            }
+            m_device->DestroyBuffer(buffer);
+            buffer = replacement;
+        }
+    }
+    else if (payload.size() != size || std::memcmp(payload.data(), data, size) != 0)
+    {
+        valid = m_device->UpdateBuffer(buffer, size, static_cast<const uint8_t*>(data));
+    }
+    if (valid)
+    {
+        payload.resize(size);
+        std::memcpy(payload.data(), data, size);
+    }
+    return valid;
 }
 
 bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& metadata)
@@ -195,7 +269,8 @@ bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& me
                         break;
                     }
                 }
-                const bool sameVertices = m_active.vertexIdentity == scene.GetVertexBuffer()->GetStableId();
+                const bool sameVertices = m_active.vertexIdentity == scene.GetVertexBuffer()->GetStableId()
+                                       && m_active.vertexGeneration == scene.GetVertexGeneration();
                 if (previous != nullptr && (sameVertices || !scene.HasUncommittedVertices()))
                 {
                     // The BLAS holds its own copy of the positions, so an unchanged mesh
@@ -253,6 +328,21 @@ bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& me
 
 bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
 {
+    uint32_t slot = ToIndex(GRenderFrameState.GetFrameSlot());
+    if (m_active.tlas != nullptr && m_active.slot == slot)
+    {
+        slot = (slot + 1) % std::max(2u, GRenderFrameState.GetNumFramesInFlight());
+    }
+    m_pending                    = std::move(m_cached[slot]);
+    m_cached[slot]               = Generation{};
+    m_pending.slot               = slot;
+    const uint64_t previousBytes = GetMemoryBytes();
+    for (MeshBuild& mesh : m_pending.meshes)
+    {
+        m_device->DeferReleaseResource(mesh.structure);
+    }
+    m_pending.meshes.clear();
+    RetireReleasedMemory(previousBytes);
     HeapVector<glm::uvec4>                       geometryMetadata;
     HeapVector<glm::uvec4>                       instanceMetadata;
     HeapVector<RHIAccelerationStructureInstance> instances;
@@ -297,7 +387,6 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     const RHIAccelerationStructureBuildSizes tlasSizes  = GDynamicRHI->GetAccelerationStructureBuildSizes(tlasDesc);
     valid                                              &= tlasSizes.IsValid();
     uint64_t scratchSize                                = tlasSizes.buildScratchSize;
-    uint64_t bytes                                      = tlasSizes.storageSize;
     uint64_t newStructureBytes                          = 0;
     for (const MeshBuild& mesh : m_pending.meshes)
     {
@@ -324,10 +413,32 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     {
         geometryMetadata.push_back(glm::uvec4(0));
     }
-    bytes += instances.size() * sizeof(RHIAccelerationStructureInstance)
-           + (instanceMetadata.size() + geometryMetadata.size()) * sizeof(glm::uvec4);
+    bool reuseTLAS =
+        m_pending.tlas != nullptr && m_pending.tlas->GetStorageBuffer()->GetRequiredSize() >= tlasSizes.storageSize;
+    if (reuseTLAS)
+    {
+        const HeapVector<RHIAccelerationStructure*>& references = m_pending.tlas->GetReferencedStructures();
+        reuseTLAS                                               = references.size() == m_pending.meshes.size();
+        for (size_t i = 0; reuseTLAS && i < references.size(); ++i)
+        {
+            reuseTLAS = references[i] == m_pending.meshes[i].structure;
+        }
+    }
+    uint64_t       bytes        = reuseTLAS ? 0 : tlasSizes.storageSize;
+    const uint64_t inputSizes[] = {instances.size() * sizeof(RHIAccelerationStructureInstance),
+                                   geometryMetadata.size() * sizeof(glm::uvec4), instanceMetadata.size() * sizeof(glm::uvec4)};
+    RHIBuffer*     inputs[]     = {m_pending.instances, m_pending.geometryMetadata, m_pending.instanceMetadata};
+    for (uint32_t i = 0; i < 3; ++i)
+    {
+        bytes += inputs[i] == nullptr || inputs[i]->GetRequiredSize() < inputSizes[i] ? inputSizes[i] : 0;
+    }
+    uint64_t metadataBytes = 0;
+
     valid &= scratchSize <= UINT32_MAX && instances.size() * sizeof(RHIAccelerationStructureInstance) <= UINT32_MAX
-          && geometryMetadata.size() * sizeof(glm::uvec4) <= UINT32_MAX;
+          && ValidateGIStorageBuffer(geometryMetadata.size(), sizeof(glm::uvec4), m_device->GetGPUInfo(), metadataBytes)
+                 == GIResourceStatus::eSuccess
+          && ValidateGIStorageBuffer(instanceMetadata.size(), sizeof(glm::uvec4), m_device->GetGPUInfo(), metadataBytes)
+                 == GIResourceStatus::eSuccess;
     const uint64_t added = bytes + newStructureBytes + scratchGrowth;
     if (valid && budgetBytes != 0 && (added > budgetBytes || GetMemoryBytes() > budgetBytes - added))
     {
@@ -336,7 +447,6 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     }
     if (valid)
     {
-        m_pending.bytes = bytes;
         HeapVector<RHIAccelerationStructure*> references;
         for (MeshBuild& mesh : m_pending.meshes)
         {
@@ -357,20 +467,32 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
                 instances[i].accelerationStructureAddress =
                     references[instances[i].accelerationStructureAddress]->GetDeviceAddress();
             }
-            RHIAccelerationStructureCreateInfo info;
-            info.type                 = RHIAccelerationStructureType::eTopLevel;
-            info.size                 = tlasSizes.storageSize;
-            info.tag                  = "scene_tlas";
-            info.referencedStructures = MakeVecView(references);
-            m_pending.tlas            = GDynamicRHI->CreateAccelerationStructure(info);
-            m_pending.instances = CreateInputBuffer("ray_instances", instances.size() * sizeof(instances[0]), instances.data());
-            m_pending.geometryMetadata = m_device->CreateStorageBuffer(
-                static_cast<uint32_t>(geometryMetadata.size() * sizeof(glm::uvec4)),
-                reinterpret_cast<const uint8_t*>(geometryMetadata.data()), "ray_geometry_metadata");
-            m_pending.instanceMetadata = m_device->CreateStorageBuffer(
-                static_cast<uint32_t>(instanceMetadata.size() * sizeof(glm::uvec4)),
-                reinterpret_cast<const uint8_t*>(instanceMetadata.data()), "ray_instance_metadata");
-            if (scratchGrowth != 0)
+            if (!reuseTLAS)
+            {
+                RHIAccelerationStructureCreateInfo info;
+                info.type                             = RHIAccelerationStructureType::eTopLevel;
+                info.size                             = tlasSizes.storageSize;
+                info.tag                              = "scene_tlas";
+                info.referencedStructures             = MakeVecView(references);
+                RHIAccelerationStructure* replacement = GDynamicRHI->CreateAccelerationStructure(info);
+                valid                                 = replacement != nullptr;
+                if (valid)
+                {
+                    const uint64_t beforeRelease = GetMemoryBytes();
+                    m_device->DeferReleaseResource(m_pending.tlas);
+                    m_pending.tlas = nullptr;
+                    RetireReleasedMemory(beforeRelease);
+                    m_pending.tlas = replacement;
+                }
+            }
+            valid = valid
+                 && UpdateInput(m_pending.instances, m_pending.instancePayload, "ray_instances",
+                                static_cast<uint32_t>(inputSizes[0]), instances.data(), true)
+                 && UpdateInput(m_pending.geometryMetadata, m_pending.geometryMetadataPayload, "ray_geometry_metadata",
+                                static_cast<uint32_t>(inputSizes[1]), geometryMetadata.data())
+                 && UpdateInput(m_pending.instanceMetadata, m_pending.instanceMetadataPayload, "ray_instance_metadata",
+                                static_cast<uint32_t>(inputSizes[2]), instanceMetadata.data());
+            if (valid && scratchGrowth != 0)
             {
                 if (m_scratchBytes != 0)
                 {
@@ -385,8 +507,8 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
                 m_scratch      = m_device->CreateBuffer(scratch);
                 m_scratchBytes = m_scratch != nullptr ? scratchSize : 0;
             }
-            valid = m_pending.tlas != nullptr && m_pending.instances != nullptr && m_pending.geometryMetadata != nullptr
-                 && m_pending.instanceMetadata != nullptr && m_scratch != nullptr;
+            valid = valid && m_pending.tlas != nullptr && m_pending.instances != nullptr
+                 && m_pending.geometryMetadata != nullptr && m_pending.instanceMetadata != nullptr && m_scratch != nullptr;
         }
     }
     return valid;
@@ -426,6 +548,7 @@ void SceneRayQuery::RecordBuilds(RenderScene& scene)
     m_pending.geometryRevision = scene.GetGeometryRevision();
     m_pending.surfaceRevision  = scene.GetSurfaceRevision();
     m_pending.vertexIdentity   = scene.GetVertexBuffer()->GetStableId();
+    m_pending.vertexGeneration = scene.GetVertexGeneration();
     m_pending.indexIdentity    = scene.GetIndexBuffer()->GetStableId();
     m_pending.generation       = m_active.generation + 1;
     m_recorded                 = true;
@@ -450,7 +573,7 @@ bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
     m_reason   = ready ? "hardware_ready" : "ray_query_features_disabled_or_unavailable";
     if (ready && budgetBytes != 0 && GetMemoryBytes() > budgetBytes)
     {
-        Release(m_active);
+        ReleaseGenerations();
         ready    = false;
         m_reason = "acceleration_structure_budget";
     }
@@ -465,9 +588,8 @@ bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
         }
         else
         {
-            Release(m_pending);
             // A stale TLAS is never a fallback for the current raster generation.
-            Release(m_active);
+            ReleaseGenerations();
             if (std::strcmp(m_reason, "hardware_ready") == 0)
             {
                 m_reason = "scene_build_preparation_failed";
@@ -510,21 +632,30 @@ void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool f
     pass.BindValue("uRayQueryData", uniforms);
 }
 
-void SceneRayQuery::OnRenderGraphExecuted(bool succeeded)
+void SceneRayQuery::OnRenderGraphExecuted(RenderFrameResult result)
 {
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
+
     if (m_recorded)
     {
         if (succeeded)
         {
-            Release(m_active);
+            Cache(m_active);
             m_active  = std::move(m_pending);
             m_pending = Generation{};
         }
         else
         {
-            Release(m_pending);
-            Release(m_active);
-            m_reason = "failed_frame";
+            if (result == RenderFrameResult::eDeclined)
+            {
+                Cache(m_pending);
+            }
+            else
+            {
+                ReleaseGenerations();
+
+                m_reason = "failed_frame";
+            }
         }
     }
     m_recorded = false;

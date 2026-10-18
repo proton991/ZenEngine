@@ -27,7 +27,7 @@ TEST_P(VoxelAsyncResetTest, OwnerResetRespectsComputeQueueSupport)
         EXPECT_FALSE(volumes.BeginVolumeUpdate(graph, preference));
         ASSERT_TRUE(graph.End());
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
-        volumes.OnRenderGraphExecuted(true);
+        volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
         const bool                compute = preference == RDGQueuePreference::ePreferAsyncCompute && std::get<1>(GetParam());
         const RDGMetricsSnapshot& capture = device->GetRDGMetrics().GetLastSnapshot();
         ASSERT_EQ(capture.nodes.size(), 1u);
@@ -53,7 +53,7 @@ TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDepe
     RenderGraph&       graph  = *device->GetCurrentFrameRDG();
     RDGExtractedBuffer first  = BuildFailureGraph(graph, buffer);
     EXPECT_FALSE(RDGSubmissionTestAccess::LoggedAsyncCompute(*device));
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     ASSERT_TRUE(first);
     EXPECT_TRUE(RDGSubmissionTestAccess::LoggedAsyncCompute(*device));
@@ -69,7 +69,7 @@ TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDepe
     EXPECT_EQ(initial.submissions[1].waitStages, int64_t(RHIPipelineStageFlagBits::eAllCommands));
     device->NextFrame();
     RDGExtractedBuffer second = BuildFailureGraph(graph, buffer);
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     ASSERT_TRUE(second);
     const RDGMetricsSnapshot& repeated               = device->GetRDGMetrics().GetLastSnapshot();
@@ -99,7 +99,7 @@ TEST_P(RDGScheduledSubmissionTest, CaptureLimitsDoNotChangeSubmissionDependencie
     TestBuffer*        buffer = Buffer();
     RenderGraph&       graph  = *device->GetCurrentFrameRDG();
     RDGExtractedBuffer output = BuildFailureGraph(graph, buffer);
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     ASSERT_TRUE(output);
     const RDGMetricsSnapshot& capture = device->GetRDGMetrics().GetLastSnapshot();

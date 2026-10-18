@@ -99,8 +99,10 @@ bool VoxelizerBase::BeginVoxelization(RenderGraph& graph, RDGQueuePreference que
     return result;
 }
 
-void VoxelizerBase::OnRenderGraphExecuted(bool succeeded)
+void VoxelizerBase::OnRenderGraphExecuted(RenderFrameResult result)
 {
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
+
     if (m_voxelizationPending)
     {
         if (succeeded)

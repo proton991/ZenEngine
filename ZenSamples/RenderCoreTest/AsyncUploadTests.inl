@@ -39,6 +39,7 @@ TEST_P(AsyncUploadTest, UploadStaysInFlightAndOnlyItsConsumerWaits)
     const std::array<uint8_t, 64> bytes{};
     uploads.EnqueueBuffer(uploaded, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
+    device->FlushRHIThread();
     const uint64_t serial = RDGSubmissionTestAccess::Submission(*device, uploaded).serial;
     EXPECT_GT(serial, 0u);
     EXPECT_EQ(rhi->completed[2], 0u);
@@ -116,6 +117,7 @@ TEST_P(AsyncUploadTest, StagingAllocationCannotBeReusedBeforeTransferCompletion)
     const std::array<uint8_t, 64> bytes{};
     uploads.EnqueueBuffer(buffer, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
+    device->FlushRHIThread();
     uploads.ReclaimResources();
     StagingAllocation allocation;
     EXPECT_NE(staging.Allocate(64, 4, &allocation), StagingFlushAction::eNone);
@@ -140,6 +142,7 @@ TEST_P(AsyncUploadTest, MipmapUploadKeepsGraphicsFallbackWithoutCompletionWait)
     RHITexture*          texture = textures.LoadTexture2D("async_mips.png", true);
     ASSERT_NE(texture, nullptr);
     ASSERT_TRUE(uploads.Flush());
+    device->FlushRHIThread();
     EXPECT_EQ(RDGSubmissionTestAccess::Submission(*device, texture).queue, RHICommandContextType::eGraphics);
     EXPECT_EQ(rhi->submitted[2], 0u);
     EXPECT_GT(rhi->submitted[0], 0u);
@@ -173,6 +176,7 @@ TEST_P(AsyncUploadTest, RecordingGraphLeavesSubmissionDependenciesToRenderDevice
     const std::array<uint8_t, 64> bytes{};
     uploads.EnqueueBuffer(uploaded, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
+    device->FlushRHIThread();
     const RHISubmissionDependency producer = RDGSubmissionTestAccess::Submission(*device, uploaded);
     const uint32_t                attempts = rhi->submissionAttempts;
 
@@ -212,7 +216,7 @@ TEST_P(AsyncUploadTest, FrameSubmissionKeepsUploadWaitAndOrdersLaterTransfer)
     ASSERT_TRUE(frame->Begin());
     frame->AddTransferPass("frame_copy").CopyBuffer(source, intermediate, {0, 0, 64});
     ASSERT_TRUE(frame->End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     ASSERT_EQ(rhi->gpuDependencies.size(), 1u);
     EXPECT_EQ(rhi->gpuDependencies[0].consumer, RHICommandContextType::eGraphics);

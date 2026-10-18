@@ -52,7 +52,8 @@ out gl_PerVertex { vec4 gl_Position; float gl_PointSize; };
 #ifdef HYBRID_RECEIVER
 #include "../Common/scene_vertex.glsl"
 layout(set=1,binding=4) uniform uPreviousCamera { mat4 previousProjectionView; };
-layout(std430,set=1,binding=5) readonly buffer PreviousVertices { Vertex previousVertices[]; };
+// Previous geometry can remain on a different ring slot when animation pauses.
+layout(std430,set=3,binding=0) readonly buffer PreviousVertices { Vertex previousVertices[]; };
 layout(location=16) out vec4 outPreviousClip;
 layout(location=17) out vec4 outCurrentClip;
 #endif

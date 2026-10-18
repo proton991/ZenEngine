@@ -118,5 +118,78 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
         EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback),
                   glm::uvec4(0, 0, 0, visible ? GI_DYNAMIC : 0));
     }
+
+    // Exercise the real scene update path across ring wrap, including a sparse
+    // UV/material edit that must reach each slot when that slot is next used.
+    RHIBuffer* snapshots[5]{};
+    RHIBuffer* sceneBuffers[] = {scene.GetVertexBuffer(), scene.GetNodesDataSSBO(), scene.GetUVBuffer(),
+                                 scene.GetMaterialsDataSSBO(), scene.GetVertexBuffer()};
+    for (uint32_t i = 0; i < 5; ++i)
+    {
+        snapshots[i] = Buffer(static_cast<uint32_t>(sceneBuffers[i]->GetRequiredSize()), RHIBufferAllocateType::eCPURead);
+    }
+    RHIBuffer*     vertexSlots[RenderFrameState::kMaxFramesInFlight]{};
+    uint64_t       vertexGenerations[RenderFrameState::kMaxFramesInFlight]{};
+    const uint32_t slots = GRenderFrameState.GetNumFramesInFlight();
+    for (uint32_t frame = 0; frame < 4 * slots; ++frame)
+    {
+        RHIResourcePtr<RHIBuffer>       previous(scene.GetVertexBuffer());
+        const uint64_t                  previousGeneration = scene.GetVertexGeneration();
+        const HeapVector<asset::Vertex> previousVertices   = scene.GetVertices();
+        device->NextFrame();
+        const uint32_t slot = ToIndex(GRenderFrameState.GetFrameSlot());
+        vertices[0].pos.x   = -0.9f + 0.01f * frame;
+        if (frame == 1)
+        {
+            vertices[0].uv0 = Vec2(0.25f, 0.75f);
+        }
+        ASSERT_TRUE(scene.UpdateVertices(0, MakeVecView(vertices, 1)));
+        ASSERT_TRUE(scene.SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0.02f * frame, 0, 0))));
+        if (frame == 2)
+        {
+            material.baseColorFactor.r = 0.7f;
+            ASSERT_TRUE(scene.UpdateMaterial(0, material));
+        }
+        ASSERT_TRUE(scene.CommitGeometryUpdates());
+        EXPECT_TRUE(scene.HasVertexGeneration(previous.Get(), previousGeneration));
+        if (frame >= slots)
+        {
+            EXPECT_EQ(scene.GetVertexBuffer(), vertexSlots[slot]);
+            EXPECT_FALSE(scene.HasVertexGeneration(vertexSlots[slot], vertexGenerations[slot]));
+        }
+        vertexSlots[slot]       = scene.GetVertexBuffer();
+        vertexGenerations[slot] = scene.GetVertexGeneration();
+        RHIBuffer*  inputs[]    = {scene.GetVertexBuffer(), scene.GetNodesDataSSBO(), scene.GetUVBuffer(),
+                                   scene.GetMaterialsDataSSBO(), previous.Get()};
+        RenderGraph graph("ReadPersistentSceneBuffers");
+        ASSERT_TRUE(graph.Begin());
+        for (uint32_t i = 0; i < 5; ++i)
+        {
+            RDGComputePassDesc pass;
+            pass.SetShaderProgramName("CaptureVoxelBufferSP");
+            pass.BindStorageBuffer("CaptureSource", inputs[i]);
+            pass.BindStorageBuffer("CaptureCopy", snapshots[i], RDGContentGuarantee::eFullWrite);
+            graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch(1, 1, 1);
+            });
+        }
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+        device->WaitForPreviousFrames();
+        const HeapVector<uint8_t> gpuVertices  = ReadStaticBuffer<uint8_t>(snapshots[0]);
+        const HeapVector<uint8_t> gpuNodes     = ReadStaticBuffer<uint8_t>(snapshots[1]);
+        const HeapVector<Vec4>    gpuUV        = ReadStaticBuffer<Vec4>(snapshots[2]);
+        const HeapVector<uint8_t> gpuMaterials = ReadStaticBuffer<uint8_t>(snapshots[3]);
+        const HeapVector<uint8_t> gpuPrevious  = ReadStaticBuffer<uint8_t>(snapshots[4]);
+        EXPECT_EQ(
+            std::memcmp(gpuVertices.data(), scene.GetVertices().data(), scene.GetVertices().size() * sizeof(asset::Vertex)), 0);
+        EXPECT_EQ(std::memcmp(gpuPrevious.data(), previousVertices.data(), previousVertices.size() * sizeof(asset::Vertex)), 0);
+        EXPECT_EQ(std::memcmp(gpuNodes.data(), &node.GetData(), sizeof(sg::NodeData)), 0);
+        EXPECT_EQ(std::memcmp(gpuNodes.data() + sizeof(sg::NodeData), &sharedNode.GetData(), sizeof(sg::NodeData)), 0);
+        EXPECT_EQ(Vec2(gpuUV[1]), vertices[0].uv0);
+        EXPECT_EQ(std::memcmp(gpuMaterials.data(), scene.GetMaterialsData().data(),
+                              scene.GetMaterialsData().size() * sizeof(sg::MaterialData)),
+                  0);
+    }
     scene.Destroy();
 }

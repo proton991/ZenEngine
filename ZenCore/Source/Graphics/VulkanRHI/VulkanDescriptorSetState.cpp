@@ -200,7 +200,9 @@ bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
 
 void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
 {
-    if (m_pPipeline != pPipeline)
+    const uint64_t identity = pPipeline != nullptr ? pPipeline->GetStableId() : 0;
+
+    if (m_pPipeline != pPipeline || m_pipelineIdentity != identity)
     {
         ClearAllSetStates();
 
@@ -214,6 +216,7 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
         m_cacheRevision          = 0;
 
         m_pPipeline              = pPipeline;
+        m_pipelineIdentity       = identity;
 
         m_parametersValid        = true;
 
@@ -388,6 +391,7 @@ void VulkanDescriptorSetState::Reset()
     m_cacheRevision          = 0;
 
     m_pPipeline              = nullptr;
+    m_pipelineIdentity       = 0;
 
     m_lastWorkloadGeneration = 0;
 

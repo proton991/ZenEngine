@@ -1,5 +1,6 @@
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/VoxelGI.h"
+#include <algorithm>
 #include <limits>
 
 namespace zen::rc
@@ -18,9 +19,11 @@ GIResourceStatus ValidateGIStorageBuffer(uint64_t elements, uint32_t stride, con
     }
     else
     {
-        bytes = elements * stride;
+        bytes                    = elements * stride;
 
-        if (bytes > std::numeric_limits<uint32_t>::max())
+        const uint64_t alignment = std::max(uint64_t(1), uint64_t(gpu.storageBufferAlignment));
+
+        if (alignment > std::numeric_limits<uint32_t>::max() || bytes > std::numeric_limits<uint32_t>::max() - (alignment - 1))
         {
             status = GIResourceStatus::eBufferSize;
         }

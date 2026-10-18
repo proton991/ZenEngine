@@ -17,7 +17,7 @@ public:
     void BuildRenderGraph(const RenderView& view);
 
     // Restore one-time work when the frame is rejected before submission.
-    void OnRenderGraphExecuted(bool succeeded);
+    void OnRenderGraphExecuted(RenderFrameResult result);
 
     void Destroy();
 

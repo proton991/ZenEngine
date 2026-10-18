@@ -286,6 +286,15 @@ bool RenderSubmissionHistory::Commit(RenderSubmissionUpdate& update)
     {
         for (HashMap<uint64_t, RenderResourceHistory>::value_type& entry : update.resources)
         {
+            if (HasUnresolvedUses(entry.second))
+            {
+                m_unresolved.insert(entry.first);
+            }
+            else
+            {
+                m_unresolved.erase(entry.first);
+            }
+
             m_resources[entry.first] = std::move(entry.second);
         }
 
@@ -314,17 +323,44 @@ bool RenderSubmissionHistory::ResolveUse(RenderResourceUse& use)
     return valid;
 }
 
+bool RenderSubmissionHistory::HasUnresolvedUses(const RenderResourceHistory& history)
+{
+    bool unresolved = bool(history.writer.point.state);
+
+    for (const RenderResourceUse& reader : history.readers)
+    {
+        unresolved |= bool(reader.point.state);
+    }
+
+    return unresolved;
+}
+
 bool RenderSubmissionHistory::ResolveAccepted()
 {
     bool valid = true;
 
-    for (HashMap<uint64_t, RenderResourceHistory>::value_type& entry : m_resources)
+    for (std::unordered_set<uint64_t>::iterator it = m_unresolved.begin(); it != m_unresolved.end();)
     {
-        valid &= ResolveUse(entry.second.writer);
+        const HashMap<uint64_t, RenderResourceHistory>::iterator resource = m_resources.find(*it);
 
-        for (RenderResourceUse& reader : entry.second.readers)
+        VERIFY_EXPR(resource != m_resources.end());
+
+        RenderResourceHistory& history  = resource->second;
+
+        valid                          &= ResolveUse(history.writer);
+
+        for (RenderResourceUse& reader : history.readers)
         {
             valid &= ResolveUse(reader);
+        }
+
+        if (HasUnresolvedUses(history))
+        {
+            ++it;
+        }
+        else
+        {
+            it = m_unresolved.erase(it);
         }
     }
 
@@ -338,6 +374,8 @@ bool RenderSubmissionHistory::ResolveAccepted()
 
 void RenderSubmissionHistory::Erase(uint64_t resourceId)
 {
+    m_unresolved.erase(resourceId);
+
     m_resources.erase(resourceId);
 
     ++m_revision;
@@ -345,6 +383,8 @@ void RenderSubmissionHistory::Erase(uint64_t resourceId)
 
 void RenderSubmissionHistory::Clear()
 {
+    m_unresolved.clear();
+
     m_resources.clear();
 
     ++m_revision;

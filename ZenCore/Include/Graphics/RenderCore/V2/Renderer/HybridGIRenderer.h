@@ -44,7 +44,7 @@ public:
     bool                   BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI);
     void                   BindLightingInputs(RDGPassDescBase& pass) const;
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection) const;
-    void                   OnRenderGraphExecuted(bool succeeded);
+    void                   OnRenderGraphExecuted(RenderFrameResult result);
     void                   InvalidateHistory(const char* reason);
     void                   Destroy();
     void                   SetCapture(RHIBuffer* output, RHIBuffer* readback)
@@ -96,6 +96,7 @@ private:
                         bool     reference,
                         bool     budget);
     void BindGuides(RDGPassDescBase& pass) const;
+    void BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const;
     void Dispatch(RDGComputePassDesc&& pass);
 
     enum HistoryTexture : uint32_t
@@ -123,16 +124,19 @@ private:
     RHIBuffer*    m_rayCountReadback{nullptr};
     bool          m_rayCountsRecorded{false};
     RHITexture*   m_history[2][Count]{};
+    bool          m_historyNeedsClear[2][Count]{};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
     RHIBuffer*       m_guide[2]{};
     RDGTexture       m_outputSky, m_outputSpecular, m_outputBounce;
     RDGTexture       m_rawSky, m_rawSpecular;
     HeapVector<Mat4> m_previousModels;
     HeapVector<Mat4> m_recordedModels;
-    // Scene vertex uploads are immutable generations. Each view retains its last
-    // successfully rendered generation, including while other views advance.
+    // A retained buffer does not freeze its contents. Check the slot generation
+    // before using a view's previous vertices after skipped/declined frames.
     RHIResourcePtr<RHIBuffer> m_previousVertices;
     RHIResourcePtr<RHIBuffer> m_recordedVertices;
+    uint64_t                  m_previousVertexGeneration{0};
+    uint64_t                  m_recordedVertexGeneration{0};
     Mat4                      m_previousProjection{1};
     Mat4                      m_recordedProjection{1};
     Mat4                      m_recordedProjectionView{1};
@@ -140,7 +144,8 @@ private:
     Vec4                      m_recordedViewDirection{0, 0, 1, 0};
     HybridGIUniformData       m_uniforms;
     VoxelGISettings           m_previousSettings;
-    bool                      m_previousHardware{false};
+    VoxelGISettings           m_recordedSettings;
+    uint32_t                  m_previousHardwareMask{0};
     bool                      m_previousRayBounce{false};
     bool                      m_halfDiffuse{false};
     bool                      m_previousReflections{false};
@@ -151,5 +156,9 @@ private:
     uint32_t                  m_frame{0}, m_current{0};
     bool                      m_valid{false}, m_prepared{false}, m_recorded{false};
     const char*               m_resetReason{"initial"};
+    // Recording may invalidate history for changed settings without consuming it.
+    bool        m_preparedHistoryValid{false};
+    const char* m_preparedResetReason{"initial"};
+    uint32_t    m_preparedResponsiveFrames{0};
 };
 } // namespace zen::rc

@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHICommandListExecutor.h"
 #include "RenderGraph/RDGSchedule.h"
 #include "Templates/HashMap.h"
+#include <unordered_set>
 
 namespace zen::rc
 {
@@ -65,6 +66,8 @@ public:
     const RenderResourceHistory* Find(uint64_t resourceId) const;
 
 private:
+    friend struct RDGSubmissionTestAccess;
+
     static uint32_t IncludePoint(RenderSubmissionUpdate& update, const RHISubmissionPoint& point);
 
     static void IncludeInitial(RenderSubmissionUpdate& update, uint64_t id, const RenderResourceUse& use, bool ordersReaders);
@@ -80,6 +83,8 @@ private:
 
     static bool ResolveUse(RenderResourceUse& use);
 
+    static bool HasUnresolvedUses(const RenderResourceHistory& history);
+
     bool PrepareAccess(RenderSubmissionUpdate&       update,
                        RDGSubmissionGroup&           group,
                        const RenderSubmissionAccess& access,
@@ -87,6 +92,9 @@ private:
                        bool                          serializeReads) const;
 
     HashMap<uint64_t, RenderResourceHistory> m_resources;
-    uint64_t                                 m_revision{0};
+
+    // Accepted serial-only entries never need another ticket-resolution scan.
+    std::unordered_set<uint64_t> m_unresolved;
+    uint64_t                     m_revision{0};
 };
 } // namespace zen::rc

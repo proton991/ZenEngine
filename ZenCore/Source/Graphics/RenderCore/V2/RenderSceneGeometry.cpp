@@ -117,6 +117,8 @@ bool RenderScene::SetInstanceTransform(uint32_t instance, const Mat4& worldTrans
         m_nodesData[instance].surfaceScale.w  = glm::determinant(glm::dmat3(worldTransform)) < 0.0 ? -1.0f : 1.0f;
 
         m_dirtyClasses                       |= m_instanceClasses[instance];
+
+        m_nodeBuffers.MarkDirty(instance * sizeof(sg::NodeData), sizeof(sg::NodeData));
     }
 
     return valid;
@@ -143,6 +145,8 @@ bool RenderScene::UpdateVertices(uint32_t first, VectorView<const asset::Vertex>
 
     if (valid && !vertices.empty())
     {
+        MarkVertexChanges(vertices, first);
+
         for (size_t i = 0; i < vertices.size(); ++i)
         {
             m_vertices[first + i] = vertices[i];
@@ -296,6 +300,8 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
         m_materialsData[material] = data;
 
         m_materialsDirty          = true;
+
+        m_materialBuffers.MarkDirty(material * sizeof(sg::MaterialData), sizeof(sg::MaterialData));
     }
 
     return valid;
@@ -429,218 +435,180 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds
     return valid;
 }
 
+RHIBuffer* RenderScene::GetVertexBuffer() const
+{
+    return m_vertexBuffers.GetBuffer();
+}
+
+RHIBuffer* RenderScene::GetUVBuffer() const
+{
+    return m_uvBuffers.GetBuffer();
+}
+
+RHIBuffer* RenderScene::GetNodesDataSSBO() const
+{
+    return m_nodeBuffers.GetBuffer();
+}
+
+RHIBuffer* RenderScene::GetMaterialsDataSSBO() const
+{
+    return m_materialBuffers.GetBuffer();
+}
+
+uint64_t RenderScene::GetVertexGeneration() const
+{
+    return m_vertexBuffers.GetGeneration();
+}
+
+bool RenderScene::HasVertexGeneration(const RHIBuffer* buffer, uint64_t generation) const
+{
+    return m_vertexBuffers.ContainsGeneration(buffer, generation);
+}
+
+void RenderScene::MarkVertexChanges(VectorView<const asset::Vertex> vertices, uint32_t first)
+{
+    size_t begin = 0;
+    while (begin < vertices.size())
+    {
+        if (std::memcmp(&vertices[begin], &m_vertices[first + begin], sizeof(asset::Vertex)) == 0)
+        {
+            ++begin;
+        }
+        else
+        {
+            size_t end = begin + 1;
+            while (end < vertices.size() && std::memcmp(&vertices[end], &m_vertices[first + end], sizeof(asset::Vertex)) != 0)
+            {
+                ++end;
+            }
+            m_vertexBuffers.MarkDirty(static_cast<uint32_t>((first + begin) * sizeof(asset::Vertex)),
+                                      static_cast<uint32_t>((end - begin) * sizeof(asset::Vertex)));
+            begin = end;
+        }
+    }
+}
+
+bool RenderScene::RefreshUVCoordinates()
+{
+    bool         valid  = true;
+    const size_t stride = static_cast<size_t>(m_uvCoordinates[0].x);
+    for (size_t vertex = 0; vertex < m_vertices.size(); ++vertex)
+    {
+        const HeapVector<sg::VertexTextureCoordinates>& coordinates = m_pScene->GetAssetData().vertexTexCoords;
+        const size_t sets = vertex < coordinates.size() ? std::min(stride, coordinates[vertex].size()) : 0;
+        for (size_t set = 0; set < std::max(sets, size_t(2)); ++set)
+        {
+            const Vec2 uv = set == 0 ? m_vertices[vertex].uv0 : set == 1 ? m_vertices[vertex].uv1 : coordinates[vertex][set];
+            valid         = valid && std::isfinite(uv.x) && std::isfinite(uv.y);
+            const size_t offset = 1 + vertex * stride + set;
+            if (Vec2(m_uvCoordinates[offset]) != uv)
+            {
+                m_uvCoordinates[offset] = Vec4(uv, 0, 0);
+                m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec4)), sizeof(Vec4));
+            }
+        }
+    }
+    return valid;
+}
+
 bool RenderScene::CommitGeometryUpdates()
 {
     bool valid = m_geometryReady && !m_pRenderDevice->AreSubmissionsBlocked();
-
     if (valid && (m_dirtyClasses != 0 || m_verticesDirty || m_materialsDirty || m_triangleRecordsDirty))
     {
-        const bool geometryChanged             = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;
-
+        const bool                   geometryChanged = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;
         const HeapVector<glm::uvec4> triangles = m_triangleRecordsDirty ? BuildTriangleRecords() : HeapVector<glm::uvec4>();
-
         const uint32_t triangleCount = m_triangleRecordsDirty ? static_cast<uint32_t>(triangles.size()) : m_voxelTriangleCount;
-
         const RHIGPUInfo& gpu        = m_pRenderDevice->GetGPUInfo();
-
-        uint64_t nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
-
-        bool validUVCoordinates = true;
-
-        if (m_verticesDirty)
-        {
-            const size_t stride = static_cast<size_t>(m_uvCoordinates[0].x);
-
-            for (size_t vertex = 0; vertex < m_vertices.size(); ++vertex)
-            {
-                if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
-                {
-                    const sg::VertexTextureCoordinates& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
-
-                    for (size_t set = 2; set < std::min(stride, sets.size()); ++set)
-                    {
-                        validUVCoordinates                         &= std::isfinite(sets[set].x) && std::isfinite(sets[set].y);
-
-                        m_uvCoordinates[1 + vertex * stride + set]  = Vec4(sets[set], 0, 0);
-                    }
-                }
-
-                m_uvCoordinates[1 + vertex * stride] = Vec4(m_vertices[vertex].uv0, 0, 0);
-
-                m_uvCoordinates[2 + vertex * stride] = Vec4(m_vertices[vertex].uv1, 0, 0);
-            }
-        }
-
-        sg::AABB bounds;
-
-        sg::AABB classBounds[2];
-
-        valid =
-            validUVCoordinates && ComputeGeometryBounds(bounds, classBounds)
-            && ValidateGIStorageBuffer(m_nodesData.size(), sizeof(sg::NodeData), gpu, nodeBytes) == GIResourceStatus::eSuccess
-            && ValidateGIStorageBuffer(triangleCount, sizeof(glm::uvec4), gpu, triangleBytes) == GIResourceStatus::eSuccess
-            && ValidateGIStorageBuffer(m_vertices.size(), sizeof(asset::Vertex), gpu, vertexBytes) == GIResourceStatus::eSuccess
-            && ValidateGIStorageBuffer(m_materialsData.size(), sizeof(sg::MaterialData), gpu, materialBytes)
-                   == GIResourceStatus::eSuccess
-            && ValidateGIStorageBuffer(m_uvCoordinates.size(), sizeof(Vec4), gpu, uvBytes) == GIResourceStatus::eSuccess;
-
+        uint64_t          nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
+        sg::AABB          bounds;
+        sg::AABB          classBounds[2];
+        valid = (!m_verticesDirty || RefreshUVCoordinates()) && ComputeGeometryBounds(bounds, classBounds)
+             && ValidateGIStorageBuffer(std::max(m_nodesData.size(), size_t(1)), sizeof(sg::NodeData), gpu, nodeBytes)
+                    == GIResourceStatus::eSuccess
+             && ValidateGIStorageBuffer(triangleCount, sizeof(glm::uvec4), gpu, triangleBytes) == GIResourceStatus::eSuccess
+             && ValidateGIStorageBuffer(std::max(m_vertices.size(), size_t(1)), sizeof(asset::Vertex), gpu, vertexBytes)
+                    == GIResourceStatus::eSuccess
+             && ValidateGIStorageBuffer(std::max(m_materialsData.size(), size_t(1)), sizeof(sg::MaterialData), gpu,
+                                        materialBytes)
+                    == GIResourceStatus::eSuccess
+             && ValidateGIStorageBuffer(m_uvCoordinates.size(), sizeof(Vec4), gpu, uvBytes) == GIResourceStatus::eSuccess;
         if (valid)
         {
-            RHIBuffer* nodes    = geometryChanged
-                                    ? m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(nodeBytes),
-                                                                           reinterpret_cast<const uint8_t*>(m_nodesData.data()),
-                                                                           "scene_nodes_generation")
-                                    : m_pNodeSSBO;
-
-            RHIBuffer* records  = !m_triangleRecordsDirty ? m_pVoxelTriangleBuffer
-                                : triangles.empty()
-                                    ? nullptr
-                                    : m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(triangleBytes),
-                                                                           reinterpret_cast<const uint8_t*>(triangles.data()),
-                                                                           "scene_triangles_generation");
-
-            RHIBuffer* vertices = m_verticesDirty
-                                    ? m_pRenderDevice->CreateVertexBuffer(static_cast<uint32_t>(vertexBytes),
-                                                                          reinterpret_cast<const uint8_t*>(m_vertices.data()))
-                                    : m_pVertexBuffer;
-
-            RHIBuffer* materials =
-                m_materialsDirty
-                    ? m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(materialBytes),
-                                                           reinterpret_cast<const uint8_t*>(m_materialsData.data()),
-                                                           "scene_materials_generation")
-                    : m_pMaterialSSBO;
-
-            RHIBuffer* uvCoordinates =
-                m_verticesDirty ? m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(uvBytes),
-                                                                       reinterpret_cast<const uint8_t*>(m_uvCoordinates.data()),
-                                                                       "scene_uv_generation")
-                                : m_pUVBuffer;
-
-            valid = nodes != nullptr && (triangleCount == 0 || records != nullptr) && vertices != nullptr
-                 && materials != nullptr && uvCoordinates != nullptr;
-
+            RHIBuffer* records = !m_triangleRecordsDirty ? m_pVoxelTriangleBuffer
+                               : triangles.empty()
+                                   ? nullptr
+                                   : m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(triangleBytes),
+                                                                          reinterpret_cast<const uint8_t*>(triangles.data()),
+                                                                          "scene_triangles_generation");
+            const sg::NodeData     emptyNode{};
+            const sg::MaterialData emptyMaterial{};
+            const asset::Vertex    emptyVertex{};
+            valid =
+                (triangleCount == 0 || records != nullptr)
+                && m_nodeBuffers.Update(*m_pRenderDevice, m_nodesData.empty() ? &emptyNode : m_nodesData.data(),
+                                        static_cast<uint32_t>(nodeBytes), "scene_nodes")
+                && m_vertexBuffers.Update(*m_pRenderDevice, m_vertices.empty() ? &emptyVertex : m_vertices.data(),
+                                          static_cast<uint32_t>(vertexBytes), "scene_vertices", true)
+                && m_materialBuffers.Update(*m_pRenderDevice, m_materialsData.empty() ? &emptyMaterial : m_materialsData.data(),
+                                            static_cast<uint32_t>(materialBytes), "scene_materials")
+                && m_uvBuffers.Update(*m_pRenderDevice, m_uvCoordinates.data(), static_cast<uint32_t>(uvBytes), "scene_uv");
             if (valid)
             {
-                if (geometryChanged)
-                {
-                    m_pRenderDevice->DestroyBuffer(m_pNodeSSBO);
-                }
-
                 if (m_triangleRecordsDirty)
                 {
                     m_pRenderDevice->DestroyBuffer(m_pVoxelTriangleBuffer);
                 }
-
-                if (m_materialsDirty)
-                {
-                    m_pRenderDevice->DestroyBuffer(m_pMaterialSSBO);
-                }
-
-                if (m_verticesDirty)
-                {
-                    m_pRenderDevice->DestroyBuffer(m_pVertexBuffer);
-
-                    m_pRenderDevice->DestroyBuffer(m_pUVBuffer);
-                }
-
-                m_pNodeSSBO            = nodes;
-
                 m_pVoxelTriangleBuffer = records;
-
-                m_pVertexBuffer        = vertices;
-
-                m_pMaterialSSBO        = materials;
-
-                m_pUVBuffer            = uvCoordinates;
-
                 m_voxelTriangleCount   = triangleCount;
-
                 m_pScene->GetAABB()    = bounds;
-
                 m_classBounds[0]       = classBounds[0];
-
                 m_classBounds[1]       = classBounds[1];
-
                 for (sg::Node* node : m_pScene->GetRenderableNodes())
                 {
                     node->SetData(m_nodesData[node->GetRenderableIndex()]);
                 }
-
                 if (geometryChanged)
                 {
                     ++m_geometryRevision;
                 }
-
                 if ((m_dirtyClasses & GI_STATIC) != 0)
                 {
                     ++m_staticRevision;
                 }
-
                 if ((m_dirtyClasses & GI_DYNAMIC) != 0)
                 {
                     ++m_dynamicRevision;
                 }
-
                 if (m_materialsDirty || m_dirtySurfaceClasses != 0)
                 {
                     ++m_surfaceRevision;
-
                     if ((m_dirtySurfaceClasses & GI_STATIC) != 0)
                     {
                         ++m_staticSurfaceRevision;
                     }
-
                     if ((m_dirtySurfaceClasses & GI_DYNAMIC) != 0)
                     {
                         ++m_dynamicSurfaceRevision;
                     }
                 }
-
                 m_dirtyClasses         = 0;
-
                 m_dirtySurfaceClasses  = 0;
-
                 m_materialsDirty       = false;
-
                 m_verticesDirty        = false;
-
                 m_triangleRecordsDirty = false;
             }
-            else
+            else if (m_triangleRecordsDirty)
             {
-                if (geometryChanged)
-                {
-                    m_pRenderDevice->DestroyBuffer(nodes);
-                }
-
-                if (m_triangleRecordsDirty)
-                {
-                    m_pRenderDevice->DestroyBuffer(records);
-                }
-
-                if (m_materialsDirty)
-                {
-                    m_pRenderDevice->DestroyBuffer(materials);
-                }
-
-                if (m_verticesDirty)
-                {
-                    m_pRenderDevice->DestroyBuffer(vertices);
-
-                    m_pRenderDevice->DestroyBuffer(uvCoordinates);
-                }
+                m_pRenderDevice->DestroyBuffer(records);
             }
         }
-
         if (!valid)
         {
-            LOGE("Scene geometry generation rejected; rendering stopped");
+            LOGE("Scene geometry update rejected; rendering stopped");
         }
-
         m_geometryReady = valid;
     }
-
     return valid;
 }
 } // namespace zen::rc

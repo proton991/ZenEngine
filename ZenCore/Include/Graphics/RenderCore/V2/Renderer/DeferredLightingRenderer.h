@@ -39,7 +39,7 @@ public:
     void BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
 
     void              BuildGBufferGraph(const RenderView& view, bool hybrid = false);
-    void              OnRenderGraphExecuted(bool succeeded);
+    void              OnRenderGraphExecuted(RenderFrameResult result);
     HybridGIRenderer* GetHybridGI() const
     {
         return m_hybrid;

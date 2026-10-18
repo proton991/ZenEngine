@@ -2,7 +2,10 @@
 #include "Graphics/RHI/RHICommon.h"
 #include "Templates/BitField.h"
 #include <string>
+#include <string_view>
 #include <optional>
+#include <utility>
+#include <spdlog/fmt/fmt.h>
 
 constexpr uint32_t kMaxRDGNameLen = 64;
 
@@ -116,6 +119,7 @@ enum class RDGErrorCode : uint8_t
     eDuplicateProducer,
     eDependencyCycle,
     eSubmission,
+    eSubmissionRejected,
 };
 
 struct RDGResult
@@ -123,7 +127,7 @@ struct RDGResult
     RDGErrorCode code{RDGErrorCode::eNone};
     std::string  message;
 
-    bool Fail(RDGErrorCode error, const std::string& detail)
+    bool Fail(RDGErrorCode error, std::string_view detail)
     {
         if (code == RDGErrorCode::eNone)
         {
@@ -134,9 +138,16 @@ struct RDGResult
         return false;
     }
 
-    bool Check(bool condition, RDGErrorCode error, const std::string& detail)
+    // Literals and existing strings bind without allocation; the message is copied only on failure.
+    bool Check(bool condition, RDGErrorCode error, std::string_view detail)
     {
         return code == RDGErrorCode::eNone && (condition || Fail(error, detail));
+    }
+
+    template <typename... Args>
+    bool CheckFormat(bool condition, RDGErrorCode error, fmt::format_string<Args...> format, Args&&... args)
+    {
+        return code == RDGErrorCode::eNone && (condition || Fail(error, fmt::format(format, std::forward<Args>(args)...)));
     }
 
     explicit operator bool() const

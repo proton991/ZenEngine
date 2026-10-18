@@ -107,7 +107,7 @@ TEST_P(RDGScheduledSubmissionTest, PartialFailureConsumesTicketAndKeepsAcceptedF
     RenderGraph&       graph     = *device->GetCurrentFrameRDG();
     RDGExtractedBuffer extracted = BuildFailureGraph(graph, buffer);
     rhi->failSubmissionAt        = 2;
-    const bool queued            = device->ExecuteRenderGraph(&viewport);
+    const bool queued            = device->ExecuteRenderGraph(&viewport) == RenderFrameResult::eSubmitted;
     if (GetParam() == RHIExecutionMode::eInline)
     {
         EXPECT_FALSE(queued);
@@ -119,7 +119,7 @@ TEST_P(RDGScheduledSubmissionTest, PartialFailureConsumesTicketAndKeepsAcceptedF
     EXPECT_EQ(RDGSubmissionTestAccess::FrameCompletion(*device).Get(RHICommandContextType::eAsyncCompute), 1u);
     EXPECT_EQ(RDGSubmissionTestAccess::History(*device).Find(buffer->GetStableId()), nullptr);
     EXPECT_FALSE(RDGSubmissionTestAccess::HasHistory(RDGSubmissionTestAccess::Tracker(*device), buffer->GetStableId()));
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_NE(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     EXPECT_EQ(rhi->submissionAttempts, 2u);
     // The failed graphics group carried the presentation copy; nothing was presented.
     EXPECT_EQ(viewport.preparePresents, 1u);
@@ -134,11 +134,7 @@ TEST_P(RDGScheduledSubmissionTest, RecreationPreservesPublicationAndComputeRetir
     RDGExtractedBuffer extracted = BuildFailureGraph(graph, buffer);
     viewport.presentResult       = false;
     viewport.recreationRequested = true;
-    const bool queued            = device->ExecuteRenderGraph(&viewport);
-    if (GetParam() == RHIExecutionMode::eInline)
-    {
-        EXPECT_FALSE(queued);
-    }
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     ASSERT_TRUE(extracted);
     EXPECT_FALSE(device->AreSubmissionsBlocked());
@@ -165,7 +161,7 @@ TEST_P(RDGScheduledSubmissionTest, DeclinedHandoffRetainsPriorHistoryAndAllowsRe
     const uint64_t                attempts = rhi->submissionAttempts;
     RDGExtractedBuffer            declined = BuildFailureGraph(graph, buffer);
     RDGSubmissionTestAccess::SetRecreateViewport(*device, &viewport);
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eDeclined);
     EXPECT_FALSE(declined);
     EXPECT_TRUE(initial);
     EXPECT_EQ(rhi->submissionAttempts, attempts);
@@ -175,9 +171,11 @@ TEST_P(RDGScheduledSubmissionTest, DeclinedHandoffRetainsPriorHistoryAndAllowsRe
     EXPECT_EQ(preserved.queue, previous.queue);
     EXPECT_EQ(preserved.serial, previous.serial);
     EXPECT_EQ(RDGSubmissionTestAccess::Tracker(*device).GetContents(buffer).status, RDGContentStatus::eDefined);
-    RDGSubmissionTestAccess::SetRecreateViewport(*device, nullptr);
+    device->NextFrame();
+    EXPECT_EQ(viewport.resizes, 1u);
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), nullptr);
     RDGExtractedBuffer retry = BuildFailureGraph(graph, buffer);
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     device->FlushRHIThread();
     EXPECT_TRUE(retry);
     EXPECT_EQ(rhi->submitted[1], previous.serial + 1);
@@ -196,16 +194,16 @@ TEST_P(RDGScheduledSubmissionTest, ImmediateHandoffFailureCanRestoreConsumedVoxe
     EXPECT_FALSE(volumes.BeginVolumeUpdate(graph));
     ASSERT_TRUE(graph.End());
     RDGSubmissionTestAccess::SetRecreateViewport(*device, &viewport);
-    const bool succeeded = device->ExecuteRenderGraph(&viewport);
-    EXPECT_FALSE(succeeded);
-    volumes.OnRenderGraphExecuted(succeeded);
+    const RenderFrameResult result = device->ExecuteRenderGraph(&viewport);
+    EXPECT_EQ(result, RenderFrameResult::eDeclined);
+    volumes.OnRenderGraphExecuted(result);
     EXPECT_EQ(volumes.GetGeometryRevision(), 0u);
     RDGSubmissionTestAccess::SetRecreateViewport(*device, nullptr);
     ASSERT_TRUE(graph.Begin());
     EXPECT_TRUE(volumes.BeginVolumeUpdate(graph));
     ASSERT_TRUE(graph.End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
-    volumes.OnRenderGraphExecuted(true);
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
     EXPECT_EQ(volumes.GetGeometryRevision(), 1u);
     device->FlushRHIThread();
     EXPECT_EQ(rhi->graphics.dispatchCount, 1u);
@@ -222,7 +220,7 @@ TEST_F(ThreadedScheduledGraphTest, FailedProducerDiscardsAlreadyRecordedSpeculat
     RDGExtractedBuffer first  = BuildFailureGraph(graph, buffer);
     rhi->failSubmissionAt     = 2;
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     device->NextFrame();
     ASSERT_TRUE(graph.Begin());
@@ -230,14 +228,15 @@ TEST_F(ThreadedScheduledGraphTest, FailedProducerDiscardsAlreadyRecordedSpeculat
     RDGComputePassDesc consumer = IntentPass();
     consumer.BindStorageBuffer("write_buffer", output, RDGContentGuarantee::eFullWrite);
     bool recorded = false;
-    graph.AddComputePass(consumer).RecordPassCommands([this, &recorded](RDGPassCmdEncoder& encoder) {
+    graph.AddComputePass(consumer).RecordPassCommands([&recorded](RDGPassCmdEncoder& encoder) {
         recorded = true;
         encoder.Dispatch(1, 1, 1);
-        gate.Open();
     });
     RDGExtractedBuffer second = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+    EXPECT_EQ(RDGSubmissionTestAccess::PendingFrameCount(*device), 2u);
+    gate.Open();
     device->FlushRHIThread();
     EXPECT_TRUE(recorded);
     EXPECT_TRUE(gate.releasedInTime);
@@ -245,7 +244,7 @@ TEST_F(ThreadedScheduledGraphTest, FailedProducerDiscardsAlreadyRecordedSpeculat
     EXPECT_FALSE(second);
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     EXPECT_EQ(rhi->submissionAttempts, 2u);
-    EXPECT_EQ(device->GetRHIThreadMetrics().submittedBatches, 1u);
+    EXPECT_EQ(device->GetRHIThreadMetrics().submittedBatches, 2u);
     EXPECT_EQ(RDGSubmissionTestAccess::History(*device).Find(buffer->GetStableId()), nullptr);
     EXPECT_FALSE(RDGSubmissionTestAccess::HasHistory(RDGSubmissionTestAccess::Tracker(*device), buffer->GetStableId()));
     device->DestroyBuffer(buffer);
@@ -257,7 +256,7 @@ TEST_F(ThreadedScheduledGraphTest, UnconfirmedHistoryCannotPublishSuccessfulNati
     RenderGraph&       graph     = *device->GetCurrentFrameRDG();
     RDGExtractedBuffer extracted = BuildFailureGraph(graph, buffer);
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     const RenderResourceHistory* history = RDGSubmissionTestAccess::History(*device).Find(buffer->GetStableId());
     ASSERT_NE(history, nullptr);
@@ -275,4 +274,184 @@ TEST_F(ThreadedScheduledGraphTest, UnconfirmedHistoryCannotPublishSuccessfulNati
     EXPECT_EQ(RDGSubmissionTestAccess::FrameCompletion(*device).Get(RHICommandContextType::eAsyncCompute), 1u);
     device->DestroyBuffer(buffer);
 }
+TEST_P(RDGScheduledSubmissionTest, RecordingFailureIsDistinctFromDecline)
+{
+    RenderGraph& graph = *device->GetCurrentFrameRDG();
+
+    ASSERT_TRUE(graph.Begin());
+
+    graph.AddComputePass(IntentPass()).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+        encoder.Fail(RDGErrorCode::eCallback, "deliberate recording failure");
+    });
+
+    ASSERT_TRUE(graph.End());
+
+    const uint64_t attempts = rhi->submissionAttempts;
+
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eFailed);
+
+    EXPECT_EQ(rhi->submissionAttempts, attempts);
+
+    EXPECT_FALSE(device->AreSubmissionsBlocked());
+}
+
+TEST_F(ThreadedScheduledGraphTest, ReadyRecreationIsProcessedBeforeBuildingAnotherFrame)
+{
+    TestBuffer* buffer           = Buffer();
+
+    RenderGraph& graph           = *device->GetCurrentFrameRDG();
+
+    RDGExtractedBuffer first     = BuildFailureGraph(graph, buffer);
+
+    viewport.presentResult       = false;
+
+    viewport.recreationRequested = true;
+
+    ArmGate();
+
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+
+    ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+
+    device->NextFrame();
+
+    EXPECT_EQ(viewport.resizes, 0u);
+
+    gate.Open();
+
+    GetRHIThread().Flush();
+
+    device->PrepareFrame();
+
+    EXPECT_EQ(viewport.resizes, 1u);
+
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), nullptr);
+
+    EXPECT_TRUE(first);
+
+    viewport.presentResult    = true;
+
+    RDGExtractedBuffer second = BuildFailureGraph(graph, buffer);
+
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+
+    device->FlushRHIThread();
+
+    EXPECT_TRUE(second);
+
+    EXPECT_EQ(viewport.resizes, 1u);
+
+    first.Reset();
+
+    second.Reset();
+
+    device->DestroyBuffer(buffer);
+}
+
+TEST_F(ThreadedScheduledGraphTest, RecreationArrivingDuringRecordingDeclinesWithoutPublishing)
+{
+    TestBuffer* buffer           = Buffer();
+
+    RenderGraph& graph           = *device->GetCurrentFrameRDG();
+
+    RDGExtractedBuffer first     = BuildFailureGraph(graph, buffer);
+
+    viewport.presentResult       = false;
+
+    viewport.recreationRequested = true;
+
+    ArmGate();
+
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+
+    ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+
+    device->NextFrame();
+
+    ASSERT_TRUE(graph.Begin());
+
+    graph.AddComputePass(IntentPass()).RecordPassCommands([this](RDGPassCmdEncoder& encoder) {
+        encoder.Dispatch(1, 1, 1);
+        gate.Open();
+        // Force the recreation result to arrive during recording, before the handoff poll.
+        GetRHIThread().Flush();
+    });
+
+    ASSERT_TRUE(graph.End());
+
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eDeclined);
+
+    EXPECT_TRUE(first);
+
+    EXPECT_EQ(device->GetRHIThreadMetrics().submittedBatches, 1u);
+
+    EXPECT_FALSE(device->AreSubmissionsBlocked());
+
+    device->NextFrame();
+
+    EXPECT_EQ(viewport.resizes, 1u);
+
+    viewport.presentResult   = true;
+
+    RDGExtractedBuffer retry = BuildFailureGraph(graph, buffer);
+
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+
+    device->FlushRHIThread();
+
+    EXPECT_TRUE(retry);
+
+    first.Reset();
+
+    retry.Reset();
+
+    device->DestroyBuffer(buffer);
+}
+
+TEST_P(RDGScheduledSubmissionTest, SynchronousRejectionDeclinesButLateRejectionBlocks)
+{
+    TestBuffer* buffer             = Buffer();
+
+    RenderGraph& graph             = *device->GetCurrentFrameRDG();
+
+    RDGExtractedBuffer rejected    = BuildFailureGraph(graph, buffer);
+
+    rhi->failSubmissionAt          = rhi->submissionAttempts + 1;
+
+    const RenderFrameResult result = device->ExecuteRenderGraph(&viewport);
+
+    if (GetParam() == RHIExecutionMode::eInline)
+    {
+        EXPECT_EQ(result, RenderFrameResult::eDeclined);
+    }
+    else
+    {
+        // The worker may finish rejection before the render thread returns from handoff.
+        EXPECT_TRUE(result == RenderFrameResult::eSubmitted || result == RenderFrameResult::eBlocked);
+    }
+
+    device->FlushRHIThread();
+
+    EXPECT_FALSE(rejected);
+
+    EXPECT_EQ(device->AreSubmissionsBlocked(), GetParam() == RHIExecutionMode::eThreaded);
+
+    if (GetParam() == RHIExecutionMode::eInline)
+    {
+        RDGExtractedBuffer retry = BuildFailureGraph(graph, buffer);
+
+        EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+
+        EXPECT_TRUE(retry);
+
+        retry.Reset();
+    }
+    else
+    {
+        EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eBlocked);
+    }
+
+    device->DestroyBuffer(buffer);
+}
+
 } // namespace

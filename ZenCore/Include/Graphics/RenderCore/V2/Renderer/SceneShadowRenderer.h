@@ -46,7 +46,7 @@ public:
 
     void BindLightingInputs(RDGPassDescBase& pass) const;
 
-    void OnRenderGraphExecuted(bool succeeded);
+    void OnRenderGraphExecuted(RenderFrameResult result);
 
     void Destroy();
 

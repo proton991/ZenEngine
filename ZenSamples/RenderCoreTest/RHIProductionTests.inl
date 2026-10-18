@@ -173,7 +173,7 @@ TEST_F(RHIExecutorTest, CancelledQueuedBatchCompletesItsTicketAfterTaskFailure)
     EXPECT_EQ(rhi->submissionAttempts, 0u);
 }
 
-TEST_F(RHIExecutorTest, MissingPresentationListStopsRequiredFrame)
+TEST_F(RHIExecutorTest, MissingPresentationListDeclinesSynchronousFrameAndAllowsRetry)
 {
     TestViewport viewport;
 
@@ -194,11 +194,21 @@ TEST_F(RHIExecutorTest, MissingPresentationListStopsRequiredFrame)
 
     EXPECT_EQ(viewport.preparePresents, 0u);
 
-    EXPECT_TRUE(executor->AreSubmissionsBlocked());
+    EXPECT_FALSE(executor->AreSubmissionsBlocked());
 
     EXPECT_TRUE(result.cause.IsFailure());
 
     EXPECT_EQ(viewport.presents, 0u);
+
+    rhi->failContextCreation = false;
+
+    rejected.lists[0]->Draw(3, 1, 0, 0);
+
+    const RHIBatchResult retry = executor->SubmitGroups(rejected.groups, {}, &viewport);
+
+    EXPECT_EQ(retry.submission, RHISubmissionResult::eSuccess);
+
+    EXPECT_EQ(viewport.presents, 1u);
 
     // Retained batches reference the stack viewport; release them before it leaves scope.
     rejected.lists.clear();

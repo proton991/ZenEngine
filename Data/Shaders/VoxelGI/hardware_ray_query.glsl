@@ -5,7 +5,8 @@
 layout(set=6,binding=0) uniform accelerationStructureEXT sceneAccelerationStructure;
 layout(std430,set=6,binding=1) readonly buffer RayGeometryMetadata { uvec4 rayGeometries[]; };
 layout(std430,set=6,binding=2) readonly buffer RayInstanceMetadata { uvec4 rayInstances[]; };
-layout(std140,set=6,binding=5) uniform uRayQueryData { vec4 minimum; vec4 maximum; uvec4 generation; } rayScene;
+// A retained geometry snapshot must not multiply descriptors by the uniform ring slot.
+layout(std140,set=2,binding=3) uniform uRayQueryData { vec4 minimum; vec4 maximum; uvec4 generation; } rayScene;
 
 uvec4 RayTriangle(uint instance,uint geometry,uint primitive)
 {

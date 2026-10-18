@@ -54,6 +54,7 @@ std::unordered_map<std::string, asset::TextureInfo> textureFiles;
 // Mutable asset facade used with the real renderer/graph implementations below.
 struct SceneInputs
 {
+    const FrameBufferRing*  vertexRing{};
     RHIBuffer*              vertices{};
     RHIBuffer*              indices{};
     RHIBuffer*              nodes{};
@@ -532,6 +533,7 @@ public:
     std::vector<RHIMemoryTransition>                memoryBarriers;
     std::vector<RHIBufferTextureCopyRegion>         textureCopies;
     std::vector<RHITextureCopyRegion>               imageCopies;
+    HeapVector<std::pair<RHITexture*, RHITexture*>> imageCopyTextures;
     std::vector<RHITextureBlitRegion>               blits;
     std::vector<RHIBufferCopyRegion>                bufferCopies;
     std::vector<std::vector<uint8_t>>               values;
@@ -729,6 +731,8 @@ public:
 
     void RHICopyTexture(RHITexture* pSrcTexture, RHITexture* pDstTexture, VectorView<RHITextureCopyRegion> regions) override
     {
+        imageCopyTextures.emplace_back(pSrcTexture, pDstTexture);
+
         imageCopies.insert(imageCopies.end(), regions.begin(), regions.end());
     }
 
@@ -978,7 +982,6 @@ public:
     TestContext                                                transfer{RHICommandContextType::eTransfer};
     std::array<uint64_t, 3>                                    submitted{};
     std::array<uint64_t, 3>                                    completed{};
-    std::array<bool, 3>                                        pending{};
     RHIGPUInfo                                                 info{};
     RHIGPUMemoryStats                                          memoryStats{};
     RHIQueueCopyCapabilities                                   graphicsCopy{true, true, true, {1, 1, 1}};
@@ -1259,17 +1262,29 @@ public:
 
     RHIStatus FinalizeCommandLists(VectorView<RHICommandList*> lists, HeapVector<RHIPlatformCommandList*>&) override
     {
-        submissionsBlocked |= !PrepareCommandListDependencies(lists);
+        // Recorded GPU waits are order-independent here, so all lists are prepared before any is queued.
+        bool prepared = true;
 
         for (RHICommandList* list : lists)
         {
+            prepared = prepared && list != nullptr
+                    && PrepareSubmissionDependencies(list->GetContext(), list->GetSubmissionDependencies());
+        }
+
+        submissionsBlocked |= !prepared;
+
+        for (RHICommandList* list : lists)
+        {
+            if (list != nullptr)
+            {
+                list->SetSubmittedSerial(0);
+            }
+
             if (!submissionsBlocked)
             {
                 ++finalizedLists;
 
                 pendingCommandLists.push_back(list);
-
-                pending[Index(list->GetContext()->GetContextType())] = true;
             }
         }
 
@@ -1299,8 +1314,6 @@ public:
 
             if (fail && !submitBeforeFailure)
             {
-                pending.fill(false);
-
                 pendingCommandLists.clear();
 
                 result = submissionFailure;
@@ -1308,22 +1321,25 @@ public:
             else
             {
                 // Execute accepted commands only. Failed native submission has no GPU byte effects.
+                std::array<bool, 3> started{};
+
                 for (RHICommandList* list : pendingCommandLists)
                 {
                     list->Execute();
+
+                    const size_t queue = Index(list->GetContext()->GetContextType());
+
+                    if (list->HasSubmissionBoundary() || !started[queue])
+                    {
+                        ++submitted[queue];
+                    }
+
+                    started[queue] = true;
+
+                    list->SetSubmittedSerial(submitted[queue]);
                 }
 
                 pendingCommandLists.clear();
-
-                for (size_t i = 0; i < pending.size(); ++i)
-                {
-                    if (pending[i])
-                    {
-                        ++submitted[i];
-
-                        pending[i] = false;
-                    }
-                }
 
                 result = fail ? submissionFailure : RHISubmissionResult::eSuccess;
             }
@@ -1562,18 +1578,42 @@ RenderScene::RenderScene(RenderDevice* device, const SceneData& data) :
 
 void RenderScene::PrepareBuffers()
 {
-    m_pVertexBuffer = sceneInputs.vertices;
+    m_pIndexBuffer = sceneInputs.indices;
+}
 
-    m_pIndexBuffer  = sceneInputs.indices;
+// Ring-owned scene storage is replaced by fixture-owned buffers; the fixture releases them.
+RHIBuffer* RenderScene::GetVertexBuffer() const
+{
+    return sceneInputs.vertices;
+}
 
-    m_pNodeSSBO     = sceneInputs.nodes;
+RHIBuffer* RenderScene::GetUVBuffer() const
+{
+    return sceneInputs.uv;
+}
 
-    m_pMaterialSSBO = sceneInputs.materials;
+RHIBuffer* RenderScene::GetNodesDataSSBO() const
+{
+    return sceneInputs.nodes;
+}
 
-    m_pUVBuffer     = sceneInputs.uv;
+RHIBuffer* RenderScene::GetMaterialsDataSSBO() const
+{
+    return sceneInputs.materials;
 }
 
 // The renderer facade above supplies synthetic node indices independently of assets.
+uint64_t RenderScene::GetVertexGeneration() const
+{
+    return sceneInputs.vertexRing != nullptr ? sceneInputs.vertexRing->GetGeneration() : GetVertexBuffer()->GetStableId();
+}
+
+bool RenderScene::HasVertexGeneration(const RHIBuffer* buffer, uint64_t generation) const
+{
+    return sceneInputs.vertexRing != nullptr ? sceneInputs.vertexRing->ContainsGeneration(buffer, generation)
+                                             : buffer != nullptr && buffer->GetStableId() == generation;
+}
+
 uint32_t RenderScene::GetInstanceMask(uint32_t) const
 {
     return GI_STATIC;
@@ -1666,7 +1706,19 @@ struct RDGSubmissionTestAccess
 
     static bool HasHistory(const ResourceStateTracker& tracker, uint64_t id)
     {
-        return tracker.m_textureStates.contains(id) || tracker.m_bufferStates.contains(id) || tracker.m_contents.contains(id);
+        return tracker.HasResourceState(id);
+    }
+
+    static const RDGResourceContent* StoredContents(const ResourceStateTracker& tracker, uint64_t id)
+    {
+        const auto found = tracker.m_contents.find(id);
+
+        return found == tracker.m_contents.end() ? nullptr : &found->second;
+    }
+
+    static size_t UnresolvedResources(const RenderSubmissionHistory& history)
+    {
+        return history.m_unresolved.size();
     }
 
     static bool HasHistory(const RenderDevice& device, uint64_t id)
@@ -1680,7 +1732,14 @@ struct RDGSubmissionTestAccess
 
     static size_t PendingFrameCount(const RenderDevice& device)
     {
-        return device.m_pendingFrames.size();
+        size_t count = 0;
+
+        for (const RenderDevice::PendingSubmission& pending : device.m_pendingSubmissions)
+        {
+            count += pending.frame != nullptr ? 1u : 0u;
+        }
+
+        return count;
     }
 };
 } // namespace zen::rc
@@ -1700,7 +1759,8 @@ protected:
                           RHIExecutionMode         mode        = RHIExecutionMode::eInline,
                           AsyncComputeMode         asyncMode   = RenderConfig::GetInstance().asyncComputeMode,
                           RHIQueueCapabilities     queues      = {false, false, {0, 1, 2}},
-                          RHIQueueCopyCapabilities computeCopy = {false, true, true, {1, 1, 1}})
+                          RHIQueueCopyCapabilities computeCopy = {false, true, true, {1, 1, 1}},
+                          RHIRayQueryCapabilities  rayQuery    = {})
     {
         destroyed.clear();
 
@@ -1715,6 +1775,8 @@ protected:
         rhi->submissionQueueCapabilities = queues;
 
         rhi->computeCopy                 = computeCopy;
+
+        rhi->info.rayQuery               = rayQuery;
 
         GDynamicRHI                      = rhi;
 
@@ -4214,7 +4276,7 @@ TEST_F(RenderCoreTest, VoxelOwnersResetBeforeFirstAndRequestedVoxelizations)
 
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
 
-        volumes.OnRenderGraphExecuted(true);
+        volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
 
         EXPECT_EQ(volumes.GetGeometryRevision(), frame == 2 ? 2u : 1u);
     }
@@ -4595,7 +4657,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
             EXPECT_FALSE(device->ExecuteRenderGraph(*graph));
 
-            skybox.OnRenderGraphExecuted(false);
+            skybox.OnRenderGraphExecuted(RenderFrameResult::eFailed);
 
             // Rebuild without loading/preprocessing the environment again.
             ASSERT_TRUE(graph->Begin());
@@ -4636,7 +4698,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
 
-        skybox.OnRenderGraphExecuted(true);
+        skybox.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
 
         for (RDGResult const& warning : graph->GetWarnings())
         {
@@ -4974,7 +5036,7 @@ TEST_F(RenderCoreTest, StagingBlocksWaitForBothQueuesAndUnsubmittedAllocations)
 
     EXPECT_EQ(second.offset, 8u);
 
-    manager.Release(first, {{3, 0, 2}});
+    manager.Release(first, {{{3, 0, 2}}});
 
     rhi->completed = {3, 0, 2};
 
@@ -4982,7 +5044,7 @@ TEST_F(RenderCoreTest, StagingBlocksWaitForBothQueuesAndUnsubmittedAllocations)
 
     EXPECT_EQ(manager.Allocate(16, 4, &blocked), StagingFlushAction::eFlush);
 
-    manager.Release(second, {{4, 0, 2}});
+    manager.Release(second, {{{4, 0, 2}}});
 
     EXPECT_EQ(manager.Allocate(16, 4, &blocked), StagingFlushAction::eFlush);
 
@@ -5033,7 +5095,7 @@ TEST_F(RenderCoreTest, StagingReleaseStopsInvalidAllocationsAndPreservesReuse)
 
     spdlog::set_default_logger(logger);
 
-    manager.Release(allocation, {{3, 0, 2}});
+    manager.Release(allocation, {{{3, 0, 2}}});
 
     const std::string validLog = output.str();
 
@@ -5209,7 +5271,7 @@ TEST_F(RenderCoreTest, CancelledUploadsPreserveSharedStagingUsersAndBothCompleti
 
     ASSERT_EQ(manager.Allocate(16, 16, &submitted), StagingFlushAction::eNone);
 
-    manager.Release(submitted, {{7, 0, 5}});
+    manager.Release(submitted, {{{7, 0, 5}}});
 
     ASSERT_EQ(manager.Allocate(16, 16, &unrelated), StagingFlushAction::eNone);
 
@@ -5568,13 +5630,15 @@ TEST_F(RenderCoreTest, DeferredBufferDestructionUsesCompletionSerials)
 
     device->DestroyBuffer(buffer);
 
-    EXPECT_GT(rhi->submitted[2], 0u);
+    EXPECT_EQ(rhi->submitted[2], 0u);
 
     EXPECT_EQ(rhi->submitted[0], 0u);
 
     EXPECT_FALSE(destroyed.contains(id));
 
     device->NextFrame();
+
+    EXPECT_GT(rhi->submitted[2], 0u);
 
     EXPECT_FALSE(destroyed.contains(id));
 
@@ -5714,6 +5778,11 @@ TEST_F(RenderCoreTest, InvalidShaderAndBindingDeclarationsEmitNoCommands)
         EXPECT_EQ(graph.GetExecutionState(), RDGExecutionState::eInvalid);
 
         EXPECT_FALSE(graph.GetResult().message.empty());
+
+        if (scenario == 0)
+        {
+            EXPECT_EQ(graph.GetResult().message, "Pass 'bad_pass': Unknown or uninitialized shader 'missing_shader'");
+        }
 
         EXPECT_FALSE(callbackRan);
 
@@ -6227,6 +6296,116 @@ TEST(RenderCoreUtilities, CommandRollbackDestroysOnlyAppendedCommands)
     EXPECT_EQ(appendedDestroyed, 3u);
 }
 
+TEST_F(RenderCoreTest, CompilerChecksPreserveNamedShaderDiagnostics)
+{
+    for (bool graphics : {false, true})
+    {
+        RenderGraph graph("compiler_diagnostics");
+
+        ASSERT_TRUE(graph.Begin());
+
+        RDGPassCompiler compiler(device, &graph);
+
+        if (graphics)
+        {
+            RDGGraphicsPassDesc desc;
+
+            desc.SetShaderProgramName("missing{shader}");
+
+            EXPECT_EQ(compiler.CompileGraphicsPass(desc), nullptr);
+        }
+        else
+        {
+            RDGComputePassDesc desc;
+
+            desc.SetShaderProgramName("missing{shader}");
+
+            EXPECT_EQ(compiler.CompileComputePass(desc), nullptr);
+        }
+
+        EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eShader);
+
+        EXPECT_EQ(graph.GetResult().message, "Invalid shader program 'missing{shader}'");
+    }
+}
+
+TEST_F(RenderCoreTest, ResultChecksPreserveFormattedAndFirstDiagnostics)
+{
+    RDGResult result;
+
+    EXPECT_TRUE(result.Check(true, RDGErrorCode::eBinding, "A literal diagnostic longer than short-string storage"));
+
+    EXPECT_TRUE(result.Check(true, RDGErrorCode::eBinding, std::string("An existing owned diagnostic")));
+
+    EXPECT_TRUE(result.CheckFormat(true, RDGErrorCode::eAllocation, "Failed to materialize resource '{}'", "unchanged"));
+
+    EXPECT_TRUE(result.message.empty());
+
+    EXPECT_FALSE(result.CheckFormat(false, RDGErrorCode::eAllocation, "Failed to materialize resource '{}'", "volume{1}"));
+
+    EXPECT_EQ(result.code, RDGErrorCode::eAllocation);
+
+    EXPECT_EQ(result.message, "Failed to materialize resource 'volume{1}'");
+
+    EXPECT_FALSE(result.Check(true, RDGErrorCode::eBinding, "Later successful check"));
+
+    EXPECT_FALSE(result.CheckFormat(false, RDGErrorCode::eBinding, "Later failure '{}'", "ignored"));
+
+    EXPECT_EQ(result.code, RDGErrorCode::eAllocation);
+
+    EXPECT_EQ(result.message, "Failed to materialize resource 'volume{1}'");
+}
+
+TEST_F(RenderCoreTest, EncoderNamedChecksPreserveExactDiagnostics)
+{
+    ShaderProgram* program = CreateTestShaderProgram(device, "diagnostic_shader");
+
+    RDGComputePass pass;
+
+    pass.pPipeline = device->GetOrCreateComputePipeline(program->GetShader());
+
+    ASSERT_NE(pass.pPipeline, nullptr);
+
+    TestBuffer* buffer     = Buffer();
+
+    const char* messages[] = {"DispatchIndirect requires UseIndirectBuffer for its argument buffer",
+                              "DispatchIndirect argument range is out of bounds or misaligned",
+                              "Invalid shader value binding 'missing{value}'"};
+
+    for (uint32_t scenario = 0; scenario < std::size(messages); ++scenario)
+    {
+        SCOPED_TRACE(scenario);
+
+        RHICommandList commands;
+
+        RDGComputePassDesc desc;
+
+        if (scenario == 1)
+        {
+            desc.indirectBuffers.push_back(buffer);
+        }
+
+        RDGPassCmdEncoder encoder(&commands, &pass, nullptr, &desc);
+
+        if (scenario < 2)
+        {
+            encoder.DispatchIndirect(buffer, scenario);
+        }
+        else
+        {
+            encoder.SetShaderValue("missing{value}", uint32_t(1));
+        }
+
+        EXPECT_EQ(encoder.GetResult().code, scenario == 1 ? RDGErrorCode::eRange : RDGErrorCode::eBinding);
+
+        EXPECT_EQ(encoder.GetResult().message, messages[scenario]);
+
+        EXPECT_EQ(commands.GetCommandCount(), 0u);
+    }
+
+    device->DestroyBuffer(buffer);
+}
+
 TEST_F(RenderCoreTest, EncoderFailureStopsCommandsAndRetainsFirstError)
 {
     for (bool explicitFailure : {false, true})
@@ -6261,6 +6440,8 @@ TEST_F(RenderCoreTest, EncoderFailureStopsCommandsAndRetainsFirstError)
         const RDGResult first = encoder.GetResult();
 
         EXPECT_EQ(first.code, explicitFailure ? RDGErrorCode::eCallback : RDGErrorCode::eUnsupportedCommand);
+
+        EXPECT_EQ(first.message, explicitFailure ? "application failure" : "Draw is not supported in this pass");
 
         encoder.Dispatch(1, 1, 1);
 
@@ -6612,7 +6793,7 @@ TEST_F(RenderCoreTest, RejectedSubmissionKeepsStatePrivateAndDoesNotPublishExtra
 
         EXPECT_FALSE(device->ExecuteRenderGraph(graph));
 
-        EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eSubmission);
+        EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eSubmissionRejected);
 
         EXPECT_EQ(rhi->submitted, submitted);
 
@@ -6947,7 +7128,7 @@ TEST_F(RenderCoreTest, FrameAndPresentationShareOneSubmissionAndRejectTogether)
 
     const uint32_t before = rhi->submissionAttempts;
 
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
 
     EXPECT_EQ(rhi->submissionAttempts, before + 1);
 
@@ -6961,7 +7142,7 @@ TEST_F(RenderCoreTest, FrameAndPresentationShareOneSubmissionAndRejectTogether)
 
     rhi->failSubmissionAt = rhi->submissionAttempts + 1;
 
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eDeclined);
 
     EXPECT_EQ(rhi->submissionAttempts, before + 2);
 
@@ -6971,11 +7152,15 @@ TEST_F(RenderCoreTest, FrameAndPresentationShareOneSubmissionAndRejectTogether)
 
     EXPECT_EQ(rhi->submitted[0], 1u);
 
-    EXPECT_TRUE(device->AreSubmissionsBlocked());
+    EXPECT_FALSE(device->AreSubmissionsBlocked());
 
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    RecordPresentationGraph(graph, source, target);
 
-    EXPECT_EQ(rhi->submissionAttempts, before + 2);
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+
+    EXPECT_EQ(rhi->submissionAttempts, before + 3);
+
+    EXPECT_EQ(viewport.presents, 2u);
 
     device->DestroyBuffer(source);
 
@@ -9103,6 +9288,93 @@ TEST(RenderCoreBindlessCapacityTest, SceneCheckFollowsTheTextureArraySlotLayout)
 
     // Without heaps, even an empty scene has no slot for the fallback sampler.
     EXPECT_FALSE(GetSceneBindlessCapacityError(RHIBindlessHeapCapacities{{0, 0, 0}}, 0, 0).empty());
+}
+
+TEST(RenderCoreSceneInputTest, BufferLimitsRejectContentBeforeAllocationOrCountNarrowing)
+{
+    RHIGPUInfo gpu;
+
+    gpu.storageBufferAlignment = 256;
+
+    gpu.maxStorageBufferRange  = 4096;
+
+    sg::Scene scene;
+
+    EXPECT_TRUE(RenderScene::GetResourceError(gpu, scene, 3, 3).empty());
+
+    EXPECT_NE(RenderScene::GetResourceError(gpu, scene, 4096 / sizeof(asset::Vertex) + 1, 3).find("vertices"),
+              std::string::npos);
+
+    EXPECT_NE(RenderScene::GetResourceError(gpu, scene, 3, 1025).find("indices"), std::string::npos);
+
+    EXPECT_FALSE(RenderScene::GetResourceError(gpu, scene, UINT64_MAX, 3).empty());
+
+    EXPECT_NE(RenderScene::GetResourceError(gpu, scene, 3, uint64_t(UINT32_MAX) + 1).find("indices"), std::string::npos);
+
+    scene.GetAssetData().vertexTexCoords.resize(1);
+
+    scene.GetAssetData().vertexTexCoords[0].resize(128);
+
+    EXPECT_NE(RenderScene::GetResourceError(gpu, scene, 3, 3).find("texture coordinates"), std::string::npos);
+
+    scene.GetAssetData().vertexTexCoords.clear();
+
+    gpu.maxStorageBufferRange = UINT32_MAX;
+
+    // Vertex/index creation does not pad; storage allocations must leave room for alignment.
+    EXPECT_TRUE(RenderScene::GetResourceError(gpu, scene, 3, UINT32_MAX / 4).empty());
+
+    scene.GetAssetData().vertexTexCoords.resize(1);
+
+    scene.GetAssetData().vertexTexCoords[0].resize(128);
+
+    gpu.storageBufferAlignment = 4096;
+
+    const uint64_t vertices    = ((uint64_t(UINT32_MAX) - 4095) / sizeof(Vec4) - 1) / 128;
+
+    EXPECT_NE(RenderScene::GetResourceError(gpu, scene, vertices + 1, 3).find("texture coordinates"), std::string::npos);
+
+    EXPECT_TRUE(RenderScene::GetResourceError(gpu, scene, vertices, 3).empty());
+}
+
+TEST(RenderCoreSceneInputTest, StoragePayloadValidationIncludesAllocationPadding)
+{
+    RHIGPUInfo gpu;
+
+    gpu.maxStorageBufferRange  = UINT32_MAX;
+
+    gpu.storageBufferAlignment = 256;
+
+    uint64_t bytes             = 0;
+
+    EXPECT_EQ(ValidateGIStorageBuffer(UINT32_MAX - 255, 1, gpu, bytes), GIResourceStatus::eSuccess);
+
+    EXPECT_EQ(bytes, uint64_t(UINT32_MAX) - 255);
+
+    EXPECT_EQ(ValidateGIStorageBuffer(UINT32_MAX - 254, 1, gpu, bytes), GIResourceStatus::eBufferSize);
+
+    EXPECT_EQ(ValidateGIStorageBuffer(UINT64_MAX, 16, gpu, bytes), GIResourceStatus::eOverflow);
+
+    EXPECT_EQ(ValidateGIStorageBuffer(1, 0, gpu, bytes), GIResourceStatus::eInvalidInput);
+
+    gpu.maxStorageBufferRange = 63;
+
+    EXPECT_EQ(ValidateGIStorageBuffer(4, 16, gpu, bytes), GIResourceStatus::eDescriptorRange);
+}
+
+TEST(RenderCoreSceneInputTest, BindlessCapacityErrorPrecedesBufferErrors)
+{
+    RHIGPUInfo gpu;
+
+    gpu.bindlessHeapCapacities.Set(RHIBindlessHeapType::eTexture2D, 1);
+
+    sg::Scene scene;
+
+    scene.AddComponent(MakeUnique<sg::Texture>("first"));
+
+    scene.AddComponent(MakeUnique<sg::Texture>("second"));
+
+    EXPECT_NE(RenderScene::GetResourceError(gpu, scene, UINT64_MAX, UINT64_MAX).find("2 textures"), std::string::npos);
 }
 
 TEST(RenderCoreBindlessCapacityTest, OptionsRejectEmptyHeapsAndKeepTheEarlierRequest)
@@ -13288,6 +13560,191 @@ TEST_F(RenderCoreTest, PoolBudgetDoesNotReuseAllocationsBeforeEveryQueueComplete
     EXPECT_EQ(resources->GetPoolStats().availableCount, 0u);
 }
 
+TEST_F(RenderCoreTest, TextureViewCacheStaysBoundedAcrossResizeAndKeepsPooledViews)
+{
+    CreateTestShaderProgram(device, "intent");
+
+    RenderGraph graph("view_cache_resize");
+
+    ASSERT_TRUE(graph.SetOptimizations(false, false));
+
+    RDGResourceManager* resources = graph.GetResourceManager();
+
+    ASSERT_TRUE(resources->SetPoolConfig({4096, 120}));
+
+    uint64_t firstView = 0;
+
+    for (uint32_t frame = 0; frame < 24; ++frame)
+    {
+        ASSERT_TRUE(graph.Begin());
+
+        RDGTextureDesc desc  = LogicalTexture(2);
+
+        desc.texFormat.width = desc.texFormat.height = std::max(1u, frame) * 8;
+
+        const RDGTexture texture                     = resources->CreateTexture(desc);
+
+        graph.AddTransferPass("clear_view_cache_texture").ClearTexture(texture, Color(0.f));
+
+        RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+
+        range.baseMipLevel               = 1;
+
+        RDGComputePassDesc read          = IntentPass();
+
+        read.BindSampledTexture("texture", nullptr, texture, RDGTextureViewDesc{range});
+
+        graph.AddComputePass(read);
+
+        ASSERT_TRUE(graph.End());
+
+        rhi->graphics.boundResources.clear();
+
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+        ASSERT_EQ(rhi->graphics.boundResources.size(), 1u);
+
+        const uint64_t view = rhi->graphics.boundResources[0]->GetStableId();
+
+        if (frame == 0)
+        {
+            firstView = view;
+        }
+        else if (frame == 1)
+        {
+            EXPECT_EQ(view, firstView);
+
+            EXPECT_EQ(resources->GetPoolStats().hits, 1u);
+        }
+
+        EXPECT_EQ(resources->GetPoolStats().cachedViewCount,
+                  resources->GetPoolStats().assignedCount + resources->GetPoolStats().availableCount);
+
+        ASSERT_TRUE(graph.Reset());
+
+        EXPECT_EQ(resources->GetPoolStats().cachedViewCount, resources->GetPoolStats().availableCount);
+
+        EXPECT_LE(resources->GetPoolStats().cachedViewCount, 3u);
+
+        rhi->completed = rhi->submitted;
+
+        device->CollectCompletedResources();
+    }
+
+    ASSERT_TRUE(resources->TrimPool(true));
+
+    EXPECT_EQ(resources->GetPoolStats().cachedViewCount, 0u);
+}
+
+TEST_F(RenderCoreTest, TextureViewCacheDropsImportsBeforeDeferredOwnerRelease)
+{
+    CreateTestShaderProgram(device, "intent");
+
+    RenderGraph graph("view_cache_imports");
+
+    ASSERT_TRUE(graph.SetOptimizations(false, false));
+
+    RDGResourceManager* resources = graph.GetResourceManager();
+
+    for (uint32_t frame = 0; frame < 12; ++frame)
+    {
+        RHITexture* physical     = Texture(2);
+
+        const uint64_t textureId = physical->GetStableId();
+
+        ASSERT_TRUE(graph.Begin());
+
+        const RDGTexture texture = resources->ImportTexture(physical, RDGImportContents::eUnknown);
+
+        graph.AddTransferPass("clear_import").ClearTexture(texture, Color(0.f));
+
+        RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+
+        range.baseMipLevel               = 1;
+
+        RDGComputePassDesc read          = IntentPass();
+
+        read.BindSampledTexture("texture", nullptr, texture, RDGTextureViewDesc{range});
+
+        graph.AddComputePass(read);
+
+        ASSERT_TRUE(graph.End());
+
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+        EXPECT_EQ(resources->GetPoolStats().cachedViewCount, 1u);
+
+        physical->ReleaseReference();
+
+        ASSERT_TRUE(graph.Reset());
+
+        EXPECT_EQ(resources->GetPoolStats().cachedViewCount, 0u);
+
+        EXPECT_FALSE(destroyed.contains(textureId));
+
+        rhi->completed = rhi->submitted;
+
+        device->CollectCompletedResources();
+
+        EXPECT_TRUE(destroyed.contains(textureId));
+    }
+}
+
+TEST_F(RenderCoreTest, TextureViewCacheDropsExtractionWithoutReleasingItsOwner)
+{
+    CreateTestShaderProgram(device, "intent");
+
+    RenderGraph graph("view_cache_extraction");
+
+    ASSERT_TRUE(graph.SetOptimizations(false, false));
+
+    ASSERT_TRUE(graph.Begin());
+
+    RDGResourceManager* resources = graph.GetResourceManager();
+
+    const RDGTexture texture      = resources->CreateTexture(LogicalTexture(2));
+
+    graph.AddTransferPass("clear_extraction").ClearTexture(texture, Color(0.f));
+
+    RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+
+    range.baseMipLevel               = 1;
+
+    RDGComputePassDesc read          = IntentPass();
+
+    read.BindSampledTexture("texture", nullptr, texture, RDGTextureViewDesc{range});
+
+    graph.AddComputePass(read);
+
+    RDGExtractedTexture extracted = resources->QueueTextureExtraction(texture);
+
+    ASSERT_TRUE(graph.End());
+
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+    ASSERT_NE(extracted.Get(), nullptr);
+
+    const uint64_t textureId = extracted.Get()->GetStableId();
+
+    EXPECT_EQ(resources->GetPoolStats().cachedViewCount, 1u);
+
+    ASSERT_TRUE(graph.Reset());
+
+    EXPECT_EQ(resources->GetPoolStats().cachedViewCount, 0u);
+
+    rhi->completed = rhi->submitted;
+
+    device->CollectCompletedResources();
+
+    EXPECT_FALSE(destroyed.contains(textureId));
+
+    extracted.Reset();
+
+    device->CollectCompletedResources();
+
+    EXPECT_TRUE(destroyed.contains(textureId));
+}
+
 TEST_F(RenderCoreTest, TexturePoolAccountsMipsLayersSamplesAndBoundsResizeFamilies)
 {
     RenderGraph graph("texture_budget");
@@ -13406,6 +13863,155 @@ TEST_F(RenderCoreTest, IdlePoolTrimKeepsTheNewestBuildWorkingSet)
     EXPECT_EQ(resources->GetPoolStats().misses, 2u);
 
     EXPECT_EQ(resources->GetPoolStats().hits, 1u);
+}
+
+TEST_F(RenderCoreTest, PoolPrefersStableLogicalUsesAcrossOptionalPassesAndFallsBackForNewNames)
+{
+    RenderGraph graph("stable_pool_bindings");
+    ASSERT_TRUE(graph.SetOptimizations(true, false));
+    RDGResourceManager* resources = graph.GetResourceManager();
+    RHIBuffer*          input     = Buffer();
+    uint64_t            textureIds[2]{};
+    uint64_t            bufferIds[2]{};
+    for (uint32_t frame = 0; frame < 6; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        ASSERT_TRUE(graph.Begin());
+        RDGTexture      textures[2];
+        RDGBuffer       buffers[2];
+        const RDGBuffer source = resources->ImportHostWrittenBuffer(input);
+        for (uint32_t i = 0; i < 2; ++i)
+        {
+            const uint32_t index = frame % 2 == 0 ? i : 1 - i;
+            if (frame != 2 || index == 0)
+            {
+                RDGTextureDesc texture = LogicalTexture();
+                RDGBufferDesc  buffer  = LogicalBuffer();
+                texture.name           = frame == 5 ? "new_texture" : index == 0 ? "texture_a" : "texture_b";
+                buffer.name            = frame == 5 ? "new_buffer" : index == 0 ? "buffer_a" : "buffer_b";
+                textures[index]        = resources->CreateTexture(texture);
+                buffers[index]         = resources->CreateBuffer(buffer);
+                graph.AddTransferPass("clear").NeverCull().ClearTexture(textures[index], Color(0.f));
+                graph.AddTransferPass("copy").NeverCull().CopyBuffer(source, buffers[index], {0, 0, 64});
+            }
+        }
+        ASSERT_TRUE(graph.End());
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        for (uint32_t i = 0; i < 2; ++i)
+        {
+            if (textures[i])
+            {
+                const uint64_t textureId = DescribeResource(resources, textures[i]).physicalStableId;
+                const uint64_t bufferId  = DescribeResource(resources, buffers[i]).physicalStableId;
+                if (frame == 0)
+                {
+                    textureIds[i] = textureId;
+                    bufferIds[i]  = bufferId;
+                }
+                else if (frame < 5)
+                {
+                    EXPECT_EQ(textureId, textureIds[i]);
+                    EXPECT_EQ(bufferId, bufferIds[i]);
+                }
+                else
+                {
+                    EXPECT_TRUE(textureId == textureIds[0] || textureId == textureIds[1]);
+                    EXPECT_TRUE(bufferId == bufferIds[0] || bufferId == bufferIds[1]);
+                }
+            }
+        }
+        rhi->completed = rhi->submitted;
+        device->CollectCompletedResources();
+        ASSERT_TRUE(graph.Reset());
+    }
+    EXPECT_EQ(resources->GetPoolStats().misses, 4u);
+    device->DestroyBuffer(input);
+}
+
+TEST_F(RenderCoreTest, RetiredWorkingSetsKeepTheirPhaseWithoutForcingNewAllocations)
+{
+    RHIBuffer* input = Buffer();
+
+    for (const uint32_t warmupSlots : {1u, 3u})
+    {
+        SCOPED_TRACE(warmupSlots);
+
+        RenderGraph graph("stable_pool_phase");
+
+        RDGResourceManager* resources = graph.GetResourceManager();
+
+        ASSERT_TRUE(resources->SetPoolConfig({4096, 120, 3}));
+
+        uint64_t textureIds[3]{};
+
+        uint64_t bufferIds[3]{};
+
+        for (uint32_t frame = 0; frame < 9; ++frame)
+        {
+            SCOPED_TRACE(frame);
+
+            ASSERT_TRUE(graph.Begin());
+
+            RDGTextureDesc textureDesc = LogicalTexture();
+
+            textureDesc.name           = "phase_texture";
+
+            RDGBufferDesc bufferDesc   = LogicalBuffer();
+
+            bufferDesc.name            = "phase_buffer";
+
+            const RDGTexture texture   = resources->CreateTexture(textureDesc);
+
+            const RDGBuffer buffer     = resources->CreateBuffer(bufferDesc);
+
+            const RDGBuffer source     = resources->ImportHostWrittenBuffer(input);
+
+            graph.AddTransferPass("fill_phase")
+                .NeverCull()
+                .ClearTexture(texture, Color(0.f))
+                .CopyBuffer(source, buffer, {0, 0, 64});
+
+            ASSERT_TRUE(graph.End());
+
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+            const uint64_t textureId = DescribeResource(resources, texture).physicalStableId;
+
+            const uint64_t bufferId  = DescribeResource(resources, buffer).physicalStableId;
+
+            if (frame < warmupSlots)
+            {
+                textureIds[frame] = textureId;
+
+                bufferIds[frame]  = bufferId;
+            }
+            else
+            {
+                EXPECT_EQ(textureId, textureIds[frame % warmupSlots]);
+
+                EXPECT_EQ(bufferId, bufferIds[frame % warmupSlots]);
+            }
+
+            if (frame + 1 >= warmupSlots)
+            {
+                // Several working sets can complete together. Their bindings must
+                // remain stable even when the most recently used one is available.
+                rhi->completed = rhi->submitted;
+
+                device->CollectCompletedResources();
+            }
+
+            ASSERT_TRUE(graph.Reset());
+        }
+
+        // With immediate completion, the wrong-phase entry is still reusable;
+        // phase preference must not allocate one working set per retained build.
+        EXPECT_EQ(resources->GetPoolStats().misses, 2u * warmupSlots);
+
+        EXPECT_EQ(resources->GetPoolStats().evictions, 0u);
+    }
+
+    device->DestroyBuffer(input);
 }
 
 TEST_F(RenderCoreTest, SteadyPoolKeepsEveryFrameSlotWorkingSetAboveTheBudget)
@@ -14283,7 +14889,7 @@ TEST_F(RenderCoreTest, StagingWaitsForItsOwnBlocksAndKeepsUnsubmittedAllocations
 
     ASSERT_EQ(manager.Allocate(16, 4, &unsubmitted), StagingFlushAction::eNone);
 
-    manager.Release(submitted, {{2, 0, 3}});
+    manager.Release(submitted, {{{2, 0, 3}}});
 
     rhi->submitted = {10, 100, 20};
 
@@ -14316,7 +14922,7 @@ TEST_F(RenderCoreTest, FailedStagingWaitDoesNotReuseTheBlock)
 
     ASSERT_EQ(manager.Allocate(16, 4, &allocation), StagingFlushAction::eNone);
 
-    manager.Release(allocation, {{1, 0, 1}});
+    manager.Release(allocation, {{{1, 0, 1}}});
 
     rhi->submitted          = {3, 0, 3};
 
@@ -14531,6 +15137,11 @@ struct RDGExecutionPlanTestAccess
 {
     using Plan = RDGExecutor::ExecutionPlan;
 
+    static RDGExecutor& Executor(RenderDevice& device)
+    {
+        return device.m_rdgExecutor;
+    }
+
     static bool Prepare(RDGExecutor& executor, RenderGraph& graph, Plan& plan)
     {
         return executor.PrepareExecution(&graph, plan);
@@ -14680,7 +15291,7 @@ TEST_F(RenderCoreTest, DeviceExecutionPreparesOnceForFirstBuildReplayAndViewport
 
     ASSERT_TRUE(frame->End());
 
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
 
     EXPECT_EQ(device->GetRDGMetrics().GetLastSnapshot().preparationPasses, 1u);
 
@@ -16370,6 +16981,8 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 #include "RHIThreadingTests.inl"
 #include "RHIGPUFrameExecutorTests.inl"
 #include "AsyncUploadTests.inl"
+#include "QueuedUploadTests.inl"
+#include "FrameBufferRingTests.inl"
 
 #include "AsyncComputeLifetimeTests.inl"
 #include "RDGQueuePreferenceTests.inl"
@@ -16381,3 +16994,5 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 #include "RDGSubmissionFailureTests.inl"
 #include "VoxelAsyncComputeTests.inl"
 #include "RHIProductionTests.inl"
+#include "ProductionBenchmarks.inl"
+#include "ResourceStateTrackerTests.inl"

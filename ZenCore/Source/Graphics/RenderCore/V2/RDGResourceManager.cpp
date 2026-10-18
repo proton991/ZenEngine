@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h"
 #include "Graphics/RHI/RHIResource.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include <bit>
 
 namespace zen::rc
 {
@@ -521,6 +522,14 @@ RHITextureView* RDGResourceManager::MaterializeView(RDGResource textureValue, co
     return pView;
 }
 
+void RDGResourceManager::RemoveCachedViews(uint64_t textureId)
+{
+    // Textures own the views; pruning a borrowed lookup entry does not change GPU lifetime.
+    m_viewCache.erase(std::remove_if(m_viewCache.begin(), m_viewCache.end(),
+                                     [textureId](const CachedView& cached) { return cached.textureId == textureId; }),
+                      m_viewCache.end());
+}
+
 RDGExtractionState::~RDGExtractionState()
 {
     if (resource != nullptr)
@@ -730,6 +739,16 @@ static void ReleaseResource(RenderDevice* device, RHIResource* resource)
 
 void RDGResourceManager::ReleaseRetainedResources(RenderDevice* device)
 {
+    // Transient owners have already moved into the pool or out through extraction.
+    // Imported owners leave at Reset; keep pooled views available for the next build.
+    m_viewCache.erase(std::remove_if(m_viewCache.begin(), m_viewCache.end(),
+                                     [this](const CachedView& cached) {
+                                         const Allocation* resource = FindResourceByStableId(cached.textureId);
+
+                                         return resource != nullptr && resource->imported;
+                                     }),
+                      m_viewCache.end());
+
     // Release graph-owned views before their backing textures, including during retirement.
     for (FlatHashMap<uint64_t, RHIResource*>::iterator it = m_retainedResources.begin(); it != m_retainedResources.end();)
     {
@@ -1138,13 +1157,15 @@ RDGPoolStats RDGResourceManager::GetPoolStats() const
 {
     RDGPoolStats stats;
 
-    stats.hits           = m_poolHits;
+    stats.hits            = m_poolHits;
 
-    stats.misses         = m_poolMisses;
+    stats.misses          = m_poolMisses;
 
-    stats.evictions      = m_poolEvictions;
+    stats.evictions       = m_poolEvictions;
 
-    const bool submitted = InFlight(CaptureRetirement());
+    stats.cachedViewCount = static_cast<uint32_t>(m_viewCache.size());
+
+    const bool submitted  = InFlight(CaptureRetirement());
 
     for (const Allocation* resource : m_resources)
     {
@@ -1257,10 +1278,15 @@ void RDGResourceManager::RetirePoolEntry(const PoolEntry& entry)
 {
     ++m_poolEvictions;
 
+    if (entry.resource->GetResourceType() == RHIResourceType::eTexture)
+    {
+        RemoveCachedViews(entry.resource->GetStableId());
+    }
+
     // Owner release joins the current frame's conservative retirement gate.
     ResourceRetirement retirement = CaptureRetirement();
 
-    retirement.requiredSerials.Extend(entry.retirement.requiredSerials);
+    retirement.Extend(entry.retirement);
 
     if (InFlight(retirement))
     {
@@ -1417,9 +1443,18 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
         }
     };
 
-    FlatHashMap<RDGTexturePoolKey, HeapVector<Slot>, RDGTexturePoolKeyHasher> textures;
+    struct QueueSlots
+    {
+        FlatHashMap<RDGTexturePoolKey, HeapVector<Slot>, RDGTexturePoolKeyHasher> textures;
 
-    FlatHashMap<RDGBufferPoolKey, HeapVector<Slot>, RDGBufferPoolKeyHasher> buffers;
+        FlatHashMap<RDGBufferPoolKey, HeapVector<Slot>, RDGBufferPoolKeyHasher> buffers;
+    };
+
+    constexpr size_t kQueueCount = size_t(RHICommandContextType::eMax);
+
+    SmallVector<QueueSlots, kQueueCount> queueSlots(kQueueCount);
+
+    const HeapVector<uint32_t> queueMasks = m_owner->GetResourceQueueMasks();
 
     for (Allocation* resource : ordered)
     {
@@ -1434,17 +1469,25 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
             break;
         }
 
-        HeapVector<Slot>& slots = resource->type == RDGResourceType::eTexture ? textures[MakeTexturePoolKey(*resource)]
-                                                                              : buffers[MakeBufferPoolKey(*resource)];
+        const uint32_t mask     = queueMasks[resource->id];
 
-        bool reused             = false;
+        HeapVector<Slot>* slots = nullptr;
 
-        if (!resource->exported && m_owner->m_schedule.allowsAllocationReuse && !slots.empty()
-            && slots[0].lastUse < resource->firstUse)
+        if (!resource->exported && m_owner->m_schedule.allowsAllocationReuse && std::has_single_bit(mask))
         {
-            std::pop_heap(slots.begin(), slots.end(), Slot::Later);
+            QueueSlots& pool = queueSlots[std::countr_zero(mask)];
 
-            Slot& slot         = slots.back();
+            slots            = resource->type == RDGResourceType::eTexture ? &pool.textures[MakeTexturePoolKey(*resource)]
+                                                                           : &pool.buffers[MakeBufferPoolKey(*resource)];
+        }
+
+        bool reused = false;
+
+        if (slots != nullptr && !slots->empty() && (*slots)[0].lastUse < resource->firstUse)
+        {
+            std::pop_heap(slots->begin(), slots->end(), Slot::Later);
+
+            Slot& slot         = slots->back();
 
             resource->pTexture = slot.allocation->pTexture;
 
@@ -1452,7 +1495,7 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
 
             slot.lastUse       = resource->lastUse;
 
-            std::push_heap(slots.begin(), slots.end(), Slot::Later);
+            std::push_heap(slots->begin(), slots->end(), Slot::Later);
 
             reused = true;
 
@@ -1463,19 +1506,19 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
         {
             CreatePhysicalResource(resource, *pDevice);
 
-            if (!result.Check(resource->pBuffer != nullptr || resource->pTexture != nullptr, RDGErrorCode::eAllocation,
-                              "Failed to allocate resource '" + resource->name.ToString() + "'"))
+            if (!result.CheckFormat(resource->pBuffer != nullptr || resource->pTexture != nullptr, RDGErrorCode::eAllocation,
+                                    "Failed to allocate resource '{}'", resource->name.CStr()))
             {
                 break;
             }
 
             resource->ownsPhysical = true;
 
-            if (!resource->exported)
+            if (slots != nullptr)
             {
-                slots.push_back({resource, resource->lastUse});
+                slots->push_back({resource, resource->lastUse});
 
-                std::push_heap(slots.begin(), slots.end(), Slot::Later);
+                std::push_heap(slots->begin(), slots->end(), Slot::Later);
             }
         }
     }
@@ -1500,6 +1543,11 @@ void RDGResourceManager::ReleaseTransientResources()
 
             if (resource->exported)
             {
+                if (resource->type == RDGResourceType::eTexture)
+                {
+                    RemoveCachedViews(physical->GetStableId());
+                }
+
                 if (m_owner && m_owner->m_pRenderDevice)
                 {
                     m_owner->m_pRenderDevice->DeferReleaseResource(physical);
@@ -1511,7 +1559,7 @@ void RDGResourceManager::ReleaseTransientResources()
             }
             else
             {
-                PoolEntry entry{physical, EstimateBytes(*resource), m_generation, CaptureRetirement()};
+                PoolEntry entry{physical, EstimateBytes(*resource), m_generation, CaptureRetirement(), resource->name};
 
                 if (resource->type == RDGResourceType::eTexture)
                 {
@@ -1642,22 +1690,45 @@ void RDGResourceManager::CreatePhysicalResource(Allocation* pResource, RenderDev
     }
 }
 
-RHIResource* RDGResourceManager::AcquirePoolEntry(HeapVector<PoolEntry>& entries)
+RHIResource* RDGResourceManager::AcquirePoolEntry(HeapVector<PoolEntry>& entries, NameID name)
 {
     RHIResource* resource = nullptr;
+    size_t       selected = entries.size();
 
     for (size_t i = entries.size(); i > 0; --i)
     {
         if (!InFlight(entries[i - 1].retirement))
         {
-            resource = entries[i - 1].resource;
+            if (selected == entries.size())
+            {
+                selected = i - 1;
+            }
+            // Prefer the same logical use and phase of the retained working set.
+            // Otherwise completion timing can permute transient/history bindings.
+            // Any completed compatible entry remains a fallback; never force a wait.
+            if (entries[i - 1].name == name)
+            {
+                const bool samePhase =
+                    m_poolConfig.steadyBuilds == 0
+                    || entries[i - 1].lastUsedBuild % m_poolConfig.steadyBuilds == m_generation % m_poolConfig.steadyBuilds;
 
-            entries.erase(entries.begin() + i - 1);
+                if (entries[selected].name != name || samePhase)
+                {
+                    selected = i - 1;
+                }
 
-            ++m_poolHits;
-
-            break;
+                if (samePhase)
+                {
+                    break;
+                }
+            }
         }
+    }
+    if (selected < entries.size())
+    {
+        resource = entries[selected].resource;
+        entries.erase(entries.begin() + selected);
+        ++m_poolHits;
     }
 
     return resource;
@@ -1669,7 +1740,7 @@ bool RDGResourceManager::TryAcquirePooledTexture(Allocation* pResource)
 
     if (iter != m_texturePool.end())
     {
-        pResource->pTexture = static_cast<RHITexture*>(AcquirePoolEntry(iter->second));
+        pResource->pTexture = static_cast<RHITexture*>(AcquirePoolEntry(iter->second, pResource->name));
     }
 
     return pResource->pTexture != nullptr;
@@ -1681,7 +1752,7 @@ bool RDGResourceManager::TryAcquirePooledBuffer(Allocation* pResource)
 
     if (iter != m_bufferPool.end())
     {
-        pResource->pBuffer = static_cast<RHIBuffer*>(AcquirePoolEntry(iter->second));
+        pResource->pBuffer = static_cast<RHIBuffer*>(AcquirePoolEntry(iter->second, pResource->name));
     }
 
     return pResource->pBuffer != nullptr;

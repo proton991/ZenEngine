@@ -92,9 +92,10 @@ struct RHISubmissionGroupResult
 
 struct RHIBatchResult
 {
-    RHIError                             cause{};
-    RHIPresentResult                     presentation{};
-    RHISubmissionResult                  submission{RHISubmissionResult::eRejected};
+    RHIError            cause{};
+    RHIPresentResult    presentation{};
+    RHISubmissionResult submission{RHISubmissionResult::eRejected};
+    // Native submissions made by this batch, including partial execution and presentation.
     RHICompletionSet                     requiredSerials;
     HeapVector<RHISubmissionGroupResult> groups;
     bool                                 presented{false};
@@ -118,6 +119,11 @@ public:
     // Waits for CPU submission processing, not GPU completion. The result is
     // borrowed from this ticket; keep a ticket alive while using the reference.
     const RHIBatchResult& Wait() const;
+
+    bool operator==(const RHISubmissionTicket& other) const
+    {
+        return m_completion.Get() == other.m_completion.Get();
+    }
 
 private:
     std::shared_future<RHIBatchResult> m_result;
@@ -144,6 +150,7 @@ struct RHICommandBatch : RefCounted
     RHIBatchResult                        result;
     bool                                  executionFinished{false};
     bool                                  endFrame{true};
+    bool                                  asynchronous{true};
 
     RHICommandBatch()                                  = default;
 
@@ -164,6 +171,7 @@ struct RHIThreadMetrics
     uint64_t             queueWaitUs{0};
     uint64_t             pendingBatches{0};
     uint64_t             peakPendingBatches{0};
+    uint64_t             submitGroupsWaitNS{0};
     RHIExecutionCounters native;
 };
 
@@ -189,8 +197,12 @@ public:
                                     RHIViewport*                         viewport,
                                     RefCountPtr<RHISubmissionState>      state = {});
 
+    // Ordered handoff without presentation or EndFrame. Late rejection blocks dependent batches.
+    RHISubmissionTicket SubmitQueuedGroups(VectorView<const RHISubmissionGroup> groups, RefCountPtr<RHISubmissionState> state);
+
     // Synchronous CPU handoff for standalone graphs; does not end the native frame. A viewport
-    // is presented after the groups, as SubmitFrame does.
+    // is presented after the groups, as SubmitFrame does. Rejection before any acceptance is
+    // retryable because the caller has not published scheduled state. SubmitFrame rejection blocks.
     RHIBatchResult SubmitGroups(VectorView<const RHISubmissionGroup> groups,
                                 RefCountPtr<RHISubmissionState>      state,
                                 RHIViewport*                         viewport = nullptr);
@@ -322,13 +334,12 @@ private:
     RHISubmissionTicket QueueBatch(VectorView<const RHISubmissionGroup> groups,
                                    RHIViewport*                         viewport,
                                    RefCountPtr<RHISubmissionState>      state,
-                                   bool                                 endFrame);
+                                   bool                                 endFrame,
+                                   bool                                 asynchronous);
 
     bool ValidateGroups(VectorView<const RHISubmissionGroup> groups, const RHISubmissionState& state) const;
 
-    bool ResolvePredecessors(RHICommandList& commands, VectorView<const RHISubmissionPoint> points);
-
-    uint64_t GetAcceptedSerial(const RHICommandList& commands, RHICommandContextType queue, uint64_t before) const;
+    bool ResolvePredecessors(RHICommandBatch& batch, size_t first, size_t group);
 
     bool ExecuteGroups(RHICommandBatch& batch);
     struct QueueProgress
@@ -406,5 +417,6 @@ private:
     std::atomic<uint64_t>         m_queueWaitUs{0};
     std::atomic<uint64_t>         m_pendingBatches{0};
     std::atomic<uint64_t>         m_peakPendingBatches{0};
+    std::atomic<uint64_t>         m_submitGroupsWaitNS{0};
 };
 } // namespace zen

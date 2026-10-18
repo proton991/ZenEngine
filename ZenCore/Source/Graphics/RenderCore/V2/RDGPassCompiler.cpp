@@ -126,7 +126,7 @@ static Vec3i MipExtent3D(const RHITextureCreateInfo& info, uint32_t mipLevel)
                  static_cast<int32_t>(MipExtent(info.depth, mipLevel))};
 }
 
-bool RDGPassCompiler::Check(bool condition, RDGErrorCode code, const std::string& message)
+bool RDGPassCompiler::Check(bool condition, RDGErrorCode code, std::string_view message)
 {
     bool result{};
 
@@ -161,8 +161,8 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
 
         ShaderProgram* pSP = ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
 
-        valid              = Check(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader,
-                                   "Invalid shader program '" + desc.shaderProgramName.ToString() + "'");
+        valid = CheckFormat(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader, "Invalid shader program '{}'",
+                            desc.shaderProgramName.CStr());
 
         if (valid)
         {
@@ -178,8 +178,8 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
             {
                 pGfxPass->pRenderingLayout = m_pRenderDevice->AcquireRenderingLayout();
 
-                valid                      = Check(pGfxPass->pRenderingLayout != nullptr, RDGErrorCode::eAllocation,
-                                                   "Failed to acquire rendering layout for '" + desc.passTag.ToString() + "'");
+                valid                      = CheckFormat(pGfxPass->pRenderingLayout != nullptr, RDGErrorCode::eAllocation,
+                                                         "Failed to acquire rendering layout for '{}'", desc.passTag.CStr());
             }
 
             if (valid)
@@ -193,8 +193,8 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
                         desc.pipelineStates, pSP->GetShader(), pGfxPass->pRenderingLayout, {}, timings.enabled);
                 }
 
-                valid = Check(pGfxPass->pPipeline != nullptr, RDGErrorCode::eAllocation,
-                              "Failed to create graphics pipeline for '" + desc.passTag.ToString() + "'");
+                valid = CheckFormat(pGfxPass->pPipeline != nullptr, RDGErrorCode::eAllocation,
+                                    "Failed to create graphics pipeline for '{}'", desc.passTag.CStr());
             }
 
             if (valid)
@@ -280,8 +280,8 @@ RDGComputePass* RDGPassCompiler::CompileComputePass(const RDGComputePassDesc& de
 
         ShaderProgram* pSP = ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
 
-        if (Check(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader,
-                  "Invalid shader program '" + desc.shaderProgramName.ToString() + "'"))
+        if (CheckFormat(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader, "Invalid shader program '{}'",
+                        desc.shaderProgramName.CStr()))
         {
             RDGComputePass* pComputePass = m_pRDG->AcquireComputePass();
 
@@ -299,8 +299,8 @@ RDGComputePass* RDGPassCompiler::CompileComputePass(const RDGComputePassDesc& de
                     pComputePass->pPipeline = m_pRenderDevice->GetOrCreateComputePipeline(pSP->GetShader(), timings.enabled);
                 }
 
-                if (Check(pComputePass->pPipeline != nullptr, RDGErrorCode::eAllocation,
-                          "Failed to create compute pipeline for '" + desc.passTag.ToString() + "'"))
+                if (CheckFormat(pComputePass->pPipeline != nullptr, RDGErrorCode::eAllocation,
+                                "Failed to create compute pipeline for '{}'", desc.passTag.CStr()))
                 {
                     pComputePass->pPipeline->AddReference();
 
@@ -349,7 +349,7 @@ struct RDGPassCompiler::ShaderParameterBuilder
     const RDGPassDescBase*      pDesc;
     RHIBatchedShaderParameters& parameters;
 
-    bool Check(bool condition, RDGErrorCode code, const std::string& message)
+    bool Check(bool condition, RDGErrorCode code, std::string_view message)
     {
         return compiler.Check(condition, code, message);
     }
@@ -582,8 +582,8 @@ bool RDGPassCmdEncoder::RequirePass(RDGCompiledPassType type, const char* comman
 
     const RDGCompiledPassType actual = m_pPass != nullptr ? m_pPass->type : RDGCompiledPassType::eTransfer;
 
-    if (Check(m_pCmdList != nullptr && actual == type, RDGErrorCode::eUnsupportedCommand,
-              std::string(command) + " is not supported in this pass"))
+    if (CheckFormat(m_pCmdList != nullptr && actual == type, RDGErrorCode::eUnsupportedCommand,
+                    "{} is not supported in this pass", command))
     {
         result = true;
     }
@@ -661,10 +661,10 @@ bool RDGPassCmdEncoder::RequireIndirect(RHIBuffer* buffer, uint64_t offset, uint
         }
     }
 
-    if (((Check(buffer != nullptr && declared, RDGErrorCode::eBinding,
-                std::string(command) + " requires UseIndirectBuffer for its argument buffer")))
-        && ((Check(offset % 4 == 0 && offset <= buffer->GetRequiredSize() && size <= buffer->GetRequiredSize() - offset,
-                   RDGErrorCode::eRange, std::string(command) + " argument range is out of bounds or misaligned"))))
+    if (((CheckFormat(buffer != nullptr && declared, RDGErrorCode::eBinding,
+                      "{} requires UseIndirectBuffer for its argument buffer", command)))
+        && ((CheckFormat(offset % 4 == 0 && offset <= buffer->GetRequiredSize() && size <= buffer->GetRequiredSize() - offset,
+                         RDGErrorCode::eRange, "{} argument range is out of bounds or misaligned", command))))
     {
         result = true;
     }
@@ -829,9 +829,9 @@ void RDGPassCmdEncoder::SetShaderValue(NameID glslName, const void* pData, uint3
 
         const RHIShaderResourceDescriptor* pSRD = pShader->GetSRDByName(glslName);
 
-        if (Check(pSRD != nullptr && pSRD->type == RHIShaderResourceType::eUniformBuffer
-                      && (pSRD->blockSize == 0 || dataSize <= pSRD->blockSize),
-                  RDGErrorCode::eBinding, "Invalid shader value binding '" + glslName.ToString() + "'"))
+        if (CheckFormat(pSRD != nullptr && pSRD->type == RHIShaderResourceType::eUniformBuffer
+                            && (pSRD->blockSize == 0 || dataSize <= pSRD->blockSize),
+                        RDGErrorCode::eBinding, "Invalid shader value binding '{}'", glslName.CStr()))
         {
             RHIBatchedShaderParameters params;
 
@@ -1067,9 +1067,9 @@ void RDGTransferPassCmdRecorder::ExecuteOperations(VectorView<const std::functio
     }
 }
 
-bool RDGTransferPassCmdRecorder::Check(bool condition, RDGErrorCode code, const std::string& message)
+bool RDGTransferPassCmdRecorder::Check(bool condition, RDGErrorCode code, std::string_view message)
 {
-    return m_pRDG->Check(condition, code, "Pass '" + m_pNode->tag.ToString() + "': " + message);
+    return m_pRDG->CheckPass(condition, code, m_pNode->tag, "{}", message);
 }
 
 void RDGTransferPassCmdRecorder::RestrictTransferQueues(bool graphicsOnly)

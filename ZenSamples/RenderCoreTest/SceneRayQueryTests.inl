@@ -55,7 +55,7 @@ TEST_F(RenderCoreTest, RayQueryFailedExecutionInvalidatesTheRecordedGeneration)
     rhi->failSubmissionAt = rhi->submissionAttempts + 1;
     const bool succeeded  = device->ExecuteRenderGraph(graph);
     EXPECT_FALSE(succeeded);
-    queries.OnRenderGraphExecuted(succeeded);
+    queries.OnRenderGraphExecuted(succeeded ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
     EXPECT_FALSE(queries.IsReady());
     EXPECT_EQ(queries.GetGeneration(), 0u);
     EXPECT_STREQ(queries.GetReason(), "failed_frame");
@@ -107,3 +107,83 @@ TEST_F(RenderCoreTest, RayQueryCommandCopiesDescriptionsAndRetainsIndirectResour
     EXPECT_TRUE(destroyed.contains(blasId));
     EXPECT_TRUE(destroyed.contains(tlasId));
 }
+
+namespace
+{
+class SceneRayQueryCacheTest : public RenderCoreTest, public testing::WithParamInterface<uint32_t>
+{
+protected:
+    void SetUp() override
+    {
+        InitializeDevice(nullptr, (GetParam() & 3) + 1,
+                         (GetParam() & 4) != 0 ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
+                         AsyncComputeMode::eDisabled, {false, true, {0, 1, 2}}, {false, true, true, {1, 1, 1}},
+                         {true, true, true, true, true, 256, 1024, 1024, 1024});
+        sceneInputs.vertices = Buffer();
+        sceneInputs.indices  = Buffer();
+    }
+
+    void TearDown() override
+    {
+        device->DestroyBuffer(sceneInputs.vertices);
+        device->DestroyBuffer(sceneInputs.indices);
+        RenderCoreTest::TearDown();
+    }
+};
+
+TEST_P(SceneRayQueryCacheTest, DeclinedCandidatesReuseStorageAndRemainBudgeted)
+{
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene    scene(device, data);
+    SceneRayQuery  queries(device);
+    const uint32_t slots           = GRenderFrameState.GetNumFramesInFlight();
+    uint64_t       warmedBytes     = 0;
+    uint32_t       warmedCreations = 0;
+    for (uint32_t frame = 0; frame < slots * 3; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        RenderGraph& graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        const uint64_t uploads = device->GetStagedUploadBytes();
+        ASSERT_TRUE(queries.BuildRenderGraph(scene, frame >= slots ? warmedBytes : 0));
+        ASSERT_TRUE(graph.End());
+        queries.OnRenderGraphExecuted(RenderFrameResult::eDeclined);
+        EXPECT_FALSE(queries.IsReady());
+        EXPECT_EQ(queries.GetGeneration(), 0u);
+        // Preparation may flush uploads before a frame is declined. The cached
+        // payload remains valid, without pretending that its TLAS was committed.
+        RenderGraph uploadsGraph("candidate_uploads");
+        ASSERT_TRUE(uploadsGraph.Begin());
+        ASSERT_TRUE(uploadsGraph.End());
+        ASSERT_TRUE(device->ExecuteRenderGraph(uploadsGraph));
+        device->WaitForPreviousFrames();
+        if (frame >= slots)
+        {
+            EXPECT_EQ(rhi->bufferCreations, warmedCreations);
+            EXPECT_EQ(device->GetStagedUploadBytes(), uploads);
+            EXPECT_EQ(queries.GetMemoryBytes(), warmedBytes);
+        }
+        if (frame == slots - 1)
+        {
+            warmedBytes     = queries.GetMemoryBytes();
+            warmedCreations = rhi->bufferCreations;
+        }
+        device->NextFrame();
+    }
+    EXPECT_GT(warmedBytes, 0u);
+    EXPECT_FALSE(queries.BuildRenderGraph(scene, warmedBytes - 1));
+    EXPECT_STREQ(queries.GetReason(), "acceleration_structure_budget");
+    EXPECT_EQ(rhi->bufferCreations, warmedCreations);
+    queries.Destroy();
+    device->WaitForIdle();
+    // Prune completed retirements before the tiny budget rejects a new snapshot.
+    EXPECT_FALSE(queries.BuildRenderGraph(scene, 1));
+    EXPECT_EQ(queries.GetMemoryBytes(), 0u);
+    queries.Destroy();
+}
+
+INSTANTIATE_TEST_SUITE_P(FrameSlotsAndExecutionModes, SceneRayQueryCacheTest, testing::Range(0u, 8u));
+} // namespace

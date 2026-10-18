@@ -46,6 +46,11 @@ public:
         return m_renderableNodes;
     }
 
+    const HeapVector<Node*>& GetRenderableNodes() const
+    {
+        return m_renderableNodes;
+    }
+
     size_t GetRenderableCount() const
     {
         return m_renderableNodes.size();

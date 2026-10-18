@@ -64,7 +64,8 @@ bool Frame(rc::RenderDevice& device, EditorController& editor)
 {
     EditorViewport& viewport = editor.GetViewport();
 
-    bool valid               = device.GetRendererServer()->DispatchRenderWorkloads(viewport.GetRenderView());
+    bool valid =
+        device.GetRendererServer()->DispatchRenderWorkloads(viewport.GetRenderView()) == rc::RenderFrameResult::eSubmitted;
 
     {
         rc::RenderGraph graph("EditorHeadlessOverlays");
@@ -215,6 +216,47 @@ void WaitForImport(EditorController& editor)
     }
 
     ASSERT_NE(editor.GetLoadState().stage, SceneLoadStage::Reading);
+}
+
+TEST_P(EditorRendering, ApplicationContinuesAfterDeclineAndRecordingFailureButStopsWhenBlocked)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+
+    ASSERT_TRUE(editor.ResizeViewport(320, 240));
+
+    EXPECT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eSubmitted));
+
+    for (uint32_t frame = 0; frame < 8; ++frame)
+    {
+        EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eDeclined));
+    }
+
+    EXPECT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eSubmitted));
+
+    EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eFailed));
+
+    EXPECT_TRUE(Frame(*device, editor));
+
+    for (uint32_t frame = 0; frame < 8; ++frame)
+    {
+        EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eDeclined));
+    }
+
+    EXPECT_FALSE(editor.RecordRenderingResult(rc::RenderFrameResult::eDeclined));
+
+    EXPECT_FALSE(editor.RecordRenderingResult(rc::RenderFrameResult::eBlocked));
+
+    DestroyDevice(*device, editor);
 }
 
 TEST_P(EditorRendering, OffscreenSceneAndAsyncVisibleSurfacePickingWithoutWindowOrImGui)

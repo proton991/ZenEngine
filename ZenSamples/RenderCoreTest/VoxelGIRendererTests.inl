@@ -47,7 +47,7 @@ TEST_F(RenderCoreTest, VoxelRevisionPublishesOnlyAfterSuccessfulHandoff)
     EXPECT_EQ(volumes.GetGeometryRevision(), 0u);
     EXPECT_EQ(volumes.GetRecordedGeometryRevision(), 1u);
     ASSERT_TRUE(graph.End());
-    volumes.OnRenderGraphExecuted(false);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eFailed);
     EXPECT_EQ(volumes.GetGeometryRevision(), 0u);
     EXPECT_EQ(volumes.GetRecordedGeometryRevision(), 0u);
 
@@ -55,9 +55,9 @@ TEST_F(RenderCoreTest, VoxelRevisionPublishesOnlyAfterSuccessfulHandoff)
     EXPECT_TRUE(volumes.BeginVolumeUpdate(graph));
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(graph));
-    volumes.OnRenderGraphExecuted(true);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
     EXPECT_EQ(volumes.GetGeometryRevision(), 1u);
-    volumes.OnRenderGraphExecuted(true);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
     EXPECT_EQ(volumes.GetGeometryRevision(), 1u);
     volumes.Destroy();
 }
@@ -135,7 +135,7 @@ TEST_F(RenderCoreTest, EmptyVoxelInputClearsAllSurfaceOutputsWithoutSceneBinding
     volumes.ResolveVolume();
     ASSERT_TRUE(graph->End());
     ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
-    volumes.OnRenderGraphExecuted(true);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
     EXPECT_EQ(volumes.GetGeometryRevision(), 1u);
     ASSERT_EQ(rhi->graphics.textureClears.size(), 3u);
     const VoxelTextures& textures = volumes.GetVoxelTextures();
@@ -166,14 +166,14 @@ TEST_F(RenderCoreTest, AveragedReflectanceClearsAndRetriesWithoutPublishingFaile
     ASSERT_NE(output, nullptr);
     volumes.ResolveVolume();
     ASSERT_TRUE(graph.End());
-    volumes.OnRenderGraphExecuted(false);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eFailed);
     EXPECT_EQ(volumes.GetGeometryRevision(), 0u);
     ASSERT_TRUE(graph.Begin());
     ASSERT_TRUE(volumes.BeginVolumeUpdate(graph));
     volumes.ResolveVolume();
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
-    volumes.OnRenderGraphExecuted(true);
+    volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
     EXPECT_EQ(volumes.GetGeometryRevision(), 1u);
     EXPECT_EQ(volumes.GetReflectanceSums(), sums);
     EXPECT_EQ(volumes.GetVoxelTextures().pReflectance, output);
@@ -384,8 +384,8 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         metrics.RequestCapture();
         ASSERT_TRUE(graph->End());
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
-        gi.OnRenderGraphExecuted(true);
-        volumes.OnRenderGraphExecuted(true);
+        gi.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
+        volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
         const bool skyChanged =
             geometryChanged || environmentChanged || frame == 3 || frame == 8 || frame == 9 || frame == 25 || frame == 29;
         const bool radianceChanged = skyChanged || frame == 7 || frame == 11 || frame == 24 || frame == 26 || frame == 28

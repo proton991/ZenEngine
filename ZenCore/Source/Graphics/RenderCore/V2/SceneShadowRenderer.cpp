@@ -384,15 +384,20 @@ DebugOutputDescription SceneShadowRenderer::BuildDebugView(const RenderScene&   
     return description;
 }
 
-void SceneShadowRenderer::OnRenderGraphExecuted(bool succeeded)
+void SceneShadowRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
-    m_validContents    = succeeded;
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
 
-    m_geometryRevision = succeeded ? m_recordedGeometry : 0;
-
-    if (succeeded)
+    if (result != RenderFrameResult::eDeclined)
     {
-        m_committedFaces = m_faces;
+        m_validContents    = succeeded;
+
+        m_geometryRevision = succeeded ? m_recordedGeometry : 0;
+
+        if (succeeded)
+        {
+            m_committedFaces = m_faces;
+        }
     }
 }
 

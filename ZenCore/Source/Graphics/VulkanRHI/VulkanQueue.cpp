@@ -187,9 +187,11 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
 
         pWorkload->m_resources.Reset();
 
-        pWorkload->m_submissionSerial = 0;
+        pWorkload->m_submissionSerial   = 0;
 
-        pWorkload->m_pMergedInto      = nullptr;
+        pWorkload->m_submissionBoundary = false;
+
+        pWorkload->m_pMergedInto        = nullptr;
 
         pWorkload->m_waitSemaphoreInfos.clear();
 
@@ -234,10 +236,9 @@ void VulkanQueue::DestroyWorkload(VulkanWorkload* pWorkload)
 
 bool VulkanQueue::CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload, const VulkanWorkload* pCurrentWorkload)
 {
-    // UE5's minimal-submit path only merges adjacent payloads when there is no queue-visible
-    // synchronization or action required between them. In ZenEngine's current non-parallel
-    // model, that reduces to "next has no waits" and "previous has no signals".
-    return pPreviousWorkload->m_signalSemaphoreInfos.empty() && pCurrentWorkload->m_waitSemaphoreInfos.empty();
+    // Preserve a group's earlier completion signal even when a later group has no waits.
+    return !pPreviousWorkload->m_submissionBoundary && pPreviousWorkload->m_signalSemaphoreInfos.empty()
+        && pCurrentWorkload->m_waitSemaphoreInfos.empty();
 }
 
 static RHISubmissionResult SubmissionFailure(VkResult result, bool submittedPrefix)

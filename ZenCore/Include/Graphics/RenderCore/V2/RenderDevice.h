@@ -70,7 +70,11 @@ struct RenderDeviceFeatures
     bool geometryShader{false};
 };
 
-// todo: some resources may be freed or recycled, track these and free them before frame begins
+// VERIFY_EXPR* entry checks enforce programmer preconditions and abort in Release too.
+// Validate asset/user input before calling: initialization, resource identity, buffer sizes
+// (including alignment padding), upload ranges and texture-view ranges are caller contracts.
+// Null/false/status results describe supported allocation/submission failures; they do not
+// make unchecked content valid. Keep content rejection in the loader or renderer boundary.
 class RenderDevice
 {
 public:
@@ -89,13 +93,27 @@ public:
 
     // Executes the RDG on the render thread. In threaded mode, success means the RHI executor
     // accepted the recorded frame; poll/flush confirms native submission.
-    bool ExecuteRenderGraph(RHIViewport* pViewport);
+    RenderFrameResult ExecuteRenderGraph(RHIViewport* pViewport);
+
+    // Poll ready submissions and recreate the swapchain before scene update and graph declaration.
+    void PrepareFrame();
 
     bool PollFrameSubmissions(bool wait = false);
 
     void FlushRHIThread();
 
     RHIThreadMetrics GetRHIThreadMetrics() const;
+
+    // Render-thread cumulative observations. Poll duration includes confirmation/retirement work.
+    uint64_t GetFrameSubmissionWaitNS() const
+    {
+        return m_frameSubmissionWaitNS;
+    }
+
+    uint64_t GetStagedUploadBytes() const
+    {
+        return m_pUploadQueue != nullptr ? m_pUploadQueue->GetStagedBytes() : 0;
+    }
 
     const RHIQueueCapabilities& GetQueueCapabilities() const
     {
@@ -125,7 +143,9 @@ public:
 
     RDGAsyncComputeEligibility ResolveAsyncComputeEligibility(const RenderGraph& graph, const RDGPassNode& node) const;
 
-    bool ExecuteRenderGraph(RenderGraph& rdg);
+    // A retirement output permits queued standalone handoff on threaded, timeline-capable backends.
+    // Without it, standalone execution waits for native acceptance as before.
+    bool ExecuteRenderGraph(RenderGraph& rdg, ResourceRetirement* retirement = nullptr);
 
     // The caller owns the initial resource reference; no persistent device owner.
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& info);
@@ -179,6 +199,7 @@ public:
 
     RHITexture* CreateTextureDummy(const TextureFormat& texFormat, TextureUsageHint usageHint, NameID texName);
 
+    // Requires a non-null texture and nonempty layer/mip ranges inside its allocation.
     RHITextureView* CreateTextureView(RHITexture* pTexture, const TextureViewFormat& viewFormat, NameID texViewName);
 
     // RHITexture* GetTextureRDFromHandle(const RHITexture* handle);
@@ -311,7 +332,7 @@ public:
     }
 
 private:
-    struct PendingFrame
+    struct PendingSubmission
     {
         RHISubmissionTicket ticket;
         // Selected from GRenderFrameState at dispatch; this frame storage never moves.
@@ -322,28 +343,28 @@ private:
         uint32_t                          computePassCount{0};
     };
 
-    // Executes the frame RDG here, with native submission deferred to the RHI thread.
-    bool ExecuteFrameGraph(RHIViewport* viewport);
-
     // Without a pending frame, a viewport is presented synchronously and pPresented, when
     // supplied, receives the outcome.
-    RHISubmissionResult SubmitRecordedGraph(RenderGraph&    graph,
-                                            RHICommandList& commands,
-                                            RHIViewport*    viewport,
-                                            PendingFrame*   pending,
-                                            bool*           pPresented);
+    RHISubmissionResult SubmitRecordedGraph(RenderGraph&        graph,
+                                            RHICommandList&     commands,
+                                            RHIViewport*        viewport,
+                                            PendingSubmission*  pending,
+                                            bool*               pPresented,
+                                            ResourceRetirement* retirement);
 
     bool ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
-                               RHIViewport*                viewport = nullptr,
-                               PendingFrame*               pending  = nullptr);
+                               RHIViewport*                viewport   = nullptr,
+                               PendingSubmission*          pending    = nullptr,
+                               ResourceRetirement*         retirement = nullptr);
 
     RHISubmissionResult SubmitRecordedGroups(RenderGraph&                graph,
                                              const RDGSchedule&          schedule,
                                              RenderSubmissionUpdate&     update,
                                              VectorView<RHICommandList*> lists,
                                              RHIViewport*                viewport,
-                                             PendingFrame*               pending,
-                                             bool*                       pPresented);
+                                             PendingSubmission*          pending,
+                                             bool*                       pPresented,
+                                             ResourceRetirement*         retirement);
 
     bool PrepareGraphSubmission(const RenderGraph& graph, RHICommandList& commands, RenderSubmissionUpdate& update);
 
@@ -356,7 +377,7 @@ private:
 
     void LogAsyncComputeSubmission(NameID graphName, uint32_t computePassCount, const RHIBatchResult& result);
 
-    void CompleteFrame(PendingFrame& pending, const RHIBatchResult& result);
+    void CompleteSubmission(PendingSubmission& pending, const RHIBatchResult& result);
 
     void CollectDestroyedResourceHistory();
 
@@ -464,18 +485,23 @@ private:
 
     size_t PadStorageBufferSize(size_t originalSize);
 
-    const RHIAPIType         m_APIType;
-    const uint32_t           m_numFrames;
-    const RHIExecutionMode   m_executionMode;
-    AsyncComputeMode         m_asyncComputeMode;
-    RHIQueueCapabilities     m_queueCapabilities;
-    AsyncComputeStatus       m_asyncComputeStatus{AsyncComputeStatus::eDisabled};
-    RHICommandListExecutor*  m_pRHIExecutor{nullptr};
-    HeapVector<PendingFrame> m_pendingFrames;
+    const RHIAPIType              m_APIType;
+    const uint32_t                m_numFrames;
+    const RHIExecutionMode        m_executionMode;
+    AsyncComputeMode              m_asyncComputeMode;
+    RHIQueueCapabilities          m_queueCapabilities;
+    AsyncComputeStatus            m_asyncComputeStatus{AsyncComputeStatus::eDisabled};
+    RHICommandListExecutor*       m_pRHIExecutor{nullptr};
+    HeapVector<PendingSubmission> m_pendingSubmissions;
     // Render-thread submission history; the graph never queries backend queue progress.
     RenderSubmissionHistory m_submissionHistory;
     HeapVector<uint64_t>    m_destroyedResourceIds;
     RHIViewport*            m_pRecreateViewport{nullptr};
+
+#if defined(ZEN_DEBUG)
+    uint32_t m_forceRecreationInterval{0};
+    uint32_t m_framesSinceRecreation{0};
+#endif
 
     HeapVector<RenderFrame> m_frames;
 
@@ -495,6 +521,7 @@ private:
     StagingUploadQueue* m_pUploadQueue{nullptr};
 
     RDGExecutor            m_rdgExecutor;
+    uint64_t               m_frameSubmissionWaitNS{0};
     RDGPassCompiler        m_rdgPassCompiler;
     UniquePtr<RenderGraph> m_frameRDG;
 

@@ -92,6 +92,9 @@ private:
 
     uint64_t m_cacheRevision{0};
 
+    // Pipeline storage can be recycled while the context retains this borrowed pointer.
+    uint64_t m_pipelineIdentity{0};
+
 
     FVulkanCommandListContext*  m_lastContext{nullptr};
     uint64_t                    m_lastWorkloadGeneration{0};

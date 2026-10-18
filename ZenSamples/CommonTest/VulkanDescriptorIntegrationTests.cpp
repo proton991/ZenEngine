@@ -518,6 +518,66 @@ TEST_F(VulkanDescriptorIntegrationTest, ResourceIdentityDistinguishesCachedSets)
     EXPECT_EQ(Resolve(state), first);
 }
 
+TEST_F(VulkanDescriptorIntegrationTest, RecycledPipelineAddressResetsDescriptorBindingTypes)
+{
+    VulkanPipeline* pipeline        = Pipeline("descriptor_storage.comp.spv");
+
+    VulkanPipeline* uniformPipeline = Pipeline("descriptor_uniform.comp.spv");
+
+    RHIBuffer* storageBuffer        = Buffer();
+
+    RHIBuffer* uniformBuffer        = Buffer(16, true);
+
+    VulkanDescriptorSetState state;
+
+    state.SetPipeline(pipeline);
+
+    ASSERT_TRUE(state.SetShaderParameters(Parameters(pipeline, storageBuffer)));
+
+    const VkDescriptorSet first = Resolve(state);
+
+    ASSERT_NE(first, VK_NULL_HANDLE);
+
+    const uintptr_t address = reinterpret_cast<uintptr_t>(pipeline);
+
+    const uint64_t identity = pipeline->GetStableId();
+
+    ASSERT_EQ(pipeline->GetRefCount(), 1u);
+
+    // Pre-create the replacement shader and buffers so the allocator's next resource
+    // allocation reuses this pipeline's freed slot, just as a renderer mode switch can.
+    session->rhi.DestroyPipeline(pipeline);
+
+    pipeline =
+        static_cast<VulkanPipeline*>(session->rhi.CreatePipeline(RHIComputePipelineCreateInfo{uniformPipeline->GetShader()}));
+
+    pipelines[0] = pipeline;
+
+    ASSERT_NE(pipeline, nullptr);
+
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(pipeline), address);
+
+    EXPECT_NE(pipeline->GetStableId(), identity);
+
+    state.SetPipeline(pipeline);
+
+    ASSERT_TRUE(state.SetShaderParameters(Parameters(pipeline, uniformBuffer)));
+
+    const VkDescriptorSet replacement = Resolve(state);
+
+    EXPECT_NE(replacement, VK_NULL_HANDLE);
+
+    EXPECT_NE(replacement, first);
+
+    EXPECT_EQ(DescriptorObserver::lastBufferWrite.buffer, static_cast<VulkanBuffer*>(uniformBuffer)->GetVkBuffer());
+
+    EXPECT_EQ(DescriptorObserver::lastBufferWrite.range, 16u);
+
+    state.SetPipeline(pipeline);
+
+    EXPECT_EQ(Resolve(state), replacement);
+}
+
 TEST_F(VulkanDescriptorIntegrationTest, UniformRangeDistinguishesOtherwiseCompatibleSets)
 {
     VulkanPipeline* smallPipeline = Pipeline("descriptor_uniform.comp.spv");

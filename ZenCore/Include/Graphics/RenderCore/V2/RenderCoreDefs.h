@@ -33,6 +33,30 @@ namespace zen::rc
 {
 class ShaderProgram;
 
+enum class RenderFrameResult : uint8_t
+{
+    eSubmitted, // Accepted inline, or handed off for threaded submission.
+    eDeclined,  // No frame work accepted; retry after NextFrame.
+    eFailed,    // Declaration, compilation or recording failed; rebuild the graph.
+    eBlocked    // Submission failure requires device teardown.
+};
+
+// Application loops retry declined frames, but not indefinitely. Updates the caller's
+// count of consecutive declines; false once rendering should stop.
+inline bool TrackDeclinedFrames(RenderFrameResult result, uint32_t& consecutiveDeclines)
+{
+    constexpr uint32_t kMaxConsecutiveDeclines = 8;
+
+    consecutiveDeclines                        = result == RenderFrameResult::eDeclined ? consecutiveDeclines + 1 : 0;
+
+    if (consecutiveDeclines > kMaxConsecutiveDeclines)
+    {
+        LOGE("Rendering stopped after {} consecutive declined frames", consecutiveDeclines);
+    }
+
+    return consecutiveDeclines <= kMaxConsecutiveDeclines;
+}
+
 enum class TextureDimension : uint32_t
 {
     e1D   = 0,

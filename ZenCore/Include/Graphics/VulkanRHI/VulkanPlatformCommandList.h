@@ -24,6 +24,7 @@ private:
     struct ContextWorkloadRange
     {
         FVulkanCommandListContext* pContext{nullptr};
+        RHICommandList*            pCommands{nullptr};
         uint32_t                   firstWorkloadIndex{0};
         uint32_t                   workloadCount{0};
     };

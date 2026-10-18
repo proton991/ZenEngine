@@ -191,6 +191,7 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid &= config.ReadNumber("voxel_gi_reference_samples", settings.referenceSamples);
     valid &= config.ReadNumber("voxel_gi_history_frames", settings.historyFrames);
     valid &= config.ReadBool("voxel_gi_temporal", settings.temporal);
+    valid &= config.ReadBool("voxel_gi_previous_frame_radiance", settings.previousFrameRadiance);
     valid &= config.ReadBool("voxel_gi_filter", settings.filter);
     valid &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
     const char*       defaultReflections  = settings.reflections == VoxelGISettings::Reflections::Off  ? "false"
@@ -371,6 +372,116 @@ void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
     m_lightingRevision    = 0;
 
     m_environmentRevision = 0;
+
+    m_radianceValid       = false;
+
+    if (m_settings.previousFrameRadiance)
+    {
+        m_previousRadianceInitialized = false;
+    }
+}
+
+void VoxelGIRenderer::PrepareRadianceHistory(bool update)
+{
+    const bool rays             = UsesRayBounce() || UsesReflections();
+
+    const uint32_t resolution   = m_voxelizer->GetVoxelTexResolution();
+
+    const uint32_t previousSize = rays || m_settings.previousFrameRadiance ? resolution : 1u;
+
+    const uint32_t previousMips = m_settings.previousFrameRadiance ? m_radiance->GetNumMipmaps() : 1u;
+
+    if (m_previousRadiance != nullptr
+        && (m_previousRadiance->GetWidth() != previousSize || m_previousRadiance->GetNumMipmaps() != previousMips))
+    {
+        m_previousRadianceMips.clear();
+
+        m_device->DestroyTexture(m_previousRadiance);
+
+        m_previousRadiance = nullptr;
+    }
+
+    TextureFormat format;
+
+    format.dimension = TextureDimension::e3D;
+
+    format.format    = DataFormat::eR16G16B16A16SFloat;
+
+    format.width     = previousSize;
+
+    format.height    = previousSize;
+
+    format.depth     = previousSize;
+
+    format.mipmaps   = previousMips;
+
+    if (m_previousRadiance == nullptr)
+    {
+        m_previousRadiance            = m_device->CreateTextureStorage(format, {.copyUsage = true}, "voxel_previous_radiance");
+
+        m_previousRadianceInitialized = false;
+    }
+
+    RenderGraph* graph = m_device->GetCurrentFrameRDG();
+
+    if (m_previousRadiance != nullptr && !m_previousRadianceInitialized)
+    {
+        graph->AddTransferPass("InitializePreviousRadiance")
+            .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
+            .ClearTexture(m_previousRadiance, Color(0));
+
+        m_recordedPreviousRadianceInitialization = true;
+    }
+
+    const bool needsHitSnapshot = m_settings.previousFrameRadiance && rays;
+
+    if (m_hitRadiancePrevious != nullptr && (!needsHitSnapshot || m_hitRadiancePrevious->GetWidth() != resolution))
+    {
+        m_device->DestroyTexture(m_hitRadiancePrevious);
+
+        m_hitRadiancePrevious = nullptr;
+    }
+
+    bool delayedReady = m_settings.previousFrameRadiance && PrepareMipViews(m_previousRadiance, m_previousRadianceMips);
+
+    if (delayedReady && needsHitSnapshot && m_hitRadiancePrevious == nullptr)
+    {
+        format.mipmaps        = 1;
+
+        m_hitRadiancePrevious = m_device->CreateTextureStorage(format, {.copyUsage = true}, "voxel_hit_radiance_previous");
+    }
+
+    delayedReady = delayedReady && (!needsHitSnapshot || m_hitRadiancePrevious != nullptr);
+
+    if (m_settings.previousFrameRadiance && !delayedReady)
+    {
+        LOGW("Previous-frame voxel radiance resource creation failed; updating current radiance");
+    }
+
+    m_recordedDelayedRadiance = update && m_radianceValid && delayedReady;
+
+    // While compute overwrites the alternate chain, Hybrid GI still needs both
+    // older and newer hit samples along the same rays. Preserve only its base level.
+    if (update && rays && m_previousRadiance != nullptr && m_radianceValid)
+    {
+        RHITextureCopyRegion region{};
+
+        region.size = Vec3i(static_cast<int>(resolution));
+
+        region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
+        region.srcSubresources.layerCount = 1;
+
+        region.dstSubresources            = region.srcSubresources;
+
+        RHITexture* source                = m_recordedDelayedRadiance ? m_previousRadiance : m_radiance;
+
+        RHITexture* destination           = m_recordedDelayedRadiance ? m_hitRadiancePrevious : m_previousRadiance;
+
+        graph->AddTransferPass(m_recordedDelayedRadiance ? "VoxelKeepHitRadianceHistory" : "VoxelKeepPreviousRadiance")
+            .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
+            .CopyTexture(source, destination, MakeVecView(&region, 1));
+    }
 }
 
 void VoxelGIRenderer::BindFrameData(RDGPassDescBase& pass) const
@@ -455,11 +566,12 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
 
 void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 {
-    m_recordedRadiance  = false;
-    m_rayTotalsCleared  = false;
-    m_rayTotalsRecorded = false;
-    m_countedSkyCache   = false;
-    m_countedInjection  = false;
+    m_recordedRadiance        = false;
+    m_recordedDelayedRadiance = false;
+    m_rayTotalsCleared        = false;
+    m_rayTotalsRecorded       = false;
+    m_countedSkyCache         = false;
+    m_countedInjection        = false;
     if (IsInitialized() && m_scene != nullptr)
     {
         m_uniforms.gridMinVoxelSize = Vec4(m_voxelizer->GetSceneMinPoint(), m_voxelizer->GetVoxelSize());
@@ -549,7 +661,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             sky.SetPassTag("VoxelSkyIrradiance");
 
-            sky.SetQueuePreference(hardwareSky ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
+            sky.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
 
             BindFrameData(sky);
 
@@ -567,44 +679,14 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             });
         }
 
-        // Stochastic hit radiance reads both generations along the same rays to update lighting history.
-        const bool     rays     = UsesRayBounce() || UsesReflections();
-        const uint32_t previous = rays ? m_voxelizer->GetVoxelTexResolution() : 1u;
-        if (m_previousRadiance != nullptr && m_previousRadiance->GetWidth() != previous)
-        {
-            m_device->DestroyTexture(m_previousRadiance);
-            m_previousRadiance = nullptr;
-        }
-        if (m_previousRadiance == nullptr)
-        {
-            TextureFormat format;
-            format.dimension   = TextureDimension::e3D;
-            format.format      = DataFormat::eR16G16B16A16SFloat;
-            format.width       = previous;
-            format.height      = previous;
-            format.depth       = previous;
-            m_previousRadiance = m_device->CreateTextureStorage(format, {.copyUsage = true}, "voxel_previous_radiance");
-            if (m_previousRadiance != nullptr)
-            {
-                graph->AddTransferPass("InitializePreviousRadiance").ClearTexture(m_previousRadiance, Color(0));
-            }
-        }
+        const bool radianceChanged = skyChanged || m_lightingRevision != m_recordedLighting;
 
-        if (skyChanged || m_lightingRevision != m_recordedLighting)
+        PrepareRadianceHistory(radianceChanged);
+
+        if (radianceChanged)
         {
             m_recordedRadiance = true;
-            // A new cache has no previous contents to snapshot. Keep the cleared
-            // previous texture until an injection has successfully completed.
-            if (rays && m_previousRadiance != nullptr && m_geometryRevision != 0)
-            {
-                RHITextureCopyRegion region{};
-                region.size = Vec3i(static_cast<int>(previous));
-                region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-                region.srcSubresources.layerCount = 1;
-                region.dstSubresources            = region.srcSubresources;
-                graph->AddTransferPass("VoxelKeepPreviousRadiance")
-                    .CopyTexture(m_radiance, m_previousRadiance, MakeVecView(&region, 1));
-            }
+
             RDGComputePassDesc inject;
 
             const bool hardwareShadows = UsesHardwareShadows();
@@ -640,7 +722,7 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             inject.SetPassTag("VoxelInjectRadiance");
 
-            inject.SetQueuePreference(hardwareShadows ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
+            inject.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
 
             BindFrameData(inject);
 
@@ -673,13 +755,16 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
             inject.BindSampledTexture("skyIrradiance", sampler, m_skyIrradiance->GetDefaultView());
 
-            inject.BindStorageImage("voxelRadiance", m_radianceMips[0], RDGContentGuarantee::eFullWrite);
+            const HeapVector<RHITextureView*>& radianceMips =
+                m_recordedDelayedRadiance ? m_previousRadianceMips : m_radianceMips;
+
+            inject.BindStorageImage("voxelRadiance", radianceMips[0], RDGContentGuarantee::eFullWrite);
 
             graph->AddComputePass(std::move(inject)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
                 encoder.Dispatch(groups.x, groups.y, groups.z);
             });
 
-            BuildMipChain(m_radianceMips, "VoxelFilterRadianceSP", "VoxelRadianceMip");
+            BuildMipChain(radianceMips, "VoxelFilterRadianceSP", "VoxelRadianceMip");
         }
     }
 }
@@ -753,9 +838,16 @@ void VoxelGIRenderer::ReadRayTotals()
 
 void VoxelGIRenderer::BindHitRadianceInputs(RDGPassDescBase& pass) const
 {
+    RHITexture* previous = m_previousRadiance != nullptr ? m_previousRadiance : m_radiance;
+
+    if (m_recordedDelayedRadiance)
+    {
+        // Unused hit bindings must not introduce a dependency on the chain being written.
+        previous = UsesRayBounce() || UsesReflections() ? m_hitRadiancePrevious : m_radiance;
+    }
+
     pass.BindSampledTexture("hitRadiance", m_voxelizer->GetVoxelSampler(), m_radiance->GetDefaultView());
-    pass.BindSampledTexture("hitRadiancePrevious", m_voxelizer->GetVoxelSampler(),
-                            (m_previousRadiance != nullptr ? m_previousRadiance : m_radiance)->GetDefaultView());
+    pass.BindSampledTexture("hitRadiancePrevious", m_voxelizer->GetVoxelSampler(), previous->GetDefaultView());
     pass.BindSampledTexture("hitNormal", m_voxelizer->GetVoxelSampler(),
                             m_voxelizer->GetVoxelTextures().pNormal->GetDefaultView());
 }
@@ -813,26 +905,48 @@ void VoxelGIRenderer::BuildEnvironmentDistribution()
     graph->AddComputePass(std::move(tiles)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
 }
 
-void VoxelGIRenderer::OnRenderGraphExecuted(bool succeeded)
+void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
+
+    if (succeeded && m_recordedPreviousRadianceInitialization)
+    {
+        m_previousRadianceInitialized = true;
+    }
+
+    m_recordedPreviousRadianceInitialization = false;
+
     if (succeeded && m_recordedRadiance)
     {
+        if (m_recordedDelayedRadiance)
+        {
+            std::swap(m_radiance, m_previousRadiance);
+
+            std::swap(m_radianceMips, m_previousRadianceMips);
+        }
+
+        m_radianceValid = true;
+
         ++m_radianceGeneration;
         m_geometryRevision    = m_recordedGeometry;
         m_lightingRevision    = m_recordedLighting;
         m_environmentRevision = m_recordedEnvironment;
     }
-    else if (!succeeded)
+    else if (result == RenderFrameResult::eFailed || result == RenderFrameResult::eBlocked)
     {
         m_geometryRevision    = 0;
         m_lightingRevision    = 0;
         m_environmentRevision = 0;
+
+        m_radianceValid       = false;
     }
     // Query preparation may execute in a frame which falls back before injection.
     // Publish cache revisions only when their radiance was actually recorded.
-    m_recordedRadiance = false;
-    m_rayQuery.OnRenderGraphExecuted(succeeded);
-    m_softwareRayQuery.OnRenderGraphExecuted(succeeded);
+    m_recordedRadiance        = false;
+
+    m_recordedDelayedRadiance = false;
+    m_rayQuery.OnRenderGraphExecuted(result);
+    m_softwareRayQuery.OnRenderGraphExecuted(result);
 }
 
 void VoxelGIRenderer::Destroy()
@@ -844,6 +958,22 @@ void VoxelGIRenderer::Destroy()
 
     m_device->DestroyTexture(m_previousRadiance);
     m_previousRadiance = nullptr;
+
+    m_previousRadianceMips.clear();
+
+    m_device->DestroyTexture(m_hitRadiancePrevious);
+
+    m_hitRadiancePrevious                    = nullptr;
+
+    m_previousRadianceInitialized            = false;
+
+    m_recordedPreviousRadianceInitialization = false;
+
+    m_radianceValid                          = false;
+
+    m_recordedRadiance                       = false;
+
+    m_recordedDelayedRadiance                = false;
 
     m_device->DestroyTexture(m_skyIrradiance);
 

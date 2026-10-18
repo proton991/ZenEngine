@@ -107,7 +107,7 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size, uint32_t alignm
     return action;
 }
 
-void StagingBufferManager::Release(const StagingAllocation& allocation, const RHICompletionSet& requiredSerials)
+void StagingBufferManager::Release(const StagingAllocation& allocation, const ResourceRetirement& retirement)
 {
     bool found = false;
 
@@ -123,7 +123,7 @@ void StagingBufferManager::Release(const StagingAllocation& allocation, const RH
             {
                 --block.outstandingAllocCount;
 
-                block.requiredSerials.Extend(requiredSerials);
+                block.retirement.Extend(retirement);
             }
 
             break;
@@ -139,11 +139,13 @@ void StagingBufferManager::Reclaim()
 
     for (Block& block : m_blocks)
     {
-        if (block.outstandingAllocCount == 0 && block.requiredSerials.IsCompleteAt(completed))
-        {
-            block.occupiedSize    = 0;
+        const bool resolved = block.retirement.Resolve();
 
-            block.requiredSerials = {};
+        if (block.outstandingAllocCount == 0 && resolved && block.retirement.requiredSerials.IsCompleteAt(completed))
+        {
+            block.occupiedSize = 0;
+
+            block.retirement   = {};
         }
     }
 }
@@ -154,15 +156,17 @@ bool StagingBufferManager::WaitForSubmittedAllocations()
 
     RHICompletionSet required{};
 
-    for (StagingBufferManager::Block const& block : m_blocks)
+    for (Block& block : m_blocks)
     {
         if (block.outstandingAllocCount == 0)
         {
-            required.Extend(block.requiredSerials);
+            valid &= block.retirement.Wait();
+
+            required.Extend(block.retirement.requiredSerials);
         }
     }
 
-    for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
+    for (size_t i = 0; valid && i < RHICompletionSet::kQueueCount; ++i)
     {
         const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
 
@@ -278,6 +282,8 @@ bool StagingUploadQueue::StageBytes(uint32_t size, uint32_t alignment, const uin
             if (valid)
             {
                 std::memcpy(pMapped + pOutAlloc->offset, pData, size);
+
+                m_stagedBytes += size;
 
                 pOutAlloc->pBuffer->Unmap();
             }
@@ -487,25 +493,9 @@ bool StagingUploadQueue::Flush()
 
             m_uploadRDG.End();
 
-            // Drain older CPU frames before taking the baseline, so their submissions
-            // cannot be mistaken for accesses made by this upload.
-            m_pRenderDevice->PollFrameSubmissions(true);
+            ResourceRetirement retirement;
 
-            const RHICompletionSet submittedBefore = m_pRenderDevice->GetSubmittedSerials();
-
-            const bool uploadSubmitted             = m_pRenderDevice->ExecuteRenderGraph(m_uploadRDG);
-
-            RHICompletionSet requiredSerials       = m_pRenderDevice->GetSubmittedSerials();
-
-            // Keep only queues advanced by this attempt. Unrelated earlier submissions
-            // must not pin staging memory; partial failure can still add accepted work.
-            for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
-            {
-                if (requiredSerials.serials[i] <= submittedBefore.serials[i])
-                {
-                    requiredSerials.serials[i] = 0;
-                }
-            }
+            const bool uploadSubmitted = m_pRenderDevice->ExecuteRenderGraph(m_uploadRDG, &retirement);
 
             if (!uploadSubmitted)
             {
@@ -513,7 +503,7 @@ bool StagingUploadQueue::Flush()
                 // Preserve its gates if teardown later cancels these retained allocations.
                 for (StagingUploadQueue::PendingUpload& upload : m_pendingUploads)
                 {
-                    upload.attemptedSerials.Extend(requiredSerials);
+                    upload.attemptedRetirement.Extend(retirement);
                 }
 
                 m_flushing = false;
@@ -524,9 +514,9 @@ bool StagingUploadQueue::Flush()
             {
                 for (const PendingUpload& upload : m_pendingUploads)
                 {
-                    RHICompletionSet required = upload.attemptedSerials;
+                    ResourceRetirement required = upload.attemptedRetirement;
 
-                    required.Extend(requiredSerials);
+                    required.Extend(retirement);
 
                     m_pStagingMgr->Release(upload.stagingAlloc, required);
 
@@ -561,7 +551,9 @@ void StagingUploadQueue::ReclaimResources()
 
     for (size_t i = 0; i < m_retainedResources.size();)
     {
-        if (m_retainedResources[i].requiredSerials.IsCompleteAt(completed))
+        ResourceRetirement& retirement = m_retainedResources[i].retirement;
+
+        if (retirement.Resolve() && retirement.requiredSerials.IsCompleteAt(completed))
         {
             m_retainedResources[i].pResource->ReleaseReference();
 
@@ -592,7 +584,7 @@ void StagingUploadQueue::Destroy()
             for (const PendingUpload& upload : m_pendingUploads)
             {
                 // Release only this allocation; a shared block may still have submitted or pending users.
-                m_pStagingMgr->Release(upload.stagingAlloc, upload.attemptedSerials);
+                m_pStagingMgr->Release(upload.stagingAlloc, upload.attemptedRetirement);
 
                 RHIResource* resource =
                     upload.pDstBuffer != nullptr ? static_cast<RHIResource*>(upload.pDstBuffer) : upload.pDstTexture;
@@ -611,7 +603,14 @@ void StagingUploadQueue::Destroy()
                 ReclaimResources();
             }
 
-            VERIFY_EXPR(m_retainedResources.empty());
+            // A fatal batch can have uncertain native use even after a failed idle wait.
+            // Keep those owners with the device until its terminal teardown.
+            for (const RetainedResource& retained : m_retainedResources)
+            {
+                m_pRenderDevice->DeferReleaseResource(retained.pResource);
+            }
+
+            m_retainedResources.clear();
 
             m_pStagingMgr->Reclaim();
         }

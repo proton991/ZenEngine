@@ -677,21 +677,24 @@ public:
 
                 m_ui.EndFrame();
 
-                EditorViewport& viewport = m_controller->GetViewport();
+                EditorViewport& viewport           = m_controller->GetViewport();
 
-                valid = m_device->GetRendererServer()->DispatchRenderWorkloads(viewport.GetRenderView(), this,
-                                                                               m_context->sceneVisible);
+                const rc::RenderFrameResult result = m_device->GetRendererServer()->DispatchRenderWorkloads(
+                    viewport.GetRenderView(), this, m_context->sceneVisible);
 
-                viewport.OnSubmitted(valid);
+                const bool submitted = result == rc::RenderFrameResult::eSubmitted;
 
-                m_controller->RecordRenderingResult(valid);
+                viewport.OnSubmitted(submitted);
 
-                if (valid && !m_options.capture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
+                valid = m_controller->RecordRenderingResult(result);
+
+                if (submitted && !m_options.capture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
                 {
                     valid = CaptureFrame(*m_device, m_present->GetColorBackBuffer(), m_options.capture);
                 }
 
-                if (valid && !m_options.sceneCapture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
+                if (valid && submitted && !m_options.sceneCapture.empty() && m_options.frames != 0
+                    && frame + 1 == m_options.frames)
                 {
                     valid = viewport.HasScene() && viewport.GetRenderView().color != nullptr
                          && CaptureFrame(*m_device, viewport.GetRenderView().color, m_options.sceneCapture);

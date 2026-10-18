@@ -574,7 +574,7 @@ TEST_F(ThreadedRenderCoreTest, WindowsFrameTicketWaitServicesSentMessages)
     ASSERT_TRUE(graph->End());
     device->FlushRHIThread();
     rhi->beforeSubmission = std::bind_front(&RHIMessageWindow::Send, &window);
-    const bool queued     = device->ExecuteRenderGraph(&viewport);
+    const bool queued     = device->ExecuteRenderGraph(&viewport) == RenderFrameResult::eSubmitted;
     const bool completed  = device->PollFrameSubmissions(true);
     GetRHIThread().Flush();
     rhi->beforeSubmission = {};
@@ -675,7 +675,7 @@ TEST_F(ThreadedRenderCoreTest, NextFrameCanBuildWhileRhiIsBlockedAndExtractionWa
     RDGExtractedTexture output = graph->GetResourceManager()->QueueTextureExtraction(texture);
     ASSERT_TRUE(graph->End());
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     EXPECT_FALSE(output);
     device->NextFrame();
@@ -705,17 +705,17 @@ TEST_F(ThreadedRenderCoreTest, LateFailureDoesNotPublishExtractionOrSubmitNextFr
     ASSERT_TRUE(graph->End());
     rhi->failSubmissionAt = 1;
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     gate.Open();
     device->FlushRHIThread();
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     EXPECT_FALSE(output);
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_NE(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     EXPECT_EQ(rhi->submissionAttempts, 1u);
 }
 
-TEST_F(ThreadedRenderCoreTest, NextFrameRecordsCommandsBeforeWaitingForPriorSubmission)
+TEST_F(ThreadedRenderCoreTest, NextFrameRecordsAndSubmitsBeforePriorSubmissionCompletes)
 {
     CreateTestShaderProgram(device, "intent");
     RenderGraph*             graph = device->GetCurrentFrameRDG();
@@ -731,24 +731,29 @@ TEST_F(ThreadedRenderCoreTest, NextFrameRecordsCommandsBeforeWaitingForPriorSubm
     graph->AddComputePass(pass).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
     ASSERT_TRUE(graph->End());
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     device->NextFrame();
+    const uint64_t  frameWait = device->GetFrameSubmissionWaitNS();
+    const uint64_t  groupWait = device->GetRHIThreadMetrics().submitGroupsWaitNS;
     std::thread::id recordingThread;
     ASSERT_TRUE(graph->Begin());
-    graph->AddComputePass(pass).RecordPassCommands([this, &recordingThread](RDGPassCmdEncoder& encoder) {
+    graph->AddComputePass(pass).RecordPassCommands([&recordingThread](RDGPassCmdEncoder& encoder) {
         recordingThread = std::this_thread::get_id();
         encoder.Dispatch(1, 1, 1);
-        gate.Open();
     });
     ASSERT_TRUE(graph->End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+    EXPECT_EQ(RDGSubmissionTestAccess::PendingFrameCount(*device), 2u);
+    EXPECT_EQ(device->GetFrameSubmissionWaitNS(), frameWait);
+    EXPECT_EQ(device->GetRHIThreadMetrics().submitGroupsWaitNS, groupWait);
+    gate.Open();
     device->FlushRHIThread();
     EXPECT_TRUE(gate.releasedInTime);
     EXPECT_EQ(recordingThread, std::this_thread::get_id());
     EXPECT_NE(recordingThread, gate.executionThread);
     EXPECT_EQ(device->GetRHIThreadMetrics().completedBatches, completedBatches + 2u);
-    EXPECT_EQ(device->GetRHIThreadMetrics().peakPendingBatches, 1u);
+    EXPECT_EQ(device->GetRHIThreadMetrics().peakPendingBatches, 2u);
 }
 
 TEST_F(RHIExecutorTest, PartialFailureKeepsResourcesUntilDeviceDrain)
@@ -766,9 +771,9 @@ TEST_F(RHIExecutorTest, PartialFailureKeepsResourcesUntilDeviceDrain)
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
     EXPECT_GT(result.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
     ResourceRetirement retirement;
-    retirement.pending = ticket;
+    retirement.pending.push_back(ticket);
     EXPECT_FALSE(retirement.Resolve());
-    EXPECT_TRUE(retirement.pending.IsValid());
+    EXPECT_FALSE(retirement.pending.empty());
     EXPECT_FALSE(retirement.IsCompleteAt(RHICompletionSet{{UINT64_MAX, UINT64_MAX, UINT64_MAX}}));
     texture->ReleaseReference();
     executor->WaitDeviceIdle();
@@ -787,7 +792,7 @@ TEST_F(ThreadedRenderCoreTest, FrameSlotReuseWaitsForItsGpuSerial)
         RDGTexture texture = graph->GetResourceManager()->CreateTexture(LogicalTexture());
         graph->AddTransferPass("clear").NeverCull().ClearTexture(texture, Color(0.f));
         ASSERT_TRUE(graph->End());
-        ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+        ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
         device->NextFrame();
     }
     device->FlushRHIThread();
@@ -808,7 +813,7 @@ TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDi
     graph->AddTransferPass("clear").NeverCull().ClearTexture(texture, Color(0.f));
     ASSERT_TRUE(graph->End());
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     EXPECT_EQ(ToValue(GRenderFrameState.GetFrameNumber()), 0u);
     EXPECT_EQ(ToValue(gate.executionFrameState.GetFrameNumber()), 1u);
@@ -826,7 +831,7 @@ TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDi
         texture = graph->GetResourceManager()->CreateTexture(LogicalTexture());
         graph->AddTransferPass("clear").NeverCull().ClearTexture(texture, Color(0.f));
         ASSERT_TRUE(graph->End());
-        ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+        ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
         device->NextFrame();
     }
     device->FlushRHIThread();
@@ -860,12 +865,12 @@ TEST_F(ThreadedRenderCoreTest, PooledResourcesWaitForPendingCPUAndGPUWork)
         if (phase == 0)
         {
             ArmGate();
-            ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+            ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
             ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
             bufferId   = DescribeResource(resources, buffer).physicalStableId;
             textureId  = DescribeResource(resources, texture).physicalStableId;
             retirement = device->CaptureResourceRetirement();
-            EXPECT_TRUE(retirement.pending.IsValid());
+            EXPECT_FALSE(retirement.pending.empty());
             EXPECT_EQ(retirement.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
             EXPECT_FALSE(device->IsResourceRetired(retirement));
             ASSERT_TRUE(graph->Reset());
@@ -950,7 +955,7 @@ TEST_F(ThreadedRenderCoreTest, FinalRhiReleaseRemovesBufferAndTextureHistory)
         .CopyBuffer(buffer, buffer, {0, 32, 4});
     ASSERT_TRUE(graph->End());
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     device->NextFrame();
     // Retire RenderCore owners before the previous batch publishes its serial.
@@ -997,7 +1002,7 @@ TEST_F(ThreadedRenderCoreTest, RetirementDuringRecordingCannotReappearFromPendin
     });
     ASSERT_TRUE(graph->End());
     ArmGate();
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
     ASSERT_EQ(RDGSubmissionTestAccess::PendingFrameCount(*device), 1u);
     EXPECT_TRUE(destroyed.contains(id));
@@ -1500,7 +1505,7 @@ TEST_F(RenderCoreTest, PresentationRestoresClearOnlyBackbufferOnGraphics)
     ASSERT_TRUE(graph->Begin());
     graph->AddTransferPass("clear_only").ClearTexture(viewport.color, Color(0.25f));
     ASSERT_TRUE(graph->End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     ASSERT_FALSE(rhi->graphics.textureTransitions.empty());
     const RHITextureTransition& last = rhi->graphics.textureTransitions.back();
     EXPECT_EQ(last.pTexture, viewport.color);
@@ -1525,7 +1530,7 @@ TEST_F(RenderCoreTest, MatchingPresentationStateAddsNoBarrier)
     initial.stages     = BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput);
     graph->GetResourceManager()->ImportTexture(viewport.color, initial);
     ASSERT_TRUE(graph->End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    ASSERT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
     EXPECT_TRUE(rhi->graphics.textureTransitions.empty());
     EXPECT_TRUE(device->GetRDGMetrics().GetLastSnapshot().validated);
     EXPECT_EQ(device->GetRDGMetrics().GetLastSnapshot().issues[size_t(RDGMetricIssue::eMissingBarrier)], 0u);

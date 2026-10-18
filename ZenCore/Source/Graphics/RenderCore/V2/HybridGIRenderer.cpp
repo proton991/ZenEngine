@@ -51,9 +51,20 @@ void HybridGIRenderer::Prepare(const RenderView& view, RenderScene& scene)
         m_previousVertices = nullptr;
         m_resetReason      = "scene";
     }
+    if (m_valid && !scene.HasVertexGeneration(m_previousVertices.Get(), m_previousVertexGeneration))
+    {
+        InvalidateHistory("vertex_ring_wrapped");
+    }
+    m_preparedHistoryValid              = m_valid;
+
+    m_preparedResetReason               = m_resetReason;
+
+    m_preparedResponsiveFrames          = m_bounceResponsiveFrames;
+
     const sg::CameraUniformData& camera = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
     m_recordedProjection                = camera.proj;
     m_recordedVertices                  = scene.GetVertexBuffer();
+    m_recordedVertexGeneration          = scene.GetVertexGeneration();
     m_recordedProjectionView            = camera.projViewMatrix;
     const SceneUniformData& lighting    = *reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
     m_recordedViewPosition              = lighting.viewPos;
@@ -100,12 +111,14 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width,
 {
     if (m_extent != glm::uvec2(width, height))
     {
-        // The current receiver pass has already captured this frame's immutable generation.
+        // The current receiver pass has already captured this frame's buffer.
         RHIResourcePtr<RHIBuffer> recordedVertices = m_recordedVertices;
         Destroy();
-        m_recordedVertices = std::move(recordedVertices);
-        m_extent           = glm::uvec2(width, height);
-        m_resetReason      = "resize";
+        m_recordedVertices    = std::move(recordedVertices);
+        m_extent              = glm::uvec2(width, height);
+        m_resetReason         = "resize";
+
+        m_preparedResetReason = m_resetReason;
     }
     bool valid = true;
     for (uint32_t side = 0; side < 2 && valid; ++side)
@@ -140,14 +153,17 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width,
                 format.format            = historyFormat;
                 m_history[side][texture] = m_device->CreateTextureStorage(
                     format, {.copyUsage = true}, NameID(fmt::format("hybrid_history_{}_{}", side, texture)));
-                valid = m_history[side][texture] != nullptr;
-                if (valid)
-                {
-                    // Even a disabled history tap needs a defined descriptor/layout.
-                    m_device->GetCurrentFrameRDG()
-                        ->AddTransferPass("InitializeHybridHistory")
-                        .ClearTexture(m_history[side][texture], Color(0));
-                }
+                valid                              = m_history[side][texture] != nullptr;
+
+                m_historyNeedsClear[side][texture] = valid;
+            }
+
+            if (valid && m_historyNeedsClear[side][texture])
+            {
+                // Retain initialization across a declined frame, including newly resized histories.
+                m_device->GetCurrentFrameRDG()
+                    ->AddTransferPass("InitializeHybridHistory")
+                    .ClearTexture(m_history[side][texture], Color(0));
             }
         }
     }
@@ -178,6 +194,40 @@ void HybridGIRenderer::BindGuides(RDGPassDescBase& pass) const
     pass.BindSampledTexture("receiverSurface", m_sampler, "offscreen_receiver");
     pass.BindSampledTexture("receiverMotion", m_sampler, "offscreen_motion");
     pass.BindSampledTexture("receiverPosition", m_sampler, "offscreen_position");
+}
+
+void HybridGIRenderer::BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const
+{
+    BindGuides(pass);
+
+    pass.BindValue("uHybridReuseData", reuseData);
+
+    pass.BindSampledTexture("previousSkyMoments", m_sampler, m_history[1 - m_current][Moments]->GetDefaultView());
+
+    pass.BindSampledTexture("previousHistoryLength", m_sampler, m_history[1 - m_current][Length]->GetDefaultView());
+
+    pass.BindSampledTexture("previousBudget", m_sampler, m_history[1 - m_current][Budget]->GetDefaultView());
+
+    voxelGI.BindEnvironmentSamplingInputs(pass);
+
+    voxelGI.BindEnvironmentHarmonics(pass);
+
+    voxelGI.BindHitRadianceInputs(pass);
+
+    if (m_uniforms.provider.x != 0)
+    {
+        voxelGI.BindHardwareRayInputs(pass);
+    }
+    else
+    {
+        voxelGI.BindRayInputs(pass);
+
+        voxelGI.BindSoftwareRayInputs(pass);
+    }
+
+    pass.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+
+    pass.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
 }
 
 void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
@@ -236,12 +286,13 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                  || settings.featureProviders != m_previousSettings.featureProviders
                  || settings.normalBiasVoxels != m_previousSettings.normalBiasVoxels
                  || settings.temporal != m_previousSettings.temporal
+                 || settings.previousFrameRadiance != m_previousSettings.previousFrameRadiance
                  || settings.historyFrames != m_previousSettings.historyFrames
                  || settings.specularOcclusion != m_previousSettings.specularOcclusion)
         {
             InvalidateHistory("settings");
         }
-        if (m_uniforms.provider.z != hardwareMask)
+        if (m_previousHardwareMask != hardwareMask)
         {
             InvalidateHistory("provider_changed");
         }
@@ -268,9 +319,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         m_uniforms.reflection =
             glm::uvec4(reflections ? 1u : 0u, m_valid && !reflectionReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
                        radianceSteps == 1 && !missingPrevious ? 1u : 0u);
-        m_previousReflections = reflections;
         // Sky, specular occlusion, ray bounce and reflections share this dispatch.
-        m_previousHardware = (hardwareMask & 27u) != 0;
+        const bool hardwareTrace = (hardwareMask & 27u) != 0;
         // Only geometry-dependent weights survive an unchanged receiver image.
         // Lighting and guide values are always read from this frame's inputs.
         const bool       unchangedReceivers = m_valid && m_recordedProjectionView == m_uniforms.previousProjectionView
@@ -278,8 +328,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const glm::uvec4 reuseData(
             unchangedReceivers && m_previousSettings.filter && m_previousSettings.referenceSamples == 0 ? 1u : 0u,
             unchangedReceivers ? 1u : 0u, 0u, 0u);
-        m_previousSettings  = settings;
-        m_previousRayBounce = rays;
+        m_recordedSettings  = settings;
         m_uniforms.sampling = glm::uvec4(m_frame, settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples,
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
         // A guide from a successful frame can survive geometry, opacity and sampling-setting resets.
@@ -287,8 +336,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         // A reset reason alone cannot make a fresh or failed-frame guide safe to read.
         const std::string_view reason = m_resetReason;
         const bool guideValid         = hadValidHistory && (m_valid || reason == "geometry_or_opacity" || reason == "settings");
-        m_uniforms.provider           = glm::uvec4(m_previousHardware ? 1u : 0u, guideValid ? 1u : 0u, hardwareMask,
-                                                   settings.UsesAdaptiveSampling() ? 1u : 0u);
+        m_uniforms.provider =
+            glm::uvec4(hardwareTrace ? 1u : 0u, guideValid ? 1u : 0u, hardwareMask, settings.UsesAdaptiveSampling() ? 1u : 0u);
         m_uniforms.rejection          = Vec4(0.001f, settings.specularOcclusion ? 1.0f : 0.0f,
                                              settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
                                              settings.referenceSamples != 0 ? 1.0f : 0.0f);
@@ -332,40 +381,18 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         // reconstructs the other receivers and lists those that need full-resolution rays. It needs
         // valid history (dark and dissimilar receivers are found from it) and temporal accumulation
         // to gather each receiver's own samples, and applies to the software trace variant.
-        const bool halfRequested         = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
-                                        || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
-                                            && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
-        const bool halfDiffuse           = halfRequested && !reference && settings.temporal && m_valid && !m_previousHardware;
-        m_halfDiffuse                    = halfDiffuse;
-        const glm::uvec2 guideGroups     = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
-        const auto       bindTraceInputs = [&](RDGComputePassDesc& pass) {
-            BindGuides(pass);
-            pass.BindValue("uHybridReuseData", reuseData);
-            pass.BindSampledTexture("previousSkyMoments", m_sampler, m_history[1 - m_current][Moments]->GetDefaultView());
-            pass.BindSampledTexture("previousHistoryLength", m_sampler, m_history[1 - m_current][Length]->GetDefaultView());
-            pass.BindSampledTexture("previousBudget", m_sampler, m_history[1 - m_current][Budget]->GetDefaultView());
-            voxelGI.BindEnvironmentSamplingInputs(pass);
-            voxelGI.BindEnvironmentHarmonics(pass);
-            voxelGI.BindHitRadianceInputs(pass);
-            if (m_previousHardware)
-            {
-                voxelGI.BindHardwareRayInputs(pass);
-            }
-            else
-            {
-                voxelGI.BindRayInputs(pass);
-                voxelGI.BindSoftwareRayInputs(pass);
-            }
-            pass.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
-            pass.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
-        };
+        const bool halfRequested       = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
+                                      || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
+                                          && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
+        const bool halfDiffuse         = halfRequested && !reference && settings.temporal && m_valid && !hardwareTrace;
+        m_halfDiffuse                  = halfDiffuse;
+        const glm::uvec2   guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
         RDGComputePassDesc trace;
-        trace.SetShaderProgramName(halfDiffuse ? (countRequested ? "HybridTraceHalfCountsSP" : "HybridTraceHalfSP")
-                                   : countRequested
-                                       ? (m_previousHardware ? "HybridTraceHardwareCountsSP" : "HybridTraceCountsSP")
-                                       : (m_previousHardware ? "HybridTraceHardwareSP" : "HybridTraceSP"));
+        trace.SetShaderProgramName(halfDiffuse      ? (countRequested ? "HybridTraceHalfCountsSP" : "HybridTraceHalfSP")
+                                   : countRequested ? (hardwareTrace ? "HybridTraceHardwareCountsSP" : "HybridTraceCountsSP")
+                                                    : (hardwareTrace ? "HybridTraceHardwareSP" : "HybridTraceSP"));
         trace.SetPassTag("HybridTrace");
-        bindTraceInputs(trace);
+        BindTraceInputs(trace, voxelGI, reuseData);
         trace.BindStorageImage("nextBudget", m_history[m_current][Budget]->GetDefaultView(), RDGContentGuarantee::eFullWrite);
         trace.BindStorageImage("rawSpecular", rawSpecular, RDGContentGuarantee::eFullWrite);
         trace.BindStorageImage("rawReflection", rawReflection, RDGContentGuarantee::eFullWrite);
@@ -452,7 +479,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             RDGComputePassDesc fallback;
             fallback.SetShaderProgramName(countRequested ? "HybridTraceFallbackCountsSP" : "HybridTraceFallbackSP");
             fallback.SetPassTag("HybridTraceFallback");
-            bindTraceInputs(fallback);
+            BindTraceInputs(fallback, voxelGI, reuseData);
             fallback.BindStorageImage("nextBudget", m_history[m_current][Budget]->GetDefaultView());
             fallback.BindStorageImage("rawSky", rawSky);
             fallback.BindStorageImage("rawBounce", rawBounce);
@@ -726,15 +753,23 @@ DebugOutputDescription HybridGIRenderer::BuildDebugView(const RenderView& view, 
     return description;
 }
 
-void HybridGIRenderer::OnRenderGraphExecuted(bool succeeded)
+void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
+    const bool succeeded = result == RenderFrameResult::eSubmitted;
+
     if (m_recorded && succeeded)
     {
+        for (uint32_t side = 0; side < 2; ++side)
+        {
+            std::fill(std::begin(m_historyNeedsClear[side]), std::end(m_historyNeedsClear[side]), false);
+        }
+
         m_current = 1 - m_current;
         m_valid   = true;
         ++m_frame;
         m_previousModels                  = m_recordedModels;
         m_previousVertices                = m_recordedVertices;
+        m_previousVertexGeneration        = m_recordedVertexGeneration;
         m_previousProjection              = m_recordedProjection;
         m_uniforms.previousProjectionView = m_recordedProjectionView;
         m_uniforms.previousViewPosition   = m_recordedViewPosition;
@@ -743,12 +778,24 @@ void HybridGIRenderer::OnRenderGraphExecuted(bool succeeded)
         m_surface                         = m_scene->GetSurfaceRevision();
         m_environment                     = m_scene->GetEnvironmentRevision();
         m_radianceGeneration              = m_recordedRadianceGeneration;
+        m_previousSettings                = m_recordedSettings;
+        m_previousRayBounce               = m_uniforms.bounce.x != 0;
+        m_previousReflections             = m_uniforms.reflection.x != 0;
+        m_previousHardwareMask            = m_uniforms.provider.z;
         if (m_bounceResponsiveFrames != 0)
         {
             --m_bounceResponsiveFrames;
         }
     }
-    else
+    else if (result == RenderFrameResult::eDeclined && m_prepared)
+    {
+        m_valid                  = m_preparedHistoryValid;
+
+        m_resetReason            = m_preparedResetReason;
+
+        m_bounceResponsiveFrames = m_preparedResponsiveFrames;
+    }
+    else if (result != RenderFrameResult::eDeclined)
     {
         if (!succeeded)
         {
@@ -776,7 +823,8 @@ void HybridGIRenderer::Destroy()
         m_device->DestroyBuffer(m_guide[side]);
         m_guide[side] = nullptr;
     }
-    m_valid  = false;
-    m_extent = glm::uvec2(0);
+    m_valid                = false;
+    m_preparedHistoryValid = false;
+    m_extent               = glm::uvec2(0);
 }
 } // namespace zen::rc

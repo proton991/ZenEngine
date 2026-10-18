@@ -85,6 +85,13 @@ void VulkanBuffer::Init()
         addressInfo.buffer = m_vkBuffer;
         m_deviceAddress    = vkGetBufferDeviceAddress(GVulkanRHI->GetVkDevice(), &addressInfo);
     }
+
+    if (m_vkBuffer != VK_NULL_HANDLE)
+    {
+        RHIExecutionCounterStorage& counters = GVulkanRHI->GetExecutionCounterStorage();
+
+        counters.Increment(counters.buffersCreated);
+    }
 }
 
 void VulkanBuffer::Destroy()
@@ -96,6 +103,13 @@ void VulkanBuffer::Destroy()
 
     if (m_vkBuffer != VK_NULL_HANDLE || m_memAlloc.handle != VK_NULL_HANDLE)
     {
+        if (m_vkBuffer != VK_NULL_HANDLE)
+        {
+            RHIExecutionCounterStorage& counters = GVulkanRHI->GetExecutionCounterStorage();
+
+            counters.Increment(counters.buffersDestroyed);
+        }
+
         GVkMemAllocator->FreeBuffer(m_vkBuffer, m_memAlloc);
     }
 

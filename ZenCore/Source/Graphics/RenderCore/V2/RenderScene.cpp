@@ -91,9 +91,8 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
         }
     }
 
-    m_pUVBuffer =
-        m_pRenderDevice->CreateStorageBuffer(static_cast<uint32_t>(sizeof(Vec4) * m_uvCoordinates.size()),
-                                             reinterpret_cast<const uint8_t*>(m_uvCoordinates.data()), "scene_uv_coordinates");
+    m_uvBuffers.Update(*m_pRenderDevice, m_uvCoordinates.data(), static_cast<uint32_t>(sizeof(Vec4) * m_uvCoordinates.size()),
+                       "scene_uv_coordinates");
 
     m_nodesData.reserve(m_pScene->GetRenderableCount());
 
@@ -112,9 +111,8 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     const uint32_t emptyIndex = 0;
 
-    m_pVertexBuffer           = m_pRenderDevice->CreateVertexBuffer(
-        std::max(sceneData.numVertices, 1u) * sizeof(asset::Vertex),
-        reinterpret_cast<const uint8_t*>(m_vertices.empty() ? &emptyVertex : m_vertices.data()));
+    m_vertexBuffers.Update(*m_pRenderDevice, m_vertices.empty() ? &emptyVertex : m_vertices.data(),
+                           std::max(sceneData.numVertices, 1u) * sizeof(asset::Vertex), "scene_vertices", true);
 
     m_pIndexBuffer = m_pRenderDevice->CreateIndexBuffer(
         std::max(sceneData.numIndices, 1u) * sizeof(uint32_t),
@@ -307,26 +305,20 @@ void RenderScene::PrepareBuffers()
 
     m_triangleRecordsDirty = !voxelTriangles.empty() && m_pVoxelTriangleBuffer == nullptr;
 
-    m_pRenderDevice->DestroyBuffer(m_pNodeSSBO);
-
-    m_pNodeSSBO = nullptr;
-
-    m_pRenderDevice->DestroyBuffer(m_pMaterialSSBO);
-
-    m_pMaterialSSBO = nullptr;
-
     const sg::NodeData emptyNode{};
 
     const sg::MaterialData emptyMaterial{};
 
-    m_pNodeSSBO = m_pRenderDevice->CreateStorageBuffer(
-        static_cast<uint32_t>(sizeof(sg::NodeData) * std::max(m_nodesData.size(), size_t(1))),
-        reinterpret_cast<const uint8_t*>(m_nodesData.empty() ? &emptyNode : m_nodesData.data()), "node_data_ssbo");
-
-    m_pMaterialSSBO = m_pRenderDevice->CreateStorageBuffer(
-        static_cast<uint32_t>(sizeof(sg::MaterialData) * std::max(m_materialsData.size(), size_t(1))),
-        reinterpret_cast<const uint8_t*>(m_materialsData.empty() ? &emptyMaterial : m_materialsData.data()),
-        "material_data_ssbo");
+    const uint32_t nodeBytes = static_cast<uint32_t>(sizeof(sg::NodeData) * std::max(m_nodesData.size(), size_t(1)));
+    const uint32_t materialBytes =
+        static_cast<uint32_t>(sizeof(sg::MaterialData) * std::max(m_materialsData.size(), size_t(1)));
+    m_nodeBuffers.MarkDirty(0, nodeBytes);
+    m_materialBuffers.MarkDirty(0, materialBytes);
+    // Init runs this on empty rings: a failed allocation leaves no buffer, which
+    // HasRequiredResources reports.
+    m_nodeBuffers.Update(*m_pRenderDevice, m_nodesData.empty() ? &emptyNode : m_nodesData.data(), nodeBytes, "node_data_ssbo");
+    m_materialBuffers.Update(*m_pRenderDevice, m_materialsData.empty() ? &emptyMaterial : m_materialsData.data(), materialBytes,
+                             "material_data_ssbo");
 }
 
 HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const
@@ -477,15 +469,19 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
                 if (std::memcmp(&m_nodesData[index], &node->GetData(), sizeof(sg::NodeData)) != 0)
                 {
-                    m_nodesData[index]  = node->GetData();
+                    m_nodesData[index] = node->GetData();
 
-                    m_dirtyClasses     |= m_instanceClasses[index];
+                    m_nodeBuffers.MarkDirty(index * sizeof(sg::NodeData), sizeof(sg::NodeData));
+
+                    m_dirtyClasses |= m_instanceClasses[index];
                 }
             }
 
             if (vertices.size() == m_vertices.size() && !vertices.empty()
                 && std::memcmp(vertices.data(), m_vertices.data(), vertices.size() * sizeof(asset::Vertex)) != 0)
             {
+                MarkVertexChanges(MakeVecView(vertices), 0);
+
                 m_vertices             = std::move(vertices);
 
                 m_verticesDirty        = true;
@@ -507,13 +503,15 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
                     if (offset < m_uvCoordinates.size() && Vec2(m_uvCoordinates[offset]) != coordinates[vertex][set])
                     {
-                        m_uvCoordinates[offset]  = Vec4(coordinates[vertex][set], 0, 0);
+                        m_uvCoordinates[offset] = Vec4(coordinates[vertex][set], 0, 0);
 
-                        m_verticesDirty          = true;
+                        m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec4)), sizeof(Vec4));
 
-                        m_dirtyClasses          |= GI_DYNAMIC;
+                        m_verticesDirty        = true;
 
-                        m_dirtySurfaceClasses   |= GI_DYNAMIC;
+                        m_dirtyClasses        |= GI_DYNAMIC;
+
+                        m_dirtySurfaceClasses |= GI_DYNAMIC;
                     }
                 }
             }
@@ -563,13 +561,15 @@ bool RenderScene::SetMaterialVariant(int32_t variant)
 
     if (valid)
     {
-        m_dirtyClasses         |= GI_ALL;
+        m_dirtyClasses        |= GI_ALL;
 
-        m_dirtySurfaceClasses  |= GI_ALL;
+        m_dirtySurfaceClasses |= GI_ALL;
 
-        m_materialsDirty        = true;
+        m_materialsDirty       = true;
 
-        m_triangleRecordsDirty  = true;
+        m_materialBuffers.MarkDirty(0, static_cast<uint32_t>(m_materialsData.size() * sizeof(sg::MaterialData)));
+
+        m_triangleRecordsDirty = true;
     }
 
     return valid;

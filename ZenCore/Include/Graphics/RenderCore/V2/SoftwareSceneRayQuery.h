@@ -1,4 +1,6 @@
 #pragma once
+#include "Graphics/RenderCore/V2/RenderCoreDefs.h"
+#include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Math/Math.h"
 #include <cstddef>
@@ -43,22 +45,22 @@ public:
     bool PrepareUnused();
     void BindTraversalInputs(RDGPassDescBase& pass) const;
     void BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound = false) const;
-    void OnRenderGraphExecuted(bool succeeded);
+    void OnRenderGraphExecuted(RenderFrameResult result);
     void Destroy();
     bool IsReady() const;
     // False while only the unused-path placeholders are bound.
     bool HoldsSceneGeometry() const
     {
-        return m_nodes != nullptr && !m_placeholder;
+        return m_nodeBuffers.GetBuffer() != nullptr && !m_placeholder;
     }
 
 private:
-    RenderDevice* m_device;
-    RenderScene*  m_scene{nullptr};
-    RHIBuffer*    m_nodes{nullptr};
-    RHIBuffer*    m_triangles{nullptr};
-    uint64_t      m_revision{0};
-    uint32_t      m_nodeCount{0};
-    bool          m_placeholder{false};
+    RenderDevice*   m_device;
+    RenderScene*    m_scene{nullptr};
+    FrameBufferRing m_nodeBuffers;
+    FrameBufferRing m_triangleBuffers;
+    uint64_t        m_revision{0};
+    uint32_t        m_nodeCount{0};
+    bool            m_placeholder{false};
 };
 } // namespace zen::rc

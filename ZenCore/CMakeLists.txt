@@ -69,6 +69,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h
 
     Include/Graphics/RenderCore/V2/RenderScene.h
+    Include/Graphics/RenderCore/V2/FrameBufferRing.h
     Include/Graphics/RenderCore/V2/RenderObject.h
     Include/Graphics/RenderCore/V2/RenderResource.h
     Include/Graphics/RenderCore/V2/RenderDevice.h
@@ -168,6 +169,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
     Source/Graphics/RenderCore/V2/RendererServerSettings.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp
+    Source/Graphics/RenderCore/V2/FrameBufferRing.cpp
     Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
     Source/Graphics/RenderCore/V2/RenderSceneGeometry.cpp
     Source/Graphics/RenderCore/V2/RenderObject.cpp
