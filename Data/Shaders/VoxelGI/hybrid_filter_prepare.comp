@@ -1,24 +1,27 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "hybrid_guides.glsl"
-layout(local_size_x=8,local_size_y=8) in;
-layout(set=1,binding=6) uniform sampler2D moments;
-layout(set=1,binding=7) uniform sampler2D historyLength;
-layout(set=1,binding=8) uniform sampler2D bounceMoments;
-layout(set=1,binding=9) uniform sampler2D bounceHistory;
-layout(set=1,binding=10) uniform sampler2D reflectionHistory;
-layout(set=1,binding=11,rgba32f) uniform writeonly image2D initialVariance;
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 6) uniform sampler2D moments;
+layout(set = 1, binding = 7) uniform sampler2D historyLength;
+layout(set = 1, binding = 8) uniform sampler2D bounceMoments;
+layout(set = 1, binding = 9) uniform sampler2D bounceHistory;
+layout(set = 1, binding = 10) uniform sampler2D reflectionHistory;
+layout(set = 1, binding = 11, rgba32f) uniform writeonly image2D initialVariance;
 void main()
 {
-    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
-    if(!HybridInView(p)) return;
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!HybridInView(p))
+    {
+        return;
+    }
     // Evaluate from the stored histories, preserving their format rounding.
     // The first filter still applies its local early-history estimate to the center only.
-    vec4 m=texelFetch(moments,p,0);
-    vec2 b=hybrid.bounce.x!=0u ? texelFetch(bounceMoments,p,0).rg : vec2(0);
-    vec4 h=hybrid.reflection.x!=0u ? texelFetch(reflectionHistory,p,0) : vec4(0);
-    vec4 v=max(vec4(m.g-m.r*m.r,m.a-m.b*m.b,b.y-b.x*b.x,h.z-h.y*h.y),vec4(0));
-    float bounceLength=hybrid.bounce.x!=0u ? texelFetch(bounceHistory,p,0).a : 0.0;
-    vec4 lengths=vec4(texelFetch(historyLength,p,0).rg,bounceLength,h.w);
-    imageStore(initialVariance,p,v/max(lengths,vec4(1)));
+    vec4  m            = texelFetch(moments, p, 0);
+    vec2  b            = hybrid.bounce.x != 0u ? texelFetch(bounceMoments, p, 0).rg : vec2(0);
+    vec4  h            = hybrid.reflection.x != 0u ? texelFetch(reflectionHistory, p, 0) : vec4(0);
+    vec4  v            = max(vec4(m.g - m.r * m.r, m.a - m.b * m.b, b.y - b.x * b.x, h.z - h.y * h.y), vec4(0));
+    float bounceLength = hybrid.bounce.x != 0u ? texelFetch(bounceHistory, p, 0).a : 0.0;
+    vec4  lengths      = vec4(texelFetch(historyLength, p, 0).rg, bounceLength, h.w);
+    imageStore(initialVariance, p, v / max(lengths, vec4(1)));
 }

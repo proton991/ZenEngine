@@ -1,46 +1,46 @@
 #include "hybrid_guides.glsl"
 #include "../Common/scene_lighting.glsl"
 #ifdef HYBRID_CACHE_HISTORY_GUIDES
-layout(local_size_x=16,local_size_y=16) in;
+layout(local_size_x = 16, local_size_y = 16) in;
 #else
-layout(local_size_x=8,local_size_y=8) in;
+layout(local_size_x = 8, local_size_y = 8) in;
 #endif
-layout(set=1,binding=6) uniform sampler2D rawSky;
-layout(set=1,binding=7) uniform sampler2D rawSpecular;
-layout(set=1,binding=8) uniform sampler2D previousSky;
-layout(set=1,binding=9) uniform sampler2D previousSpecular;
-layout(set=1,binding=10) uniform sampler2D previousMoments;
-layout(set=1,binding=11) uniform sampler2D previousLength;
-layout(set=1,binding=12) uniform sampler2D previousPosition;
-layout(set=1,binding=13) uniform sampler2D previousNormal;
-layout(set=1,binding=14) uniform usampler2D previousReceiver;
-layout(set=1,binding=15,rgba32f) uniform writeonly image2D nextSky;
+layout(set = 1, binding = 6) uniform sampler2D rawSky;
+layout(set = 1, binding = 7) uniform sampler2D rawSpecular;
+layout(set = 1, binding = 8) uniform sampler2D previousSky;
+layout(set = 1, binding = 9) uniform sampler2D previousSpecular;
+layout(set = 1, binding = 10) uniform sampler2D previousMoments;
+layout(set = 1, binding = 11) uniform sampler2D previousLength;
+layout(set = 1, binding = 12) uniform sampler2D previousPosition;
+layout(set = 1, binding = 13) uniform sampler2D previousNormal;
+layout(set = 1, binding = 14) uniform usampler2D previousReceiver;
+layout(set = 1, binding = 15, rgba32f) uniform writeonly image2D nextSky;
 #ifdef HYBRID_REFERENCE_HISTORY
-layout(set=1,binding=16,rgba32f) uniform writeonly image2D nextSpecular;
+layout(set = 1, binding = 16, rgba32f) uniform writeonly image2D nextSpecular;
 #else
-layout(set=1,binding=16,rgba16f) uniform writeonly image2D nextSpecular;
+layout(set = 1, binding = 16, rgba16f) uniform writeonly image2D nextSpecular;
 #endif
-layout(set=1,binding=17,rgba32f) uniform writeonly image2D nextMoments;
-layout(set=1,binding=18,rgba16f) uniform writeonly image2D nextLength;
-layout(set=1,binding=19,rgba32f) uniform writeonly image2D nextPosition;
-layout(set=1,binding=20,rg16f) uniform writeonly image2D nextNormal;
-layout(set=1,binding=21,rg32ui) uniform writeonly uimage2D nextReceiver;
-layout(set=1,binding=25) uniform sampler2D rawBounce;
-layout(set=1,binding=26) uniform sampler2D previousBounce;
-layout(set=1,binding=27) uniform sampler2D previousBounceMoments;
-layout(set=1,binding=28,rgba32f) uniform writeonly image2D nextBounce;
-layout(set=1,binding=29,rg32f) uniform writeonly image2D nextBounceMoments;
-layout(set=1,binding=30) uniform sampler2D rawBouncePrevious;
-layout(set=1,binding=31) uniform sampler2D rawReflection;
-layout(set=1,binding=32) uniform sampler2D rawReflectionPrevious;
-layout(set=1,binding=33) uniform sampler2D previousReflection;
-layout(set=1,binding=34,rgba32f) uniform writeonly image2D nextReflection;
+layout(set = 1, binding = 17, rgba32f) uniform writeonly image2D nextMoments;
+layout(set = 1, binding = 18, rgba16f) uniform writeonly image2D nextLength;
+layout(set = 1, binding = 19, rgba32f) uniform writeonly image2D nextPosition;
+layout(set = 1, binding = 20, rg16f) uniform writeonly image2D nextNormal;
+layout(set = 1, binding = 21, rg32ui) uniform writeonly uimage2D nextReceiver;
+layout(set = 1, binding = 25) uniform sampler2D rawBounce;
+layout(set = 1, binding = 26) uniform sampler2D previousBounce;
+layout(set = 1, binding = 27) uniform sampler2D previousBounceMoments;
+layout(set = 1, binding = 28, rgba32f) uniform writeonly image2D nextBounce;
+layout(set = 1, binding = 29, rg32f) uniform writeonly image2D nextBounceMoments;
+layout(set = 1, binding = 30) uniform sampler2D rawBouncePrevious;
+layout(set = 1, binding = 31) uniform sampler2D rawReflection;
+layout(set = 1, binding = 32) uniform sampler2D rawReflectionPrevious;
+layout(set = 1, binding = 33) uniform sampler2D previousReflection;
+layout(set = 1, binding = 34, rgba32f) uniform writeonly image2D nextReflection;
 vec4 PreviousNormals(ivec2 p)
 {
     // Receiver already preserves the geometric normal. Reconstruct its encoded
     // FP16 precision, avoiding a duplicate pair of history channels.
-    vec2 geometric=EncodeGBufferNormal(DecodeGBufferNormal(unpackUnorm2x16(texelFetch(previousReceiver,p,0).r)));
-    return vec4(texelFetch(previousNormal,p,0).rg,unpackHalf2x16(packHalf2x16(geometric)));
+    vec2 geometric = EncodeGBufferNormal(DecodeGBufferNormal(unpackUnorm2x16(texelFetch(previousReceiver, p, 0).r)));
+    return vec4(texelFetch(previousNormal, p, 0).rg, unpackHalf2x16(packHalf2x16(geometric)));
 }
 #ifdef HYBRID_CACHE_HISTORY_GUIDES
 // A 16x16 group reuses the exact receiver guides in its 9x9 responsive-history
@@ -51,21 +51,21 @@ shared float historyGuidePositionZ[576];
 shared float historyGuideNormalX[576];
 shared float historyGuideNormalY[576];
 shared float historyGuideNormalZ[576];
-shared uint historyGuideIdentity[576];
-uint HybridHistoryGuideIndex(ivec2 p)
+shared uint  historyGuideIdentity[576];
+uint         HybridHistoryGuideIndex(ivec2 p)
 {
-    ivec2 q=p-ivec2(gl_WorkGroupID.xy)*16+4;
-    return uint(q.y*24+q.x);
+    ivec2 q = p - ivec2(gl_WorkGroupID.xy) * 16 + 4;
+    return uint(q.y * 24 + q.x);
 }
 vec3 HybridHistoryPosition(ivec2 p)
 {
-    uint index=HybridHistoryGuideIndex(p);
-    return vec3(historyGuidePositionX[index],historyGuidePositionY[index],historyGuidePositionZ[index]);
+    uint index = HybridHistoryGuideIndex(p);
+    return vec3(historyGuidePositionX[index], historyGuidePositionY[index], historyGuidePositionZ[index]);
 }
 vec3 HybridHistoryNormal(ivec2 p)
 {
-    uint index=HybridHistoryGuideIndex(p);
-    return vec3(historyGuideNormalX[index],historyGuideNormalY[index],historyGuideNormalZ[index]);
+    uint index = HybridHistoryGuideIndex(p);
+    return vec3(historyGuideNormalX[index], historyGuideNormalY[index], historyGuideNormalZ[index]);
 }
 uint HybridHistoryIdentity(ivec2 p)
 {
@@ -73,113 +73,162 @@ uint HybridHistoryIdentity(ivec2 p)
 }
 void LoadHistoryGuides()
 {
-    ivec2 origin=ivec2(gl_WorkGroupID.xy)*16-4;
-    for(uint index=gl_LocalInvocationIndex;index<576u;index+=256u)
+    ivec2 origin = ivec2(gl_WorkGroupID.xy) * 16 - 4;
+    for (uint index = gl_LocalInvocationIndex; index < 576u; index += 256u)
     {
-        ivec2 q=origin+ivec2(index%24u,index/24u);
-        bool valid=HybridInView(q);
-        vec3 position=valid ? HybridPosition(q) : vec3(0);
-        vec3 normal=valid ? HybridGeometricNormal(q) : vec3(0);
-        historyGuidePositionX[index]=position.x; historyGuidePositionY[index]=position.y; historyGuidePositionZ[index]=position.z;
-        historyGuideNormalX[index]=normal.x; historyGuideNormalY[index]=normal.y; historyGuideNormalZ[index]=normal.z;
-        historyGuideIdentity[index]=valid ? texelFetch(receiverSurface,q,0).g : 0u;
+        ivec2 q                      = origin + ivec2(index % 24u, index / 24u);
+        bool  valid                  = HybridInView(q);
+        vec3  position               = valid ? HybridPosition(q) : vec3(0);
+        vec3  normal                 = valid ? HybridGeometricNormal(q) : vec3(0);
+        historyGuidePositionX[index] = position.x;
+        historyGuidePositionY[index] = position.y;
+        historyGuidePositionZ[index] = position.z;
+        historyGuideNormalX[index]   = normal.x;
+        historyGuideNormalY[index]   = normal.y;
+        historyGuideNormalZ[index]   = normal.z;
+        historyGuideIdentity[index]  = valid ? texelFetch(receiverSurface, q, 0).g : 0u;
     }
     barrier();
 }
 #else
-#define HybridHistoryPosition HybridPosition
-#define HybridHistoryNormal HybridGeometricNormal
-uint HybridHistoryIdentity(ivec2 p) { return texelFetch(receiverSurface,p,0).g; }
+#    define HybridHistoryPosition HybridPosition
+#    define HybridHistoryNormal   HybridGeometricNormal
+uint HybridHistoryIdentity(ivec2 p)
+{
+    return texelFetch(receiverSurface, p, 0).g;
+}
 #endif
 #include "hybrid_radiance_history.glsl"
 
 // C=(1-S)*H uses its own reprojection, luminance moments and history length. S keeps surface motion.
 // For a locally planar mirror, x-view*hitDistance is the virtual image behind the receiver.
 // Projecting that point accounts for reflection parallax as the camera moves along the surface.
-vec4 ReconstructReflection(ivec2 p, vec3 position, vec3 n, vec3 ng, vec3 view, uint identity,
-    float roughness, vec2 surfacePixel, inout vec3 radiance)
+vec4 ReconstructReflection(ivec2      p,
+                           vec3       position,
+                           vec3       n,
+                           vec3       ng,
+                           vec3       view,
+                           uint       identity,
+                           float      roughness,
+                           vec2       surfacePixel,
+                           inout vec3 radiance)
 {
-    float distance=texelFetch(rawReflection,p,0).x;
+    float distance = texelFetch(rawReflection, p, 0).x;
     // A stochastic miss must still average its zero radiance with preceding hits. Borrow a current
     // same-surface distance for parallax when a neighbour hit; never infer radiance from this guide.
-    if(distance<=0.0 && roughness<0.4)
+    if (distance <= 0.0 && roughness < 0.4)
     {
-        float count=0.0;
-        for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x)
+        float count = 0.0;
+        for (int y = -2; y <= 2; ++y)
         {
-            ivec2 q=p+ivec2(x,y);
-            if(!HybridInView(q) || texelFetch(receiverSurface,q,0).g!=identity
-                || dot(HybridGeometricNormal(q),ng)<0.99
-                || abs(dot(HybridPosition(q)-position,ng))>hybrid.rejection.x) continue;
-            float sampleDistance=texelFetch(rawReflection,q,0).x;
-            if(sampleDistance>0.0) { distance+=sampleDistance; count+=1.0; }
-        }
-        distance/=max(count,1.0);
-    }
-    float luminance=HybridLuminance(radiance);
-    vec2 moments=vec2(luminance,luminance*luminance);
-    vec4 oldValue=vec4(0); vec2 oldMoments=vec2(0);
-    float weight=0.0;
-    bool reference=hybrid.rejection.w>0.5;
-    bool moving=length(surfacePixel-vec2(p))>0.01 || hybrid.previousViewPosition!=sceneUbo.viewPosition;
-    bool parallax=roughness<0.4 && !reference && moving;
-    vec2 previousPixel=surfacePixel;
-    vec3 virtualPosition=position-view*distance;
-    vec4 virtualClip=hybrid.previousProjectionView*vec4(virtualPosition,1);
-    bool valid=hybrid.reflection.y!=0u && hybrid.rejection.z>0.0 && identity!=0u && texelFetch(receiverMotion,p,0).z>0.0;
-    if(parallax)
-    {
-        valid=valid && distance>0.0 && virtualClip.w>0.0;
-        previousPixel=(virtualClip.xy/max(virtualClip.w,1e-20)*0.5+0.5)*vec2(textureSize(receiverDepth,0))-0.5;
-    }
-    if(valid)
-    {
-        ivec2 base=ivec2(floor(previousPixel)); vec2 f=fract(previousPixel);
-        for(int y=0;y<2;++y) for(int x=0;x<2;++x)
-        {
-            ivec2 q=base+ivec2(x,y);
-            if(!HybridInView(q) || texelFetch(previousReceiver,q,0).g!=identity) continue;
-            vec3 oldPosition=texelFetch(previousPosition,q,0).xyz;
-            vec4 normals=PreviousNormals(q);
-            if(abs(dot(oldPosition-position,ng))>hybrid.rejection.x*max(1.0,length(position-sceneUbo.viewPosition.xyz))
-                || dot(DecodeGBufferNormal(normals.rg),n)<0.99 || dot(DecodeGBufferNormal(normals.ba),ng)<0.99
-                || abs(texelFetch(previousLength,q,0).a-roughness)>0.02) continue;
-            vec3 oldView=sceneUbo.viewPosition.w<0.5 ? hybrid.previousViewDirection.xyz
-                : normalize(hybrid.previousViewPosition.xyz-oldPosition);
-            vec4 data=texelFetch(previousReflection,q,0);
-            if(parallax)
+            for (int x = -2; x <= 2; ++x)
             {
-                // Reject another reflected surface, including disocclusions, rather than reusing its colour.
-                vec3 oldVirtual=oldPosition-oldView*data.x;
-                if(data.x<=0.0 || length(oldVirtual-virtualPosition)>max(0.005,0.1*distance)) continue;
+                ivec2 q = p + ivec2(x, y);
+                if (!HybridInView(q) || texelFetch(receiverSurface, q, 0).g != identity
+                    || dot(HybridGeometricNormal(q), ng) < 0.99
+                    || abs(dot(HybridPosition(q) - position, ng)) > hybrid.rejection.x)
+                {
+                    continue;
+                }
+                float sampleDistance = texelFetch(rawReflection, q, 0).x;
+                if (sampleDistance > 0.0)
+                {
+                    distance += sampleDistance;
+                    count    += 1.0;
+                }
             }
-            else if(dot(oldView,view)<mix(0.9995,0.9,roughness*roughness)) continue;
-            float w=(x==0 ? 1.0-f.x:f.x)*(y==0 ? 1.0-f.y:f.y);
-            oldValue+=vec4(texelFetch(previousSpecular,q,0).rgb,data.w)*w;
-            oldMoments+=data.yz*w;
-            weight+=w;
+        }
+        distance /= max(count, 1.0);
+    }
+    float luminance       = HybridLuminance(radiance);
+    vec2  moments         = vec2(luminance, luminance * luminance);
+    vec4  oldValue        = vec4(0);
+    vec2  oldMoments      = vec2(0);
+    float weight          = 0.0;
+    bool  reference       = hybrid.rejection.w > 0.5;
+    bool  moving          = length(surfacePixel - vec2(p)) > 0.01 || hybrid.previousViewPosition != sceneUbo.viewPosition;
+    bool  parallax        = roughness < 0.4 && !reference && moving;
+    vec2  previousPixel   = surfacePixel;
+    vec3  virtualPosition = position - view * distance;
+    vec4  virtualClip     = hybrid.previousProjectionView * vec4(virtualPosition, 1);
+    bool  valid =
+        hybrid.reflection.y != 0u && hybrid.rejection.z > 0.0 && identity != 0u && texelFetch(receiverMotion, p, 0).z > 0.0;
+    if (parallax)
+    {
+        valid         = valid && distance > 0.0 && virtualClip.w > 0.0;
+        previousPixel = (virtualClip.xy / max(virtualClip.w, 1e-20) * 0.5 + 0.5) * vec2(textureSize(receiverDepth, 0)) - 0.5;
+    }
+    if (valid)
+    {
+        ivec2 base = ivec2(floor(previousPixel));
+        vec2  f    = fract(previousPixel);
+        for (int y = 0; y < 2; ++y)
+        {
+            for (int x = 0; x < 2; ++x)
+            {
+                ivec2 q = base + ivec2(x, y);
+                if (!HybridInView(q) || texelFetch(previousReceiver, q, 0).g != identity)
+                {
+                    continue;
+                }
+                vec3 oldPosition = texelFetch(previousPosition, q, 0).xyz;
+                vec4 normals     = PreviousNormals(q);
+                if (abs(dot(oldPosition - position, ng))
+                        > hybrid.rejection.x * max(1.0, length(position - sceneUbo.viewPosition.xyz))
+                    || dot(DecodeGBufferNormal(normals.rg), n) < 0.99 || dot(DecodeGBufferNormal(normals.ba), ng) < 0.99
+                    || abs(texelFetch(previousLength, q, 0).a - roughness) > 0.02)
+                {
+                    continue;
+                }
+                vec3 oldView = sceneUbo.viewPosition.w < 0.5 ? hybrid.previousViewDirection.xyz
+                                                             : normalize(hybrid.previousViewPosition.xyz - oldPosition);
+                vec4 data    = texelFetch(previousReflection, q, 0);
+                if (parallax)
+                {
+                    // Reject another reflected surface, including disocclusions, rather than reusing its colour.
+                    vec3 oldVirtual = oldPosition - oldView * data.x;
+                    if (data.x <= 0.0 || length(oldVirtual - virtualPosition) > max(0.005, 0.1 * distance))
+                    {
+                        continue;
+                    }
+                }
+                else if (dot(oldView, view) < mix(0.9995, 0.9, roughness * roughness))
+                {
+                    continue;
+                }
+                float w     = (x == 0 ? 1.0 - f.x : f.x) * (y == 0 ? 1.0 - f.y : f.y);
+                oldValue   += vec4(texelFetch(previousSpecular, q, 0).rgb, data.w) * w;
+                oldMoments += data.yz * w;
+                weight     += w;
+            }
         }
     }
-    float length=1.0;
-    if(weight>=0.01)
+    float length = 1.0;
+    if (weight >= 0.01)
     {
-        oldValue/=weight; oldMoments/=weight;
-        float limit=reference ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z),roughness<0.2 ? 4.0 : 16.0);
-        if(!reference && (hybrid.reflection.z!=0u || moving))
+        oldValue    /= weight;
+        oldMoments  /= weight;
+        float limit  = reference ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z), roughness < 0.2 ? 4.0 : 16.0);
+        if (!reference && (hybrid.reflection.z != 0u || moving))
         {
             // The box guards camera motion only. With one ray per pixel, dim reflections often leave a
             // whole 9x9 neighbourhood without a hit; after a cache change the box then emptied valid
             // history frame after frame (dark floor C fell 85% by frame 8 with C unchanged, P6 review).
-            HybridUpdateRadianceHistory(p,identity,position,ng,rawSpecular,rawReflectionPrevious,
-                hybrid.reflection.w!=0u,moving,oldValue,oldMoments);
-            limit=min(limit,8.0);
+            HybridUpdateRadianceHistory(p, identity, position, ng, rawSpecular, rawReflectionPrevious,
+                                        hybrid.reflection.w != 0u, moving, oldValue, oldMoments);
+            limit = min(limit, 8.0);
         }
-        length=min(oldValue.a+1.0,limit);
-        radiance=mix(oldValue.rgb,radiance,1.0/length);
-        moments=mix(oldMoments,moments,1.0/length);
+        length   = min(oldValue.a + 1.0, limit);
+        radiance = mix(oldValue.rgb, radiance, 1.0 / length);
+        moments  = mix(oldMoments, moments, 1.0 / length);
     }
-    if(identity==0u) { radiance=vec3(0); moments=vec2(0); length=0.0; }
-    return vec4(distance,moments,length);
+    if (identity == 0u)
+    {
+        radiance = vec3(0);
+        moments  = vec2(0);
+        length   = 0.0;
+    }
+    return vec4(distance, moments, length);
 }
 
 void main()
@@ -187,106 +236,152 @@ void main()
 #ifdef HYBRID_CACHE_HISTORY_GUIDES
     LoadHistoryGuides();
 #endif
-    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
-    if(!HybridInView(p)) return;
-    vec4 sky=texelFetch(rawSky,p,0), spec=texelFetch(rawSpecular,p,0);
-    vec3 position=HybridPosition(p), n=HybridNormal(p), ng=HybridGeometricNormal(p);
-    uvec2 identity=texelFetch(receiverSurface,p,0).rg;
-    if(texelFetch(receiverDepth,p,0).r>=1.0) identity=uvec2(0);
-    vec4 motion=texelFetch(receiverMotion,p,0);
-    vec2 previousPixel=vec2(p)+motion.xy*0.5*vec2(textureSize(receiverDepth,0));
-    if(hybrid.rejection.w>0.5) previousPixel=vec2(p);
-    ivec2 base=ivec2(floor(previousPixel)); vec2 f=fract(previousPixel);
-    vec4 oldSky=vec4(0), oldSpec=vec4(0), oldMoments=vec4(0);
-    vec2 oldLength=vec2(0); float weight=0.0, specWeight=0.0;
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!HybridInView(p))
+    {
+        return;
+    }
+    vec4  sky = texelFetch(rawSky, p, 0), spec = texelFetch(rawSpecular, p, 0);
+    vec3  position = HybridPosition(p), n = HybridNormal(p), ng = HybridGeometricNormal(p);
+    uvec2 identity = texelFetch(receiverSurface, p, 0).rg;
+    if (texelFetch(receiverDepth, p, 0).r >= 1.0)
+    {
+        identity = uvec2(0);
+    }
+    vec4 motion        = texelFetch(receiverMotion, p, 0);
+    vec2 previousPixel = vec2(p) + motion.xy * 0.5 * vec2(textureSize(receiverDepth, 0));
+    if (hybrid.rejection.w > 0.5)
+    {
+        previousPixel = vec2(p);
+    }
+    ivec2 base   = ivec2(floor(previousPixel));
+    vec2  f      = fract(previousPixel);
+    vec4  oldSky = vec4(0), oldSpec = vec4(0), oldMoments = vec4(0);
+    vec2  oldLength = vec2(0);
+    float weight = 0.0, specWeight = 0.0;
     // Bounce histories are allocated at full size only while ray-hit bounce is selected.
-    bool rays=hybrid.bounce.x!=0u;
-    vec4 bounce=rays ? vec4(texelFetch(rawBounce,p,0).rgb,1.0) : vec4(0), oldBounce=vec4(0);
-    vec2 oldBounceMoments=vec2(0);
-    float reason=hybrid.sampling.w==0u ? 1.0 : 2.0;
-    float roughness=texelFetch(receiverRoughness,p,0).g;
-    vec3 view=sceneUbo.viewPosition.w<0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz-position);
-    if(hybrid.sampling.w!=0u && hybrid.rejection.z>0.0 && motion.z>0.0 && identity.g!=0u)
+    bool  rays   = hybrid.bounce.x != 0u;
+    vec4  bounce = rays ? vec4(texelFetch(rawBounce, p, 0).rgb, 1.0) : vec4(0), oldBounce = vec4(0);
+    vec2  oldBounceMoments = vec2(0);
+    float reason           = hybrid.sampling.w == 0u ? 1.0 : 2.0;
+    float roughness        = texelFetch(receiverRoughness, p, 0).g;
+    vec3  view =
+        sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz - position);
+    if (hybrid.sampling.w != 0u && hybrid.rejection.z > 0.0 && motion.z > 0.0 && identity.g != 0u)
     {
-        for(int y=0;y<2;++y) for(int x=0;x<2;++x)
+        for (int y = 0; y < 2; ++y)
         {
-            ivec2 q=base+ivec2(x,y);
-            if(!HybridInView(q)) continue;
-            if(texelFetch(previousReceiver,q,0).g!=identity.g) { reason=3.0; continue; }
-            vec3 oldPosition=texelFetch(previousPosition,q,0).xyz;
-            vec4 oldNormals=PreviousNormals(q);
-            float planeDistance=abs(dot(oldPosition-position,ng));
-            float threshold=hybrid.rejection.x*max(1.0,length(position-sceneUbo.viewPosition.xyz));
-            if(planeDistance>threshold || dot(DecodeGBufferNormal(oldNormals.rg),n)<0.9
-                || dot(DecodeGBufferNormal(oldNormals.ba),ng)<0.9) { reason=4.0; continue; }
-            float w=(x==0 ? 1.0-f.x:f.x)*(y==0 ? 1.0-f.y:f.y);
-            vec4 moments=texelFetch(previousMoments,q,0);
-            vec2 lengths=texelFetch(previousLength,q,0).rg;
-            weight+=w; oldSky+=texelFetch(previousSky,q,0)*w;
-            oldMoments.rg+=moments.rg*w; oldLength.x+=lengths.x*w;
-            if(rays)
+            for (int x = 0; x < 2; ++x)
             {
-                oldBounce+=texelFetch(previousBounce,q,0)*w;
-                oldBounceMoments+=texelFetch(previousBounceMoments,q,0).rg*w;
-            }
-            vec3 previousView=sceneUbo.viewPosition.w<0.5 ? hybrid.previousViewDirection.xyz : normalize(hybrid.previousViewPosition.xyz-oldPosition);
-            if(abs(texelFetch(previousLength,q,0).a-roughness)<0.02 && dot(previousView,view)>mix(0.9995,0.9,roughness*roughness) )
-            {
-                specWeight+=w; oldSpec+=texelFetch(previousSpecular,q,0)*w;
-                oldMoments.ba+=moments.ba*w; oldLength.y+=lengths.y*w;
+                ivec2 q = base + ivec2(x, y);
+                if (!HybridInView(q))
+                {
+                    continue;
+                }
+                if (texelFetch(previousReceiver, q, 0).g != identity.g)
+                {
+                    reason = 3.0;
+                    continue;
+                }
+                vec3  oldPosition   = texelFetch(previousPosition, q, 0).xyz;
+                vec4  oldNormals    = PreviousNormals(q);
+                float planeDistance = abs(dot(oldPosition - position, ng));
+                float threshold     = hybrid.rejection.x * max(1.0, length(position - sceneUbo.viewPosition.xyz));
+                if (planeDistance > threshold || dot(DecodeGBufferNormal(oldNormals.rg), n) < 0.9
+                    || dot(DecodeGBufferNormal(oldNormals.ba), ng) < 0.9)
+                {
+                    reason = 4.0;
+                    continue;
+                }
+                float w        = (x == 0 ? 1.0 - f.x : f.x) * (y == 0 ? 1.0 - f.y : f.y);
+                vec4  moments  = texelFetch(previousMoments, q, 0);
+                vec2  lengths  = texelFetch(previousLength, q, 0).rg;
+                weight        += w;
+                oldSky        += texelFetch(previousSky, q, 0) * w;
+                oldMoments.rg += moments.rg * w;
+                oldLength.x   += lengths.x * w;
+                if (rays)
+                {
+                    oldBounce        += texelFetch(previousBounce, q, 0) * w;
+                    oldBounceMoments += texelFetch(previousBounceMoments, q, 0).rg * w;
+                }
+                vec3 previousView = sceneUbo.viewPosition.w < 0.5 ? hybrid.previousViewDirection.xyz
+                                                                  : normalize(hybrid.previousViewPosition.xyz - oldPosition);
+                if (abs(texelFetch(previousLength, q, 0).a - roughness) < 0.02
+                    && dot(previousView, view) > mix(0.9995, 0.9, roughness * roughness))
+                {
+                    specWeight    += w;
+                    oldSpec       += texelFetch(previousSpecular, q, 0) * w;
+                    oldMoments.ba += moments.ba * w;
+                    oldLength.y   += lengths.y * w;
+                }
             }
         }
     }
-    float luminance=HybridLuminance(sky.rgb);
-    vec4 moments=vec4(luminance,luminance*luminance,spec.a,spec.a*spec.a);
-    vec2 lengths=vec2(1);
-    if(weight>=0.01)
+    float luminance = HybridLuminance(sky.rgb);
+    vec4  moments   = vec4(luminance, luminance * luminance, spec.a, spec.a * spec.a);
+    vec2  lengths   = vec2(1);
+    if (weight >= 0.01)
     {
-        lengths.x=min(oldLength.x/weight+1.0,float(hybrid.sampling.z));
-        float alpha=1.0/lengths.x;
-        sky=mix(oldSky/weight,sky,alpha);
-        moments.rg=mix(oldMoments.rg/weight,moments.rg,alpha);
-        reason=0.0;
+        lengths.x   = min(oldLength.x / weight + 1.0, float(hybrid.sampling.z));
+        float alpha = 1.0 / lengths.x;
+        sky         = mix(oldSky / weight, sky, alpha);
+        moments.rg  = mix(oldMoments.rg / weight, moments.rg, alpha);
+        reason      = 0.0;
     }
-    if(specWeight>=0.01)
+    if (specWeight >= 0.01)
     {
-        lengths.y=min(oldLength.y/specWeight+1.0,(hybrid.rejection.w>0.5 ? float(hybrid.sampling.z) : mix(4.0,float(hybrid.sampling.z),smoothstep(0.04,0.4,roughness))));
-        spec.a=mix(oldSpec.a/specWeight,spec.a,1.0/lengths.y);
-        moments.ba=mix(oldMoments.ba/specWeight,moments.ba,1.0/lengths.y);
+        lengths.y  = min(oldLength.y / specWeight + 1.0,
+                         (hybrid.rejection.w > 0.5 ? float(hybrid.sampling.z)
+                                                   : mix(4.0, float(hybrid.sampling.z), smoothstep(0.04, 0.4, roughness))));
+        spec.a     = mix(oldSpec.a / specWeight, spec.a, 1.0 / lengths.y);
+        moments.ba = mix(oldMoments.ba / specWeight, moments.ba, 1.0 / lengths.y);
     }
-    if(identity.g==0u) { lengths=vec2(0); sky=vec4(0); spec=vec4(0); moments=vec4(0); }
-    float bounceLuminance=HybridLuminance(bounce.rgb);
-    vec2 bounceMoments=vec2(bounceLuminance,bounceLuminance*bounceLuminance);
-    if(rays && hybrid.bounce.y!=0u && weight>=0.01)
+    if (identity.g == 0u)
     {
-        oldBounce/=weight;
-        oldBounceMoments/=weight;
+        lengths = vec2(0);
+        sky     = vec4(0);
+        spec    = vec4(0);
+        moments = vec4(0);
+    }
+    float bounceLuminance = HybridLuminance(bounce.rgb);
+    vec2  bounceMoments   = vec2(bounceLuminance, bounceLuminance * bounceLuminance);
+    if (rays && hybrid.bounce.y != 0u && weight >= 0.01)
+    {
+        oldBounce        /= weight;
+        oldBounceMoments /= weight;
         // Steady diffuse bounce uses the configured history; cache changes still respond within eight frames.
-        float limit=float(hybrid.sampling.z);
-        if(hybrid.bounce.z!=0u && hybrid.rejection.w<0.5)
+        float limit = float(hybrid.sampling.z);
+        if (hybrid.bounce.z != 0u && hybrid.rejection.w < 0.5)
         {
-            HybridUpdateRadianceHistory(p,identity.g,position,ng,rawBounce,rawBouncePrevious,
-                hybrid.bounce.w!=0u,true,oldBounce,oldBounceMoments);
-            limit=min(limit,8.0);
+            HybridUpdateRadianceHistory(p, identity.g, position, ng, rawBounce, rawBouncePrevious, hybrid.bounce.w != 0u, true,
+                                        oldBounce, oldBounceMoments);
+            limit = min(limit, 8.0);
         }
-        bounce.a=min(oldBounce.a+1.0,limit);
-        bounce.rgb=mix(oldBounce.rgb,bounce.rgb,1.0/bounce.a);
-        bounceMoments=mix(oldBounceMoments,bounceMoments,1.0/bounce.a);
+        bounce.a      = min(oldBounce.a + 1.0, limit);
+        bounce.rgb    = mix(oldBounce.rgb, bounce.rgb, 1.0 / bounce.a);
+        bounceMoments = mix(oldBounceMoments, bounceMoments, 1.0 / bounce.a);
     }
-    if(identity.g==0u) { bounce=vec4(0); bounceMoments=vec2(0); }
-    if(rays)
+    if (identity.g == 0u)
     {
-        imageStore(nextBounce,p,bounce);
-        imageStore(nextBounceMoments,p,vec4(bounceMoments,0,0));
+        bounce        = vec4(0);
+        bounceMoments = vec2(0);
     }
-    if(hybrid.reflection.x!=0u)
+    if (rays)
     {
-        vec4 reflection=ReconstructReflection(p,position,n,ng,view,identity.g,roughness,previousPixel,spec.rgb);
-        imageStore(nextReflection,p,reflection);
+        imageStore(nextBounce, p, bounce);
+        imageStore(nextBounceMoments, p, vec4(bounceMoments, 0, 0));
     }
-    imageStore(nextSky,p,sky); imageStore(nextSpecular,p,spec);
-    imageStore(nextMoments,p,moments); imageStore(nextLength,p,vec4(lengths,reason,roughness));
-    imageStore(nextPosition,p,vec4(position,roughness));
-    imageStore(nextNormal,p,vec4(EncodeGBufferNormal(n),0,0));
-    imageStore(nextReceiver,p,uvec4(identity,0,0));
+    if (hybrid.reflection.x != 0u)
+    {
+        vec4 reflection = ReconstructReflection(p, position, n, ng, view, identity.g, roughness, previousPixel, spec.rgb);
+        imageStore(nextReflection, p, reflection);
+    }
+    imageStore(nextSky, p, sky);
+    imageStore(nextSpecular, p, spec);
+    imageStore(nextMoments, p, moments);
+    imageStore(nextLength, p, vec4(lengths, reason, roughness));
+    imageStore(nextPosition, p, vec4(position, roughness));
+    imageStore(nextNormal, p, vec4(EncodeGBufferNormal(n), 0, 0));
+    imageStore(nextReceiver, p, uvec4(identity, 0, 0));
 }

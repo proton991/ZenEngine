@@ -12,14 +12,15 @@ layout(push_constant) uniform UIDrawConstants
     vec2 scale;
     vec2 translate;
     uint textureSlot;
-} constants;
+}
+constants;
 
 layout(location = 0) out vec2 outUV;
 layout(location = 1) out vec4 outColor;
 
 void main()
 {
-    outUV = inUV;
-    outColor = unpackUnorm4x8(inColor);
+    outUV       = inUV;
+    outColor    = unpackUnorm4x8(inColor);
     gl_Position = vec4(inPosition * constants.scale + constants.translate, 0.0, 1.0);
 }

@@ -12,7 +12,8 @@ layout(push_constant) uniform UIDrawConstants
     vec2 scale;
     vec2 translate;
     uint textureSlot;
-} constants;
+}
+constants;
 
 layout(location = 0) in vec2 inUV;
 layout(location = 1) in vec4 inColor;
@@ -24,5 +25,5 @@ void main()
     // images are authored in that space; the font atlas contributes coverage.
     const uint slot = constants.textureSlot;
 
-    outColor = inColor * texture(sampler2D(uTextures[nonuniformEXT(slot)], uSamplers[nonuniformEXT(slot)]), inUV);
+    outColor        = inColor * texture(sampler2D(uTextures[nonuniformEXT(slot)], uSamplers[nonuniformEXT(slot)]), inUV);
 }

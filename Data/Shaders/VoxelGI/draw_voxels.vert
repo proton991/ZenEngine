@@ -6,27 +6,26 @@
 
 layout(set = 1, binding = 0, rgba8) uniform readonly image3D voxelRadiance;
 
-layout (push_constant) uniform uNodePushConstant
+layout(push_constant) uniform uNodePushConstant
 {
     uint volumeDimension;
-} pc;
+}
+pc;
 
-layout(location = 0) out VS_OUT {
+layout(location = 0) out VS_OUT
+{
     vec4 albedo;
-} vs_out;
+}
+vs_out;
 
 
 void main()
 {
-    vec3 position = vec3
-    (
-        (gl_VertexIndex % pc.volumeDimension),
-        ((gl_VertexIndex / pc.volumeDimension) % pc.volumeDimension),
-        (gl_VertexIndex / (pc.volumeDimension * pc.volumeDimension))
-    );
+    vec3 position = vec3((gl_VertexIndex % pc.volumeDimension), ((gl_VertexIndex / pc.volumeDimension) % pc.volumeDimension),
+                         (gl_VertexIndex / (pc.volumeDimension * pc.volumeDimension)));
 
-    ivec3 texPos = ivec3(position);
+    ivec3 texPos  = ivec3(position);
 
     vs_out.albedo = imageLoad(voxelRadiance, texPos);
-    gl_Position = vec4(position + 0.5, 1.0f);
+    gl_Position   = vec4(position + 0.5, 1.0f);
 }

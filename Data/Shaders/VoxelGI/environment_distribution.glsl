@@ -5,12 +5,30 @@
 vec3 EnvironmentCubeDirection(uint face, vec2 uv)
 {
     vec3 direction;
-    if(face == 0u) direction = vec3(1, -uv.y, -uv.x);
-    else if(face == 1u) direction = vec3(-1, -uv.y, uv.x);
-    else if(face == 2u) direction = vec3(uv.x, 1, uv.y);
-    else if(face == 3u) direction = vec3(uv.x, -1, -uv.y);
-    else if(face == 4u) direction = vec3(uv.x, -uv.y, 1);
-    else direction = vec3(-uv.x, -uv.y, -1);
+    if (face == 0u)
+    {
+        direction = vec3(1, -uv.y, -uv.x);
+    }
+    else if (face == 1u)
+    {
+        direction = vec3(-1, -uv.y, uv.x);
+    }
+    else if (face == 2u)
+    {
+        direction = vec3(uv.x, 1, uv.y);
+    }
+    else if (face == 3u)
+    {
+        direction = vec3(uv.x, -1, -uv.y);
+    }
+    else if (face == 4u)
+    {
+        direction = vec3(uv.x, -uv.y, 1);
+    }
+    else
+    {
+        direction = vec3(-uv.x, -uv.y, -1);
+    }
     return normalize(direction);
 }
 
@@ -42,7 +60,7 @@ vec3 EnvironmentHarmonicIrradiance(vec3 d, vec3 L[ZEN_ENVIRONMENT_HARMONIC_COEFF
 {
     const float c1 = 0.429043, c2 = 0.511664, c3 = 0.743125, c4 = 0.886227, c5 = 0.247708;
     return c1 * L[8] * (d.x * d.x - d.y * d.y) + c3 * L[6] * d.z * d.z + c4 * L[0] - c5 * L[6]
-        + 2.0 * c1 * (L[4] * d.x * d.y + L[7] * d.x * d.z + L[5] * d.y * d.z)
-        + 2.0 * c2 * (L[3] * d.x + L[1] * d.y + L[2] * d.z);
+         + 2.0 * c1 * (L[4] * d.x * d.y + L[7] * d.x * d.z + L[5] * d.y * d.z)
+         + 2.0 * c2 * (L[3] * d.x + L[1] * d.y + L[2] * d.z);
 }
 #endif

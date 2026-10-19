@@ -11,7 +11,8 @@ layout(push_constant) uniform MeshPreviewConstants
     mat4 viewProjection;
     vec4 eye;
     uint mode;
-} constants;
+}
+constants;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
@@ -43,9 +44,9 @@ void main()
         vec3 normal = constants.mode == kFlat ? faceNormal : vertexNormal;
 
         // Two-sided headlight: back faces are lit as if facing the camera.
-        normal      = dot(normal, toEye) < 0.0 ? -normal : normal;
+        normal = dot(normal, toEye) < 0.0 ? -normal : normal;
 
-        color       = vec3(0.78) * (0.22 + 0.78 * max(dot(normal, toEye), 0.0));
+        color  = vec3(0.78) * (0.22 + 0.78 * max(dot(normal, toEye), 0.0));
     }
 
     outColor = vec4(color, 1.0);

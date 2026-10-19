@@ -4,16 +4,19 @@
 #include "../Common/bindless_heap.glsl"
 
 #include "Graphics/Shared/VoxelGI.h"
-layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
-       local_size_y=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_y_id=ZEN_VOXEL_VOLUME_GROUP_Y_ID,
-       local_size_z=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_z_id=ZEN_VOXEL_VOLUME_GROUP_Z_ID) in;
+layout(local_size_x    = ZEN_VOXEL_VOLUME_GROUP_SIZE,
+       local_size_x_id = ZEN_VOXEL_VOLUME_GROUP_X_ID,
+       local_size_y    = ZEN_VOXEL_VOLUME_GROUP_SIZE,
+       local_size_y_id = ZEN_VOXEL_VOLUME_GROUP_Y_ID,
+       local_size_z    = ZEN_VOXEL_VOLUME_GROUP_SIZE,
+       local_size_z_id = ZEN_VOXEL_VOLUME_GROUP_Z_ID) in;
 
 struct DrawIndexedIndirectCommand
 {
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
-    int vertexOffset;
+    int  vertexOffset;
     uint firstInstance;
 };
 
@@ -43,12 +46,12 @@ ubo;
 
 void main()
 {
-    uint x                 = gl_GlobalInvocationID.x;
-    uint y                 = gl_GlobalInvocationID.y;
-    uint z                 = gl_GlobalInvocationID.z;
+    uint  x                = gl_GlobalInvocationID.x;
+    uint  y                = gl_GlobalInvocationID.y;
+    uint  z                = gl_GlobalInvocationID.z;
     ivec3 voxel_coordinate = ivec3(x, y, z);
 
-    vec4 voxel_value = imageLoad(voxelTexture, voxel_coordinate);
+    vec4 voxel_value       = imageLoad(voxelTexture, voxel_coordinate);
 
     if (voxel_value.w >= 1.0)
     {
@@ -60,14 +63,13 @@ void main()
             return;
         }
 
-        vec3 _min           = ubo.aabbMin.xyz;
-        vec3 _max           = ubo.aabbMax.xyz;
-        int voxels_per_side = imageSize(voxelTexture).x;
-        float voxel_width   = (_max.x - _min.x) / float(voxels_per_side);
+        vec3  _min            = ubo.aabbMin.xyz;
+        vec3  _max            = ubo.aabbMax.xyz;
+        int   voxels_per_side = imageSize(voxelTexture).x;
+        float voxel_width     = (_max.x - _min.x) / float(voxels_per_side);
 
-        positions[index] =
-            vec4(_min + vec3(voxel_width / 2) + vec3(voxel_coordinate) * voxel_width, 1.0);
-        colors[index] = vec4(voxel_value.xyz / voxel_value.w, 1.0);
+        positions[index]      = vec4(_min + vec3(voxel_width / 2) + vec3(voxel_coordinate) * voxel_width, 1.0);
+        colors[index]         = vec4(voxel_value.xyz / voxel_value.w, 1.0);
         //        colors[index] = vec4(voxel_coordinate, 1.0);
     }
 }

@@ -1,7 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "debug_view.glsl"
-layout(set=1,binding=0) uniform sampler2DArray sourceImage;
+layout(set = 1, binding = 0) uniform sampler2DArray sourceImage;
 void main()
 {
     float value = texture(sourceImage, vec3(inUV, float(debug.selection.y))).r;

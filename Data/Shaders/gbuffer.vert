@@ -23,11 +23,12 @@ layout(constant_id = 0) const int type = 0;
 
 layout(set = 1, binding = 0) uniform UBO
 {
-	mat4  projection;
-	mat4  modelview;
-	mat4  skybox_modelview;
-	float modelscale;
-}ubo;
+    mat4  projection;
+    mat4  modelview;
+    mat4  skybox_modelview;
+    float modelscale;
+}
+ubo;
 
 layout(location = 0) out vec3 outUVW;
 layout(location = 1) out vec3 outPos;
@@ -38,29 +39,29 @@ layout(location = 5) out mat4 outInvModelView;
 
 out gl_PerVertex
 {
-	vec4 gl_Position;
+    vec4 gl_Position;
 };
 
 void main()
 {
-	outUVW = inPos;
+    outUVW = inPos;
 
-	switch (type)
-	{
-		case 0:        // Skybox
-			outPos      = vec3(mat3(ubo.skybox_modelview) * inPos);
-			gl_Position = vec4(ubo.projection * vec4(outPos, 1.0));
-			break;
-		case 1:        // Object
-			outPos      = vec3(ubo.modelview * vec4(inPos * ubo.modelscale, 1.0));
-			gl_Position = ubo.projection * ubo.modelview * vec4(inPos.xyz * ubo.modelscale, 1.0);
-			break;
-	}
-	outNormal = mat3(ubo.modelview) * inNormal;
+    switch (type)
+    {
+        case 0: // Skybox
+            outPos      = vec3(mat3(ubo.skybox_modelview) * inPos);
+            gl_Position = vec4(ubo.projection * vec4(outPos, 1.0));
+            break;
+        case 1: // Object
+            outPos      = vec3(ubo.modelview * vec4(inPos * ubo.modelscale, 1.0));
+            gl_Position = ubo.projection * ubo.modelview * vec4(inPos.xyz * ubo.modelscale, 1.0);
+            break;
+    }
+    outNormal       = mat3(ubo.modelview) * inNormal;
 
-	outInvModelView = inverse(ubo.skybox_modelview);
+    outInvModelView = inverse(ubo.skybox_modelview);
 
-	vec3 lightPos = vec3(0.0f, -5.0f, 5.0f);
-	outLightVec   = lightPos.xyz - outPos.xyz;
-	outViewVec    = -outPos.xyz;
+    vec3 lightPos   = vec3(0.0f, -5.0f, 5.0f);
+    outLightVec     = lightPos.xyz - outPos.xyz;
+    outViewVec      = -outPos.xyz;
 }

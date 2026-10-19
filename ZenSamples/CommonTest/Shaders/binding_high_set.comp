@@ -1,8 +1,16 @@
 #version 450
 layout(local_size_x = 1) in;
 // Set indices beyond the former fixed engine count of eight; the uniform block is a dynamic UBO.
-layout(set = 8, binding = 0, std140) uniform HighSetValue { uint value; } highSetValue;
-layout(set = 9, binding = 0, std430) buffer HighSetResult { uint value; } highSetResult;
+layout(set = 8, binding = 0, std140) uniform HighSetValue
+{
+    uint value;
+}
+highSetValue;
+layout(set = 9, binding = 0, std430) buffer HighSetResult
+{
+    uint value;
+}
+highSetResult;
 void main()
 {
     highSetResult.value = highSetValue.value + 1u;

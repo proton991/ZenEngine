@@ -2,18 +2,25 @@
 #extension GL_GOOGLE_include_directive : require
 // No hardware query capability: the default provider traverses the software BVH.
 #include "../hybrid_provider.glsl"
-layout(local_size_x=64) in;
+layout(local_size_x = 64) in;
 // Per ray: origin and maximum distance, then direction and closest-hit flag.
-layout(std430,set=1,binding=0) readonly buffer Rays { vec4 rays[]; };
+layout(std430, set = 1, binding = 0) readonly buffer Rays
+{
+    vec4 rays[];
+};
 // Per ray: hit, distance, barycentrics; index offset, node, material bits; position; normal.
-layout(std430,set=1,binding=1) writeonly buffer Results { vec4 values[]; };
+layout(std430, set = 1, binding = 1) writeonly buffer Results
+{
+    vec4 values[];
+};
 void main()
 {
-    uint index=gl_GlobalInvocationID.x;
-    vec4 start=rays[2u*index], direction=rays[2u*index+1u];
-    SoftwareRayHit hit=SoftwareQuery(start.xyz,direction.xyz,start.w,direction.w>0.5);
-    values[4u*index]=vec4(hit.ray.hit ? 1.0 : 0.0,hit.distance,hit.barycentrics);
-    values[4u*index+1u]=vec4(uintBitsToFloat(hit.triangle.x),uintBitsToFloat(hit.triangle.y),uintBitsToFloat(hit.triangle.z),0);
-    values[4u*index+2u]=vec4(hit.ray.position,0);
-    values[4u*index+3u]=vec4(hit.ray.normal,0);
+    uint           index = gl_GlobalInvocationID.x;
+    vec4           start = rays[2u * index], direction = rays[2u * index + 1u];
+    SoftwareRayHit hit = SoftwareQuery(start.xyz, direction.xyz, start.w, direction.w > 0.5);
+    values[4u * index] = vec4(hit.ray.hit ? 1.0 : 0.0, hit.distance, hit.barycentrics);
+    values[4u * index + 1u] =
+        vec4(uintBitsToFloat(hit.triangle.x), uintBitsToFloat(hit.triangle.y), uintBitsToFloat(hit.triangle.z), 0);
+    values[4u * index + 2u] = vec4(hit.ray.position, 0);
+    values[4u * index + 3u] = vec4(hit.ray.normal, 0);
 }

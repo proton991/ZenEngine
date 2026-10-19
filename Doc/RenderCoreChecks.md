@@ -4,7 +4,7 @@ Choose a tier by what the change can affect. All three write evidence under `bui
 
 | Tier | Command | Time | Covers |
 | --- | --- | --- | --- |
-| Quick | `python tools/check_quick.py [--native]` | ~15 s, ~2 min with `--native` | Incremental Release build of RenderCoreTest, all RenderCore tests (mock RHI), clang-format on changed C++ files, no-exceptions check; `--native` adds the Vulkan integration and ray-query suites |
+| Quick | `python tools/check_quick.py [--native]` | ~15 s, ~2 min with `--native` | Incremental Release build of RenderCoreTest, all RenderCore tests (mock RHI), clang-format on changed C++ and GLSL files, no-exceptions check; `--native` adds the Vulkan integration and ray-query suites |
 | PR | `python tools/check_pr.py` | ~10 min with up-to-date builds, plus rebuild time | Debug and Release builds of every target, all 15 suites per build, 8 trimmed smokes plus 2 previous-frame-radiance GI smokes per build, and 28 deterministic capture pairs against the last qualified binary |
 | Full | `python tools/check_full.py [--name N]` | ~3.5 h | The complete production qualification: 96 smokes, freeze, captures, 32 strict resource profiles, 18-asset glTF corpus, benchmarks, static/dynamic/adaptive-light image gates, 720p/1080p timing and the input/test-record audits |
 

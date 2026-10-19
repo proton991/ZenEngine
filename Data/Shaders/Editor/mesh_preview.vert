@@ -17,7 +17,8 @@ layout(push_constant) uniform MeshPreviewConstants
     mat4 viewProjection;
     vec4 eye;
     uint mode;
-} constants;
+}
+constants;
 
 layout(location = 0) out vec3 outPosition;
 layout(location = 1) out vec3 outNormal;

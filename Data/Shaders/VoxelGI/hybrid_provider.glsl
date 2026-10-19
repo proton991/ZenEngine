@@ -4,76 +4,92 @@
 #include "hybrid_ray_counts.glsl"
 struct HybridRayResult
 {
-    bool hit;
-    vec3 position;
-    vec3 normal;
+    bool  hit;
+    vec3  position;
+    vec3  normal;
     ivec3 cell;
 };
 #if defined(HYBRID_VOXEL_REFERENCE)
-#define HybridTraceRay(occupancy,origin,direction,maximumDistance) VoxelTraceRay(occupancy,origin,direction,maximumDistance)
+#    define HybridTraceRay(occupancy, origin, direction, maximumDistance) \
+        VoxelTraceRay(occupancy, origin, direction, maximumDistance)
 #elif defined(HYBRID_HARDWARE_PROVIDER)
-#include "hardware_ray_query.glsl"
+#    include "hardware_ray_query.glsl"
 // Call sites share triangle visibility; only the traversal mechanism differs.
-#define HybridTraceRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,false)
-#define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) HardwareTraceRay(origin,direction,maximumDistance,true)
+#    define HybridTraceRay(occupancy, origin, direction, maximumDistance) \
+        HardwareTraceRay(origin, direction, maximumDistance, false)
+#    define HybridTraceClosestRay(occupancy, origin, direction, maximumDistance) \
+        HardwareTraceRay(origin, direction, maximumDistance, true)
 #else
-#define HybridTraceRay(occupancy,origin,direction,maximumDistance) SoftwareTraceRay(origin,direction,maximumDistance,false)
-#define HybridTraceClosestRay(occupancy,origin,direction,maximumDistance) SoftwareTraceRay(origin,direction,maximumDistance,true)
+#    define HybridTraceRay(occupancy, origin, direction, maximumDistance) \
+        SoftwareTraceRay(origin, direction, maximumDistance, false)
+#    define HybridTraceClosestRay(occupancy, origin, direction, maximumDistance) \
+        SoftwareTraceRay(origin, direction, maximumDistance, true)
 #endif
 #if !defined(HYBRID_VOXEL_REFERENCE) && (!defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_MIXED_PROVIDER))
-#include "software_ray_query.glsl"
+#    include "software_ray_query.glsl"
 #endif
 // The starting cell is tested. Do not skip occupied starts: that leaks at wall bases.
 // Slab entry also handles rays starting outside the voxel volume.
 HybridRayResult VoxelTraceRay(sampler3D occupancy, vec3 origin, vec3 direction, float maximumDistance)
 {
-    HybridRayResult result = HybridRayResult(false,origin,vec3(0),ivec3(-1));
-    vec3 p = (origin-gi.gridMinVoxelSize.xyz)/gi.gridMinVoxelSize.w;
-    float enter = 0.0, leave = maximumDistance/gi.gridMinVoxelSize.w;
+    HybridRayResult result = HybridRayResult(false, origin, vec3(0), ivec3(-1));
+    vec3            p      = (origin - gi.gridMinVoxelSize.xyz) / gi.gridMinVoxelSize.w;
+    float           enter = 0.0, leave = maximumDistance / gi.gridMinVoxelSize.w;
     // An occupied origin blocks visibility, but has no entered face. Do not
     // invent a facing normal: bounce cannot identify which wall side it hit.
-    vec3 entryNormal=vec3(0);
-    bool intersects = true;
-    for(int axis=0;axis<3;++axis)
+    vec3 entryNormal = vec3(0);
+    bool intersects  = true;
+    for (int axis = 0; axis < 3; ++axis)
     {
-        if(abs(direction[axis])<1e-9) intersects = intersects && p[axis]>=0.0 && p[axis]<gi.volume.x;
+        if (abs(direction[axis]) < 1e-9)
+        {
+            intersects = intersects && p[axis] >= 0.0 && p[axis] < gi.volume.x;
+        }
         else
         {
-            float a=-p[axis]/direction[axis], b=(gi.volume.x-p[axis])/direction[axis];
-            float nearDistance=min(a,b);
-            if(nearDistance>enter)
+            float a = -p[axis] / direction[axis], b = (gi.volume.x - p[axis]) / direction[axis];
+            float nearDistance = min(a, b);
+            if (nearDistance > enter)
             {
-                enter=nearDistance;
-                entryNormal=vec3(0); entryNormal[axis]=-sign(direction[axis]);
+                enter             = nearDistance;
+                entryNormal       = vec3(0);
+                entryNormal[axis] = -sign(direction[axis]);
             }
-            leave=min(leave,max(a,b));
+            leave = min(leave, max(a, b));
         }
     }
-    if(intersects && leave>enter)
+    if (intersects && leave > enter)
     {
 #ifdef HYBRID_COUNT_RAYS
         ++issuedComputeRays[issuedRayFeature];
 #endif
-        vec3 entry=p+direction*enter;
-        ivec3 cell=ivec3(clamp(floor(entry),vec3(0),vec3(gi.volume.x-1.0)));
-        ivec3 stepDirection=ivec3(sign(direction));
-        vec3 delta=1.0/max(abs(direction),vec3(1e-9));
-        vec3 boundary=vec3(cell)+max(vec3(stepDirection),vec3(0));
-        vec3 next=abs(boundary-entry)*delta+enter;
-        next=mix(next,vec3(1e30),lessThan(abs(direction),vec3(1e-9)));
-        float distance=enter;
-        vec3 normal=entryNormal;
-        for(int i=0;i<int(3.0*gi.volume.x)+3;++i)
+        vec3  entry         = p + direction * enter;
+        ivec3 cell          = ivec3(clamp(floor(entry), vec3(0), vec3(gi.volume.x - 1.0)));
+        ivec3 stepDirection = ivec3(sign(direction));
+        vec3  delta         = 1.0 / max(abs(direction), vec3(1e-9));
+        vec3  boundary      = vec3(cell) + max(vec3(stepDirection), vec3(0));
+        vec3  next          = abs(boundary - entry) * delta + enter;
+        next                = mix(next, vec3(1e30), lessThan(abs(direction), vec3(1e-9)));
+        float distance      = enter;
+        vec3  normal        = entryNormal;
+        for (int i = 0; i < int(3.0 * gi.volume.x) + 3; ++i)
         {
-            if(any(lessThan(cell,ivec3(0))) || any(greaterThanEqual(cell,ivec3(gi.volume.x))) || distance>=leave) break;
-            if(texelFetch(occupancy,cell,0).a>0.5)
+            if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(gi.volume.x))) || distance >= leave)
             {
-                result=HybridRayResult(true,origin+direction*distance*gi.gridMinVoxelSize.w,normal,cell);
                 break;
             }
-            int axis=next.x<next.y ? 0:1; axis=next[axis]<next.z ? axis:2;
-            distance=next[axis]; cell[axis]+=stepDirection[axis]; next[axis]+=delta[axis];
-            normal=vec3(0); normal[axis]=-float(stepDirection[axis]);
+            if (texelFetch(occupancy, cell, 0).a > 0.5)
+            {
+                result = HybridRayResult(true, origin + direction * distance * gi.gridMinVoxelSize.w, normal, cell);
+                break;
+            }
+            int axis      = next.x < next.y ? 0 : 1;
+            axis          = next[axis] < next.z ? axis : 2;
+            distance      = next[axis];
+            cell[axis]   += stepDirection[axis];
+            next[axis]   += delta[axis];
+            normal        = vec3(0);
+            normal[axis]  = -float(stepDirection[axis]);
         }
     }
     return result;

@@ -1,4 +1,15 @@
 #version 450
 layout(local_size_x = 1) in;
-layout(set = 1, binding = 0) uniform Values { uvec4 value; uvec4 more; } values;
-void main() { if (values.value.x + values.more.x == 0) { return; } }
+layout(set = 1, binding = 0) uniform Values
+{
+    uvec4 value;
+    uvec4 more;
+}
+values;
+void main()
+{
+    if (values.value.x + values.more.x == 0)
+    {
+        return;
+    }
+}

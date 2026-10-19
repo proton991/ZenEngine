@@ -85,7 +85,7 @@ Do not copy a rule violation simply because adjacent legacy code uses it. Keep c
 
 - Select checks from the affected contracts and repository setup. Build the affected targets and run relevant existing tests where available. Add or adjust a regression test when it demonstrates a meaningful behavior or invariant; do not add tests that merely mirror code structure or cover a cosmetic edit.
 - For GPU behavior, use the relevant sample/integration test, validation output, capture, or focused probe when needed. A successful build or CPU unit test does not prove device-side synchronization, rendered output, or performance. Inspect the right evidence for the claim.
-- Format changed C++ with the repository configuration and inspect the final diff for unintended churn, style violations, and broken callers. Distinguish your refinements from the user's starting changes.
+- Format changed C++ and GLSL with the repository configuration (`tools/format_active.py`) and inspect the final diff for unintended churn, style violations, and broken callers. Distinguish your refinements from the user's starting changes.
 - State which checks actually ran and what they establish. If a device, toolchain, fixture, or other dependency is unavailable, report that limit; never describe an unrun check as passed.
 - Stop when the scoped findings are addressed and relevant checks pass, or when the remaining evidence gap is clearly identified. Repeat checks only after relevant edits, failures, or new evidence; do not keep refactoring to fill time.
 

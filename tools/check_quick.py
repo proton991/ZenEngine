@@ -1,7 +1,7 @@
 """Quick tier, a few minutes: run while editing.
 
 Incremental Release build of RenderCoreTest, the full RenderCoreTest suite (mock RHI, CPU only), clang-format on
-changed C++ files and the no-exceptions check. --native adds the Vulkan integration and ray-query suites on the GPU
+changed C++ and GLSL files and the no-exceptions check. --native adds the Vulkan integration and ray-query suites on the GPU
 (about two more minutes). Nothing here proves image output; use check_pr.py before submitting.
 """
 import argparse

@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+from format_active import active_source
+
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / 'build/checks'
 VENV_PYTHON = ROOT / 'build/venv/Scripts/python.exe'
@@ -16,8 +18,6 @@ SUITES = ['RenderCoreTest', 'VulkanRHITest', 'CommonTest', 'EditorModelTest', 'E
           'VulkanRHIIntegrationTest', 'RayQueryIntegrationTest', 'EditorRenderingTest', 'EditorPreviewTest',
           'UIRenderingTest', 'RuntimeUIIntegrationTest', 'UIPlatformTest', 'SceneModelSwitchTest',
           'ConeVoxelGIIntegrationTest']
-FORMAT_ROOTS = ('ZenCore/', 'ZenSamples/', 'ZenUI/')  # tools/format_active.py scope
-CPP_SUFFIXES = ('.h', '.hpp', '.cpp', '.inl')
 
 
 def stamp():
@@ -67,12 +67,11 @@ def changed_files():
 
 def check_format(files):
     """clang-format check limited to changed files inside tools/format_active.py's scope."""
-    selected = [name for name in files if name.endswith(CPP_SUFFIXES) and name.startswith(FORMAT_ROOTS)
-                and name != 'ZenCore/Source/vk_mem_alloc.cpp']
+    selected = [name for name in files if active_source(name)]
     for start in range(0, len(selected), 40):
         run(['clang-format', '--style=file', '--fallback-style=none', '--dry-run', '--Werror',
              *selected[start:start + 40]])
-    print(f'Format check passed for {len(selected)} changed C++ files', flush=True)
+    print(f'Format check passed for {len(selected)} changed C++ and GLSL files', flush=True)
 
 
 def verify_suites(folder, names):

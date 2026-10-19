@@ -2,11 +2,17 @@
 #extension GL_EXT_ray_query : require
 layout(local_size_x = 1) in;
 layout(set = 1, binding = 0) uniform accelerationStructureEXT scene;
-layout(set = 1, binding = 1, std430) buffer Output { uint hit; } result;
+layout(set = 1, binding = 1, std430) buffer Output
+{
+    uint hit;
+}
+result;
 void main()
 {
     rayQueryEXT query;
     rayQueryInitializeEXT(query, scene, gl_RayFlagsOpaqueEXT, 255, vec3(0), 0.001, vec3(0, 0, 1), 10.0);
-    while (rayQueryProceedEXT(query)) { }
+    while (rayQueryProceedEXT(query))
+    {
+    }
     result.hit = rayQueryGetIntersectionTypeEXT(query, true);
 }

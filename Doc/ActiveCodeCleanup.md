@@ -53,7 +53,8 @@ python tools/format_active.py --check
 ```
 
 `python tools/format_active.py` applies the repository's `.clang-format` to the
-219 active C++ files. `--check` verifies formatting without writing files.
+606 active C++ and GLSL files (shaders in `Data/Shaders/` and `ZenSamples/*/Shaders/`
+are formatted as C++). `--check` verifies formatting without writing files.
 Vulkan integration tests require a compatible GPU and validation layer.
 
 VSCode can apply the same style on save with the Microsoft C/C++ extension:

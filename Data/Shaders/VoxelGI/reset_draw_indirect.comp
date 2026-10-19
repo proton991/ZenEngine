@@ -10,7 +10,7 @@ struct DrawIndexedIndirectCommand
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
-    int vertexOffset;
+    int  vertexOffset;
     uint firstInstance;
 };
 

@@ -3,5 +3,12 @@
 #extension GL_EXT_nonuniform_qualifier : require
 layout(local_size_x = 1) in;
 layout(set = 1, binding = 0) uniform texture2D textures[];
-layout(set = 1, binding = 1) buffer Output { ivec2 size; } outputData;
-void main() { outputData.size = textureSize(textures[nonuniformEXT(gl_GlobalInvocationID.x)], 0); }
+layout(set = 1, binding = 1) buffer Output
+{
+    ivec2 size;
+}
+outputData;
+void main()
+{
+    outputData.size = textureSize(textures[nonuniformEXT(gl_GlobalInvocationID.x)], 0);
+}

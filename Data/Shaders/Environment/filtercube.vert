@@ -9,17 +9,19 @@
 
 #include "../Common/bindless_heap.glsl"
 
-layout (location = 0) in vec3 inPos;
+layout(location = 0) in vec3 inPos;
 
-layout(push_constant) uniform PushConsts {
-	layout (offset = 0) mat4 mvp;
-} pushConsts;
-
-layout (location = 0) out vec3 outUVW;
-
-void main() 
+layout(push_constant) uniform PushConsts
 {
-	// Convert world directions to the source cubemap's inverted-Y convention.
-	outUVW = vec3(inPos.x, -inPos.y, inPos.z);
-	gl_Position = pushConsts.mvp * vec4(inPos.xyz, 1.0);
+    layout(offset = 0) mat4 mvp;
+}
+pushConsts;
+
+layout(location = 0) out vec3 outUVW;
+
+void main()
+{
+    // Convert world directions to the source cubemap's inverted-Y convention.
+    outUVW      = vec3(inPos.x, -inPos.y, inPos.z);
+    gl_Position = pushConsts.mvp * vec4(inPos.xyz, 1.0);
 }
