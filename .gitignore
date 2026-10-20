@@ -6,6 +6,7 @@ build/
 .idea/
 out/
 .clangd
+/compile_commands.json
 
 Data/SpvShaders
 Data/engine.cfg
