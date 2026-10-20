@@ -883,6 +883,140 @@ TEST_F(VulkanAttachmentIntegrationTest, FailedViewCreationDoesNotPublishViewAndC
     EXPECT_NE(Texture(), nullptr);
 }
 
+TEST_F(VulkanAttachmentIntegrationTest, TransferOnlyTexturesHaveNoViewsAndSupportReadback)
+{
+    for (uint32_t usage = 1; usage <= 3; ++usage)
+    {
+        SCOPED_TRACE(usage);
+        RHITextureCreateInfo info{};
+        info.type   = RHITextureType::e2D;
+        info.format = DataFormat::eR8G8B8A8UNORM;
+        info.width = info.height = 8;
+        if ((usage & 1) != 0)
+        {
+            info.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
+        }
+        if ((usage & 2) != 0)
+        {
+            info.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferDst);
+        }
+        RHIResourcePtr<RHITexture> owned = RHIResourcePtr<RHITexture>::Adopt(session->rhi.CreateTexture(info));
+        ASSERT_NE(owned.Get(), nullptr);
+        VulkanTexture* texture = static_cast<VulkanTexture*>(owned.Get());
+        EXPECT_NE(texture->GetVkImage(), VK_NULL_HANDLE);
+        EXPECT_EQ(texture->GetDefaultView(), nullptr);
+        EXPECT_EQ(View(texture, 0, 0), nullptr);
+        EXPECT_EQ(texture->GetAttachmentView(), nullptr);
+        EXPECT_EQ(AttachmentObserver::viewCreates, 0u);
+
+        if (usage == 3)
+        {
+            VulkanBuffer* readback = Buffer();
+            ASSERT_NE(readback, nullptr);
+            Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            context->RHIClearTexture(texture, Color(1, 0, 0, 1), texture->GetSubResourceRange());
+            Transition(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            CopyAll(texture, readback, VK_IMAGE_ASPECT_COLOR_BIT, 4);
+            SubmitAndWait();
+            const uint8_t* pixels = readback->Map();
+            ASSERT_NE(pixels, nullptr);
+            for (uint32_t pixel = 0; pixel < 64; ++pixel)
+            {
+                EXPECT_EQ(pixels[pixel * 4], 255);
+                EXPECT_EQ(pixels[pixel * 4 + 1], 0);
+                EXPECT_EQ(pixels[pixel * 4 + 2], 0);
+                EXPECT_EQ(pixels[pixel * 4 + 3], 255);
+            }
+            readback->Unmap();
+        }
+    }
+}
+
+TEST_F(VulkanAttachmentIntegrationTest, MutableViewsEnforceFormatCompatibilityBeforeNativeCreation)
+{
+    for (bool mutableFormat : {false, true})
+    {
+        for (DataFormat baseFormat : {DataFormat::eR8G8B8A8UNORM, DataFormat::eD32SFloat})
+        {
+            SCOPED_TRACE(testing::Message() << "mutable=" << mutableFormat << " format=" << uint32_t(baseFormat));
+            RHITextureCreateInfo info{};
+            info.type          = RHITextureType::e2D;
+            info.format        = baseFormat;
+            info.mutableFormat = mutableFormat;
+            info.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
+            RHIResourcePtr<RHITexture> texture = RHIResourcePtr<RHITexture>::Adopt(session->rhi.CreateTexture(info));
+            ASSERT_NE(texture.Get(), nullptr);
+            ASSERT_NE(texture->GetDefaultView(), nullptr);
+            RHITextureViewCreateInfo view{};
+            view.type = info.type;
+            for (DataFormat format : {DataFormat::eUndefined, DataFormat::eR16G16B16A16SFloat, DataFormat::eR8G8B8A8UNORM,
+                                      DataFormat::eR8G8B8A8SRGB, DataFormat::eR32UInt, DataFormat::eD32SFloat})
+            {
+                SCOPED_TRACE(uint32_t(format));
+                view.format               = format;
+                const bool     compatible = format == baseFormat
+                                         || (mutableFormat && baseFormat == DataFormat::eR8G8B8A8UNORM
+                                             && (format == DataFormat::eR8G8B8A8SRGB || format == DataFormat::eR32UInt));
+                const uint32_t before     = AttachmentObserver::viewCreates;
+                EXPECT_EQ(texture->CreateView(view) != nullptr, compatible);
+                EXPECT_EQ(AttachmentObserver::viewCreates, before + (compatible ? 1u : 0u));
+            }
+        }
+    }
+}
+
+struct TextureViewFormatDriver
+{
+    static inline PFN_vkGetPhysicalDeviceFormatProperties original;
+    static inline VkFormatFeatureFlags                    removed;
+
+    static VKAPI_ATTR void VKAPI_CALL Properties(VkPhysicalDevice device, VkFormat format, VkFormatProperties* properties)
+    {
+        original(device, format, properties);
+        properties->optimalTilingFeatures &= ~removed;
+    }
+};
+
+TEST_F(VulkanAttachmentIntegrationTest, MutableViewsRequireOptimalTilingFeaturesForInheritedUsage)
+{
+    struct UsageCase
+    {
+        RHITextureUsageFlagBits usage;
+        VkFormatFeatureFlags    feature;
+    };
+    const UsageCase cases[] = {
+        {RHITextureUsageFlagBits::eSampled, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT},
+        {RHITextureUsageFlagBits::eStorage, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT},
+        {RHITextureUsageFlagBits::eColorAttachment, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT},
+        {RHITextureUsageFlagBits::eInputAttachment, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT},
+    };
+    TextureViewFormatDriver::original = vkGetPhysicalDeviceFormatProperties;
+    for (const UsageCase& testCase : cases)
+    {
+        SCOPED_TRACE(uint32_t(testCase.usage));
+        RHITextureCreateInfo info{};
+        info.type          = RHITextureType::e2D;
+        info.format        = DataFormat::eR8G8B8A8UNORM;
+        info.mutableFormat = true;
+        info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, testCase.usage);
+        RHIResourcePtr<RHITexture> texture = RHIResourcePtr<RHITexture>::Adopt(session->rhi.CreateTexture(info));
+        ASSERT_NE(texture.Get(), nullptr);
+        RHITextureViewCreateInfo view{};
+        view.type                        = info.type;
+        view.format                      = DataFormat::eR8G8B8A8UInt;
+        const uint32_t before            = AttachmentObserver::viewCreates;
+        TextureViewFormatDriver::removed = testCase.feature;
+        {
+            test::ScopedVulkanCall<PFN_vkGetPhysicalDeviceFormatProperties> unsupported(vkGetPhysicalDeviceFormatProperties,
+                                                                                        TextureViewFormatDriver::Properties);
+            EXPECT_EQ(texture->CreateView(view), nullptr);
+        }
+        EXPECT_EQ(AttachmentObserver::viewCreates, before);
+        EXPECT_NE(texture->CreateView(view), nullptr);
+        EXPECT_EQ(AttachmentObserver::viewCreates, before + 1);
+    }
+}
+
 struct TextureAllocationDriver
 {
     static inline PFN_vkCreateImage    createImage;
@@ -975,7 +1109,7 @@ TEST_F(VulkanAttachmentIntegrationTest, TextureAllocationFailuresCleanUpAndAllow
 
     for (uint32_t dimension : {4u, 32u})
     {
-        for (uint32_t failure = 0; failure < 4; ++failure)
+        for (uint32_t failure = 0; failure < 6; ++failure)
         {
             SCOPED_TRACE(testing::Message() << dimension << " failure=" << failure);
 
@@ -993,16 +1127,23 @@ TEST_F(VulkanAttachmentIntegrationTest, TextureAllocationFailuresCleanUpAndAllow
 
             info.mipmaps             = 3;
 
-            info.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+            if (failure >= 4)
+            {
+                info.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc, RHITextureUsageFlagBits::eTransferDst);
+            }
+            else
+            {
+                info.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+            }
 
             if (failure == 3)
             {
                 info.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
             }
 
-            TextureAllocationDriver::failImage  = failure == 0;
+            TextureAllocationDriver::failImage  = failure == 0 || failure == 4;
 
-            TextureAllocationDriver::failMemory = failure == 1;
+            TextureAllocationDriver::failMemory = failure == 1 || failure == 5;
 
             AttachmentObserver::failView        = failure == 2;
 
@@ -1031,7 +1172,7 @@ TEST_F(VulkanAttachmentIntegrationTest, TextureAllocationFailuresCleanUpAndAllow
 
             if (recovered != nullptr)
             {
-                EXPECT_NE(recovered->GetDefaultView(), nullptr);
+                EXPECT_EQ(recovered->GetDefaultView() != nullptr, failure < 4);
 
                 session->rhi.DestroyTexture(recovered);
             }

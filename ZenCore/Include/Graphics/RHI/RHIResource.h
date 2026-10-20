@@ -383,6 +383,7 @@ public:
     // base texture; callers retaining a view must also keep the texture alive.
     virtual RHITextureView* CreateView(const RHITextureViewCreateInfo& createInfo) = 0;
 
+    // Transfer-only textures have no default view and reject CreateView.
     RHITextureView* GetDefaultView() const
     {
         return m_pDefaultView;
@@ -398,7 +399,7 @@ public:
         return m_baseInfo;
     }
 
-    const RHITextureSubResourceRange& GetSubResourceRange() const;
+    RHITextureSubResourceRange GetSubResourceRange() const;
 
     uint32_t GetWidth() const
     {
@@ -537,9 +538,13 @@ inline void RHITexture::DestroyOwnedViews()
     m_pDefaultView = nullptr;
 }
 
-inline const RHITextureSubResourceRange& RHITexture::GetSubResourceRange() const
+inline RHITextureSubResourceRange RHITexture::GetSubResourceRange() const
 {
-    return m_pDefaultView->GetSubResourceRange();
+    RHITextureSubResourceRange range{};
+    range.aspect     = GetTextureFormatAspects(m_baseInfo.format);
+    range.levelCount = m_baseInfo.mipmaps;
+    range.layerCount = m_baseInfo.arrayLayers;
+    return range;
 }
 
 struct RHISamplerCreateInfo

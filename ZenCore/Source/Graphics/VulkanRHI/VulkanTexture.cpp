@@ -82,6 +82,50 @@ float ClampSamplerAnisotropy(float requested, float limit)
 
 namespace
 {
+bool ImageUsageAllowsViews(VkImageUsageFlags usage)
+{
+    constexpr VkImageUsageFlags viewUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT
+                                          | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                          | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    return (usage & viewUsage) != 0;
+}
+
+bool IsTextureViewFormatSupported(const RHITextureCreateInfo& image, DataFormat format)
+{
+    const uint32_t pixelSize = GetTextureFormatPixelSize(format);
+    // Current RHI color formats are uncompressed: their Vulkan compatibility class is their texel size.
+    // Depth/stencil formats are only compatible with themselves.
+    bool supported = pixelSize != 0
+                  && (format == image.format
+                      || (image.mutableFormat && GetTextureFormatAspects(image.format).HasFlag(RHITextureAspectFlagBits::eColor)
+                          && GetTextureFormatAspects(format).HasFlag(RHITextureAspectFlagBits::eColor)
+                          && pixelSize == GetTextureFormatPixelSize(image.format)));
+    if (supported && format != image.format)
+    {
+        VkFormatProperties properties{};
+        vkGetPhysicalDeviceFormatProperties(GVulkanRHI->GetDevice()->GetPhysicalDeviceHandle(), ToVkFormat(format),
+                                            &properties);
+
+        VkFormatFeatureFlags required = 0;
+        if (image.usageFlags.HasFlag(RHITextureUsageFlagBits::eSampled))
+        {
+            required |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+        }
+        if (image.usageFlags.HasFlag(RHITextureUsageFlagBits::eStorage))
+        {
+            required |= VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+        }
+        if (image.usageFlags.HasFlag(RHITextureUsageFlagBits::eColorAttachment)
+            || image.usageFlags.HasFlag(RHITextureUsageFlagBits::eInputAttachment))
+        {
+            required |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+        }
+        // Only color formats can differ from the image format. Identical formats were checked at image creation.
+        supported = properties.optimalTilingFeatures != 0 && (properties.optimalTilingFeatures & required) == required;
+    }
+    return supported;
+}
+
 bool IsClampAddressMode(RHISamplerRepeatMode mode)
 {
     return mode == RHISamplerRepeatMode::eClampToEdge || mode == RHISamplerRepeatMode::eClampToBorder;
@@ -285,7 +329,9 @@ VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInf
                                       && (createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eColorAttachment)
                                           || createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment));
 
-        if (pTexture->GetDefaultView() == nullptr || (needsAttachmentView && pTexture->GetAttachmentView() == nullptr))
+        if (pTexture->GetVkImage() == VK_NULL_HANDLE
+            || (ImageUsageAllowsViews(pTexture->GetVkImageUsage()) && pTexture->GetDefaultView() == nullptr)
+            || (needsAttachmentView && pTexture->GetAttachmentView() == nullptr))
         {
             pTexture->ReleaseReference();
 
@@ -310,9 +356,13 @@ RHITextureView* VulkanTexture::CreateViewOnRHIThread(const RHITextureViewCreateI
 {
     const char* error = nullptr;
 
-    if (createInfo.format == DataFormat::eUndefined || (createInfo.format != m_baseInfo.format && !m_baseInfo.mutableFormat))
+    if (!ImageUsageAllowsViews(m_vkImageCI.usage))
     {
-        error = "Texture view format requires a compatible mutable-format image";
+        error = "Texture usage does not permit image views";
+    }
+    else if (!IsTextureViewFormatSupported(m_baseInfo, createInfo.format))
+    {
+        error = "Texture view format is incompatible or unsupported for the image usage";
     }
     else if (createInfo.mipLevels == 0 || createInfo.baseMipLevel >= m_baseInfo.mipmaps
              || createInfo.mipLevels > m_baseInfo.mipmaps - createInfo.baseMipLevel || createInfo.arrayLayers == 0
@@ -427,7 +477,6 @@ void VulkanTexture::Init()
             GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(m_vkImage), m_baseInfo.tag);
         }
 
-        // Only successfully allocated images acquire views.
         m_vkAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 
         if (FormatIsDepthStencil(m_baseInfo.format))
@@ -443,21 +492,24 @@ void VulkanTexture::Init()
             m_vkAspectFlags = VK_IMAGE_ASPECT_STENCIL_BIT;
         }
 
-        RHITextureViewCreateInfo viewCI{};
+        if (ImageUsageAllowsViews(imageCI.usage))
+        {
+            RHITextureViewCreateInfo viewCI{};
 
-        viewCI.format       = m_baseInfo.format;
+            viewCI.format       = m_baseInfo.format;
 
-        viewCI.type         = m_baseInfo.type;
+            viewCI.type         = m_baseInfo.type;
 
-        viewCI.arrayLayers  = m_baseInfo.arrayLayers;
+            viewCI.arrayLayers  = m_baseInfo.arrayLayers;
 
-        viewCI.mipLevels    = m_baseInfo.mipmaps;
+            viewCI.mipLevels    = m_baseInfo.mipmaps;
 
-        viewCI.baseMipLevel = 0;
+            viewCI.baseMipLevel = 0;
 
-        viewCI.tag          = m_baseInfo.tag;
+            viewCI.tag          = m_baseInfo.tag;
 
-        m_pDefaultView      = CreateView(viewCI);
+            m_pDefaultView      = CreateView(viewCI);
+        }
     }
     else
     {
