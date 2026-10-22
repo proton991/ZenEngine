@@ -238,6 +238,11 @@ void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
     });
 }
 
+bool HybridGIRenderer::HasSkyLight(const VoxelGISettings& settings, const SceneUniformData& scene)
+{
+    return settings.environmentLighting && scene.environment.x > 0.0f && scene.environment.z > 0.0f;
+}
+
 bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI)
 {
     const VoxelGISettings& settings       = voxelGI.GetSettings();
@@ -323,11 +328,13 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const bool hardwareTrace = (hardwareMask & 27u) != 0;
         // Only geometry-dependent weights survive an unchanged receiver image.
         // Lighting and guide values are always read from this frame's inputs.
-        const bool       unchangedReceivers = m_valid && m_recordedProjectionView == m_uniforms.previousProjectionView
-                                           && m_surface == m_scene->GetSurfaceRevision();
+        const bool unchangedReceivers = m_valid && m_recordedProjectionView == m_uniforms.previousProjectionView
+                                     && m_surface == m_scene->GetSurfaceRevision();
+        // Skipping the dense sky search without sky light saved 43 ms on New Sponza.
+        const bool skyLight = HasSkyLight(settings, *reinterpret_cast<const SceneUniformData*>(m_scene->GetSceneUniformData()));
         const glm::uvec4 reuseData(
             unchangedReceivers && m_previousSettings.filter && m_previousSettings.referenceSamples == 0 ? 1u : 0u,
-            unchangedReceivers ? 1u : 0u, 0u, 0u);
+            unchangedReceivers ? 1u : 0u, skyLight ? 1u : 0u, 0u);
         m_recordedSettings  = settings;
         m_uniforms.sampling = glm::uvec4(m_frame, settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples,
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);

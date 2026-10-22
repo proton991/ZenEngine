@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderView.h"
+#include "Graphics/RenderCore/V2/SceneLighting.h"
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
@@ -54,7 +55,11 @@ public:
     }
     // Diagnostic variants only. The caller retains both buffers through GPU completion.
     static uint64_t GetRayCountCaptureBytes(uint32_t width, uint32_t height);
-    void            SetRayCountCapture(RHIBuffer* output, RHIBuffer* readback)
+
+    // Whether environment light can reach the sky term. Without it the final filter queues no
+    // receiver for the dense sky search, which could only confirm a zero sky.
+    static bool HasSkyLight(const VoxelGISettings& settings, const SceneUniformData& scene);
+    void        SetRayCountCapture(RHIBuffer* output, RHIBuffer* readback)
     {
         m_rayCountOutput    = output;
         m_rayCountReadback  = readback;

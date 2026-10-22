@@ -16,7 +16,7 @@ layout(set = 1, binding = 26) uniform sampler2D previousSearchWeight;
 layout(set = 1, binding = 27, r32f) uniform writeonly image2D nextSearchWeight;
 layout(std140, set = 1, binding = 28) uniform uHybridReuseData
 {
-    uvec4 reuseData;
+    uvec4 reuseData; // reusable search weights, unchanged receivers, environment can light the sky
 };
 layout(std430, set = 1, binding = 21) buffer HybridSkySearchArgs
 {
@@ -172,8 +172,8 @@ void main()
         }
     }
 #ifdef FINAL_SKY_FILTER
-    // Both providers append only receivers that need the dense fallback.
-    if (filterStep == 16u && all(equal(sky.rgb, vec3(0))) && texelFetch(moments, p, 0).r == 0.0
+    // Both providers append only receivers that need the dense fallback, and none without sky light.
+    if (filterStep == 16u && reuseData.z != 0u && all(equal(sky.rgb, vec3(0))) && texelFetch(moments, p, 0).r == 0.0
         && HasSkySupport(p, geometric, position))
     {
         uint index          = atomicAdd(searchCount, 1u);

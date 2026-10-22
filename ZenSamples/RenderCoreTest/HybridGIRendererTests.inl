@@ -41,6 +41,25 @@ void CreateHybridTestShaders(RenderDevice* device)
     CreateTestShaderProgram(device, "HybridReceiverSP");
 }
 
+TEST(HybridGIRenderer, SkyLightNeedsEnvironmentLightingAndALitEnvironment)
+{
+    VoxelGISettings  settings;
+    SceneUniformData scene;
+    settings.environmentLighting = true;
+    scene.environment            = Vec4(1.0f, 0.0f, 1.0f, 1.0f);
+    EXPECT_TRUE(HybridGIRenderer::HasSkyLight(settings, scene));
+    // The skybox's visibility does not light anything.
+    scene.environment.w = 0.0f;
+    EXPECT_TRUE(HybridGIRenderer::HasSkyLight(settings, scene));
+    scene.environment.z = 0.0f;
+    EXPECT_FALSE(HybridGIRenderer::HasSkyLight(settings, scene));
+    scene.environment = Vec4(0.0f, 0.0f, 1.0f, 1.0f);
+    EXPECT_FALSE(HybridGIRenderer::HasSkyLight(settings, scene));
+    scene.environment            = Vec4(1.0f, 0.0f, 1.0f, 1.0f);
+    settings.environmentLighting = false;
+    EXPECT_FALSE(HybridGIRenderer::HasSkyLight(settings, scene));
+}
+
 TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerView)
 {
     CreateHybridTestShaders(device);
@@ -308,7 +327,8 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
                     std::memcpy(&reuse, rhi->graphics.values[value].data(), sizeof(reuse));
                     const uint32_t expected =
                         frame == 5 || (frame >= 9 && frame <= 14) || frame == 17 || frame == 19 || frame == 21 ? 1u : 0u;
-                    EXPECT_EQ(reuse, glm::uvec4(frame == 19 ? 0u : expected, expected, 0u, 0u));
+                    // The environment stays lit throughout, so the dense sky search stays enabled.
+                    EXPECT_EQ(reuse, glm::uvec4(frame == 19 ? 0u : expected, expected, 1u, 0u));
                     ++reuseValues;
                 }
                 if (rhi->graphics.values[value].size() == sizeof(HybridGIUniformData))
