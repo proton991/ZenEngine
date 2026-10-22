@@ -74,12 +74,13 @@ def generate(folder):
                     if sum(n[k]*inward[k] for k in range(3))<0:t[1],t[2]=t[2],t[1]
             if name in ('blend_closed_box','transmission_closed_box'):
                 # Keep the opaque floor as the receiver; every enclosing wall is a separate
-                # material that the GI visibility contract treats as an opaque occluder.
+                # material that the GI visibility contract treats as an opaque occluder:
+                # transmission always, blend at or above its 0.5 coverage threshold.
                 walls=[t for t in walls if not all(p[1]==0 for p in t)]
                 material=copy.deepcopy(f.document['materials'][0])
                 if name=='blend_closed_box':
                     material['alphaMode']='BLEND'
-                    material['pbrMetallicRoughness']['baseColorFactor'][3]=.25
+                    material['pbrMetallicRoughness']['baseColorFactor'][3]=.75
                 else:
                     material['extensions']={'KHR_materials_transmission':dict(transmissionFactor=1)}
                     f.document['extensionsUsed']=['KHR_materials_transmission']

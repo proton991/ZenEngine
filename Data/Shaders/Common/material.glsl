@@ -93,6 +93,13 @@ bool MaterialVisible(Material material, float alpha)
 {
     return material.surfaceProperties.y != 1.0 || alpha >= material.surfaceProperties.x;
 }
+// GI occlusion. Blended surfaces block where their coverage reaches one half, so decals and
+// cutout cards do not occlude as solid quads. Transmission keeps the opaque-blocker approximation.
+bool MaterialOccludes(Material material, float alpha)
+{
+    return material.surfaceProperties.y == 0.0
+        || alpha >= (material.surfaceProperties.y == 1.0 ? material.surfaceProperties.x : 0.5);
+}
 vec4 MaterialFeatureTexture(Material material, int slot, vec2 uv0, vec2 uv1)
 {
     MaterialTextureData binding = material.featureTextures[slot];

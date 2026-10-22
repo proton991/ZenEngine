@@ -51,14 +51,14 @@ vec3 RaySurfacePosition(uvec4 triangle, vec2 barycentric)
     return (nodesData[triangle.y].modelMatrix * vec4(local, 1)).xyz;
 }
 
-// Only alpha-mask geometry is non-opaque in the BLAS. Both faces of single-sided
+// Only mask and blend geometry is non-opaque in the BLAS. Both faces of single-sided
 // surfaces block: raster back-face culling is view-dependent, and ignoring back
 // faces would admit sky into closed single-sided shells.
 bool RayCandidateAccepted(uvec4 triangle, vec2 barycentric)
 {
     Material material = materialData[triangle.z];
     bool     accepted = true;
-    if (material.surfaceProperties.y == 1.0)
+    if (material.surfaceProperties.y != 0.0)
     {
         vec3  weights            = vec3(1.0 - barycentric.x - barycentric.y, barycentric);
         bool  specularGlossiness = material.surfaceProperties.w > 0.5;
@@ -88,9 +88,9 @@ bool RayCandidateAccepted(uvec4 triangle, vec2 barycentric)
                                 transformed, 0.0)
                          .a;
         }
-        accepted = MaterialVisible(material, alpha);
+        accepted = MaterialOccludes(material, alpha);
     }
-    // Blend/transmission are opaque blockers under the query lighting contract.
+    // Transmission remains an opaque blocker under the query lighting contract.
     return accepted;
 }
 

@@ -326,8 +326,8 @@ HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const
     {
         for (const sg::SubMesh* pMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
-            // All triangle surfaces occlude GI. Alpha masks are evaluated by voxel_surface.glsl;
-            // blend and transmission use the lighting contract's opaque-occluder approximation.
+            // All triangle surfaces occlude GI. voxel_surface.glsl evaluates mask and blend
+            // coverage; transmission uses the lighting contract's opaque-occluder approximation.
             for (uint32_t i = 0; pMesh->topology == sg::MeshTopology::Triangles && i + 2 < pMesh->GetIndexCount(); i += 3)
             {
                 voxelTriangles.push_back(glm::uvec4(pMesh->GetFirstIndex() + i, pNode->GetRenderableIndex(),

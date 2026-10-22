@@ -241,10 +241,11 @@ bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& me
                     geometry.vertexCount   = static_cast<uint32_t>(scene.GetVertices().size());
                     geometry.indexOffset   = uint64_t(primitive->GetFirstIndex()) * sizeof(uint32_t);
                     geometry.indexCount    = primitive->GetIndexCount();
-                    // Only alpha-mask candidates need the material test; every other surface,
+                    // Only mask and blend candidates need the coverage test; every other surface,
                     // single-sided or not, blocks in both directions. Mode edits rebuild.
-                    geometry.opaque = material >= scene.GetMaterialsData().size()
-                                   || scene.GetMaterialsData()[material].surfaceProperties.y != 1.0f;
+                    geometry.opaque =
+                        material >= scene.GetMaterialsData().size()
+                        || scene.GetMaterialsData()[material].surfaceProperties.y == static_cast<float>(sg::AlphaMode::Opaque);
                     build.geometries.push_back(geometry);
                     metadata.push_back({primitive->GetFirstIndex(), material, geometry.indexCount / 3, 0});
                     primitivesValid &= geometry.indexCount % 3 == 0 && primitive->GetFirstIndex() <= scene.GetIndices().size()

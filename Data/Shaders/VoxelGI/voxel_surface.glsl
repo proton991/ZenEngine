@@ -72,7 +72,7 @@ bool SurfaceVisible(uint record, vec3 position, out VOXEL_MATERIAL_PRECISION vec
     VOXEL_MATERIAL_PRECISION vec4 color  = a.color * w.x + b.color * w.y + c.color * w.z;
     vec4                          albedo = VoxelMaterialAlbedo(material, uv0, uv1, color);
     reflectance                          = clamp(albedo.rgb * VoxelDiffuseWeight(material, uv0, uv1), 0, 1);
-    return MaterialVisible(material, albedo.a);
+    return MaterialOccludes(material, albedo.a);
 }
 bool SurfaceVisible(uint record, vec3 position)
 {
