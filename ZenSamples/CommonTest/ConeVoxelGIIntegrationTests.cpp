@@ -1,3 +1,5 @@
+#include "AssetLib/SceneRuntimeBuilder.h"
+#include "AssetLib/SceneLoader.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
@@ -15,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <filesystem>
 
 namespace
 {

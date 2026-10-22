@@ -1,6 +1,6 @@
 # ZenEditor scene viewer
 
-The editor supports glTF inspection and a unified **Rendering** panel for lighting,
+The editor supports glTF, GLB, FBX and `.zenasset` inspection and a unified **Rendering** panel for lighting,
 GI, rendering algorithms and framebuffer diagnostics. Milestones 1–3 of the
 [rendering plan](../Doc/ZenEditorRenderingPlan.md) are implemented. Scene and asset
 authoring remain deferred. Run/Restart/Stop and `zen_player` belong to milestone 4;
@@ -59,16 +59,26 @@ The editor uses platform-specific menus and window title bars:
 
 Linux support is deferred.
 
-Use `--scene=absolute/path/model.gltf` (or `.glb`) to open an initial asset.
+Use `--scene=absolute/path/model.gltf` (or `.glb`, `.fbx` or `.zenasset`) to open an initial asset.
+Source loads reuse a content-validated `.zenasset` cache in the engine's `Cache/SceneAssets`
+folder; after a source import the cache is written in the background. Internal files load directly.
+See [internal scene assets and caching](../Doc/SceneAssetFormat.md) for the file
+contract, cache location and programmatic controls.
 Without it the shell starts empty. An import failure keeps the current scene and
 reports its error in Assets and Output, including failures of the initial asset.
 File → Open (Cmd+O on macOS, Ctrl+O elsewhere, or the toolbar Open button) shows
-the platform file picker, filtered to glTF/GLB, without blocking rendering. It
+the platform file picker, filtered from the registered scene formats, without blocking rendering. It
 starts beside the most recent scene, otherwise in the configured `model_base_path`.
 The GLFW fallback backend has no picker and asks for a path instead.
 File → Open Recent lists the last ten
 scenes that opened successfully; missing files are disabled, and Clear Recent
 empties the list.
+
+CPU import runs on a worker, sharing the engine's parallel mesh/image processing
+pool. The loading dialog reports import stages and offers **Cancel**; running
+jobs drain before their unpublished result is discarded. Cancellation during
+graphics preparation also retains the current scene. Import warnings remain
+available under **Assets → Import diagnostics** and in the status-bar tooltip.
 
 `ZEN_BUILD_EDITOR` and `ZEN_BUILD_RUNTIME_UI` both default to `ON`.
 Use `-DZEN_BUILD_EDITOR=OFF` to configure without the editor. Existing build trees
@@ -177,10 +187,10 @@ Section resets and **Reset setup** restore the session's defaults. GPU allocatio
 failures show a latched PBR fallback reason, with explicit retry and restoration of
 the last successfully rendered setup.
 
-Scenes start with their glTF lights, including disabled and zero-intensity lights.
-A scene without glTF lights starts with none. Add point, directional or spot lights,
+Scenes start with their imported lights, including disabled and zero-intensity lights.
+A scene without imported lights starts with none. Add point, directional or spot lights,
 or six side/eight corner lights around the normalized bounds. Imported lights are
-editable copies; **Reset lights to glTF** restores the file's rig, and **Clear
+editable copies; **Reset imported lights** restores the file's rig, and **Clear
 lights** is valid. New scenes reset the rig while retaining GI, environment and
 output settings. The demo still opts into the six-light preset explicitly.
 

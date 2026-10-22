@@ -1,8 +1,8 @@
 # glTF scene import and rendering
 
-`FastGLTFLoader` and `GLTFLoader` share the glTF 2.0 importer for `.gltf` and `.glb`. Imports are transactional: parser, validation, decompression, texture, or deformation failures leave the previous scene and geometry intact. Unsupported required extensions produce named diagnostics. JSON uses a padded parser buffer, including GLB chunks at page boundaries. Valid integer properties written with decimals or exponents normalize exactly for parser compatibility; authored source JSON and binary chunk offsets are preserved. Windows paths and external resources support UTF-8 filenames.
+`asset::ImportScene` dispatches `.gltf` and `.glb` to the private glTF reader and returns an owning canonical `SceneAsset`. `asset::LoadScene` builds a runtime scene through the common runtime builder. Imports are transactional: parser, validation, decompression, texture, or deformation failures leave the previous scene and geometry intact. Unsupported required extensions produce named diagnostics. JSON uses a padded parser buffer, including GLB chunks at page boundaries. Valid integer properties written with decimals or exponents normalize exactly for parser compatibility; authored source JSON and binary chunk offsets are preserved. Windows paths and external resources support UTF-8 filenames.
 
-The target is the supplied `D:/Dev/glTF-Sample-Assets` corpus and its mesh, material, animation, lighting, and visibility features. Gaussian splatting, interactivity graphs, and remaining vendor-specific runtime systems are deferred at the user's request. Named TODOs live beside the extension configuration in `FastGLTFLoader.cpp`. Optional extension data and extras remain in `SceneAssetData::sourceDocument`; retaining that data does not implement the extension's behavior.
+The target is the supplied `D:/Dev/glTF-Sample-Assets` corpus and its mesh, material, animation, lighting, and visibility features. Gaussian splatting, interactivity graphs, and remaining vendor-specific runtime systems are deferred at the user's request. Named TODOs live beside the extension configuration in `GltfAssetReader.cpp`. Optional extension data and extras remain in `SceneAsset::sourceDocument`; retaining that data does not implement the extension's behavior.
 
 ## Geometry and textures
 
@@ -12,9 +12,36 @@ All seven primitive modes are supported: points, line lists/loops/strips, and tr
 
 Positions, normals, tangents, vertex colors, all authored UV sets, and paired `JOINTS_n`/`WEIGHTS_n` sets are consumed. Additional colors and custom attributes retain decoded values and metadata. Custom morph attributes also retain their target index; their application-defined semantics do not alter the standard material. Sparse UV semantic numbers map to compact GPU slots; `vertexTexCoordSets` records original IDs. Active texture bindings require the corresponding primitive UV set. Flat-normal splitting preserves source indices for deformation. Mirrored transforms preserve face visibility and tangent handedness.
 
-Skin and morph deformation run at import and during animation. Independent instances get independent vertex ranges. Morph deltas precede skinning; position, normal, tangent, UV, and primary-color deltas update without accumulation. All influence sets, inverse-bind matrices, normals/tangents, and posed bounds are handled. GPU instances follow their source node's animated weights, including when default weights are omitted. `Scene::SetMaterialVariant()` selects `KHR_materials_variants` mappings or restores default materials.
+Skin and morph deformation run during runtime construction and animation. Independent instances get independent vertex ranges. Morph deltas precede skinning; position, normal, tangent, UV, and primary-color deltas update without accumulation. All influence sets, inverse-bind matrices, normals/tangents, and posed bounds are handled. GPU instances follow their source node's animated weights, including when default weights are omitted. `Scene::SetMaterialVariant()` selects `KHR_materials_variants` mappings or restores default materials.
 
 PNG/JPEG, `EXT_texture_webp`, and `KHR_texture_basisu` decode to RGBA pixels. Authored Basis Universal mip chains upload without regeneration. Color textures use sRGB and data textures use linear formats, including distinct interpretations of shared sources. Equivalent image/sampler/color-space definitions and samplers are deduplicated. Filtering, wrapping, arbitrary UV sets, and `KHR_texture_transform` apply in material, shadow, and voxel sampling.
+
+## Async loading and parallel processing
+
+`asset::LoadScene` returns one owning CPU scene and geometry result.
+`asset::SceneLoader::LoadAsync` schedules independent requests and returns a
+future; the editor and sample poll it between frames. The service uses separate
+import and processing pools, so waiting for texture or mesh work does not block
+the workers needed to execute that work.
+
+Each referenced image decode is a separate job; texture views share the immutable pixels. Primitive decoding, topology conversion,
+normal generation, UV remapping and bounds calculation run in parallel across
+meshes. A bounded window of results is assembled in source order. Parser state,
+errors and temporary geometry are private to each import. Animation conversion,
+graph construction and initial deformation remain serial within an import.
+
+GPU preparation and scene replacement stay on the engine thread and preserve
+the active scene on failure. GPU preparation can still stall a frame. Destroying
+the service drains queued imports; discarding a future does not cancel a load.
+A request control supports cooperative cancellation and stage reporting.
+The default service uses up to two import workers and up to eight processing
+workers, capped by hardware concurrency. Interactive clients admit one scene
+replacement at a time and snapshot their configured processing worker count.
+
+Animation-pointer paths compile to typed engine targets at import. Playback needs
+neither source JSON nor diagnostic target strings. Runtime instances keep independent
+material and pose state. Placement preserves authored units by default; editor and
+demo preparation explicitly select centering and normalization.
 
 ## Materials
 

@@ -4,10 +4,10 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include "AssetLib/FastGLTFLoader.h"
+#include "SceneTestLoader.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/SceneAnimation.h"
-#include "SceneGraph/SceneAnimationPointer.h"
+#include "SceneAnimationPointerTestSupport.h"
 
 using namespace zen;
 
@@ -234,7 +234,7 @@ void ExpectMorphAttributeImport(bool colorHasAlpha)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write(colorHasAlpha), &scene)) << loader.GetError();
 
@@ -334,7 +334,7 @@ TEST(SceneImportMorphAttributes, InstancedMorphsFollowSourceAnimationWithoutAuth
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write(true, true), &scene)) << loader.GetError();
 
@@ -400,7 +400,7 @@ TEST(SceneImportMorphAttributes, SkinnedInstancesSeparateAndFollowSourceWeightAn
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write(true, true, true), &scene)) << loader.GetError();
 
@@ -470,7 +470,7 @@ TEST(SceneImportMorphAttributes, CustomScalarTargetRetainsDecodedValuesAndItsTar
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write(false, false, false, true), &scene)) << loader.GetError();
 

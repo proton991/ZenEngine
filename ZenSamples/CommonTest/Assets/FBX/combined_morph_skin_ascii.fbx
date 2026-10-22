@@ -1,0 +1,197 @@
+; Authored for ZenEngine's scene importer regression tests.
+FBXHeaderExtension: { FBXHeaderVersion: 1003
+ FBXVersion: 7400
+}
+GlobalSettings: { Version: 1000
+ Properties70: {
+  P: "UpAxis", "int", "Integer", "",1
+  P: "UpAxisSign", "int", "Integer", "",1
+  P: "FrontAxis", "int", "Integer", "",2
+  P: "FrontAxisSign", "int", "Integer", "",1
+  P: "CoordAxis", "int", "Integer", "",0
+  P: "CoordAxisSign", "int", "Integer", "",1
+  P: "UnitScaleFactor", "double", "Number", "",100
+ }
+}
+Objects: {
+ Geometry: 1, "Geometry::Triangle", "Mesh" {
+  Vertices: *9 { a: 0,0,0,1,0,0,0,1,0 }
+  PolygonVertexIndex: *3 { a: 0,1,-3 }
+ }
+ Model: 10, "Model::Combined", "Mesh" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",-1,2,0.5
+   P: "GeometricTranslation", "Vector3D", "Vector", "",0.2,0,0
+  }
+ }
+ Deformer: 30, "Deformer::SixJointSkin", "Skin" {
+  Version: 101
+  SkinningType: "Linear"
+ }
+ Deformer: 31, "Deformer::Morph", "BlendShape" { Version: 100 }
+ Deformer: 32, "SubDeformer::Lift", "BlendShapeChannel" {
+  Version: 100
+  DeformPercent: 0
+  FullWeights: *1 { a: 100 }
+ }
+ Geometry: 33, "Geometry::Lift", "Shape" {
+  Version: 100
+  Indexes: *3 { a: 0,1,2 }
+  Vertices: *9 { a: 0,0,0,0,0,0.3,0,0,0.6 }
+ }
+ AnimationStack: 100, "AnimStack::Combined", "" {
+  Properties70: {
+   P: "LocalStart", "KTime", "Time", "",0
+   P: "LocalStop", "KTime", "Time", "",46186158000
+  }
+ }
+ AnimationLayer: 101, "AnimLayer::Base", "" { }
+ AnimationCurveNode: 110, "AnimCurveNode::T", "" {
+  Properties70: { P: "d|X", "Number", "", "A",0 }
+ }
+ AnimationCurveNode: 120, "AnimCurveNode::DeformPercent", "" {
+  Properties70: { P: "d|DeformPercent", "Number", "", "A",0 }
+ }
+ Model: 20, "Model::Joint0", "LimbNode" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0.0,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1.0
+  }
+ }
+ Deformer: 40, "SubDeformer::Joint0", "Cluster" {
+  Version: 100
+  Mode: "Normalize"
+  Indexes: *3 { a: 0,1,2 }
+  Weights: *3 { a: 1,1,1 }
+  Transform: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+  TransformLink: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+ }
+ Model: 21, "Model::Joint1", "LimbNode" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0.05,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1.1
+  }
+ }
+ Deformer: 41, "SubDeformer::Joint1", "Cluster" {
+  Version: 100
+  Mode: "Normalize"
+  Indexes: *3 { a: 0,1,2 }
+  Weights: *3 { a: 2,2,2 }
+  Transform: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+  TransformLink: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+ }
+ Model: 22, "Model::Joint2", "LimbNode" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0.1,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",-1,1,1.2
+  }
+ }
+ Deformer: 42, "SubDeformer::Joint2", "Cluster" {
+  Version: 100
+  Mode: "Normalize"
+  Indexes: *3 { a: 0,1,2 }
+  Weights: *3 { a: 3,3,3 }
+  Transform: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+  TransformLink: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+ }
+ Model: 23, "Model::Joint3", "LimbNode" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0.15000000000000002,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1.3
+  }
+ }
+ Deformer: 43, "SubDeformer::Joint3", "Cluster" {
+  Version: 100
+  Mode: "Normalize"
+  Indexes: *3 { a: 0,1,2 }
+  Weights: *3 { a: 4,4,4 }
+  Transform: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+  TransformLink: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+ }
+ Model: 24, "Model::Joint4", "LimbNode" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0.2,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1.4
+  }
+ }
+ Deformer: 44, "SubDeformer::Joint4", "Cluster" {
+  Version: 100
+  Mode: "Normalize"
+  Indexes: *3 { a: 0,1,2 }
+  Weights: *3 { a: 5,5,5 }
+  Transform: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+  TransformLink: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+ }
+ Model: 25, "Model::Joint5", "LimbNode" {
+  Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0.25,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1.5
+  }
+ }
+ Deformer: 45, "SubDeformer::Joint5", "Cluster" {
+  Version: 100
+  Mode: "Normalize"
+  Indexes: *3 { a: 0,1,2 }
+  Weights: *3 { a: 6,6,6 }
+  Transform: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+  TransformLink: *16 { a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }
+ }
+ AnimationCurve: 111, "AnimCurve::", "" {
+  Default: 0
+  KeyVer: 4009
+  KeyTime: *3 { a: 0,23093079000,46186158000 }
+  KeyValueFloat: *3 { a: 0,0.5,0 }
+  KeyAttrFlags: *3 { a: 24836,24836,24836 }
+  KeyAttrDataFloat: *12 { a: 0,0,218434821,0,0,0,218434821,0,0,0,218434821,0 }
+  KeyAttrRefCount: *3 { a: 1,1,1 }
+ }
+ AnimationCurve: 121, "AnimCurve::", "" {
+  Default: 0
+  KeyVer: 4009
+  KeyTime: *3 { a: 0,23093079000,46186158000 }
+  KeyValueFloat: *3 { a: 0,100,0 }
+  KeyAttrFlags: *3 { a: 24836,24836,24836 }
+  KeyAttrDataFloat: *12 { a: 0,0,218434821,0,0,0,218434821,0,0,0,218434821,0 }
+  KeyAttrRefCount: *3 { a: 1,1,1 }
+ }
+}
+Connections: {
+ C: "OO",10,0
+ C: "OO",1,10
+ C: "OO",31,1
+ C: "OO",30,1
+ C: "OO",32,31
+ C: "OO",33,32
+ C: "OO",101,100
+ C: "OO",110,101
+ C: "OO",120,101
+ C: "OP",110,20,"Lcl Translation"
+ C: "OP",111,110,"d|X"
+ C: "OP",120,32,"DeformPercent"
+ C: "OP",121,120,"d|DeformPercent"
+ C: "OO",20,0
+ C: "OO",40,30
+ C: "OO",20,40
+ C: "OO",21,0
+ C: "OO",41,30
+ C: "OO",21,41
+ C: "OO",22,0
+ C: "OO",42,30
+ C: "OO",22,42
+ C: "OO",23,0
+ C: "OO",43,30
+ C: "OO",23,43
+ C: "OO",24,0
+ C: "OO",44,30
+ C: "OO",24,44
+ C: "OO",25,0
+ C: "OO",45,30
+ C: "OO",25,45
+}

@@ -1,10 +1,11 @@
+#include "AssetLib/SceneRuntimeBuilder.h"
 #if defined(ZEN_WIN32)
 #    include <Windows.h>
 #endif
 #include "SceneRendererDemo.h"
 #include "SceneRendererWindowTest.h"
 #include "Graphics/RHI/RHIOptions.h"
-#include "AssetLib/FastGLTFLoader.h"
+#include "AssetLib/SceneLoader.h"
 #include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
@@ -77,6 +78,8 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 SceneRendererDemo::~SceneRendererDemo()
 {
 #if defined(ZEN_RUNTIME_UI)
+    CancelRuntimeModel();
+    m_sceneLoader.Reset();
     m_runtimeUI.Reset();
 #endif
 
@@ -123,7 +126,7 @@ void SceneRendererDemo::OnResize(uint32_t width, uint32_t height)
 
 bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPercent)
 {
-    const std::string path = platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath();
+    const std::string path = platform::ConfigLoader::GetInstance().GetDefaultModelPath();
 
     bool prepared          = LoadModel(path, true);
 
@@ -163,103 +166,105 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
 
 bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCameraPosition)
 {
-    bool loaded = false;
+    asset::SceneLoadResult result = asset::LoadScene(path);
+#if defined(ZEN_RUNTIME_UI)
+    m_modelState.error = result.error;
+#endif
+    const bool loaded = result.scene && PublishModel(std::move(result.scene), configuredCameraPosition);
+#if defined(ZEN_RUNTIME_UI)
+    if (loaded)
+    {
+        // Messages describe the published model; a failed load keeps the previous ones.
+        m_modelState.diagnostics = std::move(result.diagnostics);
+    }
+#endif
+    return loaded;
+}
 
-    UniquePtr<sg::Scene> scene;
-
-    UniquePtr<sg::Camera> camera;
-
-    UniquePtr<rc::RenderScene> renderScene;
-
+bool SceneRendererDemo::PublishModel(UniquePtr<asset::LoadedScene> candidate, bool configuredCameraPosition)
+{
+    bool                                        loaded = false;
+    UniquePtr<sg::Scene>                        scene  = std::move(candidate->scene);
+    UniquePtr<sg::Camera>                       camera;
+    UniquePtr<rc::RenderScene>                  renderScene;
+    const std::string&                          path  = candidate->path;
     const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-    scene                                             = MakeUnique<sg::Scene>();
+    // A fresh camera prevents an authored orthographic/infinite projection from
+    // carrying over when the next model relies on automatic framing.
+    camera                          = sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
 
-    asset::FastGLTFLoader loader;
+    const std::string resourceError = rc::RenderScene::GetResourceError(m_renderDevice->GetGPUInfo(), *scene,
+                                                                        candidate->vertices.size(), candidate->indices.size());
 
-    // A failed import keeps the active scene; the loader has already logged the cause.
-    if (!loader.LoadFromFile(path, scene.Get()))
+    if (!resourceError.empty())
     {
+        LOGE("Cannot load scene '{}': {}", path, resourceError);
+
 #if defined(ZEN_RUNTIME_UI)
-        m_modelState.error = loader.GetError();
+        m_modelState.error = resourceError;
 #endif
     }
-    else
+    else if (m_renderDevice->PrepareForResourceReconfiguration())
     {
-        // A fresh camera prevents an authored orthographic/infinite projection from
-        // carrying over when the next model relies on automatic framing.
-        camera = sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
+        asset::PrepareScenePlacement(*scene, asset::ScenePlacement::CenterAndNormalize);
 
-        const std::string resourceError = rc::RenderScene::GetResourceError(
-            m_renderDevice->GetGPUInfo(), *scene, loader.GetVertices().size(), loader.GetIndices().size());
+        rc::SceneData data{};
 
-        if (!resourceError.empty())
+        data.pCamera              = camera.Get();
+
+        data.pScene               = scene.Get();
+
+        data.pVertices            = candidate->vertices.data();
+
+        data.pIndices             = candidate->indices.data();
+
+        data.numVertices          = candidate->vertices.size();
+
+        data.numIndices           = candidate->indices.size();
+
+        data.envTextureName       = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
+
+        renderScene               = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
+
+        const bool resourcesReady = renderScene->Init();
+
+        const zen::HeapVector<sg::SceneCamera*> cameras = scene->GetComponents<sg::SceneCamera>();
+
+        if (!cameras.empty())
         {
-            LOGE("Cannot load scene '{}': {}", path, resourceError);
-
-#if defined(ZEN_RUNTIME_UI)
-            m_modelState.error = resourceError;
-#endif
+            camera->SetupFromSceneCamera(*cameras.front(), m_pWindow->GetAspect());
         }
-        else if (m_renderDevice->PrepareForResourceReconfiguration())
+        else
         {
-            rc::SceneData data{};
+            camera->SetupOnAABB(scene->GetAABB());
 
-            data.pCamera              = camera.Get();
+            Vec3 position = camera->GetPos();
 
-            data.pScene               = scene.Get();
-
-            data.pVertices            = loader.GetVertices().data();
-
-            data.pIndices             = loader.GetIndices().data();
-
-            data.numVertices          = loader.GetVertices().size();
-
-            data.numIndices           = loader.GetIndices().size();
-
-            data.envTextureName       = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
-
-            renderScene               = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
-
-            const bool resourcesReady = renderScene->Init();
-
-            const zen::HeapVector<sg::SceneCamera*> cameras = scene->GetComponents<sg::SceneCamera>();
-
-            if (!cameras.empty())
+            if (configuredCameraPosition && platform::ConfigLoader::GetInstance().ReadVec3("camera_position", position)
+                && glm::length(position - scene->GetAABB().GetCenter()) > 1e-4f)
             {
-                camera->SetupFromSceneCamera(*cameras.front(), m_pWindow->GetAspect());
+                camera->SetPosition(position);
             }
-            else
-            {
-                camera->SetupOnAABB(scene->GetAABB());
+        }
 
-                Vec3 position = camera->GetPos();
+        if (resourcesReady && m_renderDevice->PrepareForSceneReplacement())
+        {
+            m_renderDevice->GetRendererServer()->SetRenderScene(renderScene.Get());
 
-                if (configuredCameraPosition && platform::ConfigLoader::GetInstance().ReadVec3("camera_position", position)
-                    && glm::length(position - scene->GetAABB().GetCenter()) > 1e-4f)
-                {
-                    camera->SetPosition(position);
-                }
-            }
+            m_renderScene.Swap(renderScene);
 
-            if (resourcesReady && m_renderDevice->PrepareForSceneReplacement())
-            {
-                m_renderDevice->GetRendererServer()->SetRenderScene(renderScene.Get());
+            m_scene.Swap(scene);
 
-                m_renderScene.Swap(renderScene);
+            m_camera.Swap(camera);
 
-                m_scene.Swap(scene);
+            loaded = true;
 
-                m_camera.Swap(camera);
+            PrepareLighting(platform::ConfigLoader::GetInstance());
 
-                loaded = true;
+            const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
-                PrepareLighting(platform::ConfigLoader::GetInstance());
-
-                const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-
-                LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), seconds);
-            }
+            LOGI("Scene {} published in {} seconds", m_scene->GetName(), seconds);
         }
     }
 
@@ -410,7 +415,7 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
     }
     else if (m_scene->HasComponent(typeid(sg::Light)))
     {
-        // Animated glTF lights remain owned by RenderScene's imported ID mapping.
+        // Animated imported lights remain owned by RenderScene's imported ID mapping.
         m_modelLightCount = static_cast<uint32_t>(m_renderScene->GetLights().GetEntries().size());
     }
 
@@ -626,6 +631,12 @@ void SceneRendererDemo::StopProfiling()
 
 bool SceneRendererDemo::Destroy(bool runSucceeded)
 {
+#if defined(ZEN_RUNTIME_UI)
+    CancelRuntimeModel();
+    m_sceneLoader.Reset();
+    m_modelLoadResult = {};
+    m_modelState.pendingPath.clear();
+#endif
     StopProfiling();
 
     if (m_profiling)

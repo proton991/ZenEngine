@@ -62,7 +62,7 @@ struct RuntimeDebugUITestAccess
         std::snprintf(ui.m_modelFilter, sizeof(ui.m_modelFilter), "%s", filter);
     }
 
-    static bool MatchesModel(const RuntimeDebugUI& ui, const asset::GLTFModelCatalogEntry& entry)
+    static bool MatchesModel(const RuntimeDebugUI& ui, const asset::SceneModelCatalogEntry& entry)
     {
         return ui.MatchesModelSearch(entry);
     }
@@ -307,6 +307,7 @@ TEST(RuntimeSceneControls, ModelSelectionDefaultsKeepExistingHostsCompatible)
     EXPECT_TRUE(controls.GetRuntimeModelState().pendingPath.empty());
 
     EXPECT_FALSE(controls.RequestRuntimeModel("model.gltf"));
+    EXPECT_FALSE(controls.CancelRuntimeModel());
 
     controls.RefreshRuntimeModels();
 
@@ -393,6 +394,11 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
         std::string text = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
 
         EXPECT_NE(text.find("Loading:"), std::string::npos);
+        EXPECT_NE(text.find("Cancel load"), std::string::npos);
+        scene.models.cancellationRequested = true;
+        text                               = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
+        EXPECT_NE(text.find("Cancelling:"), std::string::npos);
+        scene.models.cancellationRequested = false;
 
         EXPECT_NE(text.find("Box/glTF-Binary/Box.glb"), std::string::npos);
 
@@ -478,7 +484,7 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
         text = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
 
-        EXPECT_NE(text.find("No .gltf or .glb models found"), std::string::npos);
+        EXPECT_NE(text.find("No supported scene files found"), std::string::npos);
     }
 
     ImGui::DestroyContext(context);

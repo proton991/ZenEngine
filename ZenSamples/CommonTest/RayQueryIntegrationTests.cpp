@@ -1,3 +1,4 @@
+#include "AssetLib/SceneRuntimeBuilder.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
@@ -254,6 +255,7 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
         data.pIndices    = indices;
         data.numIndices  = 6;
         data.pCamera     = &camera;
+        asset::PrepareScenePlacement(*data.pScene, asset::ScenePlacement::CenterAndNormalize);
         RenderScene scene(device, data);
         scene.LoadSceneMaterials();
         scene.PrepareBuffers();
@@ -427,6 +429,7 @@ TEST_P(RayQueryIntegrationTest, DeformingOneMeshRefitsOnlyItInPlaceAndRebuildsAf
     data.pIndices    = indices;
     data.numIndices  = 6;
     data.pCamera     = &camera;
+    asset::PrepareScenePlacement(*data.pScene, asset::ScenePlacement::CenterAndNormalize);
     RenderScene scene(device, data);
     scene.LoadSceneMaterials();
     scene.PrepareBuffers();
@@ -833,6 +836,7 @@ TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle
     data.pIndices    = indices.data();
     data.numIndices  = static_cast<uint32_t>(indices.size());
     data.pCamera     = &camera;
+    asset::PrepareScenePlacement(*data.pScene, asset::ScenePlacement::CenterAndNormalize);
     RenderScene scene(device, data);
     scene.LoadSceneMaterials();
     scene.PrepareBuffers();

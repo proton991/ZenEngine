@@ -1,19 +1,22 @@
 #pragma once
 
 #include "Graphics/RenderCore/V2/SceneLighting.h"
-#include "AssetLib/GLTFModelCatalog.h"
+#include "AssetLib/SceneModelCatalog.h"
+#include "AssetLib/SceneImporter.h"
 #include <array>
 
 namespace zen::ui
 {
 struct RuntimeModelState
 {
-    std::string                              basePath;
-    HeapVector<asset::GLTFModelCatalogEntry> models;
-    std::string                              currentPath;
-    std::string                              pendingPath;
-    std::string                              error;
-    uint64_t                                 revision{0};
+    std::string                               basePath;
+    HeapVector<asset::SceneModelCatalogEntry> models;
+    std::string                               currentPath;
+    std::string                               pendingPath;
+    std::string                               error;
+    uint64_t                                  revision{0};
+    bool                                      cancellationRequested{false};
+    HeapVector<asset::SceneImportDiagnostic>  diagnostics;
 };
 
 struct RuntimeSceneSettings
@@ -58,5 +61,6 @@ public:
     virtual void RefreshRuntimeModels();
 
     virtual bool RequestRuntimeModel(const std::string& path);
+    virtual bool CancelRuntimeModel();
 };
 } // namespace zen::ui

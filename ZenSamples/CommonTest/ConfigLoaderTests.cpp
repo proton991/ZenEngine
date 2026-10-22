@@ -190,7 +190,7 @@ TEST(ConfigLoaderTests, IgnoresCommentsAndTrimsWhitespace)
 
     EXPECT_EQ(config.GetVoxelizerMode(), VoxelizerMode::eGeometry);
 
-    EXPECT_EQ(config.GetDefaultGLTFModelPath(), modelRoot + "/Sponza/glTF/Sponza.gltf");
+    EXPECT_EQ(config.GetDefaultModelPath(), modelRoot + "/Sponza/glTF/Sponza.gltf");
 
     EXPECT_EQ(config.GetSkyboxModelPath(), modelRoot + "/Box/glTF/Box.gltf");
 
@@ -210,13 +210,13 @@ TEST(ConfigLoaderTests, ResolvesRelativeModelRootFromEngineConfigDirectory)
 
     const std::filesystem::path modelRoot = checkoutDirectory / "glTF-Sample-Assets/Models";
 
-    EXPECT_EQ(config.GetDefaultGLTFModelPath(), (modelRoot / "Sponza/glTF/Sponza.gltf").generic_string());
+    EXPECT_EQ(config.GetDefaultModelPath(), (modelRoot / "Sponza/glTF/Sponza.gltf").generic_string());
 
     EXPECT_EQ(config.GetSkyboxModelPath(), (modelRoot / "Box/glTF/Box.gltf").generic_string());
 
     EXPECT_EQ(config.GetGLTFModelPath("Box"), (modelRoot / "Box/glTF/Box.gltf").generic_string());
 
-    EXPECT_EQ(config.GetGLTFModelBasePath(), modelRoot.generic_string());
+    EXPECT_EQ(config.GetModelBasePath(), modelRoot.generic_string());
 }
 
 TEST(ConfigLoaderTests, ResolvesRelativeModelOverrideFromEngineConfigDirectory)
@@ -228,7 +228,7 @@ TEST(ConfigLoaderTests, ResolvesRelativeModelOverrideFromEngineConfigDirectory)
 
     const std::filesystem::path configDirectory = std::filesystem::path(ZEN_CONFIG_PATH).parent_path();
 
-    EXPECT_EQ(config.GetDefaultGLTFModelPath(), (configDirectory / "Fixtures/scene.gltf").generic_string());
+    EXPECT_EQ(config.GetDefaultModelPath(), (configDirectory / "Fixtures/scene.gltf").generic_string());
 }
 
 TEST(ConfigLoaderTests, PreservesAbsoluteModelOverride)
@@ -239,7 +239,7 @@ TEST(ConfigLoaderTests, PreservesAbsoluteModelOverride)
 
     ConfigLoader config(input);
 
-    EXPECT_EQ(config.GetDefaultGLTFModelPath(), modelPath);
+    EXPECT_EQ(config.GetDefaultModelPath(), modelPath);
 }
 
 TEST(ConfigLoaderTests, KeepsMissingAndEmptyModelPathsEmpty)
@@ -248,13 +248,21 @@ TEST(ConfigLoaderTests, KeepsMissingAndEmptyModelPathsEmpty)
 
     ConfigLoader config(input);
 
-    EXPECT_TRUE(config.GetDefaultGLTFModelPath().empty());
+    EXPECT_TRUE(config.GetDefaultModelPath().empty());
 
     EXPECT_TRUE(config.GetSkyboxModelPath().empty());
 
     EXPECT_TRUE(config.GetGLTFModelPath("Box").empty());
 
-    EXPECT_TRUE(config.GetGLTFModelBasePath().empty());
+    EXPECT_TRUE(config.GetModelBasePath().empty());
+}
+
+TEST(ConfigLoaderTests, ExplicitFbxPathUsesExistingModelConfigurationKeys)
+{
+    std::istringstream          input("default_model=Sponza\ndefault_model_path=Scenes/interior.fbx\n");
+    ConfigLoader                config(input);
+    const std::filesystem::path directory = std::filesystem::path(ZEN_CONFIG_PATH).parent_path();
+    EXPECT_EQ(config.GetDefaultModelPath(), (directory / "Scenes/interior.fbx").generic_string());
 }
 
 TEST(ConfigLoaderTests, ValidatesVoxelizerChoiceAgainstGPUCapabilities)

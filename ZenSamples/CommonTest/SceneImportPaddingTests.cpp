@@ -6,7 +6,7 @@
 #include <fstream>
 #include <draco/compression/encode.h>
 #include <draco/mesh/triangle_soup_mesh_builder.h>
-#include "AssetLib/FastGLTFLoader.h"
+#include "SceneTestLoader.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Material.h"
 
@@ -174,7 +174,7 @@ void ExpectTriangleImport(const std::string& file, size_t jsonLength)
 {
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(file, &scene)) << loader.GetError();
 
@@ -184,7 +184,7 @@ void ExpectTriangleImport(const std::string& file, size_t jsonLength)
 
     EXPECT_EQ(scene.GetRenderableCount(), 1u);
 
-    EXPECT_EQ(scene.GetAssetData().sourceDocument.size(), jsonLength);
+    EXPECT_EQ(scene.GetAssetData().source->document.size(), jsonLength);
 
     EXPECT_EQ(Vec3(loader.GetVertices()[1].pos), Vec3(1, 0, 0));
 
@@ -254,7 +254,7 @@ TEST(SceneImportNumbers, DecimalAndExponentIntegersPreserveTheAuthoredDocument)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write("numbers.gltf", json), &scene)) << loader.GetError();
 
@@ -262,7 +262,7 @@ TEST(SceneImportNumbers, DecimalAndExponentIntegersPreserveTheAuthoredDocument)
 
     EXPECT_EQ(Vec3(loader.GetVertices()[1].pos), Vec3(1, 0, 0));
 
-    EXPECT_EQ(scene.GetAssetData().sourceDocument, json);
+    EXPECT_EQ(scene.GetAssetData().source->document, json);
 }
 
 TEST(SceneImportNumbers, GlbIntegerNormalizationPreservesTheEmbeddedBinaryOffset)
@@ -278,7 +278,7 @@ TEST(SceneImportNumbers, GlbIntegerNormalizationPreservesTheEmbeddedBinaryOffset
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write("numbers.glb", TriangleGlbFromJson(json, true)), &scene))
         << loader.GetError();
@@ -289,7 +289,7 @@ TEST(SceneImportNumbers, GlbIntegerNormalizationPreservesTheEmbeddedBinaryOffset
 
     EXPECT_EQ(Vec3(loader.GetVertices()[2].pos), Vec3(0, 1, 0));
 
-    EXPECT_EQ(scene.GetAssetData().sourceDocument, json);
+    EXPECT_EQ(scene.GetAssetData().source->document, json);
 }
 
 TEST(SceneImportNumbers, InvalidAndFractionalIntegerTokensAreNotRoundedIntoValidIndices)
@@ -306,7 +306,7 @@ TEST(SceneImportNumbers, InvalidAndFractionalIntegerTokensAreNotRoundedIntoValid
 
         sg::Scene scene;
 
-        asset::FastGLTFLoader loader;
+        test::SceneLoader loader;
 
         EXPECT_FALSE(loader.LoadFromFile(fixture.Write("invalid.gltf", json), &scene));
     }
@@ -322,13 +322,13 @@ TEST(SceneImportNumbers, ZeroWithAnOversizedExponentIsExactlyZero)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write("zero.gltf", json), &scene)) << loader.GetError();
 
     EXPECT_EQ(loader.GetVertices().size(), 3u);
 
-    EXPECT_EQ(scene.GetAssetData().sourceDocument, json);
+    EXPECT_EQ(scene.GetAssetData().source->document, json);
 }
 
 TEST(SceneImportNumbers, ManuallyImportedExtensionIntegersUseTheSameNormalization)
@@ -359,7 +359,7 @@ TEST(SceneImportNumbers, ManuallyImportedExtensionIntegersUseTheSameNormalizatio
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write("extension.gltf", json), &scene)) << loader.GetError();
 
@@ -371,7 +371,7 @@ TEST(SceneImportNumbers, ManuallyImportedExtensionIntegersUseTheSameNormalizatio
 
     EXPECT_EQ(materials[0]->features.retroreflectionTexture.texCoord, 1u);
 
-    EXPECT_EQ(scene.GetAssetData().sourceDocument, json);
+    EXPECT_EQ(scene.GetAssetData().source->document, json);
 }
 
 TEST(SceneImportExtensions, RequiredExtensionRewriteOnlyReplacesTheRootProperty)
@@ -395,7 +395,7 @@ TEST(SceneImportExtensions, RequiredExtensionRewriteOnlyReplacesTheRootProperty)
 
         sg::Scene scene;
 
-        asset::FastGLTFLoader loader;
+        test::SceneLoader loader;
 
         const std::string file =
             binary ? fixture.Write("nested.glb", TriangleGlbFromJson(json, true)) : fixture.Write("nested.gltf", json);
@@ -408,7 +408,7 @@ TEST(SceneImportExtensions, RequiredExtensionRewriteOnlyReplacesTheRootProperty)
 
         EXPECT_FALSE(scene.GetNodes()[0]->IsVisible());
 
-        EXPECT_EQ(scene.GetAssetData().sourceDocument.substr(0, json.size()), json);
+        EXPECT_EQ(scene.GetAssetData().source->document.substr(0, json.size()), json);
     }
 }
 
@@ -438,7 +438,7 @@ TEST(SceneImportExtensions, FileUrisComposeWithRequiredExtensionsAndNumberNormal
 
         sg::Scene scene;
 
-        asset::FastGLTFLoader loader;
+        test::SceneLoader loader;
 
         const std::string file =
             binary ? fixture.Write("uri.glb", TriangleGlbFromJson(json, false)) : fixture.Write("uri.gltf", json);
@@ -447,7 +447,7 @@ TEST(SceneImportExtensions, FileUrisComposeWithRequiredExtensionsAndNumberNormal
 
         EXPECT_EQ(loader.GetVertices().size(), 3u);
 
-        EXPECT_EQ(scene.GetAssetData().sourceDocument.substr(0, json.size()), json);
+        EXPECT_EQ(scene.GetAssetData().source->document.substr(0, json.size()), json);
     }
 }
 #endif
@@ -495,7 +495,7 @@ TEST(SceneImportExtensions, DracoReferencesAreCheckedBeforeDecodingAndPreserveTh
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(fixture.Write("valid-draco.gltf", json), &scene)) << loader.GetError();
 

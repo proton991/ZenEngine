@@ -52,7 +52,8 @@ all supported `engine.cfg` keys, including optional properties for all 32 light
 slots, with startup values and control locations. Live controls cover every GI
 setting, camera position, environment illumination and skybox visibility, light
 count and properties, light markers, and orbit animation. Above the tabs, the
-**Model** selector recursively lists `.gltf` and `.glb` files beneath the configured
+**Model** selector recursively lists registered scene formats (`.gltf`, `.glb`
+and `.fbx`, plus the internal `.zenasset` format) beneath the configured
 `model_base_path`. Search filters the relative paths, including model variants;
 **Refresh models** rescans the directory. Selecting a model loads it for the current
 session without restarting or rewriting `engine.cfg`. Each file is imported when
@@ -198,12 +199,17 @@ apply mode, and validation/retry of scene changes against a native render device
 It also checks that switching from the default Cone grid through the UI or server
 API applies the automatic profile to both the settings and the voxelizer.
 Model selector checks cover filtering, loading feedback, rejected requests,
-and resetting drafts after a switch. `GLTFModelCatalog` tests cover recursive variant
+and resetting drafts after a switch. `SceneModelCatalog` tests cover recursive variant
 discovery, extension matching, Unicode paths, and missing directories.
 `SceneModelSwitchTest` (defined with the demo in `ZenSamples`) loads and renders
 several models through the demo in inline and threaded RHI modes, checks
 orthographic/infinite camera transitions, and verifies that a failed import retains
 the current scene. Resource lifetime tests cover scene retirement and partial loads.
+The selector also offers **Cancel load** and an **Import diagnostics** section.
+Cancellation drains CPU jobs and discards the candidate while retaining the active
+model. Existing `model_base_path`, `default_model` and `default_model_path`
+configuration keys retain their meanings; an explicit path can name any supported
+format, while the legacy model-name lookup still resolves glTF sample paths.
 The native bindless reset regression also verifies replacement pixels and rejects
 heap resets while earlier command recordings remain live.
 `VoxelGIRuntimeSettings` planning tests cover automatic floors, device constraints,

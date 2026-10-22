@@ -67,6 +67,11 @@ zen_declare_dependency(simdjson simdjson
 zen_declare_dependency(fastgltf fastgltf
     https://codeload.github.com/spnda/fastgltf/zip/refs/tags/v0.9.1
     fb3bd2421064cd4d9ec0a774c643c0e174595337dc06ba75b73ec73542caba2d)
+# ufbx: v0.23.1 (MIT or public domain, see External/ufbx/LICENSE).
+zen_declare_dependency(ufbx ufbx
+    https://codeload.github.com/ufbx/ufbx/zip/refs/tags/v0.23.1
+    3e5d8219f5b634fd374949808206eba1a1da49b2b2e3ee31ff0bd228c0abd469
+    SOURCE_SUBDIR zen-no-cmake)
 
 # glTF compression and image formats are decoded to the engine's ordinary buffers.
 zen_declare_dependency(draco draco
@@ -128,7 +133,10 @@ set(FASTGLTF_ENABLE_INSTALL OFF CACHE BOOL "Install fastgltf" FORCE)
 if (ZEN_WINDOW_BACKEND STREQUAL "GLFW")
     FetchContent_MakeAvailable(glfw)
 endif ()
-FetchContent_MakeAvailable(volk vma spdlog spirv_reflect glm gli stb simdjson fastgltf)
+FetchContent_MakeAvailable(volk vma spdlog spirv_reflect glm gli stb simdjson fastgltf ufbx)
+add_library(zen_ufbx STATIC "${ufbx_SOURCE_DIR}/ufbx.c")
+target_include_directories(zen_ufbx PUBLIC "${ufbx_SOURCE_DIR}")
+set_target_properties(zen_ufbx PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 set(DRACO_TESTS OFF CACHE BOOL "Build Draco tests" FORCE)
 set(DRACO_INSTALL OFF CACHE BOOL "Install Draco" FORCE)

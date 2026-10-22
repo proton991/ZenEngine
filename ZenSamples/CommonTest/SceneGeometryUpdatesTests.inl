@@ -66,6 +66,7 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     data.pIndices    = indices;
     data.numVertices = 4;
     data.numIndices  = 6;
+    asset::PrepareScenePlacement(*data.pScene, asset::ScenePlacement::CenterAndNormalize);
     RenderScene scene(device, data);
     scene.LoadSceneMaterials();
     scene.PrepareBuffers();
@@ -190,6 +191,52 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
         EXPECT_EQ(std::memcmp(gpuMaterials.data(), scene.GetMaterialsData().data(),
                               scene.GetMaterialsData().size() * sizeof(sg::MaterialData)),
                   0);
+    }
+    scene.Destroy();
+}
+
+TEST_P(ConeVoxelGIIntegrationTest, BakedFbxMorphAndSkinPosesReachGpuGeometry)
+{
+    device->InitializeRendererServer();
+    const std::string path =
+        (std::filesystem::path(__FILE__).parent_path() / "Assets/FBX/combined_morph_skin_ascii.fbx").string();
+    asset::SceneLoadResult loaded = asset::LoadScene(path);
+    ASSERT_TRUE(loaded.scene) << loaded.error;
+    SceneData data{};
+    data.pScene      = loaded.scene->scene.Get();
+    data.pVertices   = loaded.scene->vertices.data();
+    data.pIndices    = loaded.scene->indices.data();
+    data.numVertices = static_cast<uint32_t>(loaded.scene->vertices.size());
+    data.numIndices  = static_cast<uint32_t>(loaded.scene->indices.size());
+    RenderScene scene(device, data);
+    ASSERT_TRUE(scene.Init());
+    ASSERT_TRUE(scene.SetAnimation(0, false));
+    RHIBuffer* readback =
+        Buffer(static_cast<uint32_t>(scene.GetVertexBuffer()->GetRequiredSize()), RHIBufferAllocateType::eCPURead);
+    const HeapVector<asset::Vertex> initial = scene.GetVertices();
+    for (float step : {0.0f, 0.23f, 0.27f})
+    {
+        ASSERT_TRUE(scene.AdvanceAnimation(step));
+        ASSERT_TRUE(scene.CommitGeometryUpdates());
+        RenderGraph graph("ReadBakedFbxPose");
+        ASSERT_TRUE(graph.Begin());
+        RDGComputePassDesc pass;
+        pass.SetShaderProgramName("CaptureVoxelBufferSP");
+        pass.BindStorageBuffer("CaptureSource", scene.GetVertexBuffer());
+        pass.BindStorageBuffer("CaptureCopy", readback, RDGContentGuarantee::eFullWrite);
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+        device->FlushRHIThread();
+        device->WaitForIdle();
+        const HeapVector<uint8_t> gpu = ReadStaticBuffer<uint8_t>(readback);
+        EXPECT_EQ(std::memcmp(gpu.data(), scene.GetVertices().data(), scene.GetVertices().size() * sizeof(asset::Vertex)), 0);
+        if (step > 0)
+        {
+            EXPECT_NE(std::memcmp(gpu.data(), initial.data(), initial.size() * sizeof(asset::Vertex)), 0);
+        }
+        EXPECT_GT(scene.GetVoxelTriangleCount(), 0u);
+        device->NextFrame();
     }
     scene.Destroy();
 }

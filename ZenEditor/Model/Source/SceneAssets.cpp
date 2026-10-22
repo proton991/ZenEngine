@@ -100,17 +100,17 @@ const uint8_t* GetLevelZero(const sg::Texture& texture, size_t& size)
 {
     const uint8_t* result = nullptr;
 
-    if (texture.mipBytes.empty())
+    if (texture.GetMipBytes().empty())
     {
-        result = texture.bytesData.data();
+        result = texture.GetBytes().data();
 
-        size   = texture.bytesData.size();
+        size   = texture.GetBytes().size();
     }
     else
     {
-        result = texture.mipBytes[0].data();
+        result = texture.GetMipBytes()[0].data();
 
-        size   = texture.mipBytes[0].size();
+        size   = texture.GetMipBytes()[0].size();
     }
 
     return result;
@@ -124,10 +124,10 @@ bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePre
     const uint8_t* level = GetLevelZero(texture, size);
 
     const bool valid     = (texture.format == asset::Format::R8G8B8A8_UNORM || texture.format == asset::Format::R8G8B8A8_SRGB)
-                    && texture.width > 0 && texture.height > 0 && maxSize > 0
-                    && size >= size_t(texture.width) * texture.height * 4;
+                        && texture.width > 0 && texture.height > 0 && maxSize > 0
+                        && size >= size_t(texture.width) * texture.height * 4;
 
-    preview = {};
+    preview              = {};
 
     if (valid)
     {
@@ -581,15 +581,15 @@ SceneAssetInspection SceneAssetIndex::Inspect(SceneAssetId id) const
         GetLevelZero(texture, size);
 
         // Without authored levels, upload generates the complete chain from level zero.
-        result.mipLevels = texture.mipBytes.empty()
+        result.mipLevels = texture.GetMipBytes().empty()
                              ? uint32_t(std::floor(std::log2(float(std::max(1u, std::max(texture.width, texture.height)))))) + 1
-                             : uint32_t(texture.mipBytes.size());
+                             : uint32_t(texture.GetMipBytes().size());
 
         result.bytes     = size;
 
-        for (size_t level = 1; level < texture.mipBytes.size(); ++level)
+        for (size_t level = 1; level < texture.GetMipBytes().size(); ++level)
         {
-            result.bytes += texture.mipBytes[level].size();
+            result.bytes += texture.GetMipBytes()[level].size();
         }
 
         result.sampler = texture.samplerIndex;

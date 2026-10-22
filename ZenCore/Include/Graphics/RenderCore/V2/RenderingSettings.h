@@ -30,7 +30,7 @@ enum class DebugOutput : uint32_t
 
 enum class LightOrigin : uint32_t
 {
-    eGLTF,
+    eImported = 0, // Preserves the former imported-glTF origin value.
     eManual,
     eSides,
     eCorners

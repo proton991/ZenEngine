@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include "Templates/HeapVector.h"
+#include "AssetLib/ImageAsset.h"
 
 namespace zen::sg
 {
@@ -42,12 +43,28 @@ public:
         height            = info.height;
         format            = info.format;
         bytesData         = std::move(info.data);
+        pixels.Reset();
+        mipBytes.clear();
     }
 
     TypeId GetTypeId() const override
     {
         return typeid(Texture);
     }
+
+    VectorView<const uint8_t> GetBytes() const
+    {
+        return !bytesData.empty() || !pixels ? VectorView<const uint8_t>(bytesData.data(), bytesData.size())
+                                             : VectorView<const uint8_t>(pixels->bytes.data(), pixels->bytes.size());
+    }
+
+    const HeapVector<HeapVector<uint8_t>>& GetMipBytes() const
+    {
+        return !bytesData.empty() || !mipBytes.empty() || !pixels ? mipBytes : pixels->mips;
+    }
+
+    // Imported scenes share immutable pixels across texture views and instances.
+    SharedPtr<const asset::ImagePixels, MultiThreadCounter> pixels;
 
     uint32_t index{0};
     // Importer-generated linear view of another texture in this scene; authored textures have no source.
@@ -70,14 +87,15 @@ inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
     bool equal = lhs.index == rhs.index && lhs.linearSourceIndex == rhs.linearSourceIndex
               && lhs.samplerIndex == rhs.samplerIndex && lhs.width == rhs.width && lhs.height == rhs.height
-              && lhs.format == rhs.format && lhs.bytesData == rhs.bytesData && lhs.mipBytes.size() == rhs.mipBytes.size()
-              && lhs.flatNormal == rhs.flatNormal;
+              && lhs.format == rhs.format
+              && std::equal(lhs.GetBytes().begin(), lhs.GetBytes().end(), rhs.GetBytes().begin(), rhs.GetBytes().end())
+              && lhs.GetMipBytes().size() == rhs.GetMipBytes().size() && lhs.flatNormal == rhs.flatNormal;
 
-    for (size_t level = 0; equal && level < lhs.mipBytes.size(); ++level)
+    for (size_t level = 0; equal && level < lhs.GetMipBytes().size(); ++level)
     {
-        const HeapVector<uint8_t>& left  = lhs.mipBytes[level];
+        const HeapVector<uint8_t>& left  = lhs.GetMipBytes()[level];
 
-        const HeapVector<uint8_t>& right = rhs.mipBytes[level];
+        const HeapVector<uint8_t>& right = rhs.GetMipBytes()[level];
 
         equal                            = left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
     }

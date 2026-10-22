@@ -9,8 +9,6 @@
 
 namespace zen::editor
 {
-class SceneLoadWork;
-
 // Toolkit-independent coordinator above the model and render services. It owns the
 // editor state, runs transactions that span both layers (scene replacement, picking,
 // framing), and registers the core actions. Frontends draw this state and invoke its
@@ -84,8 +82,10 @@ public:
 
     // Queues an interactive load. Rejects empty paths or another request while busy.
     bool RequestLoad(std::string path);
+    bool CancelSceneLoad();
 
-    const SceneLoadState& GetLoadState() const;
+    const SceneLoadState&                           GetLoadState() const;
+    const HeapVector<asset::SceneImportDiagnostic>& GetImportDiagnostics() const;
 
     // Advances at most one stage before drawing each frame. CPU import runs on a
     // worker; GPU preparation/publication stay here on the engine thread. Present
@@ -180,13 +180,18 @@ private:
     SceneLoadState         m_loadState;
     UniquePtr<LoadedScene> m_loadCandidate;
     // Joins the import worker before its future/result or controller are destroyed.
-    UniquePtr<SceneLoadWork>           m_loadWork;
-    std::string                        m_error;
-    bool                               m_openRequested{false};
-    HeapVector<EnvironmentTextureItem> m_environmentTextures;
-    std::string                        m_requestedEnvironment;
-    std::string                        m_environmentError;
-    bool                               m_environmentPending{false};
-    bool                               m_environmentOpenRequested{false};
+    std::future<asset::SceneLoadResult>                      m_loadResult;
+    SharedPtr<asset::SceneImportControl, MultiThreadCounter> m_loadControl;
+    // Messages of the published scene, and of the open still in progress.
+    HeapVector<asset::SceneImportDiagnostic> m_importDiagnostics;
+    HeapVector<asset::SceneImportDiagnostic> m_pendingDiagnostics;
+    UniquePtr<asset::SceneLoader>            m_sceneLoader;
+    std::string                              m_error;
+    bool                                     m_openRequested{false};
+    HeapVector<EnvironmentTextureItem>       m_environmentTextures;
+    std::string                              m_requestedEnvironment;
+    std::string                              m_environmentError;
+    bool                                     m_environmentPending{false};
+    bool                                     m_environmentOpenRequested{false};
 };
 } // namespace zen::editor

@@ -9,7 +9,7 @@
 #        include <crtdbg.h>
 #    endif
 #endif
-#include "AssetLib/FastGLTFLoader.h"
+#include "SceneTestLoader.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/SceneAnimation.h"
 #include "Systems/SceneEditor.h"
@@ -167,11 +167,11 @@ void CheckVertices(VectorView<const asset::Vertex> vertices)
     }
 }
 
-void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
+void CheckScene(const test::SceneLoader& loader, const sg::Scene& scene)
 {
-    const std::vector<asset::Vertex>& vertices = loader.GetVertices();
+    const HeapVector<asset::Vertex>& vertices = loader.GetVertices();
 
-    const std::vector<uint32_t>& indices       = loader.GetIndices();
+    const HeapVector<uint32_t>& indices       = loader.GetIndices();
 
     CheckVertices(vertices);
 
@@ -217,16 +217,16 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
 
     for (const sg::Texture* texture : textures)
     {
-        Require(texture != nullptr && texture->width != 0 && texture->height != 0 && !texture->bytesData.empty(),
+        Require(texture != nullptr && texture->width != 0 && texture->height != 0 && !texture->GetBytes().empty(),
                 "Imported texture has no decoded image data");
 
         Require(texture->format == asset::Format::R8G8B8A8_UNORM || texture->format == asset::Format::R8G8B8A8_SRGB,
                 "Imported image has an unexpected decoded pixel format");
 
-        Require(texture->bytesData.size() == uint64_t(texture->width) * texture->height * 4,
+        Require(texture->GetBytes().size() == uint64_t(texture->width) * texture->height * 4,
                 "Imported image byte count differs from its dimensions");
 
-        for (uint32_t level = 0; level < texture->mipBytes.size(); ++level)
+        for (uint32_t level = 0; level < texture->GetMipBytes().size(); ++level)
         {
             Require(level < 32, "Imported image has too many mip levels");
 
@@ -234,14 +234,14 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
 
             const uint32_t height = std::max(1u, texture->height >> level);
 
-            Require(texture->mipBytes[level].size() == uint64_t(width) * height * 4,
+            Require(texture->GetMipBytes()[level].size() == uint64_t(width) * height * 4,
                     "Authored image mip byte count differs from its dimensions");
         }
 
-        if (!texture->mipBytes.empty())
+        if (!texture->GetMipBytes().empty())
         {
-            Require(std::equal(texture->bytesData.begin(), texture->bytesData.end(), texture->mipBytes[0].begin(),
-                               texture->mipBytes[0].end()),
+            Require(std::equal(texture->GetBytes().begin(), texture->GetBytes().end(), texture->GetMipBytes()[0].begin(),
+                               texture->GetMipBytes()[0].end()),
                     "Authored image level zero differs from the decoded image");
         }
     }
@@ -254,7 +254,7 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
     CheckAssetData(scene.GetAssetData());
 }
 
-void CheckPosedBounds(const asset::FastGLTFLoader& loader, sg::Scene& scene, VectorView<const asset::Vertex> vertices)
+void CheckPosedBounds(const test::SceneLoader& loader, sg::Scene& scene, VectorView<const asset::Vertex> vertices)
 {
     CheckBounds(scene.GetAABB());
 
@@ -365,7 +365,7 @@ uint32_t CheckMaterialVariants(sg::Scene& scene)
     return selections;
 }
 
-uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
+uint32_t CheckAnimations(const test::SceneLoader& loader, sg::Scene& scene)
 {
     const sg::SceneAssetData& data                     = scene.GetAssetData();
 
@@ -443,11 +443,11 @@ uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
     return samples;
 }
 
-void PrintResult(const asset::FastGLTFLoader& loader,
-                 const sg::Scene&             scene,
-                 uint32_t                     samples,
-                 const char*                  marker,
-                 uint32_t                     variantSelections = 0)
+void PrintResult(const test::SceneLoader& loader,
+                 const sg::Scene&         scene,
+                 uint32_t                 samples,
+                 const char*              marker,
+                 uint32_t                 variantSelections = 0)
 {
     const sg::SceneAssetData& data = scene.GetAssetData();
 
@@ -486,7 +486,7 @@ int main(int argc, char** argv)
 
     if (argc != 2)
     {
-        std::cerr << "Usage: GLTFCorpusImport <model.gltf|model.glb>\n";
+        std::cerr << "Usage: GLTFCorpusImport <scene.gltf|scene.glb|scene.fbx|scene.zenasset>\n";
 
         result = 2;
     }
@@ -494,7 +494,7 @@ int main(int argc, char** argv)
     {
         sg::Scene scene;
 
-        asset::FastGLTFLoader loader;
+        test::SceneLoader loader;
 
         std::cerr << "ZEN_GLTF_IMPORT_STAGE load\n";
 

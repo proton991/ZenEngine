@@ -1,3 +1,4 @@
+#include "AssetLib/SceneRuntimeBuilder.h"
 #include "Editor/Rendering/EditorViewport.h"
 #include "EditorShaders.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
@@ -218,6 +219,8 @@ bool EditorViewport::PrepareScene(const LoadedScene& candidate, std::string& err
 
     if (valid && candidate.scene->GetRenderableCount() > 0)
     {
+        asset::PrepareScenePlacement(*candidate.scene, asset::ScenePlacement::CenterAndNormalize);
+
         rc::SceneData data{};
 
         data.pScene              = candidate.scene.Get();
@@ -288,7 +291,7 @@ bool EditorViewport::CommitScene(std::string& error)
 
             for (const rc::LightEntry& entry : m_scene->GetLights().GetEntries())
             {
-                m_appliedLights.push_back({entry.id, rc::LightOrigin::eGLTF, entry.light});
+                m_appliedLights.push_back({entry.id, rc::LightOrigin::eImported, entry.light});
 
                 m_runtimeLightIds.push_back(entry.id);
             }

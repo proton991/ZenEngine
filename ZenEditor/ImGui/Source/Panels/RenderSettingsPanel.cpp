@@ -174,7 +174,7 @@ private:
                 editor.AddBoundsLights(true);
             }
 
-            if (ImGui::Button("Reset lights to glTF"))
+            if (ImGui::Button("Reset imported lights"))
             {
                 editor.ResetRenderingLights();
             }
@@ -197,7 +197,7 @@ private:
                 ImGui::TextDisabled("No lights");
             }
 
-            const char* origins[] = {"glTF", "Manual", "Side preset", "Corner preset"};
+            const char* origins[] = {"Imported", "Manual", "Side preset", "Corner preset"};
 
             size_t remove         = draft.lights.size();
 

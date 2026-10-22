@@ -4,7 +4,7 @@
 #include "Templates/HeapVector.h"
 #include "Utils/ThreadPool.h"
 #include "AssetLib/TextureLoader.h"
-#include "AssetLib/FastGLTFLoader.h"
+#include "SceneTestLoader.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <filesystem>
@@ -32,6 +32,32 @@ TEST(HeapVectorRegression, AppendPreservesAliasedSourceDuringGrowth)
     EXPECT_EQ(values[4], "second");
 
     EXPECT_EQ(values[5], "first");
+}
+
+TEST(HeapVectorRegression, InsertPreservesAliasedSourceDuringGrowth)
+{
+    // Growing reallocates the source range and shifting the tail moves it.
+    HeapVector<uint32_t> numbers{1, 2, 3};
+
+    numbers.insert(numbers.begin() + 1, numbers.begin(), numbers.end());
+
+    const uint32_t expectedNumbers[] = {1, 1, 2, 3, 2, 3};
+    ASSERT_EQ(numbers.size(), std::size(expectedNumbers));
+    for (size_t index = 0; index < numbers.size(); ++index)
+    {
+        EXPECT_EQ(numbers[index], expectedNumbers[index]);
+    }
+
+    HeapVector<std::string> names{"a", "b", "c"};
+
+    names.insert(names.begin(), names.begin() + 1, names.end());
+
+    const char* expectedNames[] = {"b", "c", "a", "b", "c"};
+    ASSERT_EQ(names.size(), std::size(expectedNames));
+    for (size_t index = 0; index < names.size(); ++index)
+    {
+        EXPECT_EQ(names[index], expectedNames[index]);
+    }
 }
 
 TEST(HeapVectorRegression, EraseRangeMovesOwnedElementsOnce)
@@ -62,6 +88,33 @@ TEST(HeapVectorRegression, EraseRangeMovesOwnedElementsOnce)
     EXPECT_EQ(next, values.end());
 
     EXPECT_TRUE(values.empty());
+}
+
+TEST(HeapVectorRegression, RangeAppendsGrowGeometricallyAndCopiesAreTight)
+{
+    HeapVector<uint32_t> values;
+    const uint32_t       block[16]{};
+    for (uint32_t append = 0; append < 1000; ++append)
+    {
+        values.insert(values.end(), std::begin(block), std::end(block));
+        // Growth doubles when needed and never while capacity remains.
+        EXPECT_LE(values.capacity(), 2 * values.size() + 16);
+    }
+    EXPECT_EQ(values.size(), 16000u);
+    for (uint32_t append = 0; append < 100; ++append)
+    {
+        values.push_back(VectorView<const uint32_t>(block, 16));
+    }
+    EXPECT_EQ(values.size(), 17600u);
+    EXPECT_LE(values.capacity(), 2 * values.size());
+    const HeapVector<uint32_t> copy = values;
+    EXPECT_EQ(copy.capacity(), copy.size());
+    HeapVector<float> zeroed;
+    zeroed.resize(64);
+    EXPECT_EQ(zeroed[63], 0.0f);
+    HeapVector<uint8_t> overwritten;
+    overwritten.resize_for_overwrite(64);
+    EXPECT_EQ(overwritten.size(), 64u);
 }
 
 TEST(HeapVectorRegression, EmptyEraseAndFilledConstruction)
@@ -373,7 +426,7 @@ TEST(FastGLTFLoaderRegression, TextureBatchesTransferOwnershipAndResolveImageFor
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -393,7 +446,7 @@ TEST(FastGLTFLoaderRegression, TextureBatchesTransferOwnershipAndResolveImageFor
 
         EXPECT_EQ(textures[index]->height, 1u);
 
-        EXPECT_EQ(textures[index]->bytesData.size(), 4u);
+        EXPECT_EQ(textures[index]->GetBytes().size(), 4u);
     }
 }
 
@@ -403,7 +456,7 @@ TEST(FastGLTFLoaderRegression, KeepsTransformsForNonRenderableAncestors)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -480,7 +533,7 @@ TEST(FastGLTFLoaderRegression, MissingTexturesPreserveMaterialFactorsIncludingEm
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -490,9 +543,9 @@ TEST(FastGLTFLoaderRegression, MissingTexturesPreserveMaterialFactorsIncludingEm
     {
         ASSERT_NE(texture, nullptr);
 
-        ASSERT_EQ(texture->bytesData.size(), 4u);
+        ASSERT_EQ(texture->GetBytes().size(), 4u);
 
-        for (uint8_t channel : texture->bytesData)
+        for (uint8_t channel : texture->GetBytes())
         {
             EXPECT_EQ(channel, 255u);
         }
@@ -520,7 +573,7 @@ TEST(FastGLTFLoaderRegression, PreservesNormalMapScaleUVSetAndMirroredTangents)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -554,7 +607,7 @@ TEST(FastGLTFLoaderRegression, PreservesRGBAndRGBAColorsAcrossComponentTypesAndS
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -592,7 +645,7 @@ TEST(FastGLTFLoaderRegression, DecodesInterleavedNormalizedAndSparseVertexAttrib
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -649,7 +702,7 @@ TEST(FastGLTFLoaderRegression, SplitsSharedVerticesForFlatNormalsAndIgnoresAutho
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -685,7 +738,7 @@ TEST(FastGLTFLoaderRegression, InitializesAndIndexesDefaultMaterialWithAndWithou
 
         sg::Scene scene;
 
-        asset::FastGLTFLoader loader;
+        test::SceneLoader loader;
 
         ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -728,7 +781,7 @@ TEST(FastGLTFLoaderRegression, SeparatesLinearAndColorUsesOfSharedImagesAndTextu
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(path.string(), &scene)) << loader.GetError();
 
@@ -755,7 +808,8 @@ TEST(FastGLTFLoaderRegression, SeparatesLinearAndColorUsesOfSharedImagesAndTextu
 
     EXPECT_EQ(linear->format, asset::Format::R8G8B8A8_UNORM);
 
-    EXPECT_EQ(color->bytesData, linear->bytesData);
+    EXPECT_TRUE(
+        std::equal(color->GetBytes().begin(), color->GetBytes().end(), linear->GetBytes().begin(), linear->GetBytes().end()));
 
     for (uint32_t materialIndex = 0; materialIndex < 2; ++materialIndex)
     {

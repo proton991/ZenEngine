@@ -1,6 +1,6 @@
 #include "Editor/Model/EditorScene.h"
 #include "Editor/Model/EditorText.h"
-#include "AssetLib/FastGLTFLoader.h"
+#include "AssetLib/SceneLoader.h"
 #include <algorithm>
 #include <limits>
 
@@ -49,39 +49,9 @@ const HeapVector<NodeId>& GetEmptyNodeList()
 
 UniquePtr<LoadedScene> ParseScene(const std::string& path, std::string& error)
 {
-    UniquePtr<LoadedScene> candidate = MakeUnique<LoadedScene>();
-
-    candidate->scene                 = MakeUnique<sg::Scene>();
-
-    asset::FastGLTFLoader loader;
-
-    if (loader.LoadFromFile(path, candidate->scene.Get()))
-    {
-        candidate->vertices = HeapVector<asset::Vertex>(loader.GetVertices().data(), loader.GetVertices().size());
-
-        candidate->indices  = HeapVector<uint32_t>(loader.GetIndices().data(), loader.GetIndices().size());
-
-        candidate->path     = path;
-
-        const float extent  = candidate->scene->GetAABB().GetMaxExtent();
-
-        if (std::isfinite(extent) && extent > 1e-6f)
-        {
-            candidate->normalizationCenter = candidate->scene->GetAABB().GetCenter();
-
-            candidate->normalizationScale  = 1.0f / extent;
-        }
-
-        error.clear();
-    }
-    else
-    {
-        error = loader.GetError();
-
-        candidate.Reset();
-    }
-
-    return candidate;
+    asset::SceneLoadResult result = asset::LoadScene(path);
+    error                         = std::move(result.error);
+    return std::move(result.scene);
 }
 
 void EditorScene::Replace(UniquePtr<LoadedScene> scene)

@@ -1,4 +1,5 @@
 #pragma once
+#include "AssetLib/SceneImporter.h"
 #include <string>
 
 namespace zen::editor
@@ -11,19 +12,22 @@ enum class SceneLoadStage
     Preparing,
     Publishing,
     Complete,
-    Failed
+    Failed,
+    Cancelled
 };
 
 // A snapshot owned by the controller and read on the main thread. Progress is by
 // completed stages, not elapsed time or bytes; parsing has indeterminate duration.
 struct SceneLoadState
 {
-    SceneLoadStage stage{SceneLoadStage::Idle};
-    std::string    path;
+    SceneLoadStage          stage{SceneLoadStage::Idle};
+    std::string             path;
+    asset::SceneImportStage importStage{asset::SceneImportStage::Queued};
+    bool                    cancelRequested{false};
 
     bool IsActive() const
     {
-        return stage != SceneLoadStage::Idle && stage != SceneLoadStage::Failed;
+        return stage != SceneLoadStage::Idle && stage != SceneLoadStage::Failed && stage != SceneLoadStage::Cancelled;
     }
 };
 } // namespace zen::editor

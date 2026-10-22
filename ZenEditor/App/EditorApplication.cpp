@@ -36,7 +36,7 @@ private:
     EditorLog& m_log;
 };
 
-// Start beside the most recent scene, else in the configured glTF model directory.
+// Start beside the most recent scene, else in the configured model directory.
 std::string GetDialogFolder(const RecentFiles& recent)
 {
     HeapVector<std::filesystem::path> candidates;
@@ -46,7 +46,7 @@ std::string GetDialogFolder(const RecentFiles& recent)
         candidates.push_back(std::filesystem::u8path(recent.Get().front()).parent_path());
     }
 
-    candidates.push_back(std::filesystem::u8path(platform::ConfigLoader::GetInstance().GetGLTFModelBasePath()));
+    candidates.push_back(std::filesystem::u8path(platform::ConfigLoader::GetInstance().GetModelBasePath()));
 
     std::string result;
 
@@ -264,7 +264,7 @@ public:
             m_window->Maximize();
         }
 
-        m_device                                 = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
+        m_device = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2,
                                                 m_options.threaded ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline);
 
         int framebufferWidth                     = 0;
@@ -326,9 +326,8 @@ public:
             constexpr const char* quitLabel = "Exit";
 #endif
 
-            m_controller->GetActions().Register({actions::Exit, quitLabel, quitShortcut, "", nullptr, [this]() {
-                                                     m_exitRequested = true;
-                                                 }});
+            m_controller->GetActions().Register(
+                {actions::Exit, quitLabel, quitShortcut, "", nullptr, [this]() { m_exitRequested = true; }});
 
             m_workspace   = MakeUnique<EditorWorkspace>(m_settings);
 
@@ -532,7 +531,7 @@ public:
         {
             if (m_controller->TakeFileOpenRequest())
             {
-                if (m_window->ShowOpenFileDialog({"glTF scenes", "gltf;glb"},
+                if (m_window->ShowOpenFileDialog({"Scene files", asset::GetSceneFileFilterExtensions()},
                                                  GetDialogFolder(m_controller->GetPreferences().recentFiles)))
                 {
                     m_fileDialog = FileDialogTarget::Scene;

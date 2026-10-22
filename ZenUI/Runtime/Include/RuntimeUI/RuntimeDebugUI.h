@@ -42,7 +42,7 @@ private:
 
     void SynchronizeModelRevision();
 
-    bool MatchesModelSearch(const asset::GLTFModelCatalogEntry& entry) const;
+    bool MatchesModelSearch(const asset::SceneModelCatalogEntry& entry) const;
 
     bool RequestModel(const std::string& path);
 

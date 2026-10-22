@@ -2,7 +2,6 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "SceneGraph/Texture.h"
-#include "Systems/SceneEditor.h"
 #include "SceneGraph/Camera.h"
 #include "SceneGraph/SceneAnimation.h"
 #include <algorithm>
@@ -26,8 +25,6 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     VERIFY_EXPR_MSG_F(capacityError.empty(), "{}", capacityError);
 
-    sys::SceneEditor::CenterAndNormalizeScene(m_pScene);
-
     m_sceneUnitScale = m_pScene->GetAssetData().unitScale;
 
     m_vertices       = HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
@@ -36,7 +33,7 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     if (!sg::ApplySceneDeformations(*m_pScene, MakeVecView(m_bindVertices), m_vertices))
     {
-        VERIFY_EXPR_MSG_F(false, "Invalid glTF deformation payload");
+        VERIFY_EXPR_MSG_F(false, "Invalid scene deformation payload");
     }
 
     for (const SceneLight& light : BuildSceneLights(*m_pScene))

@@ -1,34 +1,14 @@
-#include "AssetLib/GLTFModelCatalog.h"
+#include "AssetLib/SceneModelCatalog.h"
+#include "AssetLib/SceneLoader.h"
+#include "AssetLib/AssetPaths.h"
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 
 namespace zen::asset
 {
-static std::string CatalogPathUtf8(const std::filesystem::path& path)
+HeapVector<SceneModelCatalogEntry> DiscoverSceneModels(const std::string& basePath)
 {
-    const std::u8string utf8 = path.generic_u8string();
-
-    const std::string result(reinterpret_cast<const char*>(utf8.data()), utf8.size());
-
-    return result;
-}
-
-static bool IsGLTFModelPath(const std::filesystem::path& path)
-{
-    std::string extension = CatalogPathUtf8(path.extension());
-
-    std::transform(extension.begin(), extension.end(), extension.begin(),
-                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-
-    const bool result = extension == ".gltf" || extension == ".glb";
-
-    return result;
-}
-
-HeapVector<GLTFModelCatalogEntry> DiscoverGLTFModels(const std::string& basePath)
-{
-    HeapVector<GLTFModelCatalogEntry> result;
+    HeapVector<SceneModelCatalogEntry> result;
 
     if (!basePath.empty())
     {
@@ -55,11 +35,12 @@ HeapVector<GLTFModelCatalogEntry> DiscoverGLTFModels(const std::string& basePath
                     iterator.disable_recursion_pending();
                 }
 
-                if (entry.is_regular_file(entryError) && !entryError && IsGLTFModelPath(entry.path()))
+                if (entry.is_regular_file(entryError) && !entryError
+                    && FindSceneLoadFormat(PathToUtf8(entry.path())) != nullptr)
                 {
                     const std::filesystem::path path = entry.path().lexically_normal();
 
-                    result.push_back({CatalogPathUtf8(path.lexically_relative(root)), CatalogPathUtf8(path)});
+                    result.push_back({PathToUtf8(path.lexically_relative(root)), PathToUtf8(path)});
                 }
 
                 iterator.increment(error);
@@ -69,7 +50,7 @@ HeapVector<GLTFModelCatalogEntry> DiscoverGLTFModels(const std::string& basePath
 
     if (result.size() > 1)
     {
-        std::sort(result.begin(), result.end(), [](const GLTFModelCatalogEntry& left, const GLTFModelCatalogEntry& right) {
+        std::sort(result.begin(), result.end(), [](const SceneModelCatalogEntry& left, const SceneModelCatalogEntry& right) {
             return left.label == right.label ? left.path < right.path : left.label < right.label;
         });
     }

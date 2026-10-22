@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include "AssetLib/FastGLTFLoader.h"
+#include "SceneTestLoader.h"
 #include "Graphics/RenderCore/V2/SceneLighting.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/SceneAnimation.h"
@@ -70,7 +70,7 @@ TEST(SceneImportStress, EmptySceneHasFiniteBoundsAndCanNormalizeAndDeform)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(file.GetPath(), &scene)) << loader.GetError();
 
@@ -130,7 +130,7 @@ TEST(SceneImportStress, ImportsHierarchyDeeperThanTenThousandWithoutRecursiveSta
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(file.GetPath(), &scene)) << loader.GetError();
 
@@ -166,7 +166,7 @@ TEST(SceneImportStress, ZeroScaleAndSingularMatrixKeepNormalTransformsFinite)
 
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(file.GetPath(), &scene)) << loader.GetError();
 

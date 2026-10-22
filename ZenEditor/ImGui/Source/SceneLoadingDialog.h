@@ -3,6 +3,12 @@
 
 namespace zen::editor
 {
-// Returns true when the user dismisses a failed load. Loading state is read only.
-bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& error);
+enum class SceneLoadingAction
+{
+    None,
+    Dismiss,
+    Cancel
+};
+// Reports a UI action; the controller owns cancellation and candidate lifetime.
+SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& error);
 } // namespace zen::editor

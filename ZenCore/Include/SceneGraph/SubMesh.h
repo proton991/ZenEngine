@@ -1,15 +1,11 @@
 #pragma once
 #include "AABB.h"
 #include "Material.h"
+#include "AssetLib/SceneData.h"
 
 namespace zen::sg
 {
-enum class MeshTopology
-{
-    Points,
-    Lines,
-    Triangles
-};
+using MeshTopology = asset::MeshTopology;
 
 class SubMesh : public Component
 {

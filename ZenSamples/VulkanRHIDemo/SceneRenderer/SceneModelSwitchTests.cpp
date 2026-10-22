@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Platform/ConfigLoader.h"
+#include "AssetLib/SceneAssetIO.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <filesystem>
@@ -22,7 +23,7 @@ struct SceneRendererModelTestAccess
         {
             demo.m_modelState.basePath    = root;
 
-            demo.m_modelState.models      = asset::DiscoverGLTFModels(root);
+            demo.m_modelState.models      = asset::DiscoverSceneModels(root);
 
             demo.m_modelState.currentPath = path;
 
@@ -30,6 +31,11 @@ struct SceneRendererModelTestAccess
         }
 
         return started;
+    }
+
+    static void BeginPendingLoad(SceneRendererDemo& demo)
+    {
+        demo.ProcessPendingModel();
     }
 
     static Mat4 Projection(const SceneRendererDemo& demo)
@@ -112,6 +118,21 @@ public:
                     R"("scenes":[{"nodes":[0,1]}],"scene":0})");
 
         Write("broken.gltf", "invalid glTF");
+        const std::filesystem::path shared =
+            std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "CommonTest/Assets";
+        std::error_code error;
+        std::filesystem::copy_file(shared / "FBX/maya_cube_7500_binary.fbx", m_root / "cube.fbx", error);
+        VERIFY_EXPR_MSG(!error, "Could not copy the FBX model-switch fixture");
+        std::filesystem::copy_file(shared / "complete_scene.glb", m_root / "complete.glb", error);
+        VERIFY_EXPR_MSG(!error, "Could not copy the GLB model-switch fixture");
+        const zen::asset::SceneImportResult imported = zen::asset::ImportScene({Path("complete.glb")});
+        EXPECT_TRUE(imported.asset) << imported.error;
+        if (imported.asset)
+        {
+            EXPECT_EQ(zen::asset::WriteSceneAssetFile(Path("complete.zenasset"), *imported.asset).status,
+                      zen::asset::SceneImportStatus::Success);
+        }
+        Write("broken.zenasset", "invalid internal asset");
     }
 
     ~ModelFixtures()
@@ -154,6 +175,17 @@ static bool OutsideBounds(const zen::Vec3& position, const zen::sg::AABB& bounds
     return glm::any(glm::lessThan(position, bounds.GetMin())) || glm::any(glm::greaterThan(position, bounds.GetMax()));
 }
 
+bool FinishModelLoad(zen::SceneRendererDemo& demo, uint32_t mode = 2)
+{
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    bool                                        running  = true;
+    do
+    {
+        running = demo.Run(1, false, mode, {}, true);
+    } while (running && !demo.GetRuntimeModelState().pendingPath.empty() && std::chrono::steady_clock::now() < deadline);
+    return running && demo.GetRuntimeModelState().pendingPath.empty();
+}
+
 TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheActiveScene)
 {
     using namespace zen;
@@ -180,7 +212,7 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
     {
         EXPECT_TRUE(demo.EnableRuntimeUI());
 
-        EXPECT_EQ(demo.GetRuntimeModelState().models.size(), 5u);
+        EXPECT_EQ(demo.GetRuntimeModelState().models.size(), 9u);
 
         EXPECT_FLOAT_EQ(SceneRendererModelTestAccess::Projection(demo)[3][3], 1.0f);
 
@@ -190,7 +222,13 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
 
         EXPECT_FALSE(demo.RequestRuntimeModel(models.Path("infinite.gltf")));
 
-        EXPECT_TRUE(demo.Run(2, false, 2, {}, true));
+        const rc::RenderScene* previousScene = SceneRendererModelTestAccess::Scene(demo);
+        SceneRendererModelTestAccess::BeginPendingLoad(demo);
+        EXPECT_FALSE(demo.GetRuntimeModelState().pendingPath.empty());
+        EXPECT_EQ(SceneRendererModelTestAccess::Scene(demo), previousScene);
+        EXPECT_EQ(demo.GetRuntimeModelState().currentPath, models.Path("ortho.gltf"));
+
+        EXPECT_TRUE(FinishModelLoad(demo));
 
         EXPECT_EQ(demo.GetRuntimeModelState().currentPath, models.Path("plain.gltf"));
 
@@ -204,7 +242,7 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
 
         EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("broken.gltf")));
 
-        EXPECT_TRUE(demo.Run(2, false, 2, {}, true));
+        EXPECT_TRUE(FinishModelLoad(demo));
 
         EXPECT_EQ(SceneRendererModelTestAccess::Scene(demo), active);
 
@@ -216,13 +254,13 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
 
         EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("infinite.gltf")));
 
-        EXPECT_TRUE(demo.Run(2, false, 2, {}, true));
+        EXPECT_TRUE(FinishModelLoad(demo));
 
         EXPECT_FLOAT_EQ(SceneRendererModelTestAccess::Projection(demo)[2][2], -1.0f);
 
         EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("plain.gltf")));
 
-        EXPECT_TRUE(demo.Run(2, false, 3, {}, true));
+        EXPECT_TRUE(FinishModelLoad(demo, 3));
 
         EXPECT_LT(SceneRendererModelTestAccess::Projection(demo)[2][2], -1.0f);
 
@@ -231,8 +269,48 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
         EXPECT_EQ(demo.GetRuntimeModelState().revision, revision + 2);
 
         EXPECT_FALSE(demo.RequestRuntimeModel(models.Path("not-in-catalog.gltf")));
+
+        for (bool startedImport : {false, true})
+        {
+            const rc::RenderScene* retained         = SceneRendererModelTestAccess::Scene(demo);
+            const uint64_t         retainedRevision = demo.GetRuntimeModelState().revision;
+            EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("cube.fbx")));
+            if (startedImport)
+            {
+                SceneRendererModelTestAccess::BeginPendingLoad(demo);
+            }
+            EXPECT_TRUE(demo.CancelRuntimeModel());
+            EXPECT_TRUE(FinishModelLoad(demo));
+            EXPECT_EQ(SceneRendererModelTestAccess::Scene(demo), retained);
+            EXPECT_EQ(demo.GetRuntimeModelState().revision, retainedRevision);
+            EXPECT_TRUE(demo.GetRuntimeModelState().error.empty());
+        }
+        for (uint32_t cycle = 0; cycle < 2; ++cycle)
+        {
+            for (const char* file : {"cube.fbx", "complete.glb", "complete.zenasset", "plain.gltf"})
+            {
+                EXPECT_TRUE(demo.RequestRuntimeModel(models.Path(file)));
+                EXPECT_TRUE(FinishModelLoad(demo));
+                EXPECT_EQ(demo.GetRuntimeModelState().currentPath, models.Path(file));
+                EXPECT_TRUE(demo.GetRuntimeModelState().error.empty());
+                if (std::string_view(file) == "cube.fbx")
+                {
+                    EXPECT_FALSE(demo.GetRuntimeModelState().diagnostics.empty());
+                }
+            }
+        }
     }
 
+    if (started)
+    {
+        const rc::RenderScene* retained = SceneRendererModelTestAccess::Scene(demo);
+        const uint64_t         revision = demo.GetRuntimeModelState().revision;
+        EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("broken.zenasset")));
+        EXPECT_TRUE(FinishModelLoad(demo));
+        EXPECT_FALSE(demo.GetRuntimeModelState().error.empty());
+        EXPECT_EQ(SceneRendererModelTestAccess::Scene(demo), retained);
+        EXPECT_EQ(demo.GetRuntimeModelState().revision, revision);
+    }
     EXPECT_TRUE(demo.Destroy());
 
     config.rhiExecutionMode = previousMode;
@@ -384,7 +462,7 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
         EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("broken.gltf")));
 
-        EXPECT_TRUE(demo.Run(1, false, 2, {}, true));
+        EXPECT_TRUE(FinishModelLoad(demo));
 
         EXPECT_EQ(demo.GetRuntimeSceneSettings().lightCount, 7u);
 
@@ -392,7 +470,7 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
         EXPECT_TRUE(demo.RequestRuntimeModel(models.Path("ortho.gltf")));
 
-        EXPECT_TRUE(demo.Run(1, false, 2, {}, true));
+        EXPECT_TRUE(FinishModelLoad(demo));
 
         const ui::RuntimeSceneSettings switched = demo.GetRuntimeSceneSettings();
 

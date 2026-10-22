@@ -1,6 +1,5 @@
 #include "Editor/Services/EditorController.h"
 #include "Utils/Errors.h"
-#include "Utils/ThreadPool.h"
 #include <chrono>
 
 namespace zen::editor
@@ -31,50 +30,6 @@ struct Placeholder
     const char*    reason;
 };
 } // namespace
-
-// The worker owns only an unpublished CPU scene. It never touches the controller,
-// active scene, window or GPU. ThreadPool teardown joins before the future dies.
-struct SceneReadResult
-{
-    UniquePtr<LoadedScene> scene;
-    std::string            error;
-};
-
-namespace
-{
-SceneReadResult ReadScene(std::string path)
-{
-    SceneReadResult result;
-
-    // Import failures are reported through the error string, never exceptions.
-    result.scene = ParseScene(path, result.error);
-
-    return result;
-}
-} // namespace
-
-class SceneLoadWork
-{
-public:
-    explicit SceneLoadWork(const std::string& path) : m_worker(1)
-    {
-        m_result = m_worker.Push(&ReadScene, path);
-    }
-
-    bool IsReady() const
-    {
-        return m_result.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-    }
-
-    SceneReadResult TakeResult()
-    {
-        return m_result.get();
-    }
-
-private:
-    std::future<SceneReadResult> m_result;
-    ThreadPool<void, uint32_t>   m_worker;
-};
 
 EditorController::EditorController(rc::RenderDevice& device) :
     m_selection(m_scene),
@@ -123,7 +78,10 @@ bool EditorController::Init()
 
 void EditorController::Destroy()
 {
-    m_loadWork.Reset();
+    CancelSceneLoad();
+    m_sceneLoader.Reset();
+
+    m_loadResult = {};
 
     m_meshPreview.Destroy();
 
@@ -145,27 +103,21 @@ void EditorController::RegisterActions()
                         {platform::Key::O, kCommand},
                         "Wait for the current scene to finish opening.",
                         [this]() { return !m_loadState.IsActive() && !m_environmentPending; },
-                        [this]() {
-                            m_openRequested = true;
-                        }});
+                        [this]() { m_openRequested = true; }});
 
     m_actions.Register({actions::FrameAll,
                         "Frame All",
                         {platform::Key::Home, 0},
                         "Open a scene first.",
                         [this]() { return m_scene.Get() != nullptr; },
-                        [this]() {
-                            FrameAll();
-                        }});
+                        [this]() { FrameAll(); }});
 
     m_actions.Register({actions::FrameSelection,
                         "Frame Selected",
                         {platform::Key::F, 0},
                         "Select a node first.",
                         [this]() { return m_selection.GetNode().generation != 0; },
-                        [this]() {
-                            FrameSelection();
-                        }});
+                        [this]() { FrameSelection(); }});
 
     const Placeholder placeholders[] = {
         {actions::Save, "Save", {platform::Key::S, kCommand}, "Available with scene documents (plan step 5)."},
@@ -455,7 +407,7 @@ bool EditorController::PublishScene(UniquePtr<LoadedScene> candidate, std::strin
         {
             for (const rc::LightEntry& entry : m_viewport.GetRenderScene()->GetLights().GetEntries())
             {
-                m_importedLights.push_back({entry.id, rc::LightOrigin::eGLTF, entry.light});
+                m_importedLights.push_back({entry.id, rc::LightOrigin::eImported, entry.light});
 
                 m_nextLightId = std::max(m_nextLightId, entry.id + 1);
             }
@@ -494,15 +446,17 @@ bool EditorController::Load(const std::string& path)
 
     if (!m_loadState.IsActive() && !m_environmentPending)
     {
-        std::string error;
-
-        UniquePtr<LoadedScene> candidate = ParseScene(path, error);
+        asset::SceneLoadResult imported  = asset::LoadScene(path);
+        std::string            error     = std::move(imported.error);
+        UniquePtr<LoadedScene> candidate = std::move(imported.scene);
 
         valid = candidate && m_viewport.PrepareScene(*candidate, error) && PublishScene(std::move(candidate), error);
 
         if (valid)
         {
-            m_loadState = {};
+            // Messages belong to the published scene; a failed open keeps the previous ones.
+            m_importDiagnostics = std::move(imported.diagnostics);
+            m_loadState         = {};
         }
         else
         {
@@ -522,11 +476,41 @@ bool EditorController::RequestLoad(std::string path)
     if (accepted)
     {
         m_loadState = {SceneLoadStage::Queued, std::move(path)};
-
+        m_loadControl.Reset(new asset::SceneImportControl);
+        m_pendingDiagnostics.clear();
         m_error.clear();
     }
 
     return accepted;
+}
+
+bool EditorController::CancelSceneLoad()
+{
+    const bool accepted = m_loadState.stage == SceneLoadStage::Queued || m_loadState.stage == SceneLoadStage::Reading
+                       || m_loadState.stage == SceneLoadStage::Preparing || m_loadState.stage == SceneLoadStage::Publishing;
+    if (accepted)
+    {
+        m_loadState.cancelRequested = true;
+        if (m_loadControl)
+        {
+            m_loadControl->Cancel();
+        }
+        // A running future stays owned until its jobs have drained. Queued or
+        // completed CPU work can be discarded immediately on this thread.
+        if (m_loadState.stage != SceneLoadStage::Reading)
+        {
+            m_viewport.DiscardScene();
+            m_loadCandidate.Reset();
+            m_loadControl.Reset();
+            m_loadState.stage = SceneLoadStage::Cancelled;
+        }
+    }
+    return accepted;
+}
+
+const HeapVector<asset::SceneImportDiagnostic>& EditorController::GetImportDiagnostics() const
+{
+    return m_importDiagnostics;
 }
 
 const HeapVector<EnvironmentTextureItem>& EditorController::GetEnvironmentTextures() const
@@ -609,7 +593,8 @@ const SceneLoadState& EditorController::GetLoadState() const
 
 void EditorController::FailSceneLoad(std::string error)
 {
-    m_loadWork.Reset();
+    m_loadResult = {};
+    m_loadControl.Reset();
 
     // Destroy unpublished GPU data before the CPU scene it references.
     m_viewport.DiscardScene();
@@ -631,7 +616,13 @@ bool EditorController::UpdateSceneLoad()
     {
         case SceneLoadStage::Queued:
         {
-            m_loadWork        = MakeUnique<SceneLoadWork>(m_loadState.path);
+            if (!m_sceneLoader)
+            {
+                m_sceneLoader = MakeUnique<asset::SceneLoader>(1, 0);
+            }
+            asset::SceneImportRequest request{m_loadState.path};
+            request.control   = m_loadControl;
+            m_loadResult      = m_sceneLoader->LoadAsync(std::move(request));
 
             m_loadState.stage = SceneLoadStage::Reading;
 
@@ -639,13 +630,19 @@ bool EditorController::UpdateSceneLoad()
         }
         case SceneLoadStage::Reading:
         {
-            if (m_loadWork->IsReady())
+            m_loadState.importStage = m_loadControl->GetStage();
+            if (m_loadResult.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
-                SceneReadResult result = m_loadWork->TakeResult();
+                asset::SceneLoadResult result = m_loadResult.get();
 
-                m_loadWork.Reset();
-
-                if (result.scene)
+                m_loadResult                  = {};
+                m_pendingDiagnostics          = std::move(result.diagnostics);
+                if (m_loadState.cancelRequested || result.status == asset::SceneImportStatus::Cancelled)
+                {
+                    m_loadControl.Reset();
+                    m_loadState.stage = SceneLoadStage::Cancelled;
+                }
+                else if (result.scene)
                 {
                     m_loadCandidate   = std::move(result.scene);
 
@@ -680,6 +677,10 @@ bool EditorController::UpdateSceneLoad()
 
             if (PublishScene(std::move(m_loadCandidate), error))
             {
+                // Messages describe the published scene; failed or cancelled
+                // opens leave the active scene's messages in place.
+                m_importDiagnostics = std::move(m_pendingDiagnostics);
+                m_loadControl.Reset();
                 m_loadState.stage = SceneLoadStage::Complete;
             }
             else
@@ -689,7 +690,8 @@ bool EditorController::UpdateSceneLoad()
 
             break;
         }
-        case SceneLoadStage::Complete: m_loadState = {}; break;
+        case SceneLoadStage::Complete:
+        case SceneLoadStage::Cancelled: m_loadState = {}; break;
         case SceneLoadStage::Idle:
         case SceneLoadStage::Failed: break;
     }

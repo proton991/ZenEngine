@@ -336,9 +336,9 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
 
             texFormat.arrayLayers = 1;
 
-            texFormat.mipmaps     = pSgTexture->mipBytes.empty()
+            texFormat.mipmaps     = pSgTexture->GetMipBytes().empty()
                                       ? RHITexture::CalculateTextureMipLevels(pSgTexture->width, pSgTexture->height)
-                                      : static_cast<uint32_t>(pSgTexture->mipBytes.size());
+                                      : static_cast<uint32_t>(pSgTexture->GetMipBytes().size());
 
             RHITexture* pTexture = m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, pSgTexture->GetName());
 
@@ -346,9 +346,10 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
             {
                 OwnTexture(pTexture);
 
-                if (pSgTexture->mipBytes.empty())
+                if (pSgTexture->GetMipBytes().empty())
                 {
-                    UpdateTexture(pTexture, pSgTexture->bytesData.size(), pSgTexture->bytesData.data(), texFormat.mipmaps > 1);
+                    UpdateTexture(pTexture, pSgTexture->GetBytes().size(), pSgTexture->GetBytes().data(),
+                                  texFormat.mipmaps > 1);
                 }
                 else
                 {
@@ -356,7 +357,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
 
                     bool payloadFits     = true;
 
-                    for (const HeapVector<uint8_t>& mip : pSgTexture->mipBytes)
+                    for (const HeapVector<uint8_t>& mip : pSgTexture->GetMipBytes())
                     {
                         if (mip.size() > std::numeric_limits<uint32_t>::max() - payloadSize)
                         {
@@ -405,7 +406,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
 
                             regions.push_back(region);
 
-                            const HeapVector<uint8_t>& mip = pSgTexture->mipBytes[level];
+                            const HeapVector<uint8_t>& mip = pSgTexture->GetMipBytes()[level];
 
                             if (!mip.empty())
                             {

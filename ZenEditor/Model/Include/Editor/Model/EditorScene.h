@@ -1,21 +1,13 @@
 #pragma once
 #include "Editor/Model/NodeInspection.h"
 #include "Editor/Model/SceneAssets.h"
-#include "AssetLib/Types.h"
+#include "AssetLib/SceneLoader.h"
 
 namespace zen::editor
 {
-struct LoadedScene
-{
-    UniquePtr<sg::Scene>      scene;
-    HeapVector<asset::Vertex> vertices;
-    HeapVector<uint32_t>      indices;
-    std::string               path;
-    Vec3                      normalizationCenter{0.0f};
-    float                     normalizationScale{1.0f};
-};
+using LoadedScene = asset::LoadedScene;
 
-// Parses a glTF or GLB file on the calling thread. Invalid input returns null and an error.
+// Loads a registered scene file on the calling thread. Invalid input returns null and an error.
 UniquePtr<LoadedScene> ParseScene(const std::string& path, std::string& error);
 
 // The open scene and its read-only queries. Replace() advances the generation, which

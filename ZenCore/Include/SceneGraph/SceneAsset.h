@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Component.h"
+#include "AssetLib/SceneData.h"
+#include "AssetLib/SceneAsset.h"
 #include "Math/Math.h"
 #include "Templates/HeapVector.h"
 #include "Templates/SmallVector.h"
@@ -9,10 +11,10 @@
 namespace zen::sg
 {
 // Common meshes use one or two UV sets. Additional sets still grow dynamically.
-using VertexTextureCoordinates = SmallVector<Vec2, 2>;
+using VertexTextureCoordinates = asset::VertexTextureCoordinates;
 
 // Camera instances belong to scene nodes; interactive Camera objects consume this data.
-class SceneCamera : public Component
+class SceneCamera : public Component, public asset::CameraParameters
 {
 public:
     explicit SceneCamera(std::string name) : Component(std::move(name)) {}
@@ -25,149 +27,44 @@ public:
     Mat4     worldMatrix{1.0f};
     uint32_t sourceIndex{UINT32_MAX};
     float    unitScale{1.0f};
-    bool     orthographic{false};
-    bool     infiniteFar{false};
-    bool     fixedAspect{false};
-    float    aspect{1.0f};
-    float    verticalFov{glm::radians(70.0f)};
-    float    nearPlane{0.001f};
-    float    farPlane{100.0f};
-    float    xmag{1.0f};
-    float    ymag{1.0f};
 };
 
-struct SkinAsset
-{
-    std::string          name;
-    int32_t              skeleton{-1};
-    HeapVector<uint32_t> joints;
-    HeapVector<Mat4>     inverseBindMatrices;
-};
+using SkinAsset                     = asset::SkinAsset;
+using AnimationPath                 = asset::AnimationPath;
+using AnimationInterpolation        = asset::AnimationInterpolation;
+using AnimationSampler              = asset::AnimationSampler;
+using AnimationChannel              = asset::AnimationChannel;
+using AnimationAsset                = asset::AnimationAsset;
+using MorphColorAttributeAsset      = asset::MorphColorAttributeAsset;
+using MorphTargetAsset              = asset::MorphTargetAsset;
+using MorphPrimitiveAsset           = asset::MorphPrimitiveAsset;
+using VertexJointInfluence          = asset::VertexJointInfluence;
+using DeformationPrimitiveAsset     = asset::DeformationPrimitiveAsset;
+using MaterialVariantPrimitiveAsset = asset::MaterialVariantPrimitiveAsset;
+using VertexAttributeAsset          = asset::VertexAttributeAsset;
+using ImageBasedLightAsset          = asset::ImageBasedLightAsset;
 
-enum class AnimationPath
+// Facts about the canonical source that runtime animation targets still need after
+// the CPU asset is released: inactive targets (nodes outside the selected scene,
+// unused cameras and lights) remain valid, and matrix nodes reject TRS animation.
+struct SceneSourceInfo
 {
-    Translation,
-    Rotation,
-    Scale,
-    Weights,
-    Pointer
-};
-
-enum class AnimationInterpolation
-{
-    Linear,
-    Step,
-    CubicSpline
-};
-
-struct AnimationSampler
-{
-    AnimationInterpolation interpolation{AnimationInterpolation::Linear};
-    uint32_t               components{0};
-    HeapVector<float>      times;
-    // Cubic splines retain in-tangent, value, out-tangent triples.
-    HeapVector<float> values;
-};
-
-struct AnimationChannel
-{
-    uint32_t      sampler{0};
-    uint32_t      node{0};
-    AnimationPath path{AnimationPath::Translation};
-    std::string   pointer;
-};
-
-struct AnimationAsset
-{
-    std::string                  name;
-    HeapVector<AnimationSampler> samplers;
-    HeapVector<AnimationChannel> channels;
-};
-
-struct MorphColorAttributeAsset
-{
-    uint64_t         set{0};
-    HeapVector<Vec4> values;
-};
-
-struct MorphTargetAsset
-{
-    HeapVector<Vec3> positions;
-    HeapVector<Vec3> normals;
-    HeapVector<Vec3> tangents;
-    // Coordinate sets use SceneAssetData::vertexTexCoordSets compact slots.
-    HeapVector<HeapVector<Vec2>>         texCoords;
-    HeapVector<Vec4>                     colors;
-    HeapVector<MorphColorAttributeAsset> extraColors;
-};
-
-struct MorphPrimitiveAsset
-{
-    uint32_t                     mesh{0};
-    uint32_t                     primitive{0};
-    HeapVector<float>            weights;
-    HeapVector<MorphTargetAsset> targets;
-};
-
-struct VertexJointInfluence
-{
-    uint32_t joint{0};
-    float    weight{0.0f};
-};
-
-struct DeformationPrimitiveAsset
-{
-    uint32_t                                     node{0};
-    uint32_t                                     firstVertex{0};
-    uint32_t                                     vertexCount{0};
-    uint32_t                                     subMesh{0};
-    bool                                         flatNormals{false};
-    int32_t                                      morphPrimitive{-1};
-    HeapVector<uint32_t>                         sourceVertices;
-    HeapVector<HeapVector<VertexJointInfluence>> influences;
-};
-
-struct MaterialVariantPrimitiveAsset
-{
-    uint32_t mesh{0};
-    uint32_t primitive{0};
-    // -1 retains the primitive's default material for that variant.
-    HeapVector<int32_t> materials;
-};
-
-struct VertexAttributeAsset
-{
-    uint32_t    mesh{0};
-    uint32_t    primitive{0};
-    std::string semantic;
-    // -1 identifies base attributes; otherwise this is a primitive-local morph target.
-    int32_t  morphTarget{-1};
-    uint32_t components{0};
-    uint32_t componentType{0};
-    bool     normalized{false};
-    // Double precision retains integer custom attributes exactly and decoded normalized values.
-    HeapVector<double> values;
-};
-
-struct ImageBasedLightAsset
-{
-    std::string      name;
-    float            intensity{1.0f};
-    Quat             rotation{1.0f, 0.0f, 0.0f, 0.0f};
-    HeapVector<Vec3> irradianceCoefficients;
-    uint32_t         size{0};
-    uint32_t         mipLevels{0};
-    // Linear HDR RGBA pixels, indexed by mip * 6 + (+X, -X, +Y, -Y, +Z, -Z).
-    HeapVector<HeapVector<Vec4>> specularMipFaces;
+    // Optional source metadata retained for inspection and round-tripping.
+    std::string               document;
+    HeapVector<asset::MeshId> nodeMeshes;
+    HeapVector<uint8_t>       nodeMatrixTransforms;
+    uint32_t                  materials{0};
+    uint32_t                  cameras{0};
+    uint32_t                  lights{0};
+    uint32_t                  imageBasedLights{0};
 };
 
 struct SceneAssetData
 {
-    // Renderer-world units per authored glTF meter, accumulated by normalization.
+    SharedPtr<const SceneSourceInfo, MultiThreadCounter> source;
+    // Renderer-world units per canonical meter, accumulated by normalization.
     float unitScale{1.0f};
 
-    // Retain extras and optional/vendor extensions for editor round-tripping.
-    std::string                           sourceDocument;
     HeapVector<SkinAsset>                 skins;
     HeapVector<AnimationAsset>            animations;
     HeapVector<MorphPrimitiveAsset>       morphPrimitives;

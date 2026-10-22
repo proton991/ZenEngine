@@ -17,6 +17,11 @@ bool RuntimeSceneControls::RequestRuntimeModel(const std::string&)
     return false;
 }
 
+bool RuntimeSceneControls::CancelRuntimeModel()
+{
+    return false;
+}
+
 namespace
 {
 bool Finite(const Vec3& value)

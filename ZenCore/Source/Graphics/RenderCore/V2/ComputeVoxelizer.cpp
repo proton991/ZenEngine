@@ -1,6 +1,5 @@
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
-#include "AssetLib/FastGLTFLoader.h"
 #include "Graphics/RenderCore/V2/RenderObject.h"
 #include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"

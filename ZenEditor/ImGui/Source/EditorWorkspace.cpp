@@ -735,7 +735,26 @@ void EditorWorkspace::DrawStatusBar(EditorContext& context)
     }
     else
     {
-        ImGui::TextDisabled("Ready");
+        const HeapVector<asset::SceneImportDiagnostic>& diagnostics = editor.GetImportDiagnostics();
+        if (diagnostics.empty())
+        {
+            ImGui::TextDisabled("Ready");
+        }
+        else
+        {
+            ImGui::TextDisabled("Ready (%zu import messages)", diagnostics.size());
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 40);
+                for (const asset::SceneImportDiagnostic& diagnostic : diagnostics)
+                {
+                    ImGui::TextWrapped("%s: %s", diagnostic.object.c_str(), diagnostic.message.c_str());
+                }
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+        }
     }
 
     const EditorSelection& selection = editor.GetSelection();
@@ -826,7 +845,7 @@ void EditorWorkspace::DrawDialogs(EditorContext& context)
 
     if (ImGui::BeginPopupModal("Open Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     {
-        ImGui::TextUnformatted("Enter an absolute .gltf or .glb path:");
+        ImGui::TextWrapped("Enter an absolute scene path (%s):", asset::GetSceneFileFilterExtensions().c_str());
 
         ImGui::SetNextItemWidth(520 * ImGui::GetStyle().FontScaleMain);
 
@@ -849,9 +868,14 @@ void EditorWorkspace::DrawDialogs(EditorContext& context)
         ImGui::EndPopup();
     }
 
-    if (DrawSceneLoadingDialog(context.editor.GetLoadState(), context.editor.GetError()))
+    const SceneLoadingAction loadAction = DrawSceneLoadingDialog(context.editor.GetLoadState(), context.editor.GetError());
+    if (loadAction == SceneLoadingAction::Dismiss)
     {
         context.editor.DismissLoadError();
+    }
+    else if (loadAction == SceneLoadingAction::Cancel)
+    {
+        context.editor.CancelSceneLoad();
     }
 }
 

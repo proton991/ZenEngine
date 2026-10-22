@@ -46,7 +46,7 @@ protected:
 
         ImGui::Begin("Loading test");
 
-        dismissed = DrawSceneLoadingDialog({stage, "example.gltf"}, "Import failed");
+        dismissed = DrawSceneLoadingDialog({stage, "example.gltf"}, "Import failed") == SceneLoadingAction::Dismiss;
 
         open      = ImGui::IsPopupOpen("Opening Scene");
 

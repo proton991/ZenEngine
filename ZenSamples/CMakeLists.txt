@@ -123,14 +123,18 @@ target_link_libraries(ConfigLoaderTest PRIVATE ZenCore gtest_main)
 
 add_executable(CommonTest
     CommonTest/CameraInputTests.cpp
-    CommonTest/GLTFModelCatalogTests.cpp
+    CommonTest/SceneModelCatalogTests.cpp
     CommonTest/SceneImportTests.cpp
+    CommonTest/SceneAssetIOTests.cpp
+    CommonTest/SceneLoaderTests.cpp
+    CommonTest/FbxSceneImportTests.cpp
     CommonTest/SceneAnimationTests.cpp
     CommonTest/SceneImportCompatibilityTests.cpp
     CommonTest/SceneImportStressTests.cpp
     CommonTest/SceneImportMorphAttributeTests.cpp
     CommonTest/ScenePhysicalUnitsTests.cpp
     CommonTest/SceneImportPaddingTests.cpp
+    CommonTest/SceneAnimationPointerTestSupport.cpp
     CommonTest/SceneAnimationPointerTests.cpp
     CommonTest/CleanupRegressionTests.cpp
     CommonTest/SmallVectorTests.cpp
@@ -151,6 +155,8 @@ add_executable(SmartPtrTest
 add_executable(GLTFCorpusImport CommonTest/GLTFCorpusImport.cpp)
 
 target_link_libraries(GLTFCorpusImport PRIVATE ZenCore)
+add_executable(SceneLoadBenchmark CommonTest/SceneLoadBenchmark.cpp)
+target_link_libraries(SceneLoadBenchmark PRIVATE ZenCore)
 endif ()
 
 
@@ -196,7 +202,8 @@ add_dependencies(ConeVoxelGIIntegrationTest SpvShaders)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(FlatHashMapTest ZenCore gtest_main)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
-target_link_libraries(CommonTest ZenCore gtest_main)
+target_link_libraries(CommonTest ZenCore gtest_main zen_gltf_decoders zen_ufbx)
+target_include_directories(CommonTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Source)
 endif ()
 
 

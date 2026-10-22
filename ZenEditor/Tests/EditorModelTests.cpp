@@ -607,7 +607,8 @@ TEST(EditorModel, TextureIdentityUsesImporterMetadataInsteadOfDisplayNames)
         MakeUnique<sg::Texture>("albedo_linear", 8, 1, 1, asset::Format::R8G8B8A8_UNORM, std::vector<uint8_t>{0, 255, 0, 255});
 
     UniquePtr<sg::Texture> generated =
-        MakeUnique<sg::Texture>("An unrelated display name", 9, 1, 1, asset::Format::R8G8B8A8_UNORM, color->bytesData);
+        MakeUnique<sg::Texture>("An unrelated display name", 9, 1, 1, asset::Format::R8G8B8A8_UNORM,
+                                std::vector<uint8_t>(color->GetBytes().begin(), color->GetBytes().end()));
 
     generated->linearSourceIndex          = color->index;
 
@@ -958,18 +959,14 @@ TEST(EditorModel, ActionsDispatchByIdAndShortcutRespectingEnabledState)
 
     const uint16_t control = uint16_t(platform::KeyModifier::Control);
 
-    registry.Register({actions::Open, "Open...", {platform::Key::O, control}, "", nullptr, [&opened]() {
-                           ++opened;
-                       }});
+    registry.Register({actions::Open, "Open...", {platform::Key::O, control}, "", nullptr, [&opened]() { ++opened; }});
 
     registry.Register({actions::FrameAll,
                        "Frame All",
                        {platform::Key::Home, 0},
                        "Open a scene first.",
                        [&canFrame]() { return canFrame; },
-                       [&framed]() {
-                           ++framed;
-                       }});
+                       [&framed]() { ++framed; }});
 
     EXPECT_TRUE(registry.Execute(actions::Open));
 
@@ -1024,11 +1021,9 @@ void RegisterDuplicateAction()
 {
     EditorActions registry;
 
-    registry.Register({"same", "Same", {}, "", nullptr, []() {
-                       }});
+    registry.Register({"same", "Same", {}, "", nullptr, []() {}});
 
-    registry.Register({"same", "Same", {}, "", nullptr, []() {
-                       }});
+    registry.Register({"same", "Same", {}, "", nullptr, []() {}});
 }
 
 TEST(EditorModelDeathTest, DuplicateActionIdsAbort)

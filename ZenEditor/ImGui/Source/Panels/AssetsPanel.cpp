@@ -238,6 +238,14 @@ private:
         {
             ImGui::TextWrapped("Loading: %s", context.editor.GetLoadState().path.c_str());
         }
+        const HeapVector<asset::SceneImportDiagnostic>& diagnostics = context.editor.GetImportDiagnostics();
+        if (!diagnostics.empty() && ImGui::CollapsingHeader("Import diagnostics"))
+        {
+            for (const asset::SceneImportDiagnostic& diagnostic : diagnostics)
+            {
+                ImGui::TextWrapped("%s: %s", diagnostic.object.c_str(), diagnostic.message.c_str());
+            }
+        }
 
         if (scene == nullptr)
         {

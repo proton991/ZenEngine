@@ -83,19 +83,21 @@ public:
         return GetConfiguredModelPath("skybox_model");
     }
 
-    std::string GetDefaultGLTFModelPath() const
+    std::string GetDefaultModelPath() const
     {
         return HasKey("default_model_path") ? ResolveModelPath(GetString("default_model_path", ""))
                                             : GetConfiguredModelPath("default_model");
     }
 
-    std::string GetGLTFModelBasePath() const
+    std::string GetModelBasePath() const
     {
         const std::string path = ResolveModelPath(GetString("model_base_path", ""));
 
         return path;
     }
 
+    // Legacy sample-name lookup used by default_model and engine utility meshes.
+    // Explicit default_model_path accepts any registered scene format.
     std::string GetGLTFModelPath(const std::string& name) const
     {
         std::string                                       path       = "";

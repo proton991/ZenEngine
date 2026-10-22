@@ -7,12 +7,7 @@
 
 namespace zen::sg
 {
-enum class AlphaMode
-{
-    Opaque,
-    Mask,
-    Blend
-};
+using AlphaMode = asset::AlphaMode;
 
 struct MaterialData
 {
@@ -50,7 +45,7 @@ struct MaterialData
     MaterialTextureData featureTextures[static_cast<uint32_t>(MaterialFeatureTexture::Count)]{};
 };
 
-class Material : public Component
+class Material : public Component, public asset::MaterialParametersT<Texture*>
 {
 public:
     static UniquePtr<Material> CreateDefaultUnique()
@@ -107,33 +102,15 @@ public:
         data.volumeIridescence =
             Vec4(features.thickness, std::isfinite(features.attenuationDistance) ? features.attenuationDistance : 0.0f,
                  features.iridescence, features.iridescenceIor);
-        data.attenuationColorDispersion          = Vec4(features.attenuationColor, features.dispersion);
-        data.iridescenceAnisotropy               = Vec4(features.iridescenceThicknessMin, features.iridescenceThicknessMax,
-                                                        features.anisotropy, features.anisotropyRotation);
-        data.diffuseTransmissionColorFactor      = Vec4(features.diffuseTransmissionColor, features.diffuseTransmission);
-        data.volumeScatterColorRetroreflection   = Vec4(features.multiscatterColor, features.retroreflection);
-
-        const MaterialTextureBinding* bindings[] = {&features.specularTexture,
-                                                    &features.specularColorTexture,
-                                                    &features.diffuseTexture,
-                                                    &features.specularGlossinessTexture,
-                                                    &features.clearcoatTexture,
-                                                    &features.clearcoatRoughnessTexture,
-                                                    &features.clearcoatNormalTexture,
-                                                    &features.sheenColorTexture,
-                                                    &features.sheenRoughnessTexture,
-                                                    &features.transmissionTexture,
-                                                    &features.thicknessTexture,
-                                                    &features.iridescenceTexture,
-                                                    &features.iridescenceThicknessTexture,
-                                                    &features.anisotropyTexture,
-                                                    &features.diffuseTransmissionTexture,
-                                                    &features.diffuseTransmissionColorTexture,
-                                                    &features.retroreflectionTexture};
+        data.attenuationColorDispersion        = Vec4(features.attenuationColor, features.dispersion);
+        data.iridescenceAnisotropy             = Vec4(features.iridescenceThicknessMin, features.iridescenceThicknessMax,
+                                                      features.anisotropy, features.anisotropyRotation);
+        data.diffuseTransmissionColorFactor    = Vec4(features.diffuseTransmissionColor, features.diffuseTransmission);
+        data.volumeScatterColorRetroreflection = Vec4(features.multiscatterColor, features.retroreflection);
 
         for (uint32_t index = 0; index < static_cast<uint32_t>(MaterialFeatureTexture::Count); ++index)
         {
-            const MaterialTextureBinding& binding = *bindings[index];
+            const MaterialTextureBinding& binding = features.*MaterialFeatures::textureMembers[index];
 
             data.featureTextures[index].properties =
                 Vec4(binding.texture == nullptr ? -1.0f : static_cast<float>(binding.texture->index),
@@ -153,49 +130,7 @@ public:
         }
     }
 
-    AlphaMode alphaMode{AlphaMode::Opaque};
-    bool      doubleSided{false};
-    // material factors
-    float            alphaCutoff{0.5f};
-    float            metallicFactor{1.0f};
-    float            roughnessFactor{1.0f};
-    float            normalScale{1.0f};
-    float            occlusionStrength{1.0f};
-    TextureTransform textureTransforms[5]{};
-    MaterialFeatures features;
-    Vec4             baseColorFactor{1.0f};
-    Vec4             emissiveFactor{0.0f};
-    // textures
-    Texture* m_pBaseColorTexture{nullptr};
-    Texture* m_pMetallicRoughnessTexture{nullptr};
-    Texture* m_pNormalTexture{nullptr};
-    Texture* m_pOcclusionTexture{nullptr};
-    Texture* m_pEmissiveTexture{nullptr};
-
-    struct TexCoordSets
-    {
-        uint32_t baseColor{0};
-        uint32_t metallicRoughness{0};
-        uint32_t specularGlossiness{0};
-        uint32_t normal{0};
-        uint32_t occlusion{0};
-        uint32_t emissive{0};
-    } texCoordSets;
-    struct Extension
-    {
-        Texture* pSpecularGlossinessTexture{nullptr};
-        Texture* pDiffuseTexture{nullptr};
-        Vec4     diffuseFactor{1.0f};
-        Vec3     specularFactor{0.0f};
-    } extension;
-    struct PbrWorkflows
-    {
-        bool metallicRoughness{true};
-        bool specularGlossiness{false};
-    } pbrWorkflows;
     uint32_t index{0};
-    bool     unlit{false};
-    float    emissiveStrength{1.0f};
 
     MaterialData data;
 };

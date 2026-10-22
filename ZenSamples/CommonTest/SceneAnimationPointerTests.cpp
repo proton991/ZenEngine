@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include "SceneGraph/Scene.h"
-#include "SceneGraph/SceneAnimationPointer.h"
+#include "SceneAnimationPointerTestSupport.h"
 #include "SceneGraph/SceneAnimation.h"
 
 using namespace zen;
@@ -251,7 +251,11 @@ TEST(SceneAnimationPointer, NodeComponentsAndVisibilityUpdateWithoutResettingOth
 
     EXPECT_FALSE(scene.GetNodes()[0]->IsVisible());
 
-    scene.GetAssetData().sourceDocument = R"({"nodes":[{}],"cameras":[{}]})";
+    SharedPtr<sg::SceneSourceInfo, MultiThreadCounter> definitions(new sg::SceneSourceInfo());
+    definitions->nodeMeshes.resize(1);
+    definitions->nodeMatrixTransforms.resize(1);
+    definitions->cameras        = 1;
+    scene.GetAssetData().source = definitions;
 
     EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/nodes/0/translation", position));
 
@@ -282,9 +286,8 @@ TEST(SceneAnimationPointer, MatrixTranslationReplacesAuthoredValuesAndMorphEleme
 
     scene.SetNodes(std::move(nodes));
 
-    scene.GetAssetData().sourceDocument = R"({"nodes":[{"matrix":[2,0,0,0,0,2,0,0,0,0,2,0,5,6,7,1]}]})";
 
-    const float position[]              = {1, 2, 3};
+    const float position[] = {1, 2, 3};
 
     EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/nodes/0/translation", position));
 
@@ -483,9 +486,9 @@ TEST(SceneAnimationPointer, ImageBasedLightRotationUsesShortestQuaternionInterpo
 
     sg::AnimationChannel rotationChannel;
 
-    rotationChannel.path    = sg::AnimationPath::Pointer;
+    rotationChannel.path   = sg::AnimationPath::Property;
 
-    rotationChannel.pointer = "/extensions/EXT_lights_image_based/lights/0/rotation";
+    rotationChannel.target = {asset::AnimatedObject::Environment, 0, asset::AnimatedProperty::EnvironmentRotation, 4};
 
     animation.channels.push_back(std::move(rotationChannel));
 
@@ -493,9 +496,9 @@ TEST(SceneAnimationPointer, ImageBasedLightRotationUsesShortestQuaternionInterpo
 
     intensityChannel.sampler = 1;
 
-    intensityChannel.path    = sg::AnimationPath::Pointer;
+    intensityChannel.path    = sg::AnimationPath::Property;
 
-    intensityChannel.pointer = "/extensions/EXT_lights_image_based/lights/0/intensity";
+    intensityChannel.target  = {asset::AnimatedObject::Environment, 0, asset::AnimatedProperty::EnvironmentIntensity, 1};
 
     animation.channels.push_back(std::move(intensityChannel));
 

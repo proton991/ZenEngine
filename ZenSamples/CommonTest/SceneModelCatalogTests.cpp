@@ -3,7 +3,8 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include "AssetLib/GLTFModelCatalog.h"
+#include "AssetLib/SceneModelCatalog.h"
+#include "AssetLib/SceneLoader.h"
 
 using namespace zen;
 
@@ -25,7 +26,7 @@ public:
     {
         const int64_t identifier = std::chrono::steady_clock::now().time_since_epoch().count();
 
-        m_root = std::filesystem::temp_directory_path() / ("ZenGLTFModelCatalogTests_" + std::to_string(identifier));
+        m_root = std::filesystem::temp_directory_path() / ("ZenSceneModelCatalogTests_" + std::to_string(identifier));
 
         if (!std::filesystem::create_directory(m_root))
         {
@@ -66,11 +67,12 @@ private:
 };
 } // namespace
 
-TEST(GLTFModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
+TEST(SceneModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
 {
     CatalogFixture fixture;
 
     fixture.Write("Zebra/Zebra.gltf");
+    fixture.Write("Interior/Room.FBX");
 
     fixture.Write("Alpha/glTF/Alpha.gltf");
 
@@ -84,9 +86,9 @@ TEST(GLTFModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
 
     std::filesystem::create_directory(fixture.GetRoot() / "directory.gltf");
 
-    const HeapVector<asset::GLTFModelCatalogEntry> catalog = asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot()));
+    const HeapVector<asset::SceneModelCatalogEntry> catalog = asset::DiscoverSceneModels(CatalogTestUtf8(fixture.GetRoot()));
 
-    ASSERT_EQ(catalog.size(), 4u);
+    ASSERT_EQ(catalog.size(), 5u);
 
     EXPECT_EQ(catalog[0].label, "Alpha/glTF-Binary/Alpha.GLB");
 
@@ -94,9 +96,10 @@ TEST(GLTFModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
 
     EXPECT_EQ(catalog[2].label, "Alpha/glTF/Alpha.gltf");
 
-    EXPECT_EQ(catalog[3].label, "Zebra/Zebra.gltf");
+    EXPECT_EQ(catalog[3].label, "Interior/Room.FBX");
+    EXPECT_EQ(catalog[4].label, "Zebra/Zebra.gltf");
 
-    for (const asset::GLTFModelCatalogEntry& entry : catalog)
+    for (const asset::SceneModelCatalogEntry& entry : catalog)
     {
         const std::filesystem::path path = std::filesystem::u8path(entry.path);
 
@@ -110,7 +113,28 @@ TEST(GLTFModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
     }
 }
 
-TEST(GLTFModelCatalog, UnicodeRootsAndNamesReturnNormalizedUtf8LoadPaths)
+TEST(SceneModelCatalog, DiscoveryAndFileFiltersCoverEveryRegisteredLoadFormat)
+{
+    CatalogFixture    fixture;
+    size_t            expected = 0;
+    const std::string filters  = ";" + asset::GetSceneFileFilterExtensions() + ";";
+    for (const asset::SceneFormatDescriptor& format : asset::GetSceneLoadFormats())
+    {
+        for (std::string_view extension : format.extensions)
+        {
+            const std::string name = "file" + std::string(extension);
+            fixture.Write(name);
+            EXPECT_NE(filters.find(";" + std::string(extension.substr(1)) + ";"), std::string::npos);
+            EXPECT_NE(asset::FindSceneLoadFormat(name), nullptr);
+            ++expected;
+        }
+    }
+    fixture.Write("unsupported.obj");
+    EXPECT_EQ(asset::FindSceneLoadFormat("unsupported.obj"), nullptr);
+    EXPECT_EQ(asset::DiscoverSceneModels(CatalogTestUtf8(fixture.GetRoot())).size(), expected);
+}
+
+TEST(SceneModelCatalog, UnicodeRootsAndNamesReturnNormalizedUtf8LoadPaths)
 {
     CatalogFixture fixture;
 
@@ -122,9 +146,9 @@ TEST(GLTFModelCatalog, UnicodeRootsAndNamesReturnNormalizedUtf8LoadPaths)
 
     std::filesystem::create_directory(root / "unused");
 
-    const std::filesystem::path supplied                   = root / "unused" / "..";
+    const std::filesystem::path supplied                    = root / "unused" / "..";
 
-    const HeapVector<asset::GLTFModelCatalogEntry> catalog = asset::DiscoverGLTFModels(CatalogTestUtf8(supplied));
+    const HeapVector<asset::SceneModelCatalogEntry> catalog = asset::DiscoverSceneModels(CatalogTestUtf8(supplied));
 
     ASSERT_EQ(catalog.size(), 1u);
 
@@ -135,20 +159,20 @@ TEST(GLTFModelCatalog, UnicodeRootsAndNamesReturnNormalizedUtf8LoadPaths)
     EXPECT_TRUE(std::filesystem::is_regular_file(std::filesystem::u8path(catalog[0].path)));
 }
 
-TEST(GLTFModelCatalog, MissingEmptyAndFileRootsReturnEmptyCatalogs)
+TEST(SceneModelCatalog, MissingEmptyAndFileRootsReturnEmptyCatalogs)
 {
     CatalogFixture fixture;
 
     fixture.Write("file.gltf");
 
-    EXPECT_TRUE(asset::DiscoverGLTFModels("").empty());
+    EXPECT_TRUE(asset::DiscoverSceneModels("").empty());
 
-    EXPECT_TRUE(asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot() / "missing")).empty());
+    EXPECT_TRUE(asset::DiscoverSceneModels(CatalogTestUtf8(fixture.GetRoot() / "missing")).empty());
 
-    EXPECT_TRUE(asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot() / "file.gltf")).empty());
+    EXPECT_TRUE(asset::DiscoverSceneModels(CatalogTestUtf8(fixture.GetRoot() / "file.gltf")).empty());
 }
 
-TEST(GLTFModelCatalog, DirectorySymlinksDoNotDiscoverModelsOutsideTheRoot)
+TEST(SceneModelCatalog, DirectorySymlinksDoNotDiscoverModelsOutsideTheRoot)
 {
     CatalogFixture fixture;
 
@@ -167,5 +191,5 @@ TEST(GLTFModelCatalog, DirectorySymlinksDoNotDiscoverModelsOutsideTheRoot)
         GTEST_SKIP() << "Directory symlink creation is unavailable: " << error.message();
     }
 
-    EXPECT_TRUE(asset::DiscoverGLTFModels(CatalogTestUtf8(root)).empty());
+    EXPECT_TRUE(asset::DiscoverSceneModels(CatalogTestUtf8(root)).empty());
 }

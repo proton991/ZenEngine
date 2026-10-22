@@ -1,22 +1,15 @@
 #include "Graphics/RenderCore/V2/RenderObject.h"
-#include "AssetLib/FastGLTFLoader.h"
+#include "AssetLib/SceneLoader.h"
 
 namespace zen::rc
 {
 RenderObject::RenderObject(RenderDevice* pRenderDevice, const std::string& modelPath) : m_pRenderDevice(pRenderDevice)
 {
-    m_scene                                     = MakeUnique<sg::Scene>();
-
-    UniquePtr<asset::FastGLTFLoader> gltfLoader = MakeUnique<asset::FastGLTFLoader>();
-
-    const bool loaded                           = gltfLoader->LoadFromFile(modelPath, m_scene.Get());
-
-    // Render objects load engine assets; the renderer cannot continue without them.
-    VERIFY_EXPR_MSG_F(loaded, "Cannot load required model '{}': {}", modelPath, gltfLoader->GetError());
-
-    const std::vector<asset::Vertex>& vertices = gltfLoader->GetVertices();
-
-    const std::vector<uint32_t>& indices       = gltfLoader->GetIndices();
+    asset::SceneLoadResult loaded = asset::LoadScene(modelPath);
+    VERIFY_EXPR_MSG_F(loaded.scene, "Cannot load required model '{}': {}", modelPath, loaded.error);
+    m_scene                                   = std::move(loaded.scene->scene);
+    const HeapVector<asset::Vertex>& vertices = loaded.scene->vertices;
+    const HeapVector<uint32_t>&      indices  = loaded.scene->indices;
 
     m_nodesData.reserve(m_scene->GetRenderableCount());
 

@@ -20,3 +20,6 @@ __pycache__/
 
 # Optional HDR starter set; download with tools/fetch_environments.py.
 /Data/Textures/Environments/*.hdr
+
+# Automatic .zenasset scene caches written by LoadScene.
+/Cache/

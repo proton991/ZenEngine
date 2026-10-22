@@ -1,4 +1,5 @@
 #pragma once
+#include "AssetLib/SceneLoader.h"
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
@@ -45,6 +46,7 @@ public:
     void RefreshRuntimeModels() override;
 
     bool RequestRuntimeModel(const std::string& path) override;
+    bool CancelRuntimeModel() override;
 #endif
 
     bool Run(uint32_t           frameLimit            = 0,
@@ -88,6 +90,8 @@ private:
     friend struct SceneRendererModelTestAccess;
 
     bool LoadModel(const std::string& path, bool configuredCameraPosition);
+
+    bool PublishModel(UniquePtr<asset::LoadedScene> candidate, bool configuredCameraPosition);
 
 #if defined(ZEN_RUNTIME_UI)
     void ProcessPendingModel();
@@ -138,7 +142,10 @@ private:
 #if defined(ZEN_RUNTIME_UI)
     UniquePtr<ui::RuntimeDebugUI> m_runtimeUI;
 
-    ui::RuntimeModelState m_modelState;
+    ui::RuntimeModelState                                    m_modelState;
+    std::future<asset::SceneLoadResult>                      m_modelLoadResult;
+    SharedPtr<asset::SceneImportControl, MultiThreadCounter> m_modelLoadControl;
+    UniquePtr<asset::SceneLoader>                            m_sceneLoader;
 #endif
 };
 } // namespace zen

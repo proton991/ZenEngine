@@ -1,26 +1,13 @@
 #pragma once
 #include "Component.h"
+#include "AssetLib/ImageAsset.h"
 
 namespace zen::sg
 {
-enum class TextureFilter : uint32_t
-{
-    Nearest = 0,
-    Linear  = 1,
-    MaxEnum = 0x7FFFFFFF
-};
+using TextureFilter      = asset::TextureFilter;
+using SamplerAddressMode = asset::SamplerAddressMode;
 
-enum class SamplerAddressMode : uint32_t
-{
-    Repeat            = 0,
-    MirroredRepeat    = 1,
-    ClampToEdge       = 2,
-    ClampToBorder     = 3,
-    MirrorClampToEdge = 4,
-    MaxEnum           = 0x7FFFFFFF
-};
-
-class Sampler : public Component
+class Sampler : public Component, public asset::SamplerParameters
 {
 public:
     Sampler(std::string name) : Component(std::move(name)) {}
@@ -29,13 +16,5 @@ public:
     {
         return typeid(Sampler);
     }
-
-    TextureFilter minFilter{TextureFilter::MaxEnum};
-    TextureFilter magFilter{TextureFilter::MaxEnum};
-    TextureFilter mipFilter{TextureFilter::Linear};
-    bool          useMipmaps{true};
-
-    SamplerAddressMode wrapS{SamplerAddressMode::MaxEnum};
-    SamplerAddressMode wrapT{SamplerAddressMode::MaxEnum};
 };
 } // namespace zen::sg

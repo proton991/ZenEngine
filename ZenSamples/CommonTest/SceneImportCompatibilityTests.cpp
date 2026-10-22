@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <filesystem>
-#include "AssetLib/FastGLTFLoader.h"
+#include "SceneTestLoader.h"
 #include "SceneGraph/Scene.h"
 
 using namespace zen;
@@ -37,7 +37,7 @@ TEST(SceneImportCompatibility, RetainsPointsAndEveryLineConnectivityMode)
 {
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(CompatibilityFixture("all_primitive_modes.gltf"), &scene)) << loader.GetError();
 
@@ -79,7 +79,7 @@ TEST(SceneImportCompatibility, RejectsCorruptDracoAndPreservesThePreviousScene)
 {
     sg::Scene scene;
 
-    asset::FastGLTFLoader loader;
+    test::SceneLoader loader;
 
     ASSERT_TRUE(loader.LoadFromFile(CompatibilityFixture("all_primitive_modes.gltf"), &scene)) << loader.GetError();
 

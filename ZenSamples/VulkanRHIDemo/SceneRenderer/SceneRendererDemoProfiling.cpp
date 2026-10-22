@@ -223,7 +223,7 @@ std::string FingerprintInputs(const DemoProfilingOptions& options)
 
     output << ",\"scene_document\":";
 
-    FingerprintFile(output, platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath());
+    FingerprintFile(output, platform::ConfigLoader::GetInstance().GetDefaultModelPath());
 
     output << ",\"scene_hash_scope\":\"main asset document; external buffers and textures are not included\""
               ",\"shader_scope\":\"all SPIR-V files in the configured shader directory\",\"shaders\":[";

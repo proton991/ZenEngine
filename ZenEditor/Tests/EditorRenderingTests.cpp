@@ -9,6 +9,7 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
 #include "SceneGraph/Texture.h"
+#include "AssetLib/SceneAssetIO.h"
 #include <gtest/gtest.h>
 #include <spdlog/sinks/ostream_sink.h>
 #include <chrono>
@@ -388,6 +389,56 @@ TEST_P(EditorRendering, TexturePreviewsFollowTheOpenScene)
     DestroyDevice(*device, editor);
 }
 
+TEST_P(EditorRendering, FbxScenesRenderThroughPbrAndVoxelGi)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.ResizeViewport(96, 96));
+    const char* fixtures[] = {"FBX/maya_cube_7500_binary.fbx", "FBX/blender_293_embedded_textures_7400_binary.fbx",
+                              "FBX/max_instanced_material_7700_ascii.fbx", "FBX/blender_331_static_blend_shape_7400_binary.fbx",
+                              "FBX/combined_morph_skin_ascii.fbx"};
+    for (const char* fixture : fixtures)
+    {
+        SCOPED_TRACE(fixture);
+        ASSERT_TRUE(editor.Load(std::string(ZEN_EDITOR_SHARED_FIXTURES) + fixture)) << editor.GetError();
+        editor.GetCamera().GetCamera().SetPose(Vec3(0, 0, 4), Vec3(0));
+        for (rc::RenderAlgorithm algorithm : {rc::RenderAlgorithm::ePBR, rc::RenderAlgorithm::eVoxelGI})
+        {
+            rc::RenderingSettings settings     = editor.GetRenderingState().GetDraft();
+            settings.algorithm                 = algorithm;
+            settings.debug.output              = rc::DebugOutput::eFinal;
+            settings.gi.resolution             = 64;
+            settings.gi.shadowMapResolution    = 256;
+            settings.gi.cone.indirectIntensity = 0;
+            settings.environment.intensity     = 0;
+            settings.environment.skybox        = false;
+            settings.lightMarkers              = false;
+            settings.cameraLight.enabled       = true;
+            settings.cameraLight.range         = 10;
+            settings.cameraLight.intensity     = 2;
+            ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+            ASSERT_TRUE(editor.UpdateRenderingSettings());
+            ASSERT_TRUE(Frame(*device, editor));
+            ASSERT_TRUE(Frame(*device, editor));
+            EXPECT_EQ(editor.GetViewport().GetSnapshot().status.effective, algorithm);
+            EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+            const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+            uint64_t                  energy = 0;
+            for (size_t index = 0; index < pixels.size(); ++index)
+            {
+                if (index % 4 != 3)
+                {
+                    energy += pixels[index];
+                }
+            }
+            EXPECT_GT(energy, 1000u);
+            EXPECT_GT(editor.GetViewport().GetRenderScene()->GetVoxelTriangleCount(), 0u);
+        }
+    }
+    DestroyDevice(*device, editor);
+}
+
 TEST_P(EditorRendering, ActionsAndDeferredLoadsRunThroughTheController)
 {
     UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
@@ -475,6 +526,93 @@ TEST_P(EditorRendering, ActionsAndDeferredLoadsRunThroughTheController)
 
     EXPECT_EQ(navigation.GetActiveTab().GetTarget().node, editor.GetSelection().GetNode());
 
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, MixedFormatsAndCancellationPreserveThePublishedScene)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.ResizeViewport(96, 96));
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    const std::string           fbx = std::string(ZEN_EDITOR_SHARED_FIXTURES) + "FBX/maya_cube_7500_binary.fbx";
+    const std::string           glb = std::string(ZEN_EDITOR_SHARED_FIXTURES) + "complete_scene.glb";
+    const std::filesystem::path internalFile =
+        std::filesystem::temp_directory_path()
+        / ("zen_editor_internal_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".zenasset");
+    const std::string              internal = internalFile.string();
+    const asset::SceneImportResult imported = asset::ImportScene({glb});
+    ASSERT_TRUE(imported.asset) << imported.error;
+    ASSERT_EQ(asset::WriteSceneAssetFile(internal, *imported.asset).status, asset::SceneImportStatus::Success);
+    for (SceneLoadStage stage :
+         {SceneLoadStage::Queued, SceneLoadStage::Reading, SceneLoadStage::Preparing, SceneLoadStage::Publishing})
+    {
+        const uint64_t         generation = editor.GetScene().GetGeneration();
+        const rc::RenderScene* retained   = editor.GetViewport().GetRenderScene();
+        ASSERT_TRUE(editor.RequestLoad(fbx));
+        if (stage != SceneLoadStage::Queued)
+        {
+            ASSERT_TRUE(editor.UpdateSceneLoad());
+        }
+        if (stage == SceneLoadStage::Preparing || stage == SceneLoadStage::Publishing)
+        {
+            WaitForImport(editor);
+            ASSERT_EQ(editor.GetLoadState().stage, SceneLoadStage::Preparing);
+        }
+        if (stage == SceneLoadStage::Publishing)
+        {
+            ASSERT_TRUE(editor.UpdateSceneLoad());
+        }
+        ASSERT_EQ(editor.GetLoadState().stage, stage);
+        ASSERT_TRUE(editor.CancelSceneLoad());
+        if (stage == SceneLoadStage::Reading)
+        {
+            WaitForImport(editor);
+        }
+        EXPECT_EQ(editor.GetLoadState().stage, SceneLoadStage::Cancelled);
+        EXPECT_EQ(editor.GetScene().GetGeneration(), generation);
+        EXPECT_EQ(editor.GetViewport().GetRenderScene(), retained);
+        EXPECT_TRUE(editor.GetError().empty());
+        ASSERT_TRUE(Frame(*device, editor));
+        editor.UpdateSceneLoad();
+    }
+    for (uint32_t cycle = 0; cycle < 2; ++cycle)
+    {
+        for (const std::string& path : {fbx, glb, internal, Fixture("inspection.gltf")})
+        {
+            ASSERT_TRUE(editor.RequestLoad(path));
+            ASSERT_TRUE(editor.UpdateSceneLoad());
+            WaitForImport(editor);
+            ASSERT_EQ(editor.GetLoadState().stage, SceneLoadStage::Preparing) << editor.GetError();
+            ASSERT_TRUE(editor.UpdateSceneLoad());
+            ASSERT_TRUE(Frame(*device, editor));
+            ASSERT_TRUE(editor.UpdateSceneLoad());
+            EXPECT_EQ(editor.GetLoadState().stage, SceneLoadStage::Complete);
+            EXPECT_EQ(editor.GetScene().Get()->path, path);
+            if (path == fbx)
+            {
+                EXPECT_FALSE(editor.GetImportDiagnostics().empty());
+            }
+            ASSERT_TRUE(Frame(*device, editor));
+            editor.UpdateSceneLoad();
+        }
+    }
+    const uint64_t         retainedGeneration = editor.GetScene().GetGeneration();
+    const rc::RenderScene* retainedScene      = editor.GetViewport().GetRenderScene();
+    {
+        std::ofstream corrupt(internalFile, std::ios::binary | std::ios::trunc);
+        corrupt << "invalid internal asset";
+    }
+    ASSERT_TRUE(editor.RequestLoad(internal));
+    editor.UpdateSceneLoad();
+    WaitForImport(editor);
+    EXPECT_EQ(editor.GetLoadState().stage, SceneLoadStage::Failed);
+    EXPECT_EQ(editor.GetScene().GetGeneration(), retainedGeneration);
+    EXPECT_EQ(editor.GetViewport().GetRenderScene(), retainedScene);
+    ASSERT_TRUE(Frame(*device, editor));
+    std::error_code error;
+    std::filesystem::remove(internalFile, error);
     DestroyDevice(*device, editor);
 }
 

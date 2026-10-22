@@ -37,7 +37,7 @@ const char* ModelLabel(const RuntimeModelState& state, const std::string& path)
 {
     const char* label = path.c_str();
 
-    for (const asset::GLTFModelCatalogEntry& entry : state.models)
+    for (const asset::SceneModelCatalogEntry& entry : state.models)
     {
         if (entry.path == path)
         {
@@ -74,7 +74,7 @@ void RuntimeDebugUI::SynchronizeModelRevision()
     }
 }
 
-bool RuntimeDebugUI::MatchesModelSearch(const asset::GLTFModelCatalogEntry& entry) const
+bool RuntimeDebugUI::MatchesModelSearch(const asset::SceneModelCatalogEntry& entry) const
 {
     return ContainsIgnoringCase(entry.label, m_modelFilter) || ContainsIgnoringCase(entry.path, m_modelFilter);
 }
@@ -129,7 +129,7 @@ void RuntimeDebugUI::BuildModelSelector()
 
     size_t matching = 0;
 
-    for (const asset::GLTFModelCatalogEntry& entry : state.models)
+    for (const asset::SceneModelCatalogEntry& entry : state.models)
     {
         matching += MatchesModelSearch(entry) ? 1 : 0;
     }
@@ -171,7 +171,7 @@ void RuntimeDebugUI::BuildModelSelector()
     {
         for (size_t index = 0; index < state.models.size(); ++index)
         {
-            const asset::GLTFModelCatalogEntry& entry = state.models[index];
+            const asset::SceneModelCatalogEntry& entry = state.models[index];
 
             if (MatchesModelSearch(entry))
             {
@@ -251,11 +251,18 @@ void RuntimeDebugUI::BuildModelSelector()
 
     if (loading)
     {
-        ImGui::TextWrapped("Loading: %s", ModelLabel(state, state.pendingPath));
+        ImGui::TextWrapped("%s: %s", state.cancellationRequested ? "Cancelling" : "Loading",
+                           ModelLabel(state, state.pendingPath));
+        ImGui::BeginDisabled(state.cancellationRequested);
+        if (ImGui::Button("Cancel load"))
+        {
+            m_sceneControls.CancelRuntimeModel();
+        }
+        ImGui::EndDisabled();
     }
     else if (state.models.empty())
     {
-        ImGui::TextWrapped("No .gltf or .glb models found. Check the directory and Refresh models.");
+        ImGui::TextWrapped("No supported scene files found. Check the directory and Refresh models.");
     }
     else
     {
@@ -276,6 +283,17 @@ void RuntimeDebugUI::BuildModelSelector()
     else if (m_modelRequestRejected)
     {
         ImGui::TextWrapped("Could not queue this model. Refresh models and try again.");
+    }
+    else if (!loading && state.cancellationRequested)
+    {
+        ImGui::TextUnformatted("Load cancelled.");
+    }
+    if (!state.diagnostics.empty() && ImGui::CollapsingHeader("Import diagnostics"))
+    {
+        for (const asset::SceneImportDiagnostic& diagnostic : state.diagnostics)
+        {
+            ImGui::TextWrapped("%s: %s", diagnostic.object.c_str(), diagnostic.message.c_str());
+        }
     }
 }
 } // namespace zen::ui

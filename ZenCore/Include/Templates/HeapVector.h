@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <initializer_list>
 #include <type_traits>
 #include <utility>
@@ -163,6 +164,16 @@ public:
         m_size = newSize;
     }
 
+    // Sets the size without initializing new elements. Callers must write every new
+    // element before reading it; readers and decoders use this to avoid filling
+    // gigabyte payloads twice.
+    void resize_for_overwrite(size_type newSize)
+    {
+        static_assert(std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>);
+        reserve(newSize);
+        m_size = newSize;
+    }
+
     void clear()
     {
         destroy_range(0, m_size);
@@ -319,10 +330,18 @@ public:
         {
             // Snapshot before reserving so self-append and overlapping views remain valid.
             const HeapVector<T> source(values.data(), values.size());
-            reserve(m_size + source.size());
-            for (const T& value : source)
+            reserve(grown_capacity(m_size + source.size()));
+            if constexpr (std::is_trivially_copyable_v<T>)
             {
-                emplace_back(value);
+                std::memcpy(m_pData + m_size, source.data(), sizeof(T) * source.size());
+                m_size += source.size();
+            }
+            else
+            {
+                for (const T& value : source)
+                {
+                    emplace_back(value);
+                }
             }
         }
     }
@@ -341,39 +360,22 @@ public:
         ASSERT(pos >= begin() && pos <= end());
 
         const size_type index = static_cast<size_type>(pos - begin());
-        const size_type count = static_cast<size_type>(last - first);
-
-        if (count != 0)
+        if constexpr (IsElementPointer<InputIt>)
         {
-            const size_type oldSize = m_size;
-            reserve(oldSize + count);
-
-            const size_type tail = oldSize - index;
-
-            // Shift the tail [index, oldSize) right by 'count' to open a gap
-            if constexpr (std::is_trivially_move_constructible_v<T>)
+            // Snapshot a range inside this vector: reserving and shifting the tail would move it.
+            if (first != last && !std::less<const T*>()(first, m_pData) && std::less<const T*>()(first, m_pData + m_size))
             {
-                std::memmove(m_pData + index + count, m_pData + index, tail * sizeof(T));
+                const HeapVector<T> source(first, static_cast<size_type>(last - first));
+                insert_range(index, source.data(), source.data() + source.size());
             }
             else
             {
-                for (size_type i = 0; i < tail; ++i)
-                {
-                    const size_type src = oldSize - 1 - i;
-                    new (&m_pData[src + count]) T(std::move(m_pData[src]));
-                    m_pData[src].~T();
-                }
+                insert_range(index, first, last);
             }
-
-            // constructed the inserted elements into the gap
-            size_type w = index;
-
-            for (InputIt it = first; it != last; ++it, ++w)
-            {
-                new (&m_pData[w]) T(*it);
-            }
-
-            m_size = oldSize + count;
+        }
+        else
+        {
+            insert_range(index, first, last);
         }
 
         return m_pData + index;
@@ -405,6 +407,63 @@ private:
             size_type newCap = (m_capacity == 0) ? 4 : m_capacity * 2;
             grow(newCap);
         }
+    }
+
+    // Raw pointers to T: their ranges can alias this vector and copy as bytes.
+    template <typename InputIt> static constexpr bool IsElementPointer =
+        std::is_pointer_v<InputIt> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<InputIt>>, T>;
+
+    // Inserts [first, last), which must not point into this vector, at index.
+    template <typename InputIt> void insert_range(size_type index, InputIt first, InputIt last)
+    {
+        const size_type count = static_cast<size_type>(last - first);
+        if (count != 0)
+        {
+            const size_type oldSize = m_size;
+            reserve(grown_capacity(oldSize + count));
+
+            const size_type tail = oldSize - index;
+
+            // Shift the tail [index, oldSize) right by 'count' to open a gap
+            if constexpr (std::is_trivially_move_constructible_v<T>)
+            {
+                std::memmove(m_pData + index + count, m_pData + index, tail * sizeof(T));
+            }
+            else
+            {
+                for (size_type i = 0; i < tail; ++i)
+                {
+                    const size_type src = oldSize - 1 - i;
+                    new (&m_pData[src + count]) T(std::move(m_pData[src]));
+                    m_pData[src].~T();
+                }
+            }
+
+            // constructed the inserted elements into the gap
+            if constexpr (std::is_trivially_copyable_v<T> && IsElementPointer<InputIt>)
+            {
+                std::memcpy(m_pData + index, first, count * sizeof(T));
+            }
+            else
+            {
+                size_type w = index;
+
+                for (InputIt it = first; it != last; ++it, ++w)
+                {
+                    new (&m_pData[w]) T(*it);
+                }
+            }
+
+            m_size = oldSize + count;
+        }
+    }
+
+    // Range appends grow geometrically like single appends; growing to the exact
+    // size makes repeated appends copy the whole buffer each time.
+    size_type grown_capacity(size_type required) const
+    {
+        const size_type doubled = m_capacity * 2;
+        return required <= m_capacity ? m_capacity : required > doubled ? required : doubled;
     }
 
     void grow(size_type newCapacity)
@@ -480,19 +539,35 @@ private:
     //     m_capacity = newCapacity;
     // }
 
+    // Trivial element types skip per-element loops, which unoptimized builds
+    // otherwise execute once per byte of large pixel and geometry payloads.
     void destroy_range(size_type begin, size_type end)
     {
-        for (size_type i = begin; i < end; ++i)
+        if constexpr (!std::is_trivially_destructible_v<T>)
         {
-            m_pData[i].~T();
+            for (size_type i = begin; i < end; ++i)
+            {
+                m_pData[i].~T();
+            }
         }
     }
 
     void construct_range(size_type begin, size_type end)
     {
-        for (size_type i = begin; i < end; ++i)
+        if constexpr (std::is_trivially_default_constructible_v<T>)
         {
-            new (&m_pData[i]) T();
+            // Value-initializing a trivial type zero-fills it.
+            if (end > begin)
+            {
+                std::memset(static_cast<void*>(m_pData + begin), 0, sizeof(T) * (end - begin));
+            }
+        }
+        else
+        {
+            for (size_type i = begin; i < end; ++i)
+            {
+                new (&m_pData[i]) T();
+            }
         }
     }
 
@@ -511,9 +586,10 @@ private:
     {
         if (!other.empty())
         {
-            const size_t bytes = other.capacity() * sizeof(T);
+            // Copies are sized to their contents; geometric growth headroom stays with the source.
+            const size_t bytes = other.m_size * sizeof(T);
             m_pData            = static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(bytes, alignof(T)));
-            m_capacity         = other.m_capacity;
+            m_capacity         = other.m_size;
 
             if constexpr (std::is_trivially_copy_constructible_v<T>)
             {
@@ -521,7 +597,7 @@ private:
             }
             else
             {
-                for (uint32_t i = 0; i < other.m_size; i++)
+                for (size_type i = 0; i < other.m_size; i++)
                 {
                     new (&m_pData[i]) T(other.m_pData[i]);
                 }

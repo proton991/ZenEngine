@@ -1,27 +1,13 @@
 #include "SceneGraph/SceneAnimation.h"
-#include "SceneGraph/SceneAnimationPointer.h"
+#include "SceneGraph/SceneAnimationTarget.h"
 #include "SceneGraph/Scene.h"
+#include "Math/Finite.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 namespace zen::sg
 {
-static bool FiniteMatrix(const Mat4& matrix)
-{
-    bool finite = true;
-
-    for (uint32_t column = 0; column < 4; ++column)
-    {
-        for (uint32_t row = 0; row < 4; ++row)
-        {
-            finite &= std::isfinite(matrix[column][row]);
-        }
-    }
-
-    return finite;
-}
-
 static Vec3 UnitVector(const Vec3& vector, const Vec3& fallback)
 {
     const float squared = glm::dot(vector, vector);
@@ -250,7 +236,7 @@ bool EvaluateSceneAnimation(Scene& scene, uint32_t animationIndex, float time, b
 
             nodes[index]                    = FindNode(scene, channel.node);
 
-            if (channel.path == AnimationPath::Pointer)
+            if (channel.path == AnimationPath::Property)
             {
                 valid &= channel.sampler < animation.samplers.size();
 
@@ -265,14 +251,9 @@ bool EvaluateSceneAnimation(Scene& scene, uint32_t animationIndex, float time, b
                     const size_t dimensions          = count > 0 ? sampler.values.size() / count : 0;
 
                     valid                           &= dimensions > 0 && dimensions <= UINT32_MAX
-                                                    && SampleAnimationSampler(
-                                                           sampler, sampleTime, static_cast<uint32_t>(dimensions),
-                                                           dimensions == 4
-                                                               && (channel.pointer.starts_with("/nodes/")
-                                                                   || channel.pointer.starts_with("/extensions/EXT_lights_image_based/lights/"))
-                                                               && channel.pointer.ends_with("/rotation"),
-                                                           samples[index])
-                                                    && ValidateAnimationPointer(scene, channel.pointer, MakeVecView(samples[index]));
+                                                    && SampleAnimationSampler(sampler, sampleTime, static_cast<uint32_t>(dimensions),
+                                                                              asset::IsQuaternionTarget(channel.target), samples[index])
+                                                    && ValidateAnimationTarget(scene, channel.target, MakeVecView(samples[index]));
                 }
             }
             else if (nodes[index] != nullptr)
@@ -300,9 +281,10 @@ bool EvaluateSceneAnimation(Scene& scene, uint32_t animationIndex, float time, b
 
                 const AnimationChannel& channel = animation.channels[index];
 
-                if (channel.path == AnimationPath::Pointer)
+                if (channel.path == AnimationPath::Property)
                 {
-                    valid &= ApplyAnimationPointer(scene, channel.pointer, MakeVecView(samples[index]));
+                    // The sampling pass above validated these values.
+                    valid &= ApplyValidatedAnimationTarget(scene, channel.target, MakeVecView(samples[index]));
                 }
                 else if (node != nullptr)
                 {
@@ -477,7 +459,7 @@ static bool SkinVertex(const HeapVector<Mat4>&                 palette,
     {
         matrix /= total;
 
-        valid  &= FiniteMatrix(matrix);
+        valid  &= IsFinite(matrix);
 
         if (valid)
         {

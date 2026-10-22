@@ -1,0 +1,183 @@
+{
+  "asset": {
+    "version": "2.0"
+  },
+  "extensionsUsed": [
+    "KHR_animation_pointer",
+    "KHR_lights_punctual"
+  ],
+  "buffers": [
+    {
+      "byteLength": 40,
+      "uri": "data:application/octet-stream;base64,AAAAAAAAgD/NzEw+zcxMPwAAAAAAAAAAAAAAAAAAAEAAAIBAAADAQA=="
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 8
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 8,
+      "byteLength": 8
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 16,
+      "byteLength": 24
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 2,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        1
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 2,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 2,
+      "type": "VEC3"
+    }
+  ],
+  "materials": [
+    {
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0.2
+      }
+    }
+  ],
+  "cameras": [
+    {
+      "type": "perspective",
+      "perspective": {
+        "yfov": 1,
+        "znear": 0.1,
+        "zfar": 10
+      }
+    }
+  ],
+  "extensions": {
+    "KHR_lights_punctual": {
+      "lights": [
+        {
+          "type": "point",
+          "intensity": 4
+        }
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "name": "first",
+      "camera": 0,
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        }
+      }
+    },
+    {
+      "name": "second",
+      "camera": 0,
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        }
+      }
+    },
+    {
+      "name": "inactive",
+      "translation": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "scene": 0,
+  "animations": [
+    {
+      "name": "properties",
+      "samplers": [
+        {
+          "input": 0,
+          "output": 1
+        },
+        {
+          "input": 0,
+          "output": 2
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "path": "pointer",
+            "extensions": {
+              "KHR_animation_pointer": {
+                "pointer": "/materials/0/pbrMetallicRoughness/metallicFactor"
+              }
+            }
+          }
+        },
+        {
+          "sampler": 0,
+          "target": {
+            "path": "pointer",
+            "extensions": {
+              "KHR_animation_pointer": {
+                "pointer": "/cameras/0/perspective/zfar"
+              }
+            }
+          }
+        },
+        {
+          "sampler": 0,
+          "target": {
+            "path": "pointer",
+            "extensions": {
+              "KHR_animation_pointer": {
+                "pointer": "/extensions/KHR_lights_punctual/lights/0/intensity"
+              }
+            }
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "path": "pointer",
+            "extensions": {
+              "KHR_animation_pointer": {
+                "pointer": "/nodes/2/translation"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

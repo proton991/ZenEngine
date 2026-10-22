@@ -5,11 +5,11 @@
 
 namespace zen::editor
 {
-bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& error)
+SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& error)
 {
     constexpr const char* title = "Opening Scene";
 
-    bool dismissed              = false;
+    SceneLoadingAction action   = SceneLoadingAction::None;
 
     if (state.stage != SceneLoadStage::Idle && !ImGui::IsPopupOpen(title))
     {
@@ -24,7 +24,7 @@ bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& erro
 
     if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
     {
-        if (state.stage == SceneLoadStage::Idle)
+        if (state.stage == SceneLoadStage::Idle || state.stage == SceneLoadStage::Cancelled)
         {
             ImGui::CloseCurrentPopup();
         }
@@ -44,7 +44,7 @@ bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& erro
 
                 if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape))
                 {
-                    dismissed = true;
+                    action = SceneLoadingAction::Dismiss;
 
                     ImGui::CloseCurrentPopup();
                 }
@@ -61,8 +61,16 @@ bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& erro
                 {
                     case SceneLoadStage::Reading:
                         label = "Reading scene data...";
+                        switch (state.importStage)
+                        {
+                            case asset::SceneImportStage::DecodingTextures: label = "Decoding textures..."; break;
+                            case asset::SceneImportStage::ProcessingMeshes: label = "Processing meshes..."; break;
+                            case asset::SceneImportStage::BakingAnimations: label = "Processing animations..."; break;
+                            case asset::SceneImportStage::BuildingScene: label = "Building scene data..."; break;
+                            default: break;
+                        }
 
-                        step  = "Step 1 of 3";
+                        step = "Step 1 of 3";
 
                         // No byte-based estimate is available while the importer is running.
                         progress = -float(ImGui::GetTime()) - 1.0f;
@@ -95,15 +103,24 @@ bool DrawSceneLoadingDialog(const SceneLoadState& state, const std::string& erro
                     default: break;
                 }
 
-                ImGui::TextUnformatted(label);
+                ImGui::TextUnformatted(state.cancelRequested ? "Cancelling..." : label);
 
                 ImGui::ProgressBar(progress, ImVec2(-1, 0), step);
+                if (state.stage != SceneLoadStage::Complete)
+                {
+                    ImGui::BeginDisabled(state.cancelRequested);
+                    if (ImGui::Button("Cancel") || (!state.cancelRequested && ImGui::IsKeyPressed(ImGuiKey_Escape)))
+                    {
+                        action = SceneLoadingAction::Cancel;
+                    }
+                    ImGui::EndDisabled();
+                }
             }
         }
 
         ImGui::EndPopup();
     }
 
-    return dismissed;
+    return action;
 }
 } // namespace zen::editor
