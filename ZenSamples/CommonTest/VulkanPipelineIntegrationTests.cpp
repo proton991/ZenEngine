@@ -396,9 +396,7 @@ TEST_F(VulkanPipelineIntegrationTest, SpecializedVoxelWorkgroupsClearAnEntireNon
         EXPECT_EQ(deviceInfo.maxComputeWorkGroupCount[axis], limits.maxComputeWorkGroupCount[axis]);
     }
 
-    constexpr uint32_t dimension  = 9;
-
-    constexpr uint32_t voxelCount = dimension * dimension * dimension;
+    constexpr uint32_t dimension = 9;
 
     for (uint32_t invocations : {64u, 128u, 256u, 512u})
     {
@@ -436,71 +434,87 @@ TEST_F(VulkanPipelineIntegrationTest, SpecializedVoxelWorkgroupsClearAnEntireNon
 
             pipelines.push_back(pipeline);
 
-            RHITextureCreateInfo textureInfo{};
+            // The owner volume, then the class owners with their classes stacked along z (voxel_surface_class.glsl).
+            VulkanTexture* volumes[2] = {nullptr, nullptr};
 
-            textureInfo.type   = RHITextureType::e3D;
+            for (uint32_t volume = 0; volume < 2; ++volume)
+            {
+                RHITextureCreateInfo textureInfo{};
 
-            textureInfo.format = DataFormat::eR32UInt;
+                textureInfo.type   = RHITextureType::e3D;
 
-            textureInfo.width = textureInfo.height = textureInfo.depth = dimension;
+                textureInfo.format = DataFormat::eR32UInt;
 
-            textureInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eTransferDst,
-                                            RHITextureUsageFlagBits::eTransferSrc);
+                textureInfo.width = textureInfo.height = dimension;
 
-            VulkanTexture* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(textureInfo));
+                textureInfo.depth                      = volume == 0 ? dimension : dimension * ZEN_VOXEL_SURFACE_CLASSES;
 
-            ASSERT_NE(texture, nullptr);
+                textureInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eTransferDst,
+                                                RHITextureUsageFlagBits::eTransferSrc);
 
-            textures.push_back(texture);
+                VulkanTexture* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(textureInfo));
 
-            Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                ASSERT_NE(texture, nullptr);
 
-            const VkClearColorValue zero{};
+                textures.push_back(texture);
 
-            const VkImageSubresourceRange range = texture->GetVkSubresourceRange();
+                Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-            vkCmdClearColorImage(Commands(), texture->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range);
+                const VkClearColorValue zero{};
 
-            Transition(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_TRANSFER_WRITE_BIT,
-                       VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                const VkImageSubresourceRange range = texture->GetVkSubresourceRange();
+
+                vkCmdClearColorImage(Commands(), texture->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range);
+
+                Transition(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+                volumes[volume] = texture;
+            }
 
             context->RHIBindPipeline(pipeline);
 
             RHIBatchedShaderParameters parameters;
 
-            parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 0), texture->GetDefaultView(),
+            parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 0), volumes[0]->GetDefaultView(),
+                                        nullptr, 0);
+
+            parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 2), volumes[1]->GetDefaultView(),
                                         nullptr, 0);
 
             context->RHISetShaderParameters(parameters);
 
             context->RHIDispatch(groups.x, groups.y, groups.z);
 
-            Transition(texture, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            for (VulkanTexture* texture : volumes)
+            {
+                Transition(texture, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-            RHIBufferCreateInfo bufferInfo{};
+                RHIBufferCreateInfo bufferInfo{};
 
-            bufferInfo.size         = voxelCount * sizeof(uint32_t);
+                bufferInfo.size         = uint64_t(dimension) * dimension * texture->GetDepth() * sizeof(uint32_t);
 
-            bufferInfo.allocateType = RHIBufferAllocateType::eCPURead;
+                bufferInfo.allocateType = RHIBufferAllocateType::eCPURead;
 
-            bufferInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+                bufferInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
-            VulkanBuffer* buffer = static_cast<VulkanBuffer*>(session->rhi.CreateBuffer(bufferInfo));
+                VulkanBuffer* buffer = static_cast<VulkanBuffer*>(session->rhi.CreateBuffer(bufferInfo));
 
-            ASSERT_NE(buffer, nullptr);
+                ASSERT_NE(buffer, nullptr);
 
-            buffers.push_back(buffer);
+                buffers.push_back(buffer);
 
-            VkBufferImageCopy copy{};
+                VkBufferImageCopy copy{};
 
-            copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
 
-            copy.imageExtent      = {dimension, dimension, dimension};
+                copy.imageExtent      = {dimension, dimension, texture->GetDepth()};
 
-            vkCmdCopyImageToBuffer(Commands(), texture->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                   buffer->GetVkBuffer(), 1, &copy);
+                vkCmdCopyImageToBuffer(Commands(), texture->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                       buffer->GetVkBuffer(), 1, &copy);
+            }
         }
     }
 
@@ -512,7 +526,7 @@ TEST_F(VulkanPipelineIntegrationTest, SpecializedVoxelWorkgroupsClearAnEntireNon
 
         ASSERT_NE(values, nullptr);
 
-        for (uint32_t voxel = 0; voxel < voxelCount; ++voxel)
+        for (uint64_t voxel = 0; voxel < buffer->GetRequiredSize() / sizeof(uint32_t); ++voxel)
         {
             EXPECT_EQ(values[voxel], UINT32_MAX) << voxel;
         }

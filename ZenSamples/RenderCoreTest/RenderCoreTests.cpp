@@ -4982,7 +4982,8 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 
     EXPECT_FALSE(volumes.ProducesRadianceInputs());
 
-    EXPECT_EQ(rhi->textureCreations, before + 2);
+    // Owner, albedo and the class-owner placeholder.
+    EXPECT_EQ(rhi->textureCreations, before + 3);
 
     EXPECT_NE(volumes.GetVoxelTextures().pOwner, nullptr);
 
@@ -4992,17 +4993,18 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 
     VoxelGIRenderer gi(device, &volumes);
 
-    EXPECT_EQ(rhi->textureCreations, before + 2);
+    EXPECT_EQ(rhi->textureCreations, before + 3);
 
     ASSERT_TRUE(gi.Init());
 
     EXPECT_TRUE(volumes.ProducesRadianceInputs());
 
-    EXPECT_EQ(rhi->textureCreations, before + 6);
+    // Radiance, sky irradiance, normal, emission and the class owners.
+    EXPECT_EQ(rhi->textureCreations, before + 8);
 
     EXPECT_TRUE(gi.Init());
 
-    EXPECT_EQ(rhi->textureCreations, before + 6);
+    EXPECT_EQ(rhi->textureCreations, before + 8);
 
     VoxelGISettings invalid = gi.GetSettings();
 

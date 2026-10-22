@@ -185,6 +185,12 @@ Shared by P5 and P6:
 - **Hit point and normal.** The hardware provider uses the triangle hit and its geometric normal. The voxel provider uses the entry point into the occupied cell and the face it entered through.
 - **Lookup.** Read the base-level radiance of the hit cell. Each cell stores one isotropic value for its owner surface. If the cell's stored normal faces away from the ray (`dot(n_voxel, -w) <= 0`), it represents the far side of a thin surface or the receiver's own surface. In that case use the adjacent cell on the ray's side when it is occupied and facing; otherwise return zero, and count rejected lookups in diagnostics. Trilinear lookups must divide by coverage so empty neighbors do not darken the result.
 - **Content.** The cache contains injected analytic light, injected sky light and emission, so each path delivers exactly one bounce of each.
+- **Scene lights** (amended 2026-10-22). With triangle visibility and ray bounce, scene lights are no longer part of the isotropic value. The isotropic owner value made New Sponza's one bounce 33% too dark at 128³ (56% on the floor) against the CUDA truth; see [P5](HybridGI/P5.md#light-visibility-cache-2026-10-22). Instead the cache keeps:
+  - Six owners per cell, one per surface class: the dominant axis of the oriented normal and its sign. The class grid is at most 128³.
+  - Per class, a mask of the first 31 scene lights that reach the class owner, traced at injection from 0.1 class cells off its surface.
+  - The lights it was injected with.
+
+  A hit adds each light in the mask of its own class, with attenuation and cosine evaluated at the hit. Point and spot lights within 1.5 class cells of the cell center are traced from the hit instead. The isotropic value keeps emission, sky light, the camera light and any further scene lights, with the owner-normal rule above. A lookup is rejected only when neither part is found. The thin-wall rule holds because the unlit face has no class owner, or the light lies behind it.
 - **Thin walls.** Must pass the thin-wall fixture: a wall lit on one side contributes nothing to receivers on its unlit side.
 
 ### Ray starts and ranges
@@ -466,6 +472,7 @@ Exit:
 ## P5 Diffuse bounce from ray hits
 
 Status (2026-10-10): **exit met** on the RTX 5080 ([P5 record](HybridGI/P5.md)).
+- 2026-10-22: New Sponza's imported lights exposed a one-bounce bias outside the 10% limit: −33% at 128³, −56% on the floor. The [light-visibility cache](HybridGI/P5.md#light-visibility-cache-2026-10-22) (see [Hit radiance](#hit-radiance)) brings it to −4.2% and −4.0%, and to within 5% at 64³ and 256³. The fixture, bounce, specular and native gates still pass on both tiers. On New Sponza at 1600 × 900 it costs 0.4–0.6 ms per frame, and up to 2.3–2.8 ms per injection at 128³.
 - The RT tier passes the one-bounce, thin-wall, light-change and continuous-motion limits, and the frozen Sponza cameras on composed diffuse (review decision 2).
 - The compute tier passes the same fixture limits, and both bounce sources are measured there.
 - The default `voxel_gi_bounce_source=auto` uses ray-hit bounce with the hardware provider and cones on the compute tier until P8 chooses. (Superseded 2026-10-14: `auto` uses triangle ray hits on both tiers; see [Compute triangle visibility](HybridGI/ComputeTriangleVisibility.md).)

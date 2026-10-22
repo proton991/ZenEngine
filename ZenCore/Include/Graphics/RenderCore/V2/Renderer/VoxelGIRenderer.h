@@ -288,6 +288,9 @@ private:
 
     void PrepareRadianceHistory(bool update);
 
+    // Sizes the light-visibility caches for this frame; inactive caches are header-only placeholders.
+    void PrepareLightCache(bool requested);
+
     void BindFrameData(RDGPassDescBase& pass) const;
 
     void BuildEnvironmentDistribution();
@@ -338,5 +341,18 @@ private:
     bool                        m_rayTotalsRecorded{false};
     bool                        m_countedSkyCache{false};
     bool                        m_countedInjection{false};
+
+    // Light-visibility cache of m_radiance, m_previousRadiance and m_hitRadiancePrevious
+    // (light_visibility_cache.glsl): per-class masks of the scene lights reaching a cell's
+    // surfaces, and the lights they were traced for. Header-only while inactive.
+    RHIBuffer* m_lightCache{nullptr};
+    RHIBuffer* m_previousLightCache{nullptr};
+    RHIBuffer* m_hitLightCachePrevious{nullptr};
+    uint64_t   m_lightCacheBytes{0};
+    uint64_t   m_lightCacheSnapshotBytes{0};
+    bool       m_lightCacheActive{false};
+    // Whether the history buffers hold a cache the graph has written, and whether this frame copies one.
+    bool m_lightCacheHistoryInitialized{false};
+    bool m_recordedLightCacheHistoryInitialization{false};
 };
 } // namespace zen::rc

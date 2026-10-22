@@ -120,7 +120,7 @@ void ComputeVoxelizer::BuildVoxelizationGraph()
 
             BindReflectanceSums(pass);
 
-            pass.BindStorageImage("voxelOwner", m_voxelTextures.pOwner->GetDefaultView());
+            BindOwners(pass);
 
             const uint32_t count = m_pScene->GetVoxelTriangleCount();
 

@@ -23,6 +23,6 @@ void main()
         hit = HybridTraceRay(radiance, vec3(1.5, 2.5, 1.5), direction, 10.0);
     }
     bool rejected;
-    vec3 value = HitRadiance(radiance, normals, hit, direction, rejected);
+    vec3 value = HitRadiance(radiance, normals, hit, direction, false, rejected);
     values[i]  = vec4(value, rejected ? 1.0 : 0.0);
 }

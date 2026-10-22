@@ -21,6 +21,7 @@ struct VoxelTextures
     RHITexture*     pEmissive{nullptr};
     RHITextureView* pEmissiveView{nullptr};
     RHITexture*     pReflectance{nullptr};
+    RHITexture*     pClassOwner{nullptr}; // Per class cell and surface class (voxel_surface_class.glsl).
 };
 
 class VoxelizerBase
@@ -127,6 +128,9 @@ protected:
 
     void BindVoxelScene(RDGPassDescBase& pass) const;
 
+    // The owner and class-owner volumes written by voxelization.
+    void BindOwners(RDGPassDescBase& pass) const;
+
     void BindReflectanceSums(RDGPassDescBase& pass) const;
 
     void PrepareReflectance();
@@ -134,6 +138,9 @@ protected:
     void ResolveSurface(RDGQueuePreference queuePreference);
 
     RHITexture* CreateVolume(DataFormat format, NameID name, uint32_t mipCount = 1);
+
+    // R32 owners of every surface class, resolution x resolution x (classes * resolution).
+    RHITexture* CreateClassOwnerVolume(uint32_t resolution, NameID name);
 
     virtual void PrepareTextures();
 
@@ -165,5 +172,8 @@ protected:
     uint64_t   m_pendingSceneRevision{0};
     uint64_t   m_surfaceRevision{0};
     uint64_t   m_pendingSurfaceRevision{0};
+
+    // Bound in place of the class owners by producers without radiance inputs.
+    RHITexture* m_pClassOwnerPlaceholder{nullptr};
 };
 } // namespace zen::rc

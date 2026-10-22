@@ -1,0 +1,30 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_VOXEL_REFERENCE
+#include "../hybrid_provider.glsl"
+#define HIT_LIGHT_CACHE
+#include "../hit_radiance.glsl"
+layout(local_size_x = 1) in;
+layout(set = 1, binding = 0) uniform sampler3D radiance;
+layout(set = 1, binding = 1) uniform sampler3D normals;
+layout(set = 1, binding = 2, std430) writeonly buffer Results
+{
+    vec4 values[];
+};
+// The trace traces near lights; here odd invocations see them and even ones do not.
+bool HitLightVisible(HybridRayResult hit, SceneLight light)
+{
+    return (gl_GlobalInvocationID.x & 1u) != 0u;
+}
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    // Hits facing +x, except the back-face hit 4; 1 reads the previous cache.
+    vec3            positions[6] = vec3[6](vec3(1.75, 1.5, 1.5), vec3(1.75, 1.5, 1.5), vec3(2.9, 1.5, 1.5), vec3(2.9, 1.5, 1.5),
+                                           vec3(1.25, 1.5, 1.5), vec3(1.99, 2.5, 1.5));
+    vec3            normal       = i == 4u ? vec3(-1, 0, 0) : vec3(1, 0, 0);
+    HybridRayResult hit          = HybridRayResult(true, positions[i], normal, ivec3(floor(positions[i])));
+    bool            rejected;
+    vec3            value = HitRadiance(radiance, normals, hit, -normal, i == 1u, rejected);
+    values[i]             = vec4(value, rejected ? 1.0 : 0.0);
+}

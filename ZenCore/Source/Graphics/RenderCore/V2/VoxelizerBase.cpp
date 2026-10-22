@@ -4,6 +4,7 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/VoxelGI.h"
+#include <algorithm>
 #include <bit>
 #include <limits>
 
@@ -14,7 +15,7 @@ VoxelizerBase::VoxelizerBase(RenderDevice* pRenderDevice) : m_pRenderDevice(pRen
 bool VoxelizerBase::IsReady() const
 {
     return m_voxelTextures.pOwner != nullptr && m_voxelTextures.pAlbedoView != nullptr && m_pVoxelSampler != nullptr
-        && m_pColorSampler != nullptr;
+        && m_pColorSampler != nullptr && m_pClassOwnerPlaceholder != nullptr;
 }
 
 bool VoxelizerBase::Configure(uint32_t resolution, bool averagedReflectance, uint64_t reflectanceBudgetBytes)
@@ -73,6 +74,11 @@ bool VoxelizerBase::BeginVoxelization(RenderGraph& graph, RDGQueuePreference que
         reset.SetQueuePreference(queuePreference);
 
         reset.BindStorageImage("voxelOwner", m_voxelTextures.pOwner->GetDefaultView(), RDGContentGuarantee::eFullWrite);
+
+        RHITexture* classOwner =
+            m_voxelTextures.pClassOwner != nullptr ? m_voxelTextures.pClassOwner : m_pClassOwnerPlaceholder;
+
+        reset.BindStorageImage("voxelClassOwner", classOwner->GetDefaultView(), RDGContentGuarantee::eFullWrite);
 
         if (m_useAveragedReflectance)
         {
@@ -141,6 +147,25 @@ RHITexture* VoxelizerBase::CreateVolume(DataFormat format, NameID name, uint32_t
     return m_pRenderDevice->CreateTextureStorage(info, {.copyUsage = true}, name);
 }
 
+RHITexture* VoxelizerBase::CreateClassOwnerVolume(uint32_t resolution, NameID name)
+{
+    TextureFormat info;
+
+    info.dimension = TextureDimension::e3D;
+
+    info.format    = DataFormat::eR32UInt;
+
+    info.width     = resolution;
+
+    info.height    = resolution;
+
+    info.depth     = resolution * ZEN_VOXEL_SURFACE_CLASSES;
+
+    info.mipmaps   = 1;
+
+    return m_pRenderDevice->CreateTextureStorage(info, {}, name);
+}
+
 void VoxelizerBase::PrepareTextures()
 {
     if (!m_explicitConfiguration)
@@ -167,27 +192,29 @@ void VoxelizerBase::PrepareTextures()
 
     RHISamplerCreateInfo voxelSampler{};
 
-    voxelSampler.minFilter  = RHISamplerFilter::eLinear;
+    voxelSampler.minFilter   = RHISamplerFilter::eLinear;
 
-    voxelSampler.magFilter  = RHISamplerFilter::eLinear;
+    voxelSampler.magFilter   = RHISamplerFilter::eLinear;
 
-    voxelSampler.mipFilter  = RHISamplerFilter::eLinear;
+    voxelSampler.mipFilter   = RHISamplerFilter::eLinear;
 
-    voxelSampler.maxLod     = static_cast<float>(std::bit_width(m_voxelTexResolution) - 1);
+    voxelSampler.maxLod      = static_cast<float>(std::bit_width(m_voxelTexResolution) - 1);
 
-    voxelSampler.repeatU    = RHISamplerRepeatMode::eClampToEdge;
+    voxelSampler.repeatU     = RHISamplerRepeatMode::eClampToEdge;
 
-    voxelSampler.repeatV    = RHISamplerRepeatMode::eClampToEdge;
+    voxelSampler.repeatV     = RHISamplerRepeatMode::eClampToEdge;
 
-    voxelSampler.repeatW    = RHISamplerRepeatMode::eClampToEdge;
+    voxelSampler.repeatW     = RHISamplerRepeatMode::eClampToEdge;
 
-    m_pVoxelSampler         = m_pRenderDevice->CreateSampler(voxelSampler);
+    m_pVoxelSampler          = m_pRenderDevice->CreateSampler(voxelSampler);
 
-    m_pColorSampler         = m_pRenderDevice->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
+    m_pColorSampler          = m_pRenderDevice->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
 
-    m_voxelTextures.pOwner  = CreateVolume(DataFormat::eR32UInt, "voxel_owner");
+    m_voxelTextures.pOwner   = CreateVolume(DataFormat::eR32UInt, "voxel_owner");
 
-    m_voxelTextures.pAlbedo = CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_albedo", std::bit_width(m_voxelTexResolution));
+    m_pClassOwnerPlaceholder = CreateClassOwnerVolume(1, "voxel_class_owner_placeholder");
+
+    m_voxelTextures.pAlbedo  = CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_albedo", std::bit_width(m_voxelTexResolution));
 
     if (m_voxelTextures.pAlbedo != nullptr)
     {
@@ -254,11 +281,18 @@ bool VoxelizerBase::EnableRadianceInputs()
 
         RHITexture* emissive = normal != nullptr ? CreateVolume(DataFormat::eR16G16B16A16SFloat, "voxel_emission") : nullptr;
 
-        if (normal != nullptr && emissive != nullptr)
+        RHITexture* classOwner =
+            emissive != nullptr
+                ? CreateClassOwnerVolume(std::min(m_voxelTexResolution, ZEN_LIGHT_CACHE_MAX_RESOLUTION), "voxel_class_owner")
+                : nullptr;
+
+        if (normal != nullptr && emissive != nullptr && classOwner != nullptr)
         {
             m_voxelTextures.pNormal       = normal;
 
             m_voxelTextures.pEmissive     = emissive;
+
+            m_voxelTextures.pClassOwner   = classOwner;
 
             m_voxelTextures.pNormalView   = normal->GetDefaultView();
 
@@ -271,6 +305,8 @@ bool VoxelizerBase::EnableRadianceInputs()
             m_pRenderDevice->DestroyTexture(normal);
 
             m_pRenderDevice->DestroyTexture(emissive);
+
+            m_pRenderDevice->DestroyTexture(classOwner);
         }
     }
 
@@ -291,9 +327,19 @@ void VoxelizerBase::BindVoxelScene(RDGPassDescBase& pass) const
 
     pass.BindStorageBuffer("TriangleRecords", m_pScene->GetVoxelTriangleBuffer());
 
-    pass.BindValue("uVoxelGrid", VoxelGridUniform{Vec4(GetSceneMinPoint(), GetVoxelSize()), glm::uvec4(GI_ALL, 0, 0, 0)});
+    pass.BindValue("uVoxelGrid", VoxelGridUniform{Vec4(GetSceneMinPoint(), GetVoxelSize()),
+                                                  glm::uvec4(GI_ALL, m_voxelTextures.pClassOwner != nullptr ? 1 : 0, 0, 0)});
 
     BindSceneTextureArray(pass, m_pColorSampler, m_pScene->GetSceneTextures(), m_pScene->GetSceneSamplers());
+}
+
+void VoxelizerBase::BindOwners(RDGPassDescBase& pass) const
+{
+    pass.BindStorageImage("voxelOwner", m_voxelTextures.pOwner->GetDefaultView());
+
+    RHITexture* classOwner = m_voxelTextures.pClassOwner != nullptr ? m_voxelTextures.pClassOwner : m_pClassOwnerPlaceholder;
+
+    pass.BindStorageImage("voxelClassOwner", classOwner->GetDefaultView());
 }
 
 void VoxelizerBase::ResolveSurface(RDGQueuePreference queuePreference)
@@ -459,6 +505,12 @@ void VoxelizerBase::Destroy()
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pEmissive);
 
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pReflectance);
+
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pClassOwner);
+
+    m_pRenderDevice->DestroyTexture(m_pClassOwnerPlaceholder);
+
+    m_pClassOwnerPlaceholder = nullptr;
 
     m_pRenderDevice->DestroyBuffer(m_pReflectanceSums);
 

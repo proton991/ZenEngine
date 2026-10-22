@@ -57,6 +57,117 @@ TEST_P(ConeVoxelGIIntegrationTest, HitRadianceRejectsThinWallBackfacesAndNormali
     EXPECT_EQ(result[4], Vec4(0, 0, 0, 1));
 }
 
+// Linear index of a cell in the 4^3 light-cache fixture.
+static uint32_t LightCacheFixtureCell(uint32_t x, uint32_t y, uint32_t z)
+{
+    return x + 4 * (y + 4 * z);
+}
+
+TEST_P(ConeVoxelGIIntegrationTest, HitLightCacheEvaluatesVisibleLightsAtTheHit)
+{
+    ShaderProgramManager::GetInstance().StoreProgram(
+        ZEN_NEW() ComputeFileSP(device, "HitLightCacheCheckSP", "VoxelGI/Calibration/hit_light_cache_check.comp.spv"));
+    RHITextureCreateInfo info;
+    info.type  = RHITextureType::e3D;
+    info.width = info.height = info.depth = 4;
+    info.format                           = DataFormat::eR32G32B32A32SFloat;
+    info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
+    RHITexture* radiance    = device->CreateTexture(info);
+    RHITexture* normals     = device->CreateTexture(info);
+    RHITexture* reflectance = device->CreateTexture(info);
+    textures.push_back(radiance);
+    textures.push_back(normals);
+    textures.push_back(reflectance);
+    HeapVector<Vec4> values(64, Vec4(0));
+    HeapVector<Vec4> faces(64, Vec4(.5f, .5f, .5f, 0));
+    HeapVector<Vec4> albedo(64, Vec4(0));
+    // Cell (1,1,1) also holds isotropic radiance; the owner policy weights albedo by the normal's alpha.
+    values[LightCacheFixtureCell(1, 1, 1)] = Vec4(.1f, .2f, .3f, 1);
+    faces[LightCacheFixtureCell(1, 1, 1)]  = Vec4(1, .5f, .5f, .5f);
+    albedo[LightCacheFixtureCell(1, 1, 1)] = Vec4(.5f, .25f, 1, 1);
+    faces[LightCacheFixtureCell(2, 1, 1)]  = Vec4(1, .5f, .5f, 1);
+    albedo[LightCacheFixtureCell(2, 1, 1)] = Vec4(1, 1, 1, 1);
+    faces[LightCacheFixtureCell(2, 2, 1)]  = Vec4(1, .5f, .5f, 1);
+    albedo[LightCacheFixtureCell(2, 2, 1)] = Vec4(.25f, .25f, .25f, 1);
+    // A point light near cell (2,1,1), 1.1 cells from its center and 2.1 from cell (1,1,1)'s, and a directional
+    // light toward +x. Injection sets the bits of near lights; lights without a bit are not visited.
+    struct CacheData
+    {
+        glm::uvec4 lightCount;
+        GPULight   lights[MaxSceneLights];
+        uint32_t   masks[ZEN_VOXEL_SURFACE_CLASSES * 64];
+    };
+    CacheData current{};
+    current.lightCount                             = glm::uvec4(2, 0, 4, 0);
+    current.lights[0].positionRange                = Vec4(3.6f, 1.5f, 1.5f, 0);
+    current.lights[0].directionType                = Vec4(0, 0, -1, 1);
+    current.lights[0].colorIntensity               = Vec4(1, 1, 1, 4);
+    current.lights[1].directionType                = Vec4(-1, 0, 0, 0);
+    current.lights[1].colorIntensity               = Vec4(1, 1, 1, 2);
+    CacheData previous                             = current;
+    current.masks[LightCacheFixtureCell(1, 1, 1)]  = 0x80000003u;
+    current.masks[LightCacheFixtureCell(2, 1, 1)]  = 0x80000001u;
+    current.masks[LightCacheFixtureCell(2, 2, 1)]  = 0x80000002u;
+    previous.masks[LightCacheFixtureCell(1, 1, 1)] = 0x80000000u;
+    RHIBuffer*                 upload              = Buffer(64 * sizeof(Vec4), RHIBufferAllocateType::eCPUWrite, values.data());
+    RHIBuffer*                 normalUpload        = Buffer(64 * sizeof(Vec4), RHIBufferAllocateType::eCPUWrite, faces.data());
+    RHIBuffer*                 reflectanceUpload   = Buffer(64 * sizeof(Vec4), RHIBufferAllocateType::eCPUWrite, albedo.data());
+    RHIBuffer*                 cache               = Buffer(sizeof(CacheData), RHIBufferAllocateType::eCPUWrite, &current);
+    RHIBuffer*                 previousCache       = Buffer(sizeof(CacheData), RHIBufferAllocateType::eCPUWrite, &previous);
+    RHIBuffer*                 output              = Buffer(6 * sizeof(Vec4), RHIBufferAllocateType::eGPU);
+    RHIBuffer*                 readback            = Buffer(6 * sizeof(Vec4), RHIBufferAllocateType::eCPURead);
+    RHIBufferTextureCopyRegion region;
+    region.textureSize = Vec3i(4);
+    region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+    RenderGraph graph("hit_light_cache_contract");
+    ASSERT_TRUE(graph.Begin());
+    graph.AddTransferPass("UploadRadiance").CopyBufferToTexture(upload, radiance, region);
+    graph.AddTransferPass("UploadNormals").CopyBufferToTexture(normalUpload, normals, region);
+    graph.AddTransferPass("UploadReflectance").CopyBufferToTexture(reflectanceUpload, reflectance, region);
+    VoxelGIUniformData gi{};
+    gi.gridMinVoxelSize = Vec4(0, 0, 0, 1);
+    gi.volume           = Vec4(4, .25f, 1, 1);
+    gi.limits           = Vec4(0, 0, 0, 1);
+    RDGComputePassDesc pass;
+    pass.SetShaderProgramName("HitLightCacheCheckSP");
+    pass.BindValue("uGISettings", gi);
+    SceneUniformData scene{};
+    pass.BindValue("uSceneData", scene);
+    RHISampler* sampler = device->CreateSampler({});
+    pass.BindSampledTexture("radiance", sampler, radiance->GetDefaultView());
+    pass.BindSampledTexture("normals", sampler, normals->GetDefaultView());
+    pass.BindSampledTexture("hitReflectance", sampler, reflectance->GetDefaultView());
+    pass.BindStorageBuffer("HitLightCache", cache);
+    pass.BindStorageBuffer("HitLightCachePrevious", previousCache);
+    pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
+    graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(6, 1, 1); });
+    graph.AddTransferPass("ReadHitLightCache").CopyBuffer(output, readback, {0, 0, 6 * sizeof(Vec4)}).NeverCull();
+    ASSERT_TRUE(graph.End());
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+    device->FlushRHIThread();
+    device->WaitForIdle();
+    const HeapVector<Vec4> result = ReadStaticBuffer<Vec4>(readback);
+    ASSERT_EQ(result.size(), 6u);
+    const float pi = 3.14159265359f;
+    // Both lights reach the +x class of cell (1,1,1); the point light attenuates at the hit, 1.85 cells away.
+    const Vec4 lit(Vec3(.1f, .2f, .3f) + (4.0f / ((3.6f - 1.75f) * (3.6f - 1.75f)) + 2.0f) * Vec3(.25f, .125f, .5f) / pi, 0);
+    // The previous cache sees no light there; isotropic radiance remains.
+    const Vec4 previousLit(.1f, .2f, .3f, 0);
+    // Near the point light, the hit's own ray decides; the cached bit does not.
+    const float nearLight = 4.0f / ((3.6f - 2.9f) * (3.6f - 2.9f)) / pi;
+    // The +x class is absent from cell (1,2,1); the neighbor on the ray's side has it, with its reflectance.
+    const Vec4 neighbor(Vec3(2.0f * .25f / pi), 0);
+    const Vec4 expected[6] = {lit, previousLit, Vec4(0), Vec4(Vec3(nearLight), 0), Vec4(0, 0, 0, 1), neighbor};
+    for (uint32_t i = 0; i < 6; ++i)
+    {
+        SCOPED_TRACE(i);
+        for (int component = 0; component < 4; ++component)
+        {
+            EXPECT_NEAR(result[i][component], expected[i][component], 1e-5f * (1.0f + std::abs(expected[i][component])));
+        }
+    }
+}
+
 TEST_P(ConeVoxelGIIntegrationTest, HybridEstimatorNormalizesAndClosedGeometryBlocksSkyAndSpecular)
 {
     ShaderProgramManager::GetInstance().StoreProgram(

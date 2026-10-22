@@ -59,7 +59,7 @@ void GeometryVoxelizer::BuildVoxelizationGraph()
 
             BindReflectanceSums(desc);
 
-            desc.BindStorageImage("voxelOwner", m_voxelTextures.pOwner->GetDefaultView());
+            BindOwners(desc);
 
             desc.BindVertexBuffer(m_pScene->GetVertexBuffer());
 

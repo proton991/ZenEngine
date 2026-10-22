@@ -39,8 +39,9 @@ void main()
     {
         return;
     }
-    int width = hi[x] - lo[x] + 1;
-    int count = width * (hi[y] - lo[y] + 1);
+    int width        = hi[x] - lo[x] + 1;
+    int count        = width * (hi[y] - lo[y] + 1);
+    int surfaceClass = TriangleSurfaceClass(record, va, normal);
     for (int index = int(gl_LocalInvocationIndex); index < count; index += 64)
     {
         ivec3 cell   = ivec3(0);
@@ -51,7 +52,7 @@ void main()
         {
             if (VoxelTriangleBox(a, b, c, cell))
             {
-                AccumulateVoxel(record, cell);
+                AccumulateVoxel(record, cell, surfaceClass);
             }
         }
     }

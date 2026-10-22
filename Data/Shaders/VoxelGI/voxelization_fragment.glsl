@@ -16,16 +16,17 @@ void main()
     c            = (c - gridMinSize.xyz) / gridMinSize.w;
     vec3  normal = cross(b - a, c - a);
     int   z = depthAxis, x = (z + 1) % 3, y = (z + 2) % 3;
-    ivec3 size   = imageSize(voxelOwner);
-    ivec3 cell   = ivec3(0);
-    cell[x]      = int(gl_FragCoord.x);
-    cell[y]      = int(gl_FragCoord.y);
-    ivec2 depths = VoxelDepthCells(a, normal, z, cell, size);
+    ivec3 size         = imageSize(voxelOwner);
+    ivec3 cell         = ivec3(0);
+    cell[x]            = int(gl_FragCoord.x);
+    cell[y]            = int(gl_FragCoord.y);
+    ivec2 depths       = VoxelDepthCells(a, normal, z, cell, size);
+    int   surfaceClass = TriangleSurfaceClass(triangleRecord, va, normal);
     for (cell[z] = depths.x; cell[z] <= depths.y; ++cell[z])
     {
         if (VoxelTriangleBox(a, b, c, cell))
         {
-            AccumulateVoxel(triangleRecord, cell);
+            AccumulateVoxel(triangleRecord, cell, surfaceClass);
         }
     }
 }

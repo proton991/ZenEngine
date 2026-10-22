@@ -76,6 +76,29 @@ TEST_F(RenderCoreTest, VoxelOutputsAllocateLazily)
     volumes.Destroy();
 }
 
+TEST_F(RenderCoreTest, VoxelClassOwnersStackSurfaceClassesUpToTheLightCacheResolution)
+{
+    for (uint32_t dimension : {8u, 256u})
+    {
+        SCOPED_TRACE(dimension);
+        TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM, true, dimension);
+        volumes.Init();
+        RHITexture* classOwner = volumes.GetVoxelTextures().pClassOwner;
+        ASSERT_NE(classOwner, nullptr);
+        const uint32_t resolution = std::min(dimension, ZEN_LIGHT_CACHE_MAX_RESOLUTION);
+        EXPECT_EQ(classOwner->GetFormat(), DataFormat::eR32UInt);
+        EXPECT_EQ(classOwner->GetWidth(), resolution);
+        EXPECT_EQ(classOwner->GetHeight(), resolution);
+        EXPECT_EQ(classOwner->GetDepth(), resolution * ZEN_VOXEL_SURFACE_CLASSES);
+        volumes.Destroy();
+    }
+    // Albedo-only producers bind a placeholder and elect no class owners.
+    TestVoxelVolumes visualization(device, DataFormat::eR8G8B8A8UNORM, false, 64);
+    ASSERT_TRUE(visualization.EnsureReady());
+    EXPECT_EQ(visualization.GetVoxelTextures().pClassOwner, nullptr);
+    visualization.Destroy();
+}
+
 TEST_F(RenderCoreTest, VoxelGIFailedSurfaceAllocationStaysLatchedUntilReplacement)
 {
     for (uint32_t failure = 1; failure <= 2; ++failure)

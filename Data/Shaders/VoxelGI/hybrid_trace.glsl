@@ -2,6 +2,7 @@
 #include "hybrid_sampling.glsl"
 #define HYBRID_MIXED_PROVIDER
 #include "hybrid_provider.glsl"
+#define HIT_LIGHT_CACHE
 #include "hit_radiance.glsl"
 #include "environment_sampling.glsl"
 #include "hybrid_sky_guide.glsl"
@@ -203,6 +204,31 @@ HybridRayResult TraceFeature(uint feature, vec3 position, vec3 normal, vec3 dire
     }
 #endif
     return SoftwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
+}
+// Visibility of a nearby point or spot light from a ray hit (hit_radiance.glsl), with the bounce provider.
+bool HitLightVisible(HybridRayResult hit, SceneLight light)
+{
+#ifdef HYBRID_COUNT_RAYS
+    issuedRayFeature = 2u;
+#endif
+    vec3  origin          = HybridTraceOrigin(hit.position, hit.normal, 0.0);
+    vec3  delta           = light.positionRange.xyz - origin;
+    float distanceToLight = length(delta);
+    vec3  direction       = delta / max(distanceToLight, 1e-20);
+    // Exclude the endpoint itself, without dropping a finite interval before it.
+    distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
+    bool blocked    = false;
+#ifdef HYBRID_HARDWARE_PROVIDER
+    if (FeatureHardware(BOUNCE_PROVIDER))
+    {
+        blocked = distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit;
+    }
+    else
+#endif
+    {
+        blocked = distanceToLight > 0.0 && SoftwareTraceRay(origin, direction, distanceToLight, false).hit;
+    }
+    return !blocked;
 }
 
 void GuideLearn(uint tile, float value)
@@ -592,14 +618,14 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
         {
             bool  rejected;
             float weight  = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
-            vec3  value   = HitRadiance(hitRadiance, hitNormal, hit, w, rejected) * weight;
+            vec3  value   = HitRadiance(hitRadiance, hitNormal, hit, w, false, rejected) * weight;
             bounce.rgb   += value;
             bounce.a     += rejected ? 1.0 : 0.0;
             // The same hit in the previous cache: these correlated lookups measure the change
             // with little noise when lighting changes a little.
             if (hybrid.bounce.w != 0u)
             {
-                previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, rejected) * weight;
+                previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected) * weight;
             }
         }
         if (escaped)
@@ -692,13 +718,13 @@ void TraceSpecular(ivec2      p,
                     bool rejected;
                     // Store the unconditional hit integral C=(1-S)*H. Averaging conditional H
                     // separately from the hit fraction would multiply two noisy estimates.
-                    specular.rgb += HitRadiance(hitRadiance, hitNormal, hit, w, rejected);
+                    specular.rgb += HitRadiance(hitRadiance, hitNormal, hit, w, false, rejected);
                     reflection.y += rejected ? 1.0 : 0.0;
                     reflection.x += length(hit.position - position);
                     hitCount     += 1.0;
                     if (hybrid.reflection.w != 0u)
                     {
-                        reflectionPrevious += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, rejected);
+                        reflectionPrevious += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected);
                     }
                 }
             }

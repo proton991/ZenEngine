@@ -5,12 +5,33 @@
 #include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/Shared/EnvironmentSampling.h"
+#include "Graphics/Shared/VoxelGI.h"
+#include "Graphics/RenderCore/V2/SceneLighting.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include <cmath>
 #include <bit>
 #include <iterator>
 
 namespace zen::rc
 {
+namespace
+{
+// light_visibility_cache.glsl: a light count and the cached lights precede the class masks.
+constexpr uint64_t kLightCacheHeaderBytes = sizeof(Vec4) + MaxSceneLights * sizeof(GPULight);
+
+// Light-visibility caches are copied into their history, so they are transfer sources and destinations.
+RHIBuffer* CreateLightCache(RenderDevice* device, uint64_t bytes, NameID name)
+{
+    RHIBufferCreateInfo info;
+    info.size         = bytes;
+    info.tag          = name;
+    info.allocateType = RHIBufferAllocateType::eGPU;
+    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer,
+                             RHIBufferUsageFlagBits::eTransferDstBuffer);
+    return device->CreateBuffer(info);
+}
+} // namespace
+
 bool VoxelGISettings::UsesAdaptiveSampling() const
 {
     return adaptiveSampling && samples == 4 && referenceSamples == 0;
@@ -349,6 +370,14 @@ bool VoxelGIRenderer::Init()
         valid = IsInitialized() && PrepareMipViews(m_radiance, m_radianceMips)
              && PrepareMipViews(m_voxelizer->GetVoxelTextures().pAlbedo, m_albedoMips) && m_voxelizer->EnableRadianceInputs();
 
+        if (valid)
+        {
+            // Hit-radiance bindings need the light-visibility caches before a frame graph sizes them.
+            PrepareLightCache(false);
+
+            valid = m_lightCache != nullptr && m_previousLightCache != nullptr && m_hitLightCachePrevious != nullptr;
+        }
+
         if (!valid)
         {
             LOGE("Voxel GI resource creation failed");
@@ -481,7 +510,100 @@ void VoxelGIRenderer::PrepareRadianceHistory(bool update)
         graph->AddTransferPass(m_recordedDelayedRadiance ? "VoxelKeepHitRadianceHistory" : "VoxelKeepPreviousRadiance")
             .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
             .CopyTexture(source, destination, MakeVecView(&region, 1));
+
+        if (m_lightCacheActive)
+        {
+            RHIBuffer* sourceCache      = m_recordedDelayedRadiance ? m_previousLightCache : m_lightCache;
+
+            RHIBuffer* destinationCache = m_recordedDelayedRadiance ? m_hitLightCachePrevious : m_previousLightCache;
+
+            graph->AddTransferPass(m_recordedDelayedRadiance ? "VoxelKeepHitLightCache" : "VoxelKeepPreviousLightCache")
+                .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
+                .CopyBuffer(sourceCache, destinationCache, {0, 0, m_lightCacheBytes});
+        }
     }
+}
+
+void VoxelGIRenderer::PrepareLightCache(bool requested)
+{
+    // The cache has a mask per class texel of the voxelizer's class owners.
+    const RHITexture* classOwner = m_voxelizer->GetVoxelTextures().pClassOwner;
+
+    const uint64_t headerBytes   = kLightCacheHeaderBytes + sizeof(uint32_t);
+
+    uint64_t bytes               = headerBytes;
+
+    bool active                  = requested && classOwner != nullptr;
+
+    if (active)
+    {
+        const uint64_t resolution = classOwner->GetWidth();
+
+        const uint64_t masks      = uint64_t(ZEN_VOXEL_SURFACE_CLASSES) * resolution * resolution * resolution;
+
+        active                    = ValidateGIStorageBuffer(masks + kLightCacheHeaderBytes / sizeof(uint32_t), sizeof(uint32_t),
+                                                            m_device->GetGPUInfo(), bytes)
+                                 == GIResourceStatus::eSuccess;
+
+        bytes                     = active ? bytes : headerBytes;
+    }
+
+    // Only previous-frame radiance snapshots the older cache before overwriting the alternate one.
+    const uint64_t snapshotBytes = active && m_settings.previousFrameRadiance ? bytes : headerBytes;
+
+    if (m_lightCache == nullptr || m_previousLightCache == nullptr || m_hitLightCachePrevious == nullptr
+        || bytes != m_lightCacheBytes || snapshotBytes != m_lightCacheSnapshotBytes)
+    {
+        m_device->DestroyBuffer(m_lightCache);
+
+        m_device->DestroyBuffer(m_previousLightCache);
+
+        m_device->DestroyBuffer(m_hitLightCachePrevious);
+
+        m_lightCache            = CreateLightCache(m_device, bytes, "voxel_light_cache");
+
+        m_previousLightCache    = CreateLightCache(m_device, bytes, "voxel_previous_light_cache");
+
+        m_hitLightCachePrevious = CreateLightCache(m_device, snapshotBytes, "voxel_hit_light_cache_previous");
+
+        // A zero light count makes a lookup of a never-injected cache dark instead of undefined.
+        const HeapVector<uint8_t> zeros(kLightCacheHeaderBytes, uint8_t{0});
+
+        for (RHIBuffer* cache : {m_lightCache, m_previousLightCache, m_hitLightCachePrevious})
+        {
+            if (cache != nullptr)
+            {
+                m_device->UpdateBuffer(cache, static_cast<uint32_t>(kLightCacheHeaderBytes), zeros.data());
+            }
+        }
+
+        m_lightCacheBytes              = bytes;
+
+        m_lightCacheSnapshotBytes      = snapshotBytes;
+
+        m_lightCacheHistoryInitialized = false;
+
+        if (requested && !active)
+        {
+            LOGW("Voxel light-visibility cache does not fit a storage buffer; hits use the isotropic radiance");
+        }
+
+        m_lightingRevision = 0;
+
+        m_radianceValid    = false;
+    }
+
+    active = active && m_lightCache != nullptr && m_previousLightCache != nullptr && m_hitLightCachePrevious != nullptr;
+
+    if (active != m_lightCacheActive)
+    {
+        // The radiance changes meaning with the cache: reinject it, without a delayed frame.
+        m_lightingRevision = 0;
+
+        m_radianceValid    = false;
+    }
+
+    m_lightCacheActive = active;
 }
 
 void VoxelGIRenderer::BindFrameData(RDGPassDescBase& pass) const
@@ -581,14 +703,19 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
         m_visibilityBounds =
             BuildVoxelGIVisibilityBounds(m_scene->GetAABB(), m_uniforms.gridMinVoxelSize, m_voxelizer->GetVoxelTexResolution());
 
-        m_uniforms.volume     = Vec4(static_cast<float>(m_voxelizer->GetVoxelTexResolution()), m_voxelizer->GetVoxelScale(),
-                                     static_cast<float>(m_radianceMips.size()), m_settings.indirectIntensity);
+        m_uniforms.volume = Vec4(static_cast<float>(m_voxelizer->GetVoxelTexResolution()), m_voxelizer->GetVoxelScale(),
+                                 static_cast<float>(m_radianceMips.size()), m_settings.indirectIntensity);
 
-        m_uniforms.cone       = Vec4(std::tan(glm::radians(m_settings.coneAngleDegrees) * 0.5f), m_settings.stepScale,
-                                     m_settings.normalBiasVoxels, m_settings.maxDistanceGridLengths);
+        m_uniforms.cone   = Vec4(std::tan(glm::radians(m_settings.coneAngleDegrees) * 0.5f), m_settings.stepScale,
+                                 m_settings.normalBiasVoxels, m_settings.maxDistanceGridLengths);
+
+        // Mesh light visibility needs triangles; ray bounce and reflections then read the light cache.
+        const bool meshShadows = (shadows != nullptr || UsesRayShadows()) && m_scene->GetVoxelTriangleCount() != 0;
+
+        PrepareLightCache(meshShadows && UsesRayBounce());
 
         m_uniforms.limits     = Vec4(static_cast<float>(m_settings.coneCount), static_cast<float>(m_settings.maxSteps),
-                                     m_settings.shadows ? 1.0f : 0.0f, 0.0f);
+                                     m_settings.shadows ? 1.0f : 0.0f, m_lightCacheActive ? 1.0f : 0.0f);
 
         m_uniforms.lighting   = Vec4(m_settings.analyticLighting ? 1.0f : 0.0f, m_settings.environmentLighting ? 1.0f : 0.0f,
                                      m_settings.emissiveLighting ? 1.0f : 0.0f, UsesRayBounce() ? 1.0f : 0.0f);
@@ -690,7 +817,6 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             RDGComputePassDesc inject;
 
             const bool hardwareShadows = UsesHardwareShadows();
-            const bool meshShadows     = (shadows != nullptr || UsesRayShadows()) && m_scene->GetVoxelTriangleCount() != 0;
 
             inject.SetShaderProgramName(meshShadows
                                             ? (m_voxelizer->UsesAveragedReflectance() ? "VoxelInjectMeshRadianceAveragedSP"
@@ -746,7 +872,14 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
                 }
 
                 inject.BindStorageBuffer("TriangleRecords", m_scene->GetVoxelTriangleBuffer());
+
+                inject.BindStorageImage("voxelClassOwner", textures.pClassOwner->GetDefaultView());
             }
+
+            RHIBuffer* lightCache = m_recordedDelayedRadiance ? m_previousLightCache : m_lightCache;
+
+            inject.BindStorageBuffer("LightVisibilityCache", lightCache,
+                                     m_lightCacheActive ? RDGContentGuarantee::eFullWrite : RDGContentGuarantee::eNone);
 
             if (m_voxelizer->UsesAveragedReflectance())
             {
@@ -763,6 +896,19 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             graph->AddComputePass(std::move(inject)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
                 encoder.Dispatch(groups.x, groups.y, groups.z);
             });
+
+            if (!m_lightCacheHistoryInitialized)
+            {
+                // Later injections copy the cache into its history; new history buffers start from this one.
+                RHIBuffer* other = lightCache == m_lightCache ? m_previousLightCache : m_lightCache;
+
+                graph->AddTransferPass("InitializeLightCacheHistory")
+                    .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
+                    .CopyBuffer(lightCache, other, {0, 0, m_lightCacheBytes})
+                    .CopyBuffer(lightCache, m_hitLightCachePrevious, {0, 0, m_lightCacheSnapshotBytes});
+
+                m_recordedLightCacheHistoryInitialization = true;
+            }
 
             BuildMipChain(radianceMips, "VoxelFilterRadianceSP", "VoxelRadianceMip");
         }
@@ -850,6 +996,16 @@ void VoxelGIRenderer::BindHitRadianceInputs(RDGPassDescBase& pass) const
     pass.BindSampledTexture("hitRadiancePrevious", m_voxelizer->GetVoxelSampler(), previous->GetDefaultView());
     pass.BindSampledTexture("hitNormal", m_voxelizer->GetVoxelSampler(),
                             m_voxelizer->GetVoxelTextures().pNormal->GetDefaultView());
+
+    pass.BindStorageBuffer("HitLightCache", m_lightCache);
+
+    pass.BindStorageBuffer("HitLightCachePrevious", m_recordedDelayedRadiance ? m_hitLightCachePrevious : m_previousLightCache);
+
+    const VoxelTextures& textures = m_voxelizer->GetVoxelTextures();
+
+    pass.BindSampledTexture("hitReflectance", m_voxelizer->GetVoxelSampler(),
+                            m_voxelizer->UsesAveragedReflectance() ? textures.pReflectance->GetDefaultView()
+                                                                   : textures.pAlbedoView);
 }
 
 void VoxelGIRenderer::BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const
@@ -914,7 +1070,11 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_previousRadianceInitialized = true;
     }
 
-    m_recordedPreviousRadianceInitialization = false;
+    m_recordedPreviousRadianceInitialization   = false;
+
+    m_lightCacheHistoryInitialized            |= succeeded && m_recordedLightCacheHistoryInitialization;
+
+    m_recordedLightCacheHistoryInitialization  = false;
 
     if (succeeded && m_recordedRadiance)
     {
@@ -923,6 +1083,8 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
             std::swap(m_radiance, m_previousRadiance);
 
             std::swap(m_radianceMips, m_previousRadianceMips);
+
+            std::swap(m_lightCache, m_previousLightCache);
         }
 
         m_radianceValid = true;
@@ -963,17 +1125,39 @@ void VoxelGIRenderer::Destroy()
 
     m_device->DestroyTexture(m_hitRadiancePrevious);
 
-    m_hitRadiancePrevious                    = nullptr;
+    m_hitRadiancePrevious = nullptr;
 
-    m_previousRadianceInitialized            = false;
+    m_device->DestroyBuffer(m_lightCache);
 
-    m_recordedPreviousRadianceInitialization = false;
+    m_device->DestroyBuffer(m_previousLightCache);
 
-    m_radianceValid                          = false;
+    m_device->DestroyBuffer(m_hitLightCachePrevious);
 
-    m_recordedRadiance                       = false;
+    m_lightCache                              = nullptr;
 
-    m_recordedDelayedRadiance                = false;
+    m_previousLightCache                      = nullptr;
+
+    m_hitLightCachePrevious                   = nullptr;
+
+    m_lightCacheBytes                         = 0;
+
+    m_lightCacheSnapshotBytes                 = 0;
+
+    m_lightCacheActive                        = false;
+
+    m_lightCacheHistoryInitialized            = false;
+
+    m_recordedLightCacheHistoryInitialization = false;
+
+    m_previousRadianceInitialized             = false;
+
+    m_recordedPreviousRadianceInitialization  = false;
+
+    m_radianceValid                           = false;
+
+    m_recordedRadiance                        = false;
+
+    m_recordedDelayedRadiance                 = false;
 
     m_device->DestroyTexture(m_skyIrradiance);
 

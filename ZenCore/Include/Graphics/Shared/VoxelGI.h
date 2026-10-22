@@ -16,6 +16,12 @@
 // UINT32_MAX / scale bounds the admitted triangle records before accumulation.
 #define ZEN_VOXEL_REFLECTANCE_SCALE 4095u
 
+// Surface orientation classes per cell: the dominant axis of the oriented geometric normal and its
+// sign (voxel_surface_class.glsl). Class volumes stack the classes along z.
+#define ZEN_VOXEL_SURFACE_CLASSES 6u
+// The class owners and the light-visibility cache use at most this grid resolution (coarser at 256).
+#define ZEN_LIGHT_CACHE_MAX_RESOLUTION 128u
+
 #ifdef __cplusplus
 #    include "Math/Math.h"
 namespace zen::rc
@@ -23,7 +29,7 @@ namespace zen::rc
 struct VoxelGridUniform
 {
     Vec4       minimumSize;
-    glm::uvec4 selection; // Static/dynamic/all class mask; other words reserved.
+    glm::uvec4 selection; // x: static/dynamic/all class mask; y: nonzero to elect class owners; zw reserved.
 };
 } // namespace zen::rc
 #endif

@@ -645,7 +645,8 @@ TEST_P(DelayedRadianceTest, PublishesPairedCachesAcrossDeclineResizeResetAndIdle
 
         gi.BindHitRadianceInputs(hitInputs);
 
-        ASSERT_EQ(hitInputs.textureViewStorage.size(), 3u);
+        // Radiance, its previous level, normals and the reflectance the light-visibility cache weights.
+        ASSERT_EQ(hitInputs.textureViewStorage.size(), 4u);
 
         EXPECT_EQ(hitInputs.textureViewStorage[0]->GetTexture(), primary);
 

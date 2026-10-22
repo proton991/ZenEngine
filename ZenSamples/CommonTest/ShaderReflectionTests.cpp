@@ -89,7 +89,8 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
 
     EXPECT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
 
-    const uint32_t bindingCounts[] = {2, 1, 0, 6, 1};
+    // Set 4 holds the owner and class-owner volumes.
+    const uint32_t bindingCounts[] = {2, 1, 0, 6, 2};
 
     ASSERT_EQ(info.SRDTable.size(), std::size(bindingCounts));
 
@@ -262,6 +263,30 @@ TEST(ShaderReflectionTests, VoxelAtomicAndRadianceWritesRemainWritable)
     ExpectWritable(inject, "voxelRadiance", true);
 
     ExpectWritable(inject, "voxelEmissive", false);
+
+    // Class owners are elected beside the owners; the light-visibility cache is written by injection
+    // and only read by the trace.
+    ExpectWritable(ReflectStage(RHIShaderStage::eCompute, "VoxelGI/voxelization.comp.spv"), "voxelClassOwner", true);
+
+    ExpectWritable(geometry, "voxelClassOwner", true);
+
+    ExpectWritable(ReflectStage(RHIShaderStage::eCompute, "VoxelGI/clear_owners.comp.spv"), "voxelClassOwner", true);
+
+    const RHIShaderGroupInfo meshInject = ReflectStage(RHIShaderStage::eCompute, "VoxelGI/inject_hardware_radiance.comp.spv");
+
+    ExpectWritable(meshInject, "voxelClassOwner", false);
+
+    ExpectWritable(meshInject, "LightVisibilityCache", true);
+
+    // Every injection writes the cache, so the graph knows its contents even without mesh light visibility.
+    ExpectWritable(inject, "LightVisibilityCache", true);
+
+    const RHIShaderGroupInfo trace = ReflectStage(RHIShaderStage::eCompute, "VoxelGI/hybrid_trace_hardware.comp.spv");
+
+    for (NameID name : {"HitLightCache", "HitLightCachePrevious", "hitReflectance"})
+    {
+        ExpectWritable(trace, name, false);
+    }
 
     const RHIShaderGroupInfo reset = ReflectStage(RHIShaderStage::eCompute, "VoxelGI/reset_voxel_texture.comp.spv");
 
