@@ -30,6 +30,8 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
     bool changed = false;
     if (ImGui::CollapsingHeader("Lighting backends", ImGuiTreeNodeFlags_DefaultOpen))
     {
+        // Feature names repeat other settings' labels in the same window ("Environment lighting").
+        ImGui::PushID("LightingBackends");
         const uint32_t requested = settings.GetHardwareFeatureMask();
         const uint32_t all       = (1u << static_cast<uint32_t>(rc::VoxelGISettings::Feature::Count)) - 1u;
         const char*    overall   = requested == 0 ? "Compute" : requested == all ? "HW RT" : "Mixed";
@@ -68,6 +70,7 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
                 "HW RT is not active; requested features use the Compute fallback until hardware queries are ready. Status: %s",
                 reason);
         }
+        ImGui::PopID();
     }
     return changed;
 }
