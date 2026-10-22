@@ -92,6 +92,8 @@ struct ForwardDrawDepth
 {
     SceneMeshDraw draw;
     float         depth;
+    bool          sorted{false};  // A blend triangle, drawn from the sorted index copy when it uploads.
+    uint32_t      sortedFirst{0}; // Its first index in that copy.
 };
 
 bool SortForwardDepth(const ForwardDrawDepth& left, const ForwardDrawDepth& right)
@@ -163,6 +165,11 @@ void DeferredLightingRenderer::Destroy()
     }
     m_hybridViews.clear();
     m_hybrid = nullptr;
+    if (m_pRenderDevice != nullptr)
+    {
+        m_sortedBlendIndices.Destroy(*m_pRenderDevice);
+    }
+    m_sortedBlendContents.clear();
 }
 
 void DeferredLightingRenderer::SetRenderScene(RenderScene* scene)
@@ -816,7 +823,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
                             triangle.indexCount     = 3;
 
-                            translucentDepths.push_back({triangle, viewCenter.z});
+                            translucentDepths.push_back({triangle, viewCenter.z, true});
                         }
                     }
                     else
@@ -835,6 +842,39 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
     }
 
     std::stable_sort(translucentDepths.begin(), translucentDepths.end(), SortForwardDepth);
+
+    // Blend triangles are sorted one by one, which made each its own draw (New Sponza's decals:
+    // 8,140 of the frame's 8,546 draws, each too small to fill the GPU). Their indices are copied in
+    // sorted order instead, and each run from one node and material draws at once; a draw blends
+    // its primitives in order, so the image is unchanged. Without the copy they draw one by one.
+    HeapVector<uint32_t> sortedIndices;
+
+    for (ForwardDrawDepth& entry : translucentDepths)
+    {
+        if (entry.sorted)
+        {
+            entry.sortedFirst = static_cast<uint32_t>(sortedIndices.size());
+
+            for (uint32_t corner = 0; corner < 3; ++corner)
+            {
+                sortedIndices.push_back(m_pScene->GetIndices()[entry.draw.firstIndex + corner]);
+            }
+        }
+    }
+
+    const uint32_t sortedBytes = static_cast<uint32_t>(sortedIndices.size() * sizeof(uint32_t));
+
+    if (sortedIndices.size() != m_sortedBlendContents.size()
+        || !std::equal(sortedIndices.begin(), sortedIndices.end(), m_sortedBlendContents.begin()))
+    {
+        m_sortedBlendIndices.MarkDirty(0, sortedBytes);
+
+        m_sortedBlendContents = sortedIndices;
+    }
+
+    const bool sortedReady =
+        !sortedIndices.empty()
+        && m_sortedBlendIndices.Update(*m_pRenderDevice, sortedIndices.data(), sortedBytes, "forward_sorted_blend_indices");
 
     // Hybrid receivers already rasterized every opaque triangle. Prefilling their depth lets
     // the forward passes reject hidden fragments early instead of shading each layer, unless a
@@ -1048,6 +1088,9 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 || m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
                        != static_cast<float>(sg::AlphaMode::Blend);
 
+            // Blend triangle groups hold only per-triangle entries (see the sorted index copy).
+            const bool sortedRun = stage == 3 && sortedReady && translucentDepths[first].sorted;
+
             if (stage < 3)
             {
                 draws   = opaqueDraws[stage];
@@ -1061,7 +1104,25 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                            != static_cast<float>(sg::AlphaMode::Blend))
                               == writeDepth)
                 {
-                    draws.push_back(translucentDepths[first].draw);
+                    SceneMeshDraw draw = translucentDepths[first].draw;
+
+                    VERIFY_EXPR(!sortedRun || translucentDepths[first].sorted);
+
+                    if (sortedRun)
+                    {
+                        draw.firstIndex = translucentDepths[first].sortedFirst;
+                    }
+
+                    if (sortedRun && !draws.empty() && draws.back().nodeIndex == draw.nodeIndex
+                        && draws.back().materialIndex == draw.materialIndex
+                        && draws.back().firstIndex + draws.back().indexCount == draw.firstIndex)
+                    {
+                        draws.back().indexCount += draw.indexCount;
+                    }
+                    else
+                    {
+                        draws.push_back(draw);
+                    }
 
                     ++first;
                 }
@@ -1163,7 +1224,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             forward.BindVertexBuffer(m_pScene->GetVertexBuffer());
 
-            forward.BindIndexBuffer(m_pScene->GetIndexBuffer());
+            forward.BindIndexBuffer(sortedRun ? m_sortedBlendIndices.GetBuffer() : m_pScene->GetIndexBuffer());
 
             if (voxelGI != nullptr)
             {

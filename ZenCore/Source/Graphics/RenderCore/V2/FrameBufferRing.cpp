@@ -46,9 +46,10 @@ bool FrameBufferRing::Update(RenderDevice& device, const void* data, uint32_t si
         const uint8_t* bytes = static_cast<const uint8_t*>(data);
         if (slot.buffer == nullptr || slot.size < size)
         {
-            RHIBuffer* replacement =
-                vertexBuffer ? device.CreateVertexBuffer(size, bytes) : device.CreateStorageBuffer(size, bytes, name);
-            valid = replacement != nullptr;
+            RHIBuffer* replacement = m_indexBuffer ? device.CreateIndexBuffer(size, bytes)
+                                   : vertexBuffer  ? device.CreateVertexBuffer(size, bytes)
+                                                   : device.CreateStorageBuffer(size, bytes, name);
+            valid                  = replacement != nullptr;
             if (valid)
             {
                 device.DestroyBuffer(slot.buffer);

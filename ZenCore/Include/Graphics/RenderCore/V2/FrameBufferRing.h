@@ -13,7 +13,9 @@ class RenderDevice;
 class FrameBufferRing
 {
 public:
-    FrameBufferRing()                                  = default;
+    FrameBufferRing() = default;
+    // An index ring creates index buffers; Update's vertexBuffer flag then has no effect.
+    explicit FrameBufferRing(bool indexBuffer) : m_indexBuffer(indexBuffer) {}
     FrameBufferRing(const FrameBufferRing&)            = delete;
     FrameBufferRing& operator=(const FrameBufferRing&) = delete;
     void             MarkDirty(uint32_t offset, uint32_t size);
@@ -51,5 +53,6 @@ private:
     uint32_t m_current{0};
     uint64_t m_generation{0};
     bool     m_changed{true};
+    bool     m_indexBuffer{false};
 };
 } // namespace zen::rc
