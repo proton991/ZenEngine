@@ -8,13 +8,20 @@
 namespace zen::sg
 {
 class Mesh;
-}
+struct MaterialData;
+} // namespace zen::sg
 namespace zen::rc
 {
 class RenderScene;
 class RenderDevice;
 
 void BindSceneRayGeometry(RDGPassDescBase& pass, RenderDevice& device, RenderScene& scene, bool forwardMaterialBound);
+
+// Whether a surface with this material and largest vertex alpha can ever block a ray.
+// RayCandidateAccepted compares the alpha factor times the interpolated vertex alpha times the
+// texture alpha (at most one) against the cutoff, or 0.5 for blend. Surfaces that cannot are left
+// out of both ray scenes rather than sending every crossing ray to the coverage test.
+bool MaterialMayOcclude(const sg::MaterialData& material, float vertexAlpha);
 
 // One full-scene query snapshot. Builds and shader consumers use the same raster
 // buffers; publication follows successful graph execution, never command recording.

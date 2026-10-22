@@ -261,11 +261,13 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
         scene.PrepareBuffers();
         ASSERT_TRUE(scene.SetVoxelBounds(sg::AABB(Vec3(-0.1f), Vec3(0.1f))));
         SceneRayQuery queries(device);
-        // Frame 2 makes the masked material single-sided; its back face still blocks.
+        // At alpha zero the masked primitive can never occlude and stays out of the BLAS; frame 1
+        // raises its alpha past the cutoff, which adds it and rebuilds. Frame 2 makes the masked
+        // material single-sided; its back face still blocks, and the BLAS is reused.
         const float      expected[] = {1.5f, 1.0f, 1.0f, 1.25f, -1.0f, -1.0f, 1.25f, 1.25f, 1.25f, 1.25f};
-        const uint32_t   built[]    = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0};
+        const uint32_t   built[]    = {1, 1, 0, 0, 0, 0, 1, 0, 0, 0};
         const uint32_t   updated[]  = {0, 0, 0, 1, 0, 0, 0, 0, 0, 0};
-        const uint32_t   reused[]   = {0, 1, 1, 0, 1, 0, 0, 1, 1, 1};
+        const uint32_t   reused[]   = {0, 0, 1, 0, 1, 0, 0, 1, 1, 1};
         sg::MaterialData material   = source.GetComponents<sg::Material>()[0]->data;
         for (uint32_t frame = 0; frame < 10; ++frame)
         {
@@ -1080,6 +1082,28 @@ TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle
     EXPECT_GT(continued, 20u);
     EXPECT_GT(cut, 20u);
     EXPECT_EQ(edges, 128u);
+
+    // The zero-alpha mask could never occlude, so the BVH left it out. Raising its alpha past the
+    // cutoff must rebuild the BVH with it: the layered rays then stop on it, in front of the blocker.
+    sg::MaterialData opaqueMask  = scene.GetMaterialsData()[1];
+    opaqueMask.baseColorFactor.a = 1.0f;
+    ASSERT_TRUE(scene.UpdateMaterial(1, opaqueMask));
+    ASSERT_TRUE(scene.Update());
+    ASSERT_TRUE(queries.Prepare(scene));
+    Trace(values);
+    uint32_t layeredHits = 0, maskHits = 0;
+    for (uint32_t ray = 1920; ray < kRays; ++ray)
+    {
+        const Vec4* result = &values[4 * ray];
+        if (rays[2 * ray + 1].w > 0.5f && result[0].x == 1.0f && glm::floatBitsToUint(result[1].y) == 1u)
+        {
+            ++layeredHits;
+            maskHits += glm::floatBitsToUint(result[1].z) == 1u ? 1u : 0u;
+        }
+    }
+    EXPECT_GT(layeredHits, 10u);
+    // Rays grazing the shared edges of the two layers may still resolve to the blocker.
+    EXPECT_GE(maskHits * 10u, layeredHits * 9u);
 
     // Without enabled triangles the BVH has an empty root, and every ray misses.
     for (uint32_t i = 0; i < std::size(instances); ++i)

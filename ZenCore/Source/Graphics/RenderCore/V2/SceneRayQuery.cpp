@@ -24,6 +24,27 @@ bool SameGeometry(VectorView<const RHIAccelerationStructureGeometry> first,
     return same;
 }
 
+// Whether a primitive can ever block a ray (MaterialMayOcclude over its largest vertex alpha). New
+// Sponza's dirt decals (alpha factor 0.35) cover the walls just above every shadow-ray origin.
+bool PrimitiveMayOcclude(const RenderScene& scene, const sg::SubMesh& primitive, uint32_t material)
+{
+    bool occludes = material >= scene.GetMaterialsData().size();
+    if (!occludes)
+    {
+        const HeapVector<uint32_t>&      indices  = scene.GetIndices();
+        const HeapVector<asset::Vertex>& vertices = scene.GetVertices();
+        // Out-of-range indices count as fully opaque; the caller rejects the primitive anyway.
+        const uint64_t end   = uint64_t(primitive.GetFirstIndex()) + primitive.GetIndexCount();
+        float          alpha = end > indices.size() ? 1.0f : 0.0f;
+        for (uint64_t index = primitive.GetFirstIndex(); index < std::min<uint64_t>(end, indices.size()); ++index)
+        {
+            alpha = std::max(alpha, indices[index] < vertices.size() ? vertices[indices[index]].color.a : 1.0f);
+        }
+        occludes = MaterialMayOcclude(scene.GetMaterialsData()[material], alpha);
+    }
+    return occludes;
+}
+
 // FNV-1a over the position bits; only the BLAS inputs (positions) matter.
 uint64_t HashPositions(const HeapVector<asset::Vertex>& vertices, uint32_t begin, uint32_t end)
 {
@@ -38,6 +59,20 @@ uint64_t HashPositions(const HeapVector<asset::Vertex>& vertices, uint32_t begin
     return hash;
 }
 } // namespace
+
+bool MaterialMayOcclude(const sg::MaterialData& material, float vertexAlpha)
+{
+    bool occludes = material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Opaque);
+    if (!occludes)
+    {
+        const float alpha =
+            vertexAlpha * (material.surfaceProperties.w > 0.5f ? material.diffuseFactor.a : material.baseColorFactor.a);
+        occludes =
+            alpha
+            >= (material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Mask) ? material.surfaceProperties.x : 0.5f);
+    }
+    return occludes;
+}
 
 const SceneRayQuery::Generation& SceneRayQuery::Current() const
 {
@@ -231,7 +266,8 @@ bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& me
             bool primitivesValid = true;
             for (const sg::SubMesh* primitive : mesh->GetSubMeshes())
             {
-                if (primitive->topology == sg::MeshTopology::Triangles && primitive->GetIndexCount() != 0)
+                if (primitive->topology == sg::MeshTopology::Triangles && primitive->GetIndexCount() != 0
+                    && PrimitiveMayOcclude(scene, *primitive, primitive->GetMaterial()->index))
                 {
                     const uint32_t                   material = primitive->GetMaterial()->index;
                     RHIAccelerationStructureGeometry geometry;

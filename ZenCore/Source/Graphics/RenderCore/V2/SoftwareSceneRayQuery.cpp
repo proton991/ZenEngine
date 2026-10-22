@@ -185,7 +185,15 @@ bool SoftwareSceneRayQuery::Prepare(RenderScene& scene)
                 {
                     const uint32_t a = indices[record.x], b = indices[record.x + 1], c = indices[record.x + 2];
                     ready = a < vertices.size() && b < vertices.size() && c < vertices.size();
-                    if (ready)
+                    // A triangle that can never occlude is left out, as from the BLAS (MaterialMayOcclude);
+                    // its interpolated vertex alpha is at most the largest of its corners. Coverage edits
+                    // bump the geometry revision, which rebuilds this BVH.
+                    const bool occludes =
+                        ready
+                        && (record.z >= scene.GetMaterialsData().size()
+                            || MaterialMayOcclude(scene.GetMaterialsData()[record.z],
+                                                  std::max({vertices[a].color.a, vertices[b].color.a, vertices[c].color.a})));
+                    if (occludes)
                     {
                         const Mat4&               transform = scene.GetInstanceTransform(record.y);
                         const SoftwareRayTriangle triangle{transform * Vec4(Vec3(vertices[a].pos), 1),
