@@ -12,10 +12,12 @@ environment and, on purpose, the Embree tracer of the visibility cross-check. In
 to the engine by definition are the scene file, the capture's camera matrix, and the
 captured level-zero environment cube (the engine's L_env).
 
-Primary rays follow rasterization: back faces of single-sided materials and alpha-masked
-texels are skipped. Visibility rays follow the contract: both faces of every surface
-block; masked texels are transparent. Alpha masks use the engine's rule per hit (factor *
-bilinear texture alpha at level zero * interpolated vertex alpha >= cutoff). Shading normals
+Primary rays follow the engine's receivers: back faces of single-sided materials and
+alpha-masked texels are skipped, and so are blend, transmission and diffuse-transmission
+layers, which the receivers exclude. Visibility rays follow the contract: both faces of every
+surface block; masked texels are transparent, and blend surfaces are tested like masks with a
+0.5 cutoff. Alpha tests use the engine's rule per hit (factor * bilinear texture alpha at level
+zero * interpolated vertex alpha >= cutoff). Shading normals
 default to interpolated vertex normals, so compare against captures made with
 --strip-normal-maps. --shading-normals engine instead uses captured shading normals
 to check the normal-mapped path while keeping primary geometry and visibility independent.
@@ -131,7 +133,12 @@ def load_gltf_primitives(path):
                 if specular_glossiness:
                     pbr = dict(baseColorFactor=specular_glossiness.get('diffuseFactor', [1, 1, 1, 1]),
                                baseColorTexture=specular_glossiness.get('diffuseTexture'))
-                masked = material.get('alphaMode') == 'MASK'
+                # Blend coverage blocks visibility at the contract's fixed 0.5 cutoff.
+                masked = material.get('alphaMode') in ('MASK', 'BLEND')
+                extensions = material.get('extensions', {})
+                receiver = (material.get('alphaMode') != 'BLEND'
+                            and extensions.get('KHR_materials_transmission', {}).get('transmissionFactor', 0) == 0
+                            and extensions.get('KHR_materials_diffuse_transmission', {}).get('diffuseTransmissionFactor', 0) == 0)
                 texture = pbr.get('baseColorTexture')
                 uv = np.zeros((len(positions), 2))
                 vertex_alpha = np.ones(len(positions))
@@ -148,7 +155,8 @@ def load_gltf_primitives(path):
                 primitives.append(dict(positions=positions, normals=normals, uv=uv, faces=faces,
                                        material=-1 if material_index is None else material_index,
                                        double_sided=bool(material.get('doubleSided', False)), masked=masked,
-                                       cutoff=material.get('alphaCutoff', 0.5), vertex_alpha=vertex_alpha,
+                                       cutoff=material.get('alphaCutoff', 0.5) if material.get('alphaMode') == 'MASK' else 0.5,
+                                       receiver=receiver, vertex_alpha=vertex_alpha,
                                        alpha=pbr.get('baseColorFactor', [1, 1, 1, 1])[3], texture=texture))
         for child in node.get('children', []):
             visit(child, world)
@@ -175,6 +183,17 @@ def load_gltf_primitives(path):
         wrap = {33071: 'clamp', 33648: 'mirror'}.get(sampler.get('wrapS', 10497), 'repeat')
         return texel_alpha[..., None], wrap
 
+    def inert(p):
+        """A non-receiver layer whose largest possible coverage stays below its cutoff never blocks
+        and is never shaded, so it cannot change the sky integral (New Sponza's dirt decals). Leaving
+        it out also spares visibility rays from crossing every coplanar decal layer."""
+        if p.get('receiver', True) or not p['masked']:
+            return False
+        coverage = p['alpha'] * p['vertex_alpha'].max() * (alpha_image(p['texture'])[0].max() if p['texture'] else 1)
+        return coverage < p['cutoff']
+
+    # Normalize with every primitive first: the engine's unit-cube scaling includes these layers.
+    primitives = [p for p in primitives if not inert(p)]
     return primitives, alpha_image, dict(center=center.tolist(), scale=1 / extent)
 
 
@@ -182,7 +201,15 @@ def load_gltf_primitives(path):
 # >= cutoff, evaluated per hit. The texture alpha is the opacity of a Mitsuba mask BSDF; the
 # rest is the per-vertex attribute below (huge for surfaces that are never transparent).
 MASK_ATTRIBUTE = 'vertex_mask_scale'
+# Whether a scene built here has alpha-tested primitives, by object id. Without any, visibility
+# skips the per-hit BSDF query, a virtual call over every material that Dr.Jit traces again on
+# each pass and that dominated New Sponza's host time.
+# Scene id of build_scene results whose hits all block (no alpha test). The flag lives on the
+# scene because Python ids are reused after a scene is freed and Mitsuba scenes have no weakrefs.
+OPAQUE_SCENE_ID = 'zen-opaque'
 PRIMITIVE_ATTRIBUTE = 'vertex_primitive'
+# 1 for surfaces the engine's receivers rasterize, 0 for layers primary rays pass through.
+RECEIVER_ATTRIBUTE = 'vertex_receiver'
 
 
 def build_scene(mi, primitives, alpha_image, environment, resolution=2048):
@@ -227,9 +254,18 @@ def build_scene(mi, primitives, alpha_image, environment, resolution=2048):
         params.update()
         mesh.add_attribute(MASK_ATTRIBUTE, 1, mi.Float(scale.astype(np.float32)))
         mesh.add_attribute(PRIMITIVE_ATTRIBUTE, 1, mi.Float(np.full(len(p['positions']), index, np.float32)))
+        mesh.add_attribute(RECEIVER_ATTRIBUTE, 1, mi.Float(np.full(len(p['positions']), float(p.get('receiver', True)), np.float32)))
         shapes[f'primitive_{index}'] = mesh
     shapes['type'] = 'scene'
-    return mi.load_dict(shapes), dr, black
+    scene = mi.load_dict(shapes)
+    if not any(p['masked'] and p['cutoff'] > 0 for p in primitives):
+        scene.set_id(OPAQUE_SCENE_ID)
+    return scene, dr, black
+
+
+def alpha_tested(scene):
+    """Whether any primitive of a scene from build_scene can reject a hit by alpha."""
+    return scene.id() != OPAQUE_SCENE_ID
 
 
 def transparent(mi, si, bsdf, active):
@@ -279,7 +315,7 @@ def camera_rays(metadata, capture):
 
 
 def primary_hits(mi, dr, scene, eye, directions, max_layers=64, origins=None):
-    """Rasterization-equivalent primary hits: skip culled back faces and masked texels."""
+    """Receiver-equivalent primary hits: skip culled back faces, masked texels and non-receiver layers."""
     count = len(directions)
     origin = (mi.Point3f(*[mi.Float(np.full(count, c, np.float32)) for c in eye]) if origins is None else
               mi.Point3f(*[mi.Float(origins[:, i].astype(np.float32)) for i in range(3)]))
@@ -292,7 +328,8 @@ def primary_hits(mi, dr, scene, eye, directions, max_layers=64, origins=None):
         back = dr.dot(si.n, ray.d) > 0
         culled = back & ~mi.has_flag(bsdf.flags(), mi.BSDFFlags.BackSide)
         hit = active & si.is_valid()
-        skip = hit & (culled | transparent(mi, si, bsdf, hit))
+        layer = si.shape.eval_attribute_1(RECEIVER_ATTRIBUTE, si, hit) < .5
+        skip = hit & (culled | layer | transparent(mi, si, bsdf, hit))
         ray = dr.select(skip, continue_ray(mi, si, ray.d), ray)
         active = skip
         dr.eval(ray, active)
@@ -326,6 +363,9 @@ def visible(mi, dr, scene, origin_interaction, directions, valid, max_layers=64,
     p = origin_interaction.p
     offset = 4e-6 * (1 + dr.maximum(dr.maximum(dr.abs(p.x), dr.abs(p.y)), dr.abs(p.z)))
     ray = mi.Ray3f(p + origin_interaction.n * offset if ray_origin is None else ray_origin, directions)
+    if not alpha_tested(scene):
+        # Every hit blocks: the alpha loop below would stop after its first intersection.
+        return mi.Bool(valid) & ~scene.ray_intersect(ray, mi.Bool(valid)).is_valid()
     open_ = mi.Bool(valid)
     active = mi.Bool(valid)
     def step(current, open_mask, pending, iteration):
@@ -405,7 +445,9 @@ def render_sky(mi, dr, scene, points, n_g, n_s, samples, batch, seed, cube, orig
     halves = [dr.zeros(mi.Color3f, lanes), dr.zeros(mi.Color3f, lanes)]
     unblocked = dr.zeros(mi.Float, lanes)
     for index in range(passes):
-        sampler.seed(seed * 1000003 + index, lanes)
+        # An opaque seed keeps every pass the same kernel, so Dr.Jit compiles it once instead
+        # of baking a new literal into each pass. The random sequence is unchanged.
+        sampler.seed(dr.opaque(mi.UInt32, seed * 1000003 + index), lanes)
         # Environment importance sample.
         ds, _ = scene.sample_emitter_direction(it, sampler.next_2d(), False)
         cos_e = dr.dot(shading, ds.d)
@@ -486,7 +528,7 @@ def render_capture(mi, capture, output, scene_path=None, samples=1024, batch=8, 
                         halves=halves.reshape(2, height, width, 3).astype(np.float32),
                         position=position.reshape(height, width, 4), normal=normal.reshape(height, width, 3), geometric=geometric.reshape(height, width, 3),
                         primitive=primitive_index.reshape(height, width))
-    manifest = dict(capture=str(capture), scene=str(scene_path), samples=samples, seed=seed,
+    manifest = dict(capture=str(capture), scene=str(scene_path), samples=samples, batch=batch, seed=seed,
                     shading_normals='engine' if engine_normals or engine_receivers else 'vertex',
                     captured_normal_policy='unit_renormalized' if engine_normals or engine_receivers else 'not_applicable',
                     receivers='engine' if engine_receivers else 'exact',

@@ -63,7 +63,9 @@ def trace_lobes(mi, dr, scene, emission, points, shading, geometric, views, roug
     totals = [dr.zeros(mi.Float, lanes) for _ in range(4)]
     reflected = dr.zeros(mi.Color3f, lanes)
     for index in range(samples // batch):
-        sampler.seed(seed * 1000003 + index, lanes)
+        # An opaque seed keeps every pass the same kernel, so Dr.Jit compiles it once instead
+        # of baking a new literal into each pass. The random sequence is unchanged.
+        sampler.seed(dr.opaque(mi.UInt32, seed * 1000003 + index), lanes)
         direction, weight = ggx_lobe(mi, dr, frame, view, alpha, sampler.next_2d())
         above = (weight > 0) & (dr.dot(direction, ng) > 0)
         hit = closest(mi, dr, scene, offset(mi, dr, point, ng, direction), above)
