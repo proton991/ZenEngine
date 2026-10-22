@@ -499,7 +499,7 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
 
         const bool captureValid = !capture || BuildLightingCaptureClear(view);
 
-        AddLightingPass(view, voxelGI, shadows, capture, captureValid, nullptr);
+        AddLightingPass(view, voxelGI, shadows, capture, captureValid, nullptr, nullptr);
 
         if (capture && captureValid)
         {
@@ -523,11 +523,16 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
                                                SceneShadowRenderer* shadows,
                                                bool                 capture,
                                                bool                 captureValid,
-                                               const RDGTexture*    linearTarget)
+                                               const RDGTexture*    linearTarget,
+                                               const RDGTexture*    lightVisibility)
 {
     RenderGraph* graph = m_pRenderDevice->GetCurrentFrameRDG();
 
     const glm::uvec2 captureExtent(view.GetWidth(), view.GetHeight());
+
+    const bool rayShadows = voxelGI != nullptr && voxelGI->UsesRayShadows();
+
+    const bool visibility = rayShadows && lightVisibility != nullptr;
 
     RHIGfxPipelineStates pso{};
 
@@ -539,7 +544,7 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
 
     pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
-    pso.colorBlendState.AddAttachment();
+    pso.colorBlendState.AddAttachments(visibility ? 2 : 1);
 
     pso.depthStencilState = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLessOrEqual);
 
@@ -553,16 +558,20 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
         lighting.SetShaderProgramName(capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP");
         m_hybrid->BindLightingInputs(lighting);
     }
-    if (voxelGI != nullptr && voxelGI->UsesRayShadows())
+    if (rayShadows)
     {
         // Ray-count diagnostics never coincide with a lighting capture.
         const bool counts = !capture && voxelGI->CountsRays();
-        lighting.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? (capture  ? "DeferredHardwareShadowsCaptureSP"
-                                                                        : counts ? "DeferredHardwareShadowsCountsSP"
-                                                                                 : "DeferredHardwareShadowsSP")
-                                                                     : (capture  ? "DeferredSoftwareShadowsCaptureSP"
-                                                                        : counts ? "DeferredSoftwareShadowsCountsSP"
-                                                                                 : "DeferredSoftwareShadowsSP"));
+        // [hardware, software][plain, capture, counts][color only, with receiver visibility]
+        static const char* const programs[2][3][2] = {
+            {{"DeferredHardwareShadowsSP", "DeferredHardwareShadowsVisibilitySP"},
+             {"DeferredHardwareShadowsCaptureSP", "DeferredHardwareShadowsCaptureVisibilitySP"},
+             {"DeferredHardwareShadowsCountsSP", "DeferredHardwareShadowsCountsVisibilitySP"}},
+            {{"DeferredSoftwareShadowsSP", "DeferredSoftwareShadowsVisibilitySP"},
+             {"DeferredSoftwareShadowsCaptureSP", "DeferredSoftwareShadowsCaptureVisibilitySP"},
+             {"DeferredSoftwareShadowsCountsSP", "DeferredSoftwareShadowsCountsVisibilitySP"}}};
+        const uint32_t variant = capture ? 1 : counts ? 2 : 0;
+        lighting.SetShaderProgramName(programs[voxelGI->UsesHardwareShadows() ? 0 : 1][variant][visibility ? 1 : 0]);
         lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
         if (counts)
         {
@@ -582,6 +591,11 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
         lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
 
         lighting.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+    }
+
+    if (visibility)
+    {
+        lighting.AddColorOutput(*lightVisibility, RHIRenderTargetLoadOp::eClear);
     }
 
     lighting.SetPipelineStates(pso);
@@ -766,6 +780,31 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     graph->AddTransferPass("InitializeRefraction").ClearTexture(opaque, Color(0.0f));
 
+    // Ray-shadowed forward layers read the deferred receivers' shadow-ray results.
+    const bool rayShadows = voxelGI != nullptr && voxelGI->UsesRayShadows();
+
+    RDGTexture lightVisibility;
+
+    if (rayShadows)
+    {
+        RDGTextureDesc visibilityDesc;
+
+        visibilityDesc.name             = "deferred_light_visibility";
+
+        visibilityDesc.texFormat.format = DataFormat::eR32G32UInt;
+
+        visibilityDesc.texFormat.width  = width;
+
+        visibilityDesc.texFormat.height = height;
+
+        visibilityDesc.texFormat.depth  = 1;
+
+        visibilityDesc.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment, RHITextureUsageFlagBits::eSampled,
+                                           RHITextureUsageFlagBits::eTransferDst);
+
+        lightVisibility = resources->CreateTexture(visibilityDesc);
+    }
+
     RHIGfxPipelineStates fullscreenState{};
 
     fullscreenState.colorBlendState.AddAttachment();
@@ -933,9 +972,26 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     graph->AddGraphicsPass(std::move(background)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
 
+    // Only blend triangles can rest on a deferred receiver and take its shadow-ray results
+    // (forward_material.glsl). Without one, deferred lighting does not export them.
+    bool restingLayers = false;
+
+    for (const ForwardDrawDepth& entry : translucentDepths)
+    {
+        restingLayers = restingLayers || entry.sorted;
+    }
+
+    const bool shareRays = rayShadows && deferredOpaque && restingLayers;
+
     if (deferredOpaque)
     {
-        AddLightingPass(view, voxelGI, shadows, capture, true, &color);
+        AddLightingPass(view, voxelGI, shadows, capture, true, &color, shareRays ? &lightVisibility : nullptr);
+    }
+
+    if (rayShadows && !shareRays)
+    {
+        // Every forward layer traces its own shadow rays; the bound receiver results stay empty.
+        graph->AddTransferPass("ClearLightVisibility").ClearTexture(lightVisibility, Color(0.0f));
     }
 
     bool scattering = false;
@@ -1171,9 +1227,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 }
                 m_hybrid->BindLightingInputs(forward);
             }
-            if (voxelGI != nullptr && voxelGI->UsesRayShadows())
+            if (rayShadows)
             {
                 const bool counts = !capture && voxelGI->CountsRays();
+                forward.BindSampledTexture("receiverLightVisibility", m_pDepthSampler, lightVisibility);
                 forward.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? (capture  ? "ForwardHardwareShadowsCaptureSP"
                                                                                : counts ? "ForwardHardwareShadowsCountsSP"
                                                                                         : "ForwardHardwareShadowsSP")

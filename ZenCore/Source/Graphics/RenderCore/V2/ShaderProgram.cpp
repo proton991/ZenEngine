@@ -310,6 +310,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                              "VoxelGI/inject_hardware_radiance_averaged_counts.comp.spv", volumeConstants));
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsSP", "SceneRenderer/deferred.vert.spv",
                                                 "SceneRenderer/hybrid_gi_shadows.frag.spv"));
+        // Visibility variants also export each receiver's shadow-ray results for resting decals.
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsVisibilitySP",
+                                                "SceneRenderer/deferred.vert.spv",
+                                                "SceneRenderer/hybrid_gi_shadows_visibility.frag.spv"));
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHardwareShadowsSP", "SceneRenderer/offscreen.vert.spv",
                                                 "SceneRenderer/forward_material_shadows.frag.spv"));
         StoreProgram(ZEN_NEW()
@@ -320,12 +324,18 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCaptureSP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_capture.frag.spv"));
+            StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCaptureVisibilitySP",
+                                                    "SceneRenderer/deferred.vert.spv",
+                                                    "SceneRenderer/hybrid_gi_shadows_capture_visibility.frag.spv"));
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHardwareShadowsCaptureSP",
                                                     "SceneRenderer/offscreen.vert.spv",
                                                     "SceneRenderer/forward_material_shadows_capture.frag.spv"));
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCountsSP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_counts.frag.spv"));
+            StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCountsVisibilitySP",
+                                                    "SceneRenderer/deferred.vert.spv",
+                                                    "SceneRenderer/hybrid_gi_shadows_counts_visibility.frag.spv"));
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHardwareShadowsCountsSP",
                                                     "SceneRenderer/offscreen.vert.spv",
                                                     "SceneRenderer/forward_material_shadows_counts.frag.spv"));
@@ -346,6 +356,9 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                          "VoxelGI/inject_software_radiance_averaged_counts.comp.spv", volumeConstants));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredSoftwareShadowsSP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/hybrid_gi_software_shadows.frag.spv"));
+    StoreProgram(ZEN_NEW()
+                     HybridGraphicsSP(pRenderDevice, "DeferredSoftwareShadowsVisibilitySP", "SceneRenderer/deferred.vert.spv",
+                                      "SceneRenderer/hybrid_gi_software_shadows_visibility.frag.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardSoftwareShadowsSP", "SceneRenderer/offscreen.vert.spv",
                                             "SceneRenderer/forward_material_software_shadows.frag.spv"));
     StoreProgram(ZEN_NEW()
@@ -356,12 +369,18 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "DeferredSoftwareShadowsCaptureSP", "SceneRenderer/deferred.vert.spv",
                                           "SceneRenderer/hybrid_gi_software_shadows_capture.frag.spv"));
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredSoftwareShadowsCaptureVisibilitySP",
+                                                "SceneRenderer/deferred.vert.spv",
+                                                "SceneRenderer/hybrid_gi_software_shadows_capture_visibility.frag.spv"));
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "ForwardSoftwareShadowsCaptureSP", "SceneRenderer/offscreen.vert.spv",
                                           "SceneRenderer/forward_material_software_shadows_capture.frag.spv"));
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "DeferredSoftwareShadowsCountsSP", "SceneRenderer/deferred.vert.spv",
                                           "SceneRenderer/hybrid_gi_software_shadows_counts.frag.spv"));
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredSoftwareShadowsCountsVisibilitySP",
+                                                "SceneRenderer/deferred.vert.spv",
+                                                "SceneRenderer/hybrid_gi_software_shadows_counts_visibility.frag.spv"));
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "ForwardSoftwareShadowsCountsSP", "SceneRenderer/offscreen.vert.spv",
                                           "SceneRenderer/forward_material_software_shadows_counts.frag.spv"));

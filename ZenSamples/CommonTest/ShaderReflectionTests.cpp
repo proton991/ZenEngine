@@ -618,6 +618,85 @@ TEST(ShaderReflectionTests, SceneShadowsKeepTheMeshVertexLayoutAndUniformContrac
     EXPECT_EQ(FindBinding(shadow, "uShadowFace")->blockSize, 80u);
 }
 
+TEST(ShaderReflectionTests, RayShadowedForwardLayersReadTheDeferredReceiversShadowRays)
+{
+    for (const char* path :
+         {"SceneRenderer/forward_material_shadows.frag.spv", "SceneRenderer/forward_material_shadows_capture.frag.spv",
+          "SceneRenderer/forward_material_shadows_counts.frag.spv", "SceneRenderer/forward_material_software_shadows.frag.spv",
+          "SceneRenderer/forward_material_software_shadows_capture.frag.spv",
+          "SceneRenderer/forward_material_software_shadows_counts.frag.spv"})
+    {
+        SCOPED_TRACE(path);
+
+        const RHIShaderGroupInfo info                 = ReflectStage(RHIShaderStage::eFragment, path);
+
+        const RHIShaderResourceDescriptor* visibility = FindBinding(info, "receiverLightVisibility");
+
+        ASSERT_NE(visibility, nullptr);
+
+        EXPECT_EQ(visibility->type, RHIShaderResourceType::eSamplerWithTexture);
+
+        EXPECT_EQ(visibility->set, 4u);
+
+        EXPECT_EQ(visibility->binding, 4u);
+
+        EXPECT_FALSE(visibility->writable);
+    }
+
+    // Without ray shadows there are no shadow rays to reuse.
+    const RHIShaderGroupInfo hybrid = ReflectStage(RHIShaderStage::eFragment, "SceneRenderer/forward_material_hybrid.frag.spv");
+
+    EXPECT_EQ(FindBinding(hybrid, "receiverLightVisibility"), nullptr);
+}
+
+// Deferred lighting writes the receivers' shadow-ray results to color location 1 only in the
+// visibility variants, which DeferredLightingRenderer selects when a decal will read them.
+TEST(ShaderReflectionTests, OnlyVisibilityVariantsExportDeferredShadowRays)
+{
+    for (const char* name :
+         {"hybrid_gi_shadows", "hybrid_gi_shadows_capture", "hybrid_gi_shadows_counts", "hybrid_gi_software_shadows",
+          "hybrid_gi_software_shadows_capture", "hybrid_gi_software_shadows_counts"})
+    {
+        for (bool visibility : {false, true})
+        {
+            const std::string path = std::string("SceneRenderer/") + name + (visibility ? "_visibility" : "") + ".frag.spv";
+
+            SCOPED_TRACE(path);
+
+            const HeapVector<uint8_t> code = platform::FileSystem::LoadSpvFile(path);
+
+            SpvReflectShaderModule module{};
+
+            ASSERT_EQ(spvReflectCreateShaderModule(code.size(), code.data(), &module), SPV_REFLECT_RESULT_SUCCESS);
+
+            uint32_t count = 0;
+
+            EXPECT_EQ(spvReflectEnumerateOutputVariables(&module, &count, nullptr), SPV_REFLECT_RESULT_SUCCESS);
+
+            HeapVector<SpvReflectInterfaceVariable*> outputs(count, nullptr);
+
+            EXPECT_EQ(spvReflectEnumerateOutputVariables(&module, &count, outputs.data()), SPV_REFLECT_RESULT_SUCCESS);
+
+            bool color      = false;
+
+            bool shadowRays = false;
+
+            for (const SpvReflectInterfaceVariable* output : outputs)
+            {
+                color      = color || output->location == 0;
+
+                shadowRays = shadowRays || output->location == 1;
+            }
+
+            EXPECT_TRUE(color);
+
+            EXPECT_EQ(shadowRays, visibility);
+
+            spvReflectDestroyShaderModule(&module);
+        }
+    }
+}
+
 TEST(ShaderReflectionTests, VoxelMipFilteringDeclaresSeparateReadAndWriteImages)
 {
     for (const char* path : {"VoxelGI/filter_albedo.comp.spv", "VoxelGI/filter_radiance.comp.spv"})

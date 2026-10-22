@@ -109,12 +109,15 @@ private:
     // Fullscreen lighting of the G-buffer receivers. Without a linear target it tone-maps into the
     // view and owns the view's depth. With one it writes linear HDR over the forward background's
     // prefilled depth, so translucent layers compose over it before the forward tone map.
+    // With ray shadows and a lightVisibility target, it also writes each receiver's per-light
+    // shadow-ray results there for the forward decals resting on it.
     void AddLightingPass(const RenderView&    view,
                          VoxelGIRenderer*     voxelGI,
                          SceneShadowRenderer* shadows,
                          bool                 capture,
                          bool                 captureValid,
-                         const RDGTexture*    linearTarget);
+                         const RDGTexture*    linearTarget,
+                         const RDGTexture*    lightVisibility);
 
     void BuildLightMarkers(const RenderView& view);
 

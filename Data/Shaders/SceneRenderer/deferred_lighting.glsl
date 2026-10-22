@@ -21,6 +21,12 @@ layout(set = 4, binding = 3) uniform sampler2D shadowReceiverPosition;
 #endif
 
 layout(location = 0) out vec4 outFragColor;
+#ifdef RECEIVER_LIGHT_VISIBILITY
+// Shadow-ray results for layers resting on this receiver (decals, forward_material.glsl): bit i of
+// x marks scene light i as traced, bit i of y as visible. Background and untraced lights stay 0.
+// Only the ray-shadow variants used when such a layer is drawn write it.
+layout(location = 1) out uvec2 outLightVisibility;
+#endif
 #ifdef LIGHTING_CAPTURE
 #    include "Graphics/Shared/LightingCapture.h"
 layout(set = 4, binding = 2, std430) buffer LightingCapture
@@ -139,6 +145,9 @@ void main()
 
     // ---------- Direct Lighting ----------
     vec3 Lo = vec3(0.0);
+#ifdef RECEIVER_LIGHT_VISIBILITY
+    uvec2 lightVisibility = uvec2(0);
+#endif
     for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i)
     {
         vec3  L;
@@ -169,8 +178,18 @@ void main()
 #ifdef VOXEL_GI
         visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, worldPos, surfaceNormal);
 #endif
+#ifdef RECEIVER_LIGHT_VISIBILITY
+        // Ray visibility is binary; the camera light is not recorded.
+        if (i < int(sceneUbo.lightInfo.x))
+        {
+            lightVisibility |= uvec2(1u, visibility > 0.5 ? 1u : 0u) << uint(i);
+        }
+#endif
         Lo += (kD * diffuse + specular) * radiance * NdotL * visibility;
     }
+#ifdef RECEIVER_LIGHT_VISIBILITY
+    outLightVisibility = lightVisibility;
+#endif
 
     // ---------- IBL ----------
     vec3 irradiance = texture(envIrradianceMap, EnvironmentDirection(N)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;

@@ -53,14 +53,20 @@ layout(set = 4, binding = 2, std430) buffer LightingCapture
 };
 #endif
 layout(location = 0) out vec4 outColor;
+#if defined(HYBRID_GI) && (defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS))
+// The deferred receiver's shadow-ray results (deferred_lighting.glsl); zero when no deferred pass ran.
+layout(set = 4, binding = 4) uniform usampler2D receiverLightVisibility;
+#endif
 #ifdef HYBRID_GI
 #    include "../VoxelGI/hybrid_composition.glsl"
 float hybridSpecularVisibility = 1.0;
 vec3  hybridReflectedRadiance  = vec3(0);
 
 // A blended layer resting on the visible receiver (a decal) inherits its reconstructed diffuse
-// lighting, as deferred decals do. Within half a voxel the voxel fallback could not resolve the
-// offset anyway. The planes must roughly agree; decal normals are often authored flipped.
+// lighting and its shadow-ray results, as deferred decals do. Within half a voxel the voxel
+// fallback could not resolve the offset anyway; for shadows, the offset (centimetres for New
+// Sponza's decals) moves shadow edges by about a pixel. The planes must roughly agree; decal
+// normals are often authored flipped.
 bool HybridReceiverSupports(vec3 normal)
 {
     ivec2 p         = ivec2(gl_FragCoord.xy);
@@ -233,6 +239,7 @@ void main()
         vec3  iblF = SurfaceIBLFresnel(s, nv, brdf);
         vec3  irradiance =
             texture(envIrradianceMap, EnvironmentDirection(N)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;
+        uvec2 receiverVisibility = uvec2(0);
 #ifdef VOXEL_GI
 #    ifdef HYBRID_GI
         // Helper lanes only feed derivatives. Along edges their quads straddle other receivers,
@@ -247,6 +254,9 @@ void main()
                                                     : DiffuseVoxelLighting(inWorldPos, N, !diffuse);
         if (diffuse)
         {
+#        if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+            receiverVisibility = texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0).rg;
+#        endif
             irradiance += texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
 #        ifdef LIGHTING_CAPTURE
             captureDiffuseEscaped = texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
@@ -336,7 +346,10 @@ void main()
             // Visibility only scales a nonzero contribution, as the deferred pass skips lights behind it.
             if (any(greaterThan(direct, vec3(0.0))))
             {
-                direct *= SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, shadowNormal);
+                bool traced  = i < int(sceneUbo.lightInfo.x) && ((receiverVisibility.x >> uint(i)) & 1u) != 0u;
+                direct      *= traced ? float((receiverVisibility.y >> uint(i)) & 1u)
+                                      : SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos,
+                                                             shadowNormal);
             }
 #endif
             color += direct;
