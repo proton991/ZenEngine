@@ -31,7 +31,12 @@ void main()
     vec3 geometric = TriangleNormal(normal);
 #endif
     vec4 albedo = MaterialAlbedo(material, inUV, inUV1, inColor);
-    if (!MaterialVisible(material, albedo.a)
+    // Specular-glossiness coverage comes from the diffuse texture, as in the forward pass that
+    // depth-tests against these receivers.
+    float coverage = material.surfaceProperties.w > 0.5
+                       ? material.diffuseFactor.a * inColor.a * MaterialFeatureTexture(material, 2, inUV, inUV1).a
+                       : albedo.a;
+    if (!MaterialVisible(material, coverage)
         || (material.materialProperties.z < 0.5 && !(gl_FrontFacing == (inOrientation >= 0.0))))
     {
         discard;

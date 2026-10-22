@@ -31,7 +31,7 @@ Focused verification for the control change: the editor, runtime demo and shader
 
 The default is **four diffuse rays, one specular ray, 32 history frames and five filter iterations**. Two diffuse rays missed the top-floor 99th-percentile limit (20.94% versus 20%); four passed. This is an explicit sample-count change, not a relaxed tolerance or a P8 performance-qualified preset. Metadata labels it `custom`.
 
-Cone bounce remains deterministic and is evaluated without its sky branch for covered receivers. It is not temporally reconstructed. `H` is zero. Bounce-history/moment allocation and the responsive lighting policy therefore await the stochastic bounce/reflection signals in P5/P6. Forward clearcoat, sheen and other environment lobes share the base-lobe `S`; this is an approximation. Translucent, transmissive, scattering and unsupported-topology layers retain the existing per-surface path.
+Cone bounce remains deterministic and is evaluated without its sky branch for covered receivers. It is not temporally reconstructed. `H` is zero. Bounce-history/moment allocation and the responsive lighting policy therefore await the stochastic bounce/reflection signals in P5/P6. Forward clearcoat, sheen and other environment lobes share the base-lobe `S`; this is an approximation. Translucent, transmissive, scattering and unsupported-topology layers retain the existing per-surface path, except that blend layers resting on the visible receiver (decals) inherit its reconstructed diffuse lighting. The [forward receiver prepass](../HardwareRayQueryEnvironmentLightingPlan.md#forward-receiver-prepass) rules describe this and the forward depth prefill.
 
 ## Resources and invalidation
 

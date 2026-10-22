@@ -290,6 +290,14 @@ Status (2026-10-11): **exit met on the tested RTX 5080**. Moving-camera reprojec
 
 Forward mode currently has no G-buffer. Add a receiver prepass for opaque and alpha-mask forward draws that writes depth, shading normal, roughness, the receiver target and motion. Forward opaque fragments use the reconstructed signals only when their identity and depth match the prepass pixel. Otherwise they keep the per-surface path, and coverage metadata counts them. Translucent and scattering layers keep the per-surface path.
 
+Performance rules (2026-10-21, after New Sponza's blend decals pushed the whole scene forward at 52 ms):
+
+- When every opaque triangle draw is a receiver (no diffuse transmission and no volume thickness, whose back faces the receivers keep), the forward background pass writes the receiver depth, and forward opaque triangles depth-test against it without writing depth. Each pixel is then shaded once. `offscreen_vertex.glsl` declares `gl_Position` invariant so both passes produce identical depth. Receivers test specular-glossiness mask coverage on the diffuse texture, as the forward pass does, so both passes keep the same texels.
+- Helper invocations never take the per-surface voxel fallback. Their quads straddle other receivers along every edge, and tracing for them stalled whole warps.
+- A blend layer resting on the visible receiver (within half a voxel, with planes within 60 degrees, sign ignored because decal normals are often flipped) inherits the receiver's reconstructed bounce and sky, as deferred decals do. It keeps its own specular. Fully transparent blend texels are discarded, which leaves the target unchanged.
+- A light's visibility rays are traced only for a nonzero surface contribution, as the deferred pass skips lights behind the surface.
+- Deferred opaque, forward translucent: when every opaque material is one the G-buffer can shade (no glTF material extension or specular-glossiness outside translucent layers), forward mode lights opaque surfaces with the deferred lighting pass instead of forward opaque draws. The pass writes linear HDR (`uGBufferData.worldOrigin.w = 1`; unlit colors take the inverse tone curve) into the forward target after the background prefill, then translucent layers, refraction and the forward tone map run as before. Views without hybrid GI (PBR) declare the G-buffer for this too.
+
 ### History resources
 
 - Keep per-view persistent textures for: sky, bounce and `nu`; `S` and `H`; luminance moments per channel; history length; and previous depth, normals and identity. Size them to the view, recreate them on resize, and give every additional GI view its own set.

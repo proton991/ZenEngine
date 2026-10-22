@@ -278,6 +278,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                             "SceneRenderer/hybrid_gi.frag.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHybridGISP", "SceneRenderer/offscreen.vert.spv",
                                             "SceneRenderer/forward_material_hybrid.frag.spv"));
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardBackgroundDepthSP", "SceneRenderer/deferred.vert.spv",
+                                            "SceneRenderer/forward_background_depth.frag.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv",
                                          volumeConstants));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureHybridEnvironmentSP", "VoxelGI/capture_environment.comp.spv"));

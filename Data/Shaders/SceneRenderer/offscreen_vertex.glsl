@@ -60,6 +60,8 @@ out gl_PerVertex
     vec4  gl_Position;
     float gl_PointSize;
 };
+// Forward passes depth-test against the hybrid receivers' depth.
+invariant gl_Position;
 
 #ifdef HYBRID_RECEIVER
 #    include "../Common/scene_vertex.glsl"

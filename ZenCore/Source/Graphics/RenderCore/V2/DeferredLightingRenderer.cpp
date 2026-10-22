@@ -318,7 +318,8 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
             }
         }
     }
-    const bool declared = width != 0 && height != 0 && (hybrid || !UsesForwardMaterials());
+    // Scenes whose translucent layers alone need forward shading still light opaque surfaces here.
+    const bool declared = width != 0 && height != 0 && (hybrid || ShadesOpaqueDeferred());
 
     m_gbufferExtent     = declared ? glm::uvec2(width, height) : glm::uvec2(0, 0);
 
@@ -418,7 +419,7 @@ DebugOutputDescription DeferredLightingRenderer::BuildDebugView(const RenderView
                          && (depth || m_gbufferExtent == glm::uvec2(view.width, view.height));
 
     description.reason =
-        description.available ? "" : "This scene uses forward materials or non-triangle geometry; it has no G-buffer.";
+        description.available ? "" : "Opaque materials of this scene need forward shading (material extensions); it has no G-buffer.";
 
     description.format         = depth                                    ? view.GetDepthStencilFormat()
                                : selection.output == DebugOutput::eNormal ? DataFormat::eR16G16UNORM
@@ -491,113 +492,7 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
 
         const bool captureValid = !capture || BuildLightingCaptureClear(view);
 
-        const glm::uvec2 captureExtent(view.GetWidth(), view.GetHeight());
-
-        {
-            RHIGfxPipelineStates pso{};
-
-            pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
-
-            pso.rasterizationState = {};
-
-            pso.multiSampleState   = {};
-
-            pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
-
-            pso.colorBlendState.AddAttachment();
-
-            pso.depthStencilState = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLessOrEqual);
-
-            RDGGraphicsPassDesc lighting{};
-
-            lighting.SetShaderProgramName(voxelGI == nullptr ? (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP")
-                                                             : (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
-
-            if (m_hybrid != nullptr && m_hybrid->IsActive())
-            {
-                lighting.SetShaderProgramName(capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP");
-                m_hybrid->BindLightingInputs(lighting);
-            }
-            if (voxelGI != nullptr && voxelGI->UsesRayShadows())
-            {
-                // Ray-count diagnostics never coincide with a lighting capture.
-                const bool counts = !capture && voxelGI->CountsRays();
-                lighting.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? (capture  ? "DeferredHardwareShadowsCaptureSP"
-                                                                                : counts ? "DeferredHardwareShadowsCountsSP"
-                                                                                         : "DeferredHardwareShadowsSP")
-                                                                             : (capture  ? "DeferredSoftwareShadowsCaptureSP"
-                                                                                : counts ? "DeferredSoftwareShadowsCountsSP"
-                                                                                         : "DeferredSoftwareShadowsSP"));
-                lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
-                if (counts)
-                {
-                    voxelGI->BindRayTotals(lighting);
-                }
-            }
-
-            lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
-
-            lighting.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear,
-                                           RHIRenderTargetStoreOp::eStore);
-
-            lighting.SetPipelineStates(pso);
-
-            lighting.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
-
-            lighting.SetPassTag("SceneLighting");
-
-            const EnvTexture& env = m_pScene->GetEnvTexture();
-
-            const sg::CameraUniformData& camera =
-                *reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
-
-            lighting.BindValue("uGBufferData", BuildGBufferUniformData(camera.projViewMatrix));
-
-            lighting.BindSampledTexture("normalMap", m_pColorSampler, "offscreen_normal");
-
-            lighting.BindSampledTexture("albedoMap", m_pColorSampler, "offscreen_albedo");
-
-            lighting.BindSampledTexture("metallicRoughnessMap", m_pColorSampler, "offscreen_roughness");
-
-            lighting.BindSampledTexture("emissiveOcclusionMap", m_pColorSampler, "offscreen_emissive_occlusion");
-
-            lighting.BindSampledTexture("depthMap", m_pDepthSampler, "offscreen_depth");
-
-            lighting.BindSampledTexture("envIrradianceMap", env.pIrradianceSampler, env.pIrradiance->GetDefaultView());
-
-            lighting.BindSampledTexture("envPrefilteredMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
-
-            lighting.BindSampledTexture("lutBRDFMap", env.pLutBRDFSampler, env.pLutBRDF->GetDefaultView());
-
-            lighting.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
-
-            if (capture)
-            {
-                lighting.BindStorageBuffer("LightingCapture", m_captureOutput);
-            }
-
-            if (voxelGI != nullptr)
-            {
-                voxelGI->BindLightingInputs(lighting);
-
-                voxelGI->BindShadowInputs(lighting, shadows);
-            }
-
-            pRDG->AddGraphicsPass(std::move(lighting))
-                .RecordPassCommands([capture, captureValid, captureExtent](RDGPassCmdEncoder& encoder) {
-                    if (!captureValid)
-                    {
-                        encoder.Fail(RDGErrorCode::eRange, "Lighting capture extent, buffer size or device limits changed");
-                    }
-
-                    if (capture)
-                    {
-                        encoder.SetPushConstants(captureExtent);
-                    }
-
-                    encoder.Draw(3, 1);
-                });
-        }
+        AddLightingPass(view, voxelGI, shadows, capture, captureValid, nullptr);
 
         if (capture && captureValid)
         {
@@ -614,6 +509,146 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
     {
         voxelGI->ReadRayTotals();
     }
+}
+
+void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
+                                               VoxelGIRenderer*     voxelGI,
+                                               SceneShadowRenderer* shadows,
+                                               bool                 capture,
+                                               bool                 captureValid,
+                                               const RDGTexture*    linearTarget)
+{
+    RenderGraph* graph = m_pRenderDevice->GetCurrentFrameRDG();
+
+    const glm::uvec2 captureExtent(view.GetWidth(), view.GetHeight());
+
+    RHIGfxPipelineStates pso{};
+
+    pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
+
+    pso.rasterizationState = {};
+
+    pso.multiSampleState   = {};
+
+    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+
+    pso.colorBlendState.AddAttachment();
+
+    pso.depthStencilState = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLessOrEqual);
+
+    RDGGraphicsPassDesc lighting{};
+
+    lighting.SetShaderProgramName(voxelGI == nullptr ? (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP")
+                                                     : (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
+
+    if (m_hybrid != nullptr && m_hybrid->IsActive())
+    {
+        lighting.SetShaderProgramName(capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP");
+        m_hybrid->BindLightingInputs(lighting);
+    }
+    if (voxelGI != nullptr && voxelGI->UsesRayShadows())
+    {
+        // Ray-count diagnostics never coincide with a lighting capture.
+        const bool counts = !capture && voxelGI->CountsRays();
+        lighting.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? (capture  ? "DeferredHardwareShadowsCaptureSP"
+                                                                        : counts ? "DeferredHardwareShadowsCountsSP"
+                                                                                 : "DeferredHardwareShadowsSP")
+                                                                     : (capture  ? "DeferredSoftwareShadowsCaptureSP"
+                                                                        : counts ? "DeferredSoftwareShadowsCountsSP"
+                                                                                 : "DeferredSoftwareShadowsSP"));
+        lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
+        if (counts)
+        {
+            voxelGI->BindRayTotals(lighting);
+        }
+    }
+
+    if (linearTarget != nullptr)
+    {
+        // The forward background already wrote the G-buffer depth that this pass writes again.
+        lighting.AddColorOutput(*linearTarget, RHIRenderTargetLoadOp::eLoad);
+
+        lighting.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eLoad, RHIRenderTargetStoreOp::eStore);
+    }
+    else
+    {
+        lighting.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
+
+        lighting.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+    }
+
+    lighting.SetPipelineStates(pso);
+
+    lighting.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
+
+    lighting.SetPassTag("SceneLighting");
+
+    const EnvTexture& env               = m_pScene->GetEnvTexture();
+
+    const sg::CameraUniformData& camera = *reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
+
+    GBufferUniformData gbuffer          = BuildGBufferUniformData(camera.projViewMatrix);
+
+    gbuffer.worldOrigin.w               = linearTarget != nullptr ? 1.0f : 0.0f;
+
+    lighting.BindValue("uGBufferData", gbuffer);
+
+    lighting.BindSampledTexture("normalMap", m_pColorSampler, "offscreen_normal");
+
+    lighting.BindSampledTexture("albedoMap", m_pColorSampler, "offscreen_albedo");
+
+    lighting.BindSampledTexture("metallicRoughnessMap", m_pColorSampler, "offscreen_roughness");
+
+    lighting.BindSampledTexture("emissiveOcclusionMap", m_pColorSampler, "offscreen_emissive_occlusion");
+
+    lighting.BindSampledTexture("depthMap", m_pDepthSampler, "offscreen_depth");
+
+    lighting.BindSampledTexture("envIrradianceMap", env.pIrradianceSampler, env.pIrradiance->GetDefaultView());
+
+    lighting.BindSampledTexture("envPrefilteredMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
+
+    lighting.BindSampledTexture("lutBRDFMap", env.pLutBRDFSampler, env.pLutBRDF->GetDefaultView());
+
+    lighting.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
+
+    if (capture)
+    {
+        lighting.BindStorageBuffer("LightingCapture", m_captureOutput);
+    }
+
+    if (voxelGI != nullptr)
+    {
+        voxelGI->BindLightingInputs(lighting);
+
+        voxelGI->BindShadowInputs(lighting, shadows);
+    }
+
+    graph->AddGraphicsPass(std::move(lighting))
+        .RecordPassCommands([capture, captureValid, captureExtent](RDGPassCmdEncoder& encoder) {
+            if (!captureValid)
+            {
+                encoder.Fail(RDGErrorCode::eRange, "Lighting capture extent, buffer size or device limits changed");
+            }
+
+            if (capture)
+            {
+                encoder.SetPushConstants(captureExtent);
+            }
+
+            encoder.Draw(3, 1);
+        });
+}
+
+bool DeferredLightingRenderer::ShadesOpaqueDeferred() const
+{
+    bool result = true;
+
+    for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
+    {
+        result = result && (material.materialProperties.w <= 0.5f || IsTranslucent(material));
+    }
+
+    return result;
 }
 
 bool DeferredLightingRenderer::UsesForwardMaterials() const
@@ -732,28 +767,6 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     fullscreenState.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eAlways);
 
-    RDGGraphicsPassDesc background;
-
-    background.SetShaderProgramName("ForwardBackgroundSP");
-
-    background.SetPassTag("ForwardBackground");
-
-    background.SetPipelineStates(fullscreenState);
-
-    background.SetRenderArea(0, 0, width, height);
-
-    background.AddColorOutput(color, RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore, true);
-
-    background.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
-
-    background.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
-
-    background.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
-
-    background.BindSampledTexture("envSourceMap", env.pPrefilteredSampler, env.pSkybox->GetDefaultView());
-
-    graph->AddGraphicsPass(std::move(background)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
-
     HeapVector<SceneMeshDraw> opaqueDraws[3];
 
     HeapVector<ForwardDrawDepth> translucentDepths;
@@ -823,6 +836,68 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     std::stable_sort(translucentDepths.begin(), translucentDepths.end(), SortForwardDepth);
 
+    // Hybrid receivers already rasterized every opaque triangle. Prefilling their depth lets
+    // the forward passes reject hidden fragments early instead of shading each layer, unless a
+    // layer the receivers exclude (diffuse transmission, volume back faces) needs its own depth.
+    const uint32_t triangles = static_cast<uint32_t>(sg::MeshTopology::Triangles);
+
+    const bool gbuffer       = m_gbufferExtent == glm::uvec2(width, height);
+
+    // When the G-buffer shades every opaque material, deferred lighting replaces the forward
+    // opaque triangles and only translucent layers and non-triangle draws are shaded forward.
+    const bool deferredOpaque = gbuffer && ShadesOpaqueDeferred();
+
+    bool prefilled            = deferredOpaque || (m_hybrid != nullptr && gbuffer);
+
+    for (const SceneMeshDraw& draw : opaqueDraws[triangles])
+    {
+        const sg::MaterialData& material = m_pScene->GetMaterialsData()[draw.materialIndex];
+
+        prefilled &=
+            deferredOpaque || (material.diffuseTransmissionColorFactor.w == 0.0f && material.volumeIridescence.x == 0.0f);
+    }
+
+    if (deferredOpaque)
+    {
+        opaqueDraws[triangles].clear();
+    }
+
+    RHIGfxPipelineStates depthState = fullscreenState;
+
+    depthState.depthStencilState    = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eAlways);
+
+    RDGGraphicsPassDesc background;
+
+    background.SetShaderProgramName(prefilled ? "ForwardBackgroundDepthSP" : "ForwardBackgroundSP");
+
+    background.SetPassTag("ForwardBackground");
+
+    background.SetPipelineStates(prefilled ? depthState : fullscreenState);
+
+    background.SetRenderArea(0, 0, width, height);
+
+    background.AddColorOutput(color, RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore, true);
+
+    background.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+
+    background.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
+
+    background.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
+
+    background.BindSampledTexture("envSourceMap", env.pPrefilteredSampler, env.pSkybox->GetDefaultView());
+
+    if (prefilled)
+    {
+        background.BindSampledTexture("depthMap", m_pDepthSampler, "offscreen_depth");
+    }
+
+    graph->AddGraphicsPass(std::move(background)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
+
+    if (deferredOpaque)
+    {
+        AddLightingPass(view, voxelGI, shadows, capture, true, &color);
+    }
+
     bool scattering = false;
 
     for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
@@ -843,8 +918,8 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
                 state.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
 
-                state.depthStencilState =
-                    RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLessOrEqual);
+                state.depthStencilState = RHIGfxPipelineDepthStencilState::Create(true, !prefilled || topology != triangles,
+                                                                                  RHIDepthCompareOperator::eLessOrEqual);
 
                 state.colorBlendState.AddAttachments(2);
 
@@ -1000,8 +1075,8 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             state.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
 
-            state.depthStencilState =
-                RHIGfxPipelineDepthStencilState::Create(true, writeDepth, RHIDepthCompareOperator::eLessOrEqual);
+            state.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(
+                true, writeDepth && (!prefilled || stage != triangles), RHIDepthCompareOperator::eLessOrEqual);
 
             state.colorBlendState.AddAttachment();
 

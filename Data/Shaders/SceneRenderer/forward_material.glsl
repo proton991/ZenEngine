@@ -57,6 +57,21 @@ layout(location = 0) out vec4 outColor;
 #    include "../VoxelGI/hybrid_composition.glsl"
 float hybridSpecularVisibility = 1.0;
 vec3  hybridReflectedRadiance  = vec3(0);
+
+// A blended layer resting on the visible receiver (a decal) inherits its reconstructed diffuse
+// lighting, as deferred decals do. Within half a voxel the voxel fallback could not resolve the
+// offset anyway. The planes must roughly agree; decal normals are often authored flipped.
+bool HybridReceiverSupports(vec3 normal)
+{
+    ivec2 p         = ivec2(gl_FragCoord.xy);
+    float depth     = texelFetch(hybridDepth, p, 0).r;
+    uvec2 surface   = texelFetch(hybridSurface, p, 0).rg;
+    vec3  fragment  = (uViewMatrix * vec4(inWorldPos, 1.0)).xyz;
+    float receiverZ = (uProjMatrix[3][2] - depth * uProjMatrix[3][3]) / (depth * uProjMatrix[2][3] - uProjMatrix[2][2]);
+    vec3  receiver  = uProjMatrix[3][3] > 0.5 ? vec3(fragment.xy, receiverZ) : fragment * (receiverZ / fragment.z);
+    return depth < 1.0 && surface.y != 0u && distance(receiver, fragment) < 0.5 * gi.gridMinVoxelSize.w
+        && abs(dot(DecodeGBufferNormal(unpackUnorm2x16(surface.x)), normal)) > 0.5;
+}
 #else
 const float hybridSpecularVisibility = 1.0;
 const vec3  hybridReflectedRadiance  = vec3(0);
@@ -194,7 +209,8 @@ void main()
     mat3 basis        = SurfaceBasis(N, tangentUV, true, backface);
     MaterialSurface s = ReadMaterialSurface(material);
     s.modelScale      = nodesData[uNodeIndex].surfaceScale.xyz;
-    if (!MaterialVisible(material, s.baseColor.a)
+    // Fully transparent blended texels leave the target unchanged; skip their lighting.
+    if (!MaterialVisible(material, s.baseColor.a) || (material.surfaceProperties.y == 2.0 && s.baseColor.a <= 0.0)
         || (topology == 2 && (material.materialProperties.z < 0.5 || material.volumeIridescence.x > 0.0)
             && !(gl_FrontFacing == (inOrientation >= 0.0))))
     {
@@ -219,18 +235,26 @@ void main()
             texture(envIrradianceMap, EnvironmentDirection(N)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;
 #ifdef VOXEL_GI
 #    ifdef HYBRID_GI
-        bool reconstructed = topology == 2u && material.surfaceProperties.y != 2.0 && s.transmission == 0.0
-                          && s.diffuseTransmission == 0.0
-                          && HybridReceiverMatches(uNodeIndex, gl_FrontFacing == (inOrientation >= 0.0));
-        irradiance         = reconstructed && gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
-                                                                  : DiffuseVoxelLighting(inWorldPos, N, !reconstructed);
-        if (reconstructed)
+        // Helper lanes only feed derivatives. Along edges their quads straddle other receivers,
+        // and tracing the voxel fallback for them would stall every warp on those edges.
+        bool receiverLayer = topology == 2u && s.transmission == 0.0 && s.diffuseTransmission == 0.0;
+        bool reconstructed = gl_HelperInvocation
+                          || (receiverLayer && material.surfaceProperties.y != 2.0
+                              && HybridReceiverMatches(uNodeIndex, gl_FrontFacing == (inOrientation >= 0.0)));
+        bool diffuse =
+            reconstructed || (receiverLayer && material.surfaceProperties.y == 2.0 && HybridReceiverSupports(shadowNormal));
+        irradiance = diffuse && gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
+                                                    : DiffuseVoxelLighting(inWorldPos, N, !diffuse);
+        if (diffuse)
         {
             irradiance += texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
 #        ifdef LIGHTING_CAPTURE
             captureDiffuseEscaped = texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
             captureDiffuseBounced = irradiance - captureDiffuseEscaped;
 #        endif
+        }
+        if (reconstructed)
+        {
             hybridSpecularVisibility = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).a;
             hybridReflectedRadiance  = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).rgb;
         }
@@ -305,14 +329,17 @@ void main()
         {
             vec3  L;
             float distanceToLight;
-            vec3  radiance   = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i],
-                                             inWorldPos, L, distanceToLight);
-            float visibility = 1.0;
+            vec3  radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i],
+                                           inWorldPos, L, distanceToLight);
+            vec3  direct   = SurfaceDirect(s, N, coatN, T, B, V, L) * radiance;
 #ifdef VOXEL_GI
-            visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, shadowNormal);
+            // Visibility only scales a nonzero contribution, as the deferred pass skips lights behind it.
+            if (any(greaterThan(direct, vec3(0.0))))
+            {
+                direct *= SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos, shadowNormal);
+            }
 #endif
-            vec3 direct  = SurfaceDirect(s, N, coatN, T, B, V, L) * radiance * visibility;
-            color       += direct;
+            color += direct;
 #ifdef LIGHTING_CAPTURE
             capturedDirect += direct;
 #endif

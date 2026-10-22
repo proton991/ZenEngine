@@ -1888,7 +1888,23 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 
     EXPECT_NEAR(raw[centerPixel], clip.z / clip.w * 255.0f, 2);
 
+    // Point and line draws still render forward; the G-buffer shades the scene's triangles.
     ASSERT_TRUE(editor.Load(std::string(ZEN_EDITOR_SHARED_FIXTURES) + "all_primitive_modes.gltf"));
+
+    settings              = editor.GetRenderingState().GetDraft();
+
+    settings.debug.output = rc::DebugOutput::eNormal;
+
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+
+    ASSERT_TRUE(Frame(*device, editor));
+
+    EXPECT_TRUE(editor.GetViewport().GetSnapshot().debug.available);
+
+    // An opaque material extension needs forward shading, so this scene has no G-buffer.
+    ASSERT_TRUE(editor.Load(Fixture("forward_lit.gltf")));
 
     settings              = editor.GetRenderingState().GetDraft();
 

@@ -5,7 +5,7 @@
 layout(set = 1, binding = 0, std140) uniform uGBufferData
 {
     mat4 inverseViewProjection;
-    vec4 worldOrigin;
+    vec4 worldOrigin; // w: 1 writes linear HDR for forward composition instead of the display color
 }
 gbuffer;
 layout(set = 1, binding = 1) uniform sampler2D normalMap;
@@ -229,12 +229,22 @@ void main()
     }
 #endif
 
-    // simple Reinhard tone mapping
-    if (!unlit)
+    if (gbuffer.worldOrigin.w > 0.5)
     {
-        color = color / (color + vec3(1.0));
+        // The forward tone map follows. Unlit display-referred colors take the inverse tone
+        // curve, as forward_material.glsl encodes them, so they keep their authored values.
+        color = unlit ? clamp(color, 0.0, 1.0) / max(vec3(1.0) - clamp(color, 0.0, 1.0), vec3(1.0 / 65504.0))
+                      : clamp(color, 0.0, 65504.0);
     }
-    color        = LinearToSRGB(color);
+    else
+    {
+        // simple Reinhard tone mapping
+        if (!unlit)
+        {
+            color = color / (color + vec3(1.0));
+        }
+        color = LinearToSRGB(color);
+    }
 
     outFragColor = vec4(color, 1.0);
 #ifdef GI_COUNT_RAY_SLOT

@@ -99,7 +99,21 @@ private:
 
     bool UsesForwardMaterials() const;
 
+    // Whether the G-buffer can shade every opaque material, leaving only translucent layers and
+    // non-triangle draws to the forward renderer.
+    bool ShadesOpaqueDeferred() const;
+
     void BuildForwardGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows);
+
+    // Fullscreen lighting of the G-buffer receivers. Without a linear target it tone-maps into the
+    // view and owns the view's depth. With one it writes linear HDR over the forward background's
+    // prefilled depth, so translucent layers compose over it before the forward tone map.
+    void AddLightingPass(const RenderView&    view,
+                         VoxelGIRenderer*     voxelGI,
+                         SceneShadowRenderer* shadows,
+                         bool                 capture,
+                         bool                 captureValid,
+                         const RDGTexture*    linearTarget);
 
     void BuildLightMarkers(const RenderView& view);
 
