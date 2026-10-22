@@ -326,6 +326,7 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     succeeded                                = succeeded && config.ReadNumber("environment_intensity", intensity)
                                             && config.ReadNumber("environment_rotation_degrees", rotation) && config.ReadBool("environment_lighting", enabled)
                                             && config.ReadBool("skybox_visible", visible);
+    enabled = rc::ResolveEnvironmentLighting(enabled, m_renderScene->HasImportedLights(), config);
     for (uint32_t stage = 0; stage < 6 && succeeded; ++stage)
     {
         // Begin each event with a settled original scene. Captures after the event

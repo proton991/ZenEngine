@@ -161,6 +161,12 @@ public:
         return m_lights;
     }
 
+    // Lights imported with the scene; they replace the environment light by default.
+    bool HasImportedLights() const
+    {
+        return !m_importedLightIds.empty();
+    }
+
     RHIBuffer* GetVertexBuffer() const;
 
     uint64_t GetVertexGeneration() const;

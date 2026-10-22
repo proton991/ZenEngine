@@ -383,6 +383,27 @@ TEST(SceneLightingTests, DefaultsExplicitZeroAndMalformedLights)
     EXPECT_TRUE(zen::rc::LoadSceneLights(invalidConfig).empty());
 }
 
+TEST(SceneLightingTests, ImportedLightsReplaceEnvironmentLightingUnlessConfiguredToKeepBoth)
+{
+    std::istringstream defaults("");
+
+    const zen::platform::ConfigLoader defaultConfig(defaults);
+
+    EXPECT_TRUE(zen::rc::ResolveEnvironmentLighting(true, false, defaultConfig));
+
+    EXPECT_FALSE(zen::rc::ResolveEnvironmentLighting(true, true, defaultConfig));
+
+    EXPECT_FALSE(zen::rc::ResolveEnvironmentLighting(false, false, defaultConfig));
+
+    std::istringstream keep("imported_lights_replace_environment=false");
+
+    const zen::platform::ConfigLoader keepConfig(keep);
+
+    EXPECT_TRUE(zen::rc::ResolveEnvironmentLighting(true, true, keepConfig));
+
+    EXPECT_FALSE(zen::rc::ResolveEnvironmentLighting(false, true, keepConfig));
+}
+
 TEST(SceneLightingTests, ParsesTypesAndPreservesConfigIndices)
 {
     std::istringstream input("light_count=3\nlight.0.type=unknown\nlight.1.type=directional\n"

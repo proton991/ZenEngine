@@ -91,7 +91,8 @@ void EditorRenderingState::CommitEnvironmentTexture(const std::string& path)
 void EditorRenderingState::ChangeScene(const std::string&                    path,
                                        Vec3                                  center,
                                        float                                 scale,
-                                       const HeapVector<rc::RenderingLight>& lights)
+                                       const HeapVector<rc::RenderingLight>& lights,
+                                       bool                                  environmentLighting)
 {
     const bool pending  = IsPending();
 
@@ -102,6 +103,8 @@ void EditorRenderingState::ChangeScene(const std::string&                    pat
     m_applied.normalizationScale = m_draft.normalizationScale = scale;
 
     m_applied.lights = m_draft.lights = lights;
+
+    m_applied.environment.lighting = m_draft.environment.lighting = environmentLighting;
 
     m_applied.debug.lightId = m_draft.debug.lightId = lights.empty() ? 0 : lights.front().id;
 

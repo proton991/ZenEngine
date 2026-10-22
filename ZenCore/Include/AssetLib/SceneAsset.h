@@ -70,6 +70,9 @@ enum class LightKind
     Spot
 };
 
+// KHR_lights_punctual's default intensity: candela for point and spot lights, lux for directional.
+constexpr float DefaultLightIntensity = 1.0f;
+
 struct LightAsset
 {
     std::string name;

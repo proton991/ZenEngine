@@ -362,6 +362,8 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
         EXPECT_EQ(lights.GetEntries().size(), 6u);
 
+        EXPECT_TRUE(previous.environmentEnabled);
+
         EXPECT_FALSE(previous.animationEnabled);
 
         for (uint32_t index = 0; index < previous.lightCount; ++index)
@@ -627,6 +629,9 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
         EXPECT_EQ(previous.modelLightCount, 1u);
 
         EXPECT_EQ(lights.GetEntries().size(), 1u);
+
+        // The model's own light replaces the environment light.
+        EXPECT_FALSE(previous.environmentEnabled);
 
         if (!lights.GetEntries().empty())
         {

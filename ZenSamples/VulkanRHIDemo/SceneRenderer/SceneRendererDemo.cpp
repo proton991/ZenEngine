@@ -435,6 +435,8 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
 
     valid           &= config.ReadBool("skybox_visible", visible);
 
+    enabled          = rc::ResolveEnvironmentLighting(enabled, m_renderScene->HasImportedLights(), config);
+
     if (!valid || !m_renderScene->SetEnvironmentLighting(intensity, rotation, enabled, visible))
     {
         LOGW("Invalid environment settings; using defaults");

@@ -1,4 +1,5 @@
 #include "Editor/Services/EditorController.h"
+#include "Platform/ConfigLoader.h"
 #include "Utils/Errors.h"
 #include <chrono>
 
@@ -66,7 +67,9 @@ bool EditorController::Init()
 
         m_rendering.Initialize(settings);
 
-        m_renderDefaults = settings;
+        m_renderDefaults                = settings;
+
+        m_configuredEnvironmentLighting = settings.environment.lighting;
 
         RegisterActions();
 
@@ -415,7 +418,18 @@ bool EditorController::PublishScene(UniquePtr<LoadedScene> candidate, std::strin
 
         const LoadedScene& loaded = *m_scene.Get();
 
-        m_rendering.ChangeScene(path, loaded.normalizationCenter, loaded.normalizationScale, m_importedLights);
+        // Imported lights replace the environment light. The defaults follow, so resets keep it off.
+        m_renderDefaults.environment.lighting = rc::ResolveEnvironmentLighting(
+            m_configuredEnvironmentLighting, !m_importedLights.empty(), platform::ConfigLoader::GetInstance());
+
+        m_rendering.ChangeScene(path, loaded.normalizationCenter, loaded.normalizationScale, m_importedLights,
+                                m_renderDefaults.environment.lighting);
+
+        // Only the lighting state follows the scene; the session's environment preview survives.
+        const EditorEnvironment environment = m_viewport.GetEnvironment();
+
+        m_viewport.SetEnvironmentLighting(environment.intensity, environment.rotationDegrees,
+                                          m_renderDefaults.environment.lighting, environment.skybox);
 
         m_hasSuccessfulRendering = false;
 

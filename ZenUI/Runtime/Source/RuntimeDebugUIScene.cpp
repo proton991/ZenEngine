@@ -27,6 +27,7 @@ const ConfigReference References[]      = {{"model_base_path", "<unset>", "Model
                                            {"voxel_reflectance_budget_mb", "0", "GI / Voxel resources"},
                                            {"environment_texture", "papermill.ktx", "Restart required"},
                                            {"environment_lighting", "true", "Scene / Environment"},
+                                           {"imported_lights_replace_environment", "true", "Scene / Environment"},
                                            {"environment_intensity", "1", "Scene / Environment"},
                                            {"environment_rotation_degrees", "0", "Scene / Environment"},
                                            {"skybox_visible", "true", "Scene / Environment"},

@@ -259,6 +259,15 @@ HeapVector<SceneLight> BuildSceneLights(const sg::Scene& scene)
 }
 
 
+bool ResolveEnvironmentLighting(bool configured, bool importedLights, const platform::ConfigLoader& config)
+{
+    bool replace = true;
+
+    config.ReadBool("imported_lights_replace_environment", replace);
+
+    return configured && !(importedLights && replace);
+}
+
 HeapVector<SceneLight> BuildBoundsLightPreset(const sg::AABB& bounds, bool corners)
 {
     HeapVector<SceneLight> lights;

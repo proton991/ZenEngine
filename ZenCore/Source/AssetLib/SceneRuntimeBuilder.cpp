@@ -256,9 +256,12 @@ void BuildCameraAndLight(const SceneAsset& asset, const NodeAsset& source, sg::N
         {
             direction = Vec3(0, 0, -1);
         }
-        properties.direction      = Vec4(direction, 0);
-        properties.color          = Vec4(definition.color, 1);
-        properties.intensity      = definition.intensity;
+        properties.direction = Vec4(direction, 0);
+        // Exporters that cannot convert a light's units write intensity 0, as for all of New
+        // Sponza's lights. Such lights take glTF's defaults so an imported rig lights its scene;
+        // authored colors are kept unless black. Animations still drive both afterwards.
+        properties.color = Vec4(glm::any(glm::greaterThan(definition.color, Vec3(0.0f))) ? definition.color : Vec3(1.0f), 1);
+        properties.intensity      = definition.intensity > 0.0f ? definition.intensity : DefaultLightIntensity;
         properties.range          = definition.range;
         properties.innerConeAngle = definition.innerConeAngle;
         properties.outerConeAngle = definition.outerConeAngle;

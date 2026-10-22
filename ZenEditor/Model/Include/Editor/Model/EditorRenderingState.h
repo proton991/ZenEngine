@@ -35,7 +35,12 @@ public:
 
     void CommitEnvironmentTexture(const std::string& path);
 
-    void ChangeScene(const std::string& path, Vec3 center, float scale, const HeapVector<rc::RenderingLight>& lights);
+    // Replaces the scene's lights and its environment lighting state (off when imported lights replace it).
+    void ChangeScene(const std::string&                    path,
+                     Vec3                                  center,
+                     float                                 scale,
+                     const HeapVector<rc::RenderingLight>& lights,
+                     bool                                  environmentLighting);
 
     const rc::RenderingSettings& GetDraft() const
     {

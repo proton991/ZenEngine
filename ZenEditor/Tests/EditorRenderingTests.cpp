@@ -1172,6 +1172,51 @@ TEST_P(EditorRendering, EnvironmentSwitchIsTransactionalAndSurvivesSceneReplacem
     std::filesystem::remove_all(directory);
 }
 
+TEST_P(EditorRendering, ImportedLightsReplaceEnvironmentLightingAcrossSceneChanges)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+
+    EditorController editor(*device);
+
+    ASSERT_TRUE(editor.Init());
+
+    ASSERT_TRUE(editor.Load(Fixture("textured.gltf")));
+
+    ASSERT_TRUE(editor.GetViewport().SetEnvironmentLighting(2.0f, 45.0f, true, false));
+
+    for (const char* name : {"inspection.gltf", "textured.gltf"})
+    {
+        ASSERT_TRUE(editor.Load(Fixture(name)));
+
+        const rc::RenderScene* scene = editor.GetViewport().GetRenderScene();
+
+        ASSERT_NE(scene, nullptr);
+
+        const bool imported = scene->HasImportedLights();
+
+        EXPECT_EQ(imported, std::string(name) == "inspection.gltf");
+
+        const rc::SceneUniformData& uniform = *reinterpret_cast<const rc::SceneUniformData*>(scene->GetSceneUniformData());
+
+        // Imported lights replace the environment light; the session's preview values survive.
+        EXPECT_FLOAT_EQ(uniform.environment.z, imported ? 0.0f : 1.0f);
+
+        EXPECT_FLOAT_EQ(uniform.environment.x, 2.0f);
+
+        EXPECT_FLOAT_EQ(uniform.environment.y, glm::radians(45.0f));
+
+        EXPECT_FLOAT_EQ(uniform.environment.w, 0.0f);
+
+        EXPECT_EQ(editor.GetRenderingState().GetApplied().environment.lighting, !imported);
+
+        EXPECT_EQ(editor.GetRenderingDefaults().environment.lighting, !imported);
+
+        ASSERT_TRUE(Frame(*device, editor));
+    }
+
+    DestroyDevice(*device, editor);
+}
+
 TEST_P(EditorRendering, RestoringAuthoredEnvironmentRestoresIntensityAndOrientation)
 {
     UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());

@@ -141,6 +141,11 @@ HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config
 
 HeapVector<SceneLight> BuildSceneLights(const sg::Scene& scene);
 
+// A scene's imported lights replace the environment light by default, so an authored light rig is
+// seen on its own; imported_lights_replace_environment=false keeps both. Returns the environment
+// lighting state to apply in place of the configured one.
+bool ResolveEnvironmentLighting(bool configured, bool importedLights, const platform::ConfigLoader& config);
+
 HeapVector<SceneLight> BuildBoundsLightPreset(const sg::AABB& bounds, bool corners = false);
 
 uint32_t CountShadowFaces(const HeapVector<SceneLight>& lights);

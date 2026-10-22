@@ -78,6 +78,8 @@ def run(exe,folder,names,frames=64,provider="voxel",allow_present_baseline=False
                             voxel_gi_rt_shadows=str(rt_shadows).lower(),
                             voxel_gi_shadow_enabled=str(shadows).lower(),voxel_gi_reflections=str(reflections).lower())
             settings.update({'dynamic_light.enabled':'false','light_markers.enabled':'false'})
+            # The fixtures' contracts combine authored lights with the constant environment.
+            settings['imported_lights_replace_environment'] = 'false'
             settings['environment_rotation_degrees'] = 0
             if name in ('bright_environment_plane','rotated_environment_plane','black_environment_plane') or name.startswith('bright_edge_'):
                 settings['environment_texture'] = (fixtures/('black.hdr' if name=='black_environment_plane' else 'bright.hdr')).as_posix()

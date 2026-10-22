@@ -76,6 +76,62 @@ TEST(SceneImport, ImportsOnlyActiveLightInstancesAndCameraNodesInGLTFAndGLB)
     }
 }
 
+TEST(SceneImport, ZeroIntensityLightsTakeGLTFDefaultsAndKeepAuthoredColors)
+{
+    const std::filesystem::path directory =
+        std::filesystem::temp_directory_path()
+        / ("ZenZeroIntensityLights_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+
+    std::filesystem::create_directories(directory);
+
+    const float vertices[]{0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1};
+
+    std::ofstream(directory / "triangle.bin", std::ios::binary)
+        .write(reinterpret_cast<const char*>(vertices), sizeof(vertices));
+
+    // An exporter that lost the lights' units: zero intensities, one black color.
+    std::ofstream(directory / "lights.gltf")
+        << R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":72,"uri":"triangle.bin"}],)"
+           R"("bufferViews":[{"buffer":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":36}],)"
+           R"("accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},)"
+           R"({"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"}],)"
+           R"("meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1}}]}],)"
+           R"("extensionsUsed":["KHR_lights_punctual"],"extensions":{"KHR_lights_punctual":{"lights":[)"
+           R"({"type":"point","intensity":0,"color":[0,0,0]},{"type":"directional","intensity":0,"color":[1,0.5,0.25]},)"
+           R"({"type":"point","intensity":3,"color":[0.2,0.4,0.6]}]}},)"
+           R"("nodes":[{"mesh":0},{"translation":[0,0,2],"extensions":{"KHR_lights_punctual":{"light":0}}},)"
+           R"({"extensions":{"KHR_lights_punctual":{"light":1}}},{"translation":[1,0,2],"extensions":{"KHR_lights_punctual":{"light":2}}}],)"
+           R"("scenes":[{"nodes":[0,1,2,3]}],"scene":0})";
+
+    sg::Scene scene;
+
+    test::SceneLoader loader;
+
+    const bool loaded = loader.LoadFromFile((directory / "lights.gltf").string(), &scene);
+
+    std::error_code error;
+
+    std::filesystem::remove_all(directory, error);
+
+    ASSERT_TRUE(loaded) << loader.GetError();
+
+    const zen::HeapVector<sg::Light*> lights = scene.GetComponents<sg::Light>();
+
+    ASSERT_EQ(lights.size(), 3u);
+
+    EXPECT_FLOAT_EQ(lights[0]->GetProperties().intensity, asset::DefaultLightIntensity);
+
+    ExpectVectorNear(Vec3(lights[0]->GetProperties().color), Vec3(1.0f));
+
+    EXPECT_FLOAT_EQ(lights[1]->GetProperties().intensity, asset::DefaultLightIntensity);
+
+    ExpectVectorNear(Vec3(lights[1]->GetProperties().color), Vec3(1.0f, 0.5f, 0.25f));
+
+    EXPECT_FLOAT_EQ(lights[2]->GetProperties().intensity, 3.0f);
+
+    ExpectVectorNear(Vec3(lights[2]->GetProperties().color), Vec3(0.2f, 0.4f, 0.6f));
+}
+
 TEST(SceneImport, NormalizationKeepsMeshesLightsAndCamerasTogether)
 {
     sg::Scene scene;
@@ -408,7 +464,7 @@ TEST(SceneImport, QuantizedPositionsAndAssetsWithoutSceneAreSupported)
     }
 }
 
-TEST(SceneImport, ZeroIntensityAndInstancedLightsArePreserved)
+TEST(SceneImport, ZeroIntensityLightsTakeTheDefaultAndInstancedLightsArePreserved)
 {
     sg::Scene scene;
 
@@ -420,7 +476,8 @@ TEST(SceneImport, ZeroIntensityAndInstancedLightsArePreserved)
 
     ASSERT_EQ(lights.size(), 2u);
 
-    EXPECT_FLOAT_EQ(lights[0].intensity, 0.0f);
+    // A zero authored intensity cannot light the scene; it takes glTF's default instead.
+    EXPECT_FLOAT_EQ(lights[0].intensity, asset::DefaultLightIntensity);
 
     EXPECT_NE(lights[0].position, lights[1].position);
 }

@@ -155,15 +155,17 @@ private:
 
     PickStamp MakeStamp() const;
 
-    EditorScene                    m_scene;
-    EditorSelection                m_selection;
-    InspectorNavigation            m_inspector;
-    EditorCamera                   m_camera;
-    EditorActions                  m_actions;
-    EditorPreferences              m_preferences;
-    EditorViewport                 m_viewport;
-    EditorRenderingState           m_rendering;
-    rc::RenderingSettings          m_renderDefaults;
+    EditorScene           m_scene;
+    EditorSelection       m_selection;
+    InspectorNavigation   m_inspector;
+    EditorCamera          m_camera;
+    EditorActions         m_actions;
+    EditorPreferences     m_preferences;
+    EditorViewport        m_viewport;
+    EditorRenderingState  m_rendering;
+    rc::RenderingSettings m_renderDefaults;
+    // engine.cfg's environment lighting, before a scene's imported lights replace it.
+    bool                           m_configuredEnvironmentLighting{true};
     rc::RenderingSettings          m_lastSuccessfulRendering;
     bool                           m_hasSuccessfulRendering{false};
     uint32_t                       m_consecutiveDeclines{0};

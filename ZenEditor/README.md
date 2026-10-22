@@ -187,12 +187,16 @@ Section resets and **Reset setup** restore the session's defaults. GPU allocatio
 failures show a latched PBR fallback reason, with explicit retry and restoration of
 the last successfully rendered setup.
 
-Scenes start with their imported lights, including disabled and zero-intensity lights.
+Scenes start with their imported lights, including disabled ones. Zero-intensity
+lights start at glTF's default intensity (1 cd or 1 lux) and black ones turn white.
+Imported lights replace the environment light: such a scene starts with **Environment
+lighting** off, while texture, intensity, rotation and skybox stay as previewed
+(`imported_lights_replace_environment=false` in engine.cfg keeps both).
 A scene without imported lights starts with none. Add point, directional or spot lights,
 or six side/eight corner lights around the normalized bounds. Imported lights are
 editable copies; **Reset imported lights** restores the file's rig, and **Clear
-lights** is valid. New scenes reset the rig while retaining GI, environment and
-output settings. The demo still opts into the six-light preset explicitly.
+lights** is valid. New scenes reset the rig and environment lighting while retaining GI, the other
+environment and output settings. The demo still opts into the six-light preset explicitly.
 
 The **Light ball** in Rendering > Lighting is a movable point light for GI tests.
 It draws a small sphere in the selected color and lights nearby surfaces in every

@@ -361,7 +361,7 @@ TEST(RenderingSettings, SceneChangeResetsLightsButPreservesPendingGIAndEnvironme
 
     state.CommitEnvironmentTexture("studio.hdr");
 
-    state.ChangeScene("second.gltf", Vec3(2), 0.5f, {});
+    state.ChangeScene("second.gltf", Vec3(2), 0.5f, {}, true);
 
     EXPECT_EQ(state.GetDraft().scenePath, "second.gltf");
 

@@ -1,6 +1,7 @@
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
 #include "ImGui/LightingBackendControls.h"
+#include <algorithm>
 
 namespace zen::editor
 {
@@ -110,6 +111,13 @@ private:
 
             changed |= ImGui::Checkbox("Environment lighting", &settings.lighting);
 
+            if (!settings.lighting
+                && std::any_of(draft.lights.begin(), draft.lights.end(),
+                               [](const rc::RenderingLight& light) { return light.origin == rc::LightOrigin::eImported; }))
+            {
+                DrawHint("Off by default: the scene's imported lights replace the environment light.");
+            }
+
             changed |= ImGui::Checkbox("Show skybox", &settings.skybox);
 
             if (changed)
@@ -141,7 +149,8 @@ private:
                 DrawStatusText(GetEditorPalette().error, editor.GetEnvironmentError().c_str());
             }
 
-            DrawHint("HDR panorama or floating-point cubemap. Preview settings apply across scenes for this session.");
+            DrawHint("HDR panorama or floating-point cubemap. Preview settings apply across scenes for this session; "
+                     "each scene resets environment lighting.");
         }
     }
 
