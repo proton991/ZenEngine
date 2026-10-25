@@ -2018,6 +2018,27 @@ void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* 
 
         vkCmdCopyBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
                         TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(), 1, &bufferCopy);
+        MakeHostReadAvailable(pDstBuffer, region.dstOffset, region.size);
+    }
+}
+
+void FVulkanCommandListContext::MakeHostReadAvailable(RHIBuffer* buffer, uint64_t offset, uint64_t size)
+{
+    const VulkanBuffer* native = TO_VK_BUFFER(buffer);
+    if (native->IsHostReadback())
+    {
+        // Completion orders the host read after this copy; host coherence only removes
+        // the invalidate requirement. Make the device writes available to the host domain.
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_HOST_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = native->GetVkBuffer();
+        barrier.offset              = offset;
+        barrier.size                = size;
+        vkCmdPipelineBarrier(GetCommandBuffer()->GetVkHandle(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
+                             0, nullptr, 1, &barrier, 0, nullptr);
     }
 }
 
@@ -2098,6 +2119,7 @@ void FVulkanCommandListContext::RHICopyTextureToBuffer(RHITexture*              
         vkCmdCopyImageToBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTex)->GetVkImage(),
                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(), copies.size(),
                                copies.data());
+        MakeHostReadAvailable(pDstBuffer, 0, VK_WHOLE_SIZE);
     }
 }
 

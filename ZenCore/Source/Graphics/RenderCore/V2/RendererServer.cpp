@@ -26,6 +26,8 @@ void RendererServer::Init()
     {
         LOGW("Using GI defaults after rejected configuration");
 
+        ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings);
+
         settings.resolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
     }
 

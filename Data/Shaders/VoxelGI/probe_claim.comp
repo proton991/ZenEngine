@@ -1,0 +1,28 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// One thread per uniform tile: the previous uniform probe the tile keeps, else whether it has a
+// receiver. probe_place.comp reads every tile's claim, so a probe that lost its tile to another can
+// go to a free neighbour.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, set = 7, binding = 3) readonly buffer ProbeHistory
+{
+    ProbeRecord probeHistory[];
+};
+layout(std430, set = 7, binding = 31) writeonly buffer ProbeClaims
+{
+    uint probeClaims[];
+};
+#include "probe_claim.glsl"
+
+void main()
+{
+    ivec2 tile = ivec2(gl_GlobalInvocationID.xy);
+    if (ProbeGridInside(tile))
+    {
+        uint slot                     = ProbeKeptSlot(tile);
+        probeClaims[ProbeIndex(tile)] = slot != ZEN_PROBE_INVALID   ? slot
+                                      : ProbeCandidate(tile).x >= 0 ? ZEN_PROBE_CLAIM_FREE
+                                                                    : ZEN_PROBE_INVALID;
+    }
+}

@@ -1,0 +1,141 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// One thread per uniform tile, after probe_claim.comp. A tile keeps the previous uniform probe it
+// claimed; a free tile takes a probe displaced from a neighbouring tile, or else a new receiver from
+// its fixed candidates (probe_claim.glsl). Every uniform placement is written, empty where the tile
+// has no receiver.
+// A kept probe stays at its world position with its own history, so probes stay on their surfaces
+// while the camera moves. A probe fixed to its screen pixel slid across the scene instead, and its
+// history averaged light along that trail: shading lost contrast under arches, and tile-sized
+// patches changed by over 5% per frame on 14% of pixels (Sponza, 2870x1579, strafing).
+// Adaptive probes cover receivers the uniform probes miss.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, set = 7, binding = 21) writeonly buffer ProbePlacements
+{
+    ProbePlacement probePlacements[];
+};
+layout(std430, set = 7, binding = 3) readonly buffer ProbeHistory
+{
+    ProbeRecord probeHistory[];
+};
+layout(std430, set = 7, binding = 31) readonly buffer ProbeClaims
+{
+    uint probeClaims[];
+};
+#include "probe_claim.glsl"
+
+// Where a probe displaced from a tile goes: the free tile among the eight around it whose centre is
+// nearest the probe, or (-1, -1). Every tile computes the same answer from the claims, so a
+// displaced probe is kept at most once.
+ivec2 ProbeDisplacedTo(ivec2 owner, vec2 pixel)
+{
+    ivec2 result = ivec2(-1);
+    float best   = 0.0;
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            ivec2 neighbour = owner + ivec2(x, y);
+            if ((x != 0 || y != 0) && ProbeGridInside(neighbour) && probeClaims[ProbeIndex(neighbour)] == ZEN_PROBE_CLAIM_FREE)
+            {
+                float d = distance(pixel, ProbeTileCenter(neighbour));
+                if (result.x < 0 || d < best)
+                {
+                    result = neighbour;
+                    best   = d;
+                }
+            }
+        }
+    }
+    return result;
+}
+
+// A free tile's displaced probe: a previous uniform probe that now projects into a neighbouring tile
+// which kept another one, goes to this tile, and lies on the surface a new probe here would take.
+// World-locked probes drift unevenly across tiles while the camera moves, leaving some tiles two
+// probes and others none; ending the extra probe and starting a new one in the empty tile replaced
+// about 40% of the uniform probes every frame while strafing on Sponza. The longest history wins,
+// then the probe nearest the tile centre.
+ProbePlacement ProbeDisplaced(ivec2 tile, ivec2 candidate)
+{
+    ProbePlacement result = ProbePlacement(vec4(0), vec4(0), vec4(0));
+    if (ProbeHistoryValid())
+    {
+        mat4  projectionView = inverse(hybrid.inverseViewProjection);
+        vec2  center         = ProbeTileCenter(tile);
+        vec3  position       = HybridPosition(candidate);
+        vec3  geometric      = HybridGeometricNormal(candidate);
+        float footprint      = ProbePixelFootprint(candidate);
+        uint  identity       = texelFetch(receiverSurface, candidate, 0).g;
+        ivec2 previousTile   = ivec2(floor(ProbePreviousPixel(center) / float(probe.grid.z)));
+        float bestLength     = 0.0;
+        float bestDistance   = 0.0;
+        for (int y = -2; y <= 2; ++y)
+        {
+            for (int x = -2; x <= 2; ++x)
+            {
+                ivec2 coordinate = previousTile + ivec2(x, y);
+                uint  slot       = ProbeGridInside(coordinate) ? ProbeIndex(coordinate) : ZEN_PROBE_INVALID;
+                if (slot < ProbeHistorySlotCount())
+                {
+                    vec4  oldPosition = probeHistory[slot].position;
+                    vec4  oldNormal   = probeHistory[slot].normal;
+                    float oldIdentity = probeHistory[slot].screen.z;
+                    ivec2 pixel;
+                    if (ProbeReproject(projectionView, oldPosition, oldNormal, oldIdentity, pixel))
+                    {
+                        ivec2 owner = pixel / int(probe.grid.z);
+                        uint  claim = probeClaims[ProbeIndex(owner)];
+                        float d     = distance(vec2(pixel), center);
+                        if (claim < ZEN_PROBE_CLAIM_FREE && claim != slot && ProbeDisplacedTo(owner, vec2(pixel)) == tile
+                            && floatBitsToUint(oldIdentity) == identity
+                            && ProbeSurfaceWeight(position, geometric, footprint, oldPosition, oldNormal) > 0.0
+                            && (result.position.w < 0.5 || oldNormal.w > bestLength
+                                || (oldNormal.w == bestLength && d < bestDistance)))
+                        {
+                            result       = ProbeKeptPlacement(slot, oldPosition, oldNormal, oldIdentity, pixel);
+                            bestLength   = oldNormal.w;
+                            bestDistance = d;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+void main()
+{
+    ivec2 tile = ivec2(gl_GlobalInvocationID.xy);
+    if (ProbeGridInside(tile))
+    {
+        uint           claim  = probeClaims[ProbeIndex(tile)];
+        ProbePlacement chosen = ProbePlacement(vec4(0), vec4(0), vec4(0));
+        ivec2          pixel;
+        if (claim < ZEN_PROBE_CLAIM_FREE
+            && ProbeReproject(inverse(hybrid.inverseViewProjection), probeHistory[claim].position, probeHistory[claim].normal,
+                              probeHistory[claim].screen.z, pixel))
+        {
+            chosen = ProbeKeptPlacement(claim, probeHistory[claim].position, probeHistory[claim].normal,
+                                        probeHistory[claim].screen.z, pixel);
+        }
+        else if (claim != ZEN_PROBE_INVALID)
+        {
+            ivec2 candidate = ProbeCandidate(tile);
+            if (candidate.x >= 0)
+            {
+                chosen = claim == ZEN_PROBE_CLAIM_FREE ? ProbeDisplaced(tile, candidate) : chosen;
+                if (chosen.position.w < 0.5)
+                {
+                    // A new uniform probe starts from its neighbours' histories, gathered at other
+                    // positions; the most ray batches replace that with its own light sooner.
+                    chosen          = ProbePlaceAt(candidate);
+                    chosen.screen.w = ProbeRayBatches(0.0);
+                }
+            }
+        }
+        probePlacements[ProbeIndex(tile)] = chosen;
+    }
+}

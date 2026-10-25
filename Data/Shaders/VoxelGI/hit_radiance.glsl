@@ -73,6 +73,53 @@ vec3 HitReflectance(sampler3D normals, HybridRayResult hit, int axis, bool avera
     }
     return reflectance;
 }
+// Brick hits closer than this many class cells to a cached point or spot light are re-traced
+// against triangles (BrickRetraceTriangles). On New Sponza, all lights' bounce with bricks and probes
+// against the CUDA reference: 0.5 cells -26% (floor -43%), 0.75 -19% (-25%), 1 -11% (-5%), 1.5
+// -11% (-4%); without re-tracing -26% (-41%). The radius barely changes the cost.
+#    define ZEN_BRICK_RETRACE_CELLS 1.0
+// Whether a ray hit lies within ZEN_BRICK_RETRACE_CELLS class cells of a cached point or spot light.
+// Lamp light reaches a room through lantern openings and frames centimetres wide, which fine voxels
+// close: on New Sponza (uniform albedo, 128-cell bricks) brick traversal lost 80-85% of the floor's
+// lamp bounce, and sun bounce was within 8%.
+bool HitNearLocalLight(vec3 position)
+{
+    bool near = false;
+    if (gi.limits.w > 0.5)
+    {
+        uvec4 header = hitLightCache.lightCount;
+        float size   = gi.gridMinVoxelSize.w * gi.volume.x / float(max(int(header.z), 1));
+        uint  count  = min(header.x, uint(ZEN_LIGHT_CACHE_LIGHTS));
+        for (uint i = 0u; i < count && !near; ++i)
+        {
+            SceneLight light = hitLightCache.cacheLights[i];
+            near =
+                int(light.directionType.w) != 0 && distance(light.positionRange.xyz, position) < ZEN_BRICK_RETRACE_CELLS * size;
+        }
+    }
+    return near;
+}
+#    ifdef HYBRID_BRICK_TRAVERSAL
+// Class cells a re-trace follows triangles before bricks take over again. A ray through a
+// lantern's openings would otherwise cross the room against every triangle.
+#        define ZEN_BRICK_RETRACE_SEGMENT_CELLS 2.0
+// Re-traces a ray queued by a brick trace (probe_trace.glsl, hybrid_trace.glsl) from one fine voxel
+// before its hit next to a lamp: bricks are conservative, so no triangle lies closer. Opaque
+// triangles over ZEN_BRICK_RETRACE_SEGMENT_CELLS class cells, then bricks from the segment's end,
+// in mid-air, so without the starting-run skip. Alpha masks are ignored: testing them more than
+// doubled the re-trace's cost in probe traces (software_ray_query.glsl).
+HybridRayResult BrickRetraceTriangles(vec3 start, vec3 direction)
+{
+    float           size    = gi.gridMinVoxelSize.w * gi.volume.x / float(max(int(hitLightCache.lightCount.z), 1));
+    float           segment = ZEN_BRICK_RETRACE_SEGMENT_CELLS * size;
+    HybridRayResult result  = SoftwareTraceOpaqueRay(start, direction, segment, true);
+    if (!result.hit)
+    {
+        result = BrickTraceRaySkip(start + direction * segment, direction, 1e20, false);
+    }
+    return result;
+}
+#    endif
 // Cached scene light leaving a hit. Visibility comes from the cell's surfaces of the hit's class,
 // or from a ray for near lights; attenuation and cosine are the hit's.
 vec3 HitCachedLight(sampler3D normals, HybridRayResult hit, bool previous, out bool found)

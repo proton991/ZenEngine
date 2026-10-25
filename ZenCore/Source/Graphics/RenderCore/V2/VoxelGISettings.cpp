@@ -16,15 +16,23 @@ bool ApplyVoxelGIPreset(VoxelGIPreset preset, VoxelGIRuntimeSettings& settings)
     {
         settings.resolution = preset == VoxelGIPreset::Ultra ? 256 : preset == VoxelGIPreset::High ? 128 : 64;
         settings.cone.SetAllFeatureProviders(VoxelGISettings::RayProvider::Auto);
-        settings.cone.rayProvider      = preset == VoxelGIPreset::Low    ? VoxelGISettings::RayProvider::Voxel
-                                       : preset == VoxelGIPreset::Medium ? VoxelGISettings::RayProvider::Auto
-                                                                         : VoxelGISettings::RayProvider::Hardware;
+        settings.cone.rayProvider = preset == VoxelGIPreset::Low    ? VoxelGISettings::RayProvider::Voxel
+                                  : preset == VoxelGIPreset::Medium ? VoxelGISettings::RayProvider::Auto
+                                                                    : VoxelGISettings::RayProvider::Hardware;
+        // Passes without HW RT trace bricks; the sky cache and direct shadows keep triangles.
+        settings.cone.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
+        settings.cone.brickResolution  = 128;
+        settings.cone.gather           = VoxelGISettings::Gather::Pixel;
+        settings.cone.probeSpacing     = 16;
         settings.cone.samples          = 4;
         settings.cone.adaptiveSampling = true;
         settings.cone.referenceSamples = 0;
         settings.cone.historyFrames    = 32;
         settings.cone.temporal         = true;
         settings.cone.filter           = true;
+        // A pass the GI tracing panel switched off comes back on.
+        settings.cone.indirectDiffuse   = true;
+        settings.cone.specularOcclusion = true;
         settings.cone.reflections =
             preset == VoxelGIPreset::Low ? VoxelGISettings::Reflections::Off : VoxelGISettings::Reflections::On;
         settings.shadowMapResolution = 1024;
@@ -37,8 +45,10 @@ VoxelGIPreset GetVoxelGIPreset(const VoxelGIRuntimeSettings& settings)
     const VoxelGISettings& cone   = settings.cone;
     VoxelGIPreset          preset = VoxelGIPreset::Custom;
     if (cone.samples == 4 && cone.adaptiveSampling && cone.referenceSamples == 0 && cone.historyFrames == 32 && cone.temporal
-        && cone.filter && cone.specularOcclusion && cone.shadows && cone.rtShadows
-        && cone.bounceSource == VoxelGISettings::BounceSource::Auto && settings.shadowMapResolution == 1024)
+        && cone.filter && cone.indirectDiffuse && cone.specularOcclusion && cone.shadows && cone.rtShadows
+        && cone.bounceSource == VoxelGISettings::BounceSource::Auto && settings.shadowMapResolution == 1024
+        && cone.computeTraversal == VoxelGISettings::ComputeTraversal::Bricks && cone.brickResolution == 128
+        && cone.gather == VoxelGISettings::Gather::Pixel && cone.probeSpacing == 16)
     {
         if (settings.resolution == 64 && cone.reflections == VoxelGISettings::Reflections::Off)
         {

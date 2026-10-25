@@ -1,0 +1,83 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// One edge-aware a-trous pass over the half-resolution specular samples, between
+// probe_specular_trace.comp and probe_specular_resolve.comp. Each sample belongs to its block's
+// traced receiver; taps on another surface, plane, lobe or roughness are skipped. One binary
+// visibility ray per 2x2 block leaves no variance to stop on, so the footprint alone limits the
+// blur: four 3x3 passes reach 30 pixels for visibility on rough surfaces, and reflected radiance
+// keeps the per-pixel filter's footprint (hybrid_filter.glsl) on smooth ones. The trace stores
+// each block's receiver, so a tap reads three texels instead of the receiver guides.
+layout(constant_id = 0) const uint filterStep = 1u;
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 7, binding = 6) uniform sampler2D rawProbeSpecular;
+layout(set = 7, binding = 29) uniform usampler2D rawProbeSpecularSurface;
+layout(set = 7, binding = 30) uniform sampler2D rawProbeSpecularPosition;
+layout(set = 7, binding = 28, rgba16f) uniform writeonly image2D filteredProbeSpecular;
+
+void main()
+{
+    ivec2 block = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size  = textureSize(rawProbeSpecular, 0);
+    if (all(lessThan(block, size)))
+    {
+        vec4  center  = texelFetch(rawProbeSpecular, block, 0);
+        uvec4 surface = texelFetch(rawProbeSpecularSurface, block, 0);
+        vec4  result  = center;
+        if (hybrid.rejection.y > 0.0 && surface.x != 0u)
+        {
+            vec4  place      = texelFetch(rawProbeSpecularPosition, block, 0);
+            vec3  normal     = DecodeGBufferNormal(unpackUnorm2x16(surface.y));
+            vec3  geometric  = DecodeGBufferNormal(unpackUnorm2x16(surface.z));
+            float roughness  = place.w;
+            float planeLimit = max(probe.parameters.x, 1e-6);
+            // This pass's tap spacing in full-resolution pixels decides which signals may spread.
+            float       spacing    = float(2u * filterStep);
+            bool        visibility = spacing <= max(2.0, roughness * 64.0);
+            bool        radiance   = spacing <= max(1.0, roughness * roughness * 128.0);
+            const float kernel[3]  = float[3](1, 2, 1);
+            vec4        sum        = vec4(0);
+            vec2        total      = vec2(0); // reflected radiance, visibility
+            for (int y = -1; y <= 1; ++y)
+            {
+                for (int x = -1; x <= 1; ++x)
+                {
+                    ivec2 q         = block + ivec2(x, y) * int(filterStep);
+                    bool  centerTap = x == 0 && y == 0;
+                    if ((centerTap || visibility || radiance) && all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, size)))
+                    {
+                        uvec4 other = texelFetch(rawProbeSpecularSurface, q, 0);
+                        if (other.x == surface.x)
+                        {
+                            vec4  otherPlace     = texelFetch(rawProbeSpecularPosition, q, 0);
+                            vec3  delta          = otherPlace.xyz - place.xyz;
+                            float roughnessLimit = max(0.02, 0.15 * max(roughness, otherPlace.w));
+                            float normalDot      = dot(normal, DecodeGBufferNormal(unpackUnorm2x16(other.y)));
+                            if (abs(dot(delta, geometric)) <= planeLimit * max(1.0, length(delta))
+                                && dot(geometric, DecodeGBufferNormal(unpackUnorm2x16(other.z))) >= 0.9
+                                && normalDot >= mix(0.999, 0.9, roughness * roughness)
+                                && abs(roughness - otherPlace.w) <= roughnessLimit)
+                            {
+                                float w     = kernel[x + 1] * kernel[y + 1] * pow(max(normalDot, 0.0), 32.0);
+                                vec4  value = texelFetch(rawProbeSpecular, q, 0);
+                                if (centerTap || radiance)
+                                {
+                                    sum.rgb += value.rgb * w;
+                                    total.x += w;
+                                }
+                                if (centerTap || visibility)
+                                {
+                                    sum.a   += value.a * w;
+                                    total.y += w;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // The center tap always passes its own tests.
+            result = vec4(sum.rgb / max(total.x, 1e-8), sum.a / max(total.y, 1e-8));
+        }
+        imageStore(filteredProbeSpecular, block, result);
+    }
+}

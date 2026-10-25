@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
+#include "Graphics/RenderCore/V2/Renderer/ScreenProbeGather.h"
 
 namespace zen::rc
 {
@@ -33,6 +34,8 @@ struct HybridGIUniformData
 };
 static_assert(sizeof(HybridGIUniformData) == 256);
 
+void BindHybridReceiverGuides(RDGPassDescBase& pass, RHISampler* sampler, const HybridGIUniformData& uniforms);
+
 // One instance owns histories for one view. Imported textures use RenderDevice's
 // submission history (including all outstanding readers), not CPU frame parity.
 class HybridGIRenderer
@@ -47,8 +50,17 @@ public:
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection) const;
     void                   OnRenderGraphExecuted(RenderFrameResult result);
     void                   InvalidateHistory(const char* reason);
-    void                   Destroy();
-    void                   SetCapture(RHIBuffer* output, RHIBuffer* readback)
+    // Set between recordings. Only the learned pixel-gather guide is affected.
+    void SetDeterministicGuideCapture(bool enabled)
+    {
+        if (m_deterministicGuideCapture != enabled)
+        {
+            m_deterministicGuideCapture = enabled;
+            InvalidateHistory("guide_accumulation");
+        }
+    }
+    void Destroy();
+    void SetCapture(RHIBuffer* output, RHIBuffer* readback)
     {
         m_captureOutput   = output;
         m_captureReadback = readback;
@@ -83,6 +95,15 @@ public:
     {
         return m_halfDiffuse;
     }
+    bool UsesScreenProbes() const
+    {
+        return m_screenProbes;
+    }
+    // Screen-probe counters of the last frame recorded with a lighting capture.
+    ScreenProbeStatistics GetScreenProbeStatistics() const
+    {
+        return m_probeGather.ReadStatistics();
+    }
     uint32_t GetFrame() const
     {
         return m_frame;
@@ -103,6 +124,25 @@ private:
     void BindGuides(RDGPassDescBase& pass) const;
     void BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const;
     void Dispatch(RDGComputePassDesc&& pass);
+    void DestroyPixelHistory();
+    // A brick trace pass's diffuse rays to re-trace against triangles (hybrid_retrace.glsl).
+    struct RetraceQueue
+    {
+        RDGBuffer header;
+        RDGBuffer rays;
+        RDGBuffer receivers;
+    };
+    // Resets a queue of up to the given rays and binds it to the trace pass that fills it.
+    RetraceQueue AddRetraceQueue(RDGComputePassDesc& trace, const char* name, uint64_t capacity) const;
+    // Re-traces a queue after its trace pass and adds the results to the images that pass wrote;
+    // with counts, its rays are added to the ray-count capture.
+    void AddRetracePass(const RetraceQueue& queue,
+                        VoxelGIRenderer&    voxelGI,
+                        const char*         tag,
+                        bool                counts,
+                        RDGTexture          sky,
+                        RDGTexture          bounce,
+                        RDGTexture          previous) const;
 
     enum HistoryTexture : uint32_t
     {
@@ -120,18 +160,20 @@ private:
         Budget,       // Nonzero where the trace used the reduced settled ray budget.
         Count
     };
-    RenderDevice* m_device;
-    RenderScene*  m_scene{nullptr};
-    RHISampler*   m_sampler{nullptr};
-    RHIBuffer*    m_captureOutput{nullptr};
-    RHIBuffer*    m_captureReadback{nullptr};
-    RHIBuffer*    m_rayCountOutput{nullptr};
-    RHIBuffer*    m_rayCountReadback{nullptr};
-    bool          m_rayCountsRecorded{false};
-    RHITexture*   m_history[2][Count]{};
-    bool          m_historyNeedsClear[2][Count]{};
+    RenderDevice*     m_device;
+    ScreenProbeGather m_probeGather;
+    RenderScene*      m_scene{nullptr};
+    RHISampler*       m_sampler{nullptr};
+    RHIBuffer*        m_captureOutput{nullptr};
+    RHIBuffer*        m_captureReadback{nullptr};
+    RHIBuffer*        m_rayCountOutput{nullptr};
+    RHIBuffer*        m_rayCountReadback{nullptr};
+    bool              m_rayCountsRecorded{false};
+    RHITexture*       m_history[2][Count]{};
+    bool              m_historyNeedsClear[2][Count]{};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
     RHIBuffer*       m_guide[2]{};
+    RHIBuffer*       m_retraceHeader{nullptr}; // Host-written start of every re-trace queue's header.
     RDGTexture       m_outputSky, m_outputSpecular, m_outputBounce;
     RDGTexture       m_rawSky, m_rawSpecular;
     HeapVector<Mat4> m_previousModels;
@@ -151,9 +193,14 @@ private:
     VoxelGISettings           m_previousSettings;
     VoxelGISettings           m_recordedSettings;
     uint32_t                  m_previousHardwareMask{0};
+    bool                      m_previousBrickTraversal{false};
+    bool                      m_recordedBrickTraversal{false};
     bool                      m_previousRayBounce{false};
     bool                      m_halfDiffuse{false};
+    bool                      m_screenProbes{false};
+    bool                      m_previousScreenProbes{false};
     bool                      m_previousReflections{false};
+    bool                      m_deterministicGuideCapture{false};
     glm::uvec2                m_extent{0};
     uint64_t                  m_geometry{0}, m_environment{0}, m_surface{0};
     uint64_t                  m_radianceGeneration{0}, m_recordedRadianceGeneration{0};

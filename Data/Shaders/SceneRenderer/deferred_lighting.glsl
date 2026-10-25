@@ -201,9 +201,15 @@ void main()
     vec3 kD               = (vec3(1.0) - kS) * (1.0 - metallic);
 #if defined(VOXEL_GI)
 #    ifdef HYBRID_GI
-    vec3 sky         = texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
-    vec3 bounce      = gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
-                                           : DiffuseVoxelLighting(worldPos, N, false);
+    // Indirect diffuse off (GI tracing panel) keeps the unoccluded environment, as without GI.
+    vec3 sky    = irradiance;
+    vec3 bounce = vec3(0);
+    if (gi.indirect.x > 0.5)
+    {
+        sky    = texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
+        bounce = gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
+                                     : DiffuseVoxelLighting(worldPos, N, false);
+    }
     vec3 diffuseIBL  = (bounce + sky) * albedo;
     vec4 reflected   = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0);
     prefilteredColor = prefilteredColor * reflected.a + reflected.rgb;
@@ -212,7 +218,7 @@ void main()
     captureDiffuseBounced = bounce;
 #        endif
 #    else
-    vec3 diffuseIBL = DiffuseVoxelLighting(worldPos, N) * albedo;
+    vec3 diffuseIBL = (gi.indirect.x > 0.5 ? DiffuseVoxelLighting(worldPos, N) : irradiance) * albedo;
 #    endif
 #else
     vec3 diffuseIBL = irradiance * albedo;

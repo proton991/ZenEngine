@@ -1,0 +1,26 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// Initializes one side of the probe history: every uniform and adaptive slot, and its subtile map.
+layout(local_size_x = 64) in;
+layout(std430, set = 7, binding = 1) writeonly buffer ProbeOutput
+{
+    ProbeRecord probeOutput[];
+};
+layout(std430, set = 7, binding = 23) writeonly buffer ProbeSubtiles
+{
+    uvec2 probeSubtiles[];
+};
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < ProbeSlotCount())
+    {
+        probeOutput[index] = ProbeEmpty();
+    }
+    if (index < probe.adaptive.x * probe.adaptive.y)
+    {
+        probeSubtiles[index] = uvec2(ZEN_PROBE_INVALID);
+    }
+}

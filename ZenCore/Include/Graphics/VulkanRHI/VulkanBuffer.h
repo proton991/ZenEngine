@@ -41,6 +41,11 @@ public:
         return m_bufferView;
     }
 
+    bool IsHostReadback() const
+    {
+        return m_allocateType == RHIBufferAllocateType::eCPURead;
+    }
+
 protected:
     void Init() override;
 

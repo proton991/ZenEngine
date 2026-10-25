@@ -1,0 +1,28 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+// Walks each listed receiver's re-trace chain with the predicate hybrid_retrace_bricks.glsl uses,
+// recording the rays visited and the sum of their weights.
+#define HYBRID_RETRACE_PASS
+#include "../hybrid_retrace.glsl"
+layout(local_size_x = 64) in;
+layout(set = 1, binding = 0, std430) writeonly buffer Results
+{
+    uvec2 results[];
+};
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < min(retraceHeader.receivers, uint(retraceReceivers.length())))
+    {
+        uint  ray    = retraceReceivers[index].y;
+        uint  walked = 0u;
+        float weight = 0.0;
+        for (; HybridRetraceContinues(ray, walked); ++walked)
+        {
+            weight += uintBitsToFloat(retraceRays[ray * 2u + 1u].w);
+            ray     = retraceRays[ray * 2u].w;
+        }
+        results[index] = uvec2(walked, floatBitsToUint(weight));
+    }
+}

@@ -53,6 +53,21 @@ public:
     {
         return m_nodeBuffers.GetBuffer() != nullptr && !m_placeholder;
     }
+    // World-space triangles in BVH order, for passes that read them without traversal (BrickScene).
+    RHIBuffer* GetTriangleBuffer() const
+    {
+        return m_triangleBuffers.GetBuffer();
+    }
+    // Scene triangles in the buffer; zero for placeholders, whose buffer holds one unused element.
+    uint32_t GetTriangleCount() const
+    {
+        return m_placeholder ? 0u : m_triangleCount;
+    }
+    // Geometry revision of the prepared triangles.
+    uint64_t GetRevision() const
+    {
+        return m_revision;
+    }
 
 private:
     RenderDevice*   m_device;
@@ -61,6 +76,7 @@ private:
     FrameBufferRing m_triangleBuffers;
     uint64_t        m_revision{0};
     uint32_t        m_nodeCount{0};
+    uint32_t        m_triangleCount{0};
     bool            m_placeholder{false};
 };
 } // namespace zen::rc

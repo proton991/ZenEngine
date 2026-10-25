@@ -7,6 +7,8 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/Shared/LightingCapture.h"
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
+#include "Graphics/Shared/ScreenProbe.h"
 #include "Graphics/RenderCore/V2/ComputeDispatch.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
@@ -159,6 +161,7 @@ template <class T> HeapVector<T> ReadStaticBuffer(RHIBuffer* buffer)
 #include "ConeVoxelVisibilityTests.inl"
 #include "ConeEnvironmentTests.inl"
 #include "HybridEstimatorTests.inl"
+#include "ScreenProbeGatherIntegrationTests.inl"
 #include "CompactGBufferTests.inl"
 #include "SceneGeometryUpdatesTests.inl"
 

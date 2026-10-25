@@ -6,6 +6,7 @@
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/Shared/EnvironmentSampling.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/DynamicRHI.h"
@@ -1084,8 +1085,16 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
 
         const rc::VoxelizerBase& voxels      = *server.RequestVoxelizer();
 
-        const rc::VoxelGISettings& cone      = server.RequestVoxelGI()->GetSettings();
-        const bool                 adaptive  = cone.UsesAdaptiveSampling();
+        const rc::VoxelGISettings&  cone     = server.RequestVoxelGI()->GetSettings();
+        const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
+        const bool                  hybridActive =
+            server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && hybrid->IsHistoryValid();
+        const bool     probes      = hybridActive && hybrid->UsesScreenProbes();
+        const bool     adaptive    = !probes && cone.UsesAdaptiveSampling();
+        const uint32_t sampleCount = probes ? 64u : cone.referenceSamples != 0 ? cone.referenceSamples : cone.samples;
+        const uint32_t specularSamples =
+            cone.specularOcclusion ? (cone.referenceSamples != 0 ? cone.referenceSamples : 1u) : 0u;
+        const rc::BrickScene& bricks = server.RequestVoxelGI()->GetBrickScene();
 
         // [0,0] when the last frame had no G-buffer (forward materials).
         const glm::uvec2 gbuffer = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
@@ -1124,14 +1133,40 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
         JSONString(output, rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())));
         output << ",\"gi_selection_reason\":";
         JSONString(output, server.GetGISelectionReason());
-        output << ",\"gi_method\":\"hybrid\""
+        output << ",\"gi_method\":\""
+               << (hybridActive                                                                  ? "hybrid"
+                   : server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid == nullptr ? "cone"
+                                                                                                 : "pbr")
+               << "\""
+               << ",\"compute_traversal\":\"" << (server.RequestVoxelGI()->UsesBrickTraversal() ? "bricks" : "software_bvh")
+               << "\""
+               << ",\"requested_compute_traversal\":\""
+               << (cone.computeTraversal == rc::VoxelGISettings::ComputeTraversal::Bricks ? "bricks" : "triangles") << "\""
+               << ",\"brick_resolution\":" << cone.brickResolution
+               << ",\"brick_scene_ready\":" << (server.RequestVoxelGI()->UsesBrickTraversal() && bricks.IsReady())
+               << ",\"brick_scene_bytes\":" << bricks.GetResidentBytes() << ",\"brick_capacity\":" << bricks.GetCapacity()
                << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider) << ",\"bounce_source\":\""
                << (server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone") << "\""
-               << ",\"diffuse_samples\":" << cone.samples << ",\"reference_samples\":" << cone.referenceSamples
-               << ",\"adaptive_sampling\":" << adaptive << ",\"diffuse_samples_max\":"
-               << (cone.referenceSamples != 0 ? cone.referenceSamples : cone.samples + (adaptive ? 2u : 0u))
-               << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE << ",\"history_frames\":" << cone.historyFrames
-               << ",\"temporal\":" << cone.temporal << ",\"filter\":" << cone.filter
+               << ",\"requested_gather\":\"" << (cone.gather == rc::VoxelGISettings::Gather::Probes ? "probes" : "pixel")
+               << "\""
+               << ",\"gather\":\""
+               << (probes         ? "probes"
+                   : hybridActive ? "pixel"
+                                  : "none")
+               << "\""
+               << ",\"requested_probe_spacing\":" << cone.probeSpacing
+               << ",\"probe_spacing\":" << (probes ? cone.probeSpacing : 0u) << ",\"requested_pixel_samples\":" << cone.samples
+               << ",\"diffuse_samples\":" << sampleCount << ",\"reference_samples\":" << cone.referenceSamples
+               << ",\"sample_count_unit\":\"" << (probes ? "per_probe" : "per_receiver") << "\""
+               << ",\"sample_counts_are_budgets\":true"
+               << ",\"specular_sample_count\":" << specularSamples
+               << ",\"specular_sample_block\":" << (probes ? "[2,2]" : "[1,1]") << ",\"adaptive_sampling\":" << adaptive
+               << ",\"diffuse_samples_max\":" << (sampleCount + (adaptive ? 2u : 0u))
+               << ",\"angular_guide_resolution\":" << (probes ? 0u : ZEN_HYBRID_GUIDE_PER_FACE)
+               << ",\"history_frames\":" << cone.historyFrames << ",\"temporal\":" << cone.temporal
+               << ",\"filter\":" << cone.filter
+               << ",\"filter_iterations\":" << (cone.filter && cone.referenceSamples == 0 ? (probes ? 1 : 5) : 0)
+               << ",\"filter_type\":\"" << (probes ? "probe_3x3" : "pixel_atrous") << "\""
                << ",\"previous_frame_radiance\":" << cone.previousFrameRadiance
                << ",\"specular_occlusion\":" << cone.specularOcclusion
                << ",\"reflections\":" << server.RequestVoxelGI()->UsesReflections()

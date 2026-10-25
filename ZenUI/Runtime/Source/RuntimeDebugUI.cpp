@@ -205,7 +205,7 @@ void RuntimeDebugUI::BuildPanel()
 
             if (server.GetRenderOption() == rc::RenderOption::ePBR)
             {
-                ImGui::TextWrapped("PBR fallback is active: voxel GI and direct mesh shadows are inactive.");
+                ImGui::TextWrapped("PBR fallback is active: global illumination and direct mesh shadows are inactive.");
             }
         }
         else

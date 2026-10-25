@@ -32,7 +32,7 @@ const EditorRenderSnapshot& GetRenderSnapshot(EditorContext& context)
 
 const char* GetRenderAlgorithmName(rc::RenderAlgorithm algorithm)
 {
-    return algorithm == rc::RenderAlgorithm::eVoxelGI ? "PBR + voxel GI" : "PBR";
+    return algorithm == rc::RenderAlgorithm::eVoxelGI ? "PBR + Global illumination" : "PBR";
 }
 
 std::string GetInspectionTargetName(const EditorScene& scene, InspectionTarget target)

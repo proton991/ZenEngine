@@ -27,7 +27,7 @@ if (BUILD_TESTING)
   add_test(NAME UIRenderingNativeTest COMMAND UIRenderingTest --gtest_filter=*UIRenderingNative*)
   set_tests_properties(UIRenderingNativeTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
 
-  add_executable(UIDrawPacketTest Tests/UIDrawPacketTests.cpp)
+  add_executable(UIDrawPacketTest Tests/UIDrawPacketTests.cpp Tests/LightingBackendControlsTests.cpp)
   target_link_libraries(UIDrawPacketTest PRIVATE ZenImGui gtest_main)
   add_test(NAME UIDrawPacketTest COMMAND UIDrawPacketTest)
   set_tests_properties(UIDrawPacketTest PROPERTIES LABELS "unit" TIMEOUT 120)

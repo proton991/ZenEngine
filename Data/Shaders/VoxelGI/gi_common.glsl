@@ -8,6 +8,7 @@ layout(std140, set = 3, binding = 0) uniform uGISettings
     vec4 cone;     // tangent of half aperture, step scale, bias in voxels, maximum grid distance
     vec4 limits;   // cone count, max cone steps, analytic shadows, reserved
     vec4 lighting; // Analytic, environment, emissive GI contributions; ray-hit bounce enabled
+    vec4 indirect; // Indirect diffuse enabled; reserved
 }
 gi;
 vec3 WorldToVoxelUV(vec3 position)

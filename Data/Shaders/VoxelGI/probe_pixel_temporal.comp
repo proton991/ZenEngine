@@ -1,0 +1,169 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 7, binding = 4) uniform sampler2D probeRawSky;
+layout(set = 7, binding = 5) uniform sampler2D probeRawBounce;
+layout(set = 7, binding = 8) uniform sampler2D probeRawSpecular;
+layout(set = 7, binding = 9) uniform sampler2D previousProbeSky;
+layout(set = 7, binding = 10) uniform sampler2D previousProbeBounce;
+layout(set = 7, binding = 11) uniform sampler2D previousProbeSpecular;
+layout(set = 7, binding = 12) uniform sampler2D previousProbePosition;
+layout(set = 7, binding = 13) uniform usampler2D previousProbeSurface;
+layout(set = 7, binding = 14) uniform sampler2D previousProbeNormalRoughness;
+layout(set = 7, binding = 15, rgba16f) uniform writeonly image2D nextProbeSky;
+layout(set = 7, binding = 16, rgba16f) uniform writeonly image2D nextProbeBounce;
+layout(set = 7, binding = 17, rgba16f) uniform writeonly image2D nextProbeSpecular;
+layout(set = 7, binding = 18, rgba32f) uniform writeonly image2D nextProbePosition;
+layout(set = 7, binding = 19, rg32ui) uniform writeonly uimage2D nextProbeSurface;
+layout(set = 7, binding = 20, rgba16f) uniform writeonly image2D nextProbeNormalRoughness;
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (HybridInView(pixel))
+    {
+        vec4  sky                    = vec4(0);
+        vec4  bounce                 = vec4(0);
+        vec4  specular               = vec4(0, 0, 0, 1);
+        vec4  positionHistory        = vec4(0);
+        vec4  normalRoughnessHistory = vec4(0);
+        uvec2 surface                = uvec2(0);
+        if (ProbeValidReceiver(pixel))
+        {
+            vec3 position       = HybridPosition(pixel);
+            vec3 normal         = HybridNormal(pixel);
+            vec3 geometric      = HybridGeometricNormal(pixel);
+            surface             = texelFetch(receiverSurface, pixel, 0).rg;
+            float roughness     = clamp(texelFetch(receiverRoughness, pixel, 0).g, 0.04, 1.0);
+            vec3  view          = sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw)
+                                                                : normalize(sceneUbo.viewPosition.xyz - position);
+            vec4  motion        = texelFetch(receiverMotion, pixel, 0);
+            vec2  previousPixel = vec2(pixel) + motion.xy * 0.5 * vec2(textureSize(receiverDepth, 0));
+            ivec2 base          = ivec2(floor(previousPixel));
+            vec2  fraction      = fract(previousPixel);
+            vec4  oldSky = vec4(0), oldBounce = vec4(0), oldSpecular = vec4(0);
+            float diffuseWeight = 0.0, specularWeight = 0.0;
+            float oldSkyLength = 0.0, oldSpecularLength = 0.0;
+            bool  historyValid = probe.grid.w != 0u && hybrid.sampling.w != 0u && hybrid.rejection.z > 0.0 && motion.z > 0.0;
+            if (historyValid)
+            {
+                for (int y = 0; y < 2; ++y)
+                {
+                    for (int x = 0; x < 2; ++x)
+                    {
+                        ivec2 previous = base + ivec2(x, y);
+                        if (all(greaterThanEqual(previous, ivec2(0)))
+                            && all(lessThan(previous, textureSize(previousProbePosition, 0))))
+                        {
+                            uvec2 oldSurface         = texelFetch(previousProbeSurface, previous, 0).rg;
+                            vec4  oldPosition        = texelFetch(previousProbePosition, previous, 0);
+                            vec4  oldNormalRoughness = texelFetch(previousProbeNormalRoughness, previous, 0);
+                            vec3  oldGeometric       = DecodeGBufferNormal(unpackUnorm2x16(oldSurface.r));
+                            vec3  oldNormal          = DecodeGBufferNormal(oldNormalRoughness.xy);
+                            vec3  delta              = oldPosition.xyz - position;
+                            float plane              = max(abs(dot(delta, geometric)), abs(dot(delta, oldGeometric)));
+                            if (oldSurface.g == surface.g && oldPosition.w > 0.0 && plane <= max(probe.parameters.x, 1e-6)
+                                && dot(geometric, oldGeometric) >= 0.9 && dot(normal, oldNormal) >= 0.9)
+                            {
+                                float weight =
+                                    (x == 0 ? 1.0 - fraction.x : fraction.x) * (y == 0 ? 1.0 - fraction.y : fraction.y);
+                                oldSky            += texelFetch(previousProbeSky, previous, 0) * weight;
+                                oldBounce         += texelFetch(previousProbeBounce, previous, 0) * weight;
+                                oldSkyLength      += oldPosition.w * weight;
+                                diffuseWeight     += weight;
+                                vec3 previousView  = sceneUbo.viewPosition.w < 0.5
+                                                       ? normalize(hybrid.previousViewDirection.xyz)
+                                                       : normalize(hybrid.previousViewPosition.xyz - oldPosition.xyz);
+                                if (oldNormalRoughness.w > 0.0 && dot(geometric, oldGeometric) >= 0.99
+                                    && dot(normal, oldNormal) >= mix(0.999, 0.9, roughness * roughness)
+                                    && abs(oldNormalRoughness.z - roughness) <= 0.02
+                                    && dot(view, previousView) >= mix(0.9995, 0.9, roughness * roughness))
+                                {
+                                    oldSpecular       += texelFetch(previousProbeSpecular, previous, 0) * weight;
+                                    oldSpecularLength += oldNormalRoughness.w * weight;
+                                    specularWeight    += weight;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            sky      = texelFetch(probeRawSky, pixel, 0);
+            bounce   = hybrid.bounce.x != 0u ? vec4(texelFetch(probeRawBounce, pixel, 0).rgb, 1) : vec4(0);
+            specular = hybrid.rejection.y > 0.0 ? texelFetch(probeRawSpecular, pixel, 0) : vec4(0, 0, 0, 1);
+            // probe_specular_resolve.comp marks receivers without a resolved sample by alpha -1.
+            bool  specularSample = specular.a >= 0.0;
+            float skyLength      = 1.0;
+            float specularLength = hybrid.rejection.y > 0.0 && specularSample ? 1.0 : 0.0;
+            // Probe-space histories already stabilize diffuse lighting. This short second
+            // accumulation smooths what still changes per frame (contact samples, probes that move
+            // with the camera) without retaining long screen-space trails.
+            float diffuseLimit = max(1.0, min(probe.parameters.y, probe.parameters.z > 0.5 ? 2.0 : 4.0));
+            if (diffuseWeight >= 0.01)
+            {
+                oldSky    /= diffuseWeight;
+                oldBounce /= diffuseWeight;
+                skyLength  = min(oldSkyLength / diffuseWeight + 1.0, diffuseLimit);
+                sky        = mix(oldSky, sky, 1.0 / skyLength);
+                if (hybrid.bounce.x != 0u && hybrid.bounce.y != 0u)
+                {
+                    float bounceLimit = hybrid.bounce.z != 0u ? min(diffuseLimit, 2.0) : diffuseLimit;
+                    bounce.a          = min(oldBounce.a + 1.0, bounceLimit);
+                    bounce.rgb        = mix(oldBounce.rgb, bounce.rgb, 1.0 / bounce.a);
+                }
+            }
+            // Visibility and reflected radiance share one history length. Reset both
+            // when the reflection cache resets so fresh RGB never inherits an old count.
+            bool specularHistoryValid = hybrid.reflection.x == 0u || hybrid.reflection.y != 0u;
+            if (specularWeight >= 0.01 && hybrid.rejection.y > 0.0 && specularHistoryValid)
+            {
+                oldSpecular /= specularWeight;
+                float limit  = max(1.0, min(probe.parameters.y, float(hybrid.sampling.z)));
+                limit        = min(limit, mix(4.0, limit, smoothstep(0.04, 0.4, roughness)));
+                if (probe.parameters.z > 0.5 || hybrid.reflection.z != 0u)
+                {
+                    limit = min(limit, 8.0);
+                }
+                if (specularSample)
+                {
+                    specularLength = min(oldSpecularLength / specularWeight + 1.0, limit);
+                    specular.a     = mix(oldSpecular.a, specular.a, 1.0 / specularLength);
+                    if (hybrid.reflection.x != 0u && hybrid.reflection.y != 0u)
+                    {
+                        specular.rgb = mix(oldSpecular.rgb, specular.rgb, 1.0 / specularLength);
+                    }
+                }
+                else
+                {
+                    // No new sample: hold the history without lengthening it.
+                    specularLength = min(oldSpecularLength / specularWeight, limit);
+                    specular       = oldSpecular;
+                }
+            }
+            if (specular.a < 0.0)
+            {
+                // Neither a sample nor history: the probes' diffuse sky visibility stands in for the
+                // lobe's, since the unoccluded environment made such receivers shine. Zero length keeps
+                // the next frame from reusing it as a sample.
+                specular = vec4(0, 0, 0, sky.a);
+            }
+            if (hybrid.reflection.x == 0u)
+            {
+                specular.rgb = vec3(0);
+            }
+            sky                    = vec4(max(sky.rgb, vec3(0)), clamp(sky.a, 0.0, 1.0));
+            bounce.rgb             = max(bounce.rgb, vec3(0));
+            specular               = vec4(max(specular.rgb, vec3(0)), clamp(specular.a, 0.0, 1.0));
+            positionHistory        = vec4(position, skyLength);
+            normalRoughnessHistory = vec4(EncodeGBufferNormal(normal), roughness, specularLength);
+        }
+        imageStore(nextProbeSky, pixel, sky);
+        imageStore(nextProbeBounce, pixel, bounce);
+        imageStore(nextProbeSpecular, pixel, specular);
+        imageStore(nextProbePosition, pixel, positionHistory);
+        imageStore(nextProbeSurface, pixel, uvec4(surface, 0, 0));
+        imageStore(nextProbeNormalRoughness, pixel, normalRoughnessHistory);
+    }
+}

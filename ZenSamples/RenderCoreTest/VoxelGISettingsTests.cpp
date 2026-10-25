@@ -30,6 +30,16 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
                               "voxel_gi_backend=auto",
                               "voxel_gi_sky_backend=auto",
                               "voxel_gi_shadows_backend=invalid",
+                              "voxel_gi_compute_traversal=invalid",
+                              "voxel_gi_brick_resolution=0",
+                              "voxel_gi_brick_resolution=63",
+                              "voxel_gi_brick_resolution=129",
+                              "voxel_gi_brick_resolution=512",
+                              "voxel_gi_gather=invalid",
+                              "voxel_gi_probe_spacing=0",
+                              "voxel_gi_probe_spacing=7",
+                              "voxel_gi_probe_spacing=9",
+                              "voxel_gi_probe_spacing=32",
                               "shadow_map_resolution=0",
                               "voxel_reflectance_policy=invalid",
                               "voxel_reflectance_policy=averaged",
@@ -207,6 +217,160 @@ TEST(VoxelGIRuntimeSettings, DiffuseResolutionDefaultsToFullAndRejectsUnknownNam
     VoxelGISettings invalid;
     invalid.diffuseResolution = static_cast<VoxelGISettings::DiffuseResolution>(3);
     EXPECT_FALSE(ValidateVoxelGISettings(invalid));
+}
+
+TEST(VoxelGIRuntimeSettings, ComputeTraversalPreservesDefaultsAndAcceptsBrickResolutions)
+{
+    const VoxelGISettings defaults;
+    EXPECT_EQ(defaults.computeTraversal, VoxelGISettings::ComputeTraversal::Triangles);
+    EXPECT_EQ(defaults.brickResolution, 128u);
+    const std::pair<const char*, VoxelGISettings::ComputeTraversal> traversals[] = {
+        {"triangles", VoxelGISettings::ComputeTraversal::Triangles}, {"bricks", VoxelGISettings::ComputeTraversal::Bricks}};
+    for (const std::pair<const char*, VoxelGISettings::ComputeTraversal>& traversal : traversals)
+    {
+        for (uint32_t resolution : {64u, 128u, 256u})
+        {
+            std::istringstream     stream(std::string("voxel_gi_compute_traversal=") + traversal.first
+                                          + "\nvoxel_gi_brick_resolution=" + std::to_string(resolution)
+                                          + "\nvoxel_gi_backend=compute\nvoxel_gi_shadows_backend=hardware\n");
+            platform::ConfigLoader config(stream);
+            VoxelGIRuntimeSettings settings;
+            ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+            EXPECT_EQ(settings.cone.computeTraversal, traversal.second);
+            EXPECT_EQ(settings.cone.brickResolution, resolution);
+            EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 32u);
+        }
+    }
+    VoxelGISettings inherited;
+    inherited.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
+    inherited.brickResolution  = 64;
+    std::istringstream     empty;
+    platform::ConfigLoader config(empty);
+    VoxelGISettings        loaded;
+    ASSERT_TRUE(LoadVoxelGISettings(config, loaded, inherited));
+    EXPECT_EQ(loaded, inherited);
+}
+
+TEST(VoxelGIRuntimeSettings, TraversalValidationRejectsInvalidEnumsAndAcceptsProbeGather)
+{
+    VoxelGISettings invalid;
+    invalid.computeTraversal = static_cast<VoxelGISettings::ComputeTraversal>(2);
+    EXPECT_FALSE(ValidateVoxelGISettings(invalid));
+    invalid        = {};
+    invalid.gather = VoxelGISettings::Gather::Probes;
+    EXPECT_TRUE(ValidateVoxelGISettings(invalid));
+    invalid        = {};
+    invalid.gather = static_cast<VoxelGISettings::Gather>(2);
+    EXPECT_FALSE(ValidateVoxelGISettings(invalid));
+}
+
+TEST(VoxelGIRuntimeSettings, ProbeGatherParsesBothSpacingsAndPresetsRestorePixelDefaults)
+{
+    const VoxelGISettings defaults;
+    EXPECT_EQ(defaults.gather, VoxelGISettings::Gather::Pixel);
+    EXPECT_EQ(defaults.probeSpacing, 16u);
+    for (const std::pair<const char*, VoxelGISettings::Gather>& gather :
+         {std::pair<const char*, VoxelGISettings::Gather>{"pixel", VoxelGISettings::Gather::Pixel},
+          {"probes", VoxelGISettings::Gather::Probes}})
+    {
+        for (uint32_t spacing : {8u, 16u})
+        {
+            std::istringstream     stream(std::string("voxel_gi_gather=") + gather.first
+                                          + "\nvoxel_gi_probe_spacing=" + std::to_string(spacing));
+            platform::ConfigLoader config(stream);
+            VoxelGIRuntimeSettings settings;
+            ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+            EXPECT_EQ(settings.cone.gather, gather.second);
+            EXPECT_EQ(settings.cone.probeSpacing, spacing);
+        }
+    }
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    const VoxelGIRuntimeSettings previous = settings;
+    settings.cone.gather                  = VoxelGISettings::Gather::Probes;
+    settings.cone.probeSpacing            = 8;
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
+    std::istringstream     empty;
+    platform::ConfigLoader config(empty);
+    VoxelGISettings        inherited;
+    ASSERT_TRUE(LoadVoxelGISettings(config, inherited, settings.cone));
+    EXPECT_EQ(inherited, settings.cone);
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_EQ(settings.cone.gather, VoxelGISettings::Gather::Pixel);
+    EXPECT_EQ(settings.cone.probeSpacing, 16u);
+}
+
+// Brick-traced direct shadows were removed; configs that still name them load with triangle shadows.
+TEST(VoxelGIRuntimeSettings, RemovedShadowTraversalKeyIsIgnored)
+{
+    std::istringstream     stream("voxel_gi_shadow_traversal=bricks\n");
+    platform::ConfigLoader config(stream);
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
+}
+
+// Presets trace bricks for GI passes without HW RT; Software BVH remains a live choice.
+TEST(VoxelGIRuntimeSettings, BrickControlsRemainLiveAndPresetsRestoreBrickDefaults)
+{
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
+    const VoxelGIRuntimeSettings previous = settings;
+    settings.cone.computeTraversal        = VoxelGISettings::ComputeTraversal::Triangles;
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
+    settings.cone.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
+    settings.cone.brickResolution  = 256;
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
+    EXPECT_EQ(settings.cone.brickResolution, 128u);
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
+}
+
+// Without usable ray queries every pass resolves to Compute, and GI gather rays trace bricks.
+TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeBricks)
+{
+    std::istringstream     stream("");
+    platform::ConfigLoader config(stream);
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
+    EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Auto);
+    EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
+    VoxelGIRuntimeSettings compute = settings;
+    EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(compute, RHIGPUInfo{}), "ray_query_unavailable");
+    for (uint32_t feature = 0; feature < static_cast<uint32_t>(VoxelGISettings::Feature::Count); ++feature)
+    {
+        EXPECT_EQ(compute.cone.GetFeatureProvider(static_cast<VoxelGISettings::Feature>(feature)),
+                  VoxelGISettings::RayProvider::Voxel);
+    }
+    EXPECT_EQ(compute.cone.GetHardwareFeatureMask(), 0u);
+}
+
+TEST(VoxelGIRuntimeSettings, IndirectDiffuseSwitchesLiveAndPresetsRestoreIt)
+{
+    VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_TRUE(settings.cone.indirectDiffuse);
+    const VoxelGIRuntimeSettings previous = settings;
+    settings.cone.indirectDiffuse         = false;
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
+    // Presets switch both GI tracing passes back on.
+    settings.cone.specularOcclusion = false;
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_TRUE(settings.cone.indirectDiffuse);
+    EXPECT_TRUE(settings.cone.specularOcclusion);
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
+    std::istringstream     stream("voxel_gi_indirect_diffuse=false\n");
+    platform::ConfigLoader config(stream);
+    VoxelGIRuntimeSettings loaded;
+    ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, loaded));
+    EXPECT_FALSE(loaded.cone.indirectDiffuse);
 }
 
 TEST(VoxelGIRuntimeSettings, PresetsAllowExplicitOverridesAndRejectInvalidNamesTransactionally)

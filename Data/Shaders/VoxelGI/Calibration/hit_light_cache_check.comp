@@ -26,5 +26,6 @@ void main()
     HybridRayResult hit          = HybridRayResult(true, positions[i], normal, ivec3(floor(positions[i])));
     bool            rejected;
     vec3            value = HitRadiance(radiance, normals, hit, -normal, i == 1u, rejected);
-    values[i]             = vec4(value, rejected ? 1.0 : 0.0);
+    // Alpha: 1 for a rejected lookup, plus 2 for a hit that brick traversal re-traces against triangles.
+    values[i] = vec4(value, (rejected ? 1.0 : 0.0) + (HitNearLocalLight(hit.position) ? 2.0 : 0.0));
 }

@@ -1,0 +1,43 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// First allocation pass: each workgroup counts the candidates of its block of subtiles per round.
+// probe_allocate.comp turns the block counts into slot offsets.
+layout(local_size_x = ZEN_PROBE_ALLOCATE_GROUP) in;
+layout(std430, set = 7, binding = 26) readonly buffer ProbeSubtileCandidates
+{
+    ProbePlacement probeSubtileCandidates[];
+};
+// Candidates per round (ZEN_PROBE_ADAPTIVE_PER_SUBTILE) of each block.
+layout(std430, set = 7, binding = 27) writeonly buffer ProbeAllocationBlocks
+{
+    uvec2 probeAllocationBlocks[];
+};
+
+shared uint probeRoundCounts[ZEN_PROBE_ADAPTIVE_PER_SUBTILE];
+
+void main()
+{
+    uint lane    = gl_LocalInvocationIndex;
+    uint subtile = gl_GlobalInvocationID.x;
+    if (lane < ZEN_PROBE_ADAPTIVE_PER_SUBTILE)
+    {
+        probeRoundCounts[lane] = 0u;
+    }
+    barrier();
+    if (subtile < probe.adaptive.x * probe.adaptive.y)
+    {
+        for (uint attempt = 0u; attempt < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++attempt)
+        {
+            if (probeSubtileCandidates[subtile * ZEN_PROBE_ADAPTIVE_PER_SUBTILE + attempt].position.w > 0.5)
+            {
+                atomicAdd(probeRoundCounts[attempt], 1u);
+            }
+        }
+    }
+    barrier();
+    if (lane == 0u)
+    {
+        probeAllocationBlocks[gl_WorkGroupID.x] = uvec2(probeRoundCounts[0], probeRoundCounts[1]);
+    }
+}

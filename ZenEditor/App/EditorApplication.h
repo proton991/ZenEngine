@@ -22,7 +22,7 @@ struct EditorOptions
     bool             smokeTest{false};
     bool             hidden{false};
     bool             windowed{false};
-    rc::RenderOption mode{rc::RenderOption::ePBR};
+    rc::RenderOption mode{rc::RenderOption::eVoxelGI}; // PBR + Global illumination.
 
     std::optional<bool> validation;
 };

@@ -1,8 +1,43 @@
+#include "Graphics/Shared/ScreenProbe.h"
+
 void CreateHybridTestShaders(RenderDevice* device)
 {
     for (const std::array<const char*, 2>& shader :
          {std::array<const char*, 2>{"HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"},
           {"HybridTraceCountsSP", "VoxelGI/hybrid_trace_counts.comp.spv"},
+          {"HybridTraceBricksSP", "VoxelGI/hybrid_trace_bricks.comp.spv"},
+          {"HybridTraceCountsBricksSP", "VoxelGI/hybrid_trace_counts_bricks.comp.spv"},
+          {"HybridTraceReferenceBricksSP", "VoxelGI/hybrid_trace_reference_bricks.comp.spv"},
+          {"HybridRetraceBricksSP", "VoxelGI/hybrid_retrace_bricks.comp.spv"},
+          {"HybridRetraceCountsBricksSP", "VoxelGI/hybrid_retrace_counts_bricks.comp.spv"},
+          {"ProbeClearSP", "VoxelGI/probe_clear.comp.spv"},
+          {"ProbeClaimSP", "VoxelGI/probe_claim.comp.spv"},
+          {"ProbePlaceSP", "VoxelGI/probe_place.comp.spv"},
+          {"ProbeAdaptiveSP", "VoxelGI/probe_adaptive.comp.spv"},
+          {"ProbeAllocateCountSP", "VoxelGI/probe_allocate_count.comp.spv"},
+          {"ProbeAllocateSP", "VoxelGI/probe_allocate.comp.spv"},
+          {"ProbeTraceSP", "VoxelGI/probe_trace.comp.spv"},
+          {"ProbeTemporalSP", "VoxelGI/probe_temporal.comp.spv"},
+          {"ProbeFilterSP", "VoxelGI/probe_filter.comp.spv"},
+          {"ProbeIntegrateSP", "VoxelGI/probe_integrate.comp.spv"},
+          {"ProbeSpecularTraceSP", "VoxelGI/probe_specular_trace.comp.spv"},
+          {"ProbeSpecularFilter0SP", "VoxelGI/probe_specular_filter.comp.spv"},
+          {"ProbeSpecularFilter1SP", "VoxelGI/probe_specular_filter.comp.spv"},
+          {"ProbeSpecularFilter2SP", "VoxelGI/probe_specular_filter.comp.spv"},
+          {"ProbeSpecularFilter3SP", "VoxelGI/probe_specular_filter.comp.spv"},
+          {"ProbeSpecularResolveSP", "VoxelGI/probe_specular_resolve.comp.spv"},
+          {"ProbePixelTemporalSP", "VoxelGI/probe_pixel_temporal.comp.spv"},
+          {"BrickClearSP", "VoxelGI/brick_clear.comp.spv"},
+          {"BrickMarkSP", "VoxelGI/brick_mark.comp.spv"},
+          {"BrickFinalizeSP", "VoxelGI/brick_finalize.comp.spv"},
+          {"BrickMarkLargeSP", "VoxelGI/brick_mark_large.comp.spv"},
+          {"BrickAllocateSP", "VoxelGI/brick_allocate.comp.spv"},
+          {"BrickRasterizeSP", "VoxelGI/brick_rasterize.comp.spv"},
+          {"BrickRasterizeLargeSP", "VoxelGI/brick_rasterize_large.comp.spv"},
+          {"BrickPruneSP", "VoxelGI/brick_prune.comp.spv"},
+          {"BrickDistanceXSP", "VoxelGI/brick_distance_x.comp.spv"},
+          {"BrickDistanceYSP", "VoxelGI/brick_distance_y.comp.spv"},
+          {"BrickDistanceZSP", "VoxelGI/brick_distance_z.comp.spv"},
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
@@ -443,6 +478,675 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     renderer.Destroy();
     sceneInputs.vertexRing = nullptr;
     ring.Destroy(*device);
+    gi.Destroy();
+    volumes.Destroy();
+    for (RHIBuffer* buffer : ownedBuffers)
+    {
+        device->DestroyBuffer(buffer);
+    }
+    for (RHITexture* texture : ownedTextures)
+    {
+        device->DestroyTexture(texture);
+    }
+    sceneInputs = {};
+}
+
+TEST_F(RenderCoreTest, HybridBrickFallbackRecoveryResetsHistoryOnlyAfterSubmission)
+{
+    CreateHybridTestShaders(device);
+    TestViewport            viewport;
+    HeapVector<RHIBuffer*>  ownedBuffers;
+    HeapVector<RHITexture*> ownedTextures;
+    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
+    sceneInputs.camera.projViewMatrix = Mat4(1);
+    sceneInputs.camera.proj           = Mat4(1);
+    sceneInputs.camera.view           = Mat4(1);
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene      scene(device, data);
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
+    volumes.Init();
+    volumes.SetRenderScene(&scene);
+    VoxelGIRenderer gi(device, &volumes);
+    gi.SetRenderScene(&scene);
+    ASSERT_TRUE(gi.Init());
+    VoxelGISettings settings;
+    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
+    settings.brickResolution = 64;
+    ASSERT_TRUE(gi.SetSettings(settings));
+    DeferredLightingRenderer renderer(device);
+    renderer.Init();
+    renderer.SetRenderScene(&scene);
+    const RenderView view = RenderView::FromViewport(viewport);
+    for (uint32_t frame = 0; frame < 5; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        RenderGraph& graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        if (frame == 0)
+        {
+            for (RHITexture* texture : ownedTextures)
+            {
+                if (texture != viewport.depth)
+                {
+                    graph.AddTransferPass("InitializeBrickHistoryInput").ClearTexture(texture, Color(0));
+                }
+            }
+        }
+        if (volumes.BeginVolumeUpdate(graph))
+        {
+            for (RHITexture* texture :
+                 {volumes.GetVoxelTextures().pAlbedo, volumes.GetVoxelTextures().pNormal, volumes.GetVoxelTextures().pEmissive})
+            {
+                graph.AddTransferPass("InitializeBrickHistoryVoxels").ClearTexture(texture, Color(0));
+            }
+        }
+        renderer.BuildGBufferGraph(view, true);
+        HybridGIRenderer* hybrid = renderer.GetHybridGI();
+        if (frame == 1)
+        {
+            // The software scene is already warm. Fail only the first brick allocation,
+            // then accept the fallback frame with the brick request still in force.
+            settings.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
+            ASSERT_TRUE(gi.SetSettings(settings));
+            rhi->failBufferCreationAt = rhi->bufferCreations + 1;
+        }
+        const bool ready          = gi.BuildRayQueryGraph();
+        rhi->failBufferCreationAt = 0;
+        ASSERT_TRUE(ready);
+        EXPECT_EQ(gi.UsesBrickTraversal(), frame >= 2);
+        gi.BuildRenderGraph();
+        ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
+        EXPECT_EQ(hybrid->IsHistoryValid(), frame == 4);
+        if (frame == 2 || frame == 3)
+        {
+            // Declining frame 2 must leave the successful triangle baseline intact,
+            // so the same unchanged brick request resets history again on frame 3.
+            EXPECT_STREQ(hybrid->GetResetReason(), "provider_changed");
+        }
+        const uint32_t previousFrame = hybrid->GetFrame();
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        if (frame != 2)
+        {
+            const size_t firstValue = rhi->graphics.values.size();
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+            bool foundUniforms = false;
+            for (size_t value = firstValue; value < rhi->graphics.values.size(); ++value)
+            {
+                if (rhi->graphics.values[value].size() == sizeof(HybridGIUniformData))
+                {
+                    HybridGIUniformData uniforms;
+                    std::memcpy(&uniforms, rhi->graphics.values[value].data(), sizeof(uniforms));
+                    EXPECT_EQ(uniforms.sampling.w, frame == 4 ? 1u : 0u);
+                    EXPECT_EQ(uniforms.provider.y, frame == 1 || frame == 4 ? 1u : 0u);
+                    foundUniforms = true;
+                }
+            }
+            EXPECT_TRUE(foundUniforms);
+        }
+        const RenderFrameResult result = frame == 2 ? RenderFrameResult::eDeclined : RenderFrameResult::eSubmitted;
+        renderer.OnRenderGraphExecuted(result);
+        gi.OnRenderGraphExecuted(result);
+        volumes.OnRenderGraphExecuted(result);
+        EXPECT_TRUE(hybrid->IsHistoryValid());
+        EXPECT_EQ(hybrid->GetFrame(), previousFrame + (frame != 2 ? 1u : 0u));
+    }
+    renderer.Destroy();
+    gi.Destroy();
+    volumes.Destroy();
+    for (RHIBuffer* buffer : ownedBuffers)
+    {
+        device->DestroyBuffer(buffer);
+    }
+    for (RHITexture* texture : ownedTextures)
+    {
+        device->DestroyTexture(texture);
+    }
+    sceneInputs = {};
+}
+
+// Reference accumulation traces hundreds of rays per receiver, more than the re-trace queue holds,
+// so its brick trace re-traces inline and records no queue or re-trace pass. Ray-count captures
+// re-trace with the counting variant, which adds to the trace's counters.
+TEST_F(RenderCoreTest, HybridBrickReferenceRetracesInlineAndRayCountsIncludeRetraces)
+{
+    CreateHybridTestShaders(device);
+    RDGMetricsOptions metrics    = device->GetRDGMetrics().GetOptions();
+    metrics.maxNodeDetails       = 512;
+    metrics.includeTransferNodes = true;
+    device->GetRDGMetrics().Configure(metrics);
+    TestViewport            viewport;
+    HeapVector<RHIBuffer*>  ownedBuffers;
+    HeapVector<RHITexture*> ownedTextures;
+    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
+    sceneInputs.camera.projViewMatrix = Mat4(1);
+    sceneInputs.camera.proj           = Mat4(1);
+    sceneInputs.camera.view           = Mat4(1);
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene      scene(device, data);
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
+    volumes.Init();
+    volumes.SetRenderScene(&scene);
+    VoxelGIRenderer gi(device, &volumes);
+    gi.SetRenderScene(&scene);
+    ASSERT_TRUE(gi.Init());
+    VoxelGISettings settings;
+    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
+    settings.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
+    settings.brickResolution  = 64;
+    ASSERT_TRUE(gi.SetSettings(settings));
+    DeferredLightingRenderer renderer(device);
+    renderer.Init();
+    renderer.SetRenderScene(&scene);
+    const RenderView view = RenderView::FromViewport(viewport);
+    for (uint32_t frame = 0; frame < 4; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        RenderGraph& graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        if (frame == 0)
+        {
+            for (RHITexture* texture : ownedTextures)
+            {
+                if (texture != viewport.depth)
+                {
+                    graph.AddTransferPass("InitializeBrickReferenceInput").ClearTexture(texture, Color(0));
+                }
+            }
+        }
+        if (volumes.BeginVolumeUpdate(graph))
+        {
+            for (RHITexture* texture :
+                 {volumes.GetVoxelTextures().pAlbedo, volumes.GetVoxelTextures().pNormal, volumes.GetVoxelTextures().pEmissive})
+            {
+                graph.AddTransferPass("InitializeBrickReferenceVoxels").ClearTexture(texture, Color(0));
+            }
+        }
+        renderer.BuildGBufferGraph(view, true);
+        HybridGIRenderer* hybrid = renderer.GetHybridGI();
+        // Frame 2 accumulates a reference; frame 3 leaves it and captures ray counts.
+        if (frame == 2 || frame == 3)
+        {
+            settings.referenceSamples = frame == 2 ? 256 : 0;
+            ASSERT_TRUE(gi.SetSettings(settings));
+        }
+        if (frame == 3)
+        {
+            RHIBufferCreateInfo info;
+            info.size         = HybridGIRenderer::GetRayCountCaptureBytes(view.width, view.height);
+            info.allocateType = RHIBufferAllocateType::eGPU;
+            info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+            RHIBuffer* counts = device->CreateBuffer(info);
+            ASSERT_NE(counts, nullptr);
+            ownedBuffers.push_back(counts);
+            info.allocateType = RHIBufferAllocateType::eCPURead;
+            info.usageFlags   = 0;
+            info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+            RHIBuffer* readback = device->CreateBuffer(info);
+            ASSERT_NE(readback, nullptr);
+            ownedBuffers.push_back(readback);
+            hybrid->SetRayCountCapture(counts, readback);
+        }
+        ASSERT_TRUE(gi.BuildRayQueryGraph());
+        gi.BuildRenderGraph();
+        ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        device->GetRDGMetrics().RequestCapture();
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+        if (frame >= 2)
+        {
+            // Bindings were validated against each program's reflection on execution.
+            ASSERT_TRUE(gi.UsesBrickTraversal());
+            EXPECT_EQ(hybrid->WereRayCountsRecorded(), frame == 3);
+            bool trace   = false;
+            bool retrace = false;
+            bool reset   = false;
+            for (const RDGNodeMetrics& node : device->GetRDGMetrics().GetLastSnapshot().nodes)
+            {
+                trace   |= node.name == NameID("HybridTrace");
+                retrace |= node.name == NameID("HybridRetrace");
+                reset   |= node.name == NameID("ResetHybridRetrace");
+            }
+            EXPECT_TRUE(trace);
+            EXPECT_EQ(retrace, frame == 3);
+            EXPECT_EQ(reset, frame == 3);
+        }
+        renderer.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
+        gi.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
+        volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
+    }
+    renderer.Destroy();
+    gi.Destroy();
+    volumes.Destroy();
+    for (RHIBuffer* buffer : ownedBuffers)
+    {
+        device->DestroyBuffer(buffer);
+    }
+    for (RHITexture* texture : ownedTextures)
+    {
+        device->DestroyTexture(texture);
+    }
+    sceneInputs = {};
+}
+
+TEST_F(RenderCoreTest, ScreenProbeAllocationFailureDropsPartialHistoryAndRetries)
+{
+    ScreenProbeGather gather(device);
+    rhi->failBufferCreationAt = rhi->bufferCreations + 1;
+    EXPECT_FALSE(gather.Prepare(17, 9, 16));
+    EXPECT_FALSE(gather.HasHistory());
+    rhi->failBufferCreationAt = 0;
+    // Fail after one buffer and two textures have already been allocated.
+    rhi->failTextureCreationAt = rhi->textureCreations + 3;
+    EXPECT_FALSE(gather.Prepare(17, 9, 16));
+    EXPECT_FALSE(gather.HasHistory());
+    rhi->failTextureCreationAt = 0;
+    ASSERT_TRUE(gather.Prepare(17, 9, 16));
+    EXPECT_TRUE(gather.HasHistory());
+    const uint32_t buffers  = rhi->bufferCreations;
+    const uint32_t textures = rhi->textureCreations;
+    EXPECT_TRUE(gather.Prepare(17, 9, 16));
+    EXPECT_EQ(rhi->bufferCreations, buffers);
+    EXPECT_EQ(rhi->textureCreations, textures);
+    // Spacing changes replace both probe and pixel histories, even after a failed allocation.
+    rhi->failBufferCreationAt = rhi->bufferCreations + 1;
+    EXPECT_FALSE(gather.Prepare(17, 9, 8));
+    EXPECT_FALSE(gather.HasHistory());
+    rhi->failBufferCreationAt = 0;
+    EXPECT_TRUE(gather.Prepare(17, 9, 8));
+    gather.Destroy();
+    EXPECT_FALSE(gather.HasHistory());
+}
+
+TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherChanges)
+{
+    CreateHybridTestShaders(device);
+    TestViewport            viewport;
+    HeapVector<RHIBuffer*>  ownedBuffers;
+    HeapVector<RHITexture*> ownedTextures;
+    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
+    sceneInputs.camera.projViewMatrix = Mat4(1);
+    sceneInputs.camera.proj           = Mat4(1);
+    sceneInputs.camera.view           = Mat4(1);
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene      scene(device, data);
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
+    volumes.Init();
+    volumes.SetRenderScene(&scene);
+    VoxelGIRenderer gi(device, &volumes);
+    gi.SetRenderScene(&scene);
+    ASSERT_TRUE(gi.Init());
+    DeferredLightingRenderer renderer(device);
+    renderer.Init();
+    renderer.SetRenderScene(&scene);
+    RenderView      view = RenderView::FromViewport(viewport);
+    VoxelGISettings settings;
+    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
+    settings.gather       = VoxelGISettings::Gather::Probes;
+    settings.bounceSource = VoxelGISettings::BounceSource::Rays;
+    settings.reflections  = VoxelGISettings::Reflections::On;
+    uint64_t outputs[14]{};
+    for (uint32_t frame = 0; frame < 14; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        const bool declined = frame == 0 || frame == 2 || frame == 6;
+        const bool probes   = frame != 6 && frame != 8 && frame != 10;
+        if (frame == 4)
+        {
+            settings.probeSpacing = 8;
+        }
+        if (frame == 5)
+        {
+            // Odd dimensions cover partial probe tiles and specular 2x2 blocks.
+            view.width  = 17;
+            view.height = 9;
+        }
+        settings.gather           = frame == 6 ? VoxelGISettings::Gather::Pixel : VoxelGISettings::Gather::Probes;
+        settings.referenceSamples = frame == 8 ? 256 : 0;
+        settings.filter           = frame < 12;
+        settings.temporal         = frame < 12;
+        ASSERT_TRUE(gi.SetSettings(settings));
+        RenderGraph& graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        if (frame < 2)
+        {
+            for (RHITexture* texture : ownedTextures)
+            {
+                if (texture != viewport.depth)
+                {
+                    graph.AddTransferPass("InitializeProbeTestInputs").ClearTexture(texture, Color(0));
+                }
+            }
+        }
+        if (volumes.BeginVolumeUpdate(graph))
+        {
+            for (RHITexture* texture :
+                 {volumes.GetVoxelTextures().pAlbedo, volumes.GetVoxelTextures().pNormal, volumes.GetVoxelTextures().pEmissive})
+            {
+                graph.AddTransferPass("InitializeProbeTestVoxels").ClearTexture(texture, Color(0));
+            }
+        }
+        renderer.BuildGBufferGraph(view, true);
+        HybridGIRenderer* hybrid = renderer.GetHybridGI();
+        if (frame == 10)
+        {
+            RHIBufferCreateInfo info;
+            info.size         = HybridGIRenderer::GetRayCountCaptureBytes(view.width, view.height);
+            info.allocateType = RHIBufferAllocateType::eGPU;
+            info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+            RHIBuffer* counts = device->CreateBuffer(info);
+            ASSERT_NE(counts, nullptr);
+            ownedBuffers.push_back(counts);
+            info.allocateType = RHIBufferAllocateType::eCPURead;
+            info.usageFlags   = 0;
+            info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+            RHIBuffer* readback = device->CreateBuffer(info);
+            ASSERT_NE(readback, nullptr);
+            ownedBuffers.push_back(readback);
+            hybrid->SetRayCountCapture(counts, readback);
+        }
+        else
+        {
+            hybrid->SetRayCountCapture(nullptr, nullptr);
+        }
+        ASSERT_TRUE(gi.BuildRayQueryGraph());
+        gi.BuildRenderGraph();
+        ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
+        EXPECT_EQ(hybrid->UsesScreenProbes(), probes);
+        EXPECT_EQ(hybrid->WereRayCountsRecorded(), frame == 10);
+        EXPECT_FALSE(hybrid->UsesHalfResolutionDiffuse());
+        const bool validHistory = frame == 2 || frame == 3 || frame == 13;
+        EXPECT_EQ(hybrid->IsHistoryValid(), validHistory);
+        RDGPassDescBase lighting;
+        hybrid->BindLightingInputs(lighting);
+        for (const RDGResourceBinding& binding : lighting.resourceBindings)
+        {
+            if (binding.glslName == NameID("hybridSky"))
+            {
+                outputs[frame] =
+                    DescribeResource(graph.GetResourceManager(), lighting.resourceStorage[binding.resources.offset].resource)
+                        .physicalStableId;
+            }
+        }
+        if (probes)
+        {
+            EXPECT_NE(outputs[frame], 0u);
+        }
+        if (frame == 1 || frame == 3)
+        {
+            // A declined frame must leave the pending write side unchanged.
+            EXPECT_EQ(outputs[frame], outputs[frame - 1]);
+        }
+        if (frame == 2 || frame == 4 || frame == 5)
+        {
+            EXPECT_NE(outputs[frame], outputs[frame - 1]);
+        }
+        if (frame == 7 || frame == 9 || frame == 11)
+        {
+            // Returning to probes must allocate new histories, including after a declined pixel frame.
+            EXPECT_NE(outputs[frame], outputs[frame - 2]);
+        }
+        const uint32_t previousFrame = hybrid->GetFrame();
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        if (!declined)
+        {
+            const size_t firstDispatch = rhi->graphics.dispatches.size();
+            const size_t firstValue    = rhi->graphics.values.size();
+            const size_t firstIndirect = rhi->graphics.indirectDispatches.size();
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+            const glm::uvec3 grid((view.width + settings.probeSpacing - 1) / settings.probeSpacing,
+                                  (view.height + settings.probeSpacing - 1) / settings.probeSpacing, 1);
+            // Adaptive probe slots follow the uniform grid as extra rows (Graphics/Shared/ScreenProbe.h).
+            const glm::uvec3 subtiles((view.width + 7) / 8, (view.height + 7) / 8, 1);
+            const uint32_t   adaptiveRows = (grid.y + ZEN_PROBE_ADAPTIVE_ROW_RATIO - 1) / ZEN_PROBE_ADAPTIVE_ROW_RATIO;
+            const glm::uvec3 slots(grid.x, grid.y + adaptiveRows, 1);
+            const glm::uvec3 probeGroups((grid.x + 7) / 8, (grid.y + 7) / 8, 1);
+            const glm::uvec3 slotGroups((slots.x + 7) / 8, (slots.y + 7) / 8, 1);
+            const glm::uvec3 clearGroups((std::max(slots.x * slots.y, subtiles.x * subtiles.y) + 63) / 64, 1, 1);
+            const glm::uvec3 allocateGroups((subtiles.x * subtiles.y + ZEN_PROBE_ALLOCATE_GROUP - 1) / ZEN_PROBE_ALLOCATE_GROUP,
+                                            1, 1);
+            const glm::uvec3 pixelGroups((view.width + 7) / 8, (view.height + 7) / 8, 1);
+            const glm::uvec3 specularGroups(((view.width + 1) / 2 + 7) / 8, ((view.height + 1) / 2 + 7) / 8, 1);
+            // The probe trace is dispatched indirectly from probe_allocate.comp's counters.
+            const char*        files[]  = {"probe_clear",
+                                           "probe_place",
+                                           "probe_adaptive",
+                                           "probe_allocate_count",
+                                           "probe_allocate",
+                                           "probe_temporal",
+                                           "probe_filter",
+                                           "probe_integrate",
+                                           "probe_specular_trace",
+                                           "probe_specular_filter",
+                                           "probe_specular_resolve",
+                                           "probe_pixel_temporal",
+                                           "probe_claim",
+                                           "probe_trace"};
+            const glm::uvec3   groups[] = {clearGroups, probeGroups, subtiles,    allocateGroups, allocateGroups,
+                                           slotGroups,  slotGroups,  pixelGroups, specularGroups, specularGroups,
+                                           pixelGroups, pixelGroups, probeGroups, glm::uvec3(0)};
+            constexpr uint32_t kPasses  = static_cast<uint32_t>(std::size(files));
+            uint32_t           dispatches[kPasses]{};
+            uint32_t           pixelTraces = 0;
+            for (size_t index = firstDispatch; index < rhi->graphics.dispatches.size(); ++index)
+            {
+                const std::pair<RHIShader*, glm::uvec3>& dispatch = rhi->graphics.dispatches[index];
+                ASSERT_NE(dispatch.first, nullptr);
+                const std::string file = dispatch.first->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)];
+                if (file == "VoxelGI/hybrid_trace.comp.spv" || file == "VoxelGI/hybrid_trace_counts.comp.spv")
+                {
+                    ++pixelTraces;
+                }
+                for (uint32_t pass = 0; pass < kPasses; ++pass)
+                {
+                    if (file == std::string("VoxelGI/") + files[pass] + ".comp.spv")
+                    {
+                        EXPECT_EQ(dispatch.second, groups[pass]);
+                        ++dispatches[pass];
+                    }
+                }
+            }
+            EXPECT_EQ(pixelTraces, probes ? 0u : 1u);
+            for (uint32_t pass = 0; pass < kPasses; ++pass)
+            {
+                // The specular sample filter runs four passes, at block steps 1, 2, 4 and 8.
+                const uint32_t expected = !probes || pass == kPasses - 1               ? 0u
+                                        : pass == 0                                    ? (frame == 3 || frame >= 12 ? 0u : 2u)
+                                        : (pass == 6 || pass == 9) && !settings.filter ? 0u
+                                        : pass == 9                                    ? 4u
+                                                                                       : 1u;
+                EXPECT_EQ(dispatches[pass], expected) << files[pass];
+            }
+            if (probes)
+            {
+                // The probe trace is the probe gather's only indirect dispatch.
+                EXPECT_EQ(rhi->graphics.indirectDispatches.size() - firstIndirect, 1u);
+            }
+            bool foundProbeData = false;
+            for (size_t index = firstValue; index < rhi->graphics.values.size(); ++index)
+            {
+                if (rhi->graphics.valueBindings[index] == glm::uvec2(7, 0)
+                    && rhi->graphics.values[index].size() == sizeof(ScreenProbeUniformData))
+                {
+                    ScreenProbeUniformData uniforms;
+                    std::memcpy(&uniforms, rhi->graphics.values[index].data(), sizeof(uniforms));
+                    EXPECT_EQ(uniforms.grid, glm::uvec4(grid.x, grid.y, settings.probeSpacing, validHistory ? 1u : 0u));
+                    // The fake readback reports no demand, so the pool keeps its initial rows, and the
+                    // history holds as many slots.
+                    EXPECT_EQ(uniforms.adaptive, glm::uvec4(subtiles.x, subtiles.y, adaptiveRows, slots.x * slots.y));
+                    foundProbeData = true;
+                }
+            }
+            EXPECT_EQ(foundProbeData, probes);
+        }
+        const RenderFrameResult result = declined ? RenderFrameResult::eDeclined : RenderFrameResult::eSubmitted;
+        renderer.OnRenderGraphExecuted(result);
+        gi.OnRenderGraphExecuted(result);
+        volumes.OnRenderGraphExecuted(result);
+        EXPECT_EQ(hybrid->GetFrame(), previousFrame + (declined ? 0u : 1u));
+        EXPECT_EQ(hybrid->IsHistoryValid(), !declined || frame == 2);
+    }
+    renderer.Destroy();
+    gi.Destroy();
+    volumes.Destroy();
+    for (RHIBuffer* buffer : ownedBuffers)
+    {
+        device->DestroyBuffer(buffer);
+    }
+    for (RHITexture* texture : ownedTextures)
+    {
+        device->DestroyTexture(texture);
+    }
+    sceneInputs = {};
+}
+
+TEST_F(RenderCoreTest, ScreenProbePoolFollowsReadBackDemandAndKeepsHistory)
+{
+    CreateHybridTestShaders(device);
+    TestViewport            viewport;
+    HeapVector<RHIBuffer*>  ownedBuffers;
+    HeapVector<RHITexture*> ownedTextures;
+    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
+    sceneInputs.camera.projViewMatrix = Mat4(1);
+    sceneInputs.camera.proj           = Mat4(1);
+    sceneInputs.camera.view           = Mat4(1);
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene      scene(device, data);
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
+    volumes.Init();
+    volumes.SetRenderScene(&scene);
+    VoxelGIRenderer gi(device, &volumes);
+    gi.SetRenderScene(&scene);
+    ASSERT_TRUE(gi.Init());
+    DeferredLightingRenderer renderer(device);
+    renderer.Init();
+    renderer.SetRenderScene(&scene);
+    const RenderView view = RenderView::FromViewport(viewport);
+    VoxelGISettings  settings;
+    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
+    settings.gather       = VoxelGISettings::Gather::Probes;
+    settings.bounceSource = VoxelGISettings::BounceSource::Rays;
+    ASSERT_TRUE(gi.SetSettings(settings));
+    // The 8x8 view at 16-pixel spacing holds one uniform probe and one subtile, so at most
+    // ZEN_PROBE_ADAPTIVE_PER_SUBTILE (two) adaptive probes. The pool starts with one adaptive row of
+    // one slot. A demand of two probes, with a quarter of headroom (2 * 5 / 4 = 2), calls for two rows.
+    TestContext* const contexts[]  = {&rhi->graphics, &rhi->compute, &rhi->transfer};
+    constexpr uint32_t kProbeBytes = 208, kBaseSlots = 2, kShrinkFrames = 240;
+    uint32_t           grownAt = 0, shrunkAt = 0, lowFrames = 0, lowFramesAtShrink = 0;
+    for (uint32_t frame = 0; frame < 300 && shrunkAt == 0; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        // Advancing the frame collects completed submissions, which retires their readbacks.
+        device->NextFrame();
+        RenderGraph& graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        if (frame == 0)
+        {
+            for (RHITexture* texture : ownedTextures)
+            {
+                if (texture != viewport.depth)
+                {
+                    graph.AddTransferPass("InitializeProbeTestInputs").ClearTexture(texture, Color(0));
+                }
+            }
+        }
+        if (volumes.BeginVolumeUpdate(graph))
+        {
+            for (RHITexture* texture :
+                 {volumes.GetVoxelTextures().pAlbedo, volumes.GetVoxelTextures().pNormal, volumes.GetVoxelTextures().pEmissive})
+            {
+                graph.AddTransferPass("InitializeProbeTestVoxels").ClearTexture(texture, Color(0));
+            }
+        }
+        renderer.BuildGBufferGraph(view, true);
+        HybridGIRenderer* hybrid = renderer.GetHybridGI();
+        ASSERT_TRUE(gi.BuildRayQueryGraph());
+        gi.BuildRenderGraph();
+        ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
+        ASSERT_TRUE(hybrid->UsesScreenProbes());
+        const uint32_t capacity = hybrid->GetScreenProbeStatistics().adaptiveCapacity;
+        if (grownAt == 0 && capacity == 2)
+        {
+            grownAt = frame;
+        }
+        else if (grownAt != 0 && capacity == 1)
+        {
+            shrunkAt          = frame;
+            lowFramesAtShrink = lowFrames;
+        }
+        EXPECT_EQ(capacity, grownAt != 0 && shrunkAt == 0 ? 2u : 1u);
+        // The frame that first records the larger pool is declined: the next one copies the history again.
+        const bool declined = grownAt != 0 && frame == grownAt;
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        if (!declined)
+        {
+            size_t firstCopy[3]{};
+            for (uint32_t context = 0; context < 3; ++context)
+            {
+                firstCopy[context] = contexts[context]->bufferCopies.size();
+            }
+            const size_t firstValue = rhi->graphics.values.size();
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+            ScreenProbeUniformData uniforms;
+            bool                   foundProbeData = false;
+            for (size_t index = firstValue; index < rhi->graphics.values.size(); ++index)
+            {
+                if (rhi->graphics.valueBindings[index] == glm::uvec2(7, 0)
+                    && rhi->graphics.values[index].size() == sizeof(ScreenProbeUniformData))
+                {
+                    std::memcpy(&uniforms, rhi->graphics.values[index].data(), sizeof(uniforms));
+                    foundProbeData = true;
+                }
+            }
+            ASSERT_TRUE(foundProbeData);
+            // A resized pool reads the previous probes from the slots both pools share.
+            const bool resized = (grownAt != 0 && frame == grownAt + 1) || (shrunkAt != 0 && frame == shrunkAt);
+            EXPECT_EQ(uniforms.adaptive.z, capacity);
+            EXPECT_EQ(uniforms.adaptive.w, resized ? kBaseSlots : 1 + capacity);
+            // The demand of two probes until the larger pool took the history, no demand afterwards.
+            const uint32_t demand        = grownAt == 0 || frame <= grownAt + 1 ? 2u : 0u;
+            uint32_t       historyCopies = 0, demandCopies = 0;
+            for (uint32_t context = 0; context < 3; ++context)
+            {
+                for (size_t index = firstCopy[context]; index < contexts[context]->bufferCopies.size(); ++index)
+                {
+                    RHIBuffer* destination  = contexts[context]->bufferCopyDestinations[index];
+                    historyCopies          += contexts[context]->bufferCopies[index].size == kBaseSlots * kProbeBytes ? 1u : 0u;
+                    if (destination->GetResourceTag() == NameID("probe_demand_readback"))
+                    {
+                        std::memcpy(static_cast<TestBuffer*>(destination)->bytes.data() + sizeof(uint32_t), &demand,
+                                    sizeof(demand));
+                        ++demandCopies;
+                    }
+                }
+            }
+            EXPECT_EQ(historyCopies, resized ? 1u : 0u);
+            EXPECT_EQ(demandCopies, 1u);
+            lowFrames += demand == 0 ? 1u : 0u;
+        }
+        const RenderFrameResult result = declined ? RenderFrameResult::eDeclined : RenderFrameResult::eSubmitted;
+        renderer.OnRenderGraphExecuted(result);
+        gi.OnRenderGraphExecuted(result);
+        volumes.OnRenderGraphExecuted(result);
+    }
+    // Readbacks complete a few frames late.
+    EXPECT_GT(grownAt, 0u);
+    EXPECT_LE(grownAt, 4u);
+    ASSERT_GT(shrunkAt, 0u);
+    EXPECT_GE(lowFramesAtShrink, kShrinkFrames);
+    EXPECT_LE(lowFramesAtShrink, kShrinkFrames + 4);
+    renderer.Destroy();
     gi.Destroy();
     volumes.Destroy();
     for (RHIBuffer* buffer : ownedBuffers)

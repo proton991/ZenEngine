@@ -9,6 +9,10 @@ struct HybridRayResult
     vec3  normal;
     ivec3 cell;
 };
+#ifdef HYBRID_BRICK_TRAVERSAL
+// Compute features trace the brick scene instead of the software triangle BVH.
+#    include "brick_trace.glsl"
+#endif
 #if defined(HYBRID_VOXEL_REFERENCE)
 #    define HybridTraceRay(occupancy, origin, direction, maximumDistance) \
         VoxelTraceRay(occupancy, origin, direction, maximumDistance)

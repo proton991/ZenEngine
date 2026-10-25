@@ -87,7 +87,7 @@ void VoxelGISettings::SetAllFeatureProviders(RayProvider provider)
 }
 
 VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) :
-    m_rayQuery(device), m_softwareRayQuery(device), m_device(device), m_voxelizer(voxelizer)
+    m_rayQuery(device), m_softwareRayQuery(device), m_bricks(device), m_device(device), m_voxelizer(voxelizer)
 {
     LoadSettings();
 }
@@ -145,6 +145,10 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
         && static_cast<uint32_t>(settings.diffuseResolution) <= static_cast<uint32_t>(VoxelGISettings::DiffuseResolution::Half)
+        && static_cast<uint32_t>(settings.computeTraversal) <= static_cast<uint32_t>(VoxelGISettings::ComputeTraversal::Bricks)
+        && (settings.brickResolution == 64 || settings.brickResolution == 128 || settings.brickResolution == 256)
+        && static_cast<uint32_t>(settings.gather) <= static_cast<uint32_t>(VoxelGISettings::Gather::Probes)
+        && (settings.probeSpacing == 8 || settings.probeSpacing == 16)
         && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Hardware);
 }
 
@@ -214,6 +218,7 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid &= config.ReadBool("voxel_gi_temporal", settings.temporal);
     valid &= config.ReadBool("voxel_gi_previous_frame_radiance", settings.previousFrameRadiance);
     valid &= config.ReadBool("voxel_gi_filter", settings.filter);
+    valid &= config.ReadBool("voxel_gi_indirect_diffuse", settings.indirectDiffuse);
     valid &= config.ReadBool("voxel_gi_specular_occlusion", settings.specularOcclusion);
     const char*       defaultReflections  = settings.reflections == VoxelGISettings::Reflections::Off  ? "false"
                                           : settings.reflections == VoxelGISettings::Reflections::Auto ? "auto"
@@ -226,24 +231,36 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     settings.diffuseResolution            = resolution == "full" ? VoxelGISettings::DiffuseResolution::Full
                                           : resolution == "half" ? VoxelGISettings::DiffuseResolution::Half
                                                                  : VoxelGISettings::DiffuseResolution::Auto;
-    const std::string reflections         = config.GetString("voxel_gi_reflections", defaultReflections);
-    valid                                &= reflections == "auto" || reflections == "true" || reflections == "false";
-    settings.reflections                  = reflections == "true"  ? VoxelGISettings::Reflections::On
-                                          : reflections == "false" ? VoxelGISettings::Reflections::Off
-                                                                   : VoxelGISettings::Reflections::Auto;
-    const char*       defaultProvider     = settings.rayProvider == VoxelGISettings::RayProvider::Voxel    ? "voxel"
-                                          : settings.rayProvider == VoxelGISettings::RayProvider::Hardware ? "hardware"
-                                                                                                           : "auto";
-    const std::string provider            = config.GetString("voxel_gi_ray_provider", defaultProvider);
-    const std::string bounce              = config.GetString("voxel_gi_bounce_source", "auto");
-    valid                                &= bounce == "auto" || bounce == "cone" || bounce == "rays";
-    settings.bounceSource                 = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
-                                          : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
-                                                             : VoxelGISettings::BounceSource::Auto;
-    valid                                &= provider == "auto" || provider == "voxel" || provider == "hardware";
-    settings.rayProvider                  = provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
-                                          : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
-                                                                   : VoxelGISettings::RayProvider::Auto;
+    const char* defaultTraversal =
+        settings.computeTraversal == VoxelGISettings::ComputeTraversal::Bricks ? "bricks" : "triangles";
+    const std::string traversal  = config.GetString("voxel_gi_compute_traversal", defaultTraversal);
+    valid                       &= traversal == "triangles" || traversal == "bricks";
+    settings.computeTraversal =
+        traversal == "bricks" ? VoxelGISettings::ComputeTraversal::Bricks : VoxelGISettings::ComputeTraversal::Triangles;
+    valid &= config.ReadNumber("voxel_gi_brick_resolution", settings.brickResolution);
+    const std::string gather =
+        config.GetString("voxel_gi_gather", settings.gather == VoxelGISettings::Gather::Probes ? "probes" : "pixel");
+    valid                             &= gather == "pixel" || gather == "probes";
+    settings.gather                    = gather == "probes" ? VoxelGISettings::Gather::Probes : VoxelGISettings::Gather::Pixel;
+    valid                             &= config.ReadNumber("voxel_gi_probe_spacing", settings.probeSpacing);
+    const std::string reflections      = config.GetString("voxel_gi_reflections", defaultReflections);
+    valid                             &= reflections == "auto" || reflections == "true" || reflections == "false";
+    settings.reflections               = reflections == "true"  ? VoxelGISettings::Reflections::On
+                                       : reflections == "false" ? VoxelGISettings::Reflections::Off
+                                                                : VoxelGISettings::Reflections::Auto;
+    const char*       defaultProvider  = settings.rayProvider == VoxelGISettings::RayProvider::Voxel    ? "voxel"
+                                       : settings.rayProvider == VoxelGISettings::RayProvider::Hardware ? "hardware"
+                                                                                                        : "auto";
+    const std::string provider         = config.GetString("voxel_gi_ray_provider", defaultProvider);
+    const std::string bounce           = config.GetString("voxel_gi_bounce_source", "auto");
+    valid                             &= bounce == "auto" || bounce == "cone" || bounce == "rays";
+    settings.bounceSource              = bounce == "rays" ? VoxelGISettings::BounceSource::Rays
+                                       : bounce == "cone" ? VoxelGISettings::BounceSource::Cone
+                                                          : VoxelGISettings::BounceSource::Auto;
+    valid                             &= provider == "auto" || provider == "voxel" || provider == "hardware";
+    settings.rayProvider               = provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
+                                       : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
+                                                                : VoxelGISettings::RayProvider::Auto;
 
     const char*       featureKeys[]  = {"voxel_gi_sky_backend",    "voxel_gi_specular_backend",    "voxel_gi_sky_cache_backend",
                                         "voxel_gi_bounce_backend", "voxel_gi_reflections_backend", "voxel_gi_shadows_backend"};
@@ -393,6 +410,8 @@ void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
 {
     m_rayQuery.Destroy();
     m_softwareRayQuery.Destroy();
+    m_bricks.Destroy();
+    m_bricksActive        = false;
     m_hardwareQueries     = false;
     m_scene               = scene;
 
@@ -654,6 +673,17 @@ bool VoxelGIRenderer::UsesSoftwareQueries() const
     return software;
 }
 
+bool VoxelGIRenderer::RequestsBrickTraversal() const
+{
+    using Feature = VoxelGISettings::Feature;
+    // The GI gather features: sky, specular occlusion, bounce and reflections.
+    const bool gather = !UsesHardwareQueries(Feature::Sky)
+                     || (m_settings.specularOcclusion && !UsesHardwareQueries(Feature::SpecularOcclusion))
+                     || (UsesRayBounce() && !UsesHardwareQueries(Feature::Bounce))
+                     || (UsesReflections() && !UsesHardwareQueries(Feature::Reflections));
+    return m_settings.computeTraversal == VoxelGISettings::ComputeTraversal::Bricks && gather;
+}
+
 bool VoxelGIRenderer::BuildRayQueryGraph()
 {
     bool ready = IsInitialized() && m_scene != nullptr;
@@ -673,6 +703,24 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
         // Only enabled features resolved to Compute trace the software BVH. All-HW RT
         // keeps placeholder bindings and neither builds nor depends on it.
         ready = UsesSoftwareQueries() ? m_softwareRayQuery.Prepare(*m_scene) : m_softwareRayQuery.PrepareUnused();
+        // Bricks are built from the software query's triangles. A failed build falls back to them.
+        const bool     requested  = ready && RequestsBrickTraversal();
+        const bool     were       = m_bricksActive;
+        const uint32_t resolution = m_voxelizer->GetVoxelTexResolution();
+        m_bricksActive            = requested
+                                 && m_bricks.BuildRenderGraph(*m_scene, m_softwareRayQuery, m_voxelizer->GetSceneMinPoint(),
+                                                              m_voxelizer->GetVoxelSize() * static_cast<float>(resolution),
+                                                              m_settings.brickResolution);
+        // Warn once per fallback streak; BrickScene logs its own allocation failures.
+        if (requested && !m_bricksActive && !m_brickFallbackLogged)
+        {
+            LOGW("Brick scene unavailable; Compute GI rays trace triangles");
+        }
+        m_brickFallbackLogged = requested && !m_bricksActive;
+        if (were != m_bricksActive)
+        {
+            LOGI("Compute GI traversal: {}", m_bricksActive ? "bricks" : "triangles");
+        }
         if (previousHardware != m_hardwareQueries)
         {
             m_environmentRevision = 0;
@@ -719,6 +767,8 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
         m_uniforms.lighting   = Vec4(m_settings.analyticLighting ? 1.0f : 0.0f, m_settings.environmentLighting ? 1.0f : 0.0f,
                                      m_settings.emissiveLighting ? 1.0f : 0.0f, UsesRayBounce() ? 1.0f : 0.0f);
+
+        m_uniforms.indirect   = Vec4(m_settings.indirectDiffuse ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
 
         m_recordedGeometry    = m_voxelizer->GetRecordedGeometryRevision();
 
@@ -1109,12 +1159,15 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
     m_recordedDelayedRadiance = false;
     m_rayQuery.OnRenderGraphExecuted(result);
     m_softwareRayQuery.OnRenderGraphExecuted(result);
+    m_bricks.OnRenderGraphExecuted(result);
 }
 
 void VoxelGIRenderer::Destroy()
 {
     m_rayQuery.Destroy();
     m_softwareRayQuery.Destroy();
+    m_bricks.Destroy();
+    m_bricksActive    = false;
     m_hardwareQueries = false;
     m_device->DestroyTexture(m_radiance);
 

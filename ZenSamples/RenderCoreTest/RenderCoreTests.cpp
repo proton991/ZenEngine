@@ -536,6 +536,7 @@ public:
     HeapVector<std::pair<RHITexture*, RHITexture*>> imageCopyTextures;
     std::vector<RHITextureBlitRegion>               blits;
     std::vector<RHIBufferCopyRegion>                bufferCopies;
+    std::vector<RHIBuffer*>                         bufferCopyDestinations;
     std::vector<std::vector<uint8_t>>               values;
     HeapVector<glm::uvec2>                          valueBindings;
     std::vector<std::vector<uint8_t>>               pushConstants;
@@ -722,6 +723,8 @@ public:
         std::memcpy(destination->bytes.data() + region.dstOffset, source->bytes.data() + region.srcOffset, region.size);
 
         bufferCopies.push_back(region);
+
+        bufferCopyDestinations.push_back(pDstBuffer);
     }
 
     void RHIClearTexture(RHITexture* pTex, const Color& color, const RHITextureSubResourceRange& range) override

@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
 #include "Graphics/RenderCore/V2/SoftwareSceneRayQuery.h"
+#include "Graphics/RenderCore/V2/BrickScene.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
@@ -159,7 +160,7 @@ protected:
         }
         else
         {
-            const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0)};
+            const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0), Vec4(1, 0, 0, 0)};
             pass.BindValue("uGISettings", gi, sizeof(gi));
             pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
             queries.BindInputs(pass, scene);
@@ -337,7 +338,7 @@ TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRe
             RDGComputePassDesc pass;
             pass.SetShaderProgramName("SceneRayQueryCheckSP");
             pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
-            const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0)};
+            const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0), Vec4(1, 0, 0, 0)};
             pass.BindValue("uGISettings", gi, sizeof(gi));
             pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
             queries.BindInputs(pass, scene);
@@ -941,7 +942,7 @@ TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle
         pass.SetShaderProgramName("SoftwareRayQueryCheckSP");
         pass.BindStorageBuffer("Rays", rayBuffer);
         pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
-        const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0)};
+        const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0), Vec4(1, 0, 0, 0)};
         pass.BindValue("uGISettings", gi, sizeof(gi));
         pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
         queries.BindInputs(pass, scene);
@@ -1128,6 +1129,8 @@ TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle
     queries.Destroy();
     scene.Destroy();
 }
+
+#include "BrickSceneIntegrationTests.inl"
 
 INSTANTIATE_TEST_SUITE_P(ExecutionModes, RayQueryIntegrationTest, testing::Values(0u, 1u, 2u, 3u));
 } // namespace

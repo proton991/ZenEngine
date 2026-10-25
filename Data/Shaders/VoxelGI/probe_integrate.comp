@@ -1,0 +1,100 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, set = 7, binding = 2) readonly buffer ProbeInput
+{
+    ProbeRecord probeInput[];
+};
+layout(std430, set = 7, binding = 23) readonly buffer ProbeSubtiles
+{
+    uvec2 probeSubtiles[];
+};
+layout(set = 7, binding = 4, rgba16f) uniform writeonly image2D probeRawSky;
+layout(set = 7, binding = 5, rgba16f) uniform writeonly image2D probeRawBounce;
+
+vec4  sky, bounce, fallbackSky, fallbackBounce;
+float weight, fallbackWeight, footprint;
+
+void Gather(ProbeRecord sampleValue, ivec2 pixel, vec3 position, vec3 geometric, vec3 normal)
+{
+    float screen    = ProbeScreenWeight(sampleValue.screen.xy, vec2(pixel), 2.0);
+    float w         = ProbeSurfaceWeight(position, geometric, footprint, sampleValue) * screen;
+    vec4  skyAt     = ProbeSkyIrradiance(sampleValue, normal);
+    vec4  bounceAt  = ProbeBounceIrradiance(sampleValue, normal);
+    sky            += skyAt * w;
+    bounce         += bounceAt * w;
+    weight         += w;
+    // Last resort for a receiver no compatible probe covers (even after adaptive placement ran out
+    // of rounds or capacity): the best-facing nearby probe, ignoring plane distance. A dark hole is
+    // more visible than this mismatch.
+    float facing    = sampleValue.position.w > 0.5 ? max(dot(geometric, sampleValue.normal.xyz), 0.0) : 0.0;
+    float fallback  = facing * facing * facing * facing * screen;
+    fallbackSky    += skyAt * fallback;
+    fallbackBounce += bounceAt * fallback;
+    fallbackWeight += fallback;
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (HybridInView(pixel))
+    {
+        sky            = vec4(0);
+        bounce         = vec4(0);
+        fallbackSky    = vec4(0);
+        fallbackBounce = vec4(0);
+        weight         = 0.0;
+        fallbackWeight = 0.0;
+        footprint      = 0.0;
+        if (ProbeValidReceiver(pixel))
+        {
+            vec3 position  = HybridPosition(pixel);
+            vec3 geometric = HybridGeometricNormal(pixel);
+            vec3 normal    = HybridNormal(pixel);
+            footprint      = ProbePixelFootprint(pixel);
+            ivec2 tile     = pixel / int(probe.grid.z);
+            ivec2 subtile  = pixel / int(ZEN_PROBE_SUBTILE);
+            for (int y = -1; y <= 1; ++y)
+            {
+                for (int x = -1; x <= 1; ++x)
+                {
+                    ivec2 sampleCoordinate = tile + ivec2(x, y);
+                    if (ProbeGridInside(sampleCoordinate))
+                    {
+                        Gather(probeInput[ProbeIndex(sampleCoordinate)], pixel, position, geometric, normal);
+                    }
+                    // Adaptive probes cover receivers no uniform probe represents.
+                    ivec2 sampleSubtile = subtile + ivec2(x, y);
+                    uvec2 slots         = ProbeSubtileInside(sampleSubtile) ? probeSubtiles[ProbeSubtileIndex(sampleSubtile)]
+                                                                            : uvec2(ZEN_PROBE_INVALID);
+                    for (uint entry = 0u; entry < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++entry)
+                    {
+                        if (slots[entry] < ProbeSlotCount())
+                        {
+                            Gather(probeInput[slots[entry]], pixel, position, geometric, normal);
+                        }
+                    }
+                }
+            }
+        }
+        // Only a receiver without any facing probe nearby stays dark.
+        if (weight < 1e-4 && fallbackWeight > 0.0)
+        {
+            sky    = fallbackSky;
+            bounce = fallbackBounce;
+            weight = fallbackWeight;
+        }
+        sky    /= max(weight, 1e-8);
+        bounce /= max(weight, 1e-8);
+        if (ProbeValidReceiver(pixel))
+        {
+            // Contact occlusion closer than a probe tile, applied to all indirect diffuse light.
+            float contact  = ProbeContactVisibility(pixel, HybridPosition(pixel), HybridGeometricNormal(pixel), footprint);
+            sky           *= contact;
+            bounce.rgb    *= contact;
+        }
+        imageStore(probeRawSky, pixel, vec4(max(sky.rgb, vec3(0)), clamp(sky.a, 0.0, 1.0)));
+        imageStore(probeRawBounce, pixel, vec4(max(bounce.rgb, vec3(0)), clamp(bounce.a, 0.0, 1.0)));
+    }
+}

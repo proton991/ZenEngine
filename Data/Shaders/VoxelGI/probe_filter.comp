@@ -1,0 +1,83 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, set = 7, binding = 1) writeonly buffer ProbeOutput
+{
+    ProbeRecord probeOutput[];
+};
+layout(std430, set = 7, binding = 2) readonly buffer ProbeInput
+{
+    ProbeRecord probeInput[];
+};
+layout(std430, set = 7, binding = 23) readonly buffer ProbeSubtiles
+{
+    uvec2 probeSubtiles[];
+};
+
+ProbeRecord sum;
+float       weight;
+float       footprint;
+
+void Gather(ProbeRecord center, ProbeRecord sampleValue)
+{
+    float w = ProbeSurfaceWeight(center.position.xyz, center.normal.xyz, footprint, sampleValue)
+            * ProbeScreenWeight(sampleValue.screen.xy, center.screen.xy, 0.5);
+    for (int coefficient = 0; coefficient < 4; ++coefficient)
+    {
+        sum.sky[coefficient]    += sampleValue.sky[coefficient] * w;
+        sum.bounce[coefficient] += sampleValue.bounce[coefficient] * w;
+    }
+    sum.skyAnchor    += ProbeSkyIrradiance(sampleValue, center.normal.xyz) * w;
+    sum.bounceAnchor += ProbeBounceIrradiance(sampleValue, center.normal.xyz) * w;
+    weight           += w;
+}
+
+void main()
+{
+    uvec2 coordinate = gl_GlobalInvocationID.xy;
+    if (coordinate.x < probe.grid.x && coordinate.y < probe.grid.y + probe.adaptive.z)
+    {
+        uint        index  = coordinate.y * probe.grid.x + coordinate.x;
+        ProbeRecord center = probeInput[index];
+        sum                = ProbeEmpty();
+        weight             = 0.0;
+        if (center.position.w > 0.5)
+        {
+            footprint = ProbePixelFootprint(ivec2(center.screen.xy));
+            // Neighbouring uniform tiles and adaptive subtiles around the probe's own pixel;
+            // either set contains the probe itself.
+            ivec2 tile    = ivec2(center.screen.xy) / int(probe.grid.z);
+            ivec2 subtile = ivec2(center.screen.xy) / int(ZEN_PROBE_SUBTILE);
+            for (int y = -1; y <= 1; ++y)
+            {
+                for (int x = -1; x <= 1; ++x)
+                {
+                    ivec2 sampleCoordinate = tile + ivec2(x, y);
+                    if (ProbeGridInside(sampleCoordinate))
+                    {
+                        Gather(center, probeInput[ProbeIndex(sampleCoordinate)]);
+                    }
+                    ivec2 sampleSubtile = subtile + ivec2(x, y);
+                    uvec2 slots         = ProbeSubtileInside(sampleSubtile) ? probeSubtiles[ProbeSubtileIndex(sampleSubtile)]
+                                                                            : uvec2(ZEN_PROBE_INVALID);
+                    for (uint entry = 0u; entry < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++entry)
+                    {
+                        if (slots[entry] < ProbeSlotCount())
+                        {
+                            Gather(center, probeInput[slots[entry]]);
+                        }
+                    }
+                }
+            }
+            for (int coefficient = 0; coefficient < 4; ++coefficient)
+            {
+                center.sky[coefficient]    = sum.sky[coefficient] / max(weight, 1e-8);
+                center.bounce[coefficient] = sum.bounce[coefficient] / max(weight, 1e-8);
+            }
+            center.skyAnchor    = sum.skyAnchor / max(weight, 1e-8);
+            center.bounceAnchor = sum.bounceAnchor / max(weight, 1e-8);
+        }
+        probeOutput[index] = center;
+    }
+}

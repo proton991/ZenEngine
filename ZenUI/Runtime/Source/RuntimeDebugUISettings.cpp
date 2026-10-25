@@ -249,19 +249,38 @@ void RuntimeDebugUI::BuildSettings()
 
     if (ImGui::CollapsingHeader("Sampling and reconstruction"))
     {
-        int samples = m_draft.cone.samples == 1 ? 0 : m_draft.cone.samples == 2 ? 1 : 2;
-        if (ImGui::Combo("Diffuse samples", &samples, "1\0 2\0 4\0"))
+        MarkGIEdit(DrawGIGatherControls(m_draft.cone));
+        const bool probes  = m_draft.cone.gather == rc::VoxelGISettings::Gather::Probes && m_draft.cone.referenceSamples == 0;
+        int        samples = m_draft.cone.samples == 1 ? 0 : m_draft.cone.samples == 2 ? 1 : 2;
+        ImGui::BeginDisabled(probes);
+        if (ImGui::Combo("Pixel diffuse samples", &samples, "1\0 2\0 4\0"))
         {
             m_draft.cone.samples = 1u << samples;
             MarkGIEdit(true);
+        }
+        ImGui::EndDisabled();
+        if (probes)
+        {
+            ImGui::TextWrapped(
+                "Probes use 64 diffuse samples per probe. When enabled, specular sampling shares one sample across each 2x2 pixel block.");
         }
         MarkGIEdit(ImGui::Checkbox("Temporal accumulation", &m_draft.cone.temporal));
         MarkGIEdit(ImGui::Checkbox("Spatial filter", &m_draft.cone.filter));
         MarkGIEdit(UIntSlider("History frames", m_draft.cone.historyFrames, 1, 256));
     }
 
-    if (ImGui::CollapsingHeader("Cone tracing"))
+    if (ImGui::CollapsingHeader("Voxel cones"))
     {
+        int bounce = m_draft.cone.bounceSource == rc::VoxelGISettings::BounceSource::Cone ? 1 : 0;
+
+        if (ImGui::Combo("Diffuse bounce", &bounce, "Ray hits\0Voxel cones\0"))
+        {
+            m_draft.cone.bounceSource =
+                bounce == 1 ? rc::VoxelGISettings::BounceSource::Cone : rc::VoxelGISettings::BounceSource::Auto;
+
+            MarkGIEdit(true);
+        }
+
         int cones = m_draft.cone.coneCount == 4 ? 0 : 1;
 
         if (ImGui::Combo("Cone count", &cones, "4\0 6\0"))
@@ -283,6 +302,9 @@ void RuntimeDebugUI::BuildSettings()
                                       ImGuiSliderFlags_AlwaysClamp));
 
         MarkGIEdit(UIntSlider("Cone steps", m_draft.cone.maxSteps, 8, 512));
+
+        ImGui::TextWrapped(
+            "Voxel cones light translucent surfaces, and opaque surfaces when Diffuse bounce is Voxel cones. Normal bias also offsets voxel light injection.");
     }
 
     if (ImGui::CollapsingHeader("GI contributions"))

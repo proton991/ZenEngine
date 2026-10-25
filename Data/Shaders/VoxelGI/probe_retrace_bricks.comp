@@ -1,0 +1,7 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+// Re-traces the brick probe trace's queued shading rays, those that hit next to a lamp, against
+// triangles (probe_trace.glsl, PROBE_RETRACE).
+#define HYBRID_BRICK_TRAVERSAL
+#define PROBE_RETRACE
+#include "probe_trace.glsl"

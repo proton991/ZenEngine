@@ -1,0 +1,143 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// One workgroup per ZEN_PROBE_SUBTILE square. While at least ZEN_PROBE_ADAPTIVE_MIN_UNCOVERED
+// receivers have no compatible probe (thin or curved geometry, silhouettes), choose an adaptive
+// probe on one of them, up to ZEN_PROBE_ADAPTIVE_PER_SUBTILE per subtile; each round's coverage
+// includes the earlier rounds' probes. This pass only proposes candidates: probe_allocate.comp
+// assigns slots, so the result does not depend on workgroup execution order when the pool is short.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, set = 7, binding = 21) readonly buffer ProbePlacements
+{
+    ProbePlacement probePlacements[];
+};
+// ZEN_PROBE_ADAPTIVE_PER_SUBTILE candidates per subtile in round order; unused ones are empty.
+layout(std430, set = 7, binding = 26) writeonly buffer ProbeSubtileCandidates
+{
+    ProbePlacement probeSubtileCandidates[];
+};
+layout(std430, set = 7, binding = 3) readonly buffer ProbeHistory
+{
+    ProbeRecord probeHistory[];
+};
+// The previous frame's adaptive probes per subtile, indexing ProbeHistory.
+layout(std430, set = 7, binding = 24) readonly buffer ProbeSubtilesPrevious
+{
+    uvec2 probeSubtilesPrevious[];
+};
+
+shared uint           probeCandidate;
+shared uint           probeUncovered;
+shared ProbePlacement probePlaced;
+// Per receiver of the subtile: the previous adaptive probe that now projects onto it.
+shared uint probeKept[64];
+
+// The uniform-probe interpolation weight probe_integrate.comp would give this receiver.
+float ProbeUniformCoverage(ivec2 pixel, vec3 position, vec3 geometric, float footprint)
+{
+    ivec2 tile   = pixel / int(probe.grid.z);
+    float weight = 0.0;
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            ivec2 coordinate = tile + ivec2(x, y);
+            if (ProbeGridInside(coordinate))
+            {
+                ProbePlacement other  = probePlacements[ProbeIndex(coordinate)];
+                weight               += ProbeSurfaceWeight(position, geometric, footprint, other.position, other.normal)
+                                      * ProbeScreenWeight(other.screen.xy, vec2(pixel), 2.0);
+            }
+        }
+    }
+    return weight;
+}
+
+// One lane per previous adaptive probe of the 3x3 subtiles around where this subtile's centre was
+// last frame: mark the receiver it now projects onto, if that receiver is in this subtile.
+void ProbeFindKept(ivec2 subtile, uint lane)
+{
+    uint neighbour = lane / ZEN_PROBE_ADAPTIVE_PER_SUBTILE;
+    if (neighbour < 9u && ProbeHistoryValid())
+    {
+        ivec2 origin   = subtile * int(ZEN_PROBE_SUBTILE);
+        vec2  previous = ProbePreviousPixel(vec2(origin) + 0.5 * float(ZEN_PROBE_SUBTILE - 1u));
+        ivec2 sampleSubtile =
+            ivec2(floor(previous / float(ZEN_PROBE_SUBTILE))) + ivec2(int(neighbour % 3u) - 1, int(neighbour / 3u) - 1);
+        uint  slot = ProbeSubtileInside(sampleSubtile)
+                       ? probeSubtilesPrevious[ProbeSubtileIndex(sampleSubtile)][lane % ZEN_PROBE_ADAPTIVE_PER_SUBTILE]
+                       : ZEN_PROBE_INVALID;
+        ivec2 pixel;
+        if (slot < ProbeHistorySlotCount()
+            && ProbeReproject(inverse(hybrid.inverseViewProjection), probeHistory[slot].position, probeHistory[slot].normal,
+                              probeHistory[slot].screen.z, pixel)
+            && all(greaterThanEqual(pixel, origin)) && all(lessThan(pixel, origin + int(ZEN_PROBE_SUBTILE))))
+        {
+            ivec2 local = pixel - origin;
+            atomicMin(probeKept[local.y * 8 + local.x], slot);
+        }
+    }
+}
+
+void main()
+{
+    ivec2 subtile   = ivec2(gl_WorkGroupID.xy);
+    ivec2 pixel     = subtile * int(ZEN_PROBE_SUBTILE) + ivec2(gl_LocalInvocationID.xy);
+    uint  lane      = gl_LocalInvocationIndex;
+    uint  first     = ProbeSubtileIndex(subtile) * ZEN_PROBE_ADAPTIVE_PER_SUBTILE;
+    bool  receiver  = ProbeValidReceiver(pixel);
+    vec3  position  = receiver ? HybridPosition(pixel) : vec3(0);
+    vec3  normal    = receiver ? HybridGeometricNormal(pixel) : vec3(0);
+    float footprint = receiver ? ProbePixelFootprint(pixel) : 0.0;
+    float coverage  = receiver ? ProbeUniformCoverage(pixel, position, normal, footprint) : 0.0;
+    probeKept[lane] = ZEN_PROBE_INVALID;
+    barrier();
+    ProbeFindKept(subtile, lane);
+    barrier();
+    // A receiver under a kept probe goes first while it is still uncovered, so adaptive probes stay
+    // on their surfaces while the camera moves. Otherwise a priority hashed from the pixel keeps
+    // the same receivers while the view holds still; the lane breaks ties.
+    uint priority =
+        probeKept[lane] != ZEN_PROBE_INVALID ? lane : (((HybridHash(HybridMorton(uvec2(pixel))) >> 1) | 64u) & ~63u) | lane;
+    for (uint attempt = 0u; attempt < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++attempt)
+    {
+        if (lane == 0u)
+        {
+            probeCandidate = 0xffffffffu;
+            probeUncovered = 0u;
+        }
+        barrier();
+        if (receiver && coverage < ZEN_PROBE_COVERAGE)
+        {
+            atomicMin(probeCandidate, priority);
+            atomicAdd(probeUncovered, 1u);
+        }
+        barrier();
+        if (lane == 0u)
+        {
+            probePlaced = ProbePlacement(vec4(0), vec4(0), vec4(0));
+            if (probeCandidate != 0xffffffffu && probeUncovered >= ZEN_PROBE_ADAPTIVE_MIN_UNCOVERED)
+            {
+                uint  chosenLane  = probeCandidate & 63u;
+                uint  kept        = probeKept[chosenLane];
+                ivec2 chosenPixel = subtile * int(ZEN_PROBE_SUBTILE) + ivec2(chosenLane % 8u, chosenLane / 8u);
+                probePlaced       = kept != ZEN_PROBE_INVALID
+                                      ? ProbeKeptPlacement(kept, probeHistory[kept].position, probeHistory[kept].normal,
+                                                           probeHistory[kept].screen.z, chosenPixel)
+                                      : ProbePlaceAt(chosenPixel);
+            }
+            if (ProbeSubtileInside(subtile))
+            {
+                probeSubtileCandidates[first + attempt] = probePlaced;
+            }
+        }
+        barrier();
+        if (receiver && probePlaced.position.w > 0.5)
+        {
+            coverage += ProbeSurfaceWeight(position, normal, footprint, probePlaced.position, probePlaced.normal)
+                      * ProbeScreenWeight(probePlaced.screen.xy, vec2(pixel), 2.0);
+        }
+        // Every invocation reads this round's probe before the next round replaces it.
+        barrier();
+    }
+}

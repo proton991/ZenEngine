@@ -1,0 +1,52 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+#define CONE_INPUT_SET 5
+#include "cone_trace.glsl"
+#include "Graphics/Shared/LightingCapture.h"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 7, binding = 4) uniform sampler2D probeRawSky;
+layout(set = 7, binding = 5) uniform sampler2D probeRawBounce;
+layout(set = 7, binding = 8) uniform sampler2D probeRawSpecular;
+layout(set = 7, binding = 9) uniform sampler2D nextProbeSky;
+layout(set = 7, binding = 10) uniform sampler2D nextProbeBounce;
+layout(set = 7, binding = 11) uniform sampler2D nextProbeSpecular;
+layout(set = 7, binding = 12) uniform sampler2D nextProbePosition;
+layout(set = 7, binding = 13) uniform usampler2D nextProbeSurface;
+layout(set = 7, binding = 14) uniform sampler2D nextProbeNormalRoughness;
+layout(set = 4, binding = 0, std430) writeonly buffer HybridCapture
+{
+    vec4 diagnostics[];
+};
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (HybridInView(p))
+    {
+        uint  index    = uint(p.x + textureSize(receiverDepth, 0).x * p.y) * ZEN_HYBRID_CAPTURE_COMPONENTS;
+        bool  valid    = ProbeValidReceiver(p);
+        vec3  position = valid ? HybridPosition(p) : vec3(0);
+        vec3  n = HybridNormal(p), ng = HybridGeometricNormal(p);
+        vec3  coneBounce       = valid && hybrid.bounce.x == 0u ? DiffuseVoxelLighting(position, n, false) : vec3(0);
+        vec4  bounce           = texelFetch(nextProbeBounce, p, 0);
+        float skyLength        = texelFetch(nextProbePosition, p, 0).w;
+        float specularLength   = texelFetch(nextProbeNormalRoughness, p, 0).w;
+        diagnostics[index + 0] = texelFetch(probeRawSky, p, 0);
+        diagnostics[index + 1] = texelFetch(nextProbeSky, p, 0);
+        diagnostics[index + 2] = hybrid.bounce.x != 0u ? texelFetch(probeRawBounce, p, 0) : vec4(coneBounce, 0);
+        diagnostics[index + 3] = hybrid.bounce.x != 0u ? bounce : vec4(coneBounce, 0);
+        diagnostics[index + 4] = texelFetch(probeRawSpecular, p, 0);
+        diagnostics[index + 5] = texelFetch(nextProbeSpecular, p, 0);
+        // Probe reconstruction has no pixel variance moments or pixel rejection reason.
+        diagnostics[index + 6]  = vec4(0);
+        diagnostics[index + 7]  = vec4(skyLength, specularLength, 0, bounce.a);
+        diagnostics[index + 8]  = vec4(position, valid ? 1.0 : 0.0);
+        diagnostics[index + 9]  = vec4(n, texelFetch(receiverRoughness, p, 0).g);
+        diagnostics[index + 10] = vec4(ng, texelFetch(receiverDepth, p, 0).r);
+        diagnostics[index + 11] = texelFetch(receiverMotion, p, 0);
+        // A spatially resolved specular value has no single per-pixel hit distance.
+        diagnostics[index + 12] =
+            vec4(uintBitsToFloat(texelFetch(receiverSurface, p, 0).g), 0, 0, hybrid.reflection.x != 0u ? specularLength : 0);
+    }
+}

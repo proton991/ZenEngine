@@ -9,6 +9,7 @@
 #include "Graphics/Shared/EnvironmentSampling.h"
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Platform/ConfigLoader.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -23,6 +24,18 @@ namespace
 // below the Windows watchdog on the frozen production scenes.
 constexpr uint32_t kCaptureReferenceSamples = 256;
 constexpr uint32_t kCaptureReferenceFrames  = 65536 / kCaptureReferenceSamples;
+
+// The pose a number of frames into a camera-motion stage: stage 0 strafes right by step per frame,
+// stage 1 yaws left by 0.2 degrees per frame about the view's up axis.
+void SetCameraMotionPose(sg::Camera& camera, uint32_t stage, float frames, float step, const Vec3& eye, const Mat4& inverseView)
+{
+    const Vec3 front = -Vec3(inverseView[2]);
+    const Vec3 moved = stage == 0 ? eye + Vec3(inverseView[0]) * (step * frames) : eye;
+    const Vec3 forward =
+        stage == 0 ? front
+                   : Vec3(glm::rotate(Mat4(1.0f), glm::radians(0.2f * frames), Vec3(inverseView[1])) * Vec4(front, 0.0f));
+    camera.SetPose(moved, moved + forward);
+}
 
 bool CreateCaptureBuffers(rc::RenderDevice& device, uint32_t bytes, RHIBuffer*& output, RHIBuffer*& readback)
 {
@@ -95,20 +108,32 @@ bool WriteLightingMetadata(const std::string&        path,
                            uint32_t                  height,
                            const glm::uvec2&         skyCacheCounts)
 {
-    const rc::SceneUniformData& data          = *reinterpret_cast<const rc::SceneUniformData*>(scene.GetSceneUniformData());
+    const rc::SceneUniformData& data     = *reinterpret_cast<const rc::SceneUniformData*>(scene.GetSceneUniformData());
 
-    const sg::CameraUniformData& camera       = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
+    const sg::CameraUniformData& camera  = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
 
-    const rc::VoxelizerBase& voxelizer        = *server.RequestVoxelizer();
+    const rc::VoxelizerBase& voxelizer   = *server.RequestVoxelizer();
 
-    const glm::uvec2 gbuffer                  = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
+    const glm::uvec2 gbuffer             = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
 
-    const rc::HybridGIRenderer* hybrid        = server.RequestDeferredLightingRenderer()->GetHybridGI();
-    const rc::VoxelGISettings&  settings      = server.RequestVoxelGI()->GetSettings();
-    const bool                  reconstructed = server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr;
-    const uint32_t              hardwareMask  = reconstructed ? server.RequestVoxelGI()->GetHardwareFeatureMask() : 0u;
-    const bool                  adaptive      = settings.UsesAdaptiveSampling();
-    std::ofstream               output(path + ".lighting.json");
+    const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
+    const rc::VoxelGISettings&  settings = server.RequestVoxelGI()->GetSettings();
+    const bool                  reconstructed =
+        server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr && hybrid->IsHistoryValid();
+    const uint32_t hardwareMask = reconstructed ? server.RequestVoxelGI()->GetHardwareFeatureMask() : 0u;
+    const bool     probes       = reconstructed && hybrid->UsesScreenProbes();
+    const bool     adaptive     = !probes && settings.UsesAdaptiveSampling();
+    const uint32_t sampleCount  = probes ? 64u : settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples;
+    const uint32_t sampleCountMax = sampleCount + (adaptive ? 2u : 0u);
+    const uint32_t specularSamples =
+        settings.specularOcclusion ? (settings.referenceSamples != 0 ? settings.referenceSamples : 1u) : 0u;
+    const bool            brickTraversal = reconstructed && server.RequestVoxelGI()->UsesBrickTraversal();
+    const rc::BrickScene& bricks         = server.RequestVoxelGI()->GetBrickScene();
+    const bool            bricksReady    = brickTraversal && bricks.IsReady();
+    // CaptureLighting has completed all GPU work before serializing metadata and readbacks.
+    const rc::BrickSceneStatistics  brickStatistics = bricksReady ? bricks.ReadStatistics() : rc::BrickSceneStatistics{};
+    const rc::ScreenProbeStatistics probeStatistics = probes ? hybrid->GetScreenProbeStatistics() : rc::ScreenProbeStatistics{};
+    std::ofstream                   output(path + ".lighting.json");
 
     output
         << std::setprecision(std::numeric_limits<float>::max_digits10) << "{\"version\":3,\"width\":" << width
@@ -119,9 +144,9 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"mask\":\"alpha 1 for covered deferred or forward opaque/mask surfaces, 0 otherwise; before marker overlay\""
         << ",\"capture_frame\":\"one additional frame after --frames; use frozen inputs for baseline comparisons\""
         << ",\"method\":\""
-        << (reconstructed                                            ? "hybrid"
-            : server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone"
-                                                                     : "pbr")
+        << (reconstructed                                                                 ? "hybrid"
+            : server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid == nullptr ? "cone"
+                                                                                          : "pbr")
         << "\",\"analytic_visibility\":\""
         << (reconstructed && server.RequestVoxelGI()->UsesRayShadows()
                 ? (server.RequestVoxelGI()->UsesHardwareShadows() ? "hardware_shadow_rays" : "software_shadow_rays")
@@ -157,8 +182,21 @@ bool WriteLightingMetadata(const std::string&        path,
         << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider) << ",\"provider_reason\":\""
         << server.RequestVoxelGI()->GetProviderReason() << "\""
         << ",\"hardware_feature_mask\":" << hardwareMask
-        << ",\"requested_hardware_feature_mask\":" << settings.GetHardwareFeatureMask()
-        << ",\"visibility_geometry\":\"triangles\",\"compute_traversal\":\"software_bvh\""
+        << ",\"requested_hardware_feature_mask\":" << settings.GetHardwareFeatureMask() << ",\"visibility_geometry\":\""
+        << (brickTraversal ? "triangles_and_bricks" : "triangles") << "\""
+        << ",\"compute_traversal\":\"" << (brickTraversal ? "bricks" : "software_bvh") << "\""
+        << ",\"requested_compute_traversal\":\""
+        << (settings.computeTraversal == rc::VoxelGISettings::ComputeTraversal::Bricks ? "bricks" : "triangles") << "\""
+        << ",\"brick_resolution\":" << settings.brickResolution << ",\"brick_scene_ready\":" << (bricksReady ? "true" : "false")
+        << ",\"brick_scene_bytes\":" << bricks.GetResidentBytes() << ",\"brick_capacity\":" << bricks.GetCapacity()
+        << ",\"brick_allocated\":" << brickStatistics.allocatedBricks
+        << ",\"brick_overflow\":" << (brickStatistics.overflow ? "true" : "false")
+        << ",\"brick_large_triangles\":" << brickStatistics.largeTriangles
+        << ",\"probe_uniform_count\":" << probeStatistics.uniformProbes
+        << ",\"probe_adaptive_capacity\":" << probeStatistics.adaptiveCapacity
+        << ",\"probe_adaptive_allocated\":" << probeStatistics.adaptiveAllocated
+        << ",\"probe_adaptive_requested\":" << probeStatistics.adaptiveRequested << ",\"probe_raw_specular_marker\":\""
+        << (probes ? "alpha -1: no resolved sample" : "none") << "\""
         << ",\"ray_scene_ready\":" << (server.RequestVoxelGI()->GetSceneRayQuery().IsReady() ? "true" : "false")
         << ",\"ray_scene_generation\":" << server.RequestVoxelGI()->GetSceneRayQuery().GetGeneration()
         << ",\"ray_scene_bytes\":" << server.RequestVoxelGI()->GetSceneRayQuery().GetMemoryBytes()
@@ -166,32 +204,67 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"acceleration_structure_enabled\":"
         << (GDynamicRHI->QueryGPUInfo().rayQuery.accelerationStructure ? "true" : "false")
         << ",\"buffer_device_address_enabled\":"
-        << (GDynamicRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress ? "true" : "false")
-        << ",\"preset\":\"custom\",\"bounce_source\":\""
+        << (GDynamicRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress ? "true" : "false") << ",\"bounce_source\":\""
         << (reconstructed && server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone")
         << "\",\"sample_seed\":0,\"radiance_generation\":" << server.RequestVoxelGI()->GetRadianceGeneration()
-        << ",\"bounce_diagnostics\":\"raw alpha: rejected lookups; reconstructed alpha: history length\""
+        << ",\"bounce_diagnostics\":\""
+        << (probes ? "raw alpha: projected rejected-lookup fraction; reconstructed alpha: pixel history length"
+                   : "raw alpha: rejected lookups; reconstructed alpha: history length")
+        << "\""
         << ",\"reflections\":" << (reconstructed && server.RequestVoxelGI()->UsesReflections() ? "true" : "false")
         << ",\"rt_shadows_requested\":" << (settings.rtShadows ? "true" : "false")
         << ",\"hardware_shadows\":" << (reconstructed && server.RequestVoxelGI()->UsesHardwareShadows() ? "true" : "false")
-        << ",\"reflection_roughness_cutoff\":0.2,\"reflection_radiance\":\"RGB stores (1-S)*H; alpha stores S\""
-        << ",\"reflection_diagnostics\":\"component 12: identity bits, raw mean hit distance, rejected lookups, history length\""
-        << ",\"preset\":\"" << rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())) << "\""
+        << ",\"reflection_roughness_cutoff\":null,\"reflection_radiance\":\"RGB stores (1-S)*H; alpha stores S\""
+        << ",\"reflection_diagnostics\":\""
+        << (probes
+                ? "component 12: identity bits, unavailable hit distance (zero), unavailable rejected lookups (zero), pixel history length"
+                : "component 12: identity bits, raw mean hit distance, rejected lookups, history length")
+        << "\""
+        << ",\"reflection_hit_diagnostics_available\":" << (probes ? "false" : "true") << ",\"preset\":\""
+        << rc::GetVoxelGIPresetName(rc::GetVoxelGIPreset(server.GetVoxelGISettings())) << "\""
         << ",\"selection_reason\":\"" << server.GetGISelectionReason() << "\""
-        << ",\"sample_count\":" << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples)
-        << ",\"diffuse_resolution\":\"" << (hybrid != nullptr && hybrid->UsesHalfResolutionDiffuse() ? "half" : "full") << "\""
-        << ",\"adaptive_sampling\":" << (adaptive ? "true" : "false") << ",\"sample_count_max\":"
-        << (settings.referenceSamples != 0 ? settings.referenceSamples : settings.samples + (adaptive ? 2u : 0u))
-        << ",\"angular_guide_resolution\":" << ZEN_HYBRID_GUIDE_PER_FACE
+        << ",\"requested_gather\":\"" << (settings.gather == rc::VoxelGISettings::Gather::Probes ? "probes" : "pixel") << "\""
+        << ",\"gather\":\""
+        << (probes          ? "probes"
+            : reconstructed ? "pixel"
+                            : "none")
+        << "\""
+        << ",\"requested_probe_spacing\":" << settings.probeSpacing
+        << ",\"probe_spacing\":" << (probes ? settings.probeSpacing : 0u) << ",\"requested_pixel_samples\":" << settings.samples
+        << ",\"sample_count\":" << sampleCount << ",\"sample_count_max\":" << sampleCountMax << ",\"sample_count_unit\":\""
+        << (probes ? "per_probe" : "per_receiver") << "\""
+        << ",\"sample_counts_are_budgets\":true"
+        << ",\"specular_sample_count\":" << specularSamples << ",\"specular_sample_block\":" << (probes ? "[2,2]" : "[1,1]")
+        << ",\"diffuse_resolution\":\""
+        << (probes                                                     ? "probes"
+            : hybrid != nullptr && hybrid->UsesHalfResolutionDiffuse() ? "half"
+                                                                       : "full")
+        << "\""
+        << ",\"adaptive_sampling\":" << (adaptive ? "true" : "false")
+        << ",\"angular_guide_resolution\":" << (probes ? 0u : ZEN_HYBRID_GUIDE_PER_FACE)
         << ",\"frame\":" << (hybrid != nullptr ? hybrid->GetFrame() : 0)
         << ",\"environment_generation\":" << scene.GetEnvironmentRevision()
         << ",\"lighting_generation\":" << scene.GetLightingRevision()
         << ",\"temporal\":" << (settings.temporal ? "true" : "false")
         << ",\"previous_frame_radiance\":" << (settings.previousFrameRadiance ? "true" : "false")
         << ",\"static_reference_accumulation\":" << (settings.referenceSamples != 0 ? "true" : "false")
-        << ",\"history_valid\":" << (hybrid != nullptr && hybrid->IsHistoryValid() ? "true" : "false")
-        << ",\"history_limit\":" << (settings.referenceSamples != 0 ? 256u : settings.historyFrames)
-        << ",\"filter_iterations\":" << (settings.filter && settings.referenceSamples == 0 ? 5 : 0) << ",\"reset_reason\":\""
+        << ",\"history_valid\":" << (hybrid != nullptr && hybrid->IsHistoryValid() ? "true" : "false") << ",\"history_limit\":"
+        << (probes                           ? std::min(settings.historyFrames, 4u)
+            : settings.referenceSamples != 0 ? 256u
+                                             : settings.historyFrames)
+        << ",\"probe_history_limit\":" << (probes ? settings.historyFrames : 0u)
+        << ",\"history_length_source\":\"pixel_temporal\""
+        << ",\"hybrid_history_channels\":\""
+        << (probes
+                ? "component 7: pixel sky history length, pixel specular history length, unavailable rejection (zero), pixel bounce history length"
+                : "component 7: sky history length, specular history length, rejection reason, roughness")
+        << "\""
+        << ",\"filter_iterations\":" << (settings.filter && settings.referenceSamples == 0 ? (probes ? 1 : 5) : 0)
+        << ",\"filter_type\":\"" << (probes ? "probe_3x3" : "pixel_atrous") << "\""
+        << ",\"hybrid_raw_stage\":\"" << (probes ? "probe_integrate" : "pixel_trace") << "\""
+        << ",\"hybrid_specular_raw_stage\":\"" << (probes ? "probe_specular_resolve" : "pixel_trace") << "\""
+        << ",\"hybrid_moments_available\":" << (probes ? "false" : "true")
+        << ",\"diffuse_rejection_available\":" << (probes ? "false" : "true") << ",\"reset_reason\":\""
         << (hybrid != nullptr ? hybrid->GetResetReason() : "inactive") << "\""
         << ",\"hybrid_bytes_per_pixel\":" << (reconstructed ? ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL : 0)
         << ",\"hybrid_components\":[\"raw_sky_nu\",\"sky_nu\",\"raw_bounce\",\"bounce\",\"raw_weighted_H_S\",\"weighted_H_S\",\"moments\",\"length_rejection\",\"position_valid\",\"normal_roughness\",\"geometric_depth\",\"motion_ndc_previous_w\",\"identity_hit_distance_rejected_history\"]"
@@ -430,6 +503,43 @@ bool SceneRendererDemo::CaptureStability(const std::string& path)
     if (!succeeded)
     {
         LOGE("Stability capture requires shipping settings and masked materials; capture or restoration failed");
+    }
+    return succeeded;
+}
+
+// Lighting while the camera moves, for reprojected frame-to-frame comparisons. From a settled view,
+// each stage strafes or yaws at a constant rate for 30 frames, captures the next two moving frames,
+// then captures each of those two views again after 63 still frames.
+bool SceneRendererDemo::CaptureCameraMotion(const std::string& path)
+{
+    const Vec3     camera      = m_camera->GetPos();
+    const Mat4     inverseView = glm::inverse(m_camera->GetViewMatrix());
+    const Vec3     front       = -Vec3(inverseView[2]);
+    const float    step        = 0.001f * m_scene->GetAABB().GetScale();
+    const char*    stages[]    = {"strafe", "yaw"};
+    const uint32_t moving      = 30;
+    bool           succeeded   = true;
+    for (uint32_t stage = 0; stage < 2 && succeeded; ++stage)
+    {
+        m_camera->SetPose(camera, camera + front);
+        succeeded = Run(63, false, 3, {}, true);
+        for (uint32_t frame = 1; frame <= moving + 2 && succeeded; ++frame)
+        {
+            SetCameraMotionPose(*m_camera, stage, float(frame), step, camera, inverseView);
+            succeeded = frame <= moving ? Run(1, false, 3, {}, true)
+                                        : CaptureLighting(fmt::format("{}-{}-moving{}", path, stages[stage], frame - moving));
+        }
+        for (uint32_t frame = 1; frame <= 2 && succeeded; ++frame)
+        {
+            SetCameraMotionPose(*m_camera, stage, float(moving + frame), step, camera, inverseView);
+            succeeded =
+                Run(63, false, 3, {}, true) && CaptureLighting(fmt::format("{}-{}-settled{}", path, stages[stage], frame));
+        }
+    }
+    m_camera->SetPose(camera, camera + front);
+    if (!succeeded)
+    {
+        LOGE("Camera-motion capture failed");
     }
     return succeeded;
 }
@@ -854,6 +964,15 @@ bool SceneRendererDemo::CaptureLighting(const std::string& path)
 
         succeeded = Run(1, false, static_cast<uint32_t>(server->GetRequestedRenderOption()) + 1)
                  && renderer->WasLightingCaptureRecorded();
+        if (succeeded && captureHybrid)
+        {
+            const rc::HybridGIRenderer* hybrid = renderer->GetHybridGI();
+            succeeded                          = hybrid != nullptr && hybrid->IsHistoryValid();
+            if (!succeeded)
+            {
+                LOGE("Hybrid lighting capture was not recorded; refusing to write incomplete diagnostics");
+            }
+        }
 
         renderer->SetLightingCapture(nullptr, nullptr);
         renderer->SetHybridCapture(nullptr, nullptr);

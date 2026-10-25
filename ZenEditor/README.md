@@ -141,8 +141,8 @@ configuration and do not depend on the launch working directory.
   is open. Disabled commands explain which plan step enables them.
 - Escape cancels navigation or a modal. Text input, active widgets, open popups,
   and loss of window/panel focus prevent viewport navigation.
-- **Rendering** selects PBR or PBR with voxel cone GI, independently of the debug
-  output. New/reset layouts select this panel in the right dock; existing layouts
+- **Rendering** selects PBR or PBR + Global illumination, independently of the debug
+  output. The editor starts in PBR + Global illumination; `--mode=pbr` starts in PBR. New/reset layouts select this panel in the right dock; existing layouts
   retain the `RenderSettings` identity. Inspector source values remain read-only.
 - Output retains at most 2,048 entries of 4,096 characters each, with level/text
   filtering, Clear and Copy. Warnings and errors are colored, and the list follows
@@ -252,12 +252,13 @@ capture run, without reaching the scripted navigation actions.
 
 ### Environment and skybox
 
-PBR + voxel GI uses hardware ray queries for environment visibility only when the
-selected device supports the required features and dependencies. Unsupported
-devices use voxel visibility, which can produce block-shaped occlusion at coarse
-grid resolutions. Set `voxel_gi_ray_provider=voxel` in `Data/engine.cfg` to use
-voxel visibility on any device, and `ZEN_VULKAN_DEVICE` to a substring of an
-adapter name to select that GPU.
+By default, PBR + Global illumination traces every GI pass with hardware ray queries
+when the selected device supports the required features and dependencies. Other
+devices trace with Compute: GI rays use the sparse brick scene, and the sky cache and
+direct shadows use the software triangle BVH. Set `voxel_gi_ray_provider=voxel` in
+`Data/engine.cfg` to use Compute on any device, `voxel_gi_compute_traversal=triangles`
+for exact (slow) Compute GI rays, and `ZEN_VULKAN_DEVICE` to a substring of an adapter
+name to select that GPU.
 
 Open **Rendering → Environment** to select a skybox and image-based lighting
 texture together. The repository includes the papermill cubemap. An optional

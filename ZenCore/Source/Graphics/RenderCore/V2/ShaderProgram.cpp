@@ -9,6 +9,17 @@ namespace zen::rc
 {
 namespace
 {
+// Both names use one SPIR-V module. The capture specialization reserves the
+// larger exact accumulator only when that pipeline is selected.
+void StoreGuideTracePrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* path)
+{
+    manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, name, path));
+    std::string exactName(name);
+    exactName.insert(exactName.size() - 2u, "Exact");
+    const HashMap<uint32_t, RHIShaderSpecializationValue> constants{{0u, true}};
+    manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, NameID(exactName), path, constants));
+}
+
 class LightBallSP final : public ShaderProgram
 {
 public:
@@ -245,6 +256,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, debugNames[index], debugFiles[index]));
     }
     StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, "HybridDebugSP", "SceneRenderer/debug_hybrid.frag.spv"));
+    StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, "ProbeDebugSP", "SceneRenderer/debug_probe.frag.spv"));
 
     const glm::uvec3 volumeGroupSize = ResolveVoxelVolumeWorkgroupSize(pRenderDevice->GetGPUInfo());
 
@@ -285,16 +297,98 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureHybridEnvironmentSP", "VoxelGI/capture_environment.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureSkyCacheSP", "VoxelGI/capture_sky_cache.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridCaptureSP", "VoxelGI/hybrid_capture.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceCountsSP", "VoxelGI/hybrid_trace_counts.comp.spv"));
+    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv");
+    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceCountsSP", "VoxelGI/hybrid_trace_counts.comp.spv");
+    // Brick scene construction (BrickScene.cpp) and the per-pixel trace with brick traversal.
+    const char* const brickPrograms[][2] = {
+        {"BrickClearSP", "VoxelGI/brick_clear.comp.spv"},
+        {"BrickMarkSP", "VoxelGI/brick_mark.comp.spv"},
+        {"BrickFinalizeSP", "VoxelGI/brick_finalize.comp.spv"},
+        {"BrickMarkLargeSP", "VoxelGI/brick_mark_large.comp.spv"},
+        {"BrickAllocateSP", "VoxelGI/brick_allocate.comp.spv"},
+        {"BrickRasterizeSP", "VoxelGI/brick_rasterize.comp.spv"},
+        {"BrickRasterizeLargeSP", "VoxelGI/brick_rasterize_large.comp.spv"},
+        {"BrickPruneSP", "VoxelGI/brick_prune.comp.spv"},
+        {"BrickDistanceXSP", "VoxelGI/brick_distance_x.comp.spv"},
+        {"BrickDistanceYSP", "VoxelGI/brick_distance_y.comp.spv"},
+        {"BrickDistanceZSP", "VoxelGI/brick_distance_z.comp.spv"},
+        {"HybridTraceBricksSP", "VoxelGI/hybrid_trace_bricks.comp.spv"},
+        {"HybridTraceCountsBricksSP", "VoxelGI/hybrid_trace_counts_bricks.comp.spv"},
+        {"HybridTraceHalfBricksSP", "VoxelGI/hybrid_trace_half_bricks.comp.spv"},
+        {"HybridTraceHalfCountsBricksSP", "VoxelGI/hybrid_trace_half_counts_bricks.comp.spv"},
+        {"HybridTraceFallbackBricksSP", "VoxelGI/hybrid_trace_fallback_bricks.comp.spv"},
+        {"HybridTraceFallbackCountsBricksSP", "VoxelGI/hybrid_trace_fallback_counts_bricks.comp.spv"},
+        // Reference accumulation re-traces near-lamp hits inline instead of queueing them.
+        {"HybridTraceReferenceBricksSP", "VoxelGI/hybrid_trace_reference_bricks.comp.spv"},
+        {"HybridTraceReferenceCountsBricksSP", "VoxelGI/hybrid_trace_reference_counts_bricks.comp.spv"},
+        {"HybridRetraceBricksSP", "VoxelGI/hybrid_retrace_bricks.comp.spv"},
+        {"HybridRetraceCountsBricksSP", "VoxelGI/hybrid_retrace_counts_bricks.comp.spv"}};
+    for (const char* const* program : brickPrograms)
+    {
+        const std::string name(program[0]);
+        if (name.starts_with("HybridTrace") && !name.starts_with("HybridTraceFallback"))
+        {
+            StoreGuideTracePrograms(*this, pRenderDevice, program[0], program[1]);
+        }
+        else
+        {
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], program[1]));
+        }
+    }
+    const char* const probePrograms[][2] = {{"ProbeClearSP", "VoxelGI/probe_clear.comp.spv"},
+                                            {"ProbeClaimSP", "VoxelGI/probe_claim.comp.spv"},
+                                            {"ProbePlaceSP", "VoxelGI/probe_place.comp.spv"},
+                                            {"ProbeAdaptiveSP", "VoxelGI/probe_adaptive.comp.spv"},
+                                            {"ProbeAllocateCountSP", "VoxelGI/probe_allocate_count.comp.spv"},
+                                            {"ProbeAllocateSP", "VoxelGI/probe_allocate.comp.spv"},
+                                            {"ProbeTraceSP", "VoxelGI/probe_trace.comp.spv"},
+                                            {"ProbeTraceBricksSP", "VoxelGI/probe_trace_bricks.comp.spv"},
+                                            {"ProbeRetraceBricksSP", "VoxelGI/probe_retrace_bricks.comp.spv"},
+                                            {"ProbeTemporalSP", "VoxelGI/probe_temporal.comp.spv"},
+                                            {"ProbeTemporalBricksSP", "VoxelGI/probe_temporal_bricks.comp.spv"},
+                                            {"ProbeFilterSP", "VoxelGI/probe_filter.comp.spv"},
+                                            {"ProbeIntegrateSP", "VoxelGI/probe_integrate.comp.spv"},
+                                            {"ProbeSpecularTraceSP", "VoxelGI/probe_specular_trace.comp.spv"},
+                                            {"ProbeSpecularTraceBricksSP", "VoxelGI/probe_specular_trace_bricks.comp.spv"},
+                                            {"ProbeSpecularResolveSP", "VoxelGI/probe_specular_resolve.comp.spv"},
+                                            {"ProbePixelTemporalSP", "VoxelGI/probe_pixel_temporal.comp.spv"},
+                                            {"ProbeCaptureSP", "VoxelGI/probe_capture.comp.spv"}};
+    for (const char* const* program : probePrograms)
+    {
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], program[1]));
+    }
+    // Specular sample filter passes at block steps 1, 2, 4 and 8 (ScreenProbeGather.cpp).
+    for (uint32_t iteration = 0; iteration < 4; ++iteration)
+    {
+        const HashMap<uint32_t, RHIShaderSpecializationValue> filterConstants{{0u, static_cast<int>(1u << iteration)}};
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("ProbeSpecularFilter{}SP", iteration)),
+                                             "VoxelGI/probe_specular_filter.comp.spv", filterConstants));
+    }
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"));
     if (pRenderDevice->GetGPUInfo().rayQuery.IsUsable())
     {
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceHardwareSP", "VoxelGI/hybrid_trace_hardware.comp.spv"));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceHardwareCountsSP",
-                                             "VoxelGI/hybrid_trace_hardware_counts.comp.spv"));
+        const char* const hardwareProbePrograms[][2] = {
+            {"ProbeTraceHardwareSP", "VoxelGI/probe_trace_hardware.comp.spv"},
+            {"ProbeTraceHardwareBricksSP", "VoxelGI/probe_trace_hardware_bricks.comp.spv"},
+            {"ProbeSpecularTraceHardwareSP", "VoxelGI/probe_specular_trace_hardware.comp.spv"},
+            {"ProbeSpecularTraceHardwareBricksSP", "VoxelGI/probe_specular_trace_hardware_bricks.comp.spv"}};
+        for (const char* const* program : hardwareProbePrograms)
+        {
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], program[1]));
+        }
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareSP", "VoxelGI/hybrid_trace_hardware.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareCountsSP",
+                                "VoxelGI/hybrid_trace_hardware_counts.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareBricksSP",
+                                "VoxelGI/hybrid_trace_hardware_bricks.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareCountsBricksSP",
+                                "VoxelGI/hybrid_trace_hardware_counts_bricks.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareReferenceBricksSP",
+                                "VoxelGI/hybrid_trace_hardware_reference_bricks.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareReferenceCountsBricksSP",
+                                "VoxelGI/hybrid_trace_hardware_reference_counts_bricks.comp.spv");
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceHardwareSP",
                                              "VoxelGI/sky_irradiance_hardware.comp.spv", volumeConstants));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceSP",
@@ -388,9 +482,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                 "SceneRenderer/offscreen.vert.spv",
                                                 "SceneRenderer/forward_scatter_software_shadows_counts.frag.spv"));
     }
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceHalfSP", "VoxelGI/hybrid_trace_half.comp.spv"));
-    StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "HybridTraceHalfCountsSP", "VoxelGI/hybrid_trace_half_counts.comp.spv"));
+    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHalfSP", "VoxelGI/hybrid_trace_half.comp.spv");
+    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHalfCountsSP", "VoxelGI/hybrid_trace_half_counts.comp.spv");
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackSP", "VoxelGI/hybrid_trace_fallback.comp.spv"));
     StoreProgram(
         ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackCountsSP", "VoxelGI/hybrid_trace_fallback_counts.comp.spv"));

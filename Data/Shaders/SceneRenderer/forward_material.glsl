@@ -250,16 +250,22 @@ void main()
                               && HybridReceiverMatches(uNodeIndex, gl_FrontFacing == (inOrientation >= 0.0)));
         bool diffuse =
             reconstructed || (receiverLayer && material.surfaceProperties.y == 2.0 && HybridReceiverSupports(shadowNormal));
-        irradiance = diffuse && gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
-                                                    : DiffuseVoxelLighting(inWorldPos, N, !diffuse);
+        // Indirect diffuse off (GI tracing panel) keeps the unoccluded environment, as without GI.
+        bool indirect = gi.indirect.x > 0.5;
+        if (indirect)
+        {
+            irradiance = diffuse && gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
+                                                        : DiffuseVoxelLighting(inWorldPos, N, !diffuse);
+        }
         if (diffuse)
         {
 #        if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
             receiverVisibility = texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0).rg;
 #        endif
-            irradiance += texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
+            vec3 escaped = indirect ? texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb : irradiance;
+            irradiance   = indirect ? irradiance + escaped : irradiance;
 #        ifdef LIGHTING_CAPTURE
-            captureDiffuseEscaped = texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
+            captureDiffuseEscaped = escaped;
             captureDiffuseBounced = irradiance - captureDiffuseEscaped;
 #        endif
         }
@@ -269,7 +275,7 @@ void main()
             hybridReflectedRadiance  = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).rgb;
         }
 #    else
-        irradiance = DiffuseVoxelLighting(inWorldPos, N);
+        irradiance = gi.indirect.x > 0.5 ? DiffuseVoxelLighting(inWorldPos, N) : irradiance;
 #    endif
 #endif
         color = (vec3(1.0) - iblF) * irradiance * s.diffuse * (1.0 - s.transmission) * (1.0 - s.diffuseTransmission);

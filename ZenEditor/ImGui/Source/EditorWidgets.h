@@ -16,7 +16,7 @@ void SameLineIfFits(float nextItemWidth);
 // The render service's state for the current UI frame. Every view shares one read.
 const EditorRenderSnapshot& GetRenderSnapshot(EditorContext& context);
 
-// "PBR" or "PBR + voxel GI".
+// "PBR" or "PBR + Global illumination".
 const char* GetRenderAlgorithmName(rc::RenderAlgorithm algorithm);
 
 // The display name of a node or asset; a node takes precedence when both are set.

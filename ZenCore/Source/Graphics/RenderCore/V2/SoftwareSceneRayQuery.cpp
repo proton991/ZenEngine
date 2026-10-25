@@ -236,10 +236,13 @@ bool SoftwareSceneRayQuery::Prepare(RenderScene& scene)
             // change as a whole. Keep their GPU allocations stable across updates.
             m_nodeBuffers.MarkDirty(0, nodeBytes);
             m_triangleBuffers.MarkDirty(0, triangleBytes);
-            ready         = m_nodeBuffers.Update(*m_device, nodes.data(), nodeBytes, "software_ray_nodes")
-                         && m_triangleBuffers.Update(*m_device, triangles.data(), triangleBytes, "software_ray_triangles");
-            m_revision    = scene.GetGeometryRevision();
-            m_nodeCount   = static_cast<uint32_t>(nodes.size());
+            ready       = m_nodeBuffers.Update(*m_device, nodes.data(), nodeBytes, "software_ray_nodes")
+                       && m_triangleBuffers.Update(*m_device, triangles.data(), triangleBytes, "software_ray_triangles");
+            m_revision  = scene.GetGeometryRevision();
+            m_nodeCount = static_cast<uint32_t>(nodes.size());
+            // An empty scene uploads one zeroed placeholder triangle.
+            m_triangleCount =
+                triangles.size() == 1 && triangles[0].record.w == 0 ? 0u : static_cast<uint32_t>(triangles.size());
             m_placeholder = false;
         }
     }
@@ -298,9 +301,10 @@ void SoftwareSceneRayQuery::Destroy()
 {
     m_nodeBuffers.Destroy(*m_device);
     m_triangleBuffers.Destroy(*m_device);
-    m_scene       = nullptr;
-    m_revision    = 0;
-    m_nodeCount   = 0;
-    m_placeholder = false;
+    m_scene         = nullptr;
+    m_revision      = 0;
+    m_nodeCount     = 0;
+    m_triangleCount = 0;
+    m_placeholder   = false;
 }
 } // namespace zen::rc

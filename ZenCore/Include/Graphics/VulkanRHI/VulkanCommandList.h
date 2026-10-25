@@ -712,6 +712,8 @@ public:
 
     // todo: need a function to collect recorded workload in this context
 private:
+    void MakeHostReadAvailable(RHIBuffer* buffer, uint64_t offset, uint64_t size);
+
     RHICommandContextType m_contextType;
 
     VulkanDevice* m_pDevice{nullptr};

@@ -128,7 +128,12 @@ vec3        GuideDirection(uint t)
     return guideDirection[t];
 }
 #endif
-shared uint  guideLearned[ZEN_HYBRID_GUIDE_TILES];
+#define GUIDE_SUM_BINS ZEN_HYBRID_GUIDE_TILES
+// Capture-only specialization. Normal rendering retains one float word per bin.
+layout(constant_id = 0) const bool HYBRID_EXACT_GUIDE = false;
+const uint HYBRID_GUIDE_WORDS                         = HYBRID_EXACT_GUIDE ? 10u : 1u;
+#define GUIDE_SUM_STORAGE_WORDS HYBRID_GUIDE_WORDS
+#include "guide_sum.glsl"
 shared uint  guideReceivers;
 shared float guidePower;
 shared float guidePartialPower[TRACE_THREADS];
@@ -179,6 +184,47 @@ layout(std430, set = 1, binding = 26) writeonly buffer HybridRayCounts
 #    endif
 shared uvec4 computeRaySums[TRACE_THREADS], hardwareRaySums[TRACE_THREADS];
 #endif
+#ifdef HYBRID_INLINE_RETRACE
+// Reference accumulation re-traces near-lamp hits in the trace itself (hybrid_retrace.glsl); this
+// marks the hit being shaded as re-traced, so its near-light visibility traces triangles as well.
+bool retracedHit = false;
+#elif defined(HYBRID_BRICK_TRAVERSAL)
+#    include "hybrid_retrace.glsl"
+// This invocation's last queued ray; one invocation traces one receiver's diffuse rays.
+uint retraceHead = HYBRID_RETRACE_NONE;
+
+// Queues a diffuse ray whose brick hit lies next to a cached point or spot light
+// (HitNearLocalLight). Returns false when the queue is full; the ray is then shaded from its brick hit.
+bool QueueRetrace(vec3 hitPosition, vec3 direction, float weight, bool source)
+{
+    uint ray    = atomicAdd(retraceHeader.claimedRays, 1u);
+    bool queued = ray < uint(retraceRays.length()) / 2u;
+    if (queued)
+    {
+        // Bricks are conservative, so no triangle lies closer than one fine voxel before the hit.
+        retraceRays[ray * 2u]      = uvec4(floatBitsToUint(hitPosition - direction * brick.voxel.x), retraceHead);
+        retraceRays[ray * 2u + 1u] = uvec4(floatBitsToUint(direction), floatBitsToUint(source ? -weight : weight));
+        retraceHead                = ray;
+    }
+    return queued;
+}
+
+// Lists this invocation's receiver for the re-trace pass when it queued rays; target is its texel
+// in the image the pass adds to.
+void PublishRetrace(ivec2 target)
+{
+    if (retraceHead != HYBRID_RETRACE_NONE)
+    {
+        // Each listed receiver queued at least one ray, so the list fits the ray capacity.
+        uint receiver = atomicAdd(retraceHeader.receivers, 1u);
+        if (receiver % 64u == 0u)
+        {
+            atomicAdd(retraceHeader.groups, 1u);
+        }
+        retraceReceivers[receiver] = uvec2(uint(target.x) | uint(target.y) << 16u, retraceHead);
+    }
+}
+#endif
 // Learned frames are averaged equally up to this count, then exponentially.
 const float HYBRID_GUIDE_FRAMES = 64.0;
 
@@ -203,15 +249,28 @@ HybridRayResult TraceFeature(uint feature, vec3 position, vec3 normal, vec3 dire
         return HardwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
     }
 #endif
+#ifdef HYBRID_BRICK_TRAVERSAL
+    // Diffuse hits next to a lamp are re-traced against triangles (TraceDiffuse).
+    return BrickTraceRay(BrickTraceOrigin(position, normal), direction, 1e20);
+#else
     return SoftwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
+#endif
 }
-// Visibility of a nearby point or spot light from a ray hit (hit_radiance.glsl), with the bounce provider.
+// Visibility of a nearby point or spot light from a ray hit (hit_radiance.glsl), with the bounce
+// provider. Under brick traversal, hits next to a lamp are re-traced with triangle visibility,
+// by hybrid_retrace_bricks.comp or, in reference variants, inline.
 bool HitLightVisible(HybridRayResult hit, SceneLight light)
 {
 #ifdef HYBRID_COUNT_RAYS
     issuedRayFeature = 2u;
 #endif
-    vec3  origin          = HybridTraceOrigin(hit.position, hit.normal, 0.0);
+#if defined(HYBRID_INLINE_RETRACE)
+    vec3 origin = retracedHit ? HybridTraceOrigin(hit.position, hit.normal, 0.0) : BrickTraceOrigin(hit.position, hit.normal);
+#elif defined(HYBRID_BRICK_TRAVERSAL)
+    vec3 origin = BrickTraceOrigin(hit.position, hit.normal);
+#else
+    vec3 origin = HybridTraceOrigin(hit.position, hit.normal, 0.0);
+#endif
     vec3  delta           = light.positionRange.xyz - origin;
     float distanceToLight = length(delta);
     vec3  direction       = delta / max(distanceToLight, 1e-20);
@@ -226,19 +285,34 @@ bool HitLightVisible(HybridRayResult hit, SceneLight light)
     else
 #endif
     {
+#if defined(HYBRID_INLINE_RETRACE)
+        blocked = distanceToLight > 0.0
+               && (retracedHit ? SoftwareTraceOpaqueRay(origin, direction, distanceToLight, false).hit
+                               : BrickTraceRay(origin, direction, distanceToLight).hit);
+#elif defined(HYBRID_BRICK_TRAVERSAL)
+        blocked = distanceToLight > 0.0 && BrickTraceRay(origin, direction, distanceToLight).hit;
+#else
         blocked = distanceToLight > 0.0 && SoftwareTraceRay(origin, direction, distanceToLight, false).hit;
+#endif
     }
     return !blocked;
 }
 
 void GuideLearn(uint tile, float value)
 {
-    uint previous = guideLearned[tile], expected;
-    do
+    if (HYBRID_EXACT_GUIDE)
     {
-        expected = previous;
-        previous = atomicCompSwap(guideLearned[tile], expected, floatBitsToUint(uintBitsToFloat(expected) + value));
-    } while (previous != expected);
+        GuideSumAdd(tile, value);
+    }
+    else
+    {
+        uint previous = guideSumWords[tile], expected;
+        do
+        {
+            expected = previous;
+            previous = atomicCompSwap(guideSumWords[tile], expected, floatBitsToUint(uintBitsToFloat(expected) + value));
+        } while (previous != expected);
+    }
 }
 
 float GuideHorizonSupport()
@@ -413,7 +487,14 @@ void BuildGuide(uint lane)
         {
             guideWeight[t] = -guideWeight[t];
         }
-        guideLearned[t] = 0u;
+        if (HYBRID_EXACT_GUIDE)
+        {
+            GuideSumClear(t);
+        }
+        else
+        {
+            guideSumWords[t] = 0u;
+        }
     }
     // Separate power scratch lets the learning bins initialize with the guide,
     // removing the barrier previously needed before clearing reused storage.
@@ -614,7 +695,35 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
         {
             hit = TraceFeature(BOUNCE_PROVIDER, position, ng, w, true);
         }
-        if (inDomain && hit.hit && hybrid.bounce.x != 0u)
+        bool queued = false;
+#if defined(HYBRID_INLINE_RETRACE)
+        // Reference accumulation re-traces a compute bounce ray whose brick hit lies next to a lamp
+        // here, as hybrid_retrace_bricks.comp does for queued rays. When the sky ray is the bounce
+        // ray, an escape adds sky and teaches the guide like any other.
+        if (inDomain && hit.hit && hybrid.bounce.x != 0u && !FeatureHardware(BOUNCE_PROVIDER)
+            && HitNearLocalLight(hit.position))
+        {
+#    ifdef HYBRID_COUNT_RAYS
+            issuedRayFeature = 2u;
+#    endif
+            hit         = BrickRetraceTriangles(hit.position - w * brick.voxel.x, w);
+            retracedHit = true;
+            if (sharedBounce)
+            {
+                escaped = !hit.hit;
+            }
+        }
+#elif defined(HYBRID_BRICK_TRAVERSAL)
+        // A compute bounce ray whose brick hit lies next to a lamp: hybrid_retrace_bricks.comp adds
+        // its bounce, and its sky when the sky ray is the bounce ray. Escapes found by the re-trace
+        // do not teach the guide.
+        if (inDomain && hit.hit && hybrid.bounce.x != 0u && !FeatureHardware(BOUNCE_PROVIDER)
+            && HitNearLocalLight(hit.position))
+        {
+            queued = QueueRetrace(hit.position, w, max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(diffuseSamples)), source);
+        }
+#endif
+        if (inDomain && hit.hit && hybrid.bounce.x != 0u && !queued)
         {
             bool  rejected;
             float weight  = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
@@ -628,6 +737,9 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
                 previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected) * weight;
             }
         }
+#ifdef HYBRID_INLINE_RETRACE
+        retracedHit = false;
+#endif
         if (escaped)
         {
             float weight = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
@@ -795,7 +907,8 @@ void FinishGuide(uint lane)
     float alpha  = 1.0 / min(frames + 1.0, HYBRID_GUIDE_FRAMES);
     for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
     {
-        float learned            = guideReceivers > 0u ? uintBitsToFloat(guideLearned[t]) / float(guideReceivers) : 0.0;
+        float sum                = HYBRID_EXACT_GUIDE ? GuideSumValue(t) : uintBitsToFloat(guideSumWords[t]);
+        float learned            = guideReceivers > 0u ? sum / float(guideReceivers) : 0.0;
         float previous           = guideValid ? guidePrevious[guideBase + t] : 0.0;
         guideNext[guideBase + t] = mix(previous, learned, alpha);
     }
@@ -875,6 +988,9 @@ void main()
         d       = TraceDiffuse(q, HybridPosition(q), HybridNormal(q), HybridGeometricNormal(q), hybrid.sampling.x / 4u,
                                0x10000u * (1u + phase), float(receivers));
     }
+#    if defined(HYBRID_BRICK_TRAVERSAL) && !defined(HYBRID_INLINE_RETRACE)
+    PublishRetrace(block);
+#    endif
     if (all(lessThan(block, imageSize(halfGuide))))
     {
         imageStore(halfSky, block, d.sky);
@@ -994,6 +1110,9 @@ void main()
     pooledBase = (uint(p.y / 16) * ((width + 15u) / 16u) + uint(p.x / 16)) * POOLED_GUIDE_STRIDE;
     guideValid = hybrid.provider.y != 0u;
     StoreDiffuse(p, TraceDiffuse(p, HybridPosition(p), HybridNormal(p), HybridGeometricNormal(p), hybrid.sampling.x, 0u, 0.0));
+#    if defined(HYBRID_BRICK_TRAVERSAL) && !defined(HYBRID_INLINE_RETRACE)
+    PublishRetrace(p);
+#    endif
 #    ifdef HYBRID_COUNT_RAYS
     // Every fallback ray adds to the first tile's fallback entries, which the half pass cleared.
     uint slot = (((uint(textureSize(receiverDepth, 0).y) + 15u) / 16u) * ((width + 15u) / 16u)) * 2u;
@@ -1032,6 +1151,9 @@ void main()
         StoreDiffuse(p, d);
         StoreSpecular(p, specular, reflection, reflectionPrevious);
     }
+#    if defined(HYBRID_BRICK_TRAVERSAL) && !defined(HYBRID_INLINE_RETRACE)
+    PublishRetrace(p);
+#    endif
     FinishGuide(lane);
 }
 #endif

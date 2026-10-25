@@ -336,7 +336,7 @@ private:
                 "Disable Follow camera to hold the ball in place. Range, radius and distance use normalized scene units (scene span = 1). Range and hold distance must exceed the radius.");
 
             DrawHint(
-                "Lights nearby surfaces in every direction. Select PBR + voxel GI and enable Analytic lighting for bounce light. Mesh shadows include the ball; moving it updates shadows and GI radiance.");
+                "Lights nearby surfaces in every direction. Select PBR + Global illumination and enable Analytic lights into GI for bounce light. Mesh shadows include the ball; moving it updates shadows and GI radiance.");
 
             if (changed)
             {
@@ -358,6 +358,75 @@ private:
         changed                              |= ui::DrawGIPresetControls(settings, snapshot.giSelectionReason.c_str());
         changed |= ui::DrawLightingBackendControls(settings.cone, snapshot.hardwareQueries, snapshot.rayQueryReason.c_str());
 
+        if (ImGui::CollapsingHeader("GI attributes"))
+        {
+            if (ImGui::Button("Reset GI"))
+            {
+                settings.cone = editor.GetRenderingDefaults().gi.cone;
+
+                changed       = true;
+            }
+
+            DrawHint("Reset GI also resets GI tracing.");
+
+            rc::VoxelGISettings& cone = settings.cone;
+
+            ImGui::SeparatorText("Gather");
+
+            changed |= ui::DrawGIGatherControls(cone);
+
+            ImGui::SeparatorText("Indirect lighting");
+
+            changed |= ImGui::SliderFloat(PropertyLabel("Indirect intensity").c_str(), &cone.indirectIntensity, 0.0f, 10.0f);
+
+            changed |= ImGui::Checkbox("Analytic lights into GI", &cone.analyticLighting);
+
+            changed |= ImGui::Checkbox("Environment diffuse GI", &cone.environmentLighting);
+
+            changed |= ImGui::Checkbox("Emissive into GI", &cone.emissiveLighting);
+
+            DrawHint("These toggles do not disable direct lighting, specular environment lighting or the skybox.");
+
+            ImGui::SeparatorText("Voxel cones");
+
+            int bounce            = cone.bounceSource == rc::VoxelGISettings::BounceSource::Cone ? 1 : 0;
+
+            const char* bounces[] = {"Ray hits", "Voxel cones"};
+
+            if (ImGui::Combo(PropertyLabel("Diffuse bounce").c_str(), &bounce, bounces, 2))
+            {
+                cone.bounceSource =
+                    bounce == 1 ? rc::VoxelGISettings::BounceSource::Cone : rc::VoxelGISettings::BounceSource::Auto;
+
+                changed = true;
+            }
+
+            int count             = cone.coneCount == 4 ? 0 : 1;
+
+            const char* counts[]  = {"4", "6"};
+
+            changed              |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
+
+            cone.coneCount        = count == 0 ? 4 : 6;
+
+            int steps             = static_cast<int>(cone.maxSteps);
+
+            changed              |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
+
+            cone.maxSteps         = static_cast<uint32_t>(steps);
+
+            changed |= ImGui::SliderFloat(PropertyLabel("Cone angle").c_str(), &cone.coneAngleDegrees, 10.0f, 90.0f);
+
+            changed |= ImGui::SliderFloat(PropertyLabel("Step scale").c_str(), &cone.stepScale, 0.25f, 2.0f);
+
+            changed |= ImGui::SliderFloat(PropertyLabel("GI distance").c_str(), &cone.maxDistanceGridLengths, 0.01f, 2.0f);
+
+            changed |= ImGui::SliderFloat(PropertyLabel("Bias (voxels)").c_str(), &cone.normalBiasVoxels, 0.5f, 4.0f);
+
+            DrawHint(
+                "Voxel cones light translucent surfaces, and opaque surfaces when Diffuse bounce is Voxel cones. GI distance is measured in grid lengths. Bias also offsets voxel light injection.");
+        }
+
         if (ImGui::CollapsingHeader("Shadows"))
         {
             if (ImGui::Button("Reset shadows"))
@@ -373,7 +442,7 @@ private:
             }
 
             DrawHint(
-                "Mesh shadows affect direct lights in PBR + voxel GI and update immediately. Environment lighting and voxel occlusion are independent.");
+                "GI tracing > Direct shadows chooses how mesh shadows are traced in PBR + Global illumination. Map size applies to Shadow maps and the Shadow debug output.");
 
 
             int resolution                = static_cast<int>(settings.shadowMapResolution);
@@ -401,54 +470,6 @@ private:
                 DrawStatusText(GetEditorPalette().warning,
                                "No shadow-casting lights. Add one under Lighting or enable Light ball to see mesh shadows.");
             }
-        }
-
-        if (ImGui::CollapsingHeader("GI"))
-        {
-            if (ImGui::Button("Reset GI"))
-            {
-                settings.cone = editor.GetRenderingDefaults().gi.cone;
-
-                changed       = true;
-            }
-
-            rc::VoxelGISettings& cone  = settings.cone;
-
-            int count                  = cone.coneCount == 4 ? 0 : 1;
-
-            const char* counts[]       = {"4", "6"};
-
-            changed                   |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
-
-            cone.coneCount             = count == 0 ? 4 : 6;
-
-            int steps                  = static_cast<int>(cone.maxSteps);
-
-            changed                   |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
-
-            cone.maxSteps              = static_cast<uint32_t>(steps);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Cone angle").c_str(), &cone.coneAngleDegrees, 10.0f, 90.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Indirect intensity").c_str(), &cone.indirectIntensity, 0.0f, 10.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Step scale").c_str(), &cone.stepScale, 0.25f, 2.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Bias (voxels)").c_str(), &cone.normalBiasVoxels, 0.5f, 4.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("GI distance").c_str(), &cone.maxDistanceGridLengths, 0.01f, 2.0f);
-
-            DrawHint("GI distance is measured in grid lengths.");
-
-            ImGui::SeparatorText("Indirect lighting contributions");
-
-            changed |= ImGui::Checkbox("Analytic lights into GI", &cone.analyticLighting);
-
-            changed |= ImGui::Checkbox("Environment diffuse GI", &cone.environmentLighting);
-
-            changed |= ImGui::Checkbox("Emissive into GI", &cone.emissiveLighting);
-
-            DrawHint("These toggles do not disable direct lighting, specular environment lighting or the skybox.");
         }
 
         if (ImGui::CollapsingHeader("GI resources"))
@@ -726,7 +747,7 @@ private:
 
         int algorithm               = static_cast<int>(draft.algorithm);
 
-        const char* algorithms[]    = {"PBR", "PBR + voxel cone GI"};
+        const char* algorithms[]    = {"PBR", "PBR + Global illumination"};
 
         if (ImGui::Combo(PropertyLabel("Algorithm").c_str(), &algorithm, algorithms, 2))
         {

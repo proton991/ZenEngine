@@ -1,6 +1,8 @@
 #include "Editor/Services/EditorController.h"
 #include "Editor/Model/EditorText.h"
 #include "SyntheticEnvironment.h"
+#include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
@@ -2230,6 +2232,135 @@ TEST_P(EditorRendering, LightingBackendsSwitchIndependently)
         // All-HW RT neither builds nor depends on the software BVH; any Compute feature rebuilds it.
         EXPECT_EQ(gi.UsesSoftwareQueries(), !hardware || frame != featureCount + 1);
         EXPECT_EQ(gi.GetSoftwareRayQuery().HoldsSceneGeometry(), gi.UsesSoftwareQueries());
+    }
+    DestroyDevice(*device, editor);
+}
+
+// Reconstructed diffuse sky of one gather configuration, rendered through the debug view.
+struct ProbeGatherCase
+{
+    const char*                           name;
+    rc::VoxelGISettings::Gather           gather;
+    rc::VoxelGISettings::ComputeTraversal traversal;
+    rc::VoxelGISettings::RayProvider      provider;
+};
+
+HeapVector<uint8_t> RenderReconstructedSky(rc::RenderDevice&      device,
+                                           EditorController&      editor,
+                                           rc::RenderingSettings  settings,
+                                           const ProbeGatherCase& gatherCase,
+                                           uint32_t               frames)
+{
+    settings.gi.cone.SetAllFeatureProviders(gatherCase.provider);
+    settings.gi.cone.gather           = gatherCase.gather;
+    settings.gi.cone.computeTraversal = gatherCase.traversal;
+    HeapVector<uint8_t> pixels;
+    bool                valid = editor.StageRenderingSettings(settings, true) && editor.UpdateRenderingSettings();
+    EXPECT_TRUE(valid) << editor.GetRenderingState().GetError();
+    for (uint32_t frame = 0; frame < frames && valid; ++frame)
+    {
+        valid = Frame(device, editor);
+        EXPECT_TRUE(valid);
+    }
+    if (valid)
+    {
+        const rc::DebugOutputDescription description = editor.GetViewport().GetSnapshot().debug;
+        EXPECT_TRUE(description.available) << description.reason;
+        pixels = ReadScenePixels(device, editor.GetViewport().GetRenderView().color);
+    }
+    const char* captureDirectory = std::getenv("ZEN_EDITOR_PROBE_CAPTURE_DIR");
+    if (captureDirectory != nullptr && !pixels.empty())
+    {
+        const rc::RenderView& view = editor.GetViewport().GetRenderView();
+        std::ofstream         capture(std::filesystem::path(captureDirectory) / (std::string(gatherCase.name) + ".ppm"),
+                                      std::ios::binary);
+        capture << "P6\n" << view.width << " " << view.height << "\n255\n";
+        for (size_t index = 0; index < pixels.size(); index += 4)
+        {
+            capture.write(reinterpret_cast<const char*>(pixels.data() + index), 3);
+        }
+    }
+    return pixels;
+}
+
+// Screen probes trace the scene with each provider and reconstruct the same diffuse sky as the
+// per-pixel gather. The column and sphere make neighbouring probes disagree in plane and normal:
+// receivers a reconstruction leaves uncovered show up as dark holes against the per-pixel result.
+TEST_P(EditorRendering, ScreenProbeGatherTracksPixelGatherOnCurvedGeometry)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), true);
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("probe_curved.gltf")));
+    constexpr uint32_t kWidth = 160, kHeight = 120;
+    ASSERT_TRUE(editor.ResizeViewport(kWidth, kHeight));
+    editor.GetCamera().GetCamera().SetPose(Vec3(0, -0.75f, 0.55f), Vec3(0, 0, 0.05f));
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+    settings.algorithm             = rc::RenderAlgorithm::eVoxelGI;
+    settings.debug.output          = rc::DebugOutput::eGIReconstructedSky;
+    settings.lights.clear();
+    settings.lightMarkers             = false;
+    settings.cameraLight.enabled      = false;
+    settings.environment.skybox       = false;
+    settings.gi.resolution            = 64;
+    settings.gi.shadowMapResolution   = 128;
+    settings.gi.cone                  = rc::VoxelGISettings{};
+    HeapVector<ProbeGatherCase> cases = {
+        {"pixel-triangles", rc::VoxelGISettings::Gather::Pixel, rc::VoxelGISettings::ComputeTraversal::Triangles,
+         rc::VoxelGISettings::RayProvider::Voxel},
+        {"probes-triangles", rc::VoxelGISettings::Gather::Probes, rc::VoxelGISettings::ComputeTraversal::Triangles,
+         rc::VoxelGISettings::RayProvider::Voxel},
+        {"probes-bricks", rc::VoxelGISettings::Gather::Probes, rc::VoxelGISettings::ComputeTraversal::Bricks,
+         rc::VoxelGISettings::RayProvider::Voxel}};
+    if (device->GetGPUInfo().rayQuery.IsUsable())
+    {
+        cases.push_back({"probes-hardware", rc::VoxelGISettings::Gather::Probes,
+                         rc::VoxelGISettings::ComputeTraversal::Triangles, rc::VoxelGISettings::RayProvider::Hardware});
+    }
+    const HeapVector<uint8_t> reference = RenderReconstructedSky(*device, editor, settings, cases[0], 48);
+    EXPECT_EQ(reference.size(), size_t(kWidth) * kHeight * 4);
+    for (size_t index = 1; index < cases.size() && reference.size() == size_t(kWidth) * kHeight * 4; ++index)
+    {
+        SCOPED_TRACE(cases[index].name);
+        HeapVector<uint8_t> probes = RenderReconstructedSky(*device, editor, settings, cases[index], 48);
+        EXPECT_EQ(probes.size(), reference.size());
+        probes.resize(reference.size());
+        if (cases[index].traversal == rc::VoxelGISettings::ComputeTraversal::Bricks)
+        {
+            EXPECT_TRUE(device->GetRendererServer()->RequestVoxelGI()->UsesBrickTraversal());
+        }
+        // Receivers with a clearly lit reference; background and deep contact shadow are excluded.
+        double   referenceSum = 0.0, probeSum = 0.0, absoluteSum = 0.0;
+        uint32_t receivers = 0, holes = 0, clipped = 0;
+        for (size_t pixel = 0; pixel < reference.size(); pixel += 4)
+        {
+            const double expected = (reference[pixel] + reference[pixel + 1] + reference[pixel + 2]) / 3.0;
+            const double actual   = (probes[pixel] + probes[pixel + 1] + probes[pixel + 2]) / 3.0;
+            if (expected >= 24.0)
+            {
+                ++receivers;
+                referenceSum += expected;
+                probeSum     += actual;
+                absoluteSum  += std::abs(actual - expected);
+                holes        += actual < 0.5 * expected ? 1u : 0u;
+                clipped      += expected >= 254.0 ? 1u : 0u;
+            }
+        }
+        // A third of the view is lit receivers; failures keep going so the device is always destroyed.
+        EXPECT_GT(receivers, kWidth * kHeight / 3);
+        const double                    bias       = (probeSum - referenceSum) / std::max(referenceSum, 1.0);
+        const double                    difference = absoluteSum / std::max(referenceSum, 1.0);
+        const double                    holeShare  = double(holes) / std::max(receivers, 1u);
+        const rc::ScreenProbeStatistics probeCounts =
+            device->GetRendererServer()->RequestDeferredLightingRenderer()->GetHybridGI()->GetScreenProbeStatistics();
+        std::printf("%s: receivers %u, sRGB mean bias %.4f, mean |difference| %.4f, holes %.4f, clipped %u, "
+                    "probes %u uniform, %u of %u requested adaptive\n",
+                    cases[index].name, receivers, bias, difference, holeShare, clipped, probeCounts.uniformProbes,
+                    probeCounts.adaptiveAllocated, probeCounts.adaptiveRequested);
+        EXPECT_LT(clipped, receivers / 10);
+        EXPECT_LT(std::abs(bias), 0.04);
+        EXPECT_LT(difference, 0.06);
+        EXPECT_LT(holeShare, 0.01);
     }
     DestroyDevice(*device, editor);
 }

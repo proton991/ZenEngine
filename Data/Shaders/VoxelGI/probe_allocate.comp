@@ -1,0 +1,118 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "probe_common.glsl"
+// Second allocation pass, one subtile per invocation: assigns the adaptive probe pool from
+// probe_adaptive.comp's candidates. Rounds go in order, so every subtile's first probe is placed
+// before any subtile's second; within a round, subtiles go in index order. When the pool runs
+// short the result is still deterministic. Each workgroup sums probe_allocate_count.comp's counts
+// of the blocks before its own and of all blocks, then scans its own block.
+// Writes the subtile map and the compact adaptive placements; the first workgroup also writes the
+// counters and the trace dispatch.
+layout(local_size_x = ZEN_PROBE_ALLOCATE_GROUP) in;
+layout(std430, set = 7, binding = 26) readonly buffer ProbeSubtileCandidates
+{
+    ProbePlacement probeSubtileCandidates[];
+};
+layout(std430, set = 7, binding = 27) readonly buffer ProbeAllocationBlocks
+{
+    uvec2 probeAllocationBlocks[];
+};
+layout(std430, set = 7, binding = 25) writeonly buffer ProbeAdaptivePlacements
+{
+    ProbePlacement probeAdaptivePlacements[];
+};
+layout(std430, set = 7, binding = 23) writeonly buffer ProbeSubtiles
+{
+    uvec2 probeSubtiles[];
+};
+// Allocated and requested adaptive probes, then the probe trace's indirect dispatch.
+layout(std430, set = 7, binding = 22) writeonly buffer ProbeCounters
+{
+    uint  adaptiveProbes;
+    uint  requestedProbes;
+    uint  counterReserved[2];
+    uvec4 traceGroups;
+};
+
+shared uvec2 probeScan[ZEN_PROBE_ALLOCATE_GROUP];
+shared uint  probeBefore[ZEN_PROBE_ADAPTIVE_PER_SUBTILE];
+shared uint  probeTotal[ZEN_PROBE_ADAPTIVE_PER_SUBTILE];
+
+void main()
+{
+    uint lane     = gl_LocalInvocationIndex;
+    uint block    = gl_WorkGroupID.x;
+    uint subtile  = gl_GlobalInvocationID.x;
+    uint subtiles = probe.adaptive.x * probe.adaptive.y;
+    uint blocks   = (subtiles + ZEN_PROBE_ALLOCATE_GROUP - 1u) / ZEN_PROBE_ALLOCATE_GROUP;
+    uint capacity = probe.grid.x * probe.adaptive.z;
+    if (lane < ZEN_PROBE_ADAPTIVE_PER_SUBTILE)
+    {
+        probeBefore[lane] = 0u;
+        probeTotal[lane]  = 0u;
+    }
+    barrier();
+    // Per round: candidates of the earlier blocks and of all blocks.
+    uvec2 before = uvec2(0), total = uvec2(0);
+    for (uint other = lane; other < blocks; other += ZEN_PROBE_ALLOCATE_GROUP)
+    {
+        uvec2 counts  = probeAllocationBlocks[other];
+        before       += other < block ? counts : uvec2(0);
+        total        += counts;
+    }
+    for (uint attempt = 0u; attempt < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++attempt)
+    {
+        if (before[attempt] != 0u)
+        {
+            atomicAdd(probeBefore[attempt], before[attempt]);
+        }
+        if (total[attempt] != 0u)
+        {
+            atomicAdd(probeTotal[attempt], total[attempt]);
+        }
+    }
+    bool  inside = subtile < subtiles;
+    uvec2 valid  = uvec2(0);
+    for (uint attempt = 0u; attempt < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++attempt)
+    {
+        valid[attempt] =
+            inside && probeSubtileCandidates[subtile * ZEN_PROBE_ADAPTIVE_PER_SUBTILE + attempt].position.w > 0.5 ? 1u : 0u;
+    }
+    // Inclusive prefix sum of every round's candidates over the block. The barriers also complete
+    // the block sums above.
+    probeScan[lane] = valid;
+    barrier();
+    for (uint offset = 1u; offset < ZEN_PROBE_ALLOCATE_GROUP; offset <<= 1u)
+    {
+        uvec2 value = lane >= offset ? probeScan[lane - offset] : uvec2(0);
+        barrier();
+        probeScan[lane] += value;
+        barrier();
+    }
+    uvec2 slots    = uvec2(ZEN_PROBE_INVALID);
+    uint  assigned = 0u; // Candidates of earlier rounds.
+    for (uint attempt = 0u; attempt < ZEN_PROBE_ADAPTIVE_PER_SUBTILE; ++attempt)
+    {
+        uint slot = assigned + probeBefore[attempt] + probeScan[lane][attempt] - valid[attempt];
+        if (valid[attempt] != 0u && slot < capacity)
+        {
+            probeAdaptivePlacements[slot] = probeSubtileCandidates[subtile * ZEN_PROBE_ADAPTIVE_PER_SUBTILE + attempt];
+            slots[attempt]                = ProbeUniformCount() + slot;
+        }
+        assigned += probeTotal[attempt];
+    }
+    if (inside)
+    {
+        probeSubtiles[subtile] = slots;
+    }
+    if (block == 0u && lane == 0u)
+    {
+        uint allocated     = min(assigned, capacity);
+        adaptiveProbes     = allocated;
+        requestedProbes    = assigned;
+        counterReserved[0] = 0u;
+        counterReserved[1] = 0u;
+        // One workgroup per uniform probe and per allocated adaptive row.
+        traceGroups = uvec4(probe.grid.x, probe.grid.y + (allocated + probe.grid.x - 1u) / probe.grid.x, 1u, 0u);
+    }
+}

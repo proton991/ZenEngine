@@ -3,6 +3,7 @@
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
 #include "Graphics/RenderCore/V2/SoftwareSceneRayQuery.h"
+#include "Graphics/RenderCore/V2/BrickScene.h"
 #include "SceneGraph/AABB.h"
 #include <array>
 
@@ -62,6 +63,10 @@ struct VoxelGISettings
     // Opt in to one-frame voxel-radiance latency so updates can overlap receiver lighting.
     bool previousFrameRadiance{false};
     bool filter{true};
+    // Indirect diffuse from GI rays or probes (sky light and bounce). Off lights diffuse from the
+    // unoccluded environment, as without GI, while specular GI and direct lighting are unchanged.
+    // The rays are still traced: it isolates the diffuse term rather than saving its cost.
+    bool indirectDiffuse{true};
     bool specularOcclusion{true};
     // Diffuse (sky, source shadows, ray-hit bounce) rays per receiver. Half traces one rotating
     // leader per 2x2 block and reconstructs the others; glossy specular stays at full resolution.
@@ -81,18 +86,39 @@ struct VoxelGISettings
         On
     };
     Reflections reflections{Reflections::On};
-    float       indirectIntensity{1.0f};
-    float       coneAngleDegrees{60.0f};
-    float       stepScale{1.0f};
-    float       normalBiasVoxels{1.5f};
-    float       maxDistanceGridLengths{1.7321f};
-    uint32_t    coneCount{6};
-    uint32_t    maxSteps{128};
-    bool        shadows{true};
-    bool        rtShadows{true}; // Use triangle shadow rays; false explicitly selects shadow maps.
-    bool        analyticLighting{true};
-    bool        environmentLighting{true};
-    bool        emissiveLighting{true};
+    // What the Compute provider traces for GI gather rays (sky, specular, bounce, reflections):
+    // the software triangle BVH, or the sparse brick scene (BrickScene). The sky cache keeps
+    // triangles.
+    enum class ComputeTraversal : uint32_t
+    {
+        Triangles,
+        Bricks
+    };
+    ComputeTraversal computeTraversal{ComputeTraversal::Triangles};
+    // Brick cells per grid axis: 64, 128 or 256, each holding 8x8x8 occupancy bits.
+    uint32_t brickResolution{128};
+    // Diffuse and specular estimation: per-pixel stochastic rays with a full-resolution filter,
+    // or screen probes (ScreenProbeGather) with half-resolution specular rays.
+    // Reference accumulation and ray-count captures use per-pixel gather for diagnostics.
+    enum class Gather : uint32_t
+    {
+        Pixel,
+        Probes
+    };
+    Gather   gather{Gather::Pixel};
+    uint32_t probeSpacing{16}; // Screen-probe tile side in pixels: 8 or 16.
+    float    indirectIntensity{1.0f};
+    float    coneAngleDegrees{60.0f};
+    float    stepScale{1.0f};
+    float    normalBiasVoxels{1.5f};
+    float    maxDistanceGridLengths{1.7321f};
+    uint32_t coneCount{6};
+    uint32_t maxSteps{128};
+    bool     shadows{true};
+    bool     rtShadows{true}; // Use triangle shadow rays; false explicitly selects shadow maps.
+    bool     analyticLighting{true};
+    bool     environmentLighting{true};
+    bool     emissiveLighting{true};
 
     bool operator==(const VoxelGISettings&) const = default;
 };
@@ -108,8 +134,9 @@ struct VoxelGIUniformData
     Vec4 cone;
     Vec4 limits;
     Vec4 lighting{1.0f, 1.0f, 1.0f, 0.0f}; // Analytic, environment, emissive contributions; ray-hit bounce enabled.
+    Vec4 indirect{1.0f, 0.0f, 0.0f, 0.0f}; // Indirect diffuse enabled; reserved.
 };
-static_assert(sizeof(VoxelGIUniformData) == 80);
+static_assert(sizeof(VoxelGIUniformData) == 96);
 
 // Conservative base-level occupied-cell range, with an exclusive upper bound.
 struct VoxelGIVisibilityBounds
@@ -177,6 +204,19 @@ public:
     }
     // True when an enabled feature resolves to Compute and traces the software BVH.
     bool UsesSoftwareQueries() const;
+    // True when Compute GI gather rays trace the brick scene and it is ready for this frame.
+    bool UsesBrickTraversal() const
+    {
+        return m_bricksActive;
+    }
+    void BindBrickInputs(RDGPassDescBase& pass) const
+    {
+        m_bricks.BindTraceInputs(pass);
+    }
+    const BrickScene& GetBrickScene() const
+    {
+        return m_bricks;
+    }
     bool UsesHardwareShadows() const
     {
         return m_settings.shadows && m_settings.rtShadows && UsesHardwareQueries(VoxelGISettings::Feature::Shadows);
@@ -295,8 +335,14 @@ private:
 
     void BuildEnvironmentDistribution();
 
+    // Whether an enabled GI gather feature resolves to Compute with brick traversal requested.
+    bool RequestsBrickTraversal() const;
+
     SceneRayQuery         m_rayQuery;
     SoftwareSceneRayQuery m_softwareRayQuery;
+    BrickScene            m_bricks;
+    bool                  m_bricksActive{false}; // The brick scene is built for this frame's GI rays.
+    bool                  m_brickFallbackLogged{false};
     bool                  m_hardwareQueries{false};
     const char*           m_providerReason{"software_bvh_selected"};
     RenderDevice*         m_device{nullptr};

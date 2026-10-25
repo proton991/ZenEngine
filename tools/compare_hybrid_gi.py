@@ -26,7 +26,7 @@ def validate_reference(metadata, data, samples=65536):
     """
     per_frame = metadata.get('sample_count', 0)
     valid = data[:, :, 8, 3] > 0
-    if (per_frame <= 4 or samples % per_frame or not valid.any()
+    if (metadata.get('gather', 'pixel') != 'pixel' or per_frame <= 4 or samples % per_frame or not valid.any()
             or not metadata.get('temporal') or metadata.get('filter_iterations') != 0
             or metadata.get('adaptive_sampling', False)
             or metadata.get('sample_count_max', per_frame) != per_frame):
