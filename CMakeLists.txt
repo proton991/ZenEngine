@@ -6,6 +6,7 @@ set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "Runtime output directory")
 option(ZEN_BUILD_RUNTIME_UI "Build the optional runtime debug UI and shared UI integration" ON)
 option(ZEN_BUILD_EDITOR "Build the ZenEditor scene viewer" ON)
+option(ZEN_BUILD_ASSET_TOOLS "Build source-model import and cooking integration" ON)
 # Keep GLFW selectable until native macOS acceptance is complete.
 set(ZEN_WINDOW_BACKEND "SDL3" CACHE STRING "Window backend: SDL3 or GLFW")
 set_property(CACHE ZEN_WINDOW_BACKEND PROPERTY STRINGS SDL3 GLFW)
@@ -37,7 +38,11 @@ endif ()
 #                    Add Sub Directories                   #
 ############################################################
 add_subdirectory(External)
+include(External/ZenAssetProcessor.cmake)
 add_subdirectory(ZenCore)
+if(ZEN_BUILD_ASSET_TOOLS)
+  add_subdirectory(AssetTools)
+endif()
 if (BUILD_TESTING)
   # Native correctness tests enable validation explicitly in every build configuration.
   add_library(ZenVulkanTestMain STATIC ZenSamples/CommonTest/VulkanTestMain.cpp)
@@ -61,4 +66,13 @@ endif()
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
   message(STATUS "Detected MacOS platform")
   target_compile_definitions(ZenCore PUBLIC ZEN_MACOS)
+endif()
+
+# Optional integration suites are owned by the consuming repository.
+set(ZEN_EXTERNAL_TESTS_DIR "" CACHE PATH "External integration test directory (opt-in)")
+if(ZEN_EXTERNAL_TESTS_DIR)
+  if(NOT BUILD_TESTING)
+    message(FATAL_ERROR "ZEN_EXTERNAL_TESTS_DIR requires BUILD_TESTING=ON")
+  endif()
+  add_subdirectory("${ZEN_EXTERNAL_TESTS_DIR}" "${PROJECT_BINARY_DIR}/ExternalTests")
 endif()

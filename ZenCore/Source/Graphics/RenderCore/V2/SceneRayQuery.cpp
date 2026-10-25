@@ -646,7 +646,7 @@ void BindSceneRayGeometry(RDGPassDescBase& pass, RenderDevice& device, RenderSce
         pass.BindStorageBuffer("MaterialBuffer", scene.GetMaterialsDataSSBO());
         pass.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
         const RHISamplerCreateInfo samplerInfo = RHISamplerCreateInfo::CreateLinearRepeat();
-        BindSceneTextureArray(pass, device.CreateSampler(samplerInfo), scene.GetSceneTextures(), scene.GetSceneSamplers());
+        BindSceneTextureArray(pass, device.CreateSampler(samplerInfo), scene.GetSceneTextureViews(), scene.GetSceneSamplers());
     }
 }
 

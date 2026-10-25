@@ -2,6 +2,7 @@
 #include "Editor/ImGui/EditorTheme.h"
 #include "imgui.h"
 #include <algorithm>
+#include <cstdio>
 
 namespace zen::editor
 {
@@ -30,6 +31,10 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
         }
         else
         {
+            if (state.recook)
+            {
+                ImGui::TextUnformatted("Recooking from source");
+            }
             ImGui::TextWrapped("%s", state.path.c_str());
 
             ImGui::Spacing();
@@ -38,7 +43,7 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
             {
                 ImGui::PushStyleColor(ImGuiCol_Text, GetEditorPalette().error);
 
-                ImGui::TextWrapped("Could not open scene: %s", error.c_str());
+                ImGui::TextWrapped("Could not %s scene: %s", state.recook ? "recook" : "open", error.c_str());
 
                 ImGui::PopStyleColor();
 
@@ -53,10 +58,6 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
             {
                 const char* label = "Waiting to start...";
 
-                const char* step  = "";
-
-                float progress    = 0;
-
                 switch (state.stage)
                 {
                     case SceneLoadStage::Reading:
@@ -67,45 +68,37 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
                             case asset::SceneImportStage::ProcessingMeshes: label = "Processing meshes..."; break;
                             case asset::SceneImportStage::BakingAnimations: label = "Processing animations..."; break;
                             case asset::SceneImportStage::BuildingScene: label = "Building scene data..."; break;
+                            case asset::SceneImportStage::CookingAssets: label = "Cooking assets..."; break;
+                            case asset::SceneImportStage::SavingCache: label = "Saving cooked cache..."; break;
                             default: break;
                         }
 
-                        step = "Step 1 of 3";
-
-                        // No byte-based estimate is available while the importer is running.
-                        progress = -float(ImGui::GetTime()) - 1.0f;
-
                         break;
-                    case SceneLoadStage::Preparing:
-                        label    = "Preparing graphics resources...";
-
-                        step     = "Step 2 of 3";
-
-                        progress = 1.0f / 3;
-
-                        break;
-                    case SceneLoadStage::Publishing:
-                        label    = "Building scene views...";
-
-                        step     = "Step 3 of 3";
-
-                        progress = 2.0f / 3;
-
-                        break;
-                    case SceneLoadStage::Complete:
-                        label    = "Scene ready";
-
-                        step     = "Complete";
-
-                        progress = 1;
-
-                        break;
+                    case SceneLoadStage::Preparing: label = "Preparing graphics resources..."; break;
+                    case SceneLoadStage::Publishing: label = "Building scene views..."; break;
+                    case SceneLoadStage::Complete: label = "Scene ready"; break;
                     default: break;
                 }
 
                 ImGui::TextUnformatted(state.cancelRequested ? "Cancelling..." : label);
 
-                ImGui::ProgressBar(progress, ImVec2(-1, 0), step);
+                float progress    = 0;
+                char  overlay[96] = "Discovering files...";
+                if (state.fileProgress.totalKnown && state.fileProgress.totalFiles != 0)
+                {
+                    const uint64_t processed = std::min(state.fileProgress.processedFiles, state.fileProgress.totalFiles);
+                    const double fraction = static_cast<double>(processed) / static_cast<double>(state.fileProgress.totalFiles);
+                    const uint32_t percent =
+                        processed == state.fileProgress.totalFiles
+                            ? 100u
+                            : std::min(99u, static_cast<uint32_t>(static_cast<double>(processed) * 100.0
+                                                                  / static_cast<double>(state.fileProgress.totalFiles)));
+                    progress = static_cast<float>(fraction);
+                    std::snprintf(overlay, sizeof(overlay), "%u%% (%llu / %llu files)", percent,
+                                  static_cast<unsigned long long>(processed),
+                                  static_cast<unsigned long long>(state.fileProgress.totalFiles));
+                }
+                ImGui::ProgressBar(progress, ImVec2(-1, 0), overlay);
                 if (state.stage != SceneLoadStage::Complete)
                 {
                     ImGui::BeginDisabled(state.cancelRequested);

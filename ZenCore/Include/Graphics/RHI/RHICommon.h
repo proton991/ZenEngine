@@ -126,6 +126,8 @@ struct RHIGPUInfo
     std::array<uint32_t, 3> maxComputeWorkGroupCount{65535, 65535, 65535};
     uint32_t                maxStorageBufferRange{128u * 1024u * 1024u};
     uint32_t                maxColorAttachments{4};
+    // Fractional texel coordinate precision reported by the backend; zero means unavailable.
+    uint32_t subTexelPrecisionBits{0};
 
     // Largest device-local memory heap; zero means the backend did not report it.
     uint64_t deviceLocalMemoryBytes{0};
@@ -162,7 +164,7 @@ struct RHIQueueCopyCapabilities
     bool compute{false};
     bool transfer{false};
 
-    // Texels, for the uncompressed formats exposed by the RHI. Zero means whole mips only.
+    // Texel blocks (individual texels for uncompressed formats). Zero means whole mips only.
     std::array<uint32_t, 3> minImageTransferGranularity{};
 };
 

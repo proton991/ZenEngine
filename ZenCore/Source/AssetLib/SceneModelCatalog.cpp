@@ -8,6 +8,12 @@ namespace zen::asset
 {
 HeapVector<SceneModelCatalogEntry> DiscoverSceneModels(const std::string& basePath)
 {
+    return DiscoverSceneModels(basePath, GetSceneLoadFormats());
+}
+
+HeapVector<SceneModelCatalogEntry> DiscoverSceneModels(const std::string&                      basePath,
+                                                       VectorView<const SceneFormatDescriptor> formats)
+{
     HeapVector<SceneModelCatalogEntry> result;
 
     if (!basePath.empty())
@@ -36,7 +42,7 @@ HeapVector<SceneModelCatalogEntry> DiscoverSceneModels(const std::string& basePa
                 }
 
                 if (entry.is_regular_file(entryError) && !entryError
-                    && FindSceneLoadFormat(PathToUtf8(entry.path())) != nullptr)
+                    && FindSceneFormat(PathToUtf8(entry.path()), formats) != nullptr)
                 {
                     const std::filesystem::path path = entry.path().lexically_normal();
 

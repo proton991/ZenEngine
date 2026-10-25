@@ -4,19 +4,12 @@ set(ZEN_CORE_HEADERS
     Include/ObjectBase.h
 
     Include/AssetLib/TextureLoader.h
-    Source/AssetLib/ImportErrors.h
-    Source/AssetLib/ImageDecoder.h
-    Source/AssetLib/GltfAnimationBindings.h
-    Source/AssetLib/GltfAssetReader.h
-    Source/AssetLib/FbxSceneImporter.h
-    Source/AssetLib/FbxConversions.h
-    Source/AssetLib/FbxDeformation.h
-    Source/AssetLib/FbxAnimation.h
     Include/AssetLib/SceneAssetIO.h
     Source/AssetLib/AssetHash.h
     Include/AssetLib/SceneAsset.h
     Include/AssetLib/SurfaceGeometry.h
     Include/AssetLib/SceneRuntimeBuilder.h
+    Include/AssetLib/ProcessedSceneAdapter.h
     Include/AssetLib/SceneLoader.h
     Include/AssetLib/SceneImporter.h
     Include/AssetLib/AssetId.h
@@ -178,21 +171,13 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/DebugVisualization.cpp
     Source/Graphics/RenderCore/V2/RenderingSettings.cpp
     Source/AssetLib/TextureLoader.cpp
-    Source/AssetLib/ImportErrors.cpp
     Source/AssetLib/SurfaceGeometry.cpp
-    Source/AssetLib/ImageDecoder.cpp
-    Source/AssetLib/GltfAnimationBindings.cpp
-    Source/AssetLib/GltfAssetReader.cpp
-    Source/AssetLib/FbxSceneImporter.cpp
-    Source/AssetLib/FbxDeformation.cpp
-    Source/AssetLib/FbxAnimation.cpp
     Source/AssetLib/SceneRuntimeBuilder.cpp
+    Source/AssetLib/ProcessedSceneAdapter.cpp
+    Source/AssetLib/ProcessedSceneIO.cpp
+    Source/AssetLib/ProcessedSceneIO.h
     Source/AssetLib/SceneAssetValidation.cpp
     Source/AssetLib/SceneAssetIO.cpp
-    Source/AssetLib/SceneAssetCache.cpp
-    Source/AssetLib/SceneAssetCache.h
-    Source/AssetLib/SceneAssetProcessing.cpp
-    Source/AssetLib/SceneAssetProcessing.h
     Source/AssetLib/SceneRuntimeBuilderInternal.h
     Source/AssetLib/AssetPaths.h
     Source/AssetLib/AssetHash.cpp
@@ -216,6 +201,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RenderObject.cpp
     Source/Graphics/RenderCore/V2/RenderResource.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    Source/Graphics/RenderCore/V2/SpatialTextureSampling.cpp
     Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
     Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
@@ -294,6 +280,7 @@ target_include_directories(ZenCore PUBLIC
 )
 
 target_link_libraries(ZenCore PUBLIC
+    ZenAsset::Format
     spdlog
     gli
     glm
@@ -302,38 +289,10 @@ target_link_libraries(ZenCore PUBLIC
     volk
     stb
 )
-target_link_libraries(ZenCore PRIVATE fastgltf zen_gltf_decoders zen_ufbx)
+target_link_libraries(ZenCore PRIVATE ZenAsset::Reader)
 
 add_subdirectory(Source/AssetLib/Kernels)
 target_link_libraries(ZenCore PRIVATE zen_asset_kernels)
-
-# Automatic scene caches live in the engine tree and are keyed by a build-time
-# hash of every source that shapes an imported asset (see the script below).
-target_compile_definitions(ZenCore PRIVATE ZEN_SCENE_CACHE_PATH="${PROJECT_SOURCE_DIR}/Cache/SceneAssets")
-file(GLOB ZEN_SCENE_IMPORT_INPUTS CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/AssetLib/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/AssetLib/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/AssetLib/Kernels/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/AssetLib/Kernels/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/AssetLib/Kernels/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/Include/AssetLib/*.h
-    # Bounds and finite-value helpers shape imported geometry too.
-    ${CMAKE_CURRENT_SOURCE_DIR}/Include/Math/*.h)
-list(APPEND ZEN_SCENE_IMPORT_INPUTS ${PROJECT_SOURCE_DIR}/External/CMakeLists.txt)
-set(ZEN_SCENE_IMPORT_INPUT_LIST ${CMAKE_CURRENT_BINARY_DIR}/SceneImportFingerprintInputs.txt)
-list(JOIN ZEN_SCENE_IMPORT_INPUTS "\n" ZEN_SCENE_IMPORT_INPUT_TEXT)
-file(CONFIGURE OUTPUT ${ZEN_SCENE_IMPORT_INPUT_LIST} CONTENT "${ZEN_SCENE_IMPORT_INPUT_TEXT}\n" @ONLY)
-set(ZEN_SCENE_IMPORT_FINGERPRINT_HEADER ${CMAKE_CURRENT_BINARY_DIR}/Generated/AssetLib/SceneImportFingerprint.h)
-add_custom_command(
-    OUTPUT ${ZEN_SCENE_IMPORT_FINGERPRINT_HEADER}
-    COMMAND ${CMAKE_COMMAND} -DOUTPUT=${ZEN_SCENE_IMPORT_FINGERPRINT_HEADER} -DINPUT_LIST=${ZEN_SCENE_IMPORT_INPUT_LIST}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake/SceneImportFingerprint.cmake
-    DEPENDS ${ZEN_SCENE_IMPORT_INPUTS} ${ZEN_SCENE_IMPORT_INPUT_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/CMake/SceneImportFingerprint.cmake
-    VERBATIM)
-target_sources(ZenCore PRIVATE ${ZEN_SCENE_IMPORT_FINGERPRINT_HEADER})
-target_include_directories(ZenCore PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/Generated)
-
-
 
 ############################################################
 #                    Build Shaders                         #

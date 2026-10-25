@@ -35,7 +35,10 @@ private:
 
 // Sixteen lowercase hexadecimal digits.
 std::string DigestText(AssetDigest digest);
-bool        HashAssetFile(const std::string& path, AssetDigest& digest, SceneImportControl* control = nullptr);
+bool        HashAssetFile(const std::string&  path,
+                          AssetDigest&        digest,
+                          SceneImportControl* control          = nullptr,
+                          SceneImportControl* secondaryControl = nullptr);
 
 // Size and last-write time identify a file revision without reading its bytes.
 struct AssetFileStamp

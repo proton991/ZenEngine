@@ -4,6 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include <gtest/gtest.h>
+#include <array>
 #include <cmath>
 #include "Utils/UniquePtr.h"
 
@@ -45,6 +46,25 @@ struct TimingReadObserver
         EXPECT_NE(flags & VK_QUERY_RESULT_WITH_AVAILABILITY_BIT, 0u);
 
         return fail ? VK_ERROR_OUT_OF_HOST_MEMORY : original(device, pool, first, count, size, data, stride, flags);
+    }
+};
+
+struct TimingResetObserver
+{
+    static inline PFN_vkResetQueryPool       original{};
+    static inline std::array<VkQueryPool, 3> pools{};
+    static inline uint32_t                   calls{0};
+
+    static VKAPI_ATTR void VKAPI_CALL Reset(VkDevice device, VkQueryPool pool, uint32_t first, uint32_t count)
+    {
+        if (calls < pools.size())
+        {
+            pools[calls] = pool;
+        }
+        ++calls;
+        EXPECT_EQ(first, 0u);
+        EXPECT_EQ(count, 2 * FVulkanCommandBuffer::kMaxGPUTimingScopes);
+        original(device, pool, first, count);
     }
 };
 
@@ -100,7 +120,9 @@ protected:
         const VkQueueFamilyProperties& family =
             session->rhi.GetDevice()->GetQueueFamilyProperties(context.GetQueue()->GetFamilyIndex());
 
-        return family.timestampValidBits != 0 && (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0;
+        return family.timestampValidBits != 0
+            && ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0
+                || session->rhi.GetDevice()->GetExtensionFlags().hasHostQueryReset);
     }
 
     void SubmitAndComplete(FVulkanCommandListContext& context)
@@ -148,7 +170,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, SupportedQueuesResolveFiniteDurationsWith
         }
         else
         {
-            // A transfer-only queue cannot execute vkCmdResetQueryPool.
+            // Transfer-only queues require the optional host query reset feature.
             EXPECT_EQ(result->GetStatus(), RHIGPUTimingStatus::eUnsupported);
         }
     }
@@ -194,6 +216,87 @@ TEST_F(VulkanGPUTimingIntegrationTest, CompletedBufferReuseDoesNotOverwritePubli
     EXPECT_EQ(second->GetStatus(), RHIGPUTimingStatus::eAvailable);
 
     EXPECT_EQ(first->GetMicroseconds(), previous);
+}
+
+TEST_F(VulkanGPUTimingIntegrationTest, TransferHostResetPreservesConcurrentRecordingsAndRetiredResults)
+{
+    FVulkanCommandListContext      firstContext(RHICommandContextType::eTransfer, session->rhi.GetDevice());
+    FVulkanCommandListContext      secondContext(RHICommandContextType::eTransfer, session->rhi.GetDevice());
+    const VkQueueFamilyProperties& family =
+        session->rhi.GetDevice()->GetQueueFamilyProperties(firstContext.GetQueue()->GetFamilyIndex());
+    if (!SupportsTiming(firstContext) || (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0)
+    {
+        GTEST_SKIP() << "Dedicated transfer timestamps with host reset unavailable";
+    }
+
+    TimingResetObserver::original = vkResetQueryPool;
+    TimingResetObserver::pools.fill(VK_NULL_HANDLE);
+    TimingResetObserver::calls = 0;
+    test::ScopedVulkanCall resetHook(vkResetQueryPool, TimingResetObserver::Reset);
+    test::ScopedVulkanCall readHook(vkGetQueryPoolResults, TimingReadObserver::Read);
+    RHIGPUTimingPtr        first   = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    RHIGPUTimingPtr        sibling = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    RHIGPUTimingPtr        second  = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    firstContext.RHIBeginGPUTiming(first);
+    firstContext.RHIEndGPUTiming(first);
+    firstContext.RHIBeginGPUTiming(sibling);
+    firstContext.RHIEndGPUTiming(sibling);
+    secondContext.RHIBeginGPUTiming(second);
+    secondContext.RHIEndGPUTiming(second);
+    ASSERT_EQ(TimingResetObserver::calls, 2u);
+    EXPECT_NE(TimingResetObserver::pools[0], TimingResetObserver::pools[1]);
+    EXPECT_EQ(TimingReadObserver::calls, 0u);
+    EXPECT_EQ(first->GetStatus(), RHIGPUTimingStatus::ePending);
+    EXPECT_EQ(second->GetStatus(), RHIGPUTimingStatus::ePending);
+
+    SubmitAndComplete(firstContext);
+    ASSERT_EQ(first->GetStatus(), RHIGPUTimingStatus::eAvailable);
+    EXPECT_EQ(sibling->GetStatus(), RHIGPUTimingStatus::eAvailable);
+    EXPECT_EQ(second->GetStatus(), RHIGPUTimingStatus::ePending);
+    const double   previous      = first->GetMicroseconds();
+    const uint64_t previousBegin = first->GetTimestamps().begin;
+
+    RHIGPUTimingPtr reused       = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    firstContext.RHIBeginGPUTiming(reused);
+    firstContext.RHIEndGPUTiming(reused);
+    ASSERT_EQ(TimingResetObserver::calls, 3u);
+    EXPECT_EQ(TimingResetObserver::pools[2], TimingResetObserver::pools[0]);
+    SubmitAndComplete(firstContext);
+    SubmitAndComplete(secondContext);
+    EXPECT_EQ(reused->GetStatus(), RHIGPUTimingStatus::eAvailable);
+    EXPECT_EQ(second->GetStatus(), RHIGPUTimingStatus::eAvailable);
+    EXPECT_EQ(first->GetMicroseconds(), previous);
+    EXPECT_EQ(first->GetTimestamps().begin, previousBegin);
+    EXPECT_EQ(TimingReadObserver::calls, 3u);
+}
+
+TEST_F(VulkanGPUTimingIntegrationTest, TransferTimingWithoutHostResetRemainsUnsupported)
+{
+    VulkanDevice*                  device = session->rhi.GetDevice();
+    FVulkanCommandListContext      context(RHICommandContextType::eTransfer, device);
+    const VkQueueFamilyProperties& family = device->GetQueueFamilyProperties(context.GetQueue()->GetFamilyIndex());
+    if ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0)
+    {
+        GTEST_SKIP() << "Transfer route uses a graphics or compute capable family";
+    }
+
+    RHIGPUTimingPtr disabled                      = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    const uint32_t  enabled                       = device->GetExtensionFlags().hasHostQueryReset;
+    device->GetExtensionFlags().hasHostQueryReset = 0;
+    context.RHIBeginGPUTiming(disabled);
+    context.RHIEndGPUTiming(disabled);
+    device->GetExtensionFlags().hasHostQueryReset = enabled;
+    EXPECT_EQ(disabled->GetStatus(), RHIGPUTimingStatus::eUnsupported);
+
+    RHIGPUTimingPtr missing = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    {
+        test::ScopedVulkanCall noReset(vkResetQueryPool, static_cast<PFN_vkResetQueryPool>(nullptr));
+        context.RHIBeginGPUTiming(missing);
+        context.RHIEndGPUTiming(missing);
+    }
+    EXPECT_EQ(missing->GetStatus(), RHIGPUTimingStatus::eUnsupported);
+    SubmitAndComplete(context);
+    EXPECT_FALSE(session->rhi.AreSubmissionsBlocked());
 }
 
 TEST_F(VulkanGPUTimingIntegrationTest, AbandonedScopesAndCapacityOverflowHaveExplicitStatus)

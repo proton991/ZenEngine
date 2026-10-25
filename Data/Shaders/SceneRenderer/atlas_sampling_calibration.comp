@@ -1,0 +1,37 @@
+#version 450
+layout(local_size_x = 64) in;
+layout(constant_id = 0) const uint precisionBits = 8u;
+layout(set = 1, binding = 0) uniform sampler2D calibrationTexture;
+layout(set = 1, binding = 1, std430) buffer Results
+{
+    vec4 observations[];
+};
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index * 3u + 2u < uint(observations.length()))
+    {
+        float        divisions = exp2(float(precisionBits));
+        uint         sector    = index / (256u * 3u);
+        uint         step      = (index / 3u) % 256u;
+        vec2         fraction  = mod(vec2(step, (step * 13u + 7u) % 256u) + float(sector) * divisions / 4.0, divisions);
+        precise vec2 uv        = (vec2(0.5) + (fraction + 0.5) / divisions) / 2.0;
+        uint         neighbor  = index % 3u;
+        if (neighbor == 1u)
+        {
+            uv = uintBitsToFloat(floatBitsToUint(uv) - uvec2(1u));
+        }
+        else if (neighbor == 2u)
+        {
+            uv = uintBitsToFloat(floatBitsToUint(uv) + uvec2(1u));
+        }
+        precise vec2 coordinate = (uv * 2.0 - 0.5) * divisions;
+        precise vec2 halfUp     = (vec2(0.5) + floor(coordinate + 0.5) / divisions) / 2.0;
+        precise vec2 even       = (vec2(0.5) + roundEven(coordinate) / divisions) / 2.0;
+        // Sample the candidates too: native UNORM interpolation can differ from
+        // analytic weights even when coordinate quantization matches exactly.
+        observations[index * 3u]      = textureLod(calibrationTexture, uv, 0);
+        observations[index * 3u + 1u] = textureLod(calibrationTexture, halfUp, 0);
+        observations[index * 3u + 2u] = textureLod(calibrationTexture, even, 0);
+    }
+}

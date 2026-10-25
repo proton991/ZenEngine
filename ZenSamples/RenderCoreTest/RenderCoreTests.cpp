@@ -1,5 +1,6 @@
 #include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RenderCore/V2/RenderObject.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
@@ -54,23 +55,29 @@ std::unordered_map<std::string, asset::TextureInfo> textureFiles;
 // Mutable asset facade used with the real renderer/graph implementations below.
 struct SceneInputs
 {
-    const FrameBufferRing*  vertexRing{};
-    RHIBuffer*              vertices{};
-    RHIBuffer*              indices{};
-    RHIBuffer*              nodes{};
-    RHIBuffer*              materials{};
-    RHIBuffer*              uv{};
-    HeapVector<RHITexture*> textures;
-    HeapVector<RHISampler*> samplers;
-    EnvTexture              environment;
-    sg::CameraUniformData   camera{};
-    SceneUniformData        uniforms{};
+    const FrameBufferRing*      vertexRing{};
+    RHIBuffer*                  vertices{};
+    RHIBuffer*                  indices{};
+    RHIBuffer*                  nodes{};
+    RHIBuffer*                  materials{};
+    RHIBuffer*                  uv{};
+    HeapVector<RHITextureView*> textures;
+    HeapVector<RHISampler*>     samplers;
+    EnvTexture                  environment;
+    sg::CameraUniformData       camera{};
+    SceneUniformData            uniforms{};
 } sceneInputs;
 
 class TestBuffer : public RHIBuffer
 {
 public:
-    bool asyncComputeAccessible{true};
+    bool     asyncComputeAccessible{true};
+    uint64_t reportedAllocationBytes{0};
+
+    uint64_t GetAllocationSize() const override
+    {
+        return reportedAllocationBytes;
+    }
 
     bool IsAsyncComputeAccessible() const override
     {
@@ -1016,6 +1023,7 @@ public:
     RHITexture*                                             lastCreatedTexture{nullptr};
     uint32_t                                                bufferCreations{0};
     uint32_t                                                failBufferCreationAt{0};
+    uint64_t                                                bufferAllocationPadding{UINT64_MAX};
     RHIBufferCreateInfo                                     lastBufferInfo;
     uint64_t                                                lastBufferId{0};
     std::thread::id                                         lastBufferCreationThread;
@@ -1237,11 +1245,13 @@ public:
 
         if (bufferCreations != failBufferCreationAt)
         {
-            result         = ZEN_NEW() TestBuffer(info);
+            TestBuffer* buffer              = ZEN_NEW() TestBuffer(info);
+            buffer->reportedAllocationBytes = bufferAllocationPadding == UINT64_MAX ? 0 : info.size + bufferAllocationPadding;
+            result                          = buffer;
 
-            lastBufferInfo = info;
+            lastBufferInfo                  = info;
 
-            lastBufferId   = result->GetStableId();
+            lastBufferId                    = result->GetStableId();
         }
 
         return result;
@@ -3945,7 +3955,7 @@ TEST_F(RenderCoreTest, ProductionSceneTexturesPreserveFormatsMipsAndDistinctOwne
 
     TextureManager textures(device, &uploads);
 
-    HeapVector<RHITexture*> first, second;
+    HeapVector<RHITextureView*> first, second;
 
     textures.LoadSceneTextures(&scene, first);
 
@@ -3955,7 +3965,7 @@ TEST_F(RenderCoreTest, ProductionSceneTexturesPreserveFormatsMipsAndDistinctOwne
 
     ASSERT_EQ(second.size(), 2u);
 
-    for (const HeapVector<RHITexture*>* batch : {&first, &second})
+    for (const HeapVector<RHITextureView*>* batch : {&first, &second})
     {
         ASSERT_NE((*batch)[0], nullptr);
 
@@ -3965,18 +3975,18 @@ TEST_F(RenderCoreTest, ProductionSceneTexturesPreserveFormatsMipsAndDistinctOwne
 
         EXPECT_EQ((*batch)[1]->GetFormat(), DataFormat::eR8G8B8A8UNORM);
 
-        EXPECT_EQ((*batch)[0]->GetNumMipmaps(), 2u);
+        EXPECT_EQ((*batch)[0]->GetTexture()->GetNumMipmaps(), 2u);
 
-        EXPECT_EQ((*batch)[1]->GetNumMipmaps(), 2u);
+        EXPECT_EQ((*batch)[1]->GetTexture()->GetNumMipmaps(), 2u);
     }
 
     std::unordered_set<uint64_t> ids;
 
-    for (RHITexture* texture : {first[0], first[1], second[0], second[1]})
+    for (RHITextureView* texture : {first[0], first[1], second[0], second[1]})
     {
         ASSERT_NE(texture, nullptr);
 
-        ids.insert(texture->GetStableId());
+        ids.insert(texture->GetTexture()->GetStableId());
     }
 
     EXPECT_EQ(ids.size(), 4u);
@@ -4318,7 +4328,7 @@ void RenderCoreTest::AllocateRendererInputs(int                      epoch,
 
         ownedTextures.push_back(texture);
 
-        sceneInputs.textures.push_back(texture);
+        sceneInputs.textures.push_back(texture->GetDefaultView());
     }
 
     for (RHITexture** texture : {&sceneInputs.environment.pSkybox, &sceneInputs.environment.pIrradiance,
@@ -4778,9 +4788,9 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         EXPECT_TRUE(IsResourceBound(context, sceneInputs.materials));
 
-        for (RHITexture* texture : sceneInputs.textures)
+        for (RHITextureView* view : sceneInputs.textures)
         {
-            EXPECT_TRUE(IsResourceBound(context, texture->GetDefaultView()));
+            EXPECT_TRUE(IsResourceBound(context, view));
         }
 
         for (RHITexture* texture : {sceneInputs.environment.pSkybox, sceneInputs.environment.pIrradiance,
@@ -4805,9 +4815,9 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         priorBindings = {sceneInputs.nodes, sceneInputs.materials};
 
-        for (RHITexture* texture : sceneInputs.textures)
+        for (RHITextureView* view : sceneInputs.textures)
         {
-            priorBindings.push_back(texture->GetDefaultView());
+            priorBindings.push_back(view);
         }
 
         for (RHITexture* texture : {sceneInputs.environment.pSkybox, sceneInputs.environment.pIrradiance,
@@ -5026,6 +5036,7 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 #include "HybridGIRendererTests.inl"
 #include "SceneShadowRendererTests.inl"
 #include "SceneTextureImportTests.inl"
+#include "SpatialTextureSamplingTests.inl"
 #include "SceneResourceLifetimeTests.inl"
 #include "SceneRayQueryTests.inl"
 
@@ -9248,7 +9259,7 @@ TEST_F(RenderCoreTest, RendererTextureBindingsUseViewsAndCanBeRebuilt)
 
     desc.BindValue("value", uint32_t(42));
 
-    BindSceneTextureArray(desc, sampler, {first, second});
+    BindSceneTextureArray(desc, sampler, {first->GetDefaultView(), second->GetDefaultView()});
 
     RenderGraph graph("texture_bindings");
 
@@ -9258,7 +9269,7 @@ TEST_F(RenderCoreTest, RendererTextureBindingsUseViewsAndCanBeRebuilt)
 
     ClearPassResourceBindings(desc);
 
-    BindSceneTextureArray(desc, sampler, {second});
+    BindSceneTextureArray(desc, sampler, {second->GetDefaultView()});
 
     graph.AddComputePass(desc);
 
@@ -16999,5 +17010,7 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 #include "RDGSubmissionFailureTests.inl"
 #include "VoxelAsyncComputeTests.inl"
 #include "RHIProductionTests.inl"
+#include "BuiltinCubeTests.inl"
 #include "ProductionBenchmarks.inl"
 #include "ResourceStateTrackerTests.inl"
+#include "StagingStatisticsTests.inl"

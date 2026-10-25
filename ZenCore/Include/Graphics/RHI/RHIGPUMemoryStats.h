@@ -17,11 +17,15 @@ struct RHIGPUMemoryStats
         bool     deviceLocal{false};
     };
 
-    bool                 available{false};
-    uint64_t             committedBytes{0};
-    uint64_t             peakCommittedBytes{0};
-    uint64_t             deviceLocalBytes{0};
-    uint64_t             peakDeviceLocalBytes{0};
+    bool     available{false};
+    uint64_t committedBytes{0};
+    uint64_t peakCommittedBytes{0};
+    uint64_t deviceLocalBytes{0};
+    uint64_t peakDeviceLocalBytes{0};
+    // Native allocations for CPU-write transfer-source buffers, through actual
+    // backend destruction. Includes resource alignment, excludes allocator pools.
+    uint64_t             hostUploadAllocationBytes{0};
+    uint64_t             peakHostUploadAllocationBytes{0};
     bool                 budgetAvailable{false};
     uint32_t             heapCount{0};
     std::array<Heap, 16> heaps{};

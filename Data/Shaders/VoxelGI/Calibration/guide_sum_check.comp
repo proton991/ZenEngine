@@ -1,0 +1,38 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define GUIDE_SUM_BINS 1u
+#include "../guide_sum.glsl"
+layout(local_size_x = 256) in;
+layout(std430, set = 1, binding = 0) readonly buffer Samples
+{
+    uint samples[];
+};
+layout(std430, set = 1, binding = 1) writeonly buffer Results
+{
+    uint results[];
+};
+void main()
+{
+    uint lane        = gl_LocalInvocationIndex;
+    uint permutation = gl_WorkGroupID.x % 4u;
+    uint testCase    = gl_WorkGroupID.x / 4u;
+    if (lane == 0u)
+    {
+        GuideSumClear(0u);
+    }
+    barrier();
+    for (uint index = lane; index < 4096u; index += 256u)
+    {
+        uint permuted = (index * (2u * permutation + 1u) + permutation * 17u) % 4096u;
+        GuideSumAdd(0u, uintBitsToFloat(samples[testCase * 4096u + permuted]));
+    }
+    barrier();
+    if (lane < GUIDE_SUM_WORDS)
+    {
+        results[gl_WorkGroupID.x * 11u + lane] = guideSumWords[lane];
+    }
+    if (lane == 0u)
+    {
+        results[gl_WorkGroupID.x * 11u + 10u] = floatBitsToUint(GuideSumValue(0u));
+    }
+}

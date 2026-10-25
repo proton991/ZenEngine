@@ -4,6 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
+#include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include <gtest/gtest.h>
 #include <filesystem>
@@ -102,6 +103,7 @@ protected:
     HeapVector<RHIBuffer*>                                                 buffers;
     HeapVector<RHIShader*>                                                 shaders;
     HeapVector<RHIPipeline*>                                               pipelines;
+    HeapVector<RHISampler*>                                                samplers;
 
     void SetUp() override
     {
@@ -155,6 +157,11 @@ protected:
         for (zen::RHIShader* value : shaders)
         {
             session->rhi.DestroyShader(value);
+        }
+
+        for (zen::RHISampler* value : samplers)
+        {
+            session->rhi.DestroySampler(value);
         }
 
         for (zen::RHITexture* value : textures)
@@ -962,6 +969,223 @@ TEST_F(VulkanAttachmentIntegrationTest, MutableViewsEnforceFormatCompatibilityBe
                 EXPECT_EQ(AttachmentObserver::viewCreates, before + (compatible ? 1u : 0u));
             }
         }
+    }
+}
+
+struct BlockFormatSupportDriver
+{
+    static inline PFN_vkGetPhysicalDeviceImageFormatProperties original;
+
+    static VKAPI_ATTR VkResult VKAPI_CALL Properties(VkPhysicalDevice         device,
+                                                     VkFormat                 format,
+                                                     VkImageType              type,
+                                                     VkImageTiling            tiling,
+                                                     VkImageUsageFlags        usage,
+                                                     VkImageCreateFlags       flags,
+                                                     VkImageFormatProperties* properties)
+    {
+        return format == VK_FORMAT_BC4_UNORM_BLOCK || format == VK_FORMAT_BC5_UNORM_BLOCK
+                    || format == VK_FORMAT_BC6H_UFLOAT_BLOCK || format == VK_FORMAT_BC7_UNORM_BLOCK
+                    || format == VK_FORMAT_BC7_SRGB_BLOCK
+                 ? VK_ERROR_FORMAT_NOT_SUPPORTED
+                 : original(device, format, type, tiling, usage, flags, properties);
+    }
+};
+
+TEST_F(VulkanAttachmentIntegrationTest, BlockCompressedUnsupportedDeviceFormatFailsBeforeViewCreation)
+{
+    RHITextureCreateInfo info{};
+    info.type = RHITextureType::e2D;
+    info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
+    BlockFormatSupportDriver::original                                          = vkGetPhysicalDeviceImageFormatProperties;
+    const uint32_t                                                       before = AttachmentObserver::viewCreates;
+    test::ScopedVulkanCall<PFN_vkGetPhysicalDeviceImageFormatProperties> unsupported(vkGetPhysicalDeviceImageFormatProperties,
+                                                                                     BlockFormatSupportDriver::Properties);
+    for (DataFormat format : {DataFormat::eBC4UNORMBlock, DataFormat::eBC5UNORMBlock, DataFormat::eBC6HUFloatBlock,
+                              DataFormat::eBC7UNORMBlock, DataFormat::eBC7SRGBBlock})
+    {
+        SCOPED_TRACE(uint32_t(format));
+        info.format = format;
+        EXPECT_EQ(session->rhi.CreateTexture(info), nullptr);
+        EXPECT_EQ(AttachmentObserver::viewCreates, before);
+    }
+}
+
+TEST_F(VulkanAttachmentIntegrationTest, BlockCompressedMipUploadsPreserveBlocksAndEnforceViewClasses)
+{
+    ASSERT_TRUE(session->rhi.GetDevice()->GetPhysicalDeviceFeatures().textureCompressionBC);
+    struct UploadCase
+    {
+        DataFormat format;
+        bool       cube;
+    };
+    const UploadCase cases[]{{DataFormat::eBC4UNORMBlock, false},   {DataFormat::eBC5UNORMBlock, false},
+                             {DataFormat::eBC6HUFloatBlock, false}, {DataFormat::eBC7UNORMBlock, false},
+                             {DataFormat::eBC7SRGBBlock, false},    {DataFormat::eBC6HUFloatBlock, true}};
+    for (const UploadCase& testCase : cases)
+    {
+        const DataFormat format = testCase.format;
+        SCOPED_TRACE(uint32_t(format));
+        SCOPED_TRACE(testCase.cube);
+        const uint32_t       blockBytes = format == DataFormat::eBC4UNORMBlock ? 8u : 16u;
+        const uint32_t       layerCount = testCase.cube ? 6u : 1u;
+        const uint32_t       totalBytes = 6u * blockBytes * layerCount;
+        RHITextureCreateInfo info{};
+        info.type          = testCase.cube ? RHITextureType::eCube : RHITextureType::e2D;
+        info.format        = format;
+        info.width         = 5;
+        info.height        = testCase.cube ? 5u : 7u;
+        info.arrayLayers   = layerCount;
+        info.mipmaps       = 3;
+        info.mutableFormat = true;
+        info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferSrc,
+                                 RHITextureUsageFlagBits::eTransferDst);
+        VulkanTexture* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(info));
+        ASSERT_NE(texture, nullptr);
+        textures.push_back(texture);
+        ASSERT_NE(texture->GetDefaultView(), nullptr);
+        RHITextureViewCreateInfo view{};
+        view.type        = info.type;
+        view.mipLevels   = 3;
+        view.arrayLayers = layerCount;
+        view.format      = format == DataFormat::eBC7UNORMBlock ? DataFormat::eBC7SRGBBlock
+                         : format == DataFormat::eBC7SRGBBlock  ? DataFormat::eBC7UNORMBlock
+                                                                : format;
+        EXPECT_NE(texture->CreateView(view), nullptr);
+        for (DataFormat invalid :
+             {format == DataFormat::eBC5UNORMBlock ? DataFormat::eBC7UNORMBlock : DataFormat::eBC5UNORMBlock,
+              DataFormat::eR32G32B32A32SFloat})
+        {
+            view.format           = invalid;
+            const uint32_t before = AttachmentObserver::viewCreates;
+            EXPECT_EQ(texture->CreateView(view), nullptr);
+            EXPECT_EQ(AttachmentObserver::viewCreates, before);
+        }
+        RHIBufferCreateInfo bufferInfo{};
+        bufferInfo.size         = totalBytes;
+        bufferInfo.allocateType = RHIBufferAllocateType::eCPUWrite;
+        bufferInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        RHIBuffer* upload = session->rhi.CreateBuffer(bufferInfo);
+        ASSERT_NE(upload, nullptr);
+        buffers.push_back(upload);
+        uint8_t* mapped = upload->Map();
+        ASSERT_NE(mapped, nullptr);
+        for (uint32_t byte = 0; byte < totalBytes; ++byte)
+        {
+            mapped[byte] = static_cast<uint8_t>(byte * 3 + 1);
+        }
+        upload->Unmap();
+        VulkanBuffer* readback = Buffer();
+        ASSERT_NE(readback, nullptr);
+        HeapVector<RHIBufferTextureCopyRegion> regions;
+        HeapVector<VkBufferImageCopy>          nativeRegions;
+        uint64_t                               offset = 0;
+        for (uint32_t level = 0; level < 3; ++level)
+        {
+            RHIBufferTextureCopyRegion region{};
+            region.bufferOffset = offset;
+            region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+            region.textureSubresources.mipmap     = level;
+            region.textureSubresources.layerCount = layerCount;
+            region.textureSize                    = {std::max(1u, info.width >> level), std::max(1u, info.height >> level), 1};
+            regions.push_back(region);
+            VkBufferImageCopy native{};
+            ToVkBufferImageCopy(region, &native);
+            nativeRegions.push_back(native);
+            offset += (level == 0 ? 4u : 1u) * blockBytes * layerCount;
+        }
+        Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        context->RHICopyBufferToTexture(upload, texture, MakeVecView(regions));
+        Transition(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        vkCmdCopyImageToBuffer(Commands(), texture->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback->GetVkBuffer(),
+                               static_cast<uint32_t>(nativeRegions.size()), nativeRegions.data());
+        SubmitAndWait();
+        const uint8_t* actual = readback->Map();
+        ASSERT_NE(actual, nullptr);
+        for (uint32_t byte = 0; byte < totalBytes; ++byte)
+        {
+            EXPECT_EQ(actual[byte], static_cast<uint8_t>(byte * 3 + 1));
+        }
+        readback->Unmap();
+    }
+}
+
+TEST_F(VulkanAttachmentIntegrationTest, BC4AndBC5SamplingExposeNativeChannelsWithoutNormalReconstruction)
+{
+    ASSERT_TRUE(session->rhi.GetDevice()->GetPhysicalDeviceFeatures().textureCompressionBC);
+    RHIShaderCreateInfo shaderInfo{};
+    shaderInfo.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+    shaderInfo.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] =
+        std::filesystem::relative(std::filesystem::path(RDG_REFLECTION_TEST_PATH) / "binding_sampler.comp.spv", SPV_SHADER_PATH)
+            .generic_string();
+    RHIShader* shader = session->rhi.CreateShader(shaderInfo);
+    ASSERT_NE(shader, nullptr);
+    shaders.push_back(shader);
+    RHIPipeline* pipeline = session->rhi.CreatePipeline(RHIComputePipelineCreateInfo{shader});
+    ASSERT_NE(pipeline, nullptr);
+    pipelines.push_back(pipeline);
+    RHISampler* sampler = session->rhi.CreateSampler(RHISamplerCreateInfo{});
+    ASSERT_NE(sampler, nullptr);
+    samplers.push_back(sampler);
+    for (DataFormat format : {DataFormat::eBC4UNORMBlock, DataFormat::eBC5UNORMBlock})
+    {
+        SCOPED_TRACE(uint32_t(format));
+        const uint32_t       blockBytes = format == DataFormat::eBC4UNORMBlock ? 8u : 16u;
+        RHITextureCreateInfo info{};
+        info.type   = RHITextureType::e2D;
+        info.format = format;
+        info.width = info.height = 4;
+        info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
+        VulkanTexture* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(info));
+        ASSERT_NE(texture, nullptr);
+        textures.push_back(texture);
+        RHIBufferCreateInfo bufferInfo{};
+        bufferInfo.size         = blockBytes;
+        bufferInfo.allocateType = RHIBufferAllocateType::eCPUWrite;
+        bufferInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        RHIBuffer* upload = session->rhi.CreateBuffer(bufferInfo);
+        ASSERT_NE(upload, nullptr);
+        buffers.push_back(upload);
+        uint8_t* mapped = upload->Map();
+        ASSERT_NE(mapped, nullptr);
+        std::fill_n(mapped, blockBytes, uint8_t(0));
+        mapped[0] = mapped[1] = 64;
+        if (blockBytes == 16)
+        {
+            mapped[8] = mapped[9] = 192;
+        }
+        upload->Unmap();
+        bufferInfo.size         = sizeof(uint32_t);
+        bufferInfo.allocateType = RHIBufferAllocateType::eCPURead;
+        bufferInfo.usageFlags.Clear();
+        bufferInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+        RHIBuffer* output = session->rhi.CreateBuffer(bufferInfo);
+        ASSERT_NE(output, nullptr);
+        buffers.push_back(output);
+        RHIBufferTextureCopyRegion region{};
+        region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+        region.textureSize = {4, 4, 1};
+        Transition(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        context->RHICopyBufferToTexture(upload, texture, {&region, 1});
+        Transition(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        context->RHIBindPipeline(pipeline);
+        RHIBatchedShaderParameters parameters;
+        parameters.AddResourceParam(*shader->GetSRDByLocation(1, 0), sampler, nullptr, 0);
+        parameters.AddResourceParam(*shader->GetSRDByLocation(1, 1), texture, nullptr, 0);
+        parameters.AddResourceParam(*shader->GetSRDByLocation(1, 2), output, nullptr, 0);
+        context->RHISetShaderParameters(parameters.GetView());
+        context->RHIDispatch(1, 1, 1);
+        ASSERT_FALSE(context->GetRecordingError().IsFailure());
+        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(Commands(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &barrier, 0,
+                             nullptr, 0, nullptr);
+        SubmitAndWait();
+        const uint32_t* actual = reinterpret_cast<const uint32_t*>(output->Map());
+        ASSERT_NE(actual, nullptr);
+        EXPECT_EQ(*actual, format == DataFormat::eBC4UNORMBlock ? 0xff000040u : 0xff00c040u);
+        output->Unmap();
     }
 }
 

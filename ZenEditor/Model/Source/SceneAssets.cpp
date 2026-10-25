@@ -1,5 +1,6 @@
 #include "Editor/Model/SceneAssets.h"
 #include "Editor/Model/EditorText.h"
+#include "ZenAsset/Reader/Image.h"
 #include <algorithm>
 #include <cmath>
 
@@ -98,22 +99,73 @@ const sg::Texture* GetBaseColorTexture(const sg::Material& material)
 
 const uint8_t* GetLevelZero(const sg::Texture& texture, size_t& size)
 {
-    const uint8_t* result = nullptr;
+    const VectorView<const uint8_t> bytes = texture.GetLayerMipBytes(0);
+    size                                  = bytes.size();
+    return bytes.data();
+}
 
-    if (texture.GetMipBytes().empty())
+bool MakeDecodedTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePreview& preview)
+{
+    const asset::ImageRegion               region  = texture.GetAtlasRegion();
+    const bool                             spatial = region != asset::ImageRegion{};
+    size_t                                 size    = 0;
+    const uint8_t*                         bytes   = GetLevelZero(texture, size);
+    uint32_t                               width   = texture.width;
+    uint32_t                               height  = texture.height;
+    const HeapVector<HeapVector<uint8_t>>& mips    = texture.GetMipBytes();
+    size_t                                 level   = 0;
+    // Use the smallest supplied mip that still covers the requested preview.
+    // The Reader samples only that mip and never expands a full image first.
+    while (!spatial && width > 0 && height > 0 && maxSize > 0 && level + 1 < mips.size() && std::max(width, height) > maxSize)
     {
-        result = texture.GetBytes().data();
-
-        size   = texture.GetBytes().size();
+        const uint32_t nextWidth  = std::max(1u, width / 2);
+        const uint32_t nextHeight = std::max(1u, height / 2);
+        if (std::max(nextWidth, nextHeight) < maxSize)
+        {
+            break;
+        }
+        ++level;
+        width                                 = nextWidth;
+        height                                = nextHeight;
+        const VectorView<const uint8_t> layer = texture.GetLayerMipBytes(static_cast<uint32_t>(level));
+        bytes                                 = layer.data();
+        size                                  = layer.size();
     }
-    else
+    zenasset::PixelFormat format = zenasset::PixelFormat::Undefined;
+    switch (texture.format)
     {
-        result = texture.GetMipBytes()[0].data();
-
-        size   = texture.GetMipBytes()[0].size();
+        case asset::Format::R8G8B8A8_UNORM: format = zenasset::PixelFormat::RGBA8Unorm; break;
+        case asset::Format::R8G8B8A8_SRGB: format = zenasset::PixelFormat::RGBA8Srgb; break;
+        case asset::Format::BC4_UNORM_BLOCK: format = zenasset::PixelFormat::BC4Unorm; break;
+        case asset::Format::BC5_UNORM_BLOCK: format = zenasset::PixelFormat::BC5Unorm; break;
+        case asset::Format::BC7_UNORM_BLOCK: format = zenasset::PixelFormat::BC7Unorm; break;
+        case asset::Format::BC7_SRGB_BLOCK: format = zenasset::PixelFormat::BC7Srgb; break;
+        default: break;
     }
-
-    return result;
+    const zenasset::TextureInterpretation interpretation =
+        texture.interpretation == asset::TextureInterpretation::Default ? zenasset::TextureInterpretation::Default
+        : texture.interpretation == asset::TextureInterpretation::NormalXYPositiveZ
+            ? zenasset::TextureInterpretation::NormalXYPositiveZ
+            : static_cast<zenasset::TextureInterpretation>(UINT32_MAX);
+    bool valid = !spatial || (texture.GetArrayLayers() == 1 && mips.size() == 1);
+    if (valid)
+    {
+        const zenasset::ImageMipView  mip{format,         width,
+                                          height,         {reinterpret_cast<const std::byte*>(bytes), size},
+                                          interpretation, {region.x, region.y, region.width, region.height}};
+        zenasset::ImagePreviewOptions options;
+        options.maxDimension                       = maxSize;
+        options.opaqueAlpha                        = true;
+        const zenasset::ImagePreviewResult decoded = zenasset::MakeImagePreview(mip, options);
+        valid                                      = decoded.status.Succeeded();
+        if (valid)
+        {
+            preview.width  = decoded.width;
+            preview.height = decoded.height;
+            preview.pixels = HeapVector<uint8_t>(decoded.pixels.data(), decoded.pixels.size());
+        }
+    }
+    return valid;
 }
 } // namespace
 
@@ -123,9 +175,10 @@ bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePre
 
     const uint8_t* level = GetLevelZero(texture, size);
 
-    const bool valid     = (texture.format == asset::Format::R8G8B8A8_UNORM || texture.format == asset::Format::R8G8B8A8_SRGB)
-                        && texture.width > 0 && texture.height > 0 && maxSize > 0
-                        && size >= size_t(texture.width) * texture.height * 4;
+    bool valid           = (texture.format == asset::Format::R8G8B8A8_UNORM || texture.format == asset::Format::R8G8B8A8_SRGB)
+                        && texture.GetAtlasRegion() == asset::ImageRegion{}
+                        && texture.interpretation == asset::TextureInterpretation::Default && texture.width > 0 && texture.height > 0
+                        && maxSize > 0 && size >= size_t(texture.width) * texture.height * 4;
 
     preview              = {};
 
@@ -180,6 +233,12 @@ bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePre
                 output[3] = 255;
             }
         }
+    }
+    else if (texture.GetAtlasRegion() != asset::ImageRegion{} || texture.format == asset::Format::BC7_UNORM_BLOCK
+             || texture.format == asset::Format::BC7_SRGB_BLOCK || texture.format == asset::Format::BC4_UNORM_BLOCK
+             || texture.format == asset::Format::BC5_UNORM_BLOCK)
+    {
+        valid = MakeDecodedTexturePreview(texture, maxSize, preview);
     }
 
     return valid;
@@ -452,17 +511,17 @@ SceneAssetItem SceneAssetIndex::MakeItem(SceneAssetId id) const
     }
     else if (current && id.kind == SceneAssetKind::Texture)
     {
-        const sg::Texture& texture = *m_textures[id.index];
+        const sg::Texture& texture      = *m_textures[id.index];
 
-        item.name                  = DisplayName(texture.GetName(), "Texture", id.index);
+        item.name                       = DisplayName(texture.GetName(), "Texture", id.index);
 
-        item.users                 = uint32_t(m_textureMaterials[id.index].size());
+        item.users                      = uint32_t(m_textureMaterials[id.index].size());
 
-        item.width                 = texture.width;
+        const asset::ImageRegion region = texture.GetAtlasRegion();
+        item.width                      = region == asset::ImageRegion{} ? texture.width : region.width;
+        item.height                     = region == asset::ImageRegion{} ? texture.height : region.height;
 
-        item.height                = texture.height;
-
-        item.format                = texture.format;
+        item.format                     = texture.format;
     }
     else if (current)
     {
@@ -589,7 +648,7 @@ SceneAssetInspection SceneAssetIndex::Inspect(SceneAssetId id) const
 
         for (size_t level = 1; level < texture.GetMipBytes().size(); ++level)
         {
-            result.bytes += texture.GetMipBytes()[level].size();
+            result.bytes += texture.GetLayerMipBytes(static_cast<uint32_t>(level)).size();
         }
 
         result.sampler = texture.samplerIndex;

@@ -49,6 +49,8 @@ struct ImagePixels
     Format                          format{Format::R8G8B8A8_UNORM};
     HeapVector<uint8_t>             bytes;
     HeapVector<HeapVector<uint8_t>> mips;
+    // Each explicit mip stores complete consecutive layers. Arrays require mips.
+    uint32_t arrayLayers{1};
 };
 
 struct ImageAsset
@@ -57,13 +59,33 @@ struct ImageAsset
     SharedPtr<const ImagePixels, MultiThreadCounter> pixels;
 };
 
+enum class TextureInterpretation : uint32_t
+{
+    Default           = 0,
+    NormalXYPositiveZ = 1
+};
+
+// Logical interior in an immutable spatial page; all zero selects the full image.
+// Kept separate from the authored material UV transform.
+struct ImageRegion
+{
+    uint32_t x{0};
+    uint32_t y{0};
+    uint32_t width{0};
+    uint32_t height{0};
+    bool     operator==(const ImageRegion&) const = default;
+};
+
 struct TextureAsset
 {
-    std::string name;
-    ImageId     image;
-    SamplerId   sampler;
-    TextureId   linearSource;
-    Format      format{Format::R8G8B8A8_UNORM};
-    bool        flatNormal{false};
+    std::string           name;
+    ImageId               image;
+    SamplerId             sampler;
+    TextureId             linearSource;
+    Format                format{Format::R8G8B8A8_UNORM};
+    bool                  flatNormal{false};
+    TextureInterpretation interpretation{TextureInterpretation::Default};
+    uint32_t              arrayLayer{0};
+    ImageRegion           atlasRegion;
 };
 } // namespace zen::asset

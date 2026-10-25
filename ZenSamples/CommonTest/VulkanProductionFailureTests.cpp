@@ -228,6 +228,8 @@ TEST(VulkanProductionFailureTest, BufferAllocationAndMappingFailureReturnNullWit
         info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
 
         EXPECT_EQ(session.rhi.CreateBuffer(info), nullptr);
+        EXPECT_EQ(allocator.GetGPUMemoryStats().hostUploadAllocationBytes, 0u);
+        EXPECT_EQ(allocator.GetGPUMemoryStats().peakHostUploadAllocationBytes, 0u);
 
         // A failed mapping may leave an empty VMA block cached; allocator teardown
         // reports allocation bytes and must release every native commitment.
@@ -238,6 +240,35 @@ TEST(VulkanProductionFailureTest, BufferAllocationAndMappingFailureReturnNullWit
 
         GVkMemAllocator = original;
     }
+}
+
+TEST(VulkanProductionFailureTest, HostUploadAllocationStatisticsTrackNativeResourceLifetime)
+{
+    test::VulkanSession     session;
+    const RHIGPUMemoryStats before = session.rhi.GetGPUMemoryStats();
+    ASSERT_TRUE(before.available);
+    RHIBufferCreateInfo info{};
+    info.size         = 17;
+    info.allocateType = RHIBufferAllocateType::eCPUWrite;
+    info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+    RHIBuffer* upload = session.rhi.CreateBuffer(info);
+    ASSERT_NE(upload, nullptr);
+    const uint64_t bytes = upload->GetAllocationSize();
+    EXPECT_GE(bytes, info.size);
+    EXPECT_EQ(session.rhi.GetGPUMemoryStats().hostUploadAllocationBytes, before.hostUploadAllocationBytes + bytes);
+    EXPECT_GE(session.rhi.GetGPUMemoryStats().peakHostUploadAllocationBytes, before.hostUploadAllocationBytes + bytes);
+    upload->AddReference();
+    session.rhi.DestroyBuffer(upload);
+    // Releasing the pool owner is insufficient while a recorded user retains it.
+    EXPECT_EQ(session.rhi.GetGPUMemoryStats().hostUploadAllocationBytes, before.hostUploadAllocationBytes + bytes);
+    upload->ReleaseReference();
+    EXPECT_EQ(session.rhi.GetGPUMemoryStats().hostUploadAllocationBytes, before.hostUploadAllocationBytes);
+    EXPECT_GE(session.rhi.GetGPUMemoryStats().peakHostUploadAllocationBytes, before.hostUploadAllocationBytes + bytes);
+    info.allocateType   = RHIBufferAllocateType::eCPURead;
+    RHIBuffer* readback = session.rhi.CreateBuffer(info);
+    ASSERT_NE(readback, nullptr);
+    EXPECT_EQ(session.rhi.GetGPUMemoryStats().hostUploadAllocationBytes, before.hostUploadAllocationBytes);
+    session.rhi.DestroyBuffer(readback);
 }
 
 TEST(VulkanProductionFailureTest, ShaderStagesLayoutsAndSamplerRejectNativeFailure)

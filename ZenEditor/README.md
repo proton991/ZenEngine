@@ -1,6 +1,6 @@
 # ZenEditor scene viewer
 
-The editor supports glTF, GLB, FBX and `.zenasset` inspection and a unified **Rendering** panel for lighting,
+The editor supports glTF, GLB, FBX, OBJ/MTL and `.zenasset` inspection and a unified **Rendering** panel for lighting,
 GI, rendering algorithms and framebuffer diagnostics. Milestones 1–3 of the
 [rendering plan](../Doc/ZenEditorRenderingPlan.md) are implemented. Scene and asset
 authoring remain deferred. Run/Restart/Stop and `zen_player` belong to milestone 4;
@@ -17,6 +17,16 @@ cmake --preset x64-windows-msvc-debug
 cmake --build build/x64-windows-msvc-debug --target zen_editor
 .\build\x64-windows-msvc-debug\bin\zen_editor.exe
 ```
+
+ZenAssetProcessor is a separate dependency. CMake defaults to the live sibling
+checkout at `../ZenAssetProcessor` (`E:/Dev/ZenAssetProcessor` in this workspace),
+without pinning a revision during development. Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR`
+to use another checkout; CMake remembers the path in that build directory. For a
+Release build, use `x64-windows-msvc-release` in both commands. To consume an
+installed library instead, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` and its
+installation directory through `CMAKE_PREFIX_PATH`. Source import and
+recooking link `ZenAsset::Processor` through `ZenEngineAssetTools`; the runtime
+loads `.zenasset` packages through `ZenAsset::Reader`.
 
 On macOS:
 
@@ -59,9 +69,25 @@ The editor uses platform-specific menus and window title bars:
 
 Linux support is deferred.
 
-Use `--scene=absolute/path/model.gltf` (or `.glb`, `.fbx` or `.zenasset`) to open an initial asset.
+Use `--scene=absolute/path/model.gltf` (or `.glb`, `.fbx`, `.obj` or `.zenasset`) to open an initial asset.
 Source loads reuse a content-validated `.zenasset` cache in the engine's `Cache/SceneAssets`
 folder; after a source import the cache is written in the background. Internal files load directly.
+Automatic caches use lossless Zstandard and mesh stream compression, including
+the Reference profile. This reduces disk storage while preserving decoded scene
+data; GPU texture compression and atlas packing are separate processing options.
+In **Assets > Source processing**, Reference remains the default. Desktop exposes
+individual geometry and texture operations, with quality limits under Advanced
+processing; selecting Desktop alone enables no lossy operation. The selection
+applies to the next source open. **Scene > Recook from Source** (also in Assets)
+reimports the current source with a snapshot of these settings, bypasses a cache
+hit, and saves that result before preparing its replacement graphics resources.
+Profile choices are session state. Explicit `.zenasset` files always load as stored.
+
+Recooking runs on the source worker. The loading dialog reports cooking and cache
+publication and offers cancellation. Failure or cancellation retains the active
+scene; messages remain in Assets. A cancelled write before atomic publication
+retains the previous package. Once a complete cache has been published,
+cancellation can retain the old active scene while leaving the refreshed cache.
 See [internal scene assets and caching](../Doc/SceneAssetFormat.md) for the file
 contract, cache location and programmatic controls.
 Without it the shell starts empty. An import failure keeps the current scene and
@@ -75,7 +101,8 @@ scenes that opened successfully; missing files are disabled, and Clear Recent
 empties the list.
 
 CPU import runs on a worker, sharing the engine's parallel mesh/image processing
-pool. The loading dialog reports import stages and offers **Cancel**; running
+pool. The loading dialog reports the current operation and processed input-file
+counts and offers **Cancel**; running
 jobs drain before their unpublished result is discarded. Cancellation during
 graphics preparation also retains the current scene. Import warnings remain
 available under **Assets → Import diagnostics** and in the status-bar tooltip.
@@ -291,9 +318,13 @@ paths are also accepted.
 Opening a scene shows a modal progress bar for reading data, preparing graphics
 resources and publishing the scene. CPU import runs on an engine worker so the
 window keeps repainting; GPU preparation and publication run on the engine thread,
-after their stage has been displayed. The bar animates during import and then shows
-completed stages, without claiming a byte count or time estimate. GPU work can
-temporarily pause the animation. Failed loads keep the previous scene and show a
+after their operation has been displayed. The bar shows **processed files / total
+files × 100**, with the counts beside the percentage. It displays “Discovering
+files...” until dependency discovery establishes the total. Each distinct model,
+external buffer and texture file counts once; embedded data belongs to its
+containing file, and a cached `.zenasset` counts as one file. The percentage measures
+input-file processing, so it can reach 100% while cooking or graphics preparation
+continues; the operation text identifies that remaining work. Failed loads keep the previous scene and show a
 dismissible error. Startup scenes, File/Open and recent files use this same flow.
 
 Assets lists the open scene's meshes, materials, textures and animations, with

@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "Editor/Services/EditorController.h"
 #include "Platform/ConfigLoader.h"
 #include "Utils/Errors.h"
@@ -114,6 +115,13 @@ void EditorController::RegisterActions()
                         "Open a scene first.",
                         [this]() { return m_scene.Get() != nullptr; },
                         [this]() { FrameAll(); }});
+
+    m_actions.Register({actions::Recook,
+                        "Recook from Source",
+                        {},
+                        "Open a source scene and wait for pending work to finish.",
+                        [this]() { return CanRecook(); },
+                        [this]() { RequestRecook(); }});
 
     m_actions.Register({actions::FrameSelection,
                         "Frame Selected",
@@ -456,11 +464,23 @@ bool EditorController::PublishScene(UniquePtr<LoadedScene> candidate, std::strin
 
 bool EditorController::Load(const std::string& path)
 {
+    return Load(MakeLoadRequest(path));
+}
+
+asset::SceneImportRequest EditorController::MakeLoadRequest(std::string path) const
+{
+    asset::SceneImportRequest request{std::move(path)};
+    ApplySceneProcessingSettings(m_sourceProcessing.draft, request);
+    return request;
+}
+
+bool EditorController::Load(const asset::SceneImportRequest& request)
+{
     bool valid = false;
 
     if (!m_loadState.IsActive() && !m_environmentPending)
     {
-        asset::SceneLoadResult imported  = asset::LoadScene(path);
+        asset::SceneLoadResult imported  = asset::LoadSourceScene(request);
         std::string            error     = std::move(imported.error);
         UniquePtr<LoadedScene> candidate = std::move(imported.scene);
 
@@ -468,13 +488,16 @@ bool EditorController::Load(const std::string& path)
 
         if (valid)
         {
+            CommitSourceProcessing(request, imported.cacheHit);
             // Messages belong to the published scene; a failed open keeps the previous ones.
             m_importDiagnostics = std::move(imported.diagnostics);
             m_loadState         = {};
+            m_pendingDiagnostics.clear();
         }
         else
         {
-            m_error = error;
+            m_pendingDiagnostics = std::move(imported.diagnostics);
+            m_error              = error;
 
             LOGE("Editor open failed: {}", m_error);
         }
@@ -485,17 +508,73 @@ bool EditorController::Load(const std::string& path)
 
 bool EditorController::RequestLoad(std::string path)
 {
-    const bool accepted = !path.empty() && !m_loadState.IsActive() && !m_environmentPending;
+    return RequestLoad(MakeLoadRequest(std::move(path)));
+}
+
+bool EditorController::RequestLoad(asset::SceneImportRequest request)
+{
+    const bool accepted = !request.path.empty() && !m_loadState.IsActive() && !m_environmentPending;
 
     if (accepted)
     {
-        m_loadState = {SceneLoadStage::Queued, std::move(path)};
+        m_loadState        = {SceneLoadStage::Queued, request.path};
+        m_loadState.recook = request.forceRecook;
         m_loadControl.Reset(new asset::SceneImportControl);
+        request.control     = m_loadControl;
+        m_queuedLoadRequest = std::move(request);
+        m_pendingCacheHit   = false;
         m_pendingDiagnostics.clear();
         m_error.clear();
     }
 
     return accepted;
+}
+
+bool EditorController::CanRecook() const
+{
+    return !m_sourceProcessing.sourcePath.empty() && !m_loadState.IsActive() && !m_environmentPending;
+}
+
+bool EditorController::RequestRecook()
+{
+    bool accepted = false;
+    if (CanRecook())
+    {
+        asset::SceneImportRequest request = m_appliedLoadRequest;
+        ApplySceneProcessingSettings(m_sourceProcessing.draft, request);
+        request.useCache    = true;
+        request.forceRecook = true;
+        accepted            = RequestLoad(std::move(request));
+    }
+    return accepted;
+}
+
+bool EditorController::StageSourceProcessing(const SceneProcessingSettings& settings)
+{
+    const zenasset::Status status = zenasset::ValidateProcessingSettings(settings.settings);
+    m_sourceProcessing.error      = status.message;
+    if (status.Succeeded())
+    {
+        m_sourceProcessing.draft = settings;
+    }
+    return status.Succeeded();
+}
+
+const SceneProcessingState& EditorController::GetSourceProcessing() const
+{
+    return m_sourceProcessing;
+}
+
+void EditorController::CommitSourceProcessing(const asset::SceneImportRequest& request, bool cacheHit)
+{
+    const bool source             = asset::FindSceneImportFormat(request.path) != nullptr;
+    m_sourceProcessing.sourcePath = source ? request.path : std::string{};
+    m_sourceProcessing.applied =
+        source ? SceneProcessingSettings{request.profile == "desktop", request.processing} : SceneProcessingSettings{};
+    m_sourceProcessing.cacheHit = cacheHit;
+    m_appliedLoadRequest        = source ? request : asset::SceneImportRequest{};
+    m_appliedLoadRequest.control.Reset();
+    m_appliedLoadRequest.forceRecook = false;
 }
 
 bool EditorController::CancelSceneLoad()
@@ -525,6 +604,11 @@ bool EditorController::CancelSceneLoad()
 const HeapVector<asset::SceneImportDiagnostic>& EditorController::GetImportDiagnostics() const
 {
     return m_importDiagnostics;
+}
+
+const HeapVector<asset::SceneImportDiagnostic>& EditorController::GetLastLoadDiagnostics() const
+{
+    return m_pendingDiagnostics;
 }
 
 const HeapVector<EnvironmentTextureItem>& EditorController::GetEnvironmentTextures() const
@@ -607,6 +691,11 @@ const SceneLoadState& EditorController::GetLoadState() const
 
 void EditorController::FailSceneLoad(std::string error)
 {
+    if (m_loadState.stage == SceneLoadStage::Preparing || m_loadState.stage == SceneLoadStage::Publishing)
+    {
+        m_pendingDiagnostics.push_back({asset::SceneDiagnosticSeverity::Error, asset::SceneImportStatus::InvalidData,
+                                        m_loadState.path, "Graphics preparation", error});
+    }
     m_loadResult = {};
     m_loadControl.Reset();
 
@@ -632,11 +721,9 @@ bool EditorController::UpdateSceneLoad()
         {
             if (!m_sceneLoader)
             {
-                m_sceneLoader = MakeUnique<asset::SceneLoader>(1, 0);
+                m_sceneLoader = MakeUnique<asset::SourceSceneLoader>(1, 0);
             }
-            asset::SceneImportRequest request{m_loadState.path};
-            request.control   = m_loadControl;
-            m_loadResult      = m_sceneLoader->LoadAsync(std::move(request));
+            m_loadResult      = m_sceneLoader->LoadAsync(m_queuedLoadRequest);
 
             m_loadState.stage = SceneLoadStage::Reading;
 
@@ -644,13 +731,16 @@ bool EditorController::UpdateSceneLoad()
         }
         case SceneLoadStage::Reading:
         {
-            m_loadState.importStage = m_loadControl->GetStage();
+            m_loadState.importStage  = m_loadControl->GetStage();
+            m_loadState.fileProgress = m_loadControl->GetFileProgress();
             if (m_loadResult.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
                 asset::SceneLoadResult result = m_loadResult.get();
 
+                m_loadState.fileProgress      = m_loadControl->GetFileProgress();
                 m_loadResult                  = {};
                 m_pendingDiagnostics          = std::move(result.diagnostics);
+                m_pendingCacheHit             = result.cacheHit;
                 if (m_loadState.cancelRequested || result.status == asset::SceneImportStatus::Cancelled)
                 {
                     m_loadControl.Reset();
@@ -691,6 +781,7 @@ bool EditorController::UpdateSceneLoad()
 
             if (PublishScene(std::move(m_loadCandidate), error))
             {
+                CommitSourceProcessing(m_queuedLoadRequest, m_pendingCacheHit);
                 // Messages describe the published scene; failed or cancelled
                 // opens leave the active scene's messages in place.
                 m_importDiagnostics = std::move(m_pendingDiagnostics);

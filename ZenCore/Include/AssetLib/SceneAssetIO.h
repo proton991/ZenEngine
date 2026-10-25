@@ -14,7 +14,10 @@ struct SceneAssetFileMetadata
     uint32_t    importerVersion{0};
     uint32_t    processorVersion{SceneAssetProcessorVersion};
     // Hash of the engine sources that shaped the asset; caches miss when it changes.
-    std::string                       buildFingerprint;
+    std::string buildFingerprint;
+    // v3 package build profile. Legacy v2 files imply the reference profile.
+    std::string                       profile{"reference"};
+    zenasset::ProcessingSettings      processing;
     SceneImportSettings               settings;
     std::string                       cacheKey;
     HeapVector<SceneAssetFileInput>   inputs;

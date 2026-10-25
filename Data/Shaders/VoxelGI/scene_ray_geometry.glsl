@@ -83,10 +83,7 @@ bool RayCandidateAccepted(uvec4 triangle, vec2 barycentric)
         alpha *= specularGlossiness ? material.diffuseFactor.a : material.baseColorFactor.a;
         if (textureIndex >= 0)
         {
-            alpha *= textureLod(sampler2D(uTexture2DHeap[nonuniformEXT(textureIndex)],
-                                          uSamplerHeap[nonuniformEXT(int(transform.row0.w))]),
-                                transformed, 0.0)
-                         .a;
+            alpha *= MaterialBindingTextureLod0(textureIndex, transform, material.textureSampling.xy, transformed).a;
         }
         accepted = MaterialOccludes(material, alpha);
     }

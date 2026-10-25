@@ -857,6 +857,7 @@ void VulkanRHI::Init()
     m_gpuInfo.maxStorageBufferRange            = limits.maxStorageBufferRange;
 
     m_gpuInfo.maxColorAttachments              = limits.maxColorAttachments;
+    m_gpuInfo.subTexelPrecisionBits            = limits.subTexelPrecisionBits;
 
     for (uint32_t axis = 0; axis < 3; ++axis)
     {

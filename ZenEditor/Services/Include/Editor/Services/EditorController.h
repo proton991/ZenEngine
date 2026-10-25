@@ -1,8 +1,10 @@
 #pragma once
+#include "AssetTools/SceneTools.h"
 #include "Editor/Model/EditorActions.h"
 #include "Editor/Model/EditorPreferences.h"
 #include "Editor/Model/InspectorNavigation.h"
 #include "Editor/Model/SceneLoadState.h"
+#include "Editor/Model/SceneProcessingState.h"
 #include "Editor/Model/EditorRenderingState.h"
 #include "Editor/Rendering/EditorViewport.h"
 #include "Editor/Rendering/MeshPreviewRenderer.h"
@@ -79,13 +81,20 @@ public:
     // Parses, prepares GPU data and publishes both, or keeps the current scene and
     // reports the error. Synchronous; frontends normally call RequestLoad instead.
     bool Load(const std::string& path);
+    bool Load(const asset::SceneImportRequest& request);
 
     // Queues an interactive load. Rejects empty paths or another request while busy.
-    bool RequestLoad(std::string path);
-    bool CancelSceneLoad();
+    bool                        RequestLoad(std::string path);
+    bool                        RequestLoad(asset::SceneImportRequest request);
+    bool                        CanRecook() const;
+    bool                        RequestRecook();
+    bool                        StageSourceProcessing(const SceneProcessingSettings& settings);
+    const SceneProcessingState& GetSourceProcessing() const;
+    bool                        CancelSceneLoad();
 
     const SceneLoadState&                           GetLoadState() const;
     const HeapVector<asset::SceneImportDiagnostic>& GetImportDiagnostics() const;
+    const HeapVector<asset::SceneImportDiagnostic>& GetLastLoadDiagnostics() const;
 
     // Advances at most one stage before drawing each frame. CPU import runs on a
     // worker; GPU preparation/publication stay here on the engine thread. Present
@@ -151,7 +160,9 @@ private:
 
     bool PublishScene(UniquePtr<LoadedScene> candidate, std::string& error);
 
-    void FailSceneLoad(std::string error);
+    void                      FailSceneLoad(std::string error);
+    asset::SceneImportRequest MakeLoadRequest(std::string path) const;
+    void                      CommitSourceProcessing(const asset::SceneImportRequest& request, bool cacheHit);
 
     PickStamp MakeStamp() const;
 
@@ -175,19 +186,23 @@ private:
     HeapVector<rc::RenderingLight> m_importedLights;
     uint64_t                       m_nextLightId{1};
     // Declared after the viewport, whose GPU scene it draws from.
-    MeshPreviewRenderer    m_meshPreview;
-    EditorCamera           m_previewCamera;
-    MeshPreviewSettings    m_previewSettings;
-    SceneAssetId           m_previewMesh;
-    SceneLoadState         m_loadState;
-    UniquePtr<LoadedScene> m_loadCandidate;
+    MeshPreviewRenderer       m_meshPreview;
+    EditorCamera              m_previewCamera;
+    MeshPreviewSettings       m_previewSettings;
+    SceneAssetId              m_previewMesh;
+    SceneLoadState            m_loadState;
+    SceneProcessingState      m_sourceProcessing;
+    asset::SceneImportRequest m_queuedLoadRequest;
+    asset::SceneImportRequest m_appliedLoadRequest;
+    bool                      m_pendingCacheHit{false};
+    UniquePtr<LoadedScene>    m_loadCandidate;
     // Joins the import worker before its future/result or controller are destroyed.
     std::future<asset::SceneLoadResult>                      m_loadResult;
     SharedPtr<asset::SceneImportControl, MultiThreadCounter> m_loadControl;
     // Messages of the published scene, and of the open still in progress.
     HeapVector<asset::SceneImportDiagnostic> m_importDiagnostics;
     HeapVector<asset::SceneImportDiagnostic> m_pendingDiagnostics;
-    UniquePtr<asset::SceneLoader>            m_sceneLoader;
+    UniquePtr<asset::SourceSceneLoader>      m_sceneLoader;
     std::string                              m_error;
     bool                                     m_openRequested{false};
     HeapVector<EnvironmentTextureItem>       m_environmentTextures;

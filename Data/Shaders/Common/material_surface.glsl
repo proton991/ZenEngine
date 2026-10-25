@@ -79,9 +79,9 @@ vec3 SurfaceNormal(Material material)
     mat3 basis = SurfaceBasis(N, uv, true, backface);
     if (material.normalTexIndex >= 0)
     {
-        vec3 mapped  = MaterialSlotTexture(material, 2, material.normalTexIndex, uv).xyz * 2.0 - 1.0;
-        mapped.xy   *= material.surfaceProperties.z;
-        N            = SafeNormalize(basis * mapped, N);
+        vec3 mapped = MaterialNormalVector(MaterialSlotTexture(material, 2, material.normalTexIndex, uv).xyz,
+                                           material.normalEncoding.x, material.surfaceProperties.z);
+        N           = SafeNormalize(basis * mapped, N);
     }
     return N;
 }
@@ -96,9 +96,9 @@ vec3 ClearcoatNormal(Material material)
     mat3 basis    = SurfaceBasis(N, uv, true, backface);
     if (binding.properties.x >= 0.0)
     {
-        vec3 mapped  = MaterialFeatureTexture(material, 6, inUV, inUV1).xyz * 2.0 - 1.0;
-        mapped.xy   *= binding.properties.z;
-        N            = SafeNormalize(basis * mapped, N);
+        vec3 mapped = MaterialNormalVector(MaterialFeatureTexture(material, 6, inUV, inUV1).xyz, material.normalEncoding.y,
+                                           binding.properties.z);
+        N           = SafeNormalize(basis * mapped, N);
     }
     return N;
 }

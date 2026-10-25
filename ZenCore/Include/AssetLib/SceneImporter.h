@@ -3,8 +3,10 @@
 #include "AssetLib/SceneAsset.h"
 #include "Templates/VectorView.h"
 #include "Utils/SharedPtr.h"
+#include "ZenAsset/Format/Processing.h"
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -39,7 +41,9 @@ enum class SceneImportStage
     BuildingScene,
     Complete,
     Failed,
-    Cancelled
+    Cancelled,
+    CookingAssets,
+    SavingCache
 };
 
 enum class SceneDiagnosticSeverity
@@ -55,6 +59,13 @@ struct SceneImportDiagnostic
     std::string             source;
     std::string             object;
     std::string             message;
+};
+
+struct SceneImportFileProgress
+{
+    uint64_t processedFiles{0};
+    uint64_t totalFiles{0};
+    bool     totalKnown{false};
 };
 
 // One control per request. Cancellation is cooperative between stages and jobs;
@@ -82,9 +93,23 @@ public:
         m_stage.store(stage, std::memory_order_release);
     }
 
+    SceneImportFileProgress GetFileProgress() const
+    {
+        const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
+        return m_fileProgress;
+    }
+
+    void SetFileProgress(SceneImportFileProgress progress)
+    {
+        const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
+        m_fileProgress = progress;
+    }
+
 private:
     std::atomic<bool>             m_cancelled{false};
     std::atomic<SceneImportStage> m_stage{SceneImportStage::Queued};
+    mutable std::mutex            m_fileProgressMutex;
+    SceneImportFileProgress       m_fileProgress;
 };
 
 struct SceneImportSettings
@@ -105,7 +130,7 @@ struct SceneImportRequest
     std::string                                       path;
     SceneImportSettings                               settings;
     SharedPtr<SceneImportControl, MultiThreadCounter> control;
-    // LoadScene reuses a validated .zenasset cache when its inputs are unchanged,
+    // LoadSourceScene reuses a validated .zenasset cache when its inputs are unchanged,
     // and after a source import publishes one on a background writer (see
     // WaitForSceneAssetCacheWrites). ImportScene always runs the source importer.
     // An empty directory selects the engine tree's Cache/SceneAssets folder. After
@@ -113,6 +138,14 @@ struct SceneImportRequest
     bool        useCache{true};
     std::string cacheDirectory;
     uint64_t    cacheBudgetBytes{64ull * 1024 * 1024 * 1024};
+    // Source normalization is followed by the same cook used for packages.
+    // Reference preserves source data; desktop permits explicit processing.
+    zenasset::ProcessingSettings processing;
+    std::string                  profile{"reference"};
+    // Source tools bypass a cache hit and await this job's atomic publication.
+    // Normal opens keep background publication. This scheduling intent is not
+    // part of content identity. Cancellation after publication cannot undo it.
+    bool forceRecook{false};
 };
 
 struct SceneImportContext
@@ -153,7 +186,9 @@ struct SceneFormatDescriptor
     uint32_t                           importerVersion{1};
 };
 
-// Built-in descriptors are immutable and shared by dispatch, discovery and UI.
+// Source dispatch/discovery require linking ZenEngineAssetTools. Descriptors are
+// immutable and shared by dispatch, discovery and UI. FindSceneFormat and failure
+// helpers remain available in ZenCore for runtime-only package loading.
 VectorView<const SceneFormatDescriptor> GetSceneImportFormats();
 const SceneFormatDescriptor* FindSceneFormat(const std::string& path, VectorView<const SceneFormatDescriptor> formats);
 const SceneFormatDescriptor* FindSceneImportFormat(const std::string& path);

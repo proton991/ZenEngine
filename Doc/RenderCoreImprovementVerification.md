@@ -152,7 +152,7 @@ All runs used the final executables (temporary switch removed), with Vulkan vali
 - After the smoke test's resize and minimize/restore, the profiled final frame reports `gbuffer_size` `[960,640]`, equal to the viewport, in modes 2 and 3.
 - `--gbuffer-size=1024` is rejected as an unknown option (exit 1).
 - Final-tree captures equal the Phase 2 hashes above. A mode-3 lighting capture reports `gbuffer_extent` `[1280,720]` for a 1280 × 720 capture.
-- `tools/smoke_gltf_rendering.py`: 18 of 18 assets pass.
+- `../ZenAssetProcessor/tools/validation/smoke_gltf_rendering.py`: 18 of 18 assets pass.
 - `tools/validate_voxel_gi.py`: all 162 GPU cases and image assertions pass.
 - `tools/check_no_exceptions.py`, `git diff --check` and Python compilation of the two changed tools pass.
 - Whole-file clang-format 19.1.5 `--dry-run --Werror` passes on the 12 changed C++ files.

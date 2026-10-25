@@ -1,5 +1,11 @@
 # ZenEngine
 
+Asset processor tests and validation tools are maintained in the sibling
+[ZenAssetProcessor repository](../ZenAssetProcessor/README.md). Its optional
+[engine consumer suite](../ZenAssetProcessor/tests/integration/zenengine/README.md)
+owns import/package regressions and asset benchmarks. The normal engine test
+targets cover engine, renderer and editor behavior.
+
 A personal real-time rendering engine written from scratch in C++20 on Vulkan, built
 while learning the API and modern renderer architecture. It is organized around a
 **render graph** that schedules work across **graphics, async-compute and transfer
@@ -231,6 +237,16 @@ cmake --build --preset x64-windows-msvc-release --target scene_renderer_demo --p
 ./build/x64-windows-msvc-release/bin/scene_renderer_demo.exe
 ```
 
+ZenAssetProcessor is an independent library beside the engine checkout. CMake
+defaults to the live `../ZenAssetProcessor` checkout when present, with no revision
+pin during development. Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to use another
+checkout; CMake remembers the path in this build tree. An installed package can
+instead be selected with
+`-DZEN_ASSET_PROCESSOR_SOURCE_DIR= -DCMAKE_PREFIX_PATH=<installation-prefix>`.
+Source import/cooking belongs to `ZenEngineAssetTools`, while `ZenCore` uses the
+reader for `.zenasset` loading. Build target `zen_editor` to use source import,
+processing settings and **Recook from Source** in the [editor](ZenEditor/README.md).
+
 Every preset writes executables to `build/<preset-name>/bin`, including Debug. The Windows
 release preset selects `Release` (`/O2`, `NDEBUG`). In a CMake preset-aware IDE, select the
 matching configure/build presets and `scene_renderer_demo` as the launch target. Configure
@@ -294,6 +310,9 @@ Third-party sources are downloaded automatically by CMake FetchContent into
 network access. Every archive has a pinned revision and SHA-256 checksum in
 [`External/CMakeLists.txt`](External/CMakeLists.txt). Downloaded source folders are ignored
 by Git, and build and download state stays in the selected build tree.
+
+ZenAssetProcessor is developed alongside ZenEngine and uses the live sibling
+checkout by default, without a revision pin or archive download.
 
 | Dependency | Pinned version | Used by |
 | --- | --- | --- |

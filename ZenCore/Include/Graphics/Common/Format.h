@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <limits>
 
 enum class DataFormat : uint32_t
 {
@@ -57,6 +58,14 @@ enum class DataFormat : uint32_t
     eD16UNORMS8UInt     = 128, // VK_FORMAT_D16_UNORM_S8_UINT
     eD24UNORMS8UInt     = 129, //VK_FORMAT_D24_UNORM_S8_UINT
     eD32SFloatS8UInt    = 130, //VK_FORMAT_D32_SFLOAT_S8_UINT
+    eBC4UNORMBlock      = 139,
+    eBC4SNORMBlock      = 140,
+    eBC5UNORMBlock      = 141,
+    eBC5SNORMBlock      = 142,
+    eBC6HUFloatBlock    = 143,
+    eBC6HSFloatBlock    = 144,
+    eBC7UNORMBlock      = 145,
+    eBC7SRGBBlock       = 146,
 };
 
 enum class SampleCount : uint32_t
@@ -174,6 +183,77 @@ inline uint32_t GetTextureFormatMemoryPixelSize(DataFormat format)
     }
 
     return result;
+}
+
+struct TextureFormatBlockInfo
+{
+    uint32_t width{1};
+    uint32_t height{1};
+    uint32_t bytes{0};
+};
+
+// Compressed formats deliberately have no single-texel byte size. Texel-buffer
+// callers keep rejecting them; image footprints use this block description.
+inline TextureFormatBlockInfo GetTextureFormatBlockInfo(DataFormat format)
+{
+    TextureFormatBlockInfo info;
+    switch (format)
+    {
+        case DataFormat::eBC4UNORMBlock:
+        case DataFormat::eBC4SNORMBlock: info = {4, 4, 8}; break;
+        case DataFormat::eBC5UNORMBlock:
+        case DataFormat::eBC5SNORMBlock:
+        case DataFormat::eBC6HUFloatBlock:
+        case DataFormat::eBC6HSFloatBlock:
+        case DataFormat::eBC7UNORMBlock:
+        case DataFormat::eBC7SRGBBlock: info = {4, 4, 16}; break;
+        default: info.bytes = GetTextureFormatPixelSize(format); break;
+    }
+    return info;
+}
+
+inline bool GetTextureFormatLevelSize(DataFormat format,
+                                      uint32_t   width,
+                                      uint32_t   height,
+                                      uint32_t   depth,
+                                      uint64_t&  bytes,
+                                      bool       memoryFootprint = false)
+{
+    TextureFormatBlockInfo info = GetTextureFormatBlockInfo(format);
+    if (memoryFootprint && info.width == 1)
+    {
+        info.bytes = GetTextureFormatMemoryPixelSize(format);
+    }
+    bool valid = info.bytes != 0 && width != 0 && height != 0 && depth != 0;
+    bytes      = info.bytes;
+    const uint64_t counts[]{(uint64_t(width) + info.width - 1) / info.width, (uint64_t(height) + info.height - 1) / info.height,
+                            depth};
+    for (uint64_t count : counts)
+    {
+        if (valid)
+        {
+            valid = count <= std::numeric_limits<uint64_t>::max() / bytes;
+            if (valid)
+            {
+                bytes *= count;
+            }
+        }
+    }
+    if (!valid)
+    {
+        bytes = 0;
+    }
+    return valid;
+}
+
+inline bool AreTextureColorViewFormatsCompatible(DataFormat storage, DataFormat view)
+{
+    const TextureFormatBlockInfo stored = GetTextureFormatBlockInfo(storage);
+    const TextureFormatBlockInfo viewed = GetTextureFormatBlockInfo(view);
+    const bool                   bc7    = (storage == DataFormat::eBC7UNORMBlock || storage == DataFormat::eBC7SRGBBlock)
+                                       && (view == DataFormat::eBC7UNORMBlock || view == DataFormat::eBC7SRGBBlock);
+    return stored.bytes != 0 && viewed.bytes != 0
+        && (storage == view || bc7 || (stored.width == 1 && viewed.width == 1 && stored.bytes == viewed.bytes));
 }
 
 inline bool FormatIsDepthStencil(DataFormat format)

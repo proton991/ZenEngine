@@ -1044,7 +1044,7 @@ TEST_P(RDGScheduleTest, BindlessSceneTextureReadsRetainProducerEdgesAndResourceS
     graph.AddTransferPass("upload_materials").ClearTexture(textures[0], Color(0.f)).ClearTexture(textures[1], Color(1.f));
     RDGComputePassDesc compute = IntentPass();
     compute.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
-    BindSceneTextureArray(compute, sampler, textures);
+    BindSceneTextureArray(compute, sampler, {textures[0]->GetDefaultView(), textures[1]->GetDefaultView()});
     graph.AddComputePass(compute);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);

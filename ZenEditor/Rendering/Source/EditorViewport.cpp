@@ -779,7 +779,7 @@ void EditorViewport::BuildPick(rc::RenderGraph& graph)
 
         pass.BindStorageBuffer("UVBuffer", m_scene->GetUVBuffer());
 
-        rc::BindSceneTextureArray(pass, m_materialSampler, m_scene->GetSceneTextures(), m_scene->GetSceneSamplers());
+        rc::BindSceneTextureArray(pass, m_materialSampler, m_scene->GetSceneTextureViews(), m_scene->GetSceneSamplers());
 
         pass.BindValue("uCameraData", m_scene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
 

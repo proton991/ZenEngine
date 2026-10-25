@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include "AssetLib/Types.h"
 #include "Graphics/Shared/VoxelGI.h"
+#include "SceneGraph/Material.h"
 
 using namespace zen;
 
@@ -14,6 +15,78 @@ namespace
 // These tests exercise parsing and layout rules without a device, so no device set limit applies.
 constexpr uint32_t kNoDeviceSetLimit = std::numeric_limits<uint32_t>::max();
 } // namespace
+
+TEST(ShaderReflectionTests, RasterAndGIKeepMaterialNormalEncodingLayout)
+{
+    for (const char* path :
+         {"SceneRenderer/offscreen.frag.spv", "VoxelGI/voxelization.comp.spv", "VoxelGI/probe_trace.comp.spv"})
+    {
+        SCOPED_TRACE(path);
+        const HeapVector<uint8_t> code = platform::FileSystem::LoadSpvFile(path);
+        ASSERT_FALSE(code.empty());
+        SpvReflectShaderModule module{};
+        ASSERT_EQ(spvReflectCreateShaderModule(code.size(), code.data(), &module), SPV_REFLECT_RESULT_SUCCESS);
+        bool found = false;
+        for (uint32_t index = 0; index < module.descriptor_binding_count; ++index)
+        {
+            const SpvReflectDescriptorBinding& binding = module.descriptor_bindings[index];
+            if (binding.type_description != nullptr && binding.type_description->type_name != nullptr
+                && std::strcmp(binding.type_description->type_name, "MaterialBuffer") == 0)
+            {
+                found = true;
+                EXPECT_EQ(binding.block.member_count, 1u);
+                if (binding.block.member_count == 1)
+                {
+                    const SpvReflectBlockVariable& material = binding.block.members[0];
+                    EXPECT_NE(material.type_description, nullptr);
+                    if (material.type_description != nullptr)
+                    {
+                        EXPECT_EQ(material.type_description->traits.array.stride, sizeof(sg::MaterialData));
+                    }
+                    bool foundFlags    = false;
+                    bool foundFeatures = false;
+                    bool foundSampling = false;
+                    for (uint32_t member = 0; member < material.member_count; ++member)
+                    {
+                        const SpvReflectBlockVariable& field = material.members[member];
+                        if (field.name != nullptr && std::strcmp(field.name, "normalEncoding") == 0)
+                        {
+                            foundFlags = true;
+                            EXPECT_EQ(field.offset, offsetof(sg::MaterialData, normalEncoding));
+                            EXPECT_EQ(field.size, 16u);
+                        }
+                        if (field.name != nullptr && std::strcmp(field.name, "featureTextures") == 0)
+                        {
+                            foundFeatures = true;
+                            EXPECT_EQ(field.offset, offsetof(sg::MaterialData, featureTextures));
+                        }
+                    }
+                    for (uint32_t member = 0; member < material.member_count; ++member)
+                    {
+                        const SpvReflectBlockVariable& field = material.members[member];
+                        if (field.name != nullptr && std::strcmp(field.name, "textureSampling") == 0)
+                        {
+                            foundSampling = true;
+                            EXPECT_EQ(field.offset, offsetof(sg::MaterialData, textureSampling));
+                            EXPECT_EQ(field.size, 16u);
+                        }
+                        if (field.name != nullptr && std::strcmp(field.name, "textureTransforms") == 0)
+                        {
+                            EXPECT_EQ(field.type_description->traits.array.stride, sizeof(sg::TextureTransformData));
+                            ASSERT_EQ(field.member_count, 3u);
+                            EXPECT_EQ(field.members[2].offset, offsetof(sg::TextureTransformData, atlasRegion));
+                        }
+                    }
+                    EXPECT_TRUE(foundSampling);
+                    EXPECT_TRUE(foundFlags);
+                    EXPECT_TRUE(foundFeatures);
+                }
+            }
+        }
+        EXPECT_TRUE(found);
+        spvReflectDestroyShaderModule(&module);
+    }
+}
 
 TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
 {

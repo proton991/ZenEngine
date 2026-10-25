@@ -1,5 +1,5 @@
 #include "AssetLib/SceneAssetIO.h"
-#include "AssetLib/SceneAssetCache.h"
+#include "AssetLib/SceneAssetIOInternal.h"
 #include "AssetLib/AssetHash.h"
 #include <algorithm>
 #include <atomic>
@@ -10,9 +10,11 @@
 #include <filesystem>
 #include <limits>
 #include <type_traits>
-#include <simdjson.h>
+#include "ZenAsset/Format/Utf8.h"
+#include "AssetLib/ProcessedSceneIO.h"
 #if defined(_WIN32)
 #    include <Windows.h>
+#    include <fcntl.h>
 #    include <io.h>
 #else
 #    include <unistd.h>
@@ -140,6 +142,13 @@ template <class Archive> void Fields(Archive& ar, typename Archive::template Val
 
 template <class Archive> void Fields(Archive& ar, typename Archive::template Value<ImageBasedLightAsset>& v)
 {
+    if constexpr (!Archive::Reading)
+    {
+        if (v.specularFormat != Format::R32G32B32A32_SFLOAT || v.specularBlockMipFaces)
+        {
+            ar.Fail(SceneImportStatus::UnsupportedFeature, "Legacy v2 cannot store compressed environments; use processed v3");
+        }
+    }
     ar(v.name, v.intensity, v.rotation, v.irradianceCoefficients, v.size, v.mipLevels, v.specularMipFaces);
 }
 
@@ -168,11 +177,26 @@ template <class Archive> void Fields(Archive& ar, typename Archive::template Val
 
 template <class Archive> void Fields(Archive& ar, typename Archive::template Value<TextureAsset>& v)
 {
+    if constexpr (!Archive::Reading)
+    {
+        if (v.interpretation != TextureInterpretation::Default || v.arrayLayer != 0 || v.atlasRegion != ImageRegion{})
+        {
+            ar.Fail(SceneImportStatus::UnsupportedFeature,
+                    "Legacy v2 cannot store texture interpretation, array layers or spatial regions; use processed v3");
+        }
+    }
     ar(v.name, v.image, v.sampler, v.linearSource, v.format, v.flatNormal);
 }
 
 template <class Archive> void Fields(Archive& ar, typename Archive::template Value<ImagePixels>& v)
 {
+    if constexpr (!Archive::Reading)
+    {
+        if (v.arrayLayers != 1)
+        {
+            ar.Fail(SceneImportStatus::UnsupportedFeature, "Legacy v2 cannot store array pages; use processed v3");
+        }
+    }
     ar(v.width, v.height, v.format, v.bytes, v.mips);
 }
 
@@ -572,7 +596,7 @@ private:
                 if (Good())
                 {
                     Bytes(value.data(), count);
-                    if (Good() && !simdjson::validate_utf8(value))
+                    if (Good() && !zenasset::IsValidUtf8(value))
                     {
                         Fail(SceneImportStatus::InvalidData, "Internal asset string is not valid UTF-8");
                     }
@@ -742,7 +766,26 @@ FILE* OpenFile(const std::filesystem::path& path, bool writing)
 {
     FILE* file = nullptr;
 #if defined(_WIN32)
-    file = _wfopen(path.c_str(), writing ? L"wbx" : L"rb");
+    const HANDLE handle =
+        CreateFileW(path.c_str(), writing ? GENERIC_WRITE : GENERIC_READ, writing ? 0 : FILE_SHARE_READ | FILE_SHARE_DELETE,
+                    nullptr, writing ? CREATE_NEW : OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        const int descriptor =
+            _open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_BINARY | (writing ? _O_WRONLY : _O_RDONLY));
+        if (descriptor == -1)
+        {
+            CloseHandle(handle);
+        }
+        else
+        {
+            file = _fdopen(descriptor, writing ? "wb" : "rb");
+            if (file == nullptr)
+            {
+                _close(descriptor);
+            }
+        }
+    }
 #else
     file = std::fopen(path.c_str(), writing ? "wbx" : "rb");
 #endif
@@ -772,7 +815,28 @@ bool ReplaceFile(const std::filesystem::path& temporary, const std::filesystem::
 {
     bool result = false;
 #if defined(_WIN32)
-    result = MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    std::error_code             error;
+    const std::filesystem::path fullDestination = std::filesystem::absolute(destination, error);
+    const size_t                pathBytes       = fullDestination.native().size() * sizeof(wchar_t);
+    HANDLE                      handle          = INVALID_HANDLE_VALUE;
+    if (!error && pathBytes <= 65534)
+    {
+        handle = CreateFileW(temporary.c_str(), DELETE | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr,
+                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+    }
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        const size_t         storageBytes = sizeof(FILE_RENAME_INFO) + pathBytes;
+        HeapVector<uint64_t> storage((storageBytes + sizeof(uint64_t) - 1) / sizeof(uint64_t), 0);
+        static_assert(alignof(FILE_RENAME_INFO) <= alignof(uint64_t));
+        FILE_RENAME_INFO* information = reinterpret_cast<FILE_RENAME_INFO*>(storage.data());
+        information->Flags            = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
+        information->FileNameLength   = static_cast<DWORD>(pathBytes);
+        std::memcpy(information->FileName, fullDestination.c_str(), pathBytes);
+        // Existing readers retain the old file while new opens see the complete replacement.
+        result = SetFileInformationByHandle(handle, FileRenameInfoEx, information, static_cast<DWORD>(storageBytes)) != 0;
+        CloseHandle(handle);
+    }
 #else
     std::error_code error;
     std::filesystem::rename(temporary, destination, error);
@@ -1006,30 +1070,89 @@ SceneImportReport WriteAssetFile(const std::string&            path,
     }
     return result;
 }
+uint32_t PackageVersion(const std::string& path)
+{
+    uint32_t version = 0;
+    FILE*    file    = OpenFile(std::filesystem::u8path(path), false);
+    if (file != nullptr)
+    {
+        uint8_t header[12]{};
+        if (std::fread(header, 1, sizeof(header), file) == sizeof(header) && std::memcmp(header, "ZENASSET", 8) == 0)
+        {
+            version =
+                uint32_t(header[8]) | (uint32_t(header[9]) << 8) | (uint32_t(header[10]) << 16) | (uint32_t(header[11]) << 24);
+        }
+        std::fclose(file);
+    }
+    return version;
+}
+
+SceneAssetFileResult ReadPackageFile(const std::string&          path,
+                                     const SceneAssetReadLimits& limits,
+                                     SceneImportControl*         control,
+                                     bool                        metadataOnly)
+{
+    SceneAssetFileResult result;
+    if (control != nullptr && control->IsCancelled())
+    {
+        FileFailure(result, SceneImportStatus::Cancelled, path, "Internal asset load cancelled");
+    }
+    else if (path.empty() || path.find('\0') != std::string::npos || !zenasset::IsValidUtf8(path))
+    {
+        FileFailure(result, SceneImportStatus::InvalidRequest, path,
+                    "A nonempty UTF-8 package path without null bytes is required");
+    }
+    else
+    {
+        result = PackageVersion(path) == zenasset::PackageSchemaVersion
+                   ? ReadProcessedSceneFile(path, limits, control, metadataOnly)
+                   : ReadAssetFile(path, limits, control, metadataOnly);
+    }
+    return result;
+}
 } // namespace
 
 SceneAssetFileResult ReadSceneAssetFile(const std::string&          path,
                                         const SceneAssetReadLimits& limits,
                                         SceneImportControl*         control)
 {
-    return ReadAssetFile(path, limits, control, false);
+    if (control != nullptr)
+    {
+        control->SetFileProgress({0, 1, true});
+    }
+    SceneAssetFileResult result = ReadPackageFile(path, limits, control, false);
+    if (control != nullptr && result.status == SceneImportStatus::Success && result.asset)
+    {
+        control->SetFileProgress({1, 1, true});
+    }
+    return result;
 }
 
 SceneAssetFileResult ReadSceneAssetMetadata(const std::string& path, SceneImportControl* control)
 {
     SceneAssetReadLimits limits;
     limits.maxAllocationBytes = 64ull * 1024 * 1024;
-    return ReadAssetFile(path, limits, control, true);
+    return ReadPackageFile(path, limits, control, true);
 }
 
 std::string SceneAssetCacheKey(const SceneAssetFileMetadata& metadata)
+{
+    return SceneAssetCacheKeyForVersion(metadata, SceneAssetSchemaVersion);
+}
+
+std::string SceneAssetCacheKeyForVersion(const SceneAssetFileMetadata& metadata, uint32_t schemaVersion)
 {
     AssetHash                  hash;
     const SceneAssetReadLimits limits;
     uint64_t                   budget = limits.maxAllocationBytes;
     AssetArchive<false>        archive(nullptr, limits.maxFileBytes, limits, budget, hash, nullptr);
-    archive(SceneAssetSchemaVersion, metadata.sourceFormat, metadata.importerVersion, metadata.processorVersion,
+    archive(schemaVersion, metadata.sourceFormat, metadata.importerVersion, metadata.processorVersion,
             metadata.buildFingerprint, metadata.settings, metadata.inputs);
+    if (schemaVersion >= zenasset::PackageSchemaVersion)
+    {
+        const uint64_t processingHash = zenasset::ProcessingSettingsHash(metadata.processing);
+        archive(metadata.profile, processingHash);
+    }
     return DigestText(hash.Finish());
 }
 

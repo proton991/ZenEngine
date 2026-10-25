@@ -29,6 +29,23 @@ bool ValidateMaterialTextureTransform(const sg::TextureTransformData& transform,
     return FiniteMaterialVector(transform.row0) && FiniteMaterialVector(transform.row1) && transform.row0.w >= 0
         && transform.row0.w <= samplerCount && transform.row0.w == std::floor(transform.row0.w);
 }
+
+bool ValidateMaterialAtlasBinding(const sg::TextureTransformData& transform, int index, const sg::Scene& scene)
+{
+    const HeapVector<sg::Texture*>& textures = scene.GetComponents<sg::Texture>();
+    asset::ImageRegion              region;
+    int                             sampler      = 0;
+    float                           pageSizeCode = 0.0f;
+    if (index >= 0 && static_cast<size_t>(index) < textures.size())
+    {
+        region       = textures[index]->GetAtlasRegion();
+        sampler      = textures[index]->samplerIndex + 1;
+        pageSizeCode = sg::GetAtlasPageSizeCode(textures[index]);
+    }
+    return transform.atlasRegion == glm::uvec4(region.x, region.y, region.width, region.height) && pageSizeCode >= 0.0f
+        && transform.row1.w == pageSizeCode
+        && (region == asset::ImageRegion{} || transform.row0.w == static_cast<float>(sampler));
+}
 } // namespace
 
 uint32_t RenderScene::GetInstanceMask(uint32_t instance) const
@@ -184,6 +201,7 @@ bool RenderScene::UpdateVertices(uint32_t first, VectorView<const asset::Vertex>
 bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sourceData)
 {
     sg::MaterialData data            = sourceData;
+    data.textureSampling             = m_pRenderDevice->GetTextureSamplingParameters();
 
     const double attenuationDistance = static_cast<double>(data.volumeIridescence.y) * m_sceneUnitScale;
 
@@ -241,6 +259,13 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
                  || (index >= 0 && static_cast<size_t>(index) < m_sceneTextures.size() && m_sceneTextures[index] != nullptr));
     }
 
+    const int textureIndices[] = {data.bcTexIndex, data.mrTexIndex, data.normalTexIndex, data.occlusionTexIndex,
+                                  data.emissiveTexIndex};
+    for (uint32_t slot = 0; slot < 5; ++slot)
+    {
+        valid &= ValidateMaterialAtlasBinding(data.textureTransforms[slot], textureIndices[slot], *m_pScene);
+    }
+
     for (int uv : {data.bcTexSet, data.mrTexSet, data.normalTexSet, data.aoTexSet, data.emissiveTexSet})
     {
         valid = valid && uv >= -1 && (uv <= 1 || (!m_uvCoordinates.empty() && uv < m_uvCoordinates[0].x));
@@ -260,9 +285,23 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
             valid &= m_sceneTextures[static_cast<size_t>(index)] != nullptr;
         }
 
+        if (valid)
+        {
+            valid &= ValidateMaterialAtlasBinding(binding.transform, static_cast<int>(index), *m_pScene);
+        }
+
         const float uv = binding.properties.y;
 
         valid &= uv >= 0.0f && uv == std::floor(uv) && (uv <= 1.0f || (!m_uvCoordinates.empty() && uv < m_uvCoordinates[0].x));
+    }
+
+    valid &=
+        data.normalEncoding.x <= 1 && data.normalEncoding.y <= 1 && data.normalEncoding.z == 0 && data.normalEncoding.w == 0;
+    for (uint32_t slot = 0; valid && slot < 2; ++slot)
+    {
+        const int  index    = slot == 0 ? data.normalTexIndex : static_cast<int>(data.featureTextures[6].properties.x);
+        const bool xyNormal = index >= 0 && m_sceneTextures[index]->GetFormat() == DataFormat::eBC5UNORMBlock;
+        valid               = (data.normalEncoding[slot] == 1) == xyNormal;
     }
 
     if (valid && std::memcmp(&m_materialsData[material], &data, sizeof(data)) != 0)
@@ -277,7 +316,8 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
             || std::memcmp(&previous.featureTextures[2], &data.featureTextures[2], sizeof(data.featureTextures[2])) != 0
             || glm::vec2(previous.surfaceProperties) != glm::vec2(data.surfaceProperties)
             || previous.textureTransforms[0].row0 != data.textureTransforms[0].row0
-            || previous.textureTransforms[0].row1 != data.textureTransforms[0].row1;
+            || previous.textureTransforms[0].row1 != data.textureTransforms[0].row1
+            || previous.textureTransforms[0].atlasRegion != data.textureTransforms[0].atlasRegion;
 
         for (const sg::Node* node : m_pScene->GetRenderableNodes())
         {

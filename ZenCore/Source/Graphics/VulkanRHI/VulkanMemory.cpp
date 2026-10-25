@@ -70,6 +70,8 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
         {
             LOGI("GPU memory VMA: peak_committed_bytes={} peak_device_local_bytes={} remaining_bytes={}", m_peakBytes.load(),
                  m_peakDeviceBytes.load(), m_liveBytes.load());
+            LOGI("GPU host upload allocations: peak_bytes={} remaining_bytes={}", m_peakHostUploadAllocationBytes.load(),
+                 m_liveHostUploadAllocationBytes.load());
         }
     }
 }
@@ -176,9 +178,12 @@ RHIGPUMemoryStats VulkanMemoryAllocator::GetGPUMemoryStats() const
 
     // Allocation callbacks update live before peak; avoid displaying a smaller peak
     // if this sample lands between those atomic updates.
-    stats.peakCommittedBytes   = std::max(stats.committedBytes, m_peakBytes.load(std::memory_order_relaxed));
+    stats.peakCommittedBytes        = std::max(stats.committedBytes, m_peakBytes.load(std::memory_order_relaxed));
 
-    stats.peakDeviceLocalBytes = std::max(stats.deviceLocalBytes, m_peakDeviceBytes.load(std::memory_order_relaxed));
+    stats.peakDeviceLocalBytes      = std::max(stats.deviceLocalBytes, m_peakDeviceBytes.load(std::memory_order_relaxed));
+    stats.hostUploadAllocationBytes = m_liveHostUploadAllocationBytes.load(std::memory_order_relaxed);
+    stats.peakHostUploadAllocationBytes =
+        std::max(stats.hostUploadAllocationBytes, m_peakHostUploadAllocationBytes.load(std::memory_order_relaxed));
 
     if (stats.available && m_memoryBudget)
     {
@@ -306,7 +311,16 @@ bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
     const bool ready          = result == VK_SUCCESS && *pBuffer != VK_NULL_HANDLE && pAllocation->handle != VK_NULL_HANDLE
                              && (!mappedRequired || pAllocation->info.pMappedData != nullptr);
 
-    if (!ready)
+    if (ready)
+    {
+        pAllocation->hostUpload =
+            allocType == RHIBufferAllocateType::eCPUWrite && (pBufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0;
+        if (pAllocation->hostUpload)
+        {
+            AddMemory(m_liveHostUploadAllocationBytes, m_peakHostUploadAllocationBytes, pAllocation->info.size);
+        }
+    }
+    else
     {
         ReportVulkanCreationFailure(result, "vmaCreateBuffer", __FILE__, __LINE__);
 
@@ -352,5 +366,9 @@ void VulkanMemoryAllocator::UnmapBuffer(const VulkanMemoryAllocation& memAlloc)
 void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc)
 {
     vmaDestroyBuffer(m_vmaAllocator, buffer, memAlloc.handle);
+    if (memAlloc.hostUpload)
+    {
+        m_liveHostUploadAllocationBytes.fetch_sub(memAlloc.info.size, std::memory_order_relaxed);
+    }
 }
 } // namespace zen

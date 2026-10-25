@@ -298,13 +298,15 @@ void RenderDevice::Destroy()
 
         ZEN_DELETE(GDynamicRHI);
 
-        GDynamicRHI       = nullptr;
+        GDynamicRHI              = nullptr;
 
-        m_pRHIExecutor    = nullptr;
+        m_pRHIExecutor           = nullptr;
 
-        m_frameActive     = false;
+        m_frameActive            = false;
 
-        m_frameWaitFailed = false;
+        m_frameWaitFailed        = false;
+
+        m_spatialTextureRounding = SpatialTextureRounding::eUnqualified;
     }
 }
 
@@ -1205,20 +1207,21 @@ RHITextureView* RenderDevice::CreateTextureView(RHITexture* texture, const Textu
 
     RHITextureViewCreateInfo info{};
 
-    info.format       = format.format == DataFormat::eUndefined ? texture->GetFormat() : format.format;
+    info.format         = format.format == DataFormat::eUndefined ? texture->GetFormat() : format.format;
 
-    info.type         = static_cast<RHITextureType>(format.dimension);
+    info.type           = static_cast<RHITextureType>(format.dimension);
 
-    info.arrayLayers  = format.arrayLayers;
+    info.arrayLayers    = format.arrayLayers;
 
-    info.mipLevels    = format.mipmaps;
+    info.mipLevels      = format.mipmaps;
 
-    info.baseMipLevel = format.baseMipLevel;
+    info.baseMipLevel   = format.baseMipLevel;
+    info.baseArrayLayer = format.baseArrayLayer;
 
-    info.tag          = name;
+    info.tag            = name;
 
-    VERIFY_EXPR_MSG(info.arrayLayers > 0 && info.arrayLayers <= texture->GetArrayLayers() && info.mipLevels > 0
-                        && uint64_t(info.baseMipLevel) + info.mipLevels <= texture->GetNumMipmaps(),
+    VERIFY_EXPR_MSG(info.arrayLayers > 0 && uint64_t(info.baseArrayLayer) + info.arrayLayers <= texture->GetArrayLayers()
+                        && info.mipLevels > 0 && uint64_t(info.baseMipLevel) + info.mipLevels <= texture->GetNumMipmaps(),
                     "Invalid texture view range");
 
     return GDynamicRHI->CreateTextureView(texture, info);
@@ -2434,7 +2437,7 @@ RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMip
     return m_pTextureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITextureView*>& outTextures)
 {
     m_pTextureManager->LoadSceneTextures(pScene, outTextures);
 }

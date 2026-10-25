@@ -27,7 +27,9 @@ public:
     // scene and environment loads create independent instances owned by this manager.
     RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures);
+    // Logical bindings borrow texture-owned views. Array pages share one native
+    // image within this call; separate calls retain independent image owners.
+    void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITextureView*>& outTextures);
 
     bool LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture, bool fallbackToBlack = true);
 
@@ -43,11 +45,13 @@ public:
     // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
-    void UploadEnvironmentCube(uint32_t                            size,
-                               uint32_t                            mipLevels,
-                               const HeapVector<HeapVector<Vec4>>& faces,
-                               const char*                         name,
-                               RHITexture*&                        texture);
+    void UploadEnvironmentCube(uint32_t                               size,
+                               uint32_t                               mipLevels,
+                               DataFormat                             storageFormat,
+                               const HeapVector<HeapVector<Vec4>>&    faces,
+                               const HeapVector<HeapVector<uint8_t>>& blockFaces,
+                               const char*                            name,
+                               RHITexture*&                           texture);
 
     // Failed uploads retire the unpublished texture and clear the caller's handle.
     void UpdateTexture(RHITexture*& pTexture, uint32_t dataSize, const uint8_t* pData, bool generateMipmaps = false);

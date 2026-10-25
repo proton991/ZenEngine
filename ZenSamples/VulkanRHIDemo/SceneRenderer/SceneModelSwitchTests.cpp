@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "SceneRendererDemo.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RHI/RHIOptions.h"
@@ -23,7 +24,7 @@ struct SceneRendererModelTestAccess
         {
             demo.m_modelState.basePath    = root;
 
-            demo.m_modelState.models      = asset::DiscoverSceneModels(root);
+            demo.m_modelState.models      = asset::DiscoverSourceSceneModels(root);
 
             demo.m_modelState.currentPath = path;
 

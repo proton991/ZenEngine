@@ -12,6 +12,7 @@ struct VulkanMemoryAllocation
 {
     VmaAllocation     handle{VK_NULL_HANDLE};
     VmaAllocationInfo info{};
+    bool              hostUpload{false};
 };
 
 class VulkanMemoryAllocator
@@ -60,6 +61,8 @@ private:
     std::atomic<uint64_t>            m_peakBytes{0};
     std::atomic<uint64_t>            m_liveDeviceBytes{0};
     std::atomic<uint64_t>            m_peakDeviceBytes{0};
+    std::atomic<uint64_t>            m_liveHostUploadAllocationBytes{0};
+    std::atomic<uint64_t>            m_peakHostUploadAllocationBytes{0};
     bool                             m_logMemoryStats{false};
     bool                             m_memoryBudget{false};
 };

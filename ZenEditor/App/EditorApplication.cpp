@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorWorkspace.h"
@@ -531,7 +532,7 @@ public:
         {
             if (m_controller->TakeFileOpenRequest())
             {
-                if (m_window->ShowOpenFileDialog({"Scene files", asset::GetSceneFileFilterExtensions()},
+                if (m_window->ShowOpenFileDialog({"Scene files", asset::GetSourceSceneFileFilterExtensions()},
                                                  GetDialogFolder(m_controller->GetPreferences().recentFiles)))
                 {
                     m_fileDialog = FileDialogTarget::Scene;

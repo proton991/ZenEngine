@@ -8,6 +8,7 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RHI/RHIOptions.h"
+#include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
 #include "SceneGraph/Texture.h"
@@ -26,200 +27,7 @@ namespace zen::editor
 {
 namespace
 {
-class EditorRendering : public testing::TestWithParam<RHIExecutionMode>
-{};
-
-// Captures default-logger output for one scope while no frame is recording.
-// spdlog's logger and sink APIs require std::shared_ptr.
-class ScopedLogCapture
-{
-public:
-    ScopedLogCapture() :
-        m_previous(spdlog::default_logger()),
-        m_logger(std::make_shared<spdlog::logger>("editor_rendering_test",
-                                                  std::make_shared<spdlog::sinks::ostream_sink_mt>(m_output)))
-    {
-        spdlog::set_default_logger(m_logger);
-    }
-
-    ~ScopedLogCapture()
-    {
-        spdlog::set_default_logger(m_previous);
-    }
-
-    std::string GetText() const
-    {
-        return m_output.str();
-    }
-
-private:
-    std::ostringstream              m_output;
-    std::shared_ptr<spdlog::logger> m_previous;
-    std::shared_ptr<spdlog::logger> m_logger;
-};
-
-std::string Fixture(const char* name)
-{
-    return std::string(ZEN_EDITOR_FIXTURES) + name;
-}
-
-bool Frame(rc::RenderDevice& device, EditorController& editor)
-{
-    EditorViewport& viewport = editor.GetViewport();
-
-    bool valid =
-        device.GetRendererServer()->DispatchRenderWorkloads(viewport.GetRenderView()) == rc::RenderFrameResult::eSubmitted;
-
-    {
-        rc::RenderGraph graph("EditorHeadlessOverlays");
-
-        valid = valid && graph.Begin();
-
-        if (valid)
-        {
-            viewport.BuildOverlays(graph);
-
-            editor.GetMeshPreview().BuildGraph(graph);
-
-            valid = graph.End() && device.ExecuteRenderGraph(graph);
-
-            viewport.OnSubmitted(valid);
-        }
-    }
-
-    device.NextFrame();
-
-    editor.ProcessPicks();
-
-    return valid;
-}
-
-HeapVector<uint8_t> ReadScenePixels(rc::RenderDevice& device, RHITexture* image)
-{
-    device.WaitForPreviousFrames();
-
-    const uint32_t width  = image->GetWidth();
-
-    const uint32_t height = image->GetHeight();
-
-    RHIBufferCreateInfo info;
-
-    info.size         = uint64_t(width) * height * 4;
-
-    info.allocateType = RHIBufferAllocateType::eGPU;
-
-    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-
-    RHIBuffer* packed = device.CreateBuffer(info);
-
-    info.allocateType = RHIBufferAllocateType::eCPURead;
-
-    info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
-
-    RHIBuffer* readback = device.CreateBuffer(info);
-
-    RHISampler* sampler = device.CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
-
-    rc::RenderGraph graph("DebugViewReadback");
-
-    EXPECT_TRUE(graph.Begin());
-
-    rc::RDGComputePassDesc pass;
-
-    pass.SetShaderProgramName("CaptureFrameSP");
-
-    pass.BindSampledTexture("sourceColor", sampler, image->GetDefaultView());
-
-    pass.BindStorageBuffer("packedColor", packed, rc::RDGContentGuarantee::eFullWrite);
-
-    graph.AddComputePass(std::move(pass)).RecordPassCommands([width, height](rc::RDGPassCmdEncoder& encoder) {
-        encoder.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
-    });
-
-    graph.AddTransferPass("ReadDebugView").CopyBuffer(packed, readback, {0, 0, info.size}).NeverCull();
-
-    EXPECT_TRUE(graph.End());
-
-    EXPECT_TRUE(device.ExecuteRenderGraph(graph));
-
-    device.WaitForPreviousFrames();
-
-    const uint8_t* pixels = readback->Map();
-
-    HeapVector<uint8_t> result(pixels, static_cast<size_t>(info.size));
-
-    readback->Unmap();
-
-    device.DestroyBuffer(packed);
-
-    device.DestroyBuffer(readback);
-
-    return result;
-}
-
-void ResolvePick(rc::RenderDevice& device, EditorController& editor)
-{
-    for (uint32_t frame = 0; frame < 16 && editor.GetViewport().IsPickPending(); ++frame)
-    {
-        EXPECT_TRUE(Frame(device, editor));
-    }
-
-    EXPECT_FALSE(editor.GetViewport().IsPickPending());
-}
-
-Vec2 Project(const EditorCamera& camera, Vec3 world)
-{
-    const sg::Camera& view = camera.GetCamera();
-
-    const Vec4 clip        = view.GetProjectionMatrix() * view.GetViewMatrix() * Vec4(world, 1);
-
-    return Vec2(clip) / clip.w * 0.5f + Vec2(0.5f);
-}
-
-// Headless device setup leaves scene rendering uninitialized until explicitly requested.
-UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode mode, bool rayTracing = false)
-{
-    RHIOptions::GetInstance().SetRayTracingDisabled(!rayTracing);
-
-    RHIOptions::GetInstance().SetValidationEnabled(true);
-
-    UniquePtr<rc::RenderDevice> device = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2, mode);
-
-    device->Init(nullptr);
-
-    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(device.Get());
-
-    EXPECT_EQ(device->GetRendererServer(), nullptr);
-
-    device->InitializeRendererServer();
-
-    return device;
-}
-
-void DestroyDevice(rc::RenderDevice& device, EditorController& editor)
-{
-    device.WaitForPreviousFrames();
-
-    editor.Destroy();
-
-    rc::ShaderProgramManager::GetInstance().Destroy();
-
-    device.Destroy();
-}
-
-void WaitForImport(EditorController& editor)
-{
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-
-    while (editor.GetLoadState().stage == SceneLoadStage::Reading && std::chrono::steady_clock::now() < deadline)
-    {
-        editor.UpdateSceneLoad();
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    ASSERT_NE(editor.GetLoadState().stage, SceneLoadStage::Reading);
-}
+#include "EditorRenderingTestSupport.inl"
 
 TEST_P(EditorRendering, ApplicationContinuesAfterDeclineAndRecordingFailureButStopsWhenBlocked)
 {
@@ -388,56 +196,6 @@ TEST_P(EditorRendering, TexturePreviewsFollowTheOpenScene)
 
     EXPECT_TRUE(Frame(*device, editor));
 
-    DestroyDevice(*device, editor);
-}
-
-TEST_P(EditorRendering, FbxScenesRenderThroughPbrAndVoxelGi)
-{
-    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
-    EditorController            editor(*device);
-    ASSERT_TRUE(editor.Init());
-    ASSERT_TRUE(editor.ResizeViewport(96, 96));
-    const char* fixtures[] = {"FBX/maya_cube_7500_binary.fbx", "FBX/blender_293_embedded_textures_7400_binary.fbx",
-                              "FBX/max_instanced_material_7700_ascii.fbx", "FBX/blender_331_static_blend_shape_7400_binary.fbx",
-                              "FBX/combined_morph_skin_ascii.fbx"};
-    for (const char* fixture : fixtures)
-    {
-        SCOPED_TRACE(fixture);
-        ASSERT_TRUE(editor.Load(std::string(ZEN_EDITOR_SHARED_FIXTURES) + fixture)) << editor.GetError();
-        editor.GetCamera().GetCamera().SetPose(Vec3(0, 0, 4), Vec3(0));
-        for (rc::RenderAlgorithm algorithm : {rc::RenderAlgorithm::ePBR, rc::RenderAlgorithm::eVoxelGI})
-        {
-            rc::RenderingSettings settings     = editor.GetRenderingState().GetDraft();
-            settings.algorithm                 = algorithm;
-            settings.debug.output              = rc::DebugOutput::eFinal;
-            settings.gi.resolution             = 64;
-            settings.gi.shadowMapResolution    = 256;
-            settings.gi.cone.indirectIntensity = 0;
-            settings.environment.intensity     = 0;
-            settings.environment.skybox        = false;
-            settings.lightMarkers              = false;
-            settings.cameraLight.enabled       = true;
-            settings.cameraLight.range         = 10;
-            settings.cameraLight.intensity     = 2;
-            ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
-            ASSERT_TRUE(editor.UpdateRenderingSettings());
-            ASSERT_TRUE(Frame(*device, editor));
-            ASSERT_TRUE(Frame(*device, editor));
-            EXPECT_EQ(editor.GetViewport().GetSnapshot().status.effective, algorithm);
-            EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
-            const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
-            uint64_t                  energy = 0;
-            for (size_t index = 0; index < pixels.size(); ++index)
-            {
-                if (index % 4 != 3)
-                {
-                    energy += pixels[index];
-                }
-            }
-            EXPECT_GT(energy, 1000u);
-            EXPECT_GT(editor.GetViewport().GetRenderScene()->GetVoxelTriangleCount(), 0u);
-        }
-    }
     DestroyDevice(*device, editor);
 }
 
@@ -964,36 +722,64 @@ TEST_P(EditorRendering, FailedTextureUploadRejectsCandidateAndPreservesActiveSce
 
     editor.GetSelection().SelectNode(selection);
 
-    std::string error;
+    for (uint32_t scenario = 0; scenario < 4; ++scenario)
+    {
+        std::string error;
 
-    UniquePtr<LoadedScene> candidate = ParseScene(Fixture("textured.gltf"), error);
+        UniquePtr<LoadedScene> candidate = ParseScene(Fixture("textured.gltf"), error);
 
-    ASSERT_TRUE(candidate);
+        ASSERT_TRUE(candidate);
 
-    const HeapVector<sg::Texture*> textures = candidate->scene->GetComponents<sg::Texture>();
+        const HeapVector<sg::Texture*> textures = candidate->scene->GetComponents<sg::Texture>();
 
-    ASSERT_FALSE(textures.empty());
+        ASSERT_FALSE(textures.empty());
 
-    // Allocation succeeds, but the copy cannot cover the declared image.
-    textures[0]->bytesData.resize(1);
+        if (scenario < 3)
+        {
+            // Allocation succeeds, but the copy cannot cover the declared image.
+            textures[0]->bytesData.resize(1);
+            if (scenario > 0)
+            {
+                textures[0]->width = textures[0]->height = 1;
+                textures[0]->format = scenario == 1 ? asset::Format::BC4_UNORM_BLOCK : asset::Format::BC5_UNORM_BLOCK;
+                // BC4 is truncated; BC5 has a complete block but no normal interpretation.
+                textures[0]->bytesData.resize(scenario == 1 ? 7u : 16u);
+                textures[0]->interpretation = asset::TextureInterpretation::Default;
+            }
 
-    textures[0]->mipBytes.clear();
+            textures[0]->mipBytes.clear();
+        }
+        else
+        {
+            sg::ImageBasedLightAsset light;
+            light.size = light.mipLevels = 1;
+            light.specularFormat         = asset::Format::BC6H_UFLOAT_BLOCK;
+            light.irradianceCoefficients = HeapVector<Vec3>(9, Vec3(0));
+            SharedPtr<HeapVector<HeapVector<uint8_t>>, MultiThreadCounter> blocks =
+                MakeShared<HeapVector<HeapVector<uint8_t>>, MultiThreadCounter>();
+            *blocks = HeapVector<HeapVector<uint8_t>>(6, HeapVector<uint8_t>(16, 0));
+            blocks->back().pop_back();
+            light.specularBlockMipFaces = blocks;
+            candidate->scene->GetAssetData().imageBasedLights.push_back(std::move(light));
+            candidate->scene->GetAssetData().imageBasedLight = 0;
+        }
 
-    EXPECT_FALSE(editor.GetViewport().PrepareScene(*candidate, error));
+        EXPECT_FALSE(editor.GetViewport().PrepareScene(*candidate, error));
 
-    EXPECT_FALSE(error.empty());
+        EXPECT_FALSE(error.empty());
 
-    candidate.Reset();
+        candidate.Reset();
 
-    EXPECT_EQ(editor.GetViewport().GetRenderScene(), active);
+        EXPECT_EQ(editor.GetViewport().GetRenderScene(), active);
 
-    EXPECT_EQ(editor.GetScene().GetGeneration(), generation);
+        EXPECT_EQ(editor.GetScene().GetGeneration(), generation);
 
-    EXPECT_EQ(editor.GetSelection().GetNode(), selection);
+        EXPECT_EQ(editor.GetSelection().GetNode(), selection);
 
-    EXPECT_TRUE(Frame(*device, editor));
+        EXPECT_TRUE(Frame(*device, editor));
 
-    EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+        EXPECT_TRUE(device->GetCurrentFrameRDG()->GetWarnings().empty());
+    }
 
     ASSERT_TRUE(editor.Load(Fixture("textured.gltf")));
 
@@ -2834,6 +2620,8 @@ TEST_P(EditorRendering, DISABLED_LightBallSponzaCapture)
 
     DestroyDevice(*device, editor);
 }
+
+#include "GuideSumTests.inl"
 
 INSTANTIATE_TEST_SUITE_P(Execution, EditorRendering, testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
 } // namespace

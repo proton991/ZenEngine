@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "AssetLib/SceneRuntimeBuilder.h"
 #if defined(ZEN_WIN32)
 #    include <Windows.h>
@@ -8,6 +9,7 @@
 #include "AssetLib/SceneLoader.h"
 #include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
@@ -39,10 +41,49 @@
 
 namespace zen
 {
+namespace
+{
+void LogSceneUploadGraph(const rc::RDGMetricsSnapshot& snapshot)
+{
+    // The execution ID is unique within each transfer/frame stream. It joins this
+    // synchronous publication range to the profiler's deferred GPU pass records.
+    LOGI("SCENE_UPLOAD_GRAPH {{\"execution\":{},\"transfer_only\":{},\"node_count\":{},\"omitted_nodes\":{}}}",
+         snapshot.execution, snapshot.transferOnly, snapshot.nodeCount, snapshot.omittedNodes);
+}
+
+void LogSceneUploadStatistics(const rc::RenderDevice&          device,
+                              const rc::StagingPoolStatistics& before,
+                              uint64_t                         stagedBefore,
+                              uint64_t                         transferSerialBefore,
+                              bool                             published)
+{
+    const rc::StagingPoolStatistics statistics = device.GetStagingPoolStatistics();
+    LOGI("SCENE_UPLOAD_METRICS {{\"published\":{},\"staged_bytes\":{},\"baseline_capacity_bytes\":{},"
+         "\"baseline_occupied_bytes\":{},\"capacity_bytes\":{},\"peak_capacity_bytes\":{},"
+         "\"occupied_bytes\":{},\"peak_occupied_bytes\":{},\"native_allocation_available\":{},"
+         "\"native_allocation_bytes\":{},\"peak_native_allocation_bytes\":{},\"block_count\":{},"
+         "\"peak_block_count\":{},\"allocation_flush_requests\":{},\"allocation_failures\":{},"
+         "\"pool_wait_calls\":{},\"pool_wait_failures\":{},\"pool_wait_cpu_ns\":{}}}",
+         published, device.GetStagedUploadBytes() - stagedBefore, before.capacityBytes, before.occupiedBytes,
+         statistics.capacityBytes, statistics.peakCapacityBytes, statistics.occupiedBytes, statistics.peakOccupiedBytes,
+         statistics.allocationBytesAvailable, statistics.allocationBytes, statistics.peakAllocationBytes, statistics.blockCount,
+         statistics.peakBlockCount, statistics.allocationFlushRequests, statistics.allocationFailures, statistics.waitCalls,
+         statistics.waitFailures, statistics.waitCPUTimeNS);
+    const RHIGPUMemoryStats native = GDynamicRHI->GetGPUMemoryStats();
+    LOGI("SCENE_UPLOAD_NATIVE {{\"available\":{},\"host_upload_allocation_bytes\":{},"
+         "\"process_peak_host_upload_allocation_bytes\":{},\"committed_bytes\":{},\"process_peak_committed_bytes\":{},"
+         "\"transfer_serial_before\":{},\"transfer_serial_after\":{}}}",
+         native.available, native.hostUploadAllocationBytes, native.peakHostUploadAllocationBytes, native.committedBytes,
+         native.peakCommittedBytes, transferSerialBefore,
+         GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer));
+}
+} // namespace
+
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sg::CameraType                type,
-                                     const DemoProfilingOptions&   profiling) :
-    m_cameraType(type)
+                                     const DemoProfilingOptions&   profiling,
+                                     bool                          useAssetCache) :
+    m_useAssetCache(useAssetCache), m_cameraType(type)
 {
     m_pWindow      = new platform::NativeWindow(windowConfig);
 
@@ -124,11 +165,25 @@ void SceneRendererDemo::OnResize(uint32_t width, uint32_t height)
     }
 }
 
-bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPercent)
+bool SceneRendererDemo::Prepare(bool     captureVoxels,
+                                uint32_t calibrationGridPercent,
+                                bool     deterministicGuideCapture,
+                                uint32_t sceneLoadRepeats)
 {
+    m_renderDevice->GetRendererServer()->RequestDeferredLightingRenderer()->SetDeterministicGuideCapture(
+        deterministicGuideCapture);
+    if (deterministicGuideCapture)
+    {
+        LOGI("GI capture uses exact learned-guide accumulation");
+    }
     const std::string path = platform::ConfigLoader::GetInstance().GetDefaultModelPath();
 
     bool prepared          = LoadModel(path, true);
+
+    for (uint32_t repeat = 0; prepared && repeat < sceneLoadRepeats; ++repeat)
+    {
+        prepared = LoadModel(path, true);
+    }
 
 #if defined(ZEN_RUNTIME_UI)
     if (prepared)
@@ -166,11 +221,22 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
 
 bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCameraPosition)
 {
-    asset::SceneLoadResult result = asset::LoadScene(path);
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    asset::SceneImportRequest                   request{path};
+    request.useCache                                   = m_useAssetCache;
+    asset::SceneLoadResult                      result = asset::LoadSourceScene(request);
+    const std::chrono::steady_clock::time_point ready  = std::chrono::steady_clock::now();
 #if defined(ZEN_RUNTIME_UI)
     m_modelState.error = result.error;
 #endif
     const bool loaded = result.scene && PublishModel(std::move(result.scene), configuredCameraPosition);
+    if (RHIOptions::GetInstance().GPUMemoryStats())
+    {
+        const int64_t loadNS = std::chrono::duration_cast<std::chrono::nanoseconds>(ready - start).count();
+        const int64_t publishNS =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - ready).count();
+        LOGI("SCENE_LOAD_TIMING {{\"loaded\":{},\"load_cpu_ns\":{},\"publish_cpu_ns\":{}}}", loaded, loadNS, publishNS);
+    }
 #if defined(ZEN_RUNTIME_UI)
     if (loaded)
     {
@@ -183,6 +249,22 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
 
 bool SceneRendererDemo::PublishModel(UniquePtr<asset::LoadedScene> candidate, bool configuredCameraPosition)
 {
+    const bool profileUploads = m_profiling && RHIOptions::GetInstance().GPUMemoryStats();
+    if (profileUploads)
+    {
+        // The demo profiler owns an otherwise empty CPU sink; its GPU sink remains
+        // intact. Mark only graphs executed inside this production publication.
+        LOGI("SCENE_UPLOAD_PROFILE {{\"event\":\"{}\"}}", "begin");
+        m_renderDevice->GetRDGMetrics().SetSink(LogSceneUploadGraph);
+    }
+    const uint64_t transferSerialBefore =
+        RHIOptions::GetInstance().GPUMemoryStats() ? GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer) : 0;
+    const rc::StagingPoolStatistics stagingBefore = m_renderDevice->GetStagingPoolStatistics();
+    const uint64_t                  stagedBefore  = m_renderDevice->GetStagedUploadBytes();
+    if (RHIOptions::GetInstance().GPUMemoryStats())
+    {
+        m_renderDevice->ResetStagingPoolStatistics();
+    }
     bool                                        loaded = false;
     UniquePtr<sg::Scene>                        scene  = std::move(candidate->scene);
     UniquePtr<sg::Camera>                       camera;
@@ -278,6 +360,20 @@ bool SceneRendererDemo::PublishModel(UniquePtr<asset::LoadedScene> candidate, bo
     if (!loaded && m_renderScene)
     {
         m_renderDevice->GetRendererServer()->SetRenderScene(m_renderScene.Get());
+    }
+
+    if (RHIOptions::GetInstance().GPUMemoryStats())
+    {
+        LogSceneUploadStatistics(*m_renderDevice, stagingBefore, stagedBefore, transferSerialBefore, loaded);
+    }
+
+    if (profileUploads)
+    {
+        m_renderDevice->GetRDGMetrics().SetSink({});
+        // Existing publication waits drive native completion. Collection observes
+        // those results without adding a GPU wait or changing upload routing.
+        m_renderDevice->GetRDGMetrics().CollectGPUResults();
+        LOGI("SCENE_UPLOAD_PROFILE {{\"event\":\"{}\"}}", "end");
     }
 
     return loaded;
@@ -1005,6 +1101,7 @@ struct DemoOptions
     int      runtimeUI{-1}; // Interactive runs default on; diagnostic runs remain reproducible.
     uint32_t frames{0};
     uint32_t warmup{0};
+    uint32_t sceneLoadRepeats{0};
     // Retain the diagnostic --mode IDs independently of interactive key bindings.
     uint32_t initialMode{3};
     uint32_t giStartFrame{0};
@@ -1015,8 +1112,10 @@ struct DemoOptions
     bool     gpuMarkers{false};
     bool     gpuMemoryStats{false};
     bool     motionFixture{false};
+    bool     useAssetCache{true};
 
     bool fixedStep{false};
+    bool deterministicGuideCapture{false};
 
     bool vsync{true};
 
@@ -1089,6 +1188,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             options.runtimeUI = argument == "--ui" ? 1 : 0;
         }
+        else if (argument == "--no-asset-cache")
+        {
+            options.useAssetCache = false;
+        }
         else if (argument.starts_with("--capture="))
         {
             options.capturePath = argument.substr(10);
@@ -1118,6 +1221,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument == "--fixed-step")
         {
             options.fixedStep = true;
+        }
+        else if (argument == "--deterministic-gi-capture")
+        {
+            options.deterministicGuideCapture = true;
         }
         else if (argument.starts_with("--capture-voxels="))
         {
@@ -1300,6 +1407,13 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
                 }
             }
         }
+        else if (argument.starts_with("--scene-load-repeats="))
+        {
+            const std::string_view       value = argument.substr(sizeof("--scene-load-repeats=") - 1);
+            const std::from_chars_result parsed =
+                std::from_chars(value.data(), value.data() + value.size(), options.sceneLoadRepeats);
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && options.sceneLoadRepeats <= 1000;
+        }
         else if (argument.starts_with("--frames=") || argument.starts_with("--warmup="))
         {
             const std::string_view value        = argument.substr(9);
@@ -1399,11 +1513,13 @@ int main(int argc, char** pArgv)
             }
         }
 
-        SceneRendererDemo* pDemo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson, profiling);
+        SceneRendererDemo* pDemo =
+            new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson, profiling, options.useAssetCache);
 
-        bool prepared            = pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent);
+        bool prepared = pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent,
+                                       options.deterministicGuideCapture, options.sceneLoadRepeats);
 
-        bool enableUI            = options.runtimeUI == 1;
+        bool enableUI = options.runtimeUI == 1;
 
 #    if defined(ZEN_RUNTIME_UI)
         enableUI = enableUI
@@ -1520,7 +1636,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--enable-validation|--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-camera-motion=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--no-asset-cache] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--scene-load-repeats=0..1000] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--deterministic-gi-capture] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--enable-validation|--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-camera-motion=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

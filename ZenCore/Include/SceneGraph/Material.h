@@ -1,6 +1,7 @@
 #pragma once
 #include "Component.h"
 #include "Utils/Errors.h"
+#include "Utils/UniquePtr.h"
 #include "Texture.h"
 #include "MaterialFeatures.h"
 #include <cmath>
@@ -43,6 +44,10 @@ struct MaterialData
     Vec4                diffuseTransmissionColorFactor{1.0f, 1.0f, 1.0f, 0.0f};
     Vec4                volumeScatterColorRetroreflection{0.0f};
     MaterialTextureData featureTextures[static_cast<uint32_t>(MaterialFeatureTexture::Count)]{};
+    // Positive-Z XY normal encoding for base and clearcoat; remaining components are reserved.
+    glm::uvec4 normalEncoding{0};
+    // Filled by RenderScene: subtexel divisions, qualified SpatialTextureRounding, then reserved components.
+    Vec4 textureSampling{1, 0, 0, 0};
 };
 
 class Material : public Component, public asset::MaterialParametersT<Texture*>
@@ -68,28 +73,31 @@ public:
         VERIFY_EXPR(m_pOcclusionTexture != nullptr);
         VERIFY_EXPR(m_pEmissiveTexture != nullptr);
 
-        data.bcTexSet           = texCoordSets.baseColor;
-        data.mrTexSet           = texCoordSets.metallicRoughness;
-        data.normalTexSet       = texCoordSets.normal;
-        data.aoTexSet           = texCoordSets.occlusion;
-        data.emissiveTexSet     = texCoordSets.emissive;
+        data.bcTexSet             = texCoordSets.baseColor;
+        data.mrTexSet             = texCoordSets.metallicRoughness;
+        data.normalTexSet         = texCoordSets.normal;
+        data.aoTexSet             = texCoordSets.occlusion;
+        data.emissiveTexSet       = texCoordSets.emissive;
 
-        data.bcTexIndex         = static_cast<int>(m_pBaseColorTexture->index);
-        data.mrTexIndex         = static_cast<int>(m_pMetallicRoughnessTexture->index);
-        data.normalTexIndex     = m_pNormalTexture->flatNormal ? -1 : static_cast<int>(m_pNormalTexture->index);
-        data.occlusionTexIndex  = static_cast<int>(m_pOcclusionTexture->index);
-        data.emissiveTexIndex   = static_cast<int>(m_pEmissiveTexture->index);
+        data.bcTexIndex           = static_cast<int>(m_pBaseColorTexture->index);
+        data.mrTexIndex           = static_cast<int>(m_pMetallicRoughnessTexture->index);
+        data.normalTexIndex       = m_pNormalTexture->flatNormal ? -1 : static_cast<int>(m_pNormalTexture->index);
+        data.occlusionTexIndex    = static_cast<int>(m_pOcclusionTexture->index);
+        data.emissiveTexIndex     = static_cast<int>(m_pEmissiveTexture->index);
 
-        data.metallicFactor     = metallicFactor;
-        data.roughnessFactor    = roughnessFactor;
-        data.baseColorFactor    = baseColorFactor;
-        data.emissiveFactor     = emissiveFactor * emissiveStrength;
-        data.surfaceProperties  = Vec4(alphaCutoff, static_cast<float>(alphaMode), normalScale, 0.0f);
-        data.materialProperties = Vec4(occlusionStrength, unlit ? 1.0f : 0.0f, doubleSided ? 1.0f : 0.0f, 0.0f);
+        data.metallicFactor       = metallicFactor;
+        data.roughnessFactor      = roughnessFactor;
+        data.baseColorFactor      = baseColorFactor;
+        data.emissiveFactor       = emissiveFactor * emissiveStrength;
+        data.surfaceProperties    = Vec4(alphaCutoff, static_cast<float>(alphaMode), normalScale, 0.0f);
+        data.materialProperties   = Vec4(occlusionStrength, unlit ? 1.0f : 0.0f, doubleSided ? 1.0f : 0.0f, 0.0f);
 
+        const Texture* textures[] = {m_pBaseColorTexture, m_pMetallicRoughnessTexture, m_pNormalTexture, m_pOcclusionTexture,
+                                     m_pEmissiveTexture};
         for (uint32_t index = 0; index < 5; ++index)
         {
-            data.textureTransforms[index] = PublishTextureTransform(textureTransforms[index]);
+            data.textureTransforms[index] = PublishTextureTransform(
+                textureTransforms[index], index == 2 && m_pNormalTexture->flatNormal ? nullptr : textures[index]);
         }
 
         data.surfaceProperties.w = pbrWorkflows.specularGlossiness ? 1.0f : 0.0f;
@@ -115,18 +123,29 @@ public:
             data.featureTextures[index].properties =
                 Vec4(binding.texture == nullptr ? -1.0f : static_cast<float>(binding.texture->index),
                      static_cast<float>(binding.texCoord), binding.scale, 0.0f);
-            data.featureTextures[index].transform = PublishTextureTransform(binding.transform);
+            data.featureTextures[index].transform = PublishTextureTransform(binding.transform, binding.texture);
         }
 
         data.materialProperties.w = features == MaterialFeatures{} && !pbrWorkflows.specularGlossiness ? 0.0f : 1.0f;
+        data.normalEncoding       = glm::uvec4(0);
+        data.normalEncoding.x =
+            !m_pNormalTexture->flatNormal && m_pNormalTexture->interpretation == asset::TextureInterpretation::NormalXYPositiveZ
+                ? 1u
+                : 0u;
+        data.normalEncoding.y = features.clearcoatNormalTexture.texture != nullptr
+                                     && features.clearcoatNormalTexture.texture->interpretation
+                                            == asset::TextureInterpretation::NormalXYPositiveZ
+                                  ? 1u
+                                  : 0u;
 
         if (pbrWorkflows.specularGlossiness)
         {
             data.baseColorFactor = extension.diffuseFactor;
             data.bcTexIndex =
                 features.diffuseTexture.texture == nullptr ? -1 : static_cast<int>(features.diffuseTexture.texture->index);
-            data.bcTexSet             = static_cast<int>(features.diffuseTexture.texCoord);
-            data.textureTransforms[0] = PublishTextureTransform(features.diffuseTexture.transform);
+            data.bcTexSet = static_cast<int>(features.diffuseTexture.texCoord);
+            data.textureTransforms[0] =
+                PublishTextureTransform(features.diffuseTexture.transform, features.diffuseTexture.texture);
         }
     }
 

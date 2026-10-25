@@ -120,13 +120,23 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
 bool RenderScene::Init()
 {
-    LoadSceneMaterials();
-
-    LoadSceneTextures();
-
-    PrepareBuffers();
-
-    return HasRequiredResources();
+    bool valid = true;
+    for (const sg::Texture* texture : m_pScene->GetComponents<sg::Texture>())
+    {
+        if (texture->GetAtlasRegion() != asset::ImageRegion{})
+        {
+            valid = m_pRenderDevice->QualifySpatialTextureSampling();
+            break;
+        }
+    }
+    if (valid)
+    {
+        LoadSceneMaterials();
+        LoadSceneTextures();
+        PrepareBuffers();
+        valid = HasRequiredResources();
+    }
+    return valid;
 }
 
 void RenderScene::LoadSceneMaterials()
@@ -140,8 +150,9 @@ void RenderScene::LoadSceneMaterials()
     for (const sg::Material* pMat : sgMaterials)
     {
         m_materialsData.emplace_back(pMat->data);
+        m_materialsData.back().textureSampling = m_pRenderDevice->GetTextureSamplingParameters();
 
-        const double attenuationDistance = static_cast<double>(pMat->data.volumeIridescence.y) * m_sceneUnitScale;
+        const double attenuationDistance       = static_cast<double>(pMat->data.volumeIridescence.y) * m_sceneUnitScale;
 
         m_materialsData.back().volumeIridescence.y =
             attenuationDistance > std::numeric_limits<float>::max() ? 0.0f : static_cast<float>(attenuationDistance);

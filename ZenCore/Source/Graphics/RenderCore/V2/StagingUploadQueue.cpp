@@ -5,6 +5,7 @@
 #include "Utils/Errors.h"
 
 #include <cstring>
+#include <chrono>
 #include <limits>
 #include <numeric>
 
@@ -104,6 +105,9 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size, uint32_t alignm
         }
     }
 
+    m_statistics.allocationFlushRequests += action == StagingFlushAction::eFlush ? 1u : 0u;
+    m_statistics.allocationFailures      += action == StagingFlushAction::eFailed ? 1u : 0u;
+    UpdateStatistics();
     return action;
 }
 
@@ -148,10 +152,38 @@ void StagingBufferManager::Reclaim()
             block.retirement   = {};
         }
     }
+    UpdateStatistics();
+}
+
+void StagingBufferManager::UpdateStatistics()
+{
+    m_statistics.capacityBytes   = m_allocatedSize;
+    m_statistics.occupiedBytes   = 0;
+    m_statistics.allocationBytes = 0;
+    m_statistics.blockCount      = static_cast<uint32_t>(m_blocks.size());
+    for (const Block& block : m_blocks)
+    {
+        const uint64_t allocated               = block.pBuffer->GetAllocationSize();
+        m_statistics.occupiedBytes            += block.occupiedSize;
+        m_statistics.allocationBytes          += allocated;
+        m_statistics.allocationBytesAvailable &= allocated != 0;
+    }
+    m_statistics.peakCapacityBytes   = std::max(m_statistics.peakCapacityBytes, m_statistics.capacityBytes);
+    m_statistics.peakOccupiedBytes   = std::max(m_statistics.peakOccupiedBytes, m_statistics.occupiedBytes);
+    m_statistics.peakAllocationBytes = std::max(m_statistics.peakAllocationBytes, m_statistics.allocationBytes);
+    m_statistics.peakBlockCount      = std::max(m_statistics.peakBlockCount, m_statistics.blockCount);
+}
+
+void StagingBufferManager::ResetStatistics()
+{
+    m_statistics = {};
+    UpdateStatistics();
 }
 
 bool StagingBufferManager::WaitForSubmittedAllocations()
 {
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    ++m_statistics.waitCalls;
     bool valid = true;
 
     RHICompletionSet required{};
@@ -190,6 +222,9 @@ bool StagingBufferManager::WaitForSubmittedAllocations()
         Reclaim();
     }
 
+    m_statistics.waitFailures  += valid ? 0u : 1u;
+    m_statistics.waitCPUTimeNS += static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
     return valid;
 }
 
@@ -210,6 +245,7 @@ void StagingBufferManager::Destroy()
     m_blocks.clear();
 
     m_allocatedSize = 0;
+    UpdateStatistics();
 }
 
 void StagingBufferManager::DestroyBuffer(RHIBuffer* buffer)

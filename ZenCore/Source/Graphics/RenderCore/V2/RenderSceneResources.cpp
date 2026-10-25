@@ -12,6 +12,16 @@ std::string RenderScene::GetResourceError(const RHIGPUInfo& gpu, const sg::Scene
     std::string error = GetSceneBindlessCapacityError(gpu.bindlessHeapCapacities, scene.GetComponents<sg::Texture>().size(),
                                                       scene.GetComponents<sg::Sampler>().size());
 
+    for (const sg::Texture* texture : scene.GetComponents<sg::Texture>())
+    {
+        if (error.empty() && texture->GetAtlasRegion() != asset::ImageRegion{}
+            && (gpu.subTexelPrecisionBits == 0 || gpu.subTexelPrecisionBits > 23))
+        {
+            error = fmt::format("Scene texture '{}' has a spatial region that requires representable GPU subtexel precision.",
+                                texture->GetName());
+        }
+    }
+
     // Storage helpers align their allocation in a 32-bit size. Validate before that
     // programmer assertion and before any multiplication/narrowing at scene upload.
     uint64_t uvStride = 2;
@@ -78,9 +88,10 @@ bool RenderScene::HasRequiredResources() const
               && m_sceneTextures.size() == m_pScene->GetComponents<sg::Texture>().size()
               && m_sceneSamplers.size() == m_pScene->GetComponents<sg::Sampler>().size();
 
-    for (RHITexture* texture : m_sceneTextures)
+    for (RHITextureView* view : m_sceneTextures)
     {
-        valid = valid && texture != nullptr && texture->GetDefaultView() != nullptr;
+        valid = valid && view != nullptr && view->GetTexture() != nullptr && view->GetTextureType() == RHITextureType::e2D
+             && view->GetSubResourceRange().layerCount == 1;
     }
 
     for (RHISampler* sampler : m_sceneSamplers)
@@ -117,17 +128,20 @@ void RenderScene::Destroy()
 
         m_numIndices           = 0;
 
-        for (size_t index = 0; index < m_sceneTextures.size(); ++index)
+        HeapVector<RHITexture*> images;
+        images.reserve(m_sceneTextures.size());
+        for (RHITextureView* view : m_sceneTextures)
         {
-            const HeapVector<RHITexture*>::iterator end = m_sceneTextures.begin() + index;
-
-            if (std::find(m_sceneTextures.begin(), end, m_sceneTextures[index]) == end)
+            if (view != nullptr && std::find(images.begin(), images.end(), view->GetTexture()) == images.end())
             {
-                m_pRenderDevice->ReleaseSceneTexture(m_sceneTextures[index]);
+                images.push_back(view->GetTexture());
             }
         }
-
         m_sceneTextures.clear();
+        for (RHITexture* image : images)
+        {
+            m_pRenderDevice->ReleaseSceneTexture(image);
+        }
 
         m_pRenderDevice->ReleaseSceneEnvironment(m_envTexture.Get());
 

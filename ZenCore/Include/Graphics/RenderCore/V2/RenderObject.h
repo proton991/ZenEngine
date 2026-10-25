@@ -1,33 +1,20 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "SceneGraph/Scene.h"
-
-namespace zen::asset
-{
-struct Vertex;
-} // namespace zen::asset
+#include "SceneGraph/AABB.h"
 
 namespace zen::rc
 {
-struct RenderObjectData
-{
-    sg::Scene*           pScene;
-    const asset::Vertex* pVertices;
-    const uint32_t*      pIndices;
-    uint32_t             numVertices;
-    uint32_t             numIndices;
-};
-
+// Built-in unit cube used by voxel visualization, independent of source assets.
 class RenderObject
 {
 public:
-    RenderObject(RenderDevice* pRenderDevice, const std::string& modelPath);
+    explicit RenderObject(RenderDevice* pRenderDevice);
 
     ~RenderObject();
 
-    const zen::HeapVector<sg::Node*>& GetRenderableNodes() const
+    bool IsValid() const
     {
-        return m_scene->GetRenderableNodes();
+        return m_pVertexBuffer != nullptr && m_pIndexBuffer != nullptr;
     }
 
     RHIBuffer* GetVertexBuffer() const
@@ -42,22 +29,13 @@ public:
 
     const sg::AABB& GetAABB() const
     {
-        return m_scene->GetAABB();
+        return m_bounds;
     }
 
 private:
-    RenderDevice*        m_pRenderDevice{nullptr};
-    UniquePtr<sg::Scene> m_scene;
-
-    HeapVector<sg::MaterialData> m_materialsData;
-    RHIBuffer*                   m_pMaterialSSBO{nullptr};
-
-    HeapVector<sg::NodeData> m_nodesData;
-    RHIBuffer*               m_pNodeSSBO{nullptr};
-
-    RHIBuffer* m_pVertexBuffer{nullptr};
-    RHIBuffer* m_pIndexBuffer{nullptr};
-
-    HeapVector<RHITexture*> m_sceneTextures;
+    RenderDevice* m_pRenderDevice{nullptr};
+    sg::AABB      m_bounds{Vec3(-0.5f), Vec3(0.5f)};
+    RHIBuffer*    m_pVertexBuffer{nullptr};
+    RHIBuffer*    m_pIndexBuffer{nullptr};
 };
 } // namespace zen::rc

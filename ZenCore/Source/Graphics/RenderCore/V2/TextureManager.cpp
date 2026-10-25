@@ -14,11 +14,87 @@
 #include <cctype>
 #include <cstring>
 #include <limits>
+#include <bit>
 
 namespace zen::rc
 {
 namespace
 {
+struct SceneImagePage
+{
+    RHITexture*                        texture{nullptr};
+    HashMap<uint64_t, RHITextureView*> views;
+};
+
+bool ValidSceneAtlasRegion(const sg::Texture& texture, const sg::Scene& scene, const RHIGPUInfo& gpu)
+{
+    const asset::ImageRegion region = texture.GetAtlasRegion();
+    bool                     valid  = true;
+    if (region != asset::ImageRegion{})
+    {
+        const HeapVector<sg::Sampler*>& samplers = scene.GetComponents<sg::Sampler>();
+        valid                                    = gpu.subTexelPrecisionBits > 0 && gpu.subTexelPrecisionBits <= 23
+                                                && (texture.format == asset::Format::R8G8B8A8_UNORM || texture.format == asset::Format::R8G8B8A8_SRGB)
+                                                && texture.GetArrayLayers() == 1 && texture.GetArrayLayer() == 0 && texture.GetMipBytes().size() == 1
+                                                && texture.width <= 16384 && texture.height <= 16384 && std::has_single_bit(texture.width)
+                                                && std::has_single_bit(texture.height) && std::has_single_bit(region.width) && std::has_single_bit(region.height)
+                                                && region.x >= 4 && region.y >= 4 && region.x % 4 == 0 && region.y % 4 == 0 && region.x <= texture.width
+                                                && region.y <= texture.height && region.width <= texture.width - region.x
+                                                && region.height <= texture.height - region.y && texture.width - region.x - region.width >= 4
+                                                && texture.height - region.y - region.height >= 4 && texture.samplerIndex >= 0
+                                                && static_cast<size_t>(texture.samplerIndex) < samplers.size();
+        if (valid)
+        {
+            const sg::Sampler& sampler = *samplers[texture.samplerIndex];
+            valid = sampler.minFilter == asset::TextureFilter::Linear && sampler.magFilter == asset::TextureFilter::Linear
+                 && sampler.mipFilter == asset::TextureFilter::Linear && sampler.wrapS == asset::SamplerAddressMode::ClampToEdge
+                 && sampler.wrapT == asset::SamplerAddressMode::ClampToEdge;
+        }
+    }
+    return valid;
+}
+
+bool ValidSceneTexturePayload(const sg::Texture& texture, uint32_t& payloadSize)
+{
+    const DataFormat format     = static_cast<DataFormat>(texture.format);
+    const uint32_t   layers     = texture.GetArrayLayers();
+    const bool       page       = layers > 1 || texture.GetAtlasRegion() != asset::ImageRegion{};
+    bool             valid      = format == DataFormat::eR8G8B8A8UNORM || format == DataFormat::eR8G8B8A8SRGB
+                               || format == DataFormat::eBC7UNORMBlock || format == DataFormat::eBC7SRGBBlock
+                               || format == DataFormat::eBC4UNORMBlock || format == DataFormat::eBC5UNORMBlock;
+    uint64_t         levelBytes = 0;
+    payloadSize                 = 0;
+    valid =
+        valid && layers > 0 && texture.GetArrayLayer() < layers && (layers == 1 || !texture.GetMipBytes().empty())
+        && (!page
+            || (texture.UsesSharedPixels() && texture.width == texture.pixels->width && texture.height == texture.pixels->height
+                && AreTextureColorViewFormatsCompatible(format, static_cast<DataFormat>(texture.pixels->format))))
+        && texture.interpretation <= asset::TextureInterpretation::NormalXYPositiveZ
+        && ((texture.interpretation == asset::TextureInterpretation::NormalXYPositiveZ)
+            == (format == DataFormat::eBC5UNORMBlock))
+        && GetTextureFormatLevelSize(format, texture.width, texture.height, 1, levelBytes) && levelBytes <= UINT32_MAX / layers
+        && levelBytes * layers == texture.GetBytes().size()
+        && texture.GetMipBytes().size() <= RHITexture::CalculateTextureMipLevels(texture.width, texture.height)
+        && (texture.GetMipBytes().empty()
+            || std::equal(texture.GetMipBytes()[0].begin(), texture.GetMipBytes()[0].end(), texture.GetBytes().begin(),
+                          texture.GetBytes().end()));
+    if (valid && texture.GetMipBytes().empty())
+    {
+        payloadSize = static_cast<uint32_t>(levelBytes * layers);
+    }
+    for (size_t level = 0; valid && level < texture.GetMipBytes().size(); ++level)
+    {
+        valid = GetTextureFormatLevelSize(format, std::max(1u, texture.width >> level), std::max(1u, texture.height >> level),
+                                          1, levelBytes)
+             && levelBytes <= (UINT32_MAX - payloadSize) / layers && levelBytes * layers == texture.GetMipBytes()[level].size();
+        if (valid)
+        {
+            payloadSize += static_cast<uint32_t>(levelBytes * layers);
+        }
+    }
+    return valid;
+}
+
 uint32_t ReadContainerWord(const HeapVector<char>& bytes, size_t offset)
 {
     uint32_t value = 0;
@@ -309,7 +385,7 @@ RHITexture* TextureManager::LoadTexture2D(const std::string& file, bool requireM
     return result;
 }
 
-void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures)
+void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITextureView*>& outTextures)
 {
     if (pScene == nullptr)
     {
@@ -317,6 +393,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
     }
     else
     {
+        HashMap<const asset::ImagePixels*, SceneImagePage> pages;
         for (const sg::Texture* pSgTexture : pScene->GetComponents<sg::Texture>())
         {
             TextureFormat texFormat{};
@@ -334,18 +411,79 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
 
             texFormat.depth       = 1;
 
-            texFormat.arrayLayers = 1;
+            texFormat.arrayLayers = pSgTexture->GetArrayLayers();
+            const bool sharedPage = texFormat.arrayLayers > 1 || pSgTexture->GetAtlasRegion() != asset::ImageRegion{};
+            texFormat.mutableFormat =
+                sharedPage
+                && (texFormat.format == DataFormat::eR8G8B8A8UNORM || texFormat.format == DataFormat::eR8G8B8A8SRGB
+                    || texFormat.format == DataFormat::eBC7UNORMBlock || texFormat.format == DataFormat::eBC7SRGBBlock);
 
-            texFormat.mipmaps     = pSgTexture->GetMipBytes().empty()
-                                      ? RHITexture::CalculateTextureMipLevels(pSgTexture->width, pSgTexture->height)
-                                      : static_cast<uint32_t>(pSgTexture->GetMipBytes().size());
+            const bool compressed = GetTextureFormatBlockInfo(texFormat.format).width > 1;
+            texFormat.mipmaps =
+                pSgTexture->GetMipBytes().empty()
+                    ? (compressed ? 1u : RHITexture::CalculateTextureMipLevels(pSgTexture->width, pSgTexture->height))
+                    : static_cast<uint32_t>(pSgTexture->GetMipBytes().size());
 
-            RHITexture* pTexture = m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, pSgTexture->GetName());
-
-            if (pTexture != nullptr)
+            uint32_t                  payloadSize = 0;
+            const bool                payloadFits = ValidSceneTexturePayload(*pSgTexture, payloadSize)
+                                                 && ValidSceneAtlasRegion(*pSgTexture, *pScene, m_pRenderDevice->GetGPUInfo());
+            const asset::ImagePixels* owner       = payloadFits && sharedPage ? pSgTexture->pixels.Get() : nullptr;
+            const HashMap<const asset::ImagePixels*, SceneImagePage>::iterator page  = pages.find(owner);
+            const bool                                                         fresh = page == pages.end();
+            RHITexture*     pTexture                                                 = fresh ? nullptr : page->second.texture;
+            RHITextureView* view                                                     = nullptr;
+            const uint64_t  viewKey = (uint64_t(pSgTexture->GetArrayLayer()) << 32) | uint32_t(texFormat.format);
+            if (payloadFits)
             {
-                OwnTexture(pTexture);
+                if (fresh)
+                {
+                    pTexture = m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, pSgTexture->GetName());
+                    OwnTexture(pTexture);
+                }
+                else
+                {
+                    const HashMap<uint64_t, RHITextureView*>::iterator existing = page->second.views.find(viewKey);
+                    if (existing != page->second.views.end())
+                    {
+                        view = existing->second;
+                    }
+                }
+                if (pTexture != nullptr && view == nullptr)
+                {
+                    if (texFormat.arrayLayers == 1 && pTexture->GetFormat() == texFormat.format)
+                    {
+                        view = pTexture->GetDefaultView();
+                    }
+                    else
+                    {
+                        TextureViewFormat format;
+                        format.format         = texFormat.format;
+                        format.dimension      = TextureDimension::e2D;
+                        format.mipmaps        = texFormat.mipmaps;
+                        format.baseArrayLayer = pSgTexture->GetArrayLayer();
+                        view                  = m_pRenderDevice->CreateTextureView(pTexture, format, pSgTexture->GetName());
+                    }
+                    if (view == nullptr && fresh)
+                    {
+                        ReleaseSceneTexture(pTexture);
+                        pTexture = nullptr;
+                    }
+                }
+            }
+            else if (pSgTexture->GetAtlasRegion() != asset::ImageRegion{})
+            {
+                LOGE("Scene texture '{}' has an invalid spatial region, sampler or unsupported sampling precision",
+                     pSgTexture->GetName());
+            }
+            else
+            {
+                LOGE(
+                    "Scene texture '{}' has an unsupported format/array view, invalid mip payload or exceeds the upload size limit",
+                    pSgTexture->GetName());
+            }
 
+            if (pTexture != nullptr && view != nullptr && fresh)
+            {
                 if (pSgTexture->GetMipBytes().empty())
                 {
                     UpdateTexture(pTexture, pSgTexture->GetBytes().size(), pSgTexture->GetBytes().data(),
@@ -353,75 +491,58 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
                 }
                 else
                 {
-                    uint32_t payloadSize = 0;
+                    HeapVector<RHIBufferTextureCopyRegion> regions;
 
-                    bool payloadFits     = true;
+                    HeapVector<uint8_t> pixels;
 
-                    for (const HeapVector<uint8_t>& mip : pSgTexture->GetMipBytes())
+                    regions.reserve(texFormat.mipmaps);
+
+                    pixels.resize(payloadSize);
+
+                    uint32_t offset = 0;
+
+                    for (uint32_t level = 0; level < texFormat.mipmaps; ++level)
                     {
-                        if (mip.size() > std::numeric_limits<uint32_t>::max() - payloadSize)
-                        {
-                            payloadFits = false;
+                        RHIBufferTextureCopyRegion region{};
 
-                            break;
+                        region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
+                        region.textureSubresources.mipmap     = level;
+
+                        region.textureSubresources.layerCount = texFormat.arrayLayers;
+
+                        region.textureSize  = {std::max(1u, texFormat.width >> level), std::max(1u, texFormat.height >> level),
+                                               1};
+
+                        region.bufferOffset = offset;
+
+                        regions.push_back(region);
+
+                        const HeapVector<uint8_t>& mip = pSgTexture->GetMipBytes()[level];
+
+                        if (!mip.empty())
+                        {
+                            std::memcpy(pixels.data() + offset, mip.data(), mip.size());
                         }
 
-                        payloadSize += static_cast<uint32_t>(mip.size());
+                        offset += static_cast<uint32_t>(mip.size());
                     }
 
-                    if (!payloadFits)
-                    {
-                        LOGE("Scene texture '{}' mip payload exceeds the upload size limit", pSgTexture->GetName());
-
-                        ReleaseSceneTexture(pTexture);
-
-                        pTexture = nullptr;
-                    }
-                    else
-                    {
-                        HeapVector<RHIBufferTextureCopyRegion> regions;
-
-                        HeapVector<uint8_t> pixels;
-
-                        regions.reserve(texFormat.mipmaps);
-
-                        pixels.resize(payloadSize);
-
-                        uint32_t offset = 0;
-
-                        for (uint32_t level = 0; level < texFormat.mipmaps; ++level)
-                        {
-                            RHIBufferTextureCopyRegion region{};
-
-                            region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-
-                            region.textureSubresources.mipmap     = level;
-
-                            region.textureSubresources.layerCount = 1;
-
-                            region.textureSize                    = {std::max(1u, texFormat.width >> level),
-                                                                     std::max(1u, texFormat.height >> level), 1};
-
-                            region.bufferOffset                   = offset;
-
-                            regions.push_back(region);
-
-                            const HeapVector<uint8_t>& mip = pSgTexture->GetMipBytes()[level];
-
-                            if (!mip.empty())
-                            {
-                                std::memcpy(pixels.data() + offset, mip.data(), mip.size());
-                            }
-
-                            offset += static_cast<uint32_t>(mip.size());
-                        }
-
-                        UpdateTextureCube(pTexture, regions, static_cast<uint32_t>(pixels.size()), pixels.data());
-                    }
+                    UpdateTextureCube(pTexture, regions, static_cast<uint32_t>(pixels.size()), pixels.data());
                 }
             }
 
-            outTextures.push_back(pTexture);
+            if (pTexture == nullptr)
+            {
+                view = nullptr;
+            }
+            if (view != nullptr && owner != nullptr)
+            {
+                SceneImagePage& stored = pages[owner];
+                stored.texture         = pTexture;
+                stored.views.try_emplace(viewKey, view);
+            }
+            outTextures.push_back(view);
         }
     }
 }
@@ -593,78 +714,73 @@ bool TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
     return pOutTexture != nullptr && pOutTexture->IsComplete();
 }
 
-void TextureManager::UploadEnvironmentCube(uint32_t                            size,
-                                           uint32_t                            mipLevels,
-                                           const HeapVector<HeapVector<Vec4>>& faces,
-                                           const char*                         name,
-                                           RHITexture*&                        texture)
+void TextureManager::UploadEnvironmentCube(uint32_t                               size,
+                                           uint32_t                               mipLevels,
+                                           DataFormat                             storageFormat,
+                                           const HeapVector<HeapVector<Vec4>>&    faces,
+                                           const HeapVector<HeapVector<uint8_t>>& blockFaces,
+                                           const char*                            name,
+                                           RHITexture*&                           texture)
 {
-    TextureFormat format{};
-
-    format.format      = DataFormat::eR32G32B32A32SFloat;
-
-    format.dimension   = TextureDimension::eCube;
-
-    format.width       = size;
-
-    format.height      = size;
-
-    format.depth       = 1;
-
-    format.arrayLayers = 6;
-
-    format.mipmaps     = mipLevels;
-
-    texture            = m_pRenderDevice->CreateTextureSampled(format, {.copyUsage = true}, name);
-
-    if (texture != nullptr)
+    const bool compressed = storageFormat == DataFormat::eBC6HUFloatBlock;
+    bool       valid      = size > 0 && mipLevels > 0 && mipLevels <= RHITexture::CalculateTextureMipLevels(size, size)
+                         && (compressed ? faces.empty() && uint64_t(mipLevels) * 6 == blockFaces.size()
+                                        : storageFormat == DataFormat::eR32G32B32A32SFloat && blockFaces.empty()
+                                              && uint64_t(mipLevels) * 6 == faces.size());
+    uint64_t   totalBytes = 0;
+    for (uint32_t face = 0; valid && face < mipLevels * 6; ++face)
     {
-        OwnTexture(texture);
-
-        HeapVector<RHIBufferTextureCopyRegion> regions;
-
-        HeapVector<Vec4> pixels;
-
-        size_t total = 0;
-
-        for (const HeapVector<Vec4>& face : faces)
+        const uint32_t extent    = std::max(1u, size >> (face / 6));
+        uint64_t       faceBytes = 0;
+        valid = GetTextureFormatLevelSize(storageFormat, extent, extent, 1, faceBytes) && faceBytes <= UINT32_MAX - totalBytes
+             && (compressed ? blockFaces[face].size() == faceBytes : faces[face].size() == faceBytes / sizeof(Vec4));
+        if (valid)
         {
-            total += face.size();
+            totalBytes += faceBytes;
         }
-
-        pixels.reserve(total);
-
-        for (uint32_t level = 0; level < mipLevels; ++level)
+    }
+    texture = nullptr;
+    if (valid)
+    {
+        TextureFormat format{};
+        format.format    = storageFormat;
+        format.dimension = TextureDimension::eCube;
+        format.width = format.height = size;
+        format.depth                 = 1;
+        format.arrayLayers           = 6;
+        format.mipmaps               = mipLevels;
+        texture                      = m_pRenderDevice->CreateTextureSampled(format, {.copyUsage = true}, name);
+        if (texture != nullptr)
         {
-            for (uint32_t face = 0; face < 6; ++face)
+            OwnTexture(texture);
+            HeapVector<RHIBufferTextureCopyRegion> regions;
+            regions.reserve(size_t(mipLevels) * 6);
+            HeapVector<uint8_t> payload(static_cast<size_t>(totalBytes));
+            uint32_t            offset = 0;
+            for (uint32_t level = 0; level < mipLevels; ++level)
             {
-                RHIBufferTextureCopyRegion region{};
-
-                region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-
-                region.textureSubresources.mipmap         = level;
-
-                region.textureSubresources.baseArrayLayer = face;
-
-                region.textureSubresources.layerCount     = 1;
-
-                const uint32_t extent                     = std::max(1u, size >> level);
-
-                region.textureSize                        = {extent, extent, 1};
-
-                region.bufferOffset                       = static_cast<uint32_t>(pixels.size() * sizeof(Vec4));
-
-                regions.push_back(region);
-
-                for (const Vec4& value : faces[level * 6 + face])
+                for (uint32_t face = 0; face < 6; ++face)
                 {
-                    pixels.push_back(value);
+                    const uint32_t             index  = level * 6 + face;
+                    const uint32_t             extent = std::max(1u, size >> level);
+                    RHIBufferTextureCopyRegion region{};
+                    region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+                    region.textureSubresources.mipmap         = level;
+                    region.textureSubresources.baseArrayLayer = face;
+                    region.textureSubresources.layerCount     = 1;
+                    region.textureSize                        = {extent, extent, 1};
+                    region.bufferOffset                       = offset;
+                    regions.push_back(region);
+                    const uint8_t* source =
+                        compressed ? blockFaces[index].data() : reinterpret_cast<const uint8_t*>(faces[index].data());
+                    const uint32_t bytes =
+                        static_cast<uint32_t>(compressed ? blockFaces[index].size() : faces[index].size() * sizeof(Vec4));
+                    std::memcpy(payload.data() + offset, source, bytes);
+                    offset += bytes;
                 }
             }
+            UpdateTextureCube(texture, regions, static_cast<uint32_t>(totalBytes), payload.data());
         }
-
-        UpdateTextureCube(texture, regions, static_cast<uint32_t>(pixels.size() * sizeof(Vec4)),
-                          reinterpret_cast<const uint8_t*>(pixels.data()));
     }
 }
 
@@ -723,52 +839,58 @@ void TextureManager::LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* en
 
     environment->authoredCubemaps         = true;
 
-    UploadEnvironmentCube(light.size, light.mipLevels, light.specularMipFaces, "gltf_environment_specular",
+    const HeapVector<HeapVector<uint8_t>> emptyBlocks;
+    UploadEnvironmentCube(light.size, light.mipLevels, static_cast<DataFormat>(light.specularFormat), light.specularMipFaces,
+                          light.specularBlockMipFaces ? *light.specularBlockMipFaces : emptyBlocks, "gltf_environment_specular",
                           environment->pSkybox);
 
-    environment->pPrefiltered         = environment->pSkybox;
-
-    constexpr uint32_t irradianceSize = 64;
-
-    HeapVector<HeapVector<Vec4>> irradiance(6);
-
-    for (uint32_t face = 0; face < 6; ++face)
+    if (environment->pSkybox != nullptr)
     {
-        irradiance[face].reserve(irradianceSize * irradianceSize);
+        environment->pPrefiltered         = environment->pSkybox;
 
-        for (uint32_t y = 0; y < irradianceSize; ++y)
+        constexpr uint32_t irradianceSize = 64;
+
+        HeapVector<HeapVector<Vec4>> irradiance(6);
+
+        for (uint32_t face = 0; face < 6; ++face)
         {
-            for (uint32_t x = 0; x < irradianceSize; ++x)
-            {
-                const Vec3 direction =
-                    CubeDirection(face, 2 * (x + 0.5f) / irradianceSize - 1, 2 * (y + 0.5f) / irradianceSize - 1);
+            irradiance[face].reserve(irradianceSize * irradianceSize);
 
-                irradiance[face].push_back(Vec4(EvaluateIrradiance(light.irradianceCoefficients, direction), 1));
+            for (uint32_t y = 0; y < irradianceSize; ++y)
+            {
+                for (uint32_t x = 0; x < irradianceSize; ++x)
+                {
+                    const Vec3 direction =
+                        CubeDirection(face, 2 * (x + 0.5f) / irradianceSize - 1, 2 * (y + 0.5f) / irradianceSize - 1);
+
+                    irradiance[face].push_back(Vec4(EvaluateIrradiance(light.irradianceCoefficients, direction), 1));
+                }
             }
         }
+
+        UploadEnvironmentCube(irradianceSize, 1, DataFormat::eR32G32B32A32SFloat, irradiance, {}, "gltf_environment_irradiance",
+                              environment->pIrradiance);
+
+        RHISamplerCreateInfo sampler     = RHISamplerCreateInfo::CreateLinearRepeat();
+
+        sampler.repeatU                  = RHISamplerRepeatMode::eClampToEdge;
+
+        sampler.repeatV                  = RHISamplerRepeatMode::eClampToEdge;
+
+        sampler.repeatW                  = RHISamplerRepeatMode::eClampToEdge;
+
+        sampler.maxLod                   = static_cast<float>(light.mipLevels - 1);
+
+        environment->pPrefilteredSampler = m_pRenderDevice->CreateSampler(sampler);
+
+        sampler.maxLod                   = 0;
+
+        environment->pIrradianceSampler  = m_pRenderDevice->CreateSampler(sampler);
+
+        m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer()->PreprocessEnvTexture(environment);
+
+        OwnEnvironmentTextures(environment);
     }
-
-    UploadEnvironmentCube(irradianceSize, 1, irradiance, "gltf_environment_irradiance", environment->pIrradiance);
-
-    RHISamplerCreateInfo sampler     = RHISamplerCreateInfo::CreateLinearRepeat();
-
-    sampler.repeatU                  = RHISamplerRepeatMode::eClampToEdge;
-
-    sampler.repeatV                  = RHISamplerRepeatMode::eClampToEdge;
-
-    sampler.repeatW                  = RHISamplerRepeatMode::eClampToEdge;
-
-    sampler.maxLod                   = static_cast<float>(light.mipLevels - 1);
-
-    environment->pPrefilteredSampler = m_pRenderDevice->CreateSampler(sampler);
-
-    sampler.maxLod                   = 0;
-
-    environment->pIrradianceSampler  = m_pRenderDevice->CreateSampler(sampler);
-
-    m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer()->PreprocessEnvTexture(environment);
-
-    OwnEnvironmentTextures(environment);
 }
 
 void TextureManager::UpdateTexture(RHITexture*& texture, uint32_t dataSize, const uint8_t* data, bool generateMipmaps)

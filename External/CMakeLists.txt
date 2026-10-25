@@ -58,36 +58,6 @@ zen_declare_dependency(stb stb
     https://codeload.github.com/nothings/stb/zip/2c980bb59875b0d32144a71867fbdebb2f77cd20
     8e59f72b0780690cda64726804269f638a3be77b9d1506ea95f443f7964bccf0
     SOURCE_SUBDIR zen-no-cmake)
-# Use fastgltf's supported simdjson version with a checked archive too.
-# simdjson: v4.6.11
-zen_declare_dependency(simdjson simdjson
-    https://codeload.github.com/simdjson/simdjson/zip/refs/tags/v4.6.11
-    5a3bc470d53b0324dfcbef952fdbd004655d7a4f7a6558fb94122cb9f233f2d0)
-# fastgltf: v0.9.1
-zen_declare_dependency(fastgltf fastgltf
-    https://codeload.github.com/spnda/fastgltf/zip/refs/tags/v0.9.1
-    fb3bd2421064cd4d9ec0a774c643c0e174595337dc06ba75b73ec73542caba2d)
-# ufbx: v0.23.1 (MIT or public domain, see External/ufbx/LICENSE).
-zen_declare_dependency(ufbx ufbx
-    https://codeload.github.com/ufbx/ufbx/zip/refs/tags/v0.23.1
-    3e5d8219f5b634fd374949808206eba1a1da49b2b2e3ee31ff0bd228c0abd469
-    SOURCE_SUBDIR zen-no-cmake)
-
-# glTF compression and image formats are decoded to the engine's ordinary buffers.
-zen_declare_dependency(draco draco
-    https://codeload.github.com/google/draco/zip/refs/tags/1.5.7
-    27b72ba2d5ff3d0a9814ad40d4cb88f8dc89a35491c0866d952473f8f9416b77)
-zen_declare_dependency(meshoptimizer meshoptimizer
-    https://codeload.github.com/zeux/meshoptimizer/zip/refs/tags/v1.1
-    6aecc2d3b4328f1f5f4127fb16a144de80cc9eb35c32387807c8c04b0b6dbbf3)
-zen_declare_dependency(libwebp libwebp
-    https://codeload.github.com/webmproject/libwebp/zip/refs/tags/v1.6.0
-    7a89bb7a6a0c30b5c0f521c2673635381b4e7c916585f4a1f702d3b47f15d5e5)
-zen_declare_dependency(basis_universal basis_universal
-    https://codeload.github.com/BinomialLLC/basis_universal/zip/refs/tags/v1_60
-    f79c13343ddab36f3d37629775b9ca8e2fbf55a758d505e2150a8b7faee17d2a
-    SOURCE_SUBDIR zen-no-cmake)
-
 # One window backend and one ImGui platform adapter per executable.
 add_library(zen_window_backend INTERFACE)
 if (ZEN_WINDOW_BACKEND STREQUAL "SDL3")
@@ -124,40 +94,10 @@ set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "Build spdlog tests" FORCE)
 set(SPDLOG_BUILD_TESTS_HO OFF CACHE BOOL "Build header-only spdlog tests" FORCE)
 set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "Build spdlog benchmarks" FORCE)
 set(SPDLOG_INSTALL OFF CACHE BOOL "Install spdlog" FORCE)
-set(SIMDJSON_DEVELOPER_MODE OFF CACHE BOOL "Build simdjson tests and tools" FORCE)
-set(SIMDJSON_INSTALL OFF CACHE BOOL "Install simdjson" FORCE)
-set(FASTGLTF_ENABLE_TESTS OFF CACHE BOOL "Build fastgltf tests" FORCE)
-set(FASTGLTF_ENABLE_EXAMPLES OFF CACHE BOOL "Build fastgltf examples" FORCE)
-set(FASTGLTF_ENABLE_DOCS OFF CACHE BOOL "Build fastgltf docs" FORCE)
-set(FASTGLTF_ENABLE_INSTALL OFF CACHE BOOL "Install fastgltf" FORCE)
 if (ZEN_WINDOW_BACKEND STREQUAL "GLFW")
     FetchContent_MakeAvailable(glfw)
 endif ()
-FetchContent_MakeAvailable(volk vma spdlog spirv_reflect glm gli stb simdjson fastgltf ufbx)
-add_library(zen_ufbx STATIC "${ufbx_SOURCE_DIR}/ufbx.c")
-target_include_directories(zen_ufbx PUBLIC "${ufbx_SOURCE_DIR}")
-set_target_properties(zen_ufbx PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-set(DRACO_TESTS OFF CACHE BOOL "Build Draco tests" FORCE)
-set(DRACO_INSTALL OFF CACHE BOOL "Install Draco" FORCE)
-set(DRACO_JS_GLUE OFF CACHE BOOL "Build Draco JavaScript bindings" FORCE)
-set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "Build meshoptimizer demo" FORCE)
-set(MESHOPT_BUILD_GLTFPACK OFF CACHE BOOL "Build gltfpack" FORCE)
-set(MESHOPT_INSTALL OFF CACHE BOOL "Install meshoptimizer" FORCE)
-foreach(WEBP_TOOL ANIM_UTILS CWEBP DWEBP GIF2WEBP IMG2WEBP VWEBP WEBPINFO LIBWEBPMUX WEBPMUX EXTRAS)
-    set(WEBP_BUILD_${WEBP_TOOL} OFF CACHE BOOL "Build WebP utilities" FORCE)
-endforeach()
-FetchContent_MakeAvailable(draco meshoptimizer libwebp basis_universal)
-
-add_library(zen_basisu_transcoder STATIC
-    "${basis_universal_SOURCE_DIR}/transcoder/basisu_transcoder.cpp"
-    "${basis_universal_SOURCE_DIR}/zstd/zstddeclib.c")
-target_include_directories(zen_basisu_transcoder PUBLIC "${basis_universal_SOURCE_DIR}/transcoder")
-target_compile_definitions(zen_basisu_transcoder PUBLIC BASISD_SUPPORT_KTX2_ZSTD=1)
-add_library(zen_gltf_decoders INTERFACE)
-target_include_directories(zen_gltf_decoders INTERFACE
-    "${libwebp_SOURCE_DIR}/src" "${draco_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}")
-target_link_libraries(zen_gltf_decoders INTERFACE draco::draco meshoptimizer webpdecoder zen_basisu_transcoder simdjson)
+FetchContent_MakeAvailable(volk vma spdlog spirv_reflect glm gli stb)
 
 add_library(vulkan INTERFACE)
 target_include_directories(vulkan INTERFACE "${Vulkan_INCLUDE_DIR}")
@@ -189,6 +129,7 @@ target_link_libraries(gli INTERFACE glm)
 
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE "${stb_SOURCE_DIR}")
+
 
 if (BUILD_TESTING)
     # googletest: v1.18.0

@@ -36,6 +36,16 @@ public:
         return m_vkBuffer;
     }
 
+    const VulkanMemoryAllocation& GetMemoryAllocation() const
+    {
+        return m_memAlloc;
+    }
+
+    uint64_t GetAllocationSize() const override
+    {
+        return m_memAlloc.info.size;
+    }
+
     VkBufferView GetVkBufferView() const
     {
         return m_bufferView;

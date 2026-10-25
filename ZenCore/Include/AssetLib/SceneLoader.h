@@ -30,15 +30,17 @@ struct SceneLoadResult : SceneImportReport
     bool                                            cacheHit{false};
 };
 
-// Discovery and application file filters use the same formats as LoadScene.
+// Runtime discovery includes prepared packages. Source-enabled tools use the
+// mixed discovery/load service in AssetTools/SceneTools.h.
 VectorView<const SceneFormatDescriptor> GetSceneLoadFormats();
 const SceneFormatDescriptor*            FindSceneLoadFormat(const std::string& path);
 // Semicolon-separated extensions without dots, suitable for native file pickers.
 std::string GetSceneFileFilterExtensions();
+std::string GetSceneFileFilterExtensions(VectorView<const SceneFormatDescriptor> formats);
 
-// Runs on the calling thread. A supplied processing pool must remain running and
-// unresized until the call finishes. Do not call from that pool's workers: this
-// function waits for its processing tasks.
+// Loads a prepared package on the calling thread. The optional processing pool
+// argument is retained for API compatibility; runtime package loading is serial.
+// Source files are accepted by the source-enabled LoadSourceScene service instead.
 SceneLoadResult LoadScene(const std::string& path, ThreadPool<void, uint32_t>* processing = nullptr);
 SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, uint32_t>* processing = nullptr);
 

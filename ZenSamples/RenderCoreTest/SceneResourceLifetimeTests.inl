@@ -53,6 +53,126 @@ static void PrepareLifetimeSkybox(RenderDevice* device)
     device->GetRendererServer()->RequestSkyboxRenderer()->Init();
 }
 
+TEST_F(RenderCoreEnvironmentTest, BC6HEnvironmentUploadsAuthoredCubeBlocksAndKeepsFloatIrradiance)
+{
+    PrepareLifetimeSkybox(device);
+    sg::Scene source;
+    AddLifetimeEnvironment(source);
+    sg::ImageBasedLightAsset& light = source.GetAssetData().imageBasedLights[0];
+    light.size                      = 5;
+    light.mipLevels                 = 3;
+    light.specularFormat            = asset::Format::BC6H_UFLOAT_BLOCK;
+    light.specularMipFaces.clear();
+    light.irradianceCoefficients[0] = Vec3(2);
+    SharedPtr<HeapVector<HeapVector<uint8_t>>, MultiThreadCounter> blocks =
+        MakeShared<HeapVector<HeapVector<uint8_t>>, MultiThreadCounter>();
+    for (uint32_t face = 0; face < 18; ++face)
+    {
+        blocks->emplace_back(face < 6 ? 64 : 16, static_cast<uint8_t>(face + 1));
+    }
+    light.specularBlockMipFaces = blocks;
+    StagingBufferManager staging(1024 * 1024, 1024 * 1024);
+    StagingUploadQueue   uploads(device, &staging);
+    StagingAllocation    probe;
+    ASSERT_EQ(staging.Allocate(16, 16, &probe), StagingFlushAction::eNone);
+    TestBuffer*    payload = static_cast<TestBuffer*>(probe.pBuffer);
+    TextureManager textures(device, &uploads);
+    EnvTexture     environment;
+    textures.LoadSceneEnvironment(&source, &environment);
+    ASSERT_TRUE(environment.IsComplete());
+    EXPECT_TRUE(environment.authoredCubemaps);
+    EXPECT_EQ(environment.pPrefiltered, environment.pSkybox);
+    EXPECT_EQ(environment.pSkybox->GetFormat(), DataFormat::eBC6HUFloatBlock);
+    EXPECT_EQ(environment.pSkybox->GetWidth(), 5u);
+    EXPECT_EQ(environment.pSkybox->GetNumMipmaps(), 3u);
+    EXPECT_EQ(environment.pSkybox->GetArrayLayers(), 6u);
+    EXPECT_EQ(environment.pIrradiance->GetFormat(), DataFormat::eR32G32B32A32SFloat);
+    ASSERT_TRUE(uploads.Flush());
+    HeapVector<RHIBufferTextureCopyRegion> copies;
+    for (const TestContext* context : {&rhi->graphics, &rhi->transfer})
+    {
+        copies.insert(copies.end(), context->textureCopies.begin(), context->textureCopies.end());
+        EXPECT_TRUE(context->blits.empty());
+    }
+    ASSERT_EQ(copies.size(), 24u);
+    for (uint32_t face = 0; face < 18; ++face)
+    {
+        const RHIBufferTextureCopyRegion& region = copies[face];
+        const uint32_t                    level  = face / 6;
+        const uint32_t                    extent = std::max(1u, 5u >> level);
+        const uint32_t                    bytes  = level == 0 ? 64 : 16;
+        EXPECT_EQ(region.textureSubresources.mipmap, level);
+        EXPECT_EQ(region.textureSubresources.baseArrayLayer, face % 6);
+        EXPECT_EQ(region.textureSubresources.layerCount, 1u);
+        EXPECT_EQ(region.textureSize, Vec3i(extent, extent, 1));
+        EXPECT_EQ(region.bufferOffset % 16, 0u);
+        ASSERT_LE(region.bufferOffset + bytes, payload->bytes.size());
+        for (uint32_t byte = 0; byte < bytes; ++byte)
+        {
+            EXPECT_EQ(payload->bytes[region.bufferOffset + byte], face + 1);
+        }
+    }
+    Vec4 irradiance;
+    std::memcpy(&irradiance, payload->bytes.data() + copies[18].bufferOffset, sizeof(irradiance));
+    EXPECT_NEAR(irradiance.x, 2.0f * 0.2820947918f / glm::pi<float>(), 1e-6f);
+    textures.ReleaseSceneEnvironment(&environment);
+    staging.Release(probe, {});
+    textures.Destroy();
+    uploads.Destroy();
+    staging.Destroy();
+}
+
+TEST_F(RenderCoreEnvironmentTest, BC6HEnvironmentRejectsMalformedAndUnsupportedCubesWithoutPublication)
+{
+    for (uint32_t scenario = 0; scenario < 5; ++scenario)
+    {
+        sg::Scene source;
+        AddLifetimeEnvironment(source);
+        sg::ImageBasedLightAsset& light = source.GetAssetData().imageBasedLights[0];
+        light.specularFormat            = asset::Format::BC6H_UFLOAT_BLOCK;
+        light.specularMipFaces.clear();
+        SharedPtr<HeapVector<HeapVector<uint8_t>>, MultiThreadCounter> blocks =
+            MakeShared<HeapVector<HeapVector<uint8_t>>, MultiThreadCounter>();
+        *blocks                     = HeapVector<HeapVector<uint8_t>>(6, HeapVector<uint8_t>(16, 0));
+        light.specularBlockMipFaces = blocks;
+        if (scenario == 0)
+        {
+            blocks->back().pop_back();
+        }
+        else if (scenario == 1)
+        {
+            blocks->pop_back();
+        }
+        else if (scenario == 2)
+        {
+            light.specularMipFaces.emplace_back(1, Vec4(1));
+        }
+        else if (scenario == 3)
+        {
+            light.mipLevels = 0;
+        }
+        else
+        {
+            rhi->copyCapabilities[DataFormat::eBC6HUFloatBlock] = {};
+        }
+        StagingBufferManager staging(4096, 4096);
+        StagingUploadQueue   uploads(device, &staging);
+        TextureManager       textures(device, &uploads);
+        EnvTexture           environment;
+        const uint32_t       before = rhi->textureCreations;
+        textures.LoadSceneEnvironment(&source, &environment);
+        EXPECT_FALSE(environment.IsComplete());
+        EXPECT_EQ(environment.pSkybox, nullptr);
+        EXPECT_EQ(environment.pIrradiance, nullptr);
+        EXPECT_FALSE(uploads.HasPending());
+        EXPECT_EQ(rhi->textureCreations, before + (scenario == 4 ? 1u : 0u));
+        textures.Destroy();
+        uploads.Destroy();
+        staging.Destroy();
+        rhi->copyCapabilities.clear();
+    }
+}
+
 TEST_F(RenderCoreTest, SceneTextureReleaseKeepsCachedAssetsAndOtherScenesAlive)
 {
     asset::TextureInfo input{};
@@ -77,9 +197,9 @@ TEST_F(RenderCoreTest, SceneTextureReleaseKeepsCachedAssetsAndOtherScenesAlive)
 
     ASSERT_NE(cached, nullptr);
 
-    HeapVector<RHITexture*> first;
+    HeapVector<RHITextureView*> first;
 
-    HeapVector<RHITexture*> second;
+    HeapVector<RHITextureView*> second;
 
     textures.LoadSceneTextures(&source, first);
 
@@ -91,17 +211,17 @@ TEST_F(RenderCoreTest, SceneTextureReleaseKeepsCachedAssetsAndOtherScenesAlive)
 
     const uint64_t cachedId = cached->GetStableId();
 
-    const uint64_t firstId  = first[0]->GetStableId();
+    const uint64_t firstId  = first[0]->GetTexture()->GetStableId();
 
-    const uint64_t secondId = second[0]->GetStableId();
+    const uint64_t secondId = second[0]->GetTexture()->GetStableId();
 
     ASSERT_TRUE(uploads.Flush());
 
     EXPECT_FALSE(textures.ReleaseSceneTexture(cached));
 
-    EXPECT_TRUE(textures.ReleaseSceneTexture(first[0]));
+    EXPECT_TRUE(textures.ReleaseSceneTexture(first[0]->GetTexture()));
 
-    EXPECT_FALSE(textures.ReleaseSceneTexture(first[0]));
+    EXPECT_FALSE(textures.ReleaseSceneTexture(first[0]->GetTexture()));
 
     EXPECT_FALSE(destroyed.contains(firstId));
 
@@ -142,7 +262,7 @@ TEST_F(RenderCoreTest, PartialSceneTextureAllocationPublishesCleanupHandles)
 
     AddLifetimeTexture(source);
 
-    HeapVector<RHITexture*> outputs;
+    HeapVector<RHITextureView*> outputs;
 
     const size_t before        = rhi->createdTextureIds.size();
 
@@ -156,9 +276,9 @@ TEST_F(RenderCoreTest, PartialSceneTextureAllocationPublishesCleanupHandles)
 
     ASSERT_EQ(rhi->createdTextureIds.size(), before + 1);
 
-    const uint64_t id = outputs[0]->GetStableId();
+    const uint64_t id = outputs[0]->GetTexture()->GetStableId();
 
-    EXPECT_TRUE(device->ReleaseSceneTexture(outputs[0]));
+    EXPECT_TRUE(device->ReleaseSceneTexture(outputs[0]->GetTexture()));
 
     ASSERT_TRUE(device->PrepareForResourceReconfiguration());
 
@@ -179,7 +299,7 @@ TEST_F(RenderCoreTest, FailedTextureStagingRetiresUnpublishedDestination)
 
     rhi->failBufferCreationAt = rhi->bufferCreations + 1;
 
-    HeapVector<RHITexture*> outputs;
+    HeapVector<RHITextureView*> outputs;
 
     textures.LoadSceneTextures(&source, outputs);
 
@@ -248,7 +368,13 @@ TEST_F(RenderCoreEnvironmentTest, SceneReadinessRejectsMissingBuffersTexturesAnd
         *buffer = saved;
     }
 
-    RHITexture** textures[] = {&sceneInputs.textures[0], &sceneInputs.environment.pSkybox, &sceneInputs.environment.pIrradiance,
+    RHITextureView* savedView = sceneInputs.textures[0];
+    sceneInputs.textures[0]   = nullptr;
+    RenderScene missingView(device, data);
+    EXPECT_FALSE(missingView.HasRequiredResources());
+    sceneInputs.textures[0] = savedView;
+
+    RHITexture** textures[] = {&sceneInputs.environment.pSkybox, &sceneInputs.environment.pIrradiance,
                                &sceneInputs.environment.pPrefiltered, &sceneInputs.environment.pLutBRDF};
 
     for (RHITexture** texture : textures)
@@ -390,7 +516,7 @@ TEST_F(RenderCoreEnvironmentTest, ProductionSceneDestroyRetiresBuffersAndAliased
 
     ASSERT_EQ(sceneInputs.textures.size(), 1u);
 
-    ids.push_back(sceneInputs.textures[0]->GetStableId());
+    ids.push_back(sceneInputs.textures[0]->GetTexture()->GetStableId());
 
     sceneInputs.textures.push_back(sceneInputs.textures[0]);
 
@@ -424,7 +550,7 @@ TEST_F(RenderCoreEnvironmentTest, ProductionSceneDestroyRetiresBuffersAndAliased
 
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), nullptr);
 
-    EXPECT_TRUE(scene.GetSceneTextures().empty());
+    EXPECT_TRUE(scene.GetSceneTextureViews().empty());
 
     EXPECT_EQ(scene.GetEnvTexture().pSkybox, nullptr);
 

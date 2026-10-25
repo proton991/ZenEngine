@@ -92,14 +92,13 @@ bool ImageUsageAllowsViews(VkImageUsageFlags usage)
 
 bool IsTextureViewFormatSupported(const RHITextureCreateInfo& image, DataFormat format)
 {
-    const uint32_t pixelSize = GetTextureFormatPixelSize(format);
-    // Current RHI color formats are uncompressed: their Vulkan compatibility class is their texel size.
+    // Compressed images require a compatible block class, not just equal bytes.
     // Depth/stencil formats are only compatible with themselves.
-    bool supported = pixelSize != 0
+    bool supported = GetTextureFormatBlockInfo(format).bytes != 0
                   && (format == image.format
                       || (image.mutableFormat && GetTextureFormatAspects(image.format).HasFlag(RHITextureAspectFlagBits::eColor)
                           && GetTextureFormatAspects(format).HasFlag(RHITextureAspectFlagBits::eColor)
-                          && pixelSize == GetTextureFormatPixelSize(image.format)));
+                          && AreTextureColorViewFormatsCompatible(image.format, format)));
     if (supported && format != image.format)
     {
         VkFormatProperties properties{};
@@ -134,7 +133,7 @@ bool IsClampAddressMode(RHISamplerRepeatMode mode)
 const char* ValidateTextureDescription(const RHITextureCreateInfo& info)
 {
     const char* error = nullptr;
-    if (info.format == DataFormat::eUndefined || GetTextureFormatPixelSize(info.format) == 0 || info.usageFlags.IsEmpty())
+    if (info.format == DataFormat::eUndefined || GetTextureFormatBlockInfo(info.format).bytes == 0 || info.usageFlags.IsEmpty())
     {
         error = "format and usage must be specified";
     }
@@ -145,6 +144,11 @@ const char* ValidateTextureDescription(const RHITextureCreateInfo& info)
     else if (info.type == RHITextureType::eCube && info.arrayLayers > 6 && !GVulkanRHI->QueryGPUInfo().supportImageCubeArray)
     {
         error = "cube arrays are unsupported";
+    }
+    else if (GetTextureFormatBlockInfo(info.format).width > 1
+             && GVulkanRHI->GetDevice()->GetPhysicalDeviceFeatures().textureCompressionBC != VK_TRUE)
+    {
+        error = "BC texture compression is unsupported";
     }
     else
     {

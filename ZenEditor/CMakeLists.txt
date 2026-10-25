@@ -1,3 +1,7 @@
+if(NOT ZEN_BUILD_ASSET_TOOLS)
+  message(FATAL_ERROR "ZenEditor requires ZEN_BUILD_ASSET_TOOLS; disable ZEN_BUILD_EDITOR for a runtime-only build")
+endif()
+
 # Each library has its own include root, so a layer cannot include headers of a layer
 # it does not link. Dependencies point downward: UI -> Services -> Render -> Model.
 
@@ -18,7 +22,7 @@ add_library(ZenEditorModel STATIC
   Model/Source/SceneAssets.cpp
   Model/Source/ViewAxes.cpp)
 target_include_directories(ZenEditorModel PUBLIC Model/Include)
-target_link_libraries(ZenEditorModel PUBLIC ZenCore)
+target_link_libraries(ZenEditorModel PUBLIC ZenCore ZenEngineAssetTools PRIVATE ZenAsset::Reader)
 
 # GPU publication, offscreen images, selection overlay, picking and previews.
 # Reads the model and never changes it.
@@ -59,6 +63,7 @@ add_library(ZenEditorUI STATIC
   ImGui/Source/EditorWorkspace.cpp
   ImGui/Source/InspectorNavigationWidget.cpp
   ImGui/Source/SceneLoadingDialog.cpp
+  ImGui/Source/SceneProcessingWidget.cpp
   ImGui/Source/MeshPreviewWidget.cpp
   ImGui/Source/SceneViewOverlays.cpp
   ImGui/Source/LightMoveWidget.cpp

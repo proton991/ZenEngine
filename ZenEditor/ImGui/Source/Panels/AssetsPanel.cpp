@@ -1,5 +1,6 @@
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
+#include "SceneProcessingWidget.h"
 
 namespace zen::editor
 {
@@ -229,6 +230,35 @@ private:
 
         ImGui::Separator();
 
+        if (ImGui::CollapsingHeader("Source processing"))
+        {
+            const SceneProcessingState& processing = context.editor.GetSourceProcessing();
+            SceneProcessingSettings     draft      = processing.draft;
+            if (DrawSceneProcessingSettings(draft))
+            {
+                context.editor.StageSourceProcessing(draft);
+            }
+            if (!processing.error.empty())
+            {
+                DrawStatusText(GetEditorPalette().error, processing.error.c_str());
+            }
+            if (!processing.sourcePath.empty())
+            {
+                ImGui::TextWrapped("Applied: %s%s", processing.applied.desktop ? "Desktop" : "Reference",
+                                   processing.cacheHit ? " (cache hit)" : "");
+            }
+            else if (scene != nullptr)
+            {
+                ImGui::TextWrapped("Package loaded as stored. Open its original source to recook.");
+            }
+            ImGui::BeginDisabled(!context.editor.CanRecook());
+            if (ImGui::Button("Recook from Source"))
+            {
+                context.editor.GetActions().Execute(actions::Recook);
+            }
+            ImGui::EndDisabled();
+        }
+
         if (!context.editor.GetError().empty())
         {
             DrawStatusText(GetEditorPalette().error, context.editor.GetError().c_str());
@@ -242,6 +272,14 @@ private:
         if (!diagnostics.empty() && ImGui::CollapsingHeader("Import diagnostics"))
         {
             for (const asset::SceneImportDiagnostic& diagnostic : diagnostics)
+            {
+                ImGui::TextWrapped("%s: %s", diagnostic.object.c_str(), diagnostic.message.c_str());
+            }
+        }
+        const HeapVector<asset::SceneImportDiagnostic>& attempt = context.editor.GetLastLoadDiagnostics();
+        if (!attempt.empty() && ImGui::CollapsingHeader("Last load / recook messages"))
+        {
+            for (const asset::SceneImportDiagnostic& diagnostic : attempt)
             {
                 ImGui::TextWrapped("%s: %s", diagnostic.object.c_str(), diagnostic.message.c_str());
             }

@@ -55,6 +55,9 @@ void BuildImagesAndMaterials(const SceneAsset& asset, sg::Scene& scene)
         texture->height                = texture->pixels->height;
         texture->format                = source.format;
         texture->flatNormal            = source.flatNormal;
+        texture->interpretation        = source.interpretation;
+        texture->arrayLayer            = source.arrayLayer;
+        texture->atlasRegion           = source.atlasRegion;
         scene.AddComponent(std::move(texture));
     }
     const HeapVector<sg::Texture*> textures = scene.GetComponents<sg::Texture>();

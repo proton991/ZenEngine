@@ -50,6 +50,12 @@ public:
         m_hybridCaptureOutput   = output;
         m_hybridCaptureReadback = readback;
     }
+    // Opt in before capture. Exact guide accumulation costs more shared memory
+    // and invalidates each view's history on change; normal rendering stays off.
+    void SetDeterministicGuideCapture(bool enabled)
+    {
+        m_deterministicGuideCapture = enabled;
+    }
 
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection);
 
@@ -135,6 +141,7 @@ private:
     HybridGIRenderer*      m_hybrid{nullptr};
     RHIBuffer*             m_hybridCaptureOutput{nullptr};
     RHIBuffer*             m_hybridCaptureReadback{nullptr};
+    bool                   m_deterministicGuideCapture{false};
     RenderDevice*          m_pRenderDevice{nullptr};
 
     RenderScene* m_pScene{nullptr};

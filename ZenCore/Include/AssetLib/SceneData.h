@@ -1,6 +1,8 @@
 #pragma once
 #include "Math/Math.h"
 #include "AssetLib/AnimationTarget.h"
+#include "AssetLib/Types.h"
+#include "Utils/SharedPtr.h"
 #include "Templates/HeapVector.h"
 #include "Templates/SmallVector.h"
 #include <string>
@@ -177,6 +179,10 @@ struct ImageBasedLightAsset
     uint32_t         mipLevels{0};
     // Linear HDR RGBA pixels, indexed by mip * 6 + (+X, -X, +Y, -Y, +Z, -Z).
     HeapVector<HeapVector<Vec4>> specularMipFaces;
+    Format                       specularFormat{Format::R32G32B32A32_SFLOAT};
+    // Compressed authored cube faces share immutable storage across runtime instances.
+    // Only the array matching specularFormat is populated; raw callers retain their existing fields.
+    SharedPtr<const HeapVector<HeapVector<uint8_t>>, MultiThreadCounter> specularBlockMipFaces;
 };
 
 } // namespace zen::asset

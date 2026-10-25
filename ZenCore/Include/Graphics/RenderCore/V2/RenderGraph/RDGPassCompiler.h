@@ -235,7 +235,7 @@ struct RDGPassDescBase
         bufferStorage.push_back(buffers);
     }
 
-    void BindSeparateTexture(NameID glslName, VectorView<RHITextureView*> textureViews)
+    void BindSeparateTexture(NameID glslName, VectorView<RHITextureView* const> textureViews)
     {
         RDGTextureBinding& binding = separateTexBindings.emplace_back();
         binding.glslName           = glslName;

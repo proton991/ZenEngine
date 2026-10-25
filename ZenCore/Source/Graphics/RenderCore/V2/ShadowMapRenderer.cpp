@@ -134,7 +134,7 @@ void ShadowMapRenderer::BuildRenderGraph()
 
     desc.BindStorageBuffer("UVBuffer", m_pScene->GetUVBuffer());
 
-    BindSceneTextureArray(desc, m_pColorSampler, m_pScene->GetSceneTextures(), m_pScene->GetSceneSamplers());
+    BindSceneTextureArray(desc, m_pColorSampler, m_pScene->GetSceneTextureViews(), m_pScene->GetSceneSamplers());
 
     const sg::CameraUniformData* camera = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
 

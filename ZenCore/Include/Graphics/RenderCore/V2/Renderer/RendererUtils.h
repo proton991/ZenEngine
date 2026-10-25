@@ -70,19 +70,11 @@ inline void ClearPassResourceBindings(RDGPassDescBase& desc)
     desc.logicalIndirectBuffers.clear();
 }
 
-inline void BindSceneTextureArray(RDGPassDescBase&               desc,
-                                  RHISampler*                    pSampler,
-                                  const HeapVector<RHITexture*>& textures,
-                                  const HeapVector<RHISampler*>& samplers = {})
+inline void BindSceneTextureArray(RDGPassDescBase&                   desc,
+                                  RHISampler*                        pSampler,
+                                  const HeapVector<RHITextureView*>& views,
+                                  const HeapVector<RHISampler*>&     samplers = {})
 {
-    HeapVector<RHITextureView*> views;
-    views.reserve(textures.size());
-
-    for (RHITexture* pTexture : textures)
-    {
-        views.push_back(pTexture->GetDefaultView());
-    }
-
     // Slot zero is the fallback; glTF sampler indices begin at slot one.
     if (!views.empty())
     {

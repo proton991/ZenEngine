@@ -266,7 +266,7 @@ void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, bo
 
     pass.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
 
-    BindSceneTextureArray(pass, m_materialSampler, scene.GetSceneTextures(), scene.GetSceneSamplers());
+    BindSceneTextureArray(pass, m_materialSampler, scene.GetSceneTextureViews(), scene.GetSceneSamplers());
 
     pass.BindVertexBuffer(scene.GetVertexBuffer());
 

@@ -582,7 +582,20 @@ void FVulkanCommandBuffer::BeginGPUTiming(const RHIGPUTimingPtr& result)
         {
             if (!m_timestampsReset)
             {
-                vkCmdResetQueryPool(m_vkHandle, m_timestampPool, 0, 2 * kMaxGPUTimingScopes);
+                VulkanDevice*                  device = GVulkanRHI->GetDevice();
+                const VkQueueFamilyProperties& family =
+                    device->GetQueueFamilyProperties(m_pCmdBufferPool->GetQueue()->GetFamilyIndex());
+
+                if ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0)
+                {
+                    vkCmdResetQueryPool(m_vkHandle, m_timestampPool, 0, 2 * kMaxGPUTimingScopes);
+                }
+                else
+                {
+                    // This buffer exclusively owns the pool. Reuse follows completion/readback
+                    // or discard of unsubmitted work; no submitted query can still be using it.
+                    vkResetQueryPool(device->GetVkHandle(), m_timestampPool, 0, 2 * kMaxGPUTimingScopes);
+                }
 
                 m_timestampsReset = true;
             }
@@ -615,11 +628,12 @@ RHIGPUTimingStatus FVulkanCommandBuffer::PrepareGPUTimingPool()
 
         m_timestampPeriod    = device->GetPhysicalDeviceProperties().limits.timestampPeriod;
 
-        // Command-buffer query resets require graphics or compute capability.
-        // Dedicated transfer timing would need the optional hostQueryReset feature.
-        if ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 || m_timestampValidBits == 0
-            || m_timestampValidBits > 64 || !std::isfinite(m_timestampPeriod) || m_timestampPeriod <= 0
-            || vkCreateQueryPool == nullptr || vkDestroyQueryPool == nullptr || vkCmdResetQueryPool == nullptr
+        const bool canReset  = (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0
+                                 ? vkCmdResetQueryPool != nullptr
+                                 : device->GetExtensionFlags().hasHostQueryReset && vkResetQueryPool != nullptr;
+
+        if (!canReset || m_timestampValidBits == 0 || m_timestampValidBits > 64 || !std::isfinite(m_timestampPeriod)
+            || m_timestampPeriod <= 0 || vkCreateQueryPool == nullptr || vkDestroyQueryPool == nullptr
             || vkCmdWriteTimestamp == nullptr || vkGetQueryPoolResults == nullptr)
         {
             status = RHIGPUTimingStatus::eUnsupported;

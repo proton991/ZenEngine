@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "Editor/Model/EditorScene.h"
 #include "Editor/Model/EditorText.h"
 #include "AssetLib/SceneLoader.h"
@@ -49,7 +50,7 @@ const HeapVector<NodeId>& GetEmptyNodeList()
 
 UniquePtr<LoadedScene> ParseScene(const std::string& path, std::string& error)
 {
-    asset::SceneLoadResult result = asset::LoadScene(path);
+    asset::SceneLoadResult result = asset::LoadSourceScene(path);
     error                         = std::move(result.error);
     return std::move(result.scene);
 }

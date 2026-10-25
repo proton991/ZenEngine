@@ -16,12 +16,16 @@ std::string DigestText(AssetDigest digest)
     return text;
 }
 
-bool HashAssetFile(const std::string& path, AssetDigest& digest, SceneImportControl* control)
+bool HashAssetFile(const std::string&  path,
+                   AssetDigest&        digest,
+                   SceneImportControl* control,
+                   SceneImportControl* secondaryControl)
 {
     std::error_code             error;
     const std::filesystem::path file   = std::filesystem::u8path(path);
     FILE*                       stream = nullptr;
-    if (std::filesystem::is_regular_file(file, error) && (control == nullptr || !control->IsCancelled()))
+    if (std::filesystem::is_regular_file(file, error) && (control == nullptr || !control->IsCancelled())
+        && (secondaryControl == nullptr || !secondaryControl->IsCancelled()))
     {
 #if defined(_WIN32)
         stream = _wfopen(file.c_str(), L"rb");
@@ -40,7 +44,8 @@ bool HashAssetFile(const std::string& path, AssetDigest& digest, SceneImportCont
         {
             transferred = std::fread(buffer.data(), 1, buffer.size(), stream);
             hash.Update(buffer.data(), transferred);
-            valid = std::ferror(stream) == 0 && (control == nullptr || !control->IsCancelled());
+            valid = std::ferror(stream) == 0 && (control == nullptr || !control->IsCancelled())
+                 && (secondaryControl == nullptr || !secondaryControl->IsCancelled());
         }
         valid &= std::fclose(stream) == 0;
         if (valid)

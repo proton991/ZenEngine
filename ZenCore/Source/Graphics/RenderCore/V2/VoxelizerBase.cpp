@@ -330,7 +330,7 @@ void VoxelizerBase::BindVoxelScene(RDGPassDescBase& pass) const
     pass.BindValue("uVoxelGrid", VoxelGridUniform{Vec4(GetSceneMinPoint(), GetVoxelSize()),
                                                   glm::uvec4(GI_ALL, m_voxelTextures.pClassOwner != nullptr ? 1 : 0, 0, 0)});
 
-    BindSceneTextureArray(pass, m_pColorSampler, m_pScene->GetSceneTextures(), m_pScene->GetSceneSamplers());
+    BindSceneTextureArray(pass, m_pColorSampler, m_pScene->GetSceneTextureViews(), m_pScene->GetSceneSamplers());
 }
 
 void VoxelizerBase::BindOwners(RDGPassDescBase& pass) const

@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "Editor/ImGui/EditorWorkspace.h"
 #include "EditorShortcuts.h"
 #include "EditorWidgets.h"
@@ -568,6 +569,8 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
 
             if (ImGui::BeginMenu("Scene"))
             {
+                DrawActionMenuItem(registry, actions::Recook);
+                ImGui::Separator();
                 DrawActionMenuItem(registry, actions::FrameAll);
 
                 DrawActionMenuItem(registry, actions::FrameSelection);
@@ -721,12 +724,13 @@ void EditorWorkspace::DrawStatusBar(EditorContext& context)
 
     if (load.IsActive())
     {
-        ImGui::TextDisabled("Opening %s...", PathToUtf8(std::filesystem::u8path(load.path).filename()).c_str());
+        ImGui::TextDisabled("%s %s...", load.recook ? "Recooking" : "Opening",
+                            PathToUtf8(std::filesystem::u8path(load.path).filename()).c_str());
     }
     else if (load.stage == SceneLoadStage::Failed)
     {
         // Matches the failure dialog: dismissing it returns to the scene that stayed open.
-        ImGui::TextColored(palette.error, "Could not open scene");
+        ImGui::TextColored(palette.error, "Could not %s scene", load.recook ? "recook" : "open");
 
         if (ImGui::IsItemHovered())
         {
@@ -845,7 +849,7 @@ void EditorWorkspace::DrawDialogs(EditorContext& context)
 
     if (ImGui::BeginPopupModal("Open Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     {
-        ImGui::TextWrapped("Enter an absolute scene path (%s):", asset::GetSceneFileFilterExtensions().c_str());
+        ImGui::TextWrapped("Enter an absolute scene path (%s):", asset::GetSourceSceneFileFilterExtensions().c_str());
 
         ImGui::SetNextItemWidth(520 * ImGui::GetStyle().FontScaleMain);
 

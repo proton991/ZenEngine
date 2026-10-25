@@ -87,25 +87,25 @@ Corpus success does not establish pixel-perfect reference-renderer conformance f
 
 ## Reproducible verification
 
-Build `CommonTest`, `ConfigLoaderTest`, `RenderCoreTest`, `GLTFCorpusImport`, and `scene_renderer_demo`. Shader variants compile with the build. The native verifier isolates models, checks retained structure, samples every animation, tests variants, and verifies finite geometry/matrices and posed bounds.
+Importer tests and `GLTFCorpusImport` now belong to the optional [ZenAssetProcessor consumer suite](../../ZenAssetProcessor/tests/integration/zenengine/README.md). Configure that suite explicitly to build `ZenAssetEngineTests` and `GLTFCorpusImport`; the normal engine build provides `ConfigLoaderTest`, `RenderCoreTest`, and `scene_renderer_demo`. Shader variants compile with the build. The native verifier isolates models, checks retained structure, samples every animation, tests variants, and verifies finite geometry/matrices and posed bounds.
 
 ```powershell
-python tools/verify_gltf_corpus.py --assets D:/Dev/glTF-Sample-Assets --importer build/dependency-migration/debug/bin/GLTFCorpusImport.exe --report build/gltf-corpus-results.json --jobs 2
-python tools/smoke_gltf_rendering.py --all --assets D:/Dev/glTF-Sample-Assets --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe --output build/gltf-corpus-render --mode 2 --frames 3 --width 640 --height 480 --timeout 180
-python tools/smoke_gltf_rendering.py --assets D:/Dev/glTF-Sample-Assets --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe --output build/gltf-gi-final --mode 3
-python tools/verify_gltf_material_effects.py prepare
-python tools/verify_gltf_material_effects.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
-python tools/verify_gltf_material_effects.py analyze
-python tools/verify_gltf_unlit_alpha.py prepare
-python tools/verify_gltf_unlit_alpha.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
-python tools/verify_gltf_unlit_alpha.py analyze
-python tools/verify_gltf_unit_scaling.py prepare
-python tools/verify_gltf_unit_scaling.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
-python tools/verify_gltf_unit_scaling.py analyze
-python tools/verify_gltf_cameras.py prepare
-python tools/verify_gltf_cameras.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
-python tools/verify_gltf_cameras.py analyze
-python tools/verify_gltf_review_regressions.py --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
+python ../ZenAssetProcessor/tools/validation/verify_gltf_corpus.py --assets D:/Dev/glTF-Sample-Assets --importer build/dependency-migration/debug/bin/GLTFCorpusImport.exe --report build/gltf-corpus-results.json --jobs 2
+python ../ZenAssetProcessor/tools/validation/smoke_gltf_rendering.py --all --assets D:/Dev/glTF-Sample-Assets --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe --output build/gltf-corpus-render --mode 2 --frames 3 --width 640 --height 480 --timeout 180
+python ../ZenAssetProcessor/tools/validation/smoke_gltf_rendering.py --assets D:/Dev/glTF-Sample-Assets --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe --output build/gltf-gi-final --mode 3
+python ../ZenAssetProcessor/tools/validation/verify_gltf_material_effects.py prepare
+python ../ZenAssetProcessor/tools/validation/verify_gltf_material_effects.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
+python ../ZenAssetProcessor/tools/validation/verify_gltf_material_effects.py analyze
+python ../ZenAssetProcessor/tools/validation/verify_gltf_unlit_alpha.py prepare
+python ../ZenAssetProcessor/tools/validation/verify_gltf_unlit_alpha.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
+python ../ZenAssetProcessor/tools/validation/verify_gltf_unlit_alpha.py analyze
+python ../ZenAssetProcessor/tools/validation/verify_gltf_unit_scaling.py prepare
+python ../ZenAssetProcessor/tools/validation/verify_gltf_unit_scaling.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
+python ../ZenAssetProcessor/tools/validation/verify_gltf_unit_scaling.py analyze
+python ../ZenAssetProcessor/tools/validation/verify_gltf_cameras.py prepare
+python ../ZenAssetProcessor/tools/validation/verify_gltf_cameras.py render --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
+python ../ZenAssetProcessor/tools/validation/verify_gltf_cameras.py analyze
+python ../ZenAssetProcessor/tools/validation/verify_gltf_review_regressions.py --renderer build/dependency-migration/debug/bin/scene_renderer_demo.exe
 ```
 
 Run render scripts sequentially; they restore the original `Data/engine.cfg` bytes. Vulkan validation, capture integrity, material-factor ablations, known-color alpha probes, and equivalent-unit renders cover different failures. Completely black captures with active geometry fail the render check. Ablations establish visible foreground contributions, not reference-image conformance.

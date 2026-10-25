@@ -752,6 +752,291 @@ TEST(EditorModel, TexturesFoldLinearCopiesAndAnimationsListTheirTargets)
     EXPECT_TRUE(preview.pixels.empty());
 }
 
+TEST(EditorModel, SpatialPreviewUsesLogicalDimensionsTexelsAndMutableOverrides)
+{
+    SharedPtr<asset::ImagePixels, MultiThreadCounter> pixels = MakeShared<asset::ImagePixels, MultiThreadCounter>();
+    pixels->width                                            = 32;
+    pixels->height                                           = 16;
+    pixels->bytes                                            = HeapVector<uint8_t>(32 * 16 * 4, 255);
+    sg::Texture reference;
+    reference.width  = 8;
+    reference.height = 4;
+    reference.format = asset::Format::R8G8B8A8_SRGB;
+    reference.bytesData.resize(8 * 4 * 4);
+    for (uint32_t y = 0; y < 4; ++y)
+    {
+        for (uint32_t x = 0; x < 8; ++x)
+        {
+            const uint8_t color[]{uint8_t(10 + x * 10), uint8_t(20 + y * 20), 30, 0};
+            std::copy(std::begin(color), std::end(color), reference.bytesData.begin() + (y * 8 + x) * 4);
+            std::copy(std::begin(color), std::end(color), pixels->bytes.begin() + ((y + 4) * 32 + x + 4) * 4);
+        }
+    }
+    pixels->mips.push_back(pixels->bytes);
+    UniquePtr<sg::Texture> owner   = MakeUnique<sg::Texture>("Spatial tile");
+    sg::Texture&           texture = *owner;
+    texture.width                  = 32;
+    texture.height                 = 16;
+    texture.pixels                 = pixels;
+    texture.atlasRegion            = {4, 4, 8, 4};
+    for (asset::Format format : {asset::Format::R8G8B8A8_UNORM, asset::Format::R8G8B8A8_SRGB})
+    {
+        texture.format = reference.format = format;
+        for (uint32_t bound : {1u, 2u, 4u, 8u, 32u})
+        {
+            TexturePreview preview;
+            TexturePreview expected;
+            ASSERT_TRUE(MakeTexturePreview(texture, bound, preview));
+            ASSERT_TRUE(MakeTexturePreview(reference, bound, expected));
+            EXPECT_EQ(preview.width, expected.width);
+            EXPECT_EQ(preview.height, expected.height);
+            EXPECT_TRUE(
+                std::equal(preview.pixels.begin(), preview.pixels.end(), expected.pixels.begin(), expected.pixels.end()));
+        }
+    }
+    sg::Texture other;
+    other.width       = texture.width;
+    other.height      = texture.height;
+    other.format      = texture.format;
+    other.pixels      = texture.pixels;
+    other.atlasRegion = texture.atlasRegion;
+    EXPECT_EQ(texture, other);
+    other.atlasRegion = {16, 4, 8, 4};
+    EXPECT_NE(texture, other);
+    texture.bytesData = reference.bytesData;
+    texture.width     = 8;
+    texture.height    = 4;
+    EXPECT_EQ(texture.GetAtlasRegion(), asset::ImageRegion{});
+    TexturePreview local;
+    ASSERT_TRUE(MakeTexturePreview(texture, 8, local));
+    EXPECT_EQ(local.width, 8u);
+    EXPECT_EQ(local.height, 4u);
+    EXPECT_EQ(local.pixels[0], 10u);
+    asset::TextureInfo info;
+    info.width = info.height = 1;
+    info.format              = asset::Format::R8G8B8A8_UNORM;
+    info.data                = {40, 50, 60, 255};
+    texture.Init(0, info);
+    EXPECT_EQ(texture.atlasRegion, asset::ImageRegion{});
+    EXPECT_FALSE(texture.pixels);
+    texture.bytesData.clear();
+    texture.width       = 32;
+    texture.height      = 16;
+    texture.pixels      = pixels;
+    texture.atlasRegion = {4, 4, 8, 4};
+    sg::Scene scene;
+    scene.AddComponent(std::move(owner));
+    SceneAssetIndex index;
+    index.Build(&scene, 1);
+    const HeapVector<SceneAssetItem> assets     = index.Query("");
+    const SceneAssetId               id         = FindAsset(assets, SceneAssetKind::Texture);
+    const SceneAssetInspection       inspection = index.Inspect(id);
+    ASSERT_TRUE(inspection.valid);
+    EXPECT_EQ(inspection.item.width, 8u);
+    EXPECT_EQ(inspection.item.height, 4u);
+    EXPECT_EQ(inspection.mipLevels, 1u);
+    EXPECT_EQ(inspection.bytes, 32u * 16u * 4u); // Shared physical storage, not a copied tile.
+}
+
+TEST(EditorModel, SpatialPreviewRejectsInvalidRegionsAndPhysicalStorage)
+{
+    SharedPtr<asset::ImagePixels, MultiThreadCounter> pixels = MakeShared<asset::ImagePixels, MultiThreadCounter>();
+    pixels->width = pixels->height = 16;
+    pixels->bytes                  = HeapVector<uint8_t>(16 * 16 * 4, 127);
+    pixels->mips.push_back(pixels->bytes);
+    sg::Texture texture;
+    texture.width = texture.height = 16;
+    texture.format                 = asset::Format::R8G8B8A8_UNORM;
+    texture.pixels                 = pixels;
+    TexturePreview preview;
+    for (const asset::ImageRegion region :
+         {asset::ImageRegion{0, 0, 0, 4}, {UINT32_MAX, 4, 4, 4}, {4, 4, UINT32_MAX, 4}, {15, 4, 4, 4}})
+    {
+        texture.atlasRegion = region;
+        EXPECT_FALSE(MakeTexturePreview(texture, 4, preview));
+        EXPECT_TRUE(preview.pixels.empty());
+    }
+    texture.atlasRegion = {4, 4, 4, 4};
+    EXPECT_FALSE(MakeTexturePreview(texture, 0, preview));
+    pixels->mips[0].pop_back();
+    EXPECT_FALSE(MakeTexturePreview(texture, 4, preview));
+    pixels->mips[0] = pixels->bytes;
+    pixels->mips.emplace_back(8 * 8 * 4, 127);
+    EXPECT_FALSE(MakeTexturePreview(texture, 4, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+    pixels->mips.clear();
+    EXPECT_FALSE(MakeTexturePreview(texture, 4, preview));
+}
+
+TEST(EditorModel, ArrayTexturePreviewsSelectLogicalLayersAndMutableOverrides)
+{
+    SharedPtr<asset::ImagePixels, MultiThreadCounter> pixels = MakeShared<asset::ImagePixels, MultiThreadCounter>();
+    pixels->width = pixels->height = 2;
+    pixels->arrayLayers            = 2;
+    pixels->bytes                  = HeapVector<uint8_t>(32, 40);
+    std::fill(pixels->bytes.begin() + 16, pixels->bytes.end(), 180);
+    pixels->mips.push_back(pixels->bytes);
+    sg::Texture texture;
+    texture.width = texture.height = 2;
+    texture.format                 = asset::Format::R8G8B8A8_UNORM;
+    texture.pixels                 = pixels;
+    TexturePreview preview;
+    for (uint32_t layer = 0; layer < 2; ++layer)
+    {
+        texture.arrayLayer = layer;
+        ASSERT_TRUE(MakeTexturePreview(texture, 1, preview));
+        ASSERT_EQ(preview.pixels.size(), 4u);
+        EXPECT_EQ(preview.pixels[0], layer == 0 ? 40 : 180);
+    }
+    texture.arrayLayer = 2;
+    EXPECT_FALSE(MakeTexturePreview(texture, 1, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+    texture.arrayLayer = 1;
+    pixels->mips[0].pop_back();
+    EXPECT_FALSE(MakeTexturePreview(texture, 1, preview));
+    texture.bytesData.resize(16, 70);
+    ASSERT_TRUE(MakeTexturePreview(texture, 1, preview));
+    EXPECT_EQ(preview.pixels[0], 70);
+    EXPECT_EQ(texture.GetArrayLayers(), 1u);
+    EXPECT_EQ(texture.GetArrayLayer(), 0u);
+}
+
+TEST(EditorModel, BC7ArrayPreviewSelectsTheLayerWithinTheChosenMip)
+{
+    const uint8_t red[]   = {0x40, 0x32, 0x99, 0x42, 0x51, 0x28, 0x80, 0x40, 0, 0, 0, 0, 0, 0, 0, 0};
+    const uint8_t green[] = {0x40, 0x85, 0x42, 0xab, 0xf5, 0x78, 0x40, 0x20, 0, 0, 0, 0, 0, 0, 0, 0};
+    SharedPtr<asset::ImagePixels, MultiThreadCounter> pixels = MakeShared<asset::ImagePixels, MultiThreadCounter>();
+    pixels->width                                            = 5;
+    pixels->height                                           = 7;
+    pixels->format                                           = asset::Format::BC7_SRGB_BLOCK;
+    pixels->arrayLayers                                      = 2;
+    pixels->mips.emplace_back(128, 0); // Invalid unsampled base blocks on both layers.
+    pixels->mips.emplace_back(red, std::size(red));
+    pixels->mips.back().push_back(VectorView<const uint8_t>(green, std::size(green)));
+    pixels->bytes = pixels->mips[0];
+    sg::Texture texture;
+    texture.width  = 5;
+    texture.height = 7;
+    texture.format = pixels->format;
+    texture.pixels = pixels;
+    TexturePreview preview;
+    for (uint32_t layer = 0; layer < 2; ++layer)
+    {
+        texture.arrayLayer = layer;
+        ASSERT_TRUE(MakeTexturePreview(texture, 3, preview));
+        EXPECT_EQ(preview.width, 2u);
+        EXPECT_EQ(preview.height, 3u);
+        EXPECT_EQ(preview.pixels[0], layer == 0 ? 200 : 20);
+        EXPECT_EQ(preview.pixels[1], layer == 0 ? 40 : 180);
+        EXPECT_FALSE(MakeTexturePreview(texture, 7, preview));
+    }
+    texture.arrayLayer = 2;
+    EXPECT_FALSE(MakeTexturePreview(texture, 3, preview));
+}
+
+TEST(EditorModel, Bc7TexturePreviewSelectsSuppliedMipsAndPreservesStoredColor)
+{
+    // Mode 6 constant blocks with even endpoint values and zero indices.
+    const uint8_t red[]   = {0x40, 0x32, 0x99, 0x42, 0x51, 0x28, 0x80, 0x40, 0, 0, 0, 0, 0, 0, 0, 0};
+    const uint8_t green[] = {0x40, 0x85, 0x42, 0xab, 0xf5, 0x78, 0x40, 0x20, 0, 0, 0, 0, 0, 0, 0, 0};
+    sg::Texture   texture;
+    texture.width  = 5;
+    texture.height = 7;
+    texture.format = asset::Format::BC7_SRGB_BLOCK;
+    texture.mipBytes.emplace_back(64, 0);                   // Invalid unsampled base blocks.
+    texture.mipBytes.emplace_back(red, std::size(red));     // 2x3.
+    texture.mipBytes.emplace_back(green, std::size(green)); // 1x1.
+    TexturePreview preview;
+    ASSERT_TRUE(MakeTexturePreview(texture, 3, preview));
+    EXPECT_EQ(preview.width, 2u);
+    EXPECT_EQ(preview.height, 3u);
+    ASSERT_EQ(preview.pixels.size(), 24u);
+    for (size_t offset = 0; offset < preview.pixels.size(); offset += 4)
+    {
+        EXPECT_EQ(preview.pixels[offset], 200u);
+        EXPECT_EQ(preview.pixels[offset + 1], 40u);
+        EXPECT_EQ(preview.pixels[offset + 2], 20u);
+        EXPECT_EQ(preview.pixels[offset + 3], 255u);
+    }
+    ASSERT_TRUE(MakeTexturePreview(texture, 1, preview));
+    EXPECT_EQ(preview.width, 1u);
+    EXPECT_EQ(preview.height, 1u);
+    EXPECT_EQ(preview.pixels[0], 20u);
+    EXPECT_EQ(preview.pixels[1], 180u);
+    EXPECT_EQ(preview.pixels[2], 60u);
+    EXPECT_EQ(preview.pixels[3], 255u);
+    EXPECT_FALSE(MakeTexturePreview(texture, 7, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+    EXPECT_FALSE(MakeTexturePreview(texture, 0, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+    texture.width = 0;
+    EXPECT_FALSE(MakeTexturePreview(texture, 3, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+    texture.width = 5;
+    texture.mipBytes[1].pop_back();
+    EXPECT_FALSE(MakeTexturePreview(texture, 3, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+    texture.mipBytes.clear();
+    texture.width  = 1;
+    texture.height = 1;
+    texture.format = asset::Format::BC7_UNORM_BLOCK;
+    texture.bytesData.assign(std::begin(red), std::end(red));
+    ASSERT_TRUE(MakeTexturePreview(texture, 128, preview));
+    EXPECT_EQ(preview.width, 1u);
+    EXPECT_EQ(preview.height, 1u);
+    EXPECT_EQ(preview.pixels[0], 200u);
+    EXPECT_EQ(preview.pixels[3], 255u);
+    texture.format = asset::Format::BC5_UNORM_BLOCK;
+    EXPECT_FALSE(MakeTexturePreview(texture, 128, preview));
+    EXPECT_TRUE(preview.pixels.empty());
+}
+
+TEST(EditorModel, BC4AndMarkedBC5PreviewsUseSuppliedMipsAndRejectInterpretationMismatch)
+{
+    for (const bool normal : {false, true})
+    {
+        sg::Texture texture;
+        texture.width  = 5;
+        texture.height = 7;
+        texture.format = normal ? asset::Format::BC5_UNORM_BLOCK : asset::Format::BC4_UNORM_BLOCK;
+        texture.interpretation =
+            normal ? asset::TextureInterpretation::NormalXYPositiveZ : asset::TextureInterpretation::Default;
+        const uint32_t      blockBytes = normal ? 16u : 8u;
+        HeapVector<uint8_t> block(blockBytes, 0);
+        block[0] = block[1] = 128;
+        if (normal)
+        {
+            block[8] = block[9] = 128;
+        }
+        texture.mipBytes.emplace_back(4 * blockBytes - 1, 0); // Unused malformed base.
+        texture.mipBytes.push_back(block);
+        texture.mipBytes.push_back(block);
+        TexturePreview preview;
+        ASSERT_TRUE(MakeTexturePreview(texture, 3, preview));
+        EXPECT_EQ(preview.width, 2u);
+        EXPECT_EQ(preview.height, 3u);
+        for (size_t offset = 0; offset < preview.pixels.size(); offset += 4)
+        {
+            EXPECT_EQ(preview.pixels[offset], 128u);
+            EXPECT_EQ(preview.pixels[offset + 1], 128u);
+            EXPECT_EQ(preview.pixels[offset + 2], normal ? 255u : 128u);
+            EXPECT_EQ(preview.pixels[offset + 3], 255u);
+        }
+        ASSERT_TRUE(MakeTexturePreview(texture, 1, preview));
+        EXPECT_EQ(preview.pixels.size(), 4u);
+        EXPECT_FALSE(MakeTexturePreview(texture, 7, preview));
+        EXPECT_TRUE(preview.pixels.empty());
+        texture.mipBytes[2].pop_back();
+        EXPECT_FALSE(MakeTexturePreview(texture, 1, preview));
+        texture.mipBytes[2] = block;
+        texture.interpretation =
+            normal ? asset::TextureInterpretation::Default : asset::TextureInterpretation::NormalXYPositiveZ;
+        EXPECT_FALSE(MakeTexturePreview(texture, 1, preview));
+        texture.interpretation = static_cast<asset::TextureInterpretation>(99);
+        EXPECT_FALSE(MakeTexturePreview(texture, 1, preview));
+    }
+}
+
 TEST(EditorModel, RecentFilesAreNormalizedDeduplicatedAndBounded)
 {
     RecentFiles recent;

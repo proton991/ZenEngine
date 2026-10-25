@@ -132,7 +132,7 @@ protected:
 
             pass.BindStorageBuffer("IndirectBuffer", indirect, RDGContentGuarantee::eFullWrite);
 
-            BindSceneTextureArray(pass, m_device->CreateSampler({}), scene.GetSceneTextures(), scene.GetSceneSamplers());
+            BindSceneTextureArray(pass, m_device->CreateSampler({}), scene.GetSceneTextureViews(), scene.GetSceneSamplers());
 
             graph.AddComputePass(std::move(pass)).RecordPassCommands(DispatchOnce);
 
@@ -198,7 +198,7 @@ TEST_F(BindlessSceneCapacityIntegrationTest, ConfiguredHeapLoadsAndBindsTextures
 
     loaded.Init();
 
-    EXPECT_EQ(loaded.GetSceneTextures().size(), textureCount);
+    EXPECT_EQ(loaded.GetSceneTextureViews().size(), textureCount);
 
     EXPECT_TRUE(ExecuteSceneBinding(loaded));
 

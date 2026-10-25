@@ -1,4 +1,5 @@
 #pragma once
+#include "AssetTools/SceneTools.h"
 #include "AssetLib/SceneLoader.h"
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
@@ -28,11 +29,15 @@ class SceneRendererDemo
 public:
     SceneRendererDemo(const platform::WindowConfig& windowConfig,
                       sg::CameraType                type,
-                      const DemoProfilingOptions&   profiling = {});
+                      const DemoProfilingOptions&   profiling     = {},
+                      bool                          useAssetCache = true);
 
     ~SceneRendererDemo();
 
-    bool Prepare(bool captureVoxels = false, uint32_t calibrationGridPercent = 0);
+    bool Prepare(bool     captureVoxels             = false,
+                 uint32_t calibrationGridPercent    = 0,
+                 bool     deterministicGuideCapture = false,
+                 uint32_t sceneLoadRepeats          = 0);
 
     bool EnableRuntimeUI();
 
@@ -110,6 +115,8 @@ private:
 
     bool GetGIMotionFixture(uint32_t& moving, Mat4& original) const;
 
+    bool m_useAssetCache{true};
+
     UniquePtr<sg::Camera> m_camera;
 
     sg::CameraType m_cameraType{sg::CameraType::eFirstPerson};
@@ -146,7 +153,7 @@ private:
     ui::RuntimeModelState                                    m_modelState;
     std::future<asset::SceneLoadResult>                      m_modelLoadResult;
     SharedPtr<asset::SceneImportControl, MultiThreadCounter> m_modelLoadControl;
-    UniquePtr<asset::SceneLoader>                            m_sceneLoader;
+    UniquePtr<asset::SourceSceneLoader>                      m_sceneLoader;
 #endif
 };
 } // namespace zen

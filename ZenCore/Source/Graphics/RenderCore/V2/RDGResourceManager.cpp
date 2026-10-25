@@ -1085,9 +1085,7 @@ uint64_t RDGResourceManager::EstimateBytes(const Allocation& resource)
     {
         const TextureFormat& format = resource.texFormat;
 
-        uint64_t pixel              = GetTextureFormatMemoryPixelSize(format.format);
-
-        if (pixel == 0 || uint32_t(format.sampleCount) >= uint32_t(SampleCount::eMax))
+        if (GetTextureFormatBlockInfo(format.format).bytes == 0 || uint32_t(format.sampleCount) >= uint32_t(SampleCount::eMax))
         {
             estimatedBytes = UINT64_MAX; // Unknown formats cannot silently bypass the cache budget.
         }
@@ -1095,21 +1093,25 @@ uint64_t RDGResourceManager::EstimateBytes(const Allocation& resource)
         {
             uint64_t bytes = 0;
 
-            uint64_t width = format.width, height = format.height, depth = format.depth;
+            uint32_t width = format.width, height = format.height, depth = format.depth;
 
             for (uint32_t mip = 0; mip < format.mipmaps; ++mip)
             {
-                bytes  = PoolAdd(bytes, PoolMultiply(PoolMultiply(width, height), depth));
+                uint64_t levelBytes = 0;
+                if (!GetTextureFormatLevelSize(format.format, width, height, depth, levelBytes, true))
+                {
+                    levelBytes = UINT64_MAX;
+                }
+                bytes  = PoolAdd(bytes, levelBytes);
 
-                width  = std::max(uint64_t(1), width / 2);
+                width  = std::max(1u, width / 2);
 
-                height = std::max(uint64_t(1), height / 2);
+                height = std::max(1u, height / 2);
 
-                depth  = std::max(uint64_t(1), depth / 2);
+                depth  = std::max(1u, depth / 2);
             }
 
-            estimatedBytes = PoolMultiply(PoolMultiply(PoolMultiply(bytes, pixel), format.arrayLayers),
-                                          uint64_t(1) << uint32_t(format.sampleCount));
+            estimatedBytes = PoolMultiply(PoolMultiply(bytes, format.arrayLayers), uint64_t(1) << uint32_t(format.sampleCount));
         }
     }
 

@@ -191,6 +191,39 @@ private:
 };
 
 /**
+ * VK_EXT_host_query_reset / Vulkan 1.2 host query reset
+ */
+class VulkanHostQueryResetExtension : public VulkanDeviceExtension
+{
+public:
+    explicit VulkanHostQueryResetExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        AddToPNext(features, m_features);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        SetSupport(m_features.hostQueryReset == VK_TRUE);
+        m_pDevice->GetExtensionFlags().hasHostQueryReset = IsEnabledAndSupported();
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(info, m_features);
+        }
+    }
+
+private:
+    VkPhysicalDeviceHostQueryResetFeatures m_features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES};
+};
+
+/**
  * VK_KHR_timeline_semaphore / Vulkan 1.2 timeline semaphore
  */
 class VulkanTimelineSemaphoreExtension : public VulkanDeviceExtension
@@ -638,6 +671,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
 
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
+    ADD_ADVANCED_DEVICE_EXTENSION(VulkanHostQueryResetExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDeviceFaultExtension)
 
     const HeapVector<VkExtensionProperties> supported = GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
@@ -695,7 +729,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     {
         const NameID name = extension->GetName();
 
-        if (name == NameID(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+        if (name == NameID(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) || name == NameID(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME)
             || name == NameID(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)
             || name == NameID(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) || name == NameID(VK_KHR_SPIRV_1_4_EXTENSION_NAME))
         {

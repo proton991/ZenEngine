@@ -51,7 +51,7 @@ foreach(SHADER review_acceleration.comp review_runtime_array.comp review_reserve
     set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
     add_custom_command(OUTPUT "${OUTPUT}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${RDG_REFLECTION_TEST_PATH}"
-        COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V "${SOURCE}" -o "${OUTPUT}"
+        COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V "${SOURCE}" "-I${CMAKE_SOURCE_DIR}/ZenCore/Include" -o "${OUTPUT}"
         DEPENDS "${SOURCE}" VERBATIM)
     list(APPEND RDG_REFLECTION_TEST_BINARIES "${OUTPUT}")
 endforeach()
@@ -78,6 +78,8 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RHI/RHIGPUFrameTiming.cpp
     ../ZenCore/Source/Graphics/RHI/RHIThread.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/SpatialTextureSampling.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RenderObject.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/FrameBufferRing.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/ShaderProgram.cpp
@@ -125,19 +127,6 @@ target_link_libraries(ConfigLoaderTest PRIVATE ZenCore gtest_main)
 
 add_executable(CommonTest
     CommonTest/CameraInputTests.cpp
-    CommonTest/SceneModelCatalogTests.cpp
-    CommonTest/SceneImportTests.cpp
-    CommonTest/SceneAssetIOTests.cpp
-    CommonTest/SceneLoaderTests.cpp
-    CommonTest/FbxSceneImportTests.cpp
-    CommonTest/SceneAnimationTests.cpp
-    CommonTest/SceneImportCompatibilityTests.cpp
-    CommonTest/SceneImportStressTests.cpp
-    CommonTest/SceneImportMorphAttributeTests.cpp
-    CommonTest/ScenePhysicalUnitsTests.cpp
-    CommonTest/SceneImportPaddingTests.cpp
-    CommonTest/SceneAnimationPointerTestSupport.cpp
-    CommonTest/SceneAnimationPointerTests.cpp
     CommonTest/CleanupRegressionTests.cpp
     CommonTest/SmallVectorTests.cpp
     CommonTest/NameIDTests.cpp
@@ -154,21 +143,17 @@ add_executable(SmartPtrTest
     SmartPtrTest/IntrusivePtrTests.cpp
     SmartPtrTest/RefCountPtrTests.cpp
 )
-add_executable(GLTFCorpusImport CommonTest/GLTFCorpusImport.cpp)
-
-target_link_libraries(GLTFCorpusImport PRIVATE ZenCore)
-add_executable(SceneLoadBenchmark CommonTest/SceneLoadBenchmark.cpp)
-target_link_libraries(SceneLoadBenchmark PRIVATE ZenCore)
 endif ()
 
 
+if(ZEN_BUILD_ASSET_TOOLS)
 add_executable(scene_renderer_demo
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemoProfiling.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemoVoxelCapture.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.h)
-target_link_libraries(scene_renderer_demo ZenCore)
+target_link_libraries(scene_renderer_demo ZenEngineAssetTools)
 
 # The optional runtime overlay; ZenUI is configured before the samples.
 if (ZEN_BUILD_RUNTIME_UI)
@@ -189,11 +174,13 @@ if (ZEN_BUILD_RUNTIME_UI)
             VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp)
         target_include_directories(SceneModelSwitchTest PRIVATE VulkanRHIDemo/SceneRenderer)
         target_compile_definitions(SceneModelSwitchTest PRIVATE ZEN_RUNTIME_UI=1 ZEN_SCENE_MODEL_TEST=1)
-        target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI ZenVulkanTestMain)
+        target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI ZenVulkanTestMain ZenEngineAssetTools)
         add_test(NAME SceneModelSwitchTest COMMAND SceneModelSwitchTest)
         set_tests_properties(SceneModelSwitchTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
     endif ()
 endif ()
+
+endif()
 
 # Native Cone visibility regression, isolated from suite-global Vulkan fixtures.
 if (BUILD_TESTING)
@@ -204,7 +191,7 @@ add_dependencies(ConeVoxelGIIntegrationTest SpvShaders)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(FlatHashMapTest ZenCore gtest_main)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
-target_link_libraries(CommonTest ZenCore gtest_main zen_gltf_decoders zen_ufbx)
+target_link_libraries(CommonTest PRIVATE ZenCore gtest_main)
 target_include_directories(CommonTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Source)
 endif ()
 

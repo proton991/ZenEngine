@@ -70,7 +70,7 @@ void ComputeVoxelizer::OnRenderGraphExecuted(RenderFrameResult result)
 
 void ComputeVoxelizer::LoadCubeModel()
 {
-    m_pCube = ZEN_NEW() RenderObject(m_pRenderDevice, platform::ConfigLoader::GetInstance().GetGLTFModelPath("Box"));
+    m_pCube = ZEN_NEW() RenderObject(m_pRenderDevice);
 }
 
 void ComputeVoxelizer::PrepareTextures()
@@ -152,100 +152,105 @@ void ComputeVoxelizer::BuildVisualizationGraph(const RenderView& view)
         LoadCubeModel();
     }
 
-    RenderGraph* pRDG         = m_pRenderDevice->GetCurrentFrameRDG();
-
-    const sg::AABB voxelAABB  = GetVoxelBounds();
-
-    const float scaleFactor   = 1.0f / m_pCube->GetAABB().GetExtent3D().x;
-
-    const Mat4 voxelTransform = glm::scale(Mat4(1.0f), Vec3(GetVoxelSize() * scaleFactor));
-
-    if (m_visualizationRevision != GetRecordedGeometryRevision())
+    if (m_pCube->IsValid() && m_buffers.pInstancePositionBuffer != nullptr && m_buffers.pInstanceColorBuffer != nullptr
+        && m_buffers.pDrawIndirectBuffer != nullptr)
     {
-        m_visualizationRevision = GetRecordedGeometryRevision();
+        RenderGraph* pRDG         = m_pRenderDevice->GetCurrentFrameRDG();
 
-        const glm::uvec3 groups = GetVoxelVolumeDispatchGroups(m_voxelTexResolution, m_pRenderDevice->GetGPUInfo());
+        const sg::AABB voxelAABB  = GetVoxelBounds();
 
-        const VoxelizationCompSP::SceneInfo sceneInfo{Vec4(voxelAABB.GetMin(), 1.0f), Vec4(voxelAABB.GetMax(), 1.0f)};
+        const float scaleFactor   = 1.0f / m_pCube->GetAABB().GetExtent3D().x;
 
-        RDGComputePassDesc resetDraw = VoxelComputePass("ResetDrawIndirectSP", "ResetDrawIndirectComp");
+        const Mat4 voxelTransform = glm::scale(Mat4(1.0f), Vec3(GetVoxelSize() * scaleFactor));
 
-        resetDraw.BindStorageBuffer("IndirectBuffer", m_buffers.pDrawIndirectBuffer);
+        if (m_visualizationRevision != GetRecordedGeometryRevision())
+        {
+            m_visualizationRevision = GetRecordedGeometryRevision();
 
-        pRDG->AddComputePass(std::move(resetDraw)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
-            encoder.Dispatch(1, 1, 1);
-        });
+            const glm::uvec3 groups = GetVoxelVolumeDispatchGroups(m_voxelTexResolution, m_pRenderDevice->GetGPUInfo());
 
-        RDGComputePassDesc preDraw = VoxelComputePass("VoxelPreDrawSP", "VoxelPreDrawComp");
+            const VoxelizationCompSP::SceneInfo sceneInfo{Vec4(voxelAABB.GetMin(), 1.0f), Vec4(voxelAABB.GetMax(), 1.0f)};
 
-        preDraw.BindStorageImage("voxelTexture", m_voxelTextures.pAlbedoView);
+            RDGComputePassDesc resetDraw = VoxelComputePass("ResetDrawIndirectSP", "ResetDrawIndirectComp");
 
-        preDraw.BindStorageBuffer("InstancePositionBuffer", m_buffers.pInstancePositionBuffer,
-                                  RDGContentGuarantee::eProducedElements);
+            resetDraw.BindStorageBuffer("IndirectBuffer", m_buffers.pDrawIndirectBuffer);
 
-        preDraw.BindStorageBuffer("InstanceColorBuffer", m_buffers.pInstanceColorBuffer,
-                                  RDGContentGuarantee::eProducedElements);
+            pRDG->AddComputePass(std::move(resetDraw)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch(1, 1, 1);
+            });
 
-        preDraw.BindStorageBuffer("IndirectBuffer", m_buffers.pDrawIndirectBuffer);
+            RDGComputePassDesc preDraw = VoxelComputePass("VoxelPreDrawSP", "VoxelPreDrawComp");
 
-        preDraw.BindValue("uSceneInfo", sceneInfo);
+            preDraw.BindStorageImage("voxelTexture", m_voxelTextures.pAlbedoView);
 
-        pRDG->AddComputePass(std::move(preDraw)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
-            encoder.Dispatch(groups.x, groups.y, groups.z);
-        });
+            preDraw.BindStorageBuffer("InstancePositionBuffer", m_buffers.pInstancePositionBuffer,
+                                      RDGContentGuarantee::eProducedElements);
+
+            preDraw.BindStorageBuffer("InstanceColorBuffer", m_buffers.pInstanceColorBuffer,
+                                      RDGContentGuarantee::eProducedElements);
+
+            preDraw.BindStorageBuffer("IndirectBuffer", m_buffers.pDrawIndirectBuffer);
+
+            preDraw.BindValue("uSceneInfo", sceneInfo);
+
+            pRDG->AddComputePass(std::move(preDraw)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch(groups.x, groups.y, groups.z);
+            });
+        }
+
+        RHIGfxPipelineStates pso{};
+
+        pso.rasterizationState           = {};
+
+        pso.rasterizationState.cullMode  = RHIPolygonCullMode::eDisabled;
+
+        pso.rasterizationState.frontFace = RHIPolygonFrontFace::eCounterClockWise;
+
+        pso.depthStencilState            = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
+
+        pso.multiSampleState             = {};
+
+        pso.colorBlendState.AddAttachment();
+
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+
+        RDGGraphicsPassDesc draw{};
+
+        draw.SetShaderProgramName("VoxelDrawSP2");
+
+        draw.SetPipelineStates(pso);
+
+        draw.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
+
+        draw.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+
+        draw.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
+
+        draw.SetPassTag("VoxelDraw2");
+
+        draw.BindVertexBuffer(m_pCube->GetVertexBuffer());
+
+        draw.BindIndexBuffer(m_pCube->GetIndexBuffer());
+
+        // Draw instanceCount is emitted by preDraw alongside both instance streams.
+        draw.BindStorageBuffer("InstanceBuffer", m_buffers.pInstancePositionBuffer,
+                               RDGContentGuarantee::eConsumeProducedElements);
+
+        draw.BindStorageBuffer("InstanceColorBuffer", m_buffers.pInstanceColorBuffer,
+                               RDGContentGuarantee::eConsumeProducedElements);
+
+        draw.UseIndirectBuffer(m_buffers.pDrawIndirectBuffer);
+
+        const VoxelDrawSP2::TransformData transform{voxelTransform, m_pScene->GetCamera()->GetViewMatrix(),
+                                                    m_pScene->GetCamera()->GetProjectionMatrix()};
+
+        draw.BindValue("uTransformData", transform);
+
+        pRDG->AddGraphicsPass(std::move(draw))
+            .RecordPassCommands([indirect = m_buffers.pDrawIndirectBuffer](RDGPassCmdEncoder& encoder) {
+                encoder.DrawIndexedIndirect(indirect, 0, 1, sizeof(DrawIndexedIndirectCommand));
+            });
     }
-
-    RHIGfxPipelineStates pso{};
-
-    pso.rasterizationState           = {};
-
-    pso.rasterizationState.cullMode  = RHIPolygonCullMode::eDisabled;
-
-    pso.rasterizationState.frontFace = RHIPolygonFrontFace::eCounterClockWise;
-
-    pso.depthStencilState            = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
-
-    pso.multiSampleState             = {};
-
-    pso.colorBlendState.AddAttachment();
-
-    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
-
-    RDGGraphicsPassDesc draw{};
-
-    draw.SetShaderProgramName("VoxelDrawSP2");
-
-    draw.SetPipelineStates(pso);
-
-    draw.AddColorOutput(view.GetColorTarget(), RHIRenderTargetLoadOp::eLoad);
-
-    draw.AddDepthStencilOutput(view.GetDepthTarget(), RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
-
-    draw.SetRenderArea(0, 0, view.GetWidth(), view.GetHeight());
-
-    draw.SetPassTag("VoxelDraw2");
-
-    draw.BindVertexBuffer(m_pCube->GetVertexBuffer());
-
-    draw.BindIndexBuffer(m_pCube->GetIndexBuffer());
-
-    // Draw instanceCount is emitted by preDraw alongside both instance streams.
-    draw.BindStorageBuffer("InstanceBuffer", m_buffers.pInstancePositionBuffer, RDGContentGuarantee::eConsumeProducedElements);
-
-    draw.BindStorageBuffer("InstanceColorBuffer", m_buffers.pInstanceColorBuffer,
-                           RDGContentGuarantee::eConsumeProducedElements);
-
-    draw.UseIndirectBuffer(m_buffers.pDrawIndirectBuffer);
-
-    const VoxelDrawSP2::TransformData transform{voxelTransform, m_pScene->GetCamera()->GetViewMatrix(),
-                                                m_pScene->GetCamera()->GetProjectionMatrix()};
-
-    draw.BindValue("uTransformData", transform);
-
-    pRDG->AddGraphicsPass(std::move(draw))
-        .RecordPassCommands([indirect = m_buffers.pDrawIndirectBuffer](RDGPassCmdEncoder& encoder) {
-            encoder.DrawIndexedIndirect(indirect, 0, 1, sizeof(DrawIndexedIndirectCommand));
-        });
 }
 
 #ifdef ZEN_MACOS

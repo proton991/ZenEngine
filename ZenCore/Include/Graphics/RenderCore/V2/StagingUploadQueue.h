@@ -26,6 +26,28 @@ struct StagingAllocation
     uint32_t   size{0};
 };
 
+// Render-thread observations. Occupied bytes include alignment padding and
+// submitted ranges awaiting retirement; capacity includes reusable empty blocks.
+struct StagingPoolStatistics
+{
+    uint64_t capacityBytes{0};
+    uint64_t peakCapacityBytes{0};
+    uint64_t occupiedBytes{0};
+    uint64_t peakOccupiedBytes{0};
+    uint64_t allocationBytes{0};
+    uint64_t peakAllocationBytes{0};
+    uint32_t blockCount{0};
+    uint32_t peakBlockCount{0};
+    // False if any observed block lacked native allocation reporting since reset.
+    bool     allocationBytesAvailable{true};
+    uint64_t allocationFlushRequests{0};
+    uint64_t allocationFailures{0};
+    uint64_t waitCalls{0};
+    uint64_t waitFailures{0};
+    // CPU time within WaitForSubmittedAllocations; excludes the preceding flush.
+    uint64_t waitCPUTimeNS{0};
+};
+
 // Append-only blocks. Both unsubmitted allocations and submitted GPU work prevent reuse.
 class StagingBufferManager
 {
@@ -47,6 +69,15 @@ public:
 
     void Destroy();
 
+    StagingPoolStatistics GetStatistics() const
+    {
+        return m_statistics;
+    }
+
+    // Starts an observation interval with existing live/occupied blocks included.
+    // Neither this call nor GetStatistics reclaims, submits or waits for work.
+    void ResetStatistics();
+
     uint32_t GetBlockSize() const
     {
         return m_blockSize;
@@ -56,6 +87,8 @@ private:
     friend class StagingUploadQueue;
 
     void DestroyBuffer(RHIBuffer* buffer);
+
+    void UpdateStatistics();
 
     // Set by the upload queue. Its device must outlive use of this manager.
     RenderDevice* m_pRenderDevice{nullptr};
@@ -68,10 +101,11 @@ private:
         ResourceRetirement retirement;
     };
 
-    HeapVector<Block> m_blocks;
-    uint32_t          m_blockSize;
-    uint64_t          m_poolSize;
-    uint64_t          m_allocatedSize{0};
+    HeapVector<Block>     m_blocks;
+    uint32_t              m_blockSize;
+    uint64_t              m_poolSize;
+    uint64_t              m_allocatedSize{0};
+    StagingPoolStatistics m_statistics;
 };
 
 // VERIFY_EXPR* preconditions abort in both Debug and Release. Dependencies must be initialized

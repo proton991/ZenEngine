@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "Templates/HeapVector.h"
+#include "AssetLib/SceneImporter.h"
 
 namespace zen::asset
 {
@@ -16,4 +16,6 @@ struct SceneModelCatalogEntry
 // Discover files without importing them. Missing or unreadable roots yield an empty
 // catalog; unreadable descendants are skipped and directory symlinks are not followed.
 HeapVector<SceneModelCatalogEntry> DiscoverSceneModels(const std::string& basePath);
+HeapVector<SceneModelCatalogEntry> DiscoverSceneModels(const std::string&                      basePath,
+                                                       VectorView<const SceneFormatDescriptor> formats);
 } // namespace zen::asset

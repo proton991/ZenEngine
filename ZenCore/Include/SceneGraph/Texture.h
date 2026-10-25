@@ -42,6 +42,9 @@ public:
         width             = info.width;
         height            = info.height;
         format            = info.format;
+        interpretation    = asset::TextureInterpretation::Default;
+        arrayLayer        = 0;
+        atlasRegion       = {};
         bytesData         = std::move(info.data);
         pixels.Reset();
         mipBytes.clear();
@@ -63,16 +66,64 @@ public:
         return !bytesData.empty() || !mipBytes.empty() || !pixels ? mipBytes : pixels->mips;
     }
 
+    bool UsesSharedPixels() const
+    {
+        return pixels && bytesData.empty() && mipBytes.empty();
+    }
+
+    uint32_t GetArrayLayers() const
+    {
+        return UsesSharedPixels() ? pixels->arrayLayers : 1;
+    }
+
+    uint32_t GetArrayLayer() const
+    {
+        return UsesSharedPixels() ? arrayLayer : 0;
+    }
+
+    asset::ImageRegion GetAtlasRegion() const
+    {
+        return UsesSharedPixels() ? atlasRegion : asset::ImageRegion{};
+    }
+
+    // Borrow only this logical view's layer. GetBytes/GetMipBytes retain whole
+    // page storage for uploads; previews must not decode a neighboring layer.
+    VectorView<const uint8_t> GetLayerMipBytes(uint32_t level) const
+    {
+        VectorView<const uint8_t>              bytes;
+        const HeapVector<HeapVector<uint8_t>>& levels = GetMipBytes();
+        if (level < levels.size())
+        {
+            bytes = VectorView<const uint8_t>(levels[level].data(), levels[level].size());
+        }
+        else if (level == 0 && levels.empty())
+        {
+            bytes = GetBytes();
+        }
+        const uint32_t            layers = GetArrayLayers();
+        const uint32_t            layer  = GetArrayLayer();
+        VectorView<const uint8_t> result;
+        if (layers > 0 && layer < layers && !bytes.empty() && bytes.size() % layers == 0 && (layers == 1 || !levels.empty()))
+        {
+            const size_t size = bytes.size() / layers;
+            result            = VectorView<const uint8_t>(bytes.data() + size * layer, size);
+        }
+        return result;
+    }
+
     // Imported scenes share immutable pixels across texture views and instances.
     SharedPtr<const asset::ImagePixels, MultiThreadCounter> pixels;
 
     uint32_t index{0};
     // Importer-generated linear view of another texture in this scene; authored textures have no source.
-    uint32_t      linearSourceIndex{UINT32_MAX};
-    int           samplerIndex{-1};
-    uint32_t      width{0};
-    uint32_t      height{0};
-    asset::Format format{asset::Format::UNDEFINED};
+    uint32_t                     linearSourceIndex{UINT32_MAX};
+    int                          samplerIndex{-1};
+    uint32_t                     width{0};
+    uint32_t                     height{0};
+    asset::Format                format{asset::Format::UNDEFINED};
+    asset::TextureInterpretation interpretation{asset::TextureInterpretation::Default};
+    uint32_t                     arrayLayer{0};
+    asset::ImageRegion           atlasRegion;
     // byte data no mipmaps
     std::vector<uint8_t> bytesData;
     // Authored image levels, including level zero; empty means generate from bytesData.
@@ -87,7 +138,9 @@ inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
     bool equal = lhs.index == rhs.index && lhs.linearSourceIndex == rhs.linearSourceIndex
               && lhs.samplerIndex == rhs.samplerIndex && lhs.width == rhs.width && lhs.height == rhs.height
-              && lhs.format == rhs.format
+              && lhs.format == rhs.format && lhs.interpretation == rhs.interpretation
+              && lhs.GetArrayLayers() == rhs.GetArrayLayers() && lhs.GetArrayLayer() == rhs.GetArrayLayer()
+              && lhs.GetAtlasRegion() == rhs.GetAtlasRegion()
               && std::equal(lhs.GetBytes().begin(), lhs.GetBytes().end(), rhs.GetBytes().begin(), rhs.GetBytes().end())
               && lhs.GetMipBytes().size() == rhs.GetMipBytes().size() && lhs.flatNormal == rhs.flatNormal;
 

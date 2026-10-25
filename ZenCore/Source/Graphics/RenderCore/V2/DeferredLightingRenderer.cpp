@@ -312,6 +312,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
             m_hybrid = ZEN_NEW() HybridGIRenderer(m_pRenderDevice);
             m_hybridViews.push_back({view.historyId, m_hybrid});
         }
+        m_hybrid->SetDeterministicGuideCapture(m_deterministicGuideCapture);
         m_hybrid->Prepare(view, *m_pScene);
         m_hybrid->SetCapture(m_hybridCaptureOutput, m_hybridCaptureReadback);
     }
@@ -381,7 +382,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
 
         offscreen.BindStorageBuffer("UVBuffer", m_pScene->GetUVBuffer());
 
-        BindSceneTextureArray(offscreen, m_pColorSampler, m_pScene->GetSceneTextures(), m_pScene->GetSceneSamplers());
+        BindSceneTextureArray(offscreen, m_pColorSampler, m_pScene->GetSceneTextureViews(), m_pScene->GetSceneSamplers());
 
         offscreen.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
 
@@ -425,12 +426,13 @@ DebugOutputDescription DeferredLightingRenderer::BuildDebugView(const RenderView
     description.available = m_pScene != nullptr && view.width > 0 && view.height > 0
                          && (depth || m_gbufferExtent == glm::uvec2(view.width, view.height));
 
-    description.reason =
-        description.available ? "" : "Opaque materials of this scene need forward shading (material extensions); it has no G-buffer.";
+    description.reason = description.available
+                           ? ""
+                           : "Opaque materials of this scene need forward shading (material extensions); it has no G-buffer.";
 
-    description.format         = depth                                    ? view.GetDepthStencilFormat()
-                               : selection.output == DebugOutput::eNormal ? DataFormat::eR16G16UNORM
-                                                                          : DataFormat::eR8G8B8A8UNORM;
+    description.format = depth                                    ? view.GetDepthStencilFormat()
+                       : selection.output == DebugOutput::eNormal ? DataFormat::eR16G16UNORM
+                                                                  : DataFormat::eR8G8B8A8UNORM;
 
     description.interpretation = depth ? "Depth of opaque/masked surfaces: raw device Z or linear view distance."
                                : selection.output == DebugOutput::eNormal ? "World-space normal mapped from [-1,1] to RGB."
@@ -1062,7 +1064,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
                 source.BindSampledTexture("envIrradianceMap", env.pIrradianceSampler, env.pIrradiance->GetDefaultView());
 
-                BindSceneTextureArray(source, m_pColorSampler, m_pScene->GetSceneTextures(), m_pScene->GetSceneSamplers());
+                BindSceneTextureArray(source, m_pColorSampler, m_pScene->GetSceneTextureViews(), m_pScene->GetSceneSamplers());
 
                 source.BindVertexBuffer(m_pScene->GetVertexBuffer());
 
@@ -1277,7 +1279,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             forward.BindSampledTexture("scatterPositionMap", m_pDepthSampler, scatterPosition);
 
-            BindSceneTextureArray(forward, m_pColorSampler, m_pScene->GetSceneTextures(), m_pScene->GetSceneSamplers());
+            BindSceneTextureArray(forward, m_pColorSampler, m_pScene->GetSceneTextureViews(), m_pScene->GetSceneSamplers());
 
             forward.BindVertexBuffer(m_pScene->GetVertexBuffer());
 

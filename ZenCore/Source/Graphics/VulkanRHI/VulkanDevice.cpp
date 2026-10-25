@@ -510,6 +510,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     enabledFeatures.vertexPipelineStoresAndAtomics = m_physicalDeviceFeatures.vertexPipelineStoresAndAtomics;
 
     enabledFeatures.samplerAnisotropy              = m_physicalDeviceFeatures.samplerAnisotropy;
+    enabledFeatures.textureCompressionBC           = m_physicalDeviceFeatures.textureCompressionBC;
     enabledFeatures.imageCubeArray                 = m_physicalDeviceFeatures.imageCubeArray;
     enabledFeatures.fullDrawIndexUint32            = m_physicalDeviceFeatures.fullDrawIndexUint32;
 

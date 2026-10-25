@@ -1,8 +1,9 @@
 #include "AssetLib/SceneLoader.h"
 #include "AssetLib/SceneRuntimeBuilder.h"
 #include "AssetLib/SceneAssetIO.h"
-#include "AssetLib/SceneAssetCache.h"
+#include "AssetLib/SceneLoadCompletion.h"
 #include "AssetLib/SceneRuntimeBuilderInternal.h"
+#include "ZenAsset/Format/Version.h"
 #include <algorithm>
 #include <cmath>
 #include <thread>
@@ -12,13 +13,9 @@ namespace zen::asset
 static HeapVector<SceneFormatDescriptor> LoadFormats()
 {
     HeapVector<SceneFormatDescriptor> formats;
-    for (const SceneFormatDescriptor& format : GetSceneImportFormats())
-    {
-        formats.push_back(format);
-    }
     static constexpr std::string_view extensions[]{".zenasset"};
     formats.push_back(
-        {"zenasset", "ZenEngine scenes", VectorView<const std::string_view>(extensions), SceneAssetSchemaVersion});
+        {"zenasset", "ZenEngine scenes", VectorView<const std::string_view>(extensions), zenasset::PackageSchemaVersion});
     return formats;
 }
 
@@ -35,8 +32,13 @@ const SceneFormatDescriptor* FindSceneLoadFormat(const std::string& path)
 
 std::string GetSceneFileFilterExtensions()
 {
+    return GetSceneFileFilterExtensions(GetSceneLoadFormats());
+}
+
+std::string GetSceneFileFilterExtensions(VectorView<const SceneFormatDescriptor> formats)
+{
     std::string result;
-    for (const SceneFormatDescriptor& format : GetSceneLoadFormats())
+    for (const SceneFormatDescriptor& format : formats)
     {
         for (std::string_view extension : format.extensions)
         {
@@ -55,19 +57,33 @@ SceneLoadResult LoadScene(const std::string& path, ThreadPool<void, uint32_t>* p
     return LoadScene(SceneImportRequest{path}, processing);
 }
 
-SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, uint32_t>* processing)
+SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, uint32_t>*)
 {
-    const SceneFormatDescriptor* format   = FindSceneLoadFormat(request.path);
-    bool                         cacheHit = false;
+    const SceneFormatDescriptor* format = FindSceneLoadFormat(request.path);
     SceneImportResult            imported;
-    if (format != nullptr && format->id == "zenasset")
+    if (request.control && request.control->IsCancelled())
+    {
+        SetSceneImportFailure(imported, SceneImportStatus::Cancelled, request.path, "Scene load cancelled");
+    }
+    else if (request.path.empty())
+    {
+        SetSceneImportFailure(imported, SceneImportStatus::InvalidRequest, request.path, "A scene package path is required");
+    }
+    else if (format != nullptr)
     {
         imported = ReadSceneAssetFile(request.path, {}, request.control.Get());
     }
     else
     {
-        imported = ImportSceneWithCache(request, SceneImportContext{processing}, cacheHit);
+        SetSceneImportFailure(
+            imported, SceneImportStatus::UnsupportedFormat, request.path,
+            "Runtime loading requires a .zenasset package; source processing is available through AssetTools");
     }
+    return CompleteSceneLoad(request, std::move(imported), false);
+}
+
+SceneLoadResult CompleteSceneLoad(const SceneImportRequest& request, SceneImportResult imported, bool cacheHit)
+{
     SceneLoadResult result;
     if (imported.asset)
     {

@@ -2,7 +2,7 @@
 
 Serially runs the complete production qualification on the current workspace: full Debug/Release builds, 15 suites
 and both 24-case smoke matrices per build; freeze; 28 deterministic capture pairs against the last qualified binary;
-32 strict resource profiles; the 18-asset glTF corpus; benchmarks; static, dynamic and adaptive-light image gates;
+32 strict resource profiles; benchmarks; static, dynamic and adaptive-light image gates;
 720p/1080p timing; and the input/test-record audits. Each run writes new evidence folders under --name.
 
 Converged references are cached by exact inputs (tools/reference_cache.py), so rerunning this tier on the same
@@ -36,8 +36,6 @@ def main():
 
     step('build/validate_descriptor_layout.py', '--output', PHASE4 / f'{args.name}-validation')
     step('build/qualify_descriptor_layout.py', '--prefix', args.name, '--baseline', baseline)
-    step('tools/smoke_gltf_rendering.py', '--renderer', PHASE4 / f'{args.name}-final-profile/7zFM.exe', '--assets',
-         'E:/Dev/glTF-Sample-Assets', '--output', PHASE4 / f'{args.name}-gltf-mode3', '--mode', '3', '--frames', '64')
     gate.mkdir(parents=True, exist_ok=False)
     step('build/start_final_production_image_gate.py', '--prefix', args.name, '--gate', gate)
     step('build/qualify_production_dynamic_images.py', '--base', gate, '--frozen', frozen)

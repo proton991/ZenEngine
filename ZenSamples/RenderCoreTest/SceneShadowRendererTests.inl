@@ -146,7 +146,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
     sceneInputs.nodes     = Buffer(128);
     sceneInputs.materials = Buffer(96);
     sceneInputs.uv        = Buffer();
-    sceneInputs.textures.push_back(Texture());
+    sceneInputs.textures.push_back(Texture()->GetDefaultView());
     sg::Scene source;
     source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
     SceneData data{};
@@ -203,7 +203,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
         }
         if (frame == 0)
         {
-            graph->AddTransferPass("InitializeMaterial").ClearTexture(sceneInputs.textures[0], Color(1));
+            graph->AddTransferPass("InitializeMaterial").ClearTexture(sceneInputs.textures[0]->GetTexture(), Color(1));
         }
         shadows.BuildRenderGraph(scene, frame >= 5 ? 2 : 1);
         graph->AddComputePass(IntentPass("keepalive"));
@@ -219,7 +219,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
     {
         device->DestroyBuffer(buffer);
     }
-    device->DestroyTexture(sceneInputs.textures[0]);
+    device->DestroyTexture(sceneInputs.textures[0]->GetTexture());
 }
 
 TEST_F(RenderCoreTest, SceneSamplerBindingsPreserveAuthoredHeapSlots)

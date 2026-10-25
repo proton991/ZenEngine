@@ -63,7 +63,8 @@ struct TexturePreview
     HeapVector<uint8_t> pixels;
 };
 
-// Box-filters uncompressed RGBA8 textures; compressed and floating-point data return false.
+// Bounded stored-color preview of RGBA8, BC7, BC4 or marked BC5 normals.
+// Selects the logical layer/region; unsupported or malformed input returns false.
 bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePreview& preview);
 
 // Resources of one loaded scene. Engine placeholder textures, linear-data copies of

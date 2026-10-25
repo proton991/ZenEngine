@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "SceneRendererDemo.h"
 #include "AssetLib/SceneModelCatalog.h"
 #include "Platform/ConfigLoader.h"
@@ -17,7 +18,7 @@ void SceneRendererDemo::RefreshRuntimeModels()
     {
         m_modelState.basePath = platform::ConfigLoader::GetInstance().GetModelBasePath();
 
-        m_modelState.models   = asset::DiscoverSceneModels(m_modelState.basePath);
+        m_modelState.models   = asset::DiscoverSourceSceneModels(m_modelState.basePath);
 
         m_modelState.error.clear();
 
@@ -97,9 +98,10 @@ void SceneRendererDemo::ProcessPendingModel()
             {
                 if (!m_sceneLoader)
                 {
-                    m_sceneLoader = MakeUnique<asset::SceneLoader>(1, 0);
+                    m_sceneLoader = MakeUnique<asset::SourceSceneLoader>(1, 0);
                 }
                 asset::SceneImportRequest request{m_modelState.pendingPath};
+                request.useCache  = m_useAssetCache;
                 request.control   = m_modelLoadControl;
                 m_modelLoadResult = m_sceneLoader->LoadAsync(std::move(request));
             }

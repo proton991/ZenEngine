@@ -327,6 +327,13 @@ public:
         return m_requiredSize;
     }
 
+    // Native allocation extent including resource alignment; zero means unavailable.
+    // This is not allocator pool commitment, driver-private memory or residency.
+    virtual uint64_t GetAllocationSize() const
+    {
+        return 0;
+    }
+
 protected:
     explicit RHIBuffer(const RHIBufferCreateInfo& createInfo) :
         RHIResource(RHIResourceType::eBuffer),

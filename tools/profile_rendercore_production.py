@@ -1,7 +1,7 @@
 """Run the production-plan static/animated A/B matrix and retain reproducible evidence.
 
 The executable's compiled engine.cfg is temporarily replaced under the same lock as
-smoke_gltf_rendering.py and restored byte-for-byte. Do not run another renderer while
+the asset processor renderer-validation scripts and restored byte-for-byte. Do not run another renderer while
 this matrix owns that configuration. GPU profiles must run without concurrent builds/tests.
 """
 

@@ -397,7 +397,7 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
 
             draw.BindStorageBuffer("UVBuffer", m_renderScene->GetUVBuffer());
 
-            rc::BindSceneTextureArray(draw, sampler, m_renderScene->GetSceneTextures());
+            rc::BindSceneTextureArray(draw, sampler, m_renderScene->GetSceneTextureViews());
 
             draw.BindValue("uCameraData", camera);
 

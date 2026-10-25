@@ -205,7 +205,7 @@ public:
         return *m_envTexture;
     }
 
-    const HeapVector<RHITexture*>& GetSceneTextures() const
+    const HeapVector<RHITextureView*>& GetSceneTextureViews() const
     {
         return m_sceneTextures;
     }
@@ -315,11 +315,11 @@ private:
     RHIBuffer* m_pVoxelTriangleBuffer{nullptr};
     uint32_t   m_voxelTriangleCount{0};
 
-    // std::vector<TextureHandle> m_sceneTextures;
-    HeapVector<RHITexture*> m_sceneTextures;
-    HeapVector<RHISampler*> m_sceneSamplers;
-    std::string             m_envTextureName;
-    std::string             m_environmentOverride;
+    // Borrowed views; scene destruction retires each unique base image once.
+    HeapVector<RHITextureView*> m_sceneTextures;
+    HeapVector<RHISampler*>     m_sceneSamplers;
+    std::string                 m_envTextureName;
+    std::string                 m_environmentOverride;
     // Preprocessing jobs retain this address until execution or cancellation.
     UniquePtr<EnvTexture> m_envTexture{MakeUnique<EnvTexture>()};
     RHITexture*           m_pDefaultBaseColorTexture{nullptr};

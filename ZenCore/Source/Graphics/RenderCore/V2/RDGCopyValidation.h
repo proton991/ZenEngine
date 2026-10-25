@@ -24,7 +24,7 @@ inline uint32_t CopyTexelBytes(DataFormat format, BitField<RHITextureAspectFlagB
             case DataFormat::eD16UNORMS8UInt: result = 2; break;
             case DataFormat::eD24UNORMS8UInt:
             case DataFormat::eD32SFloatS8UInt: result = 4; break;
-            default: result = GetTextureFormatPixelSize(format); break;
+            default: result = GetTextureFormatBlockInfo(format).bytes; break;
         }
     }
 
@@ -75,6 +75,17 @@ inline bool ValidateTextureCopyBox(RDGResult&                         result,
             {
                 break;
             }
+
+            const TextureFormatBlockInfo block       = GetTextureFormatBlockInfo(info.format);
+            const uint32_t               blockExtent = axis == 0 ? block.width : axis == 1 ? block.height : 1;
+            valid                                    = result.Check(
+                uint32_t(offset[axis]) % blockExtent == 0
+                    && (uint32_t(size[axis]) % blockExtent == 0 || uint64_t(offset[axis]) + size[axis] == mipExtent),
+                RDGErrorCode::eRange, "Copy box is not aligned to texture blocks for '" + name.ToString() + "'");
+            if (!valid)
+            {
+                break;
+            }
         }
     }
 
@@ -107,9 +118,11 @@ inline bool ValidateBufferTextureFootprint(RDGResult&                        res
 
         if (valid)
         {
-            const uint64_t available = bufferSize - region.bufferOffset;
+            const uint64_t available           = bufferSize - region.bufferOffset;
 
-            for (const uint64_t count : {uint64_t(region.textureSize.x), uint64_t(region.textureSize.y),
+            const TextureFormatBlockInfo block = GetTextureFormatBlockInfo(texture.format);
+            for (const uint64_t count : {(uint64_t(region.textureSize.x) + block.width - 1) / block.width,
+                                         (uint64_t(region.textureSize.y) + block.height - 1) / block.height,
                                          uint64_t(region.textureSize.z), uint64_t(region.textureSubresources.layerCount)})
             {
                 valid = result.Check(count <= available / bytes, RDGErrorCode::eRange,
@@ -151,9 +164,11 @@ inline bool QueueSupportsCopyBox(const RHIQueueCopyCapabilities& queue,
     {
         for (int axis = 0; axis < 3; ++axis)
         {
-            const uint32_t extent      = axis == 0 ? info.width : axis == 1 ? info.height : info.depth;
-            const uint32_t mipExtent   = std::max(1u, extent >> mip);
-            const uint32_t granularity = queue.minImageTransferGranularity[axis];
+            const uint32_t               extent      = axis == 0 ? info.width : axis == 1 ? info.height : info.depth;
+            const uint32_t               mipExtent   = std::max(1u, extent >> mip);
+            const TextureFormatBlockInfo block       = GetTextureFormatBlockInfo(info.format);
+            const uint32_t               blockExtent = axis == 0 ? block.width : axis == 1 ? block.height : 1;
+            const uint64_t               granularity = uint64_t(queue.minImageTransferGranularity[axis]) * blockExtent;
 
             if (granularity == 0)
             {

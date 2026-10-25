@@ -1,3 +1,4 @@
+#include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
 #include "AssetLib/SceneLoader.h"
 #include <charconv>
@@ -137,7 +138,7 @@ int main(int argc, char** argv)
             "[--enable-validation|--disable-validation] "
             "[--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice|gi-raw|gi-reconstructed|gi-history|gi-hit-miss|gi-rejection] "
             "[--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--capture-scene=path.ppm] [--smoke-test] [--hidden] [--windowed]\n");
-        std::fprintf(stderr, "Supported scene extensions: %s\n", zen::asset::GetSceneFileFilterExtensions().c_str());
+        std::fprintf(stderr, "Supported scene extensions: %s\n", zen::asset::GetSourceSceneFileFilterExtensions().c_str());
     }
 
     return result;

@@ -83,7 +83,7 @@ All 12 mode/thread/async combinations passed in each configuration (24 runs): mo
 ```powershell
 .\build\x64-windows-msvc-release\bin\scene_renderer_demo.exe --mode=3 --rhi-thread=1 --async-compute=1 --smoke-test --frames=44 --fixed-step --vsync=0
 python -X utf8 -c "import sys; from pathlib import Path; sys.path.insert(0, 'tools'); import validate_voxel_gi as v; v.main(executable=Path('build/x64-windows-msvc-release/bin/scene_renderer_demo.exe').resolve())"
-python -X utf8 tools/smoke_gltf_rendering.py --assets D:/Dev/glTF-Sample-Assets --renderer D:/Dev/ZenEngine/build/x64-windows-msvc-release/bin/scene_renderer_demo.exe --output build/rhi-improvement/final/gltf-smoke
+python -X utf8 ../ZenAssetProcessor/tools/validation/smoke_gltf_rendering.py --assets D:/Dev/glTF-Sample-Assets --renderer D:/Dev/ZenEngine/build/x64-windows-msvc-release/bin/scene_renderer_demo.exe --output build/rhi-improvement/final/gltf-smoke
 ```
 
 `validate_voxel_gi.py`: all 162 GPU cases and image assertions passed across geometry/compute voxelizers, execution/queue modes, direct/indirect/environment/emissive lighting, materials and surface layouts, shadow configurations and resolutions, light directions and moving/removable markers. The tool's room fixtures now explicitly enable configured-light overrides, so their `light_count=0/1` settings apply regardless of the user's baseline configuration. Local case/surface variables no longer overwrite the optional startup `overrides` parameter. The initial failed dark-room assertion was a fixture configuration failure, corrected without changing renderer behavior. [Image-check results](../build/voxel-gi-validation/results.json), [run log](../build/rhi-improvement/final/voxel-gi-validation.log).

@@ -561,7 +561,7 @@ testing, editor and runtime UI targets enabled:
 ```powershell
 cmake --build --preset x64-windows-msvc-debug --target CommonTest RenderCoreTest EditorModelTest EditorRenderingTest SceneModelSwitchTest GLTFCorpusImport scene_renderer_demo zen_editor --parallel 8
 ctest --test-dir build/x64-windows-msvc-debug --output-on-failure -R '^(CommonTest|RenderCoreTest|EditorModelTest|EditorRenderingTest|SceneModelSwitchTest)$'
-python tools/verify_gltf_corpus.py --assets E:/Dev/glTF-Sample-Assets --importer build/x64-windows-msvc-debug/bin/GLTFCorpusImport.exe --report build/scene-import-gltf-results.json --jobs 2
+python ../ZenAssetProcessor/tools/validation/verify_gltf_corpus.py --assets E:/Dev/glTF-Sample-Assets --importer build/x64-windows-msvc-debug/bin/GLTFCorpusImport.exe --report build/scene-import-gltf-results.json --jobs 2
 ```
 
 Use the corpus path available on the validation machine. Run the existing glTF

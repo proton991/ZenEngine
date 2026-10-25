@@ -23,6 +23,7 @@ struct DeviceExtensionFlags
     uint32_t hasRayQuery                 : 1;
     uint32_t hasDescriptorIndexing       : 1;
     uint32_t hasTimelineSemaphore        : 1;
+    uint32_t hasHostQueryReset           : 1;
 
     uint32_t hasDeferredHostOperation    : 1;
     uint32_t hasSPIRV_14                 : 1;

@@ -2,7 +2,9 @@
 #include "AssetLib/AnimatedMaterial.h"
 #include "AssetLib/Kernels/AssetKernels.h"
 #include "Math/Finite.h"
+#include "ZenAsset/Format/Image.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace zen::asset
@@ -183,28 +185,75 @@ uint32_t MipCount(uint32_t width, uint32_t height)
     return count;
 }
 
+zenasset::PixelFormat ImageStorageFormat(Format format)
+{
+    zenasset::PixelFormat result = zenasset::PixelFormat::Undefined;
+    switch (format)
+    {
+        case Format::R8G8B8A8_UNORM: result = zenasset::PixelFormat::RGBA8Unorm; break;
+        case Format::R8G8B8A8_SRGB: result = zenasset::PixelFormat::RGBA8Srgb; break;
+        case Format::BC4_UNORM_BLOCK: result = zenasset::PixelFormat::BC4Unorm; break;
+        case Format::BC5_UNORM_BLOCK: result = zenasset::PixelFormat::BC5Unorm; break;
+        case Format::BC7_UNORM_BLOCK: result = zenasset::PixelFormat::BC7Unorm; break;
+        case Format::BC7_SRGB_BLOCK: result = zenasset::PixelFormat::BC7Srgb; break;
+        default: break;
+    }
+    return result;
+}
+
+bool ValidAtlasTexture(const SceneAsset& asset, const TextureAsset& texture)
+{
+    const ImagePixels& pixels = *asset.images[texture.image.value].pixels;
+    const ImageRegion& region = texture.atlasRegion;
+    bool valid = zenasset::IsValidImageRegion({region.x, region.y, region.width, region.height}, pixels.width, pixels.height);
+    if (valid && region != ImageRegion{})
+    {
+        valid = (texture.format == Format::R8G8B8A8_UNORM || texture.format == Format::R8G8B8A8_SRGB) && pixels.arrayLayers == 1
+             && texture.arrayLayer == 0 && pixels.mips.size() == 1 && pixels.width <= 16384 && pixels.height <= 16384
+             && std::has_single_bit(pixels.width) && std::has_single_bit(pixels.height) && std::has_single_bit(region.width)
+             && std::has_single_bit(region.height) && region.x >= 4 && region.y >= 4 && region.x % 4 == 0 && region.y % 4 == 0
+             && pixels.width - region.x - region.width >= 4 && pixels.height - region.y - region.height >= 4
+             && texture.sampler.IsValid();
+        if (valid)
+        {
+            const SamplerAsset& sampler = asset.samplers[texture.sampler.value];
+            valid = sampler.minFilter == TextureFilter::Linear && sampler.magFilter == TextureFilter::Linear
+                 && sampler.mipFilter == TextureFilter::Linear && sampler.wrapS == SamplerAddressMode::ClampToEdge
+                 && sampler.wrapT == SamplerAddressMode::ClampToEdge;
+        }
+    }
+    return valid;
+}
+
 bool ValidImages(const SceneAsset& asset)
 {
     bool valid = true;
     for (const ImageAsset& image : asset.images)
     {
-        // Version one stores decoded RGBA8 images; HDR environments have their
-        // own linear floating-point payload. Encoded source bytes are never uploaded.
-        const ImagePixels& pixels  = *image.pixels;
-        valid                     &= pixels.format == Format::R8G8B8A8_UNORM || pixels.format == Format::R8G8B8A8_SRGB;
-        const uint64_t count       = uint64_t(pixels.width) * pixels.height;
-        valid                     &= count <= UINT64_MAX / 4 && count * 4 == pixels.bytes.size()
-                                  && pixels.mips.size() <= MipCount(pixels.width, pixels.height);
+        const ImagePixels&          pixels = *image.pixels;
+        const zenasset::PixelFormat format = ImageStorageFormat(pixels.format);
+        uint64_t                    bytes  = 0;
+        valid &= zenasset::GetImageArrayLevelByteSize(format, pixels.width, pixels.height, pixels.arrayLayers, bytes)
+              && bytes == pixels.bytes.size() && (pixels.arrayLayers == 1 || !pixels.mips.empty())
+              && pixels.mips.size() <= MipCount(pixels.width, pixels.height)
+              && (pixels.mips.empty()
+                  || std::equal(pixels.mips[0].begin(), pixels.mips[0].end(), pixels.bytes.begin(), pixels.bytes.end()));
         for (size_t level = 0; valid && level < pixels.mips.size(); ++level)
         {
-            const uint64_t width   = std::max(1u, pixels.width >> level);
-            const uint64_t height  = std::max(1u, pixels.height >> level);
-            valid                 &= width * height * 4 == pixels.mips[level].size();
+            valid &= zenasset::GetImageArrayLevelByteSize(format, std::max(1u, pixels.width >> level),
+                                                          std::max(1u, pixels.height >> level), pixels.arrayLayers, bytes)
+                  && bytes == pixels.mips[level].size();
         }
     }
     for (const TextureAsset& texture : asset.textures)
     {
-        valid &= texture.format == Format::R8G8B8A8_UNORM || texture.format == Format::R8G8B8A8_SRGB;
+        valid &= ValidAtlasTexture(asset, texture);
+        valid &= texture.interpretation <= TextureInterpretation::NormalXYPositiveZ
+              && texture.arrayLayer < asset.images[texture.image.value].pixels->arrayLayers
+              && ((texture.interpretation == TextureInterpretation::NormalXYPositiveZ)
+                  == (texture.format == Format::BC5_UNORM_BLOCK));
+        valid &= zenasset::ArePixelFormatsViewCompatible(ImageStorageFormat(asset.images[texture.image.value].pixels->format),
+                                                         ImageStorageFormat(texture.format));
     }
     for (const SamplerAsset& sampler : asset.samplers)
     {
@@ -682,14 +731,34 @@ bool ValidLightsAndCameras(const SceneAsset& asset)
     }
     for (const ImageBasedLightAsset& light : asset.imageBasedLights)
     {
+        const bool compressed = light.specularFormat == Format::BC6H_UFLOAT_BLOCK;
         valid &= Finite(light.intensity) && ValidRotation(light.rotation) && light.irradianceCoefficients.size() == 9
               && FiniteArray(light.irradianceCoefficients) && light.size > 0 && light.mipLevels > 0
               && light.mipLevels <= MipCount(light.size, light.size)
-              && uint64_t(light.mipLevels) * 6 == light.specularMipFaces.size();
-        for (size_t face = 0; valid && face < light.specularMipFaces.size(); ++face)
+              && (compressed ? light.specularMipFaces.empty() && light.specularBlockMipFaces
+                                   && uint64_t(light.mipLevels) * 6 == light.specularBlockMipFaces->size()
+                             : light.specularFormat == Format::R32G32B32A32_SFLOAT && !light.specularBlockMipFaces
+                                   && uint64_t(light.mipLevels) * 6 == light.specularMipFaces.size());
+        for (uint32_t face = 0; valid && face < light.mipLevels * 6; ++face)
         {
-            const uint64_t extent = std::max(1u, light.size >> (face / 6));
-            valid &= light.specularMipFaces[face].size() == extent * extent && FiniteArray(light.specularMipFaces[face]);
+            const uint32_t extent = std::max(1u, light.size >> (face / 6));
+            if (compressed)
+            {
+                const HeapVector<uint8_t>& blocks = (*light.specularBlockMipFaces)[face];
+                uint64_t                   bytes  = 0;
+                valid = zenasset::GetImageLevelByteSize(zenasset::PixelFormat::BC6HUfloat, extent, extent, bytes)
+                     && bytes == blocks.size();
+                for (size_t offset = 0; valid && offset < blocks.size(); offset += 16)
+                {
+                    const uint8_t mode = blocks[offset] & 31;
+                    valid              = mode != 19 && mode != 23 && mode != 27 && mode != 31;
+                }
+            }
+            else
+            {
+                valid &= light.specularMipFaces[face].size() == uint64_t(extent) * extent
+                      && FiniteArray(light.specularMipFaces[face]);
+            }
         }
     }
     return valid;

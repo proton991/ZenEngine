@@ -82,6 +82,43 @@ TEST(VulkanResourceCreationTests, BufferAllocationConsumesLiveQueueFamilyStorage
     CheckAllocationStorage<VkBufferCreateInfo>();
 }
 
+TEST(VulkanResourceCreationTests, CompressedTextureFootprintsRoundEachMipToWholeBlocks)
+{
+    uint64_t bytes = 0;
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC7SRGBBlock, 5, 7, 1, bytes));
+    EXPECT_EQ(bytes, 64u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC7UNORMBlock, 1, 1, 1, bytes));
+    EXPECT_EQ(bytes, 16u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC4UNORMBlock, 3, 5, 1, bytes));
+    EXPECT_EQ(bytes, 16u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC4UNORMBlock, 5, 7, 1, bytes));
+    EXPECT_EQ(bytes, 32u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC4UNORMBlock, 1, 1, 1, bytes));
+    EXPECT_EQ(bytes, 8u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC5UNORMBlock, 5, 7, 1, bytes));
+    EXPECT_EQ(bytes, 64u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC5UNORMBlock, 1, 1, 1, bytes));
+    EXPECT_EQ(bytes, 16u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC6HUFloatBlock, 5, 5, 6, bytes));
+    EXPECT_EQ(bytes, 384u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eBC6HUFloatBlock, 1, 1, 6, bytes));
+    EXPECT_EQ(bytes, 96u);
+    EXPECT_TRUE(GetTextureFormatLevelSize(DataFormat::eR8G8B8A8UNORM, 3, 5, 1, bytes));
+    EXPECT_EQ(bytes, 60u);
+    EXPECT_FALSE(GetTextureFormatLevelSize(DataFormat::eBC7UNORMBlock, UINT32_MAX, UINT32_MAX, UINT32_MAX, bytes));
+    EXPECT_EQ(bytes, 0u);
+    EXPECT_FALSE(GetTextureFormatLevelSize(DataFormat::eBC7UNORMBlock, 0, 7, 1, bytes));
+    EXPECT_FALSE(GetTextureFormatLevelSize(DataFormat::eUndefined, 1, 1, 1, bytes));
+    EXPECT_TRUE(AreTextureColorViewFormatsCompatible(DataFormat::eBC7UNORMBlock, DataFormat::eBC7SRGBBlock));
+    EXPECT_FALSE(AreTextureColorViewFormatsCompatible(DataFormat::eBC7UNORMBlock, DataFormat::eBC5UNORMBlock));
+    EXPECT_FALSE(AreTextureColorViewFormatsCompatible(DataFormat::eBC4UNORMBlock, DataFormat::eBC5UNORMBlock));
+    EXPECT_TRUE(AreTextureColorViewFormatsCompatible(DataFormat::eBC4UNORMBlock, DataFormat::eBC4UNORMBlock));
+    EXPECT_TRUE(AreTextureColorViewFormatsCompatible(DataFormat::eBC5UNORMBlock, DataFormat::eBC5UNORMBlock));
+    EXPECT_TRUE(AreTextureColorViewFormatsCompatible(DataFormat::eBC6HUFloatBlock, DataFormat::eBC6HUFloatBlock));
+    EXPECT_FALSE(AreTextureColorViewFormatsCompatible(DataFormat::eBC6HUFloatBlock, DataFormat::eBC7UNORMBlock));
+    EXPECT_FALSE(AreTextureColorViewFormatsCompatible(DataFormat::eBC7UNORMBlock, DataFormat::eR32G32B32A32SFloat));
+}
+
 TEST(VulkanResourceCreationTests, ImageAllocationConsumesLiveQueueFamilyStorage)
 {
     CheckAllocationStorage<VkImageCreateInfo>();

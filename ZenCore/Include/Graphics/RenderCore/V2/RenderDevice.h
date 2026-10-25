@@ -1,4 +1,5 @@
 #pragma once
+#include "Graphics/RenderCore/V2/SpatialTextureSampling.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIFrameState.h"
 #include "Graphics/RHI/RHIResource.h"
@@ -113,6 +114,16 @@ public:
     uint64_t GetStagedUploadBytes() const
     {
         return m_pUploadQueue != nullptr ? m_pUploadQueue->GetStagedBytes() : 0;
+    }
+
+    StagingPoolStatistics GetStagingPoolStatistics() const
+    {
+        return m_stagingBufferManager.GetStatistics();
+    }
+
+    void ResetStagingPoolStatistics()
+    {
+        m_stagingBufferManager.ResetStatistics();
     }
 
     const RHIQueueCapabilities& GetQueueCapabilities() const
@@ -275,7 +286,13 @@ public:
 
     RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures);
+    void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITextureView*>& outTextures);
+
+    // Main-thread resource setup only. Successful qualification is cached for this
+    // device; failed attempts publish no parameters and may be retried.
+    bool QualifySpatialTextureSampling();
+
+    Vec4 GetTextureSamplingParameters() const;
 
     bool LoadTextureEnv(const std::string& file, EnvTexture* pTexture, bool fallbackToBlack = true);
 
@@ -527,6 +544,8 @@ private:
 
     RendererServer* m_pRendererServer{nullptr};
     TextureManager* m_pTextureManager{nullptr};
+
+    SpatialTextureRounding m_spatialTextureRounding{SpatialTextureRounding::eUnqualified};
 
     DeletionQueue m_deletionQueue;
 
