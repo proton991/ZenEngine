@@ -1,8 +1,8 @@
 # ZenEngine
 
-Asset processor tests and validation tools are maintained in the sibling
-[ZenAssetProcessor repository](../ZenAssetProcessor/README.md). Its optional
-[engine consumer suite](../ZenAssetProcessor/tests/integration/zenengine/README.md)
+Asset processor tests and validation tools are maintained in the independent
+[ZenAssetProcessor repository](https://github.com/proton991/ZenAssetProcessor). Its optional
+[engine consumer suite](https://github.com/proton991/ZenAssetProcessor/tree/main/tests/integration/zenengine)
 owns import/package regressions and asset benchmarks. The normal engine test
 targets cover engine, renderer and editor behavior.
 
@@ -237,12 +237,20 @@ cmake --build --preset x64-windows-msvc-release --target scene_renderer_demo --p
 ./build/x64-windows-msvc-release/bin/scene_renderer_demo.exe
 ```
 
-ZenAssetProcessor is an independent library beside the engine checkout. CMake
-defaults to the live `../ZenAssetProcessor` checkout when present, with no revision
-pin during development. Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to use another
-checkout; CMake remembers the path in this build tree. An installed package can
-instead be selected with
-`-DZEN_ASSET_PROCESSOR_SOURCE_DIR= -DCMAKE_PREFIX_PATH=<installation-prefix>`.
+[ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is an independent
+library. CMake fetches `git@github.com:proton991/ZenAssetProcessor.git` and follows
+`origin/main`, without a commit or release pin. Each configure/reconfigure checks
+GitHub for updates; an ordinary incremental build does not check the remote.
+GitHub SSH authentication and network access are required for this default mode.
+Fetched sources live in `<build-directory>/_deps/zen_asset_processor-src`.
+
+Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty path for an explicit local
+checkout. Existing build trees that cached the previous sibling-checkout default
+need `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub. To use an installed
+package, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=`,
+`-DZEN_ASSET_PROCESSOR_USE_INSTALLED=ON` and
+`-DCMAKE_PREFIX_PATH=<installation-prefix>`; the installed-package option defaults
+to `OFF`. Set it back to `OFF` when returning to GitHub consumption.
 Source import/cooking belongs to `ZenEngineAssetTools`, while `ZenCore` uses the
 reader for `.zenasset` loading. Build target `zen_editor` to use source import,
 processing settings and **Recook from Source** in the [editor](ZenEditor/README.md).
@@ -305,17 +313,20 @@ An unrecognized option prints the complete usage line.
 
 ### Dependencies
 
-Third-party sources are downloaded automatically by CMake FetchContent into
+Most third-party sources are downloaded automatically by CMake FetchContent into
 `External/<dependency-name>`. Git submodules are not needed, but the first configure needs
 network access. Every archive has a pinned revision and SHA-256 checksum in
 [`External/CMakeLists.txt`](External/CMakeLists.txt). Downloaded source folders are ignored
 by Git, and build and download state stays in the selected build tree.
 
-ZenAssetProcessor is developed alongside ZenEngine and uses the live sibling
-checkout by default, without a revision pin or archive download.
+ZenAssetProcessor uses the GitHub SSH repository and moving `origin/main` branch
+through [External/ZenAssetProcessor.cmake](External/ZenAssetProcessor.cmake).
+Its checkout and update state stay in the selected build directory. A sibling
+checkout remains available through the explicit source-directory override.
 
-| Dependency | Pinned version | Used by |
+| Dependency | Revision/version | Used by |
 | --- | --- | --- |
+| ZenAssetProcessor | `origin/main` (unpinned) | Source import/cooking and `.zenasset` package reading |
 | GLFW | 3.5.1 | Window/input integration |
 | GLM | 1.0.3 | Engine math |
 | GLI | `3542f8830178061e0661f5df1e89d36ba7d7b0ab` | Texture loading; current upstream commit |

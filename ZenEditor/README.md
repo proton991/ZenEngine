@@ -18,13 +18,20 @@ cmake --build build/x64-windows-msvc-debug --target zen_editor
 .\build\x64-windows-msvc-debug\bin\zen_editor.exe
 ```
 
-ZenAssetProcessor is a separate dependency. CMake defaults to the live sibling
-checkout at `../ZenAssetProcessor` (`E:/Dev/ZenAssetProcessor` in this workspace),
-without pinning a revision during development. Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR`
-to use another checkout; CMake remembers the path in that build directory. For a
-Release build, use `x64-windows-msvc-release` in both commands. To consume an
-installed library instead, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` and its
-installation directory through `CMAKE_PREFIX_PATH`. Source import and
+[ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is a separate
+dependency. CMake fetches `git@github.com:proton991/ZenAssetProcessor.git` at the
+moving `origin/main` branch, without a commit or release pin. Configure/reconfigure
+checks for updates using GitHub SSH authentication; ordinary incremental builds
+use the fetched checkout in `<build-directory>/_deps/zen_asset_processor-src`.
+Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty local checkout path to develop
+against that source instead. Existing build trees with the old sibling path
+cached need `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub.
+
+For a Release build, use `x64-windows-msvc-release` in both commands. To consume an
+installed library, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=`,
+`-DZEN_ASSET_PROCESSOR_USE_INSTALLED=ON` and its installation directory through
+`CMAKE_PREFIX_PATH`. The installed-package option defaults to `OFF`; set it back
+to `OFF` to return to GitHub consumption. Source import and
 recooking link `ZenAsset::Processor` through `ZenEngineAssetTools`; the runtime
 loads `.zenasset` packages through `ZenAsset::Reader`.
 

@@ -1,9 +1,9 @@
 # Standalone ZenAssetProcessor implementation plan
 
 **Status:** Processor implementation is complete for the verified Windows configuration; current development integration passes Debug/Release and focused Vulkan checks. Broader rendering and release gates remain open.
-**Updated:** 25 October 2026.
-**Library location:** `E:/Dev/ZenAssetProcessor`, a separate Git repository and standalone CMake project.
-**Engine integration:** ZenEngine uses the live sibling checkout by default through `External/ZenAssetProcessor.cmake`. A source-path override or installed package remains supported.
+**Updated:** 26 October 2026.
+**Library location:** [proton991/ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor), a separate Git repository and standalone CMake project; the development checkout is `E:/Dev/ZenAssetProcessor`.
+**Engine integration:** ZenEngine fetches the GitHub repository over SSH and follows `origin/main` through `External/ZenAssetProcessor.cmake`. Explicit local-source and installed-package modes remain supported.
 **Development policy:** Keep ZenAssetProcessor unpinned while it is under active development. Release publication and version-pinning policy are deferred until a release is requested.
 
 Build a reusable asset processor that imports source models, converts them to a
@@ -18,6 +18,18 @@ location above. The v3 schema is still under development and is not a released
 compatibility contract.
 
 ### Execution status
+
+On 26 October, the processor repository was published to GitHub. Default engine
+configuration now follows its moving `origin/main` branch; every configure or
+reconfigure checks for updates. The source is unpinned, and ordinary incremental
+builds use the already fetched checkout. Source hosting does not declare a release
+or supersede the dated verification records below.
+
+Both Windows MSVC preset caches now select GitHub source. Debug and Release
+editors and the Release scene renderer build from the fetched repository. An
+isolated [dependency check](../build/github-asset-dependency-check/results.json)
+also verifies that reconfiguration follows an advancing branch, while explicit
+local-source and installed-Reader modes perform no fetch.
 
 The [25 October integration checkpoint](ZenAssetProcessorIntegrationVerification.md)
 consumes the completed processor from the unpinned sibling checkout. Debug and
@@ -151,7 +163,7 @@ processing and automatic caching now point to their migrated implementations.
 | [Runtime builder](../ZenCore/Source/AssetLib/SceneRuntimeBuilder.cpp) | Remains in ZenEngine and consumes adapted package data. |
 | [Texture upload](../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp) | Extend for compressed blocks, complete mip chains, and device-format checks. |
 | [Editor previews](../ZenEditor/Model/Source/SceneAssets.cpp) | Add a defined thumbnail/decode path for compressed images. |
-| [Dependency integration](../External/ZenAssetProcessor.cmake) | Consume the independent processor through its CMake targets, using the live sibling checkout during development; retain shared engine dependencies. |
+| [Dependency integration](../External/ZenAssetProcessor.cmake) | Consume the independent processor through its CMake targets, following GitHub's `origin/main` by default; retain explicit local/installed modes and shared engine dependencies. |
 
 Current extraction constraints:
 
@@ -191,7 +203,7 @@ E:/Dev/ZenAssetProcessor/
   docs/
 
 E:/Dev/ZenEngine/
-  External/ZenAssetProcessor.cmake # Live sibling checkout or installed package
+  External/ZenAssetProcessor.cmake # GitHub branch, local checkout or installed package
   ZenCore/.../AssetLib/      # Runtime adapter and scene construction
   .../AssetTools/           # Source-enabled integration target; location finalized in M1
 ```
@@ -227,13 +239,17 @@ this extraction.
 For dependency consumption:
 
 - Export/install the library's CMake targets and package version information.
-- Use the live sibling checkout without a release or commit pin during active
-  development. Revisit release distribution only when requested; do not invent
-  a remote URL before the repository is hosted.
-- Default the development source-directory option to `../ZenAssetProcessor`
-  when present, which resolves to `E:/Dev/ZenAssetProcessor` in this workspace.
-  Allow another checkout path or an explicit empty value for an installed package;
-  do not hard-code the machine's drive layout.
+- Fetch `git@github.com:proton991/ZenAssetProcessor.git` at `origin/main` without
+  a release or commit pin during active development. Refresh the remote branch
+  during configure/reconfigure. Keep the fetched source under the build tree's
+  `_deps/zen_asset_processor-src`, and revisit release distribution only when requested.
+- Default `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to empty for GitHub consumption. A
+  nonempty value selects an explicit local checkout; do not hard-code the
+  machine's drive layout. Existing build caches with a sibling path need an
+  explicit `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub.
+- Select installed-package consumption with `ZEN_ASSET_PROCESSOR_USE_INSTALLED=ON`,
+  an empty source-directory override and the installation's `CMAKE_PREFIX_PATH`.
+  This option defaults to `OFF`; restore `OFF` when returning to GitHub mode.
 - Support existing dependency targets to avoid duplicate GLM, codec, or logging
   builds. Keep dependency configuration scoped to the standalone project.
 - Ensure configuring with processor/tools disabled does not download or build
@@ -850,13 +866,13 @@ Portable-profile delivery is tracked separately if deferred.
 
 ### M8 — Release and complete the migration
 
-The [current development integration](ZenAssetProcessorIntegrationVerification.md)
-verifies the final processor on Windows without pinning or publishing it. It does
-not close the broader host, rendering or release gates below.
+The [25 October development integration](ZenAssetProcessorIntegrationVerification.md)
+verified the processor on Windows using the unpinned local checkout. GitHub source
+hosting on 26 October does not close the broader host, rendering or release gates below.
 
 - [ ] Build/test Debug and Release on Windows; build the standalone processor and
       reader on another supported host before claiming that host's support.
-- [ ] Verify both installed-package and live-checkout builds. Release publication
+- [ ] Verify GitHub-branch, explicit local-checkout and installed-package builds. Release publication
       and version-pinning policy are deferred until a release is requested.
 - [ ] Remove obsolete engine-owned source-import/cache implementation after
       migrated callers and tests pass; retain the documented v2 compatibility path.
