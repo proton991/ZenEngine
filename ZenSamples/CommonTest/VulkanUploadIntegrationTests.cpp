@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "ScopedVulkanCall.h"
 #include "VulkanIntegrationFixture.h"
 #include <gtest/gtest.h>
@@ -81,6 +82,31 @@ protected:
         ++hostWaitCount;
 
         return originalWait(device, info, timeout);
+    }
+
+    static VKAPI_ATTR void VKAPI_CALL CaptureHostReadBarrier(VkCommandBuffer              commands,
+                                                             VkPipelineStageFlags         sourceStages,
+                                                             VkPipelineStageFlags         destinationStages,
+                                                             VkDependencyFlags            dependencies,
+                                                             uint32_t                     memoryCount,
+                                                             const VkMemoryBarrier*       memory,
+                                                             uint32_t                     bufferCount,
+                                                             const VkBufferMemoryBarrier* buffers,
+                                                             uint32_t                     imageCount,
+                                                             const VkImageMemoryBarrier*  images)
+    {
+        for (uint32_t i = 0; i < bufferCount; ++i)
+        {
+            if ((buffers[i].dstAccessMask & VK_ACCESS_HOST_READ_BIT) != 0)
+            {
+                ++hostReadBarrierCount;
+                hostReadBarrier = buffers[i];
+                EXPECT_NE(sourceStages & VK_PIPELINE_STAGE_TRANSFER_BIT, 0u);
+                EXPECT_NE(destinationStages & VK_PIPELINE_STAGE_HOST_BIT, 0u);
+            }
+        }
+        originalBarrier(commands, sourceStages, destinationStages, dependencies, memoryCount, memory, bufferCount, buffers,
+                        imageCount, images);
     }
 
     void SetUp() override
@@ -264,27 +290,58 @@ protected:
         EXPECT_EQ(emitted, waitValues.size());
     }
 
-    VulkanRHI*                           backend{nullptr};
-    RHICommandListExecutor*              executor{nullptr};
-    VkDebugUtilsMessengerEXT             messenger{VK_NULL_HANDLE};
-    RHIBuffer*                           source{nullptr};
-    RHIBuffer*                           destination{nullptr};
-    RHIBuffer*                           readback{nullptr};
-    std::array<uint8_t, 64>              bytes{};
-    bool                                 countersWereEnabled{false};
-    static inline PFN_vkQueueSubmit      originalSubmit;
-    static inline PFN_vkWaitSemaphores   originalWait;
-    static inline PFN_vkEndCommandBuffer originalEnd;
-    static inline uint32_t               failSubmitAt{0};
-    static inline uint32_t               failEndAt{0};
-    static inline uint32_t               endCalls{0};
-    static inline uint32_t               gpuWaitCount{0};
-    static inline uint32_t               hostWaitCount{0};
-    static inline uint32_t               emptyBatchCount{0};
-    static inline HeapVector<uint64_t>   waitValues;
-    static inline HeapVector<uint32_t>   submitBatchCounts;
-    static inline HeapVector<uint32_t>   batchWaitCounts;
+    VulkanRHI*                             backend{nullptr};
+    RHICommandListExecutor*                executor{nullptr};
+    VkDebugUtilsMessengerEXT               messenger{VK_NULL_HANDLE};
+    RHIBuffer*                             source{nullptr};
+    RHIBuffer*                             destination{nullptr};
+    RHIBuffer*                             readback{nullptr};
+    std::array<uint8_t, 64>                bytes{};
+    bool                                   countersWereEnabled{false};
+    static inline PFN_vkQueueSubmit        originalSubmit;
+    static inline PFN_vkWaitSemaphores     originalWait;
+    static inline PFN_vkEndCommandBuffer   originalEnd;
+    static inline PFN_vkCmdPipelineBarrier originalBarrier;
+    static inline VkBufferMemoryBarrier    hostReadBarrier{};
+    static inline uint32_t                 hostReadBarrierCount{0};
+    static inline uint32_t                 failSubmitAt{0};
+    static inline uint32_t                 failEndAt{0};
+    static inline uint32_t                 endCalls{0};
+    static inline uint32_t                 gpuWaitCount{0};
+    static inline uint32_t                 hostWaitCount{0};
+    static inline uint32_t                 emptyBatchCount{0};
+    static inline HeapVector<uint64_t>     waitValues;
+    static inline HeapVector<uint32_t>     submitBatchCounts;
+    static inline HeapVector<uint32_t>     batchWaitCounts;
 };
+
+TEST_P(VulkanUploadIntegrationTest, ReadbackCopyMakesOnlyWrittenRangeHostAvailable)
+{
+    originalBarrier                   = vkCmdPipelineBarrier;
+    hostReadBarrierCount              = 0;
+    hostReadBarrier                   = {};
+    const RHICommandContextType queue = RHICommandContextType::eTransfer;
+    RHICommandListPtr           commands(RHICommandList::Create(executor->GetCommandContext(queue)));
+    {
+        test::ScopedVulkanCall barrierHook(vkCmdPipelineBarrier, &CaptureHostReadBarrier);
+        commands->CopyBuffer(source, destination, {0, 0, bytes.size()});
+        commands->CopyBuffer(source, readback, {8, 16, 24});
+        ASSERT_EQ(SubmitCommands(*commands), RHISubmissionResult::eSuccess);
+    }
+    ASSERT_EQ(hostReadBarrierCount, 1u);
+    EXPECT_EQ(hostReadBarrier.buffer, static_cast<VulkanBuffer*>(readback)->GetVkBuffer());
+    EXPECT_EQ(hostReadBarrier.offset, 16u);
+    EXPECT_EQ(hostReadBarrier.size, 24u);
+    EXPECT_EQ(hostReadBarrier.srcAccessMask, VK_ACCESS_TRANSFER_WRITE_BIT);
+    EXPECT_EQ(hostReadBarrier.dstAccessMask, VK_ACCESS_HOST_READ_BIT);
+    EXPECT_EQ(hostReadBarrier.srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+    EXPECT_EQ(hostReadBarrier.dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+    ASSERT_TRUE(executor->WaitForCompletion(queue, executor->GetLastSubmittedSerial(queue)));
+    const uint8_t* mapped = readback->Map();
+    ASSERT_NE(mapped, nullptr);
+    EXPECT_EQ(std::memcmp(mapped + 16, bytes.data() + 8, 24), 0);
+    readback->Unmap();
+}
 
 TEST_P(VulkanUploadIntegrationTest, PackedRunRejectsAtomicallyAndRetriesAfterNativeOrRecordingFailure)
 {
