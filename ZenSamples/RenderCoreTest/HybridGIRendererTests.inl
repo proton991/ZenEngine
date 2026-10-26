@@ -553,7 +553,7 @@ TEST_F(RenderCoreTest, HybridBrickFallbackRecoveryResetsHistoryOnlyAfterSubmissi
             ASSERT_TRUE(gi.SetSettings(settings));
             rhi->failBufferCreationAt = rhi->bufferCreations + 1;
         }
-        const bool ready          = gi.BuildRayQueryGraph();
+        const bool ready          = BuildPreparedRayQueryGraph(gi);
         rhi->failBufferCreationAt = 0;
         ASSERT_TRUE(ready);
         EXPECT_EQ(gi.UsesBrickTraversal(), frame >= 2);
@@ -692,7 +692,7 @@ TEST_F(RenderCoreTest, HybridBrickReferenceRetracesInlineAndRayCountsIncludeRetr
             ownedBuffers.push_back(readback);
             hybrid->SetRayCountCapture(counts, readback);
         }
-        ASSERT_TRUE(gi.BuildRayQueryGraph());
+        ASSERT_TRUE(BuildPreparedRayQueryGraph(gi));
         gi.BuildRenderGraph();
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
         ASSERT_TRUE(graph.End()) << graph.GetResult().message;
@@ -857,7 +857,7 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
         {
             hybrid->SetRayCountCapture(nullptr, nullptr);
         }
-        ASSERT_TRUE(gi.BuildRayQueryGraph());
+        ASSERT_TRUE(BuildPreparedRayQueryGraph(gi));
         gi.BuildRenderGraph();
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
         EXPECT_EQ(hybrid->UsesScreenProbes(), probes);
@@ -1071,7 +1071,7 @@ TEST_F(RenderCoreTest, ScreenProbePoolFollowsReadBackDemandAndKeepsHistory)
         }
         renderer.BuildGBufferGraph(view, true);
         HybridGIRenderer* hybrid = renderer.GetHybridGI();
-        ASSERT_TRUE(gi.BuildRayQueryGraph());
+        ASSERT_TRUE(BuildPreparedRayQueryGraph(gi));
         gi.BuildRenderGraph();
         ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
         ASSERT_TRUE(hybrid->UsesScreenProbes());

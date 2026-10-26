@@ -22,6 +22,7 @@ struct EditorRenderSnapshot
     bool                           hardwareQueries{false};
     std::string                    rayQueryReason;
     std::string                    giSelectionReason;
+    bool                           preparingGI{false}; // RendererServer::IsPreparingGI.
     bool                           gpuTimingsEnabled{false};
     HeapVector<rc::RDGNodeMetrics> giPassTimings;
 };

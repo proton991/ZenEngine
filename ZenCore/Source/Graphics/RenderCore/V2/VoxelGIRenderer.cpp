@@ -37,6 +37,14 @@ bool VoxelGISettings::UsesAdaptiveSampling() const
     return adaptiveSampling && samples == 4 && referenceSamples == 0;
 }
 
+bool VoxelGISettings::UsesRayShadows(bool hardwareReady) const
+{
+    // Inherited Compute uses maps; only an explicit shadow provider opts into the software BVH.
+    return shadows && rtShadows
+        && ((hardwareReady && GetFeatureProvider(Feature::Shadows) == RayProvider::Hardware)
+            || featureProviders[static_cast<size_t>(Feature::Shadows)] == RayProvider::Voxel);
+}
+
 VoxelGISettings::RayProvider VoxelGISettings::GetFeatureProvider(Feature feature) const
 {
     const RayProvider selected  = featureProviders[static_cast<size_t>(feature)];
@@ -168,6 +176,7 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
         }
 
         if (settings.shadows != m_settings.shadows || settings.rtShadows != m_settings.rtShadows
+            || settings.UsesRayShadows(m_hardwareQueries) != m_settings.UsesRayShadows(m_hardwareQueries)
             || settings.GetFeatureProvider(VoxelGISettings::Feature::Shadows)
                    != m_settings.GetFeatureProvider(VoxelGISettings::Feature::Shadows)
             || settings.analyticLighting != m_settings.analyticLighting
@@ -261,6 +270,12 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     settings.rayProvider               = provider == "hardware" ? VoxelGISettings::RayProvider::Hardware
                                        : provider == "voxel"    ? VoxelGISettings::RayProvider::Voxel
                                                                 : VoxelGISettings::RayProvider::Auto;
+    // Preserve explicit legacy software-shadow requests; inherited preset providers use maps without HW RT.
+    if (config.HasKey("voxel_gi_ray_provider") && settings.rayProvider == VoxelGISettings::RayProvider::Voxel
+        && settings.rtShadows)
+    {
+        settings.featureProviders[static_cast<size_t>(VoxelGISettings::Feature::Shadows)] = VoxelGISettings::RayProvider::Voxel;
+    }
 
     const char*       featureKeys[]  = {"voxel_gi_sky_backend",    "voxel_gi_specular_backend",    "voxel_gi_sky_cache_backend",
                                         "voxel_gi_bounce_backend", "voxel_gi_reflections_backend", "voxel_gi_shadows_backend"};
@@ -411,17 +426,20 @@ void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
     m_rayQuery.Destroy();
     m_softwareRayQuery.Destroy();
     m_bricks.Destroy();
-    m_bricksActive        = false;
-    m_hardwareQueries     = false;
-    m_scene               = scene;
+    m_bricksActive             = false;
+    m_hardwareQueries          = false;
+    m_hardwareFeatureMask      = 0;
+    m_preparingSoftwareQueries = false;
+    m_softwareQueriesActive    = false;
+    m_scene                    = scene;
 
-    m_geometryRevision    = 0;
+    m_geometryRevision         = 0;
 
-    m_lightingRevision    = 0;
+    m_lightingRevision         = 0;
 
-    m_environmentRevision = 0;
+    m_environmentRevision      = 0;
 
-    m_radianceValid       = false;
+    m_radianceValid            = false;
 
     if (m_settings.previousFrameRadiance)
     {
@@ -689,20 +707,54 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
     bool ready = IsInitialized() && m_scene != nullptr;
     if (ready)
     {
-        const bool  previousHardware = m_hardwareQueries;
-        const char* previousReason   = m_providerReason;
-        const bool  requestHardware  = m_settings.GetHardwareFeatureMask() != 0;
+        const bool     previousHardware = m_hardwareQueries;
+        const uint32_t previousMask     = m_hardwareFeatureMask;
+        const char*    previousReason   = m_providerReason;
+        const uint32_t requestedMask    = m_settings.GetHardwareFeatureMask();
+        // Retain a usable HW path until the requested software snapshot has been built
+        // and uploaded. Requested settings remain visible to the UI throughout the switch.
         m_hardwareQueries =
-            requestHardware
+            (requestedMask != 0 || previousHardware)
             && m_rayQuery.BuildRenderGraph(*m_scene, uint64_t(m_settings.accelerationStructureBudgetMB) * 1024 * 1024);
-        m_providerReason = requestHardware ? m_rayQuery.GetReason() : "software_bvh_selected";
-        if (!requestHardware && previousHardware)
+        m_hardwareFeatureMask      = m_hardwareQueries ? requestedMask : 0;
+        m_preparingSoftwareQueries = false;
+        const bool software        = UsesSoftwareQueries();
+        if (software)
+        {
+            // A BVH that the last frame did not trace (a new scene, or a switch from HW RT)
+            // can be far behind the scene, so it is built in the background, on HW RT if
+            // available and otherwise with PBR. Frames already tracing it rebuild it on each
+            // scene change, keeping moving geometry current in Compute and mixed tracing.
+            if (!m_softwareQueriesActive || !m_softwareRayQuery.HoldsSceneGeometry())
+            {
+                const SoftwareSceneRayQuery::PreparationResult prepared = m_softwareRayQuery.PrepareAsync(*m_scene);
+                m_preparingSoftwareQueries = prepared == SoftwareSceneRayQuery::PreparationResult::Pending;
+                ready                      = prepared == SoftwareSceneRayQuery::PreparationResult::Ready
+                                          || (m_preparingSoftwareQueries && m_hardwareQueries);
+                if (m_preparingSoftwareQueries && m_hardwareQueries)
+                {
+                    m_hardwareFeatureMask = (1u << static_cast<uint32_t>(VoxelGISettings::Feature::Count)) - 1u;
+                }
+            }
+            else
+            {
+                ready = m_softwareRayQuery.Prepare(*m_scene);
+            }
+        }
+        else
+        {
+            ready = m_softwareRayQuery.PrepareUnused();
+        }
+        m_softwareQueriesActive = software && ready && !m_preparingSoftwareQueries;
+        if (!m_preparingSoftwareQueries && requestedMask == 0 && m_hardwareQueries)
         {
             m_rayQuery.Destroy();
+            m_hardwareQueries     = false;
+            m_hardwareFeatureMask = 0;
         }
-        // Only enabled features resolved to Compute trace the software BVH. All-HW RT
-        // keeps placeholder bindings and neither builds nor depends on it.
-        ready = UsesSoftwareQueries() ? m_softwareRayQuery.Prepare(*m_scene) : m_softwareRayQuery.PrepareUnused();
+        m_providerReason = m_preparingSoftwareQueries ? "software_bvh_preparing"
+                         : requestedMask != 0         ? m_rayQuery.GetReason()
+                                                      : "software_bvh_selected";
         // Bricks are built from the software query's triangles. A failed build falls back to them.
         const bool     requested  = ready && RequestsBrickTraversal();
         const bool     were       = m_bricksActive;
@@ -721,7 +773,7 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
         {
             LOGI("Compute GI traversal: {}", m_bricksActive ? "bricks" : "triangles");
         }
-        if (previousHardware != m_hardwareQueries)
+        if (previousMask != m_hardwareFeatureMask)
         {
             m_environmentRevision = 0;
             m_lightingRevision    = 0;
@@ -1167,8 +1219,11 @@ void VoxelGIRenderer::Destroy()
     m_rayQuery.Destroy();
     m_softwareRayQuery.Destroy();
     m_bricks.Destroy();
-    m_bricksActive    = false;
-    m_hardwareQueries = false;
+    m_bricksActive             = false;
+    m_hardwareQueries          = false;
+    m_hardwareFeatureMask      = 0;
+    m_preparingSoftwareQueries = false;
+    m_softwareQueriesActive    = false;
     m_device->DestroyTexture(m_radiance);
 
     m_device->DestroyTexture(m_previousRadiance);

@@ -390,6 +390,9 @@ struct SceneRendererProfiling::State
 
     bool frameOpen{false};
 
+    // The GI start frame repeats while its scene BVH builds; only its first frame is cold.
+    bool giStartRecorded{false};
+
     void CollectGPUFrames(bool abandon = false);
 
     void RetainCurrentFrame();
@@ -741,7 +744,7 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream&         outpu
         << "},\"requested_frames\":" << options.frames << ",\"requested_warmup_frames\":" << options.warmup
         << ",\"gi_start_frame\":" << options.giStartFrame << ",\"fixed_step\":" << options.fixedStep
         << ",\"fixed_step_scope\":\"light and motion animation\""
-        << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup is excluded; measured is the requested measurement interval\""
+        << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup is excluded and includes frames rendered while GI builds its scene BVH; measured is the requested measurement interval\""
         << ",\"gpu_scope\":\"per-pass elapsed intervals including barriers; pass durations are not summed\""
         << ",\"gpu_frame_scope\":\"elapsed earliest TOP to latest BOTTOM across native graphics/compute-capable command buffers begun during the application render workload, including graph preparation GPU work and the graphics swapchain copy; excludes dedicated transfer-only buffers, asset startup outside the frame, and screenshot readback; does not directly measure host acquire/present calls or compositor/display latency; dependency waits and submission gaps may be included; requires a common device timestamp domain; this is not GPU-active time or occupancy\""
         << ",\"cpu_scope\":\"application frame wall time includes submission and frame-slot backpressure; pass CPU records measure command recording\""
@@ -989,9 +992,11 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         if (!warmup && state.options.giStartFrame != 0)
         {
-            state.current.phase = localFrame < state.options.giStartFrame  ? "warmup"
-                                : localFrame == state.options.giStartFrame ? "cold"
-                                                                           : "measured";
+            state.current.phase   = localFrame < state.options.giStartFrame                            ? "warmup"
+                                  : localFrame == state.options.giStartFrame && !state.giStartRecorded ? "cold"
+                                  : localFrame == state.options.giStartFrame                           ? "warmup"
+                                                                                                       : "measured";
+            state.giStartRecorded = state.giStartRecorded || localFrame == state.options.giStartFrame;
         }
         else if (state.frames.empty() && state.droppedFrames == 0)
         {
@@ -1051,6 +1056,13 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device, RHIViewport& 
         frame.resolvedMode  = static_cast<uint32_t>(server.GetRenderOption()) + 1;
 
         frame.method        = server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "hybrid" : "none";
+
+        // A frame rendered while the requested GI still builds its scene BVH is not the
+        // measured workload; SceneRendererDemo::Run does not count it either.
+        if (server.IsPreparingGI() && std::strcmp(frame.phase, "measured") == 0)
+        {
+            frame.phase = "warmup";
+        }
 
         state.RetainCurrentFrame();
 

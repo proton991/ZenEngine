@@ -60,7 +60,9 @@ def fixture(folder, name, kind='point', blocker='opaque', forward=False, count=1
         f.document['images'] = [dict(uri='data:image/png;base64,'+base64.b64encode(
             rgba_png(8, 8, [[255, 255, 255, 255 if x < 4 else 0] for z in range(8) for x in range(8)])).decode())]
         f.document['textures'] = [dict(source=0)]
-    f.mesh(quad([-.7, y, -.65], [-.7, y, .45], [.7, y, .45], [.7, y, -.65]), material=1,
+    half_width = .04 if blocker == 'thin' else .7
+    f.mesh(quad([-half_width, y, -.65], [-half_width, y, .45], [half_width, y, .45],
+                [half_width, y, -.65]), material=1,
            uv0=[[0, 0]]*6, uv1=uv)
     lights = []
     for i in range(count):
@@ -80,7 +82,9 @@ def fixture(folder, name, kind='point', blocker='opaque', forward=False, count=1
     if moving:
         times = f.attribute([0, 1, 2], 'SCALAR')
         animation = dict(samplers=[], channels=[])
-        for node_index in range(1, 2+count):
+        nodes = ([1] if moving == 'occluder' else list(range(2, 2+count)) if moving == 'light'
+                 else list(range(1, 2+count)))
+        for node_index in nodes:
             base = f.document['nodes'][node_index].get('translation', [0, 0, 0])
             values = f.attribute([[base[0]+x, base[1], base[2]] for x in (-.4, .4, -.4)], 'VEC3')
             animation['channels'].append(dict(sampler=len(animation['samplers']),
@@ -104,7 +108,7 @@ class Captures:
         self.env.update(VK_LOADER_LAYERS_DISABLE='~implicit~', DISABLE_RTSS_LAYER='1', VK_LAYER_VALIDATE_SYNC='1')
 
     def run(self, scene, tag, hardware=True, shadows=True, rt=True, frames=4, width=320, height=180, voxels=False,
-            benchmark=False, software=False):
+            benchmark=False, software=False, resolution=1024):
         software = software or getattr(self.args, 'software', False)
         rt = rt and not software
         prefix = self.args.output/tag
@@ -115,7 +119,7 @@ class Captures:
             voxel_gi_analytic_lighting='true', voxel_gi_ray_provider='hardware' if hardware and not software else 'voxel', voxel_gi_samples=1,
             voxel_gi_reference_samples=0, voxel_gi_reflections='false', voxel_gi_bounce_source='cone',
             voxel_gi_rt_shadows=str(hardware).lower(), voxel_gi_shadow_enabled=str(shadows).lower(),
-            shadow_map_resolution=1024, light_count=0)
+            shadow_map_resolution=resolution, light_count=0)
         settings.update({'dynamic_light.enabled': 'false', 'light_markers.enabled': 'false'})
         assert self.config.read_bytes() == self.active, 'External config edit; aborting'
         self.active = capture_configuration(self.original, settings)

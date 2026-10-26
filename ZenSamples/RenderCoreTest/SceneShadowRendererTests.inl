@@ -132,7 +132,7 @@ TEST_F(RenderCoreTest, SceneShadowsRetryFailedAllocationsAndExcludeDisabledLight
     }
 }
 
-TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeometryOrHandoffChanges)
+TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightOrHandoffChanges)
 {
     RHIShaderCreateInfo shader;
     shader.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex, RHIShaderStageFlagBits::eFragment);
@@ -161,7 +161,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
     RenderGraph*        graph   = device->GetCurrentFrameRDG();
     RDGMetrics&         metrics = device->GetRDGMetrics();
     metrics.SetSink({});
-    const uint32_t expectedFaces[] = {12, 0, 6, 0, 12, 12, 7, 6, 2, 6, 0, 0};
+    const uint32_t expectedFaces[] = {12, 0, 6, 0, 12, 0, 7, 6, 2, 6, 0, 0};
     for (uint32_t frame = 0; frame < std::size(expectedFaces); ++frame)
     {
         SCOPED_TRACE(frame);
@@ -174,7 +174,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
 
             ASSERT_TRUE(graph->Begin());
 
-            shadows.BuildRenderGraph(scene, 1);
+            shadows.BuildRenderGraph(scene);
 
             ASSERT_TRUE(graph->End());
 
@@ -205,13 +205,172 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
         {
             graph->AddTransferPass("InitializeMaterial").ClearTexture(sceneInputs.textures[0]->GetTexture(), Color(1));
         }
-        shadows.BuildRenderGraph(scene, frame >= 5 ? 2 : 1);
+        shadows.BuildRenderGraph(scene);
         graph->AddComputePass(IntentPass("keepalive"));
         metrics.RequestCapture();
         ASSERT_TRUE(graph->End()) << graph->GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         shadows.OnRenderGraphExecuted(frame != 3 ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
         EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"), expectedFaces[frame]);
+    }
+    shadows.Destroy();
+    for (RHIBuffer* buffer :
+         {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials, sceneInputs.uv})
+    {
+        device->DestroyBuffer(buffer);
+    }
+    device->DestroyTexture(sceneInputs.textures[0]->GetTexture());
+}
+
+TEST_F(RenderCoreTest, SceneShadowsCullDrawsAndInvalidateOnlyFacesTouchedByChangedCasters)
+{
+    RHIShaderCreateInfo shader;
+    shader.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex, RHIShaderStageFlagBits::eFragment);
+    shader.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)]   = "ShadowMapping/scene_shadow.vert.spv";
+    shader.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] = "ShadowMapping/scene_shadow.frag.spv";
+    reflectedShaderInfos["SceneShadowSP"]                         = shader;
+    CreateTestShaderProgram(device, "SceneShadowSP");
+    CreateTestShaderProgram(device, "intent");
+    sceneInputs.vertices  = Buffer(512);
+    sceneInputs.indices   = Buffer();
+    sceneInputs.nodes     = Buffer(3 * sizeof(sg::NodeData));
+    sceneInputs.materials = Buffer(sizeof(sg::MaterialData));
+    sceneInputs.uv        = Buffer();
+    sceneInputs.textures.push_back(Texture()->GetDefaultView());
+
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-20), Vec3(20));
+    sg::Material material("masked caster");
+    material.index                    = 0;
+    material.data.surfaceProperties.y = static_cast<float>(sg::AlphaMode::Mask);
+    sg::Node    nodes[]               = {sg::Node(0, "moving"), sg::Node(1, "stationary"), sg::Node(2, "remote")};
+    sg::Mesh    meshes[]              = {sg::Mesh("moving"), sg::Mesh("stationary"), sg::Mesh("remote")};
+    sg::SubMesh primitives[]          = {sg::SubMesh("moving", 0, 3, 3), sg::SubMesh("stationary", 3, 3, 3),
+                                         sg::SubMesh("remote", 6, 3, 3)};
+    for (uint32_t index = 0; index < 3; ++index)
+    {
+        primitives[index].SetMaterial(0, &material);
+        meshes[index].AddSubMesh(&primitives[index]);
+        nodes[index].AddComponent(&meshes[index]);
+        nodes[index].SetData(index, Mat4(1));
+        source.AddRenderableNode(&nodes[index]);
+    }
+    const sg::AABB positiveX(Vec3(1.5f, -0.1f, 0), Vec3(1.7f, 0.1f, 0));
+    const sg::AABB positiveY(Vec3(-0.1f, 1.5f, 0), Vec3(0.1f, 1.7f, 0));
+    // Zero thickness must remain a caster; alpha masking is handled by the fragment shader.
+    sceneInputs.shadowCasters = {{positiveX, 1},
+                                 {sg::AABB(Vec3(-1.7f, -0.1f, 0), Vec3(-1.5f, 0.1f, 0)), 1},
+                                 {sg::AABB(Vec3(11.5f, -0.1f, 0), Vec3(11.7f, 0.1f, 0)), 1}};
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene scene(device, data);
+    sceneInputs.uniforms.lightInfo.x = 2;
+    for (uint32_t index = 0; index < 2; ++index)
+    {
+        sceneInputs.uniforms.lights[index] = {Vec4(10.0f * index, 0, 0, 4), Vec4(0, -1, 0, 1), Vec4(1), Vec4(0.9f, 0.8f, 1, 0)};
+    }
+    SceneShadowRenderer shadows(device);
+    RenderGraph*        graph   = device->GetCurrentFrameRDG();
+    RDGMetrics&         metrics = device->GetRDGMetrics();
+    metrics.SetSink({});
+    RenderScene    replacement(device, data);
+    const uint32_t expectedFaces[] = {12, 0, 1, 2, 1, 1, 1, 0, 2, 12, 6, 0, 1, 2, 12, 0};
+    const uint32_t expectedDraws[] = {3, 0, 1, 1, 1, 0, 1, 0, 1, 3, 1, 0, 0, 2, 3, 0};
+    for (uint32_t frame = 0; frame < std::size(expectedFaces); ++frame)
+    {
+        SCOPED_TRACE(frame);
+        switch (frame)
+        {
+            case 2:
+                sceneInputs.shadowCasters[0].bounds = sg::AABB(Vec3(1.6f, -0.1f, 0), Vec3(1.8f, 0.1f, 0));
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            case 3:
+                sceneInputs.shadowCasters[0].bounds = positiveY;
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            case 4:
+                // A coverage/UV/deformation update can change depth without changing bounds.
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            case 5:
+                sceneInputs.shadowCasters[0].bounds = sg::AABB();
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            case 6:
+                sceneInputs.shadowCasters[0].bounds = positiveX;
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            case 8:
+                sceneInputs.shadowCasters[0].bounds = positiveY;
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            case 10: sceneInputs.uniforms.lights[1].positionRange.x += 0.25f; break;
+            case 11: sceneInputs.uniforms.lights[1].colorIntensity.x = 0.5f; break;
+            case 12:
+                sceneInputs.shadowCasters[2].bounds = sg::AABB(Vec3(15.0f, -0.1f, 0), Vec3(15.2f, 0.1f, 0));
+                ++sceneInputs.shadowCasters[2].revision;
+                break;
+            case 13:
+                // A planar caster crossing a cube-face boundary must be submitted to both faces.
+                sceneInputs.shadowCasters[0].bounds = sg::AABB(Vec3(1.5f, 1.5f, 0), Vec3(1.7f, 1.7f, 0));
+                ++sceneInputs.shadowCasters[0].revision;
+                break;
+            default: break;
+        }
+        if (frame == 7 || frame == 8)
+        {
+            const RenderScene::ShadowCaster before = sceneInputs.shadowCasters[0];
+            sceneInputs.shadowCasters[0].bounds    = positiveY;
+            ++sceneInputs.shadowCasters[0].revision;
+            ASSERT_TRUE(shadows.Prepare(scene, true));
+            ASSERT_TRUE(graph->Begin());
+            shadows.BuildRenderGraph(scene);
+            ASSERT_TRUE(graph->End());
+            shadows.OnRenderGraphExecuted(RenderFrameResult::eDeclined);
+            // Reverting a declined update reuses committed maps. Keeping it must retry.
+            if (frame == 7)
+            {
+                sceneInputs.shadowCasters[0] = before;
+            }
+        }
+        const RenderScene& activeScene = frame >= 14 ? replacement : scene;
+        const uint32_t     allocations = rhi->textureCreations;
+        if (frame >= 14)
+        {
+            // A new scene can collide with old caster revisions and bounds. It must
+            // invalidate content while retaining compatible allocations in a full heap.
+            rhi->info.deviceLocalMemoryBytes  = 256ull * 1024 * 1024;
+            rhi->memoryStats.deviceLocalBytes = rhi->info.deviceLocalMemoryBytes;
+        }
+        ASSERT_TRUE(shadows.Prepare(activeScene, true));
+        if (frame >= 14)
+        {
+            EXPECT_EQ(rhi->textureCreations, allocations);
+        }
+        ASSERT_TRUE(graph->Begin());
+        for (RHIBuffer* buffer : {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials})
+        {
+            graph->GetResourceManager()->ImportHostWrittenBuffer(buffer);
+        }
+        if (frame == 0)
+        {
+            graph->AddTransferPass("InitializeMaterial").ClearTexture(sceneInputs.textures[0]->GetTexture(), Color(1));
+        }
+        shadows.BuildRenderGraph(activeScene);
+        graph->AddComputePass(IntentPass("keepalive"));
+        metrics.RequestCapture();
+        rhi->graphics.indexedDraws.clear();
+        rhi->graphics.imageCopies.clear();
+        rhi->compute.imageCopies.clear();
+        rhi->transfer.imageCopies.clear();
+        ASSERT_TRUE(graph->End()) << graph->GetResult().message;
+        ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
+        shadows.OnRenderGraphExecuted(frame == 8 ? RenderFrameResult::eFailed : RenderFrameResult::eSubmitted);
+        EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"), expectedFaces[frame]);
+        EXPECT_EQ(rhi->graphics.imageCopies.size() + rhi->compute.imageCopies.size() + rhi->transfer.imageCopies.size(),
+                  expectedFaces[frame]);
+        EXPECT_EQ(rhi->graphics.indexedDraws.size(), expectedDraws[frame]);
     }
     shadows.Destroy();
     for (RHIBuffer* buffer :

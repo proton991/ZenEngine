@@ -500,6 +500,7 @@ EditorRenderSnapshot EditorViewport::GetSnapshot() const
                                   server.RequestVoxelGI() != nullptr ? server.RequestVoxelGI()->GetProviderReason()
                                                                      : "GI inactive"};
     snapshot.giSelectionReason = server.GetGISelectionReason();
+    snapshot.preparingGI       = server.IsPreparingGI();
     snapshot.gpuTimingsEnabled = m_gpuTimingsEnabled;
     if (m_gpuTimingsEnabled)
     {

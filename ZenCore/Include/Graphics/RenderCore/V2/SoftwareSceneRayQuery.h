@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Math/Math.h"
+#include "Utils/UniquePtr.h"
 #include <cstddef>
 
 namespace zen::rc
@@ -38,10 +39,25 @@ static_assert(sizeof(SoftwareRayTriangle) == 64);
 class SoftwareSceneRayQuery
 {
 public:
-    explicit SoftwareSceneRayQuery(RenderDevice* device) : m_device(device) {}
+    enum class PreparationResult
+    {
+        Ready,
+        Pending,
+        Failed
+    };
+
+    explicit SoftwareSceneRayQuery(RenderDevice* device);
+    ~SoftwareSceneRayQuery();
     bool Prepare(RenderScene& scene);
-    // Releases the scene BVH while keeping one-element bindings for shaders whose
-    // software path is compiled in but not selected, such as all-HW RT tracing.
+    // Copies immutable CPU inputs on the caller, builds on one worker, and polls without
+    // waiting. A finished build is published on the caller if the scene has not changed
+    // since its snapshot; otherwise that call rebuilds the current scene synchronously, so a
+    // scene that changes every frame still becomes Ready. Only a scene replacement abandons a build.
+    PreparationResult PrepareAsync(RenderScene& scene);
+    // Includes cancelled work until the worker's completion has been polled.
+    bool IsPreparing() const;
+    // Retains the scene BVH and pending construction across all-HW frames. Creates
+    // one-element bindings only when no software buffers have been prepared yet.
     bool PrepareUnused();
     void BindTraversalInputs(RDGPassDescBase& pass) const;
     void BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool forwardMaterialBound = false) const;
@@ -70,13 +86,20 @@ public:
     }
 
 private:
-    RenderDevice*   m_device;
-    RenderScene*    m_scene{nullptr};
-    FrameBufferRing m_nodeBuffers;
-    FrameBufferRing m_triangleBuffers;
-    uint64_t        m_revision{0};
-    uint32_t        m_nodeCount{0};
-    uint32_t        m_triangleCount{0};
-    bool            m_placeholder{false};
+    struct AsyncPreparation;
+    void CancelPreparation();
+    // Builds and publishes the scene's current geometry on the caller.
+    bool Rebuild(RenderScene& scene);
+    bool Publish(const HeapVector<SoftwareRayNode>& nodes, const HeapVector<SoftwareRayTriangle>& triangles, uint64_t revision);
+
+    UniquePtr<AsyncPreparation> m_preparation;
+    RenderDevice*               m_device;
+    RenderScene*                m_scene{nullptr};
+    FrameBufferRing             m_nodeBuffers;
+    FrameBufferRing             m_triangleBuffers;
+    uint64_t                    m_revision{0};
+    uint32_t                    m_nodeCount{0};
+    uint32_t                    m_triangleCount{0};
+    bool                        m_placeholder{false};
 };
 } // namespace zen::rc

@@ -908,7 +908,7 @@ TEST_P(EditorRendering, EnvironmentSwitchIsTransactionalAndSurvivesSceneReplacem
 
     editor.GetViewport().SetRenderMode(rc::RenderOption::eVoxelGI);
 
-    ASSERT_TRUE(Frame(*device, editor));
+    ASSERT_TRUE(FrameWithPreparedGI(*device, editor));
 
     EXPECT_EQ(editor.GetViewport().GetSnapshot().renderedMode, rc::RenderOption::eVoxelGI);
 
@@ -1377,7 +1377,7 @@ TEST_P(EditorRendering, RenderingConfigurationLightsCameraAndResourceApply)
 
     ASSERT_TRUE(editor.UpdateRenderingSettings());
 
-    ASSERT_TRUE(Frame(*device, editor));
+    ASSERT_TRUE(FrameWithPreparedGI(*device, editor));
 
     EXPECT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
 
@@ -1503,13 +1503,16 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
 
     ASSERT_TRUE(editor.ResizeViewport(96, 64));
 
-    rc::RenderingSettings settings         = editor.GetRenderingState().GetDraft();
+    rc::RenderingSettings settings  = editor.GetRenderingState().GetDraft();
 
-    settings.algorithm                     = rc::RenderAlgorithm::ePBR;
+    settings.algorithm              = rc::RenderAlgorithm::ePBR;
 
-    settings.gi.resolution                 = 64;
+    settings.gi.resolution          = 64;
 
-    settings.gi.shadowMapResolution        = 128;
+    settings.gi.shadowMapResolution = 128;
+
+    // The rejection view reports per-pixel gather reasons; screen probes have none.
+    settings.gi.cone.gather                = rc::VoxelGISettings::Gather::Pixel;
 
     settings.debug.lightId                 = settings.lights.front().id;
 
@@ -1538,12 +1541,13 @@ TEST_P(EditorRendering, DebugOutputsRetireAcrossModeSceneAndExtentChanges)
         if (output == rc::DebugOutput::eGIRawSky)
         {
             editor.GetViewport().SetGPUTimingsEnabled(true);
-            device->GetRDGMetrics().RequestCapture();
             // Compare diagnostics against the same view's ordinary GI graph. Existing
             // conditional-history content warnings must not hide a new debug dependency warning.
             settings.debug.output = rc::DebugOutput::eFinal;
             ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
             ASSERT_TRUE(editor.UpdateRenderingSettings());
+            ASSERT_TRUE(FrameWithPreparedGI(*device, editor));
+            device->GetRDGMetrics().RequestCapture();
             ASSERT_TRUE(Frame(*device, editor));
             giWarnings            = device->GetCurrentFrameRDG()->GetWarnings();
             settings.debug.output = output;
@@ -2008,16 +2012,225 @@ TEST_P(EditorRendering, LightingBackendsSwitchIndependently)
         ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
         ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
         ASSERT_TRUE(Frame(*device, editor));
-        const rc::VoxelGIRenderer& gi = *server.RequestVoxelGI();
+        const rc::VoxelGIRenderer&                  gi       = *server.RequestVoxelGI();
+        const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        while (gi.IsPreparingSoftwareQueries() && std::chrono::steady_clock::now() < deadline)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            ASSERT_TRUE(Frame(*device, editor));
+        }
+        ASSERT_FALSE(gi.IsPreparingSoftwareQueries());
         EXPECT_EQ(server.GetRenderOption(), rc::RenderOption::eVoxelGI);
         EXPECT_EQ(gi.GetHardwareFeatureMask(), hardware ? settings.gi.cone.GetHardwareFeatureMask() : 0u);
         EXPECT_EQ(gi.UsesHardwareShadows(), hardware && (frame == featureCount || frame == featureCount + 1));
         EXPECT_TRUE(gi.UsesRayBounce());
         EXPECT_TRUE(gi.UsesRayShadows());
         EXPECT_TRUE(gi.UsesReflections());
-        // All-HW RT neither builds nor depends on the software BVH; any Compute feature rebuilds it.
+        // Hardware frames retain the previously prepared software BVH for a later Compute selection.
         EXPECT_EQ(gi.UsesSoftwareQueries(), !hardware || frame != featureCount + 1);
-        EXPECT_EQ(gi.GetSoftwareRayQuery().HoldsSceneGeometry(), gi.UsesSoftwareQueries());
+        EXPECT_TRUE(gi.GetSoftwareRayQuery().HoldsSceneGeometry());
+    }
+    DestroyDevice(*device, editor);
+}
+
+bool RenderUntilComputeReady(rc::RenderDevice&          device,
+                             EditorController&          editor,
+                             const rc::VoxelGISettings& requested,
+                             std::ofstream&             csv,
+                             const char*                stage,
+                             bool                       hardwareWhilePreparing = true)
+{
+    const std::chrono::steady_clock::time_point start    = std::chrono::steady_clock::now();
+    const std::chrono::steady_clock::time_point deadline = start + std::chrono::seconds(180);
+    rc::VoxelGIRenderer&                        gi       = *device.GetRendererServer()->RequestVoxelGI();
+    bool                                        valid    = true;
+    bool                                        ready    = false;
+    uint32_t                                    frame    = 0;
+    while (valid && !ready && std::chrono::steady_clock::now() < deadline)
+    {
+        const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
+        valid                                                  = Frame(device, editor);
+        const std::chrono::steady_clock::time_point now        = std::chrono::steady_clock::now();
+        const bool                                  pending    = gi.IsPreparingSoftwareQueries();
+        const uint64_t sceneRevision                           = editor.GetViewport().GetRenderScene()->GetGeometryRevision();
+        EXPECT_EQ(gi.GetSettings(), requested);
+        if (pending)
+        {
+            EXPECT_EQ(gi.GetHardwareFeatureMask() != 0, hardwareWhilePreparing);
+            EXPECT_EQ(device.GetRendererServer()->GetRenderOption(),
+                      hardwareWhilePreparing ? rc::RenderOption::eVoxelGI : rc::RenderOption::ePBR);
+            EXPECT_TRUE(device.GetRendererServer()->GetRenderingStatus().fallbackReason.empty());
+        }
+        ready = !pending && gi.GetHardwareFeatureMask() == 0;
+        if (csv.is_open())
+        {
+            csv << stage << ',' << frame << ',' << std::chrono::duration<double, std::milli>(now - start).count() << ','
+                << std::chrono::duration<double, std::milli>(now - frameStart).count() << ',' << pending << ','
+                << gi.GetHardwareFeatureMask() << ',' << requested.GetHardwareFeatureMask() << ','
+                << gi.GetSoftwareRayQuery().GetRevision() << ',' << sceneRevision << ','
+                << editor.GetViewport().GetRenderView().color->GetWidth() << ','
+                << editor.GetViewport().GetRenderView().color->GetHeight() << ','
+                << editor.GetRenderingState().GetDraft().gi.shadowMapResolution << ',' << requested.brickResolution << '\n';
+            csv.flush();
+        }
+        if (ready)
+        {
+            EXPECT_TRUE(gi.UsesSoftwareQueries());
+            EXPECT_FALSE(gi.UsesRayShadows());
+            EXPECT_EQ(gi.GetSoftwareRayQuery().GetRevision(), sceneRevision);
+        }
+        else
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ++frame;
+    }
+    EXPECT_TRUE(valid);
+    EXPECT_TRUE(ready) << "Compute preparation did not finish within 180 seconds";
+    return valid && ready;
+}
+
+bool OpenGITimingCsv(std::ofstream& csv, RHIExecutionMode mode, const char* suffix = "")
+{
+    const char* path = std::getenv("ZEN_EDITOR_GI_SWITCH_CSV");
+    if (path != nullptr)
+    {
+        csv.open(std::string(path) + suffix + (mode == RHIExecutionMode::eInline ? ".inline.csv" : ".threaded.csv"));
+        csv << "stage,frame,elapsed_ms,frame_ms,pending,effective_hw_mask,requested_hw_mask,software_revision,scene_revision,viewport_width,viewport_height,shadow_map_resolution,brick_resolution\n";
+        csv.flush();
+    }
+    return path == nullptr || csv.is_open();
+}
+
+TEST_P(EditorRendering, ComputeSceneReplacementKeepsRenderingWhilePreparingGeometry)
+{
+    EditorRenderingScope scope(GetParam(), true);
+    rc::RenderDevice&    device = *scope.device;
+    EditorController&    editor = scope.editor;
+    ASSERT_TRUE(editor.Init());
+    const char* previousPath = std::getenv("ZEN_EDITOR_GI_SWITCH_PREVIOUS_SCENE");
+    const char* nextPath     = std::getenv("ZEN_EDITOR_GI_SWITCH_SCENE");
+    ASSERT_TRUE(editor.Load(previousPath != nullptr ? std::string(previousPath) : Fixture("shadow_toggle.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(nextPath != nullptr ? 1600 : 96, nextPath != nullptr ? 900 : 64));
+    rc::RenderingSettings settings  = editor.GetRenderingState().GetDraft();
+    settings.algorithm              = rc::RenderAlgorithm::eVoxelGI;
+    settings.debug.output           = rc::DebugOutput::eFinal;
+    settings.gi.resolution          = 64;
+    settings.gi.shadowMapResolution = nextPath != nullptr ? 1024 : 128;
+    settings.gi.cone                = rc::VoxelGISettings{};
+    settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+    settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Auto);
+    settings.gi.cone.samples          = 1;
+    settings.gi.cone.adaptiveSampling = false;
+    settings.gi.cone.computeTraversal = rc::VoxelGISettings::ComputeTraversal::Bricks;
+    settings.gi.cone.brickResolution  = nextPath != nullptr ? 128 : 64;
+    settings.gi.cone.gather           = rc::VoxelGISettings::Gather::Probes;
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+    rc::RendererServer&  server = *device.GetRendererServer();
+    rc::VoxelGIRenderer& gi     = *server.RequestVoxelGI();
+    ASSERT_TRUE(Frame(device, editor));
+    EXPECT_TRUE(gi.IsPreparingSoftwareQueries());
+    EXPECT_EQ(server.GetRenderOption(), rc::RenderOption::ePBR);
+    std::ofstream csv;
+    ASSERT_TRUE(OpenGITimingCsv(csv, GetParam(), ".scene-switch"));
+    ASSERT_TRUE(RenderUntilComputeReady(device, editor, settings.gi.cone, csv, "initial", false));
+
+    const uint64_t generation = editor.GetScene().GetGeneration();
+    ASSERT_TRUE(editor.RequestLoad(nextPath != nullptr ? std::string(nextPath) : Fixture("inspection.gltf")));
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(180);
+    while (editor.GetLoadState().IsActive() && std::chrono::steady_clock::now() < deadline)
+    {
+        const SceneLoadStage                        previousStage = editor.GetLoadState().stage;
+        const std::chrono::steady_clock::time_point start         = std::chrono::steady_clock::now();
+        editor.UpdateSceneLoad();
+        const double updateMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
+        ASSERT_TRUE(Frame(device, editor));
+        if (previousStage != editor.GetLoadState().stage)
+        {
+            std::printf("Scene switch stage %u -> %u: update %.3f ms, frame %.3f ms, GI pending %u\n",
+                        static_cast<uint32_t>(previousStage), static_cast<uint32_t>(editor.GetLoadState().stage), updateMs,
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count(),
+                        gi.IsPreparingSoftwareQueries() ? 1u : 0u);
+            std::fflush(stdout);
+        }
+        if (previousStage == SceneLoadStage::Publishing)
+        {
+            EXPECT_TRUE(gi.IsPreparingSoftwareQueries());
+            EXPECT_FALSE(gi.GetSoftwareRayQuery().HoldsSceneGeometry());
+            EXPECT_EQ(server.GetRenderOption(), rc::RenderOption::ePBR);
+        }
+        EXPECT_EQ(gi.GetSettings(), settings.gi.cone);
+        EXPECT_TRUE(server.GetRenderingStatus().fallbackReason.empty());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(editor.GetLoadState().stage, SceneLoadStage::Idle) << editor.GetError();
+    ASSERT_EQ(editor.GetScene().GetGeneration(), generation + 1);
+    ASSERT_TRUE(RenderUntilComputeReady(device, editor, settings.gi.cone, csv, "replacement", false));
+    EXPECT_EQ(server.GetRenderOption(), rc::RenderOption::eVoxelGI);
+    EXPECT_TRUE(Frame(device, editor));
+    EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
+}
+
+TEST_P(EditorRendering, ColdHardwareToComputeSwitchKeepsRenderingUntilReady)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), true);
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    if (device->GetGPUInfo().rayQuery.IsUsable())
+    {
+        const char* scenePath = std::getenv("ZEN_EDITOR_GI_SWITCH_SCENE");
+        ASSERT_TRUE(editor.Load(scenePath != nullptr ? std::string(scenePath) : Fixture("shadow_toggle.gltf")));
+        ASSERT_TRUE(editor.ResizeViewport(scenePath != nullptr ? 1600 : 96, scenePath != nullptr ? 900 : 64));
+        rc::RenderingSettings settings  = editor.GetRenderingState().GetDraft();
+        settings.algorithm              = rc::RenderAlgorithm::eVoxelGI;
+        settings.debug.output           = rc::DebugOutput::eFinal;
+        settings.gi.resolution          = 64;
+        settings.gi.shadowMapResolution = scenePath != nullptr ? 1024 : 128;
+        settings.gi.cone                = rc::VoxelGISettings{};
+        settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
+        settings.gi.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)] =
+            rc::VoxelGISettings::RayProvider::Auto;
+        settings.gi.cone.rtShadows        = true;
+        settings.gi.cone.samples          = 1;
+        settings.gi.cone.adaptiveSampling = false;
+        settings.gi.cone.computeTraversal = rc::VoxelGISettings::ComputeTraversal::Bricks;
+        settings.gi.cone.brickResolution  = scenePath != nullptr ? 128 : 64;
+        settings.gi.cone.gather           = rc::VoxelGISettings::Gather::Probes;
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+        ASSERT_TRUE(Frame(*device, editor));
+        rc::VoxelGIRenderer& gi = *device->GetRendererServer()->RequestVoxelGI();
+        ASSERT_NE(gi.GetHardwareFeatureMask(), 0u);
+        ASSERT_TRUE(gi.UsesHardwareShadows());
+        ASSERT_FALSE(gi.GetSoftwareRayQuery().HoldsSceneGeometry());
+        ASSERT_FALSE(gi.IsPreparingSoftwareQueries());
+
+        std::ofstream csv;
+        ASSERT_TRUE(OpenGITimingCsv(csv, GetParam()));
+        // Match the editor's global Compute control while retaining inherited map shadows.
+        settings.gi.cone.rayProvider = rc::VoxelGISettings::RayProvider::Voxel;
+        settings.gi.cone.featureProviders.fill(rc::VoxelGISettings::RayProvider::Voxel);
+        settings.gi.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)] =
+            rc::VoxelGISettings::RayProvider::Auto;
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+        ASSERT_TRUE(RenderUntilComputeReady(*device, editor, settings.gi.cone, csv, "cold"));
+        RHIBuffer* retained = gi.GetSoftwareRayQuery().GetTriangleBuffer();
+
+        settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+        ASSERT_TRUE(Frame(*device, editor));
+        EXPECT_TRUE(gi.UsesHardwareShadows());
+        EXPECT_EQ(gi.GetSoftwareRayQuery().GetTriangleBuffer(), retained);
+        settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+        settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Auto);
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+        ASSERT_TRUE(RenderUntilComputeReady(*device, editor, settings.gi.cone, csv, "warm"));
+        EXPECT_EQ(gi.GetSoftwareRayQuery().GetTriangleBuffer(), retained);
     }
     DestroyDevice(*device, editor);
 }
@@ -2169,15 +2382,16 @@ TEST_P(EditorRendering, ShadowPreflightFollowsRayOrMapSelection)
     settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
 
     // An impossible map-array size makes the map preflight fail deterministically,
-    // without exhausting physical VRAM. Neither software nor hardware ray visibility needs a map array.
+    // without exhausting physical VRAM. Unavailable hardware shadows need the fallback map array.
     constexpr uint32_t rejectedFaces = (rc::MaxSceneLights + 1) * 6 + 1;
-    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+    const bool         hardware      = device->GetGPUInfo().rayQuery.IsUsable();
+    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
     ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
     ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
     ASSERT_TRUE(Frame(*device, editor));
-    const bool hardware = device->GetGPUInfo().rayQuery.IsUsable();
     ASSERT_EQ(server.RequestVoxelGI()->UsesHardwareShadows(), hardware);
-    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+    EXPECT_EQ(server.RequestVoxelGI()->UsesRayShadows(), hardware);
+    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
 
     // A settings edit and a light-count edit both use the viewport's preflight path.
     settings.gi.cone.indirectIntensity = 0.5f;
@@ -2194,19 +2408,21 @@ TEST_P(EditorRendering, ShadowPreflightFollowsRayOrMapSelection)
     settings.gi.cone.rtShadows = false;
     EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.rtShadows = true;
+    settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Auto);
     for (rc::VoxelGISettings::RayProvider provider :
          {rc::VoxelGISettings::RayProvider::Voxel, rc::VoxelGISettings::RayProvider::Hardware,
           rc::VoxelGISettings::RayProvider::Auto})
     {
         settings.gi.cone.rayProvider = provider;
-        EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+        EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces),
+                  hardware && provider != rc::VoxelGISettings::RayProvider::Voxel);
     }
     settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Hardware);
     settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Voxel);
     EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
     settings.gi.cone.SetFeatureProvider(rc::VoxelGISettings::Feature::Shadows, rc::VoxelGISettings::RayProvider::Hardware);
-    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
     settings.debug.output = rc::DebugOutput::eShadow;
     EXPECT_FALSE(server.ValidateShadowResources(settings, rejectedFaces));
     settings.gi.cone.shadows = false;
@@ -2217,7 +2433,7 @@ TEST_P(EditorRendering, ShadowPreflightFollowsRayOrMapSelection)
 
     // Scene visibility allocation is checked separately when the frame is prepared.
     server.RequestVoxelGI()->SetRenderScene(nullptr);
-    EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
+    EXPECT_EQ(server.ValidateShadowResources(settings, rejectedFaces), hardware);
     settings.algorithm = rc::RenderAlgorithm::ePBR;
     EXPECT_TRUE(server.ValidateShadowResources(settings, rejectedFaces));
     DestroyDevice(*device, editor);
@@ -2326,7 +2542,7 @@ TEST_P(EditorRendering, MeshShadowsChangeDirectLightingWithoutApply)
 
             EXPECT_FALSE(editor.GetRenderingState().IsPending());
 
-            ASSERT_TRUE(Frame(*device, editor));
+            ASSERT_TRUE(FrameWithPreparedGI(*device, editor));
 
             ASSERT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
 
@@ -2419,7 +2635,7 @@ TEST_P(EditorRendering, LightBallRelightsVoxelsWithoutRevoxelizingAndHoldsPositi
 
     ASSERT_TRUE(editor.UpdateRenderingSettings());
 
-    ASSERT_TRUE(Frame(*device, editor));
+    ASSERT_TRUE(FrameWithPreparedGI(*device, editor));
 
     ASSERT_EQ(editor.GetViewport().GetSnapshot().status.effective, rc::RenderAlgorithm::eVoxelGI);
 

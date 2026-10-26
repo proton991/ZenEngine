@@ -75,16 +75,46 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     EXPECT_EQ(scene.GetVoxelTriangleCount(), 4u);
     EXPECT_EQ(ReadSceneTriangleRecord(device, original, readback), glm::uvec4(0, 0, 0, GI_STATIC));
 
+    HeapVector<RenderScene::ShadowCaster> casters = scene.GetShadowCasters();
+    ASSERT_EQ(casters.size(), 2u);
+
     EXPECT_TRUE(scene.SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0.5f, 0, 0))));
+    EXPECT_EQ(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_EQ(scene.GetShadowCasters()[0].bounds, casters[0].bounds);
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_NE(scene.GetShadowCasters()[0].bounds, casters[0].bounds);
+    EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
+    EXPECT_EQ(scene.GetShadowCasters()[1].bounds, casters[1].bounds);
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), original);
     EXPECT_EQ(scene.GetAABB(), sg::AABB(Vec3(-0.5f, -1, -0.5f), Vec3(2.5f, 1, 0.5f)));
+    casters           = scene.GetShadowCasters();
     vertices[2].pos.y = 0.75f;
     EXPECT_TRUE(scene.UpdateVertices(0, VectorView<const asset::Vertex>(vertices, 3)));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), original);
     EXPECT_EQ(scene.GetAABB(), sg::AABB(Vec3(-0.5f, -1, -0.5f), Vec3(2.5f, 0.75f, 0.5f)));
     EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback), glm::uvec4(0, 0, 0, GI_STATIC));
+    EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_GT(scene.GetShadowCasters()[1].revision, casters[1].revision);
+
+    // Shared UV edits change coverage without changing either world-space bound.
+    casters         = scene.GetShadowCasters();
+    vertices[0].uv0 = Vec2(0.2f, 0.4f);
+    EXPECT_TRUE(scene.UpdateVertices(0, MakeVecView(vertices, 1)));
+    EXPECT_TRUE(scene.CommitGeometryUpdates());
+    for (uint32_t instance = 0; instance < 2; ++instance)
+    {
+        EXPECT_GT(scene.GetShadowCasters()[instance].revision, casters[instance].revision);
+        EXPECT_EQ(scene.GetShadowCasters()[instance].bounds, casters[instance].bounds);
+    }
+
+    casters = scene.GetShadowCasters();
+    EXPECT_TRUE(scene.SetInstanceTransform(0, scene.GetInstanceTransform(0)));
+    EXPECT_TRUE(scene.UpdateVertices(0, MakeVecView(vertices, 1)));
+    EXPECT_TRUE(scene.CommitGeometryUpdates());
+    EXPECT_EQ(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
 
     // A coverage change updates voxel geometry but keeps the same material assignment.
     sg::MaterialData material  = scene.GetMaterialsData()[0];
@@ -92,17 +122,27 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     EXPECT_TRUE(scene.UpdateMaterial(0, material));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), original);
+    EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_GT(scene.GetShadowCasters()[1].revision, casters[1].revision);
 
+    casters = scene.GetShadowCasters();
     EXPECT_TRUE(scene.SetInstanceClass(0, GI_DYNAMIC));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
     EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback), glm::uvec4(0, 0, 0, GI_DYNAMIC));
+    casters = scene.GetShadowCasters();
     EXPECT_TRUE(scene.SetInstanceEnabled(0, false));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
+    EXPECT_EQ(scene.GetShadowCasters()[0].bounds, sg::AABB());
+    EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
     EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback), glm::uvec4(0, 0, 0, 0));
     EXPECT_EQ(scene.GetAABB(), sg::AABB(Vec3(-0.5f), Vec3(2.5f, 0.5f, 0.5f)));
     EXPECT_TRUE(scene.SetMaterialVariant(0));
     EXPECT_TRUE(scene.SetInstanceEnabled(0, true));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    EXPECT_NE(scene.GetShadowCasters()[0].bounds, sg::AABB());
     EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback), glm::uvec4(0, 0, 1, GI_DYNAMIC));
     EXPECT_TRUE(scene.SetMaterialVariant(-1));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
@@ -113,11 +153,14 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     EXPECT_TRUE(scene.SetAnimation(0));
     for (bool visible : {false, true})
     {
+        casters      = scene.GetShadowCasters();
         node.visible = visible;
         EXPECT_TRUE(scene.AdvanceAnimation(1.0f / 60.0f));
         EXPECT_TRUE(scene.CommitGeometryUpdates());
         EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback),
                   glm::uvec4(0, 0, 0, visible ? GI_DYNAMIC : 0));
+        EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
+        EXPECT_EQ(scene.GetShadowCasters()[0].bounds == sg::AABB(), !visible);
     }
 
     // Exercise the real scene update path across ring wrap, including a sparse
@@ -192,6 +235,18 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
                               scene.GetMaterialsData().size() * sizeof(sg::MaterialData)),
                   0);
     }
+
+    // A rejected generation cannot replace the bounds/revisions used by shadow caches.
+    casters                = scene.GetShadowCasters();
+    asset::Vertex overflow = scene.GetVertices()[0];
+    overflow.pos.x         = std::numeric_limits<float>::max();
+    EXPECT_TRUE(scene.UpdateVertices(0, MakeVecView(&overflow, 1)));
+    EXPECT_FALSE(scene.CommitGeometryUpdates());
+    for (uint32_t instance = 0; instance < 2; ++instance)
+    {
+        EXPECT_EQ(scene.GetShadowCasters()[instance].revision, casters[instance].revision);
+        EXPECT_EQ(scene.GetShadowCasters()[instance].bounds, casters[instance].bounds);
+    }
     scene.Destroy();
 }
 
@@ -199,7 +254,7 @@ TEST_P(ConeVoxelGIIntegrationTest, BakedFbxMorphAndSkinPosesReachGpuGeometry)
 {
     device->InitializeRendererServer();
     const std::string path =
-        (std::filesystem::path(__FILE__).parent_path() / "Assets/FBX/combined_morph_skin_ascii.fbx").string();
+        (std::filesystem::path(__FILE__).parent_path() / "Assets/FBX/combined_morph_skin.zenasset").string();
     asset::SceneLoadResult loaded = asset::LoadScene(path);
     ASSERT_TRUE(loaded.scene) << loaded.error;
     SceneData data{};
@@ -216,6 +271,7 @@ TEST_P(ConeVoxelGIIntegrationTest, BakedFbxMorphAndSkinPosesReachGpuGeometry)
     const HeapVector<asset::Vertex> initial = scene.GetVertices();
     for (float step : {0.0f, 0.23f, 0.27f})
     {
+        const HeapVector<RenderScene::ShadowCaster> casters = scene.GetShadowCasters();
         ASSERT_TRUE(scene.AdvanceAnimation(step));
         ASSERT_TRUE(scene.CommitGeometryUpdates());
         RenderGraph graph("ReadBakedFbxPose");
@@ -234,6 +290,12 @@ TEST_P(ConeVoxelGIIntegrationTest, BakedFbxMorphAndSkinPosesReachGpuGeometry)
         if (step > 0)
         {
             EXPECT_NE(std::memcmp(gpu.data(), initial.data(), initial.size() * sizeof(asset::Vertex)), 0);
+            bool casterChanged = false;
+            for (size_t instance = 0; instance < casters.size(); ++instance)
+            {
+                casterChanged |= scene.GetShadowCasters()[instance].revision != casters[instance].revision;
+            }
+            EXPECT_TRUE(casterChanged);
         }
         EXPECT_GT(scene.GetVoxelTriangleCount(), 0u);
         device->NextFrame();

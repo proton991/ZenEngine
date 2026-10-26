@@ -3,12 +3,49 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Platform/ConfigLoader.h"
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <glm/gtc/matrix_access.hpp>
 
 namespace zen::rc
 {
+namespace
+{
+using ShadowPlanes = std::array<Vec4, 6>;
+
+ShadowPlanes GetShadowPlanes(const Mat4& viewProjection)
+{
+    const Vec4 x = glm::row(viewProjection, 0);
+    const Vec4 y = glm::row(viewProjection, 1);
+    const Vec4 z = glm::row(viewProjection, 2);
+    const Vec4 w = glm::row(viewProjection, 3);
+    // Shadow rasterization uses Vulkan's [0,w] clip-depth interval.
+    return {w + x, w - x, w + y, w - y, z, w - z};
+}
+
+bool IntersectsShadowFace(const sg::AABB& bounds, const ShadowPlanes& planes)
+{
+    bool visible = glm::all(glm::lessThanEqual(bounds.GetMin(), bounds.GetMax()));
+    if (visible)
+    {
+        const Vec3 center = bounds.GetCenter();
+        const Vec3 extent = (bounds.GetMax() - bounds.GetMin()) * 0.5f;
+        for (const Vec4& plane : planes)
+        {
+            const float distance = glm::dot(Vec3(plane), center) + plane.w;
+            const float radius   = glm::dot(glm::abs(Vec3(plane)), extent);
+            // Retain boxes touching a face edge, including planar/thin casters and cube seams.
+            const float tolerance = 32.0f * std::numeric_limits<float>::epsilon()
+                                  * (glm::dot(glm::abs(Vec3(plane)), glm::abs(center)) + std::abs(plane.w) + radius + 1.0f);
+            visible               = visible && distance + radius >= -tolerance;
+        }
+    }
+    return visible;
+}
+} // namespace
+
 SceneShadowRenderer::SceneShadowRenderer(RenderDevice* device) : m_device(device)
 {
     uint32_t resolution = m_resolution;
@@ -147,6 +184,15 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light, uint32_t index, co
 
 bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool includeInactiveLights)
 {
+    if (m_scene != &scene)
+    {
+        m_validContents = false;
+        m_committedFaces.clear();
+        m_committedCasters.clear();
+        m_recordedCasters.clear();
+        m_scene = &scene;
+    }
+
     m_uniforms = {};
 
     m_faces.clear();
@@ -232,7 +278,7 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
     return valid;
 }
 
-void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, bool drawGeometry)
+void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, const HeapVector<SceneMeshDraw>& sceneDraws)
 {
     RenderGraph* graph = m_device->GetCurrentFrameRDG();
 
@@ -256,7 +302,8 @@ void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, bo
 
     pass.AddDepthStencilOutput(m_depth);
 
-    const FaceData face = drawGeometry ? m_faces[layer] : FaceData{};
+    const bool     hasFace = layer < m_faces.size();
+    const FaceData face    = hasFace ? m_faces[layer] : FaceData{};
 
     pass.BindValue("uShadowFace", face);
 
@@ -272,8 +319,19 @@ void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, bo
 
     pass.BindIndexBuffer(scene.GetIndexBuffer());
 
-    HeapVector<SceneMeshDraw> draws =
-        drawGeometry ? SnapshotSceneDraws(scene, GI_ALL, true, false) : HeapVector<SceneMeshDraw>{};
+    HeapVector<SceneMeshDraw> draws;
+    if (hasFace)
+    {
+        const ShadowPlanes planes = GetShadowPlanes(face.viewProjection);
+        for (const SceneMeshDraw& draw : sceneDraws)
+        {
+            if (draw.nodeIndex >= m_recordedCasters.size()
+                || IntersectsShadowFace(m_recordedCasters[draw.nodeIndex].bounds, planes))
+            {
+                draws.push_back(draw);
+            }
+        }
+    }
 
     graph->AddGraphicsPass(std::move(pass)).RecordPassCommands([draws = std::move(draws)](RDGPassCmdEncoder& encoder) {
         for (const SceneMeshDraw& draw : draws)
@@ -302,21 +360,56 @@ void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, bo
         .CopyTexture(m_depth, m_maps, MakeVecView(&region, 1));
 }
 
-void SceneShadowRenderer::BuildRenderGraph(const RenderScene& scene, uint64_t geometryRevision)
+void SceneShadowRenderer::BuildRenderGraph(const RenderScene& scene)
 {
-    m_recordedGeometry = geometryRevision;
+    m_recordedCasters = scene.GetShadowCasters();
+    HeapVector<sg::AABB> changedBounds;
+    for (size_t index = 0; index < std::max(m_recordedCasters.size(), m_committedCasters.size()); ++index)
+    {
+        const bool current  = index < m_recordedCasters.size();
+        const bool previous = index < m_committedCasters.size();
+        if (!current || !previous || m_recordedCasters[index].revision != m_committedCasters[index].revision
+            || m_recordedCasters[index].bounds != m_committedCasters[index].bounds)
+        {
+            if (previous)
+            {
+                changedBounds.push_back(m_committedCasters[index].bounds);
+            }
+            if (current && (!previous || m_recordedCasters[index].bounds != m_committedCasters[index].bounds))
+            {
+                changedBounds.push_back(m_recordedCasters[index].bounds);
+            }
+        }
+    }
+
+    HeapVector<SceneMeshDraw> draws;
+    bool                      snapshotDraws = false;
 
     for (uint32_t layer = 0; layer < m_maps->GetArrayLayers(); ++layer)
     {
         const bool hasFace = layer < m_faces.size();
 
-        const bool changed = hasFace
+        bool changed       = hasFace
                           && (layer >= m_committedFaces.size()
                               || std::memcmp(&m_faces[layer], &m_committedFaces[layer], sizeof(FaceData)) != 0);
 
-        if (!m_validContents || m_geometryRevision != geometryRevision || changed)
+        if (hasFace && !changed && m_validContents && !changedBounds.empty())
         {
-            BuildFace(scene, layer, hasFace);
+            const ShadowPlanes planes = GetShadowPlanes(m_faces[layer].viewProjection);
+            for (size_t index = 0; index < changedBounds.size() && !changed; ++index)
+            {
+                changed = IntersectsShadowFace(changedBounds[index], planes);
+            }
+        }
+
+        if (!m_validContents || changed)
+        {
+            if (hasFace && !snapshotDraws)
+            {
+                draws         = SnapshotSceneDraws(scene, GI_ALL, true, false);
+                snapshotDraws = true;
+            }
+            BuildFace(scene, layer, draws);
         }
     }
 }
@@ -390,13 +483,12 @@ void SceneShadowRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 
     if (result != RenderFrameResult::eDeclined)
     {
-        m_validContents    = succeeded;
-
-        m_geometryRevision = succeeded ? m_recordedGeometry : 0;
+        m_validContents = succeeded;
 
         if (succeeded)
         {
-            m_committedFaces = m_faces;
+            m_committedFaces   = m_faces;
+            m_committedCasters = m_recordedCasters;
         }
     }
 }
@@ -414,5 +506,8 @@ void SceneShadowRenderer::Destroy()
     m_validContents = false;
 
     m_committedFaces.clear();
+    m_committedCasters.clear();
+    m_recordedCasters.clear();
+    m_scene = nullptr;
 }
 } // namespace zen::rc

@@ -1,5 +1,6 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -56,17 +57,24 @@ uint32_t RenderScene::GetInstanceMask(uint32_t instance) const
              : 0;
 }
 
+const HeapVector<RenderScene::ShadowCaster>& RenderScene::GetShadowCasters() const
+{
+    return m_shadowCasters;
+}
+
 bool RenderScene::SetInstanceClass(uint32_t instance, uint32_t objectClass)
 {
     const bool valid = instance < m_instanceClasses.size() && (objectClass == GI_STATIC || objectClass == GI_DYNAMIC);
 
     if (valid && m_instanceClasses[instance] != objectClass)
     {
-        m_dirtyClasses              |= m_instanceClasses[instance] | objectClass;
+        m_dirtyClasses                   |= m_instanceClasses[instance] | objectClass;
 
-        m_instanceClasses[instance]  = objectClass;
+        m_instanceClasses[instance]       = objectClass;
 
-        m_triangleRecordsDirty       = true;
+        m_dirtyShadowInstances[instance]  = 1;
+
+        m_triangleRecordsDirty            = true;
     }
 
     return valid;
@@ -78,11 +86,13 @@ bool RenderScene::SetInstanceEnabled(uint32_t instance, bool enabled)
 
     if (valid && (m_instanceEnabled[instance] != 0) != enabled)
     {
-        m_dirtyClasses              |= m_instanceClasses[instance];
+        m_dirtyClasses                   |= m_instanceClasses[instance];
 
-        m_instanceEnabled[instance]  = enabled ? 1 : 0;
+        m_instanceEnabled[instance]       = enabled ? 1 : 0;
 
-        m_triangleRecordsDirty       = true;
+        m_dirtyShadowInstances[instance]  = 1;
+
+        m_triangleRecordsDirty            = true;
     }
 
     return valid;
@@ -119,9 +129,11 @@ bool RenderScene::SetInstanceTransform(uint32_t instance, const Mat4& worldTrans
         }
     }
 
-    if (valid)
+    if (valid && m_nodesData[instance].modelMatrix != worldTransform)
     {
-        m_nodesData[instance] = {worldTransform, normalMatrix};
+        m_nodesData[instance]            = {worldTransform, normalMatrix};
+
+        m_dirtyShadowInstances[instance] = 1;
 
         for (uint32_t axis = 0; axis < 3; ++axis)
         {
@@ -325,9 +337,13 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
             {
                 if (mesh->GetMaterial()->index == material)
                 {
-                    const uint32_t objectClass  = m_instanceClasses[node->GetRenderableIndex()];
+                    const uint32_t objectClass = m_instanceClasses[node->GetRenderableIndex()];
 
-                    m_dirtySurfaceClasses      |= objectClass;
+                    // Raster shadow coverage also depends on transmission, tint, IOR,
+                    // thickness and their textures, beyond the ray-query alpha contract.
+                    m_dirtyShadowInstances[node->GetRenderableIndex()]  = 1;
+
+                    m_dirtySurfaceClasses                              |= objectClass;
 
                     if (coverageChanged)
                     {
@@ -418,7 +434,9 @@ void RenderScene::BuildMeshVertexIndices()
     }
 }
 
-bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2]) const
+bool RenderScene::ComputeGeometryBounds(sg::AABB&                 bounds,
+                                        sg::AABB                  (&classBounds)[2],
+                                        HeapVector<ShadowCaster>& shadowCasters) const
 {
     bool valid     = true;
 
@@ -426,11 +444,18 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds
 
     classBounds[0] = classBounds[1] = sg::AABB();
 
+    shadowCasters                   = m_shadowCasters;
+    shadowCasters.resize(m_nodesData.size());
+
     for (const sg::Node* node : m_pScene->GetRenderableNodes())
     {
         const uint32_t instance = node->GetRenderableIndex();
 
         const uint32_t mask     = GetInstanceMask(instance);
+
+        ShadowCaster& caster    = shadowCasters[instance];
+        caster.bounds           = sg::AABB();
+        bool shadowChanged      = m_dirtyShadowInstances[instance] != 0;
 
         if (mask != 0)
         {
@@ -456,8 +481,19 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds
                     objectBounds.SetMin(world);
 
                     objectBounds.SetMax(world);
+
+                    caster.bounds.SetMin(world);
+
+                    caster.bounds.SetMax(world);
+
+                    shadowChanged |= m_dirtyShadowVertices[vertex] != 0;
                 }
             }
+        }
+
+        if (instance < m_shadowCasters.size() && (shadowChanged || caster.bounds != m_shadowCasters[instance].bounds))
+        {
+            ++caster.revision;
         }
     }
 
@@ -523,6 +559,7 @@ void RenderScene::MarkVertexChanges(VectorView<const asset::Vertex> vertices, ui
             }
             m_vertexBuffers.MarkDirty(static_cast<uint32_t>((first + begin) * sizeof(asset::Vertex)),
                                       static_cast<uint32_t>((end - begin) * sizeof(asset::Vertex)));
+            std::fill(m_dirtyShadowVertices.begin() + first + begin, m_dirtyShadowVertices.begin() + first + end, uint8_t(1));
             begin = end;
         }
     }
@@ -543,7 +580,8 @@ bool RenderScene::RefreshUVCoordinates()
             const size_t offset = 1 + vertex * stride + set;
             if (Vec2(m_uvCoordinates[offset]) != uv)
             {
-                m_uvCoordinates[offset] = Vec4(uv, 0, 0);
+                m_uvCoordinates[offset]       = Vec4(uv, 0, 0);
+                m_dirtyShadowVertices[vertex] = 1;
                 m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec4)), sizeof(Vec4));
             }
         }
@@ -559,11 +597,12 @@ bool RenderScene::CommitGeometryUpdates()
         const bool                   geometryChanged = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;
         const HeapVector<glm::uvec4> triangles = m_triangleRecordsDirty ? BuildTriangleRecords() : HeapVector<glm::uvec4>();
         const uint32_t triangleCount = m_triangleRecordsDirty ? static_cast<uint32_t>(triangles.size()) : m_voxelTriangleCount;
-        const RHIGPUInfo& gpu        = m_pRenderDevice->GetGPUInfo();
+        const RHIGPUInfo& gpu           = m_pRenderDevice->GetGPUInfo();
         uint64_t          nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
         sg::AABB          bounds;
         sg::AABB          classBounds[2];
-        valid = (!m_verticesDirty || RefreshUVCoordinates()) && ComputeGeometryBounds(bounds, classBounds)
+        HeapVector<ShadowCaster> shadowCasters;
+        valid = (!m_verticesDirty || RefreshUVCoordinates()) && ComputeGeometryBounds(bounds, classBounds, shadowCasters)
              && ValidateGIStorageBuffer(std::max(m_nodesData.size(), size_t(1)), sizeof(sg::NodeData), gpu, nodeBytes)
                     == GIResourceStatus::eSuccess
              && ValidateGIStorageBuffer(triangleCount, sizeof(glm::uvec4), gpu, triangleBytes) == GIResourceStatus::eSuccess
@@ -604,6 +643,12 @@ bool RenderScene::CommitGeometryUpdates()
                 m_pScene->GetAABB()    = bounds;
                 m_classBounds[0]       = classBounds[0];
                 m_classBounds[1]       = classBounds[1];
+                m_shadowCasters        = std::move(shadowCasters);
+                std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), uint8_t(0));
+                if (m_verticesDirty)
+                {
+                    std::fill(m_dirtyShadowVertices.begin(), m_dirtyShadowVertices.end(), uint8_t(0));
+                }
                 for (sg::Node* node : m_pScene->GetRenderableNodes())
                 {
                     node->SetData(m_nodesData[node->GetRenderableIndex()]);

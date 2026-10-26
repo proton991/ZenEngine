@@ -45,13 +45,17 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     BuildMeshVertexIndices();
 
-    const bool animated  = !m_pScene->GetAssetData().animations.empty();
+    const bool animated    = !m_pScene->GetAssetData().animations.empty();
 
-    m_instanceClasses    = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), animated ? GI_DYNAMIC : GI_STATIC);
+    m_instanceClasses      = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), animated ? GI_DYNAMIC : GI_STATIC);
 
-    m_instanceEnabled    = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
+    m_instanceEnabled      = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
 
-    m_authoredVisibility = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
+    m_authoredVisibility   = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
+
+    m_dirtyShadowInstances = HeapVector<uint8_t>(m_pScene->GetRenderableCount(), 0);
+
+    m_dirtyShadowVertices  = HeapVector<uint8_t>(m_vertices.size(), 0);
 
     for (const sg::Node* node : m_pScene->GetRenderableNodes())
     {
@@ -102,7 +106,14 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     sg::AABB bounds;
 
-    m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds);
+    HeapVector<ShadowCaster> shadowCasters;
+
+    m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds, shadowCasters);
+
+    if (m_geometryReady)
+    {
+        m_shadowCasters = std::move(shadowCasters);
+    }
 
     const asset::Vertex emptyVertex{};
 
@@ -468,16 +479,20 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
                 if (m_authoredVisibility[index] != visible)
                 {
-                    m_authoredVisibility[index]  = visible;
+                    m_authoredVisibility[index]    = visible;
 
-                    m_triangleRecordsDirty       = true;
+                    m_dirtyShadowInstances[index]  = 1;
 
-                    m_dirtyClasses              |= m_instanceClasses[index];
+                    m_triangleRecordsDirty         = true;
+
+                    m_dirtyClasses                |= m_instanceClasses[index];
                 }
 
                 if (std::memcmp(&m_nodesData[index], &node->GetData(), sizeof(sg::NodeData)) != 0)
                 {
-                    m_nodesData[index] = node->GetData();
+                    m_nodesData[index]            = node->GetData();
+
+                    m_dirtyShadowInstances[index] = 1;
 
                     m_nodeBuffers.MarkDirty(index * sizeof(sg::NodeData), sizeof(sg::NodeData));
 
@@ -511,7 +526,9 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
                     if (offset < m_uvCoordinates.size() && Vec2(m_uvCoordinates[offset]) != coordinates[vertex][set])
                     {
-                        m_uvCoordinates[offset] = Vec4(coordinates[vertex][set], 0, 0);
+                        m_uvCoordinates[offset]       = Vec4(coordinates[vertex][set], 0, 0);
+
+                        m_dirtyShadowVertices[vertex] = 1;
 
                         m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec4)), sizeof(Vec4));
 
@@ -569,7 +586,9 @@ bool RenderScene::SetMaterialVariant(int32_t variant)
 
     if (valid)
     {
-        m_dirtyClasses        |= GI_ALL;
+        m_dirtyClasses |= GI_ALL;
+
+        std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), uint8_t(1));
 
         m_dirtySurfaceClasses |= GI_ALL;
 

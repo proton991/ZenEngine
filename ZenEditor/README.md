@@ -282,7 +282,8 @@ capture run, without reaching the scripted navigation actions.
 By default, PBR + Global illumination traces every GI pass with hardware ray queries
 when the selected device supports the required features and dependencies. Other
 devices trace with Compute: GI rays use the sparse brick scene, and the sky cache and
-direct shadows use the software triangle BVH. Set `voxel_gi_ray_provider=voxel` in
+direct shadows use the software triangle BVH. Both gather GI through screen probes
+(`voxel_gi_gather=pixel` selects per-pixel rays). Set `voxel_gi_ray_provider=voxel` in
 `Data/engine.cfg` to use Compute on any device, `voxel_gi_compute_traversal=triangles`
 for exact (slow) Compute GI rays, and `ZEN_VULKAN_DEVICE` to a substring of an adapter
 name to select that GPU.

@@ -10,8 +10,10 @@ bool RendererServer::ValidateShadowResources(const RenderingSettings& settings, 
 {
     const VoxelGISettings& gi = settings.gi.cone;
 
-    const bool maps           = settings.debug.output == DebugOutput::eShadow
-                             || (settings.algorithm == RenderAlgorithm::eVoxelGI && gi.shadows && !gi.rtShadows);
+    // Scene-specific HW build failures are resolved before the frame's shadow-map Prepare().
+    const bool maps = settings.debug.output == DebugOutput::eShadow
+                   || (settings.algorithm == RenderAlgorithm::eVoxelGI && gi.shadows
+                       && !gi.UsesRayShadows(m_pRenderDevice->GetGPUInfo().rayQuery.IsUsable()));
 
     return !maps || (m_pSceneShadows != nullptr && m_pSceneShadows->Preflight(settings.gi.shadowMapResolution, faces));
 }

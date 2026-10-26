@@ -181,8 +181,13 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                     m_frameGI = m_pVoxelGI->BuildRayQueryGraph();
                     if (!m_frameGI)
                     {
-                        m_frameRenderOption     = RenderOption::ePBR;
-                        m_status.fallbackReason = "Scene visibility preparation failed.";
+                        m_frameRenderOption = RenderOption::ePBR;
+                        // A pending CPU build is retried next frame; only a genuine
+                        // preparation failure latches the PBR fallback.
+                        if (!m_pVoxelGI->IsPreparingSoftwareQueries())
+                        {
+                            m_status.fallbackReason = "Scene visibility preparation failed.";
+                        }
                     }
                 }
 
@@ -208,7 +213,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                     }
                     else
                     {
-                        m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pVoxelizer->GetRecordedGeometryRevision());
+                        m_pSceneShadows->BuildRenderGraph(*m_pScene);
                         m_frameShadows = true;
                     }
 
@@ -351,7 +356,7 @@ void RendererServer::BuildDiagnosticFrame(const RenderView& view)
     {
         if (m_pSceneShadows->Prepare(*m_pScene, true, false))
         {
-            m_pSceneShadows->BuildRenderGraph(*m_pScene, m_pScene->GetGeometryRevision());
+            m_pSceneShadows->BuildRenderGraph(*m_pScene);
 
             m_frameShadows     = true;
 
@@ -376,6 +381,11 @@ void RendererServer::BuildDiagnosticFrame(const RenderView& view)
 void RendererServer::ResetRenderingFailure()
 {
     m_status.fallbackReason.clear();
+}
+
+bool RendererServer::IsPreparingGI() const
+{
+    return m_renderOption == RenderOption::eVoxelGI && m_pVoxelGI != nullptr && m_pVoxelGI->IsPreparingSoftwareQueries();
 }
 
 void RendererServer::SetRenderScene(RenderScene* pScene)

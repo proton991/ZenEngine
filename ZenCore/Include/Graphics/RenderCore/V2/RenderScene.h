@@ -36,6 +36,12 @@ struct SceneData
 class RenderScene
 {
 public:
+    struct ShadowCaster
+    {
+        sg::AABB bounds;
+        uint64_t revision{1};
+    };
+
     // Check loaded content before narrowing counts or constructing GPU resources.
     // Geometry/index/deformation validity remains the asset loader's contract.
     static std::string GetResourceError(const RHIGPUInfo& gpu, const sg::Scene& scene, uint64_t vertices, uint64_t indices);
@@ -102,6 +108,11 @@ public:
     bool CommitGeometryUpdates();
 
     uint32_t GetInstanceMask(uint32_t instance) const;
+
+    // Committed world bounds and shadow-content revisions, indexed by renderable slot.
+    // Empty bounds mean disabled or empty geometry. Consumers retain their own last
+    // submitted snapshot so skipped or failed frames do not lose previous bounds.
+    const HeapVector<ShadowCaster>& GetShadowCasters() const;
 
     uint64_t GetGeometryRevision(uint32_t mask = GI_ALL) const
     {
@@ -251,7 +262,7 @@ private:
 
     bool RefreshUVCoordinates();
 
-    bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2]) const;
+    bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2], HeapVector<ShadowCaster>& shadowCasters) const;
 
     HeapVector<asset::Vertex> m_vertices;
 
@@ -277,6 +288,9 @@ private:
     HeapVector<uint32_t>                           m_instanceClasses;
     HeapVector<uint32_t>                           m_instanceEnabled;
     HeapVector<uint32_t>                           m_authoredVisibility;
+    HeapVector<ShadowCaster>                       m_shadowCasters;
+    HeapVector<uint8_t>                            m_dirtyShadowInstances;
+    HeapVector<uint8_t>                            m_dirtyShadowVertices;
     uint32_t                                       m_dirtyClasses{0};
     uint32_t                                       m_dirtySurfaceClasses{0};
     bool                                           m_materialsDirty{false};

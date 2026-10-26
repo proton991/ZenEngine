@@ -782,7 +782,8 @@ void EditorWorkspace::DrawStatusBar(EditorContext& context)
 
     const EditorRenderingApplyStatus status = rendering.GetApplyStatus();
 
-    const bool fallback                     = snapshot.requestedMode != snapshot.renderedMode;
+    // PBR frames while Compute GI prepares are not a fallback; the Scene view reports them.
+    const bool fallback      = snapshot.requestedMode != snapshot.renderedMode && !snapshot.preparingGI;
 
     const char* mode         = editor.GetViewport().HasScene() ? GetRenderAlgorithmName(snapshot.status.effective) : "";
 

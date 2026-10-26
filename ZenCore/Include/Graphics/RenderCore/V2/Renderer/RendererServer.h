@@ -123,6 +123,10 @@ public:
         return m_renderOption;
     }
 
+    // The requested GI renders on HW RT or PBR until the scene's software BVH, built in the
+    // background, is ready (VoxelGIRenderer::IsPreparingSoftwareQueries).
+    bool IsPreparingGI() const;
+
     VoxelGIRuntimeSettings GetVoxelGISettings() const;
 
     // Read-only preflight: no waits, settings changes or resource allocation.

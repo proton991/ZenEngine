@@ -2,6 +2,7 @@
 #include "EditorWidgets.h"
 #include "SceneViewOverlays.h"
 #include "LightMoveWidget.h"
+#include "ImGui/LightingBackendControls.h"
 
 namespace zen::editor
 {
@@ -251,6 +252,17 @@ private:
                 {
                     DrawSceneControlsHint(context.editor.GetActions(), origin, end);
                 }
+
+                // Centered between equal insets that clear the orientation sphere.
+                ImVec2      sphereCenter;
+                float       sphereRadius = 0;
+                const float sphereInset =
+                    GetViewSphereCenter(origin, end, sphereCenter, sphereRadius) ? 2 * (end.x - sphereCenter.x) : 0.0f;
+
+                const EditorRenderSnapshot& snapshot = GetRenderSnapshot(context);
+
+                ui::DrawGIPreparationStatus(*ImGui::GetWindowDrawList(), snapshot.preparingGI, snapshot.hardwareQueries, origin,
+                                            end, sphereInset);
 
                 rc::RenderingSettings draft = context.editor.GetRenderingState().GetDraft();
                 if (m_lightMove.Draw(draft.lights, context.editor.GetCamera(), context.editor.GetScene().GetGeneration(),

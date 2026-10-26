@@ -2,6 +2,8 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cfloat>
 #include <cstdio>
 #include <string>
 
@@ -26,26 +28,28 @@ size_t CountOf(const std::string& text, const char* needle)
 }
 } // namespace
 
-// Level 1 chooses Compute or HW RT for every pass; level 2 chooses each pass's tracer.
+// Level 1 chooses Compute GI with maps or HW RT; level 2 chooses each pass's tracer.
 TEST(GITracingTest, PassTracersMapOntoTheSettings)
 {
     rc::VoxelGISettings settings;
     SetGIRayTracing(settings, false);
     for (uint32_t index = 0; index < static_cast<uint32_t>(GIPass::Count); ++index)
     {
-        EXPECT_EQ(GetGIPassTracer(settings, static_cast<GIPass>(index)), GITracer::SoftwareBVH) << index;
+        const GIPass pass = static_cast<GIPass>(index);
+        EXPECT_EQ(GetGIPassTracer(settings, pass), pass == GIPass::Shadows ? GITracer::ShadowMaps : GITracer::SoftwareBVH)
+            << index;
     }
 
     // Diffuse and specular GI share the Compute traversal; the sky cache has no bricks.
     SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Bricks);
     EXPECT_EQ(settings.computeTraversal, Traversal::Bricks);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Bricks);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::SoftwareBVH);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
     SetGIPassTracer(settings, GIPass::SkyCache, GITracer::Bricks);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::SkyCache), GITracer::SoftwareBVH);
-    // Direct shadows need exact geometry: bricks are not offered, and shadows keep triangles.
+    // Direct shadows need exact geometry: bricks are not offered, and shadows keep maps.
     SetGIPassTracer(settings, GIPass::Shadows, GITracer::Bricks);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::SoftwareBVH);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
 
     SetGIPassTracer(settings, GIPass::Specular, GITracer::HardwareRT);
     EXPECT_EQ(settings.GetFeatureProvider(Feature::SpecularOcclusion), Provider::Hardware);
@@ -64,6 +68,49 @@ TEST(GITracingTest, PassTracersMapOntoTheSettings)
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
     settings.shadows = false;
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::Off);
+}
+
+TEST(GITracingTest, DefaultComputeShadowsUseMapsUntilSoftwareIsSelected)
+{
+    rc::VoxelGIRuntimeSettings settings;
+    ASSERT_TRUE(rc::ApplyVoxelGIPreset(rc::VoxelGIPreset::Low, settings));
+    EXPECT_EQ(GetGIPassTracer(settings.cone, GIPass::Shadows), GITracer::ShadowMaps);
+    SetGIPassTracer(settings.cone, GIPass::Shadows, GITracer::SoftwareBVH);
+    EXPECT_EQ(GetGIPassTracer(settings.cone, GIPass::Shadows), GITracer::SoftwareBVH);
+    EXPECT_TRUE(settings.cone.UsesRayShadows(false));
+    SetGIPassTracer(settings.cone, GIPass::Shadows, GITracer::ShadowMaps);
+    SetGIRayTracing(settings.cone, true);
+    EXPECT_EQ(GetGIPassTracer(settings.cone, GIPass::Shadows), GITracer::ShadowMaps);
+    EXPECT_FALSE(settings.cone.UsesRayShadows(true));
+}
+
+TEST(GITracingTest, GlobalComputeUsesMapsAndSoftwareShadowsRemainAnExplicitChoice)
+{
+    rc::VoxelGISettings settings;
+    SetGIRayTracing(settings, true);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
+    SetGIRayTracing(settings, false);
+    EXPECT_EQ(settings.rayProvider, Provider::Voxel);
+    EXPECT_EQ(settings.featureProviders[static_cast<size_t>(Feature::Shadows)], Provider::Auto);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
+    EXPECT_FALSE(settings.UsesRayShadows(false));
+    EXPECT_FALSE(settings.UsesRayShadows(true));
+
+    SetGIPassTracer(settings, GIPass::Shadows, GITracer::SoftwareBVH);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::SoftwareBVH);
+    EXPECT_TRUE(settings.UsesRayShadows(false));
+    SetGIRayTracing(settings, false);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
+
+    SetGIRayTracing(settings, true);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
+    EXPECT_TRUE(settings.UsesRayShadows(true));
+    settings.shadows = false;
+    SetGIRayTracing(settings, false);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::Off);
+    SetGIRayTracing(settings, true);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::Off);
+    EXPECT_FALSE(settings.UsesRayShadows(true));
 }
 
 TEST(GITracingTest, DisabledFeaturesNeitherMixNorReenableUnasked)
@@ -124,7 +171,7 @@ TEST(GITracingTest, DiffuseAndSpecularSwitchOffIndependently)
     SetGIPassTracer(settings, GIPass::SkyCache, GITracer::Off);
     SetGIPassTracer(settings, GIPass::Shadows, GITracer::Off);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::SkyCache), GITracer::SoftwareBVH);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::SoftwareBVH);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
 }
 
 // The GI tracing panel shown by the editor and the runtime UI. Drawn headlessly; ImGui logs the drawn text.
@@ -148,14 +195,14 @@ protected:
         ImGui::DestroyContext(context);
     }
 
-    std::string Draw(rc::VoxelGISettings& settings, bool hardwareReady)
+    std::string Draw(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason = "ray queries unsupported")
     {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImVec2(900, 1400));
         ImGui::Begin("GI tracing test");
         ImGui::LogToBuffer();
-        EXPECT_FALSE(DrawLightingBackendControls(settings, hardwareReady, "ray queries unsupported"));
+        EXPECT_FALSE(DrawLightingBackendControls(settings, hardwareReady, reason));
         EXPECT_FALSE(DrawGIGatherControls(settings));
         const std::string text = ImGui::GetCurrentContext()->LogBuffer.c_str();
         ImGui::LogFinish();
@@ -177,15 +224,83 @@ TEST_F(LightingBackendControlsTest, ComputeListsEveryPassWithItsTracer)
     const std::string text    = Draw(settings, false);
     for (const char* name : kPassNames)
     {
-        EXPECT_EQ(CountOf(text, name), 1u) << name;
+        const std::string row = std::string("| ") + name;
+        EXPECT_EQ(CountOf(text, row.c_str()), 1u) << name;
     }
     // Tracer cells log their combo preview as "{ text } |".
     EXPECT_EQ(CountOf(text, "{ Compute: Bricks } |"), 2u);
-    EXPECT_EQ(CountOf(text, "{ Compute: Software BVH } |"), 2u);
+    EXPECT_EQ(CountOf(text, "{ Compute: Software BVH } |"), 1u);
+    EXPECT_EQ(CountOf(text, "{ Shadow maps } |"), 1u);
+    EXPECT_EQ(CountOf(text, "{ Software BVH } |"), 0u);
     EXPECT_NE(text.find("share one Compute tracer"), std::string::npos);
     EXPECT_NE(text.find("Brick cells per axis"), std::string::npos);
     EXPECT_NE(text.find("Probe spacing"), std::string::npos);
     EXPECT_EQ(text.find("HW RT is"), std::string::npos);
+}
+
+TEST_F(LightingBackendControlsTest, SoftwareShadowsAreLabeledAfterAnExplicitPassSelection)
+{
+    rc::VoxelGISettings settings;
+    SetGIRayTracing(settings, false);
+    SetGIPassTracer(settings, GIPass::Shadows, GITracer::SoftwareBVH);
+    const std::string text = Draw(settings, false);
+    EXPECT_EQ(CountOf(text, "{ Software BVH } |"), 1u);
+    EXPECT_EQ(CountOf(text, "{ Shadow maps } |"), 0u);
+}
+
+// Compute GI preparation is reported over the scene view, not in the panel.
+TEST_F(LightingBackendControlsTest, ComputePreparationIsLeftToTheSceneView)
+{
+    rc::VoxelGISettings settings;
+    SetGIRayTracing(settings, false);
+    std::string text = Draw(settings, true, "software_bvh_preparing");
+    EXPECT_EQ(text.find("Preparing Compute GI"), std::string::npos);
+    EXPECT_EQ(text.find("software_bvh_preparing"), std::string::npos);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
+    // A pass still on HW RT gives no false unavailability reason while Compute prepares.
+    SetGIPassTracer(settings, GIPass::Specular, GITracer::HardwareRT);
+    text = Draw(settings, false, "software_bvh_preparing");
+    EXPECT_EQ(text.find("HW RT is unavailable"), std::string::npos);
+    EXPECT_EQ(text.find("software_bvh_preparing"), std::string::npos);
+}
+
+TEST_F(LightingBackendControlsTest, PreparationStatusDrawsAtTheTopCenterClearOfCornerWidgets)
+{
+    EXPECT_EQ(GetGIPreparationStatus(false, true), nullptr);
+    EXPECT_STREQ(GetGIPreparationStatus(true, true), "Preparing Compute GI. HW RT stays active until it is ready.");
+    EXPECT_STREQ(GetGIPreparationStatus(true, false), "Preparing Compute GI. The view shows PBR until it is ready.");
+
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(900, 1400));
+    ImGui::Begin("Scene view test");
+    ImDrawList&     draw = *ImGui::GetWindowDrawList();
+    const ImVec2    viewMin(100, 50);
+    const ImVec2    viewMax(800, 450);
+    constexpr float inset = 120.0f;
+    int             first = draw.VtxBuffer.Size;
+    EXPECT_TRUE(DrawGIPreparationStatus(draw, true, false, viewMin, viewMax, inset));
+    ASSERT_GT(draw.VtxBuffer.Size, first);
+    ImVec2 low(FLT_MAX, FLT_MAX);
+    ImVec2 high(-FLT_MAX, -FLT_MAX);
+    for (int vertex = first; vertex < draw.VtxBuffer.Size; ++vertex)
+    {
+        low  = ImVec2(std::min(low.x, draw.VtxBuffer[vertex].pos.x), std::min(low.y, draw.VtxBuffer[vertex].pos.y));
+        high = ImVec2(std::max(high.x, draw.VtxBuffer[vertex].pos.x), std::max(high.y, draw.VtxBuffer[vertex].pos.y));
+    }
+    EXPECT_GE(low.x, viewMin.x + inset);
+    EXPECT_LE(high.x, viewMax.x - inset);
+    EXPECT_NEAR((low.x + high.x) * 0.5f, (viewMin.x + viewMax.x) * 0.5f, 1.0f);
+    EXPECT_GT(low.y, viewMin.y);
+    EXPECT_LT(high.y, (viewMin.y + viewMax.y) * 0.5f);
+
+    first = draw.VtxBuffer.Size;
+    EXPECT_FALSE(DrawGIPreparationStatus(draw, false, false, viewMin, viewMax, inset));
+    // A view too narrow beside its corner widgets keeps its scene clear.
+    EXPECT_FALSE(DrawGIPreparationStatus(draw, true, true, viewMin, ImVec2(viewMin.x + 2 * inset + 40, viewMax.y), inset));
+    EXPECT_EQ(draw.VtxBuffer.Size, first);
+    ImGui::End();
+    ImGui::Render();
 }
 
 TEST_F(LightingBackendControlsTest, HardwareReportsWhetherItIsActive)
@@ -199,7 +314,10 @@ TEST_F(LightingBackendControlsTest, HardwareReportsWhetherItIsActive)
     EXPECT_EQ(text.find("Probe spacing"), std::string::npos);
     text = Draw(settings, false);
     EXPECT_NE(text.find("ray queries unsupported"), std::string::npos);
-    EXPECT_EQ(CountOf(text, "{ HW RT (unavailable) } |"), 4u);
+    EXPECT_EQ(CountOf(text, "{ HW RT (unavailable) } |"), 3u);
+    EXPECT_EQ(CountOf(text, "{ Shadow maps (HW RT unavailable) } |"), 1u);
+    EXPECT_TRUE(settings.rtShadows);
+    EXPECT_EQ(settings.GetFeatureProvider(Feature::Shadows), Provider::Hardware);
 }
 
 TEST_F(LightingBackendControlsTest, OffPassesSayWhatReplacesThem)

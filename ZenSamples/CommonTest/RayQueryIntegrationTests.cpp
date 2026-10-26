@@ -14,6 +14,8 @@
 #include <cstring>
 #include <limits>
 #include <random>
+#include <chrono>
+#include <thread>
 
 namespace
 {
@@ -203,7 +205,199 @@ protected:
         graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(4, 1, 1); });
         graph.AddTransferPass("ReadQueryResults").CopyBuffer(result, output, {0, 0, sizeof(Vec4) * 4});
     }
+
+    void CheckSoftwareHit(RenderScene& scene, SoftwareSceneRayQuery& queries, float distance)
+    {
+        constexpr uint32_t rayCount = 64;
+        Vec4               rays[rayCount * 2]{};
+        for (uint32_t index = 0; index < rayCount; ++index)
+        {
+            rays[index * 2]     = Vec4(0, 0, -1, 10);
+            rays[index * 2 + 1] = Vec4(0, 0, 1, 1);
+        }
+        RHIBuffer* rayBuffer =
+            Buffer(sizeof(rays), BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer), rays);
+        BitField<RHIBufferUsageFlagBits> usage;
+        usage.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        constexpr uint32_t bytes  = rayCount * 4 * sizeof(Vec4);
+        RHIBuffer*         output = Buffer(bytes, usage, nullptr, RHIBufferAllocateType::eGPU);
+        RHIBuffer*   readback     = Buffer(bytes, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
+                                           nullptr, RHIBufferAllocateType::eCPURead);
+        RenderGraph& graph        = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        graph.GetResourceManager()->ImportHostWrittenBuffer(rayBuffer);
+        RDGComputePassDesc pass;
+        pass.SetShaderProgramName("SoftwareRayQueryCheckSP");
+        pass.BindStorageBuffer("Rays", rayBuffer);
+        pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
+        const Vec4 gi[] = {Vec4(0, 0, 0, 1), Vec4(64), Vec4(0), Vec4(0), Vec4(0), Vec4(1, 0, 0, 0)};
+        pass.BindValue("uGISettings", gi, sizeof(gi));
+        pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+        queries.BindInputs(pass, scene);
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+        graph.AddTransferPass("ReadAsyncSoftwareQuery").CopyBuffer(output, readback, {0, 0, bytes});
+        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+        device->WaitForIdle();
+        const Vec4* values = reinterpret_cast<const Vec4*>(readback->Map());
+        ASSERT_NE(values, nullptr);
+        for (uint32_t index = 0; index < rayCount; ++index)
+        {
+            EXPECT_EQ(values[index * 4].x, 1.0f);
+            EXPECT_NEAR(values[index * 4].y, distance, 1e-5f);
+        }
+        readback->Unmap();
+    }
 };
+
+// Own all source storage so a pending CPU build can be tested after its scene is destroyed.
+class SoftwareQuerySnapshotScene
+{
+public:
+    SoftwareQuerySnapshotScene(RenderDevice* device, float z, uint32_t triangles = 1024) :
+        m_mesh("snapshot triangles"), m_primitive("snapshot triangles", 0, triangles * 3, 3), m_node(0, "snapshot instance")
+    {
+        UniquePtr<sg::Material> material = MakeUnique<sg::Material>("opaque");
+        material->index                  = 0;
+        material->data.baseColorFactor   = Vec4(1);
+        m_primitive.SetMaterial(0, material.Get());
+        m_mesh.AddSubMesh(&m_primitive);
+        m_mesh.SetAABB(Vec3(-0.5f, -0.5f, 0), Vec3(0.5f, 0.5f, 0));
+        m_node.AddComponent(&m_mesh);
+        m_node.SetData(0, glm::translate(Mat4(1), Vec3(0, 0, z)));
+        m_source.AddRenderableNode(&m_node);
+        m_source.AddComponent(std::move(material));
+        m_source.GetAABB() = sg::AABB(Vec3(-0.5f), Vec3(0.5f));
+        asset::Vertex vertices[3]{};
+        vertices[0].pos = Vec4(-0.5f, -0.5f, 0, 1);
+        vertices[1].pos = Vec4(0.5f, -0.5f, 0, 1);
+        vertices[2].pos = Vec4(0, 0.5f, 0, 1);
+        for (asset::Vertex& vertex : vertices)
+        {
+            vertex.color  = Vec4(1);
+            vertex.normal = Vec4(0, 0, 1, 0);
+        }
+        HeapVector<uint32_t> indices(triangles * 3);
+        for (uint32_t index = 0; index < indices.size(); ++index)
+        {
+            indices[index] = index % 3;
+        }
+        SceneData data{};
+        data.pScene      = &m_source;
+        data.pVertices   = vertices;
+        data.numVertices = 3;
+        data.pIndices    = indices.data();
+        data.numIndices  = static_cast<uint32_t>(indices.size());
+        scene            = MakeUnique<RenderScene>(device, data);
+        scene->LoadSceneMaterials();
+        scene->PrepareBuffers();
+    }
+
+    ~SoftwareQuerySnapshotScene()
+    {
+        scene->Destroy();
+        scene.Reset();
+    }
+
+    UniquePtr<RenderScene> scene;
+
+private:
+    sg::Scene   m_source;
+    sg::Mesh    m_mesh;
+    sg::SubMesh m_primitive;
+    sg::Node    m_node;
+};
+
+SoftwareSceneRayQuery::PreparationResult WaitForSoftwarePreparation(SoftwareSceneRayQuery& queries, RenderScene& scene)
+{
+    SoftwareSceneRayQuery::PreparationResult    result   = queries.PrepareAsync(scene);
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (result == SoftwareSceneRayQuery::PreparationResult::Pending && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        result = queries.PrepareAsync(scene);
+    }
+    return result;
+}
+
+TEST_P(RayQueryIntegrationTest, AsyncSoftwarePreparationRejectsObsoleteSnapshotsAndSurvivesSceneDestruction)
+{
+    ShaderProgramManager::GetInstance().StoreProgram(
+        ZEN_NEW() ComputeFileSP(device, "SoftwareRayQueryCheckSP", "VoxelGI/Calibration/software_ray_query_check.comp.spv"));
+    using Preparation = SoftwareSceneRayQuery::PreparationResult;
+    SoftwareSceneRayQuery                 queries(device);
+    UniquePtr<SoftwareQuerySnapshotScene> first = MakeUnique<SoftwareQuerySnapshotScene>(device, 0.0f);
+    ASSERT_EQ(queries.PrepareAsync(*first->scene), Preparation::Pending);
+    EXPECT_TRUE(queries.IsPreparing());
+    ASSERT_TRUE(queries.PrepareUnused());
+    EXPECT_TRUE(queries.IsPreparing());
+    // The old snapshot has z=0; only the new revision may become Ready and trace z=0.25.
+    ASSERT_TRUE(first->scene->SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0, 0, 0.25f))));
+    ASSERT_TRUE(first->scene->CommitGeometryUpdates());
+    ASSERT_EQ(WaitForSoftwarePreparation(queries, *first->scene), Preparation::Ready);
+    EXPECT_EQ(queries.GetRevision(), first->scene->GetGeometryRevision());
+    CheckSoftwareHit(*first->scene, queries, 1.25f);
+
+    RHIBuffer* retained = queries.GetTriangleBuffer();
+    ASSERT_TRUE(queries.PrepareUnused());
+    EXPECT_TRUE(queries.HoldsSceneGeometry());
+    EXPECT_EQ(queries.GetTriangleBuffer(), retained);
+    EXPECT_EQ(queries.PrepareAsync(*first->scene), Preparation::Ready);
+    EXPECT_EQ(queries.GetTriangleBuffer(), retained);
+
+    // Keep both objects alive until replacement exists, then release all source storage during preparation.
+    SoftwareQuerySnapshotScene replacement(device, 0.75f, 1);
+    ASSERT_TRUE(first->scene->SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0, 0, -0.25f))));
+    ASSERT_TRUE(first->scene->CommitGeometryUpdates());
+    ASSERT_EQ(queries.PrepareAsync(*first->scene), Preparation::Pending);
+    for (float z : {0.5f, 0.75f})
+    {
+        ASSERT_TRUE(replacement.scene->SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0, 0, z))));
+        ASSERT_TRUE(replacement.scene->CommitGeometryUpdates());
+    }
+    ASSERT_EQ(replacement.scene->GetGeometryRevision(), first->scene->GetGeometryRevision());
+    first.Reset();
+    ASSERT_EQ(WaitForSoftwarePreparation(queries, *replacement.scene), Preparation::Ready);
+    EXPECT_EQ(queries.GetTriangleCount(), 1u);
+    EXPECT_EQ(queries.GetRevision(), replacement.scene->GetGeometryRevision());
+    CheckSoftwareHit(*replacement.scene, queries, 1.75f);
+
+    ASSERT_TRUE(replacement.scene->SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0, 0, 0.5f))));
+    ASSERT_TRUE(replacement.scene->CommitGeometryUpdates());
+    ASSERT_EQ(queries.PrepareAsync(*replacement.scene), Preparation::Pending);
+    queries.Destroy();
+    EXPECT_FALSE(queries.HoldsSceneGeometry());
+    ASSERT_EQ(WaitForSoftwarePreparation(queries, *replacement.scene), Preparation::Ready);
+    CheckSoftwareHit(*replacement.scene, queries, 1.5f);
+    queries.Destroy();
+}
+
+// A scene that changes every frame, as an animated one does, still becomes Ready: the call that
+// finds its build outdated rebuilds the current geometry instead of starting another snapshot.
+TEST_P(RayQueryIntegrationTest, AsyncSoftwarePreparationFinishesWhileTheSceneChangesEveryFrame)
+{
+    ShaderProgramManager::GetInstance().StoreProgram(
+        ZEN_NEW() ComputeFileSP(device, "SoftwareRayQueryCheckSP", "VoxelGI/Calibration/software_ray_query_check.comp.spv"));
+    using Preparation = SoftwareSceneRayQuery::PreparationResult;
+    SoftwareSceneRayQuery                       queries(device);
+    SoftwareQuerySnapshotScene                  snapshot(device, 0.0f);
+    Preparation                                 result   = Preparation::Pending;
+    float                                       z        = 0.0f;
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    for (uint32_t frame = 1; result == Preparation::Pending && std::chrono::steady_clock::now() < deadline; ++frame)
+    {
+        z = 0.001f * static_cast<float>(frame);
+        ASSERT_TRUE(snapshot.scene->SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0, 0, z))));
+        ASSERT_TRUE(snapshot.scene->CommitGeometryUpdates());
+        result = queries.PrepareAsync(*snapshot.scene);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    ASSERT_EQ(result, Preparation::Ready);
+    EXPECT_FALSE(queries.IsPreparing());
+    EXPECT_EQ(queries.GetRevision(), snapshot.scene->GetGeometryRevision());
+    CheckSoftwareHit(*snapshot.scene, queries, 1.0f + z);
+    queries.Destroy();
+}
 
 TEST_P(RayQueryIntegrationTest, SceneSnapshotsTrackOpacityDeformationMotionAndRemovalOutsideVoxelBounds)
 {
@@ -1118,9 +1312,11 @@ TEST_P(RayQueryIntegrationTest, SoftwareTraversalMatchesBruteForceTriangleOracle
     {
         EXPECT_EQ(values[4 * ray].x, 0.0f) << ray;
     }
-    // Unused-path placeholders bind valid buffers that hold no scene geometry and never hit.
+    // Hardware-only frames retain an already prepared empty scene without rebuilding it.
+    RHIBuffer* retained = queries.GetTriangleBuffer();
     ASSERT_TRUE(queries.PrepareUnused());
-    EXPECT_FALSE(queries.HoldsSceneGeometry());
+    EXPECT_TRUE(queries.HoldsSceneGeometry());
+    EXPECT_EQ(queries.GetTriangleBuffer(), retained);
     Trace(values);
     for (uint32_t ray = 0; ray < kRays; ++ray)
     {

@@ -264,7 +264,8 @@ TEST(VoxelGIRuntimeSettings, TraversalValidationRejectsInvalidEnumsAndAcceptsPro
     EXPECT_FALSE(ValidateVoxelGISettings(invalid));
 }
 
-TEST(VoxelGIRuntimeSettings, ProbeGatherParsesBothSpacingsAndPresetsRestorePixelDefaults)
+// Presets gather through screen probes; the unpreset baseline keeps per-pixel rays.
+TEST(VoxelGIRuntimeSettings, ProbeGatherParsesBothSpacingsAndPresetsRestoreProbeDefaults)
 {
     const VoxelGISettings defaults;
     EXPECT_EQ(defaults.gather, VoxelGISettings::Gather::Pixel);
@@ -286,9 +287,13 @@ TEST(VoxelGIRuntimeSettings, ProbeGatherParsesBothSpacingsAndPresetsRestorePixel
     }
     VoxelGIRuntimeSettings settings;
     ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_EQ(settings.cone.gather, VoxelGISettings::Gather::Probes);
     const VoxelGIRuntimeSettings previous = settings;
-    settings.cone.gather                  = VoxelGISettings::Gather::Probes;
-    settings.cone.probeSpacing            = 8;
+    settings.cone.gather                  = VoxelGISettings::Gather::Pixel;
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
+    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
+    settings.cone.gather       = VoxelGISettings::Gather::Probes;
+    settings.cone.probeSpacing = 8;
     EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
     std::istringstream     empty;
@@ -297,7 +302,7 @@ TEST(VoxelGIRuntimeSettings, ProbeGatherParsesBothSpacingsAndPresetsRestorePixel
     ASSERT_TRUE(LoadVoxelGISettings(config, inherited, settings.cone));
     EXPECT_EQ(inherited, settings.cone);
     ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
-    EXPECT_EQ(settings.cone.gather, VoxelGISettings::Gather::Pixel);
+    EXPECT_EQ(settings.cone.gather, VoxelGISettings::Gather::Probes);
     EXPECT_EQ(settings.cone.probeSpacing, 16u);
 }
 
@@ -331,7 +336,7 @@ TEST(VoxelGIRuntimeSettings, BrickControlsRemainLiveAndPresetsRestoreBrickDefaul
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
 }
 
-// Without usable ray queries every pass resolves to Compute, and GI gather rays trace bricks.
+// Without usable ray queries GI resolves to Compute, while default direct shadows use maps.
 TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeBricks)
 {
     std::istringstream     stream("");
@@ -341,6 +346,7 @@ TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeBricks)
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
     EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Auto);
     EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
+    EXPECT_EQ(settings.cone.gather, VoxelGISettings::Gather::Probes);
     VoxelGIRuntimeSettings compute = settings;
     EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(compute, RHIGPUInfo{}), "ray_query_unavailable");
     for (uint32_t feature = 0; feature < static_cast<uint32_t>(VoxelGISettings::Feature::Count); ++feature)
@@ -349,6 +355,61 @@ TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeBricks)
                   VoxelGISettings::RayProvider::Voxel);
     }
     EXPECT_EQ(compute.cone.GetHardwareFeatureMask(), 0u);
+    EXPECT_FALSE(compute.cone.UsesRayShadows(false));
+}
+
+TEST(VoxelGIRuntimeSettings, DefaultShadowFallbackKeepsRequestedProviders)
+{
+    for (VoxelGIPreset preset : {VoxelGIPreset::Low, VoxelGIPreset::Medium, VoxelGIPreset::High, VoxelGIPreset::Ultra})
+    {
+        VoxelGIRuntimeSettings settings;
+        ASSERT_TRUE(ApplyVoxelGIPreset(preset, settings));
+        const VoxelGISettings requested = settings.cone;
+        EXPECT_FALSE(settings.cone.UsesRayShadows(false));
+        EXPECT_EQ(settings.cone.UsesRayShadows(true), preset != VoxelGIPreset::Low);
+        EXPECT_EQ(settings.cone, requested);
+    }
+    VoxelGISettings settings;
+    settings.SetFeatureProvider(VoxelGISettings::Feature::Shadows, VoxelGISettings::RayProvider::Hardware);
+    EXPECT_TRUE(settings.UsesRayShadows(true));
+    EXPECT_FALSE(settings.UsesRayShadows(false));
+    EXPECT_EQ(settings.GetFeatureProvider(VoxelGISettings::Feature::Shadows), VoxelGISettings::RayProvider::Hardware);
+    settings.SetFeatureProvider(VoxelGISettings::Feature::Shadows, VoxelGISettings::RayProvider::Voxel);
+    EXPECT_TRUE(settings.UsesRayShadows(false));
+    EXPECT_TRUE(settings.UsesRayShadows(true));
+    settings.rtShadows = false;
+    EXPECT_FALSE(settings.UsesRayShadows(false));
+    EXPECT_FALSE(settings.UsesRayShadows(true));
+    settings.rtShadows = true;
+    settings.shadows   = false;
+    EXPECT_FALSE(settings.UsesRayShadows(false));
+}
+
+TEST(VoxelGIRuntimeSettings, ExplicitSoftwareShadowConfigsKeepTheirSelection)
+{
+    struct ShadowCase
+    {
+        const char* config;
+        bool        software;
+    };
+    const ShadowCase cases[]{
+        {"voxel_gi_backend=compute\n", true},           {"voxel_gi_shadows_backend=compute\n", true},
+        {"voxel_gi_ray_provider=voxel\n", true},        {"voxel_gi_ray_provider=voxel\nvoxel_gi_rt_shadows=false\n", false},
+        {"voxel_gi_shadows_backend=hardware\n", false}, {"voxel_gi_rt_shadows=false\n", false}};
+    for (const ShadowCase& test : cases)
+    {
+        SCOPED_TRACE(test.config);
+        std::istringstream     stream(test.config);
+        platform::ConfigLoader config(stream);
+        VoxelGIRuntimeSettings settings;
+        ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+        EXPECT_EQ(settings.cone.UsesRayShadows(false), test.software);
+        const VoxelGISettings requested = settings.cone;
+        ResolveVoxelGIAutomaticProvider(settings, RHIGPUInfo{});
+        EXPECT_EQ(settings.cone.UsesRayShadows(false), test.software);
+        EXPECT_EQ(settings.cone.featureProviders, requested.featureProviders);
+        EXPECT_EQ(settings.cone.rtShadows, requested.rtShadows);
+    }
 }
 
 TEST(VoxelGIRuntimeSettings, IndirectDiffuseSwitchesLiveAndPresetsRestoreIt)

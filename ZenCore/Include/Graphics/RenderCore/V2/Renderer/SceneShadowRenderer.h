@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/SceneLighting.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/AABB.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 
@@ -8,6 +9,7 @@ namespace zen::rc
 {
 class RenderDevice;
 class RenderScene;
+struct SceneMeshDraw;
 
 constexpr uint32_t MaxSceneShadowFaces = (MaxSceneLights + 1) * 6;
 
@@ -42,7 +44,7 @@ public:
 
     DebugOutputDescription BuildDebugView(const RenderScene& scene, const RenderView& view, const DebugSelection& selection);
 
-    void BuildRenderGraph(const RenderScene& scene, uint64_t geometryRevision);
+    void BuildRenderGraph(const RenderScene& scene);
 
     void BindLightingInputs(RDGPassDescBase& pass) const;
 
@@ -59,19 +61,20 @@ private:
 
     void PrepareLight(const GPULight& light, uint32_t index, const sg::AABB& bounds);
 
-    void BuildFace(const RenderScene& scene, uint32_t layer, bool drawGeometry);
+    void BuildFace(const RenderScene& scene, uint32_t layer, const HeapVector<SceneMeshDraw>& draws);
 
-    RenderDevice*          m_device;
-    RHITexture*            m_depth{nullptr};
-    RHITexture*            m_maps{nullptr};
-    RHISampler*            m_depthSampler{nullptr};
-    RHISampler*            m_materialSampler{nullptr};
-    uint32_t               m_resolution{1024};
-    HeapVector<FaceData>   m_faces;
-    HeapVector<FaceData>   m_committedFaces;
-    SceneShadowUniformData m_uniforms{};
-    uint64_t               m_geometryRevision{0};
-    uint64_t               m_recordedGeometry{0};
-    bool                   m_validContents{false};
+    RenderDevice*                         m_device;
+    RHITexture*                           m_depth{nullptr};
+    RHITexture*                           m_maps{nullptr};
+    RHISampler*                           m_depthSampler{nullptr};
+    RHISampler*                           m_materialSampler{nullptr};
+    uint32_t                              m_resolution{1024};
+    HeapVector<FaceData>                  m_faces;
+    HeapVector<FaceData>                  m_committedFaces;
+    SceneShadowUniformData                m_uniforms{};
+    const RenderScene*                    m_scene{nullptr};
+    HeapVector<RenderScene::ShadowCaster> m_committedCasters;
+    HeapVector<RenderScene::ShadowCaster> m_recordedCasters;
+    bool                                  m_validContents{false};
 };
 } // namespace zen::rc

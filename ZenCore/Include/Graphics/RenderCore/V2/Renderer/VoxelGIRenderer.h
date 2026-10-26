@@ -43,6 +43,7 @@ struct VoxelGISettings
     RayProvider                                                  GetFeatureProvider(Feature feature) const;
     uint32_t                                                     GetHardwareFeatureMask() const;
     bool                                                         UsesAdaptiveSampling() const;
+    bool                                                         UsesRayShadows(bool hardwareReady) const;
     void                                                         SetFeatureProvider(Feature feature, RayProvider provider);
     void                                                         SetAllFeatureProviders(RayProvider provider);
     enum class BounceSource : uint32_t
@@ -115,10 +116,11 @@ struct VoxelGISettings
     uint32_t coneCount{6};
     uint32_t maxSteps{128};
     bool     shadows{true};
-    bool     rtShadows{true}; // Use triangle shadow rays; false explicitly selects shadow maps.
-    bool     analyticLighting{true};
-    bool     environmentLighting{true};
-    bool     emissiveLighting{true};
+    // False forces maps. True prefers HW rays, falling back to maps unless Compute is explicitly selected.
+    bool rtShadows{true};
+    bool analyticLighting{true};
+    bool environmentLighting{true};
+    bool emissiveLighting{true};
 
     bool operator==(const VoxelGISettings&) const = default;
 };
@@ -196,11 +198,15 @@ public:
     }
     bool UsesHardwareQueries(VoxelGISettings::Feature feature) const
     {
-        return m_hardwareQueries && m_settings.GetFeatureProvider(feature) == VoxelGISettings::RayProvider::Hardware;
+        return (m_hardwareFeatureMask & (1u << static_cast<uint32_t>(feature))) != 0;
     }
     uint32_t GetHardwareFeatureMask() const
     {
-        return m_hardwareQueries ? m_settings.GetHardwareFeatureMask() : 0;
+        return m_hardwareFeatureMask;
+    }
+    bool IsPreparingSoftwareQueries() const
+    {
+        return m_preparingSoftwareQueries;
     }
     // True when an enabled feature resolves to Compute and traces the software BVH.
     bool UsesSoftwareQueries() const;
@@ -223,7 +229,7 @@ public:
     }
     bool UsesRayShadows() const
     {
-        return m_settings.shadows && m_settings.rtShadows;
+        return m_settings.UsesRayShadows(m_hardwareQueries) || UsesHardwareShadows();
     }
     // The resolved bounce source; valid once BuildRayQueryGraph has selected the provider.
     bool UsesRayBounce() const
@@ -344,6 +350,9 @@ private:
     bool                  m_bricksActive{false}; // The brick scene is built for this frame's GI rays.
     bool                  m_brickFallbackLogged{false};
     bool                  m_hardwareQueries{false};
+    uint32_t              m_hardwareFeatureMask{0};
+    bool                  m_preparingSoftwareQueries{false};
+    bool                  m_softwareQueriesActive{false}; // The last frame traced the software BVH.
     const char*           m_providerReason{"software_bvh_selected"};
     RenderDevice*         m_device{nullptr};
     RenderScene*          m_scene{nullptr};

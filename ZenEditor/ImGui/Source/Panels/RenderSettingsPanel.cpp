@@ -436,7 +436,8 @@ private:
                 settings.cone.shadows        = editor.GetRenderingDefaults().gi.cone.shadows;
                 settings.cone.rtShadows      = editor.GetRenderingDefaults().gi.cone.rtShadows;
                 settings.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)] =
-                    editor.GetRenderingDefaults().gi.cone.GetFeatureProvider(rc::VoxelGISettings::Feature::Shadows);
+                    editor.GetRenderingDefaults()
+                        .gi.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)];
 
                 changed = true;
             }

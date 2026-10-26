@@ -43,6 +43,9 @@ namespace zen
 {
 namespace
 {
+// Scripted runs fail rather than wait forever for a GI scene BVH that never finishes.
+constexpr double kGIPreparationLimitSeconds = 600.0;
+
 void LogSceneUploadGraph(const rc::RDGMetricsSnapshot& snapshot)
 {
     // The execution ID is unique within each transfer/frame stream. It joins this
@@ -875,6 +878,8 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
 
     double renderThreadUs        = 0;
 
+    double preparationUs         = 0;
+
     while (succeeded && !m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit)
            && !m_renderDevice->AreSubmissionsBlocked() && !windowTest.Complete())
     {
@@ -887,7 +892,8 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
             break;
         }
 
-        if (giStartFrame != 0 && frames == giStartFrame)
+        if (giStartFrame != 0 && frames == giStartFrame
+            && m_renderDevice->GetRendererServer()->GetRequestedRenderOption() != rc::RenderOption::eVoxelGI)
         {
             LOGI("GI cold-start trigger: frame={}", frames);
 
@@ -1022,13 +1028,27 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
 
         m_renderDevice->NextFrame();
 
-        ++frames;
+        // Scripted runs count only frames that rendered the requested GI. While its scene BVH
+        // builds in the background, frames fall back to HW RT or PBR: profiles record them as
+        // warm-up, and captures wait for the build.
+        const bool preparingGI  = frameLimit != 0 && m_renderDevice->GetRendererServer()->IsPreparingGI();
 
-        const double elapsed  = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+        frames                 += preparingGI ? 0 : 1;
 
-        renderThreadUs       += elapsed;
+        const double elapsed    = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
 
-        if (!frameTimesPath.empty())
+        renderThreadUs         += elapsed;
+
+        preparationUs           = preparingGI ? preparationUs + elapsed : 0.0;
+
+        if (preparationUs > kGIPreparationLimitSeconds * 1e6)
+        {
+            LOGE("GI scene preparation did not finish within {} s", kGIPreparationLimitSeconds);
+
+            succeeded = false;
+        }
+
+        if (!frameTimesPath.empty() && !preparingGI)
         {
             frameTimes.push_back(elapsed);
         }

@@ -14,7 +14,9 @@
 Since 2026-10-25 the presets (default `voxel_gi_preset=medium`) trace every GI pass with HW RT when
 the GPU reports usable ray queries, and otherwise with Compute, whose GI gather rays (sky, specular
 occlusion, bounce and reflections) trace bricks. The sky cache and Compute direct shadows trace
-triangles either way. A rejected configuration falls back to the same preset. The editor starts in
+triangles either way. Both tiers gather through screen probes (`voxel_gi_gather=probes`);
+reference accumulation and ray-count captures keep the per-pixel gather. A rejected configuration
+falls back to the same preset. The editor starts in
 PBR + Global illumination (`--mode=pbr` selects PBR); the demo already started in Voxel GI.
 
 ## Settings
@@ -23,7 +25,7 @@ PBR + Global illumination (`--mode=pbr` selects PBR); the demo already started i
 | --- | --- | --- | --- |
 | `voxel_gi_compute_traversal` | `triangles`, `bricks` | `bricks` | What the Compute provider traces for GI gather rays |
 | `voxel_gi_brick_resolution` | `64`, `128`, `256` | `128` | Brick cells per axis; each cell holds 8³ bits, so 128 resolves 1/1024 of the grid |
-| `voxel_gi_gather` | `pixel`, `probes` | `pixel` | Per-pixel stochastic gather (existing) or screen probes |
+| `voxel_gi_gather` | `pixel`, `probes` | `probes` | Per-pixel stochastic gather or screen probes |
 | `voxel_gi_probe_spacing` | `8`, `16` | `16` | Pixels per screen-probe tile side |
 
 Compute direct shadow rays always trace triangles. Brick-traced shadows (`voxel_gi_shadow_traversal`)

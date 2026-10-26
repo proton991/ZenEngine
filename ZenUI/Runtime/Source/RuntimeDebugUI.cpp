@@ -1,6 +1,8 @@
 #include "RuntimeUI/RuntimeDebugUI.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
+#include "ImGui/LightingBackendControls.h"
 #include "Platform/NativeWindow.h"
 #include "Platform/InputController.h"
 #include "imgui.h"
@@ -144,6 +146,12 @@ void RuntimeDebugUI::Update(float deltaSeconds, RHIViewport& viewport)
         BuildPanel();
     }
 
+    // Over the scene and under the panel, whether or not the panel is open.
+    const rc::RendererServer&  server = *m_device.GetRendererServer();
+    const rc::VoxelGIRenderer* gi     = server.RequestVoxelGI();
+    DrawGIPreparationStatus(*ImGui::GetBackgroundDrawList(), server.IsPreparingGI(), gi != nullptr && gi->UsesHardwareQueries(),
+                            ImVec2(0, 0), ImGui::GetIO().DisplaySize);
+
     ImGuiIO& io = ImGui::GetIO();
 
     // F1 explicitly switches between debug interaction and captured camera control.
@@ -203,7 +211,8 @@ void RuntimeDebugUI::BuildPanel()
         {
             ImGui::TextUnformatted("GI: Cone tracing");
 
-            if (server.GetRenderOption() == rc::RenderOption::ePBR)
+            // PBR frames while Compute GI prepares are reported over the scene instead.
+            if (server.GetRenderOption() == rc::RenderOption::ePBR && !server.IsPreparingGI())
             {
                 ImGui::TextWrapped("PBR fallback is active: global illumination and direct mesh shadows are inactive.");
             }

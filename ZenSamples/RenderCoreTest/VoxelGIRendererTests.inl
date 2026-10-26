@@ -423,3 +423,118 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     volumes.Destroy();
     device->DestroyTexture(sceneInputs.environment.pPrefiltered);
 }
+
+// The first Compute frame of a scene builds its software BVH in the background
+// (VoxelGIRenderer::IsPreparingSoftwareQueries). Tests that trace on that frame poll until
+// the build is published.
+bool BuildPreparedRayQueryGraph(VoxelGIRenderer& gi)
+{
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    bool                                        ready    = gi.BuildRayQueryGraph();
+    while (!ready && gi.IsPreparingSoftwareQueries() && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ready = gi.BuildRayQueryGraph();
+    }
+    return ready;
+}
+
+// One frame of a scene that changes every frame, as an animated one does: the facade's commit
+// advances the geometry revision. Returns whether the frame's GI ray queries were ready.
+bool BuildChangedRayQueryFrame(RenderDevice* device, RenderScene& scene, VoxelGIRenderer& gi)
+{
+    EXPECT_TRUE(scene.CommitGeometryUpdates());
+    RenderGraph& graph = *device->GetCurrentFrameRDG();
+    EXPECT_TRUE(graph.Begin());
+    const bool ready = gi.BuildRayQueryGraph();
+    graph.AddComputePass(IntentPass("keepalive"));
+    EXPECT_TRUE(graph.End()) << graph.GetResult().message;
+    EXPECT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+    gi.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
+    device->NextFrame();
+    return ready;
+}
+
+// A scene that changes every frame still reaches Compute. A background build that the scene
+// moves past finishes synchronously, and frames already tracing the software BVH, in Compute
+// or mixed with HW RT, rebuild it on each change instead of preparing it again.
+TEST_F(RenderCoreTest, SoftwareSceneQueriesReachComputeWhileTheSceneChangesEveryFrame)
+{
+    using Feature        = VoxelGISettings::Feature;
+    using Provider       = VoxelGISettings::RayProvider;
+    rhi->info.rayQuery   = {true, true, true, true, true, 256, 1024, 1024, 1024};
+    sceneInputs.vertices = Buffer();
+    sceneInputs.indices  = Buffer();
+    CreateTestShaderProgram(device, "intent");
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene      scene(device, data);
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
+    volumes.Init();
+    volumes.SetRenderScene(&scene);
+    VoxelGIRenderer gi(device, &volumes);
+    gi.SetRenderScene(&scene);
+    ASSERT_TRUE(gi.Init());
+    const SoftwareSceneRayQuery& queries     = gi.GetSoftwareRayQuery();
+    const uint32_t               allFeatures = (1u << static_cast<uint32_t>(Feature::Count)) - 1u;
+    VoxelGISettings              settings;
+    settings.SetAllFeatureProviders(Provider::Voxel);
+    settings.computeTraversal = VoxelGISettings::ComputeTraversal::Triangles;
+    ASSERT_TRUE(gi.SetSettings(settings));
+
+    // A new scene prepares in the background, with PBR frames until its BVH is published.
+    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    bool                                  ready    = BuildChangedRayQueryFrame(device, scene, gi);
+    EXPECT_FALSE(ready);
+    EXPECT_TRUE(gi.IsPreparingSoftwareQueries());
+    while (!ready && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ready = BuildChangedRayQueryFrame(device, scene, gi);
+    }
+    ASSERT_TRUE(ready);
+    for (uint32_t frame = 0; frame < 4; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
+        EXPECT_EQ(gi.GetHardwareFeatureMask(), 0u);
+        EXPECT_EQ(queries.GetRevision(), scene.GetGeometryRevision());
+        ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+    }
+
+    // Switching from HW RT keeps HW RT for every feature until the BVH has caught up.
+    settings.SetAllFeatureProviders(Provider::Hardware);
+    ASSERT_TRUE(gi.SetSettings(settings));
+    ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+    EXPECT_EQ(gi.GetHardwareFeatureMask(), allFeatures);
+    settings.SetAllFeatureProviders(Provider::Voxel);
+    ASSERT_TRUE(gi.SetSettings(settings));
+    deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+    EXPECT_TRUE(gi.IsPreparingSoftwareQueries());
+    while (gi.IsPreparingSoftwareQueries() && std::chrono::steady_clock::now() < deadline)
+    {
+        EXPECT_EQ(gi.GetHardwareFeatureMask(), allFeatures);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+    }
+    EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
+    EXPECT_EQ(gi.GetHardwareFeatureMask(), 0u);
+    EXPECT_EQ(queries.GetRevision(), scene.GetGeometryRevision());
+
+    // Mixed tracing keeps the requested providers and a current BVH on every frame.
+    settings.SetFeatureProvider(Feature::Sky, Provider::Hardware);
+    ASSERT_TRUE(gi.SetSettings(settings));
+    for (uint32_t frame = 0; frame < 4; ++frame)
+    {
+        SCOPED_TRACE(frame);
+        ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+        EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
+        EXPECT_EQ(gi.GetHardwareFeatureMask(), 1u << static_cast<uint32_t>(Feature::Sky));
+        EXPECT_EQ(queries.GetRevision(), scene.GetGeometryRevision());
+    }
+    gi.Destroy();
+    volumes.Destroy();
+}

@@ -19,10 +19,10 @@ bool ApplyVoxelGIPreset(VoxelGIPreset preset, VoxelGIRuntimeSettings& settings)
         settings.cone.rayProvider = preset == VoxelGIPreset::Low    ? VoxelGISettings::RayProvider::Voxel
                                   : preset == VoxelGIPreset::Medium ? VoxelGISettings::RayProvider::Auto
                                                                     : VoxelGISettings::RayProvider::Hardware;
-        // Passes without HW RT trace bricks; the sky cache and direct shadows keep triangles.
+        // GI without HW RT traces bricks, the sky cache traces triangles, and direct shadows use maps.
         settings.cone.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
         settings.cone.brickResolution  = 128;
-        settings.cone.gather           = VoxelGISettings::Gather::Pixel;
+        settings.cone.gather           = VoxelGISettings::Gather::Probes;
         settings.cone.probeSpacing     = 16;
         settings.cone.samples          = 4;
         settings.cone.adaptiveSampling = true;
@@ -48,7 +48,7 @@ VoxelGIPreset GetVoxelGIPreset(const VoxelGIRuntimeSettings& settings)
         && cone.filter && cone.indirectDiffuse && cone.specularOcclusion && cone.shadows && cone.rtShadows
         && cone.bounceSource == VoxelGISettings::BounceSource::Auto && settings.shadowMapResolution == 1024
         && cone.computeTraversal == VoxelGISettings::ComputeTraversal::Bricks && cone.brickResolution == 128
-        && cone.gather == VoxelGISettings::Gather::Pixel && cone.probeSpacing == 16)
+        && cone.gather == VoxelGISettings::Gather::Probes && cone.probeSpacing == 16)
     {
         if (settings.resolution == 64 && cone.reflections == VoxelGISettings::Reflections::Off)
         {

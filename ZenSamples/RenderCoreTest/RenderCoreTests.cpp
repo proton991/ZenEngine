@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/sinks/ostream_sink.h>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <cstdio>
 #include <memory>
@@ -30,6 +31,7 @@
 #include <numeric>
 #include <string_view>
 #include <sstream>
+#include <thread>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -55,17 +57,18 @@ std::unordered_map<std::string, asset::TextureInfo> textureFiles;
 // Mutable asset facade used with the real renderer/graph implementations below.
 struct SceneInputs
 {
-    const FrameBufferRing*      vertexRing{};
-    RHIBuffer*                  vertices{};
-    RHIBuffer*                  indices{};
-    RHIBuffer*                  nodes{};
-    RHIBuffer*                  materials{};
-    RHIBuffer*                  uv{};
-    HeapVector<RHITextureView*> textures;
-    HeapVector<RHISampler*>     samplers;
-    EnvTexture                  environment;
-    sg::CameraUniformData       camera{};
-    SceneUniformData            uniforms{};
+    const FrameBufferRing*                vertexRing{};
+    RHIBuffer*                            vertices{};
+    RHIBuffer*                            indices{};
+    RHIBuffer*                            nodes{};
+    RHIBuffer*                            materials{};
+    RHIBuffer*                            uv{};
+    HeapVector<RHITextureView*>           textures;
+    HeapVector<RHISampler*>               samplers;
+    EnvTexture                            environment;
+    sg::CameraUniformData                 camera{};
+    SceneUniformData                      uniforms{};
+    HeapVector<RenderScene::ShadowCaster> shadowCasters;
 } sceneInputs;
 
 class TestBuffer : public RHIBuffer
@@ -1630,6 +1633,18 @@ bool RenderScene::HasVertexGeneration(const RHIBuffer* buffer, uint64_t generati
 uint32_t RenderScene::GetInstanceMask(uint32_t) const
 {
     return GI_STATIC;
+}
+
+const HeapVector<RenderScene::ShadowCaster>& RenderScene::GetShadowCasters() const
+{
+    return sceneInputs.shadowCasters;
+}
+
+// This facade has no CPU geometry to commit; each commit stands for a changed frame.
+bool RenderScene::CommitGeometryUpdates()
+{
+    ++m_geometryRevision;
+    return true;
 }
 
 HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const

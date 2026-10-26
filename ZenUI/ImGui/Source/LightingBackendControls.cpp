@@ -1,5 +1,7 @@
 #include "ImGui/LightingBackendControls.h"
 #include "imgui.h"
+#include <algorithm>
+#include <cstring>
 #include <iterator>
 
 namespace zen::ui
@@ -21,7 +23,7 @@ bool DrawGIPresetControls(rc::VoxelGIRuntimeSettings& settings, const char* sele
         ImGui::EndCombo();
     }
     ImGui::TextWrapped(
-        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. All use per-pixel rays; GI rays not on HW RT trace bricks.");
+        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. All gather through screen probes; GI rays not on HW RT trace bricks.");
     ImGui::TextWrapped("Selection: %s. GI tracing can override the preset preference.", selectionReason);
     return changed;
 }
@@ -44,11 +46,17 @@ const GIPassRow kGIPassRows[] = {
     {"Diffuse GI", "Sky light and bounce rays", Feature::Sky, Feature::Bounce},
     {"Specular GI", "Occlusion and reflection rays", Feature::SpecularOcclusion, Feature::Reflections},
     {"Sky cache", "Sky visibility, on scene change", Feature::SkyCache, Feature::SkyCache},
-    {"Direct shadows", "Shadow rays toward lights", Feature::Shadows, Feature::Shadows}};
+    {"Direct shadows", "Mesh visibility toward lights", Feature::Shadows, Feature::Shadows}};
 static_assert(std::size(kGIPassRows) == static_cast<size_t>(GIPass::Count));
 
 // Indexed by GITracer.
 const char* const kTracerNames[] = {"HW RT", "Compute: Bricks", "Compute: Software BVH", "Shadow maps", "Off", "Mixed"};
+
+const char* TracerName(GIPass pass, GITracer tracer)
+{
+    return pass == GIPass::Shadows && tracer == GITracer::SoftwareBVH ? "Software BVH"
+                                                                      : kTracerNames[static_cast<uint32_t>(tracer)];
+}
 
 bool IsComputeTracer(GITracer tracer)
 {
@@ -84,10 +92,10 @@ GITracer GetGIPassTracer(const rc::VoxelGISettings& settings, GIPass pass)
             firstOn  = settings.specularOcclusion;
             secondOn = settings.specularOcclusion && settings.reflections != rc::VoxelGISettings::Reflections::Off;
             break;
-        // The sky cache and direct shadows trace triangles under Compute.
+        // The sky cache traces triangles; direct shadows use them only when explicitly selected.
         case GIPass::SkyCache: traversal = Traversal::Triangles; break;
         case GIPass::Shadows:
-            firstOn   = settings.shadows && settings.rtShadows;
+            firstOn   = settings.UsesRayShadows(true);
             traversal = Traversal::Triangles;
             break;
         default: break;
@@ -149,9 +157,14 @@ void SetGIPassTracer(rc::VoxelGISettings& settings, GIPass pass, GITracer tracer
 
 void SetGIRayTracing(rc::VoxelGISettings& settings, bool hardware)
 {
-    // Only providers change: passes keep their enables, Compute tracers and shadow-map choice.
+    // Preserve feature enables, Compute traversal and explicit shadow-map choice.
     settings.rayProvider = hardware ? Provider::Hardware : Provider::Voxel;
     settings.featureProviders.fill(settings.rayProvider);
+    if (!hardware)
+    {
+        // Global Compute defaults to maps; software shadow rays require a per-pass selection.
+        settings.featureProviders[static_cast<size_t>(Feature::Shadows)] = Provider::Auto;
+    }
 }
 
 bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason)
@@ -188,8 +201,10 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
             ImGui::EndCombo();
         }
         ImGui::TextWrapped(
-            "Compute traces rays in compute shaders on any GPU. HW RT uses the GPU's ray-tracing hardware. Both light the scene the same way. This choice sets every pass below.");
-        if (!compute)
+            "Compute uses software ray traversal for GI and shadow maps for direct shadows. HW RT uses the GPU's ray-tracing hardware. Per-pass choices below can override this.");
+        // The scene view reports Compute GI preparation (DrawGIPreparationStatus); its
+        // provider reason says nothing about HW RT availability.
+        if (!compute && std::strcmp(reason, "software_bvh_preparing") != 0)
         {
             if (hardwareReady)
             {
@@ -197,7 +212,9 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
             }
             else
             {
-                ImGui::TextWrapped("HW RT is unavailable (%s). Passes set to HW RT run on Compute.", reason);
+                ImGui::TextWrapped(
+                    "HW RT is unavailable (%s). Passes set to HW RT use Compute for GI and shadow maps for direct shadows.",
+                    reason);
             }
         }
 
@@ -219,14 +236,14 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 const char* preview = current == GITracer::HardwareRT && !hardwareReady
-                                        ? "HW RT (unavailable)"
-                                        : kTracerNames[static_cast<uint32_t>(current)];
+                                        ? (pass == GIPass::Shadows ? "Shadow maps (HW RT unavailable)" : "HW RT (unavailable)")
+                                        : TracerName(pass, current);
                 if (ImGui::BeginCombo("##tracer", preview))
                 {
                     for (uint32_t option = 0; option <= static_cast<uint32_t>(GITracer::Off); ++option)
                     {
                         const GITracer tracer = static_cast<GITracer>(option);
-                        if (Offers(pass, tracer) && ImGui::Selectable(kTracerNames[option], tracer == current))
+                        if (Offers(pass, tracer) && ImGui::Selectable(TracerName(pass, tracer), tracer == current))
                         {
                             SetGIPassTracer(settings, pass, tracer);
                             changed = true;
@@ -246,6 +263,7 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
                                 ? " Diffuse and specular GI share one Compute tracer."
                                 : "");
         ImGui::TextDisabled("Probe placement, filtering, denoising and voxel light injection always run on Compute.");
+        ImGui::TextDisabled("Direct shadows use maps without HW RT unless Software BVH is explicitly selected.");
         if (tracers[static_cast<size_t>(GIPass::Diffuse)] == GITracer::Off
             || tracers[static_cast<size_t>(GIPass::Specular)] == GITracer::Off)
         {
@@ -295,5 +313,43 @@ bool DrawGIGatherControls(rc::VoxelGISettings& settings)
         ImGui::TextWrapped("Every pixel traces its own rays, at several times the cost of screen probes.");
     }
     return changed;
+}
+
+const char* GetGIPreparationStatus(bool preparing, bool hardwareReady)
+{
+    return !preparing    ? nullptr
+         : hardwareReady ? "Preparing Compute GI. HW RT stays active until it is ready."
+                         : "Preparing Compute GI. The view shows PBR until it is ready.";
+}
+
+bool DrawGIPreparationStatus(ImDrawList& draw,
+                             bool        preparing,
+                             bool        hardwareReady,
+                             ImVec2      viewMin,
+                             ImVec2      viewMax,
+                             float       rightInset)
+{
+    const char* text  = GetGIPreparationStatus(preparing, hardwareReady);
+    bool        drawn = text != nullptr;
+    if (drawn)
+    {
+        const float  font    = ImGui::GetFontSize();
+        const float  padding = font * 0.6f;
+        const float  margin  = font * 0.75f;
+        const float  wrap    = viewMax.x - viewMin.x - 2 * (rightInset + margin + padding);
+        const ImVec2 size    = ImGui::CalcTextSize(text, nullptr, false, std::max(wrap, 1.0f));
+        const ImVec2 start(viewMin.x + (viewMax.x - viewMin.x - size.x) * 0.5f - padding, viewMin.y + margin);
+        const ImVec2 end(start.x + size.x + 2 * padding, start.y + size.y + 2 * padding);
+        drawn = wrap >= font * 8 && end.y + margin <= viewMax.y;
+        if (drawn)
+        {
+            const float corner = font * 0.35f;
+            draw.AddRectFilled(start, end, ImGui::GetColorU32(ImGuiCol_WindowBg, 0.85f), corner);
+            draw.AddRect(start, end, ImGui::GetColorU32(ImGuiCol_Border), corner);
+            draw.AddText(ImGui::GetFont(), font, ImVec2(start.x + padding, start.y + padding),
+                         ImGui::GetColorU32(ImGuiCol_Text), text, nullptr, wrap);
+        }
+    }
+    return drawn;
 }
 } // namespace zen::ui
