@@ -33,6 +33,14 @@ the project's license. It combines a morph with six influences per vertex,
 mirrored/nonuniform joint scales, a geometric transform and bone/weight
 animation. It contains no third-party geometry or textures.
 
+`combined_morph_skin.zenasset` is its prepared runtime fixture for the GPU
+deformation test. The test links only the runtime loader. Regenerate the package
+from the repository root with the processor's CLI:
+
+```text
+zenassetc cook ZenSamples/CommonTest/Assets/FBX/combined_morph_skin_ascii.fbx --output ZenSamples/CommonTest/Assets/FBX/combined_morph_skin.zenasset --profile reference
+```
+
 The fixtures are small correctness inputs, not performance benchmarks.
 Missing/external-resource and malformed-file tests create temporary variants;
 the originals above remain unchanged.
