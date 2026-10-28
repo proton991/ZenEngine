@@ -47,8 +47,8 @@ def main():
     parser.add_argument('--width', type=int, default=960)
     parser.add_argument('--height', type=int, default=540)
     parser.add_argument('--resolution', type=int, choices=(64, 128, 256), default=64)
-    parser.add_argument('--compute-traversal', choices=('triangles', 'bricks'), default='triangles')
-    parser.add_argument('--brick-resolution', type=int, choices=(64, 128, 256), default=128)
+    parser.add_argument('--field-resolution', type=int, choices=(32, 64), default=64,
+                        help='Distance-field cells per axis that Compute GI traces')
     parser.add_argument('--gather', choices=('pixel', 'probes'), default='pixel')
     parser.add_argument('--probe-spacing', type=int, choices=(8, 16), default=16)
     parser.add_argument('--provider', choices=('auto', 'voxel', 'hardware'), default='voxel')
@@ -119,7 +119,7 @@ def main():
                     environment_lighting=str(args.environment).lower(), environment_intensity=1,
                     environment_rotation_degrees=0, skybox_visible='false', scene_lighting_override='true',
                     light_count=0, voxel_resolution=args.resolution, voxel_gi_indirect_intensity=args.bounce,
-                    voxel_gi_compute_traversal=args.compute_traversal, voxel_gi_brick_resolution=args.brick_resolution,
+                    voxel_gi_field_resolution=args.field_resolution,
                     voxel_gi_gather=args.gather, voxel_gi_probe_spacing=args.probe_spacing,
                     voxel_gi_bounce_source=args.bounce_source,
                     voxel_gi_shadow_enabled='false', voxel_gi_ray_provider=args.provider,

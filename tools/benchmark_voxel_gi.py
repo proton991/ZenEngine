@@ -31,6 +31,8 @@ def main():
                         help='Use the provider selector so explicit bounce-source/reflection settings remain effective')
     parser.add_argument('--profile', action='store_true', help='Also record native GPU frame/pass timings')
     parser.add_argument('--motion-fixture', action='store_true')
+    parser.add_argument('--workload', choices=('still', 'camera', 'dynamic', 'expansion', 'switch', 'scene-switch'), default='still')
+    parser.add_argument('--target-scene', type=Path)
     parser.add_argument('--mode', type=int, choices=(2, 3), default=3,
                         help='3 renders voxel GI; 2 renders the same PBR frame without GI, the baseline for GI-exclusive cost')
     parser.add_argument('--gpu', help='Adapter name substring (demo --gpu); NVIDIA activity is sampled only for NVIDIA adapters')
@@ -43,11 +45,12 @@ def main():
     config = ROOT/'Data/engine.cfg'
     original = config.read_bytes()
     settings = args.config.read_bytes() if args.config else original
-    if args.set:
-        settings += b'\n' + ('\n'.join(args.set)+'\n').encode()
     from capture_hybrid_gi import capture_configuration
     selector = ({'voxel_gi_ray_provider': 'voxel' if args.backend == 'compute' else 'hardware'}
                 if args.legacy_provider_controls else {'voxel_gi_backend': args.backend})
+    # Apply explicit overrides after removing inherited selectors. In particular a
+    # shadow-provider override must survive the all-feature backend selection.
+    selector.update(item.split('=', 1) for item in args.set)
     settings = capture_configuration(settings, selector)
     try:
         if settings != original:
@@ -70,7 +73,11 @@ def measure(args):
                f'--frames={args.frames}', f'--width={args.width}', f'--height={args.height}',
                f'--rhi-thread={args.thread}', f'--async-compute={args.async_compute}',
                f'--frame-times={out / "frames.csv"}']
-    if args.backend == 'compute':
+    if args.workload != 'still':
+        command.append(f'--profile-workload={args.workload}')
+    if args.target_scene:
+        command.append(f'--profile-target-scene={args.target_scene.resolve()}')
+    if args.backend == 'compute' and args.workload != 'switch':
         command.append('--disable-rt')
     if args.profile:
         command.append(f'--profile={out / "native"}')
@@ -119,7 +126,7 @@ def measure(args):
             timestamp = datetime.datetime.strptime(row[0].strip(), '%Y/%m/%d %H:%M:%S.%f')
             if start <= timestamp <= end:
                 samples.append([float(value.strip()) for value in row[1:]])
-    assert samples or not nvidia, 'No warmed NVIDIA activity samples; increase --frames'
+    assert samples or not nvidia or end <= start, 'No warmed NVIDIA activity samples; increase --frames'
     def activity(column, reduce=statistics.mean):
         return reduce(row[column] for row in samples) if samples else None
     native = json.loads((out/'native.profile.json').read_text()) if args.profile else None
@@ -130,6 +137,7 @@ def measure(args):
         gpu_activity_percent_mean=activity(0), gpu_activity_percent_median=activity(0, statistics.median),
         memory_activity_percent_mean=activity(1), graphics_clock_mhz_mean=activity(2),
         power_watts_mean=activity(3), gpu_samples=len(samples), mode=args.mode, gpu=args.gpu,
+        gpu_activity_status='available' if samples else 'unavailable: measured interval shorter than NVML settling window' if nvidia else 'unavailable: non-NVIDIA adapter',
         resolved_method=native['settings']['gi_method'] if native else None, backend=args.backend,
         configuration_sha256=hashlib.sha256(original).hexdigest(),
         metric_note='CPU frame intervals include frame-slot backpressure; NVML GPU activity is not SM occupancy. '

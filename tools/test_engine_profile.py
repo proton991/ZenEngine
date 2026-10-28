@@ -122,6 +122,35 @@ class ProfileTests(unittest.TestCase):
         self.write_manifest(prefix, manifest)
         return prefix, frames, manifest
 
+    def write_preparation_capture(self, folder, sequence, requested, warmup=0, gi_start=0,
+                                  policy=True, requested_mode='3', statuses=None):
+        statuses = statuses or ('available',) * len(sequence)
+        prefix, frames, manifest = self.write_frame_capture(folder, statuses)
+        manifest.update(requested_frames=requested, requested_warmup_frames=warmup, gi_start_frame=gi_start)
+        if policy:
+            manifest['phase_policy'] = profile.PREPARATION_POLICY
+        for frame, (phase, local) in zip(frames, sequence):
+            frame.update(phase=phase, phase_frame=str(local), requested_mode=requested_mode)
+        manifest['cpu_frame_ms'] = {
+            phase: profile.statistics_for([2 for frame in frames if frame['phase'] == phase])
+            for phase in profile.PHASES}
+        manifest['gpu_frame_ms'] = {
+            phase: profile.statistics_for([1.5 for frame in frames
+                                           if frame['phase'] == phase and frame['gpu_status'] == 'available'])
+            for phase in profile.PHASES}
+        manifest['gpu_frame_unavailable'] = {
+            phase: sum(frame['phase'] == phase and frame['gpu_status'] != 'available' for frame in frames)
+            for phase in profile.PHASES}
+        with Path(str(prefix) + '.passes.csv').open(encoding='utf-8', newline='') as source:
+            passes = list(csv.DictReader(source))
+        passes[0]['phase'] = frames[0]['phase']
+        manifest['graphs'][0]['phase'] = frames[0]['phase']
+        manifest['pass_statistics'][0]['phase'] = frames[0]['phase']
+        self.write_rows(prefix, '.frames.csv', frames)
+        self.write_rows(prefix, '.passes.csv', passes)
+        self.write_manifest(prefix, manifest)
+        return prefix, frames, manifest
+
     def test_frame_measurements_and_independent_requirements(self):
         with tempfile.TemporaryDirectory() as directory:
             prefix, _, _ = self.write_frame_capture(Path(directory))
@@ -239,6 +268,73 @@ class ProfileTests(unittest.TestCase):
             self.write_rows(prefix, '.frames.csv', frames)
             self.write_manifest(prefix, manifest)
             self.assertTrue(profile.validate(prefix, require_frame_gpu=True)['verified'])
+
+    def test_preparation_attempts_preserve_warmup_and_measurement_counts(self):
+        cases = [
+            (2, 2, 0, [('cold', 0), ('warmup', 0), ('warmup', 0), ('warmup', 1),
+                       ('measured', 0), ('measured', 1)]),
+            (2, 0, 0, [('cold', 0), ('warmup', 0), ('measured', 0), ('measured', 1)]),
+            (2, 1, 0, [('cold', 0), ('warmup', 0), ('measured', 0), ('measured', 1)]),
+            (4, 0, 0, [('cold', 0), ('measured', 1), ('warmup', 2), ('measured', 2), ('measured', 3)]),
+            (4, 2, 1, [('cold', 0), ('warmup', 1), ('warmup', 0), ('cold', 1),
+                       ('warmup', 1), ('warmup', 1), ('measured', 2), ('measured', 3)]),
+            (4, 0, 1, [('warmup', 0), ('cold', 1), ('warmup', 1), ('measured', 2), ('measured', 3)]),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            for requested, warmup, gi_start, sequence in cases:
+                with self.subTest(requested=requested, warmup=warmup, gi_start=gi_start):
+                    prefix, _, _ = self.write_preparation_capture(Path(directory), sequence, requested, warmup, gi_start)
+                    result = profile.validate(prefix, require_frame_gpu=True)
+                    self.assertTrue(result['verified'])
+                    self.assertEqual(result['gpu_frame_statuses'], {'available': len(sequence)})
+
+    def test_preparation_rejects_incomplete_or_stale_local_workloads(self):
+        cases = [
+            (3, 0, 0, [('cold', 0), ('warmup', 0), ('measured', 0), ('measured', 2)]),
+            (2, 0, 0, [('cold', 0), ('measured', 1), ('measured', 1)]),
+            (2, 0, 0, [('cold', 0), ('measured', 1), ('measured', 2)]),
+            (3, 0, 0, [('cold', 0), ('measured', 1), ('warmup', 2)]),
+            (4, 0, 0, [('cold', 0), ('measured', 1), ('warmup', 2), ('measured', 3)]),
+            (2, 2, 0, [('cold', 0), ('warmup', 0), ('measured', 0), ('measured', 1)]),
+            (3, 0, 1, [('warmup', 0), ('cold', 1), ('cold', 1), ('measured', 2)]),
+            (3, 0, 1, [('warmup', 0), ('warmup', 0), ('cold', 1), ('measured', 2)]),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            for requested, warmup, gi_start, sequence in cases:
+                with self.subTest(sequence=sequence):
+                    prefix, _, _ = self.write_preparation_capture(Path(directory), sequence, requested, warmup, gi_start)
+                    with self.assertRaisesRegex(AssertionError, 'application frame'):
+                        profile.validate(prefix)
+
+    def test_preparation_requires_policy_and_requested_gi(self):
+        sequence = [('cold', 0), ('warmup', 0), ('measured', 0), ('measured', 1)]
+        with tempfile.TemporaryDirectory() as directory:
+            for policy, mode in ((False, '3'), (True, '2'), (True, '1')):
+                with self.subTest(policy=policy, mode=mode):
+                    prefix, _, _ = self.write_preparation_capture(Path(directory), sequence, 2,
+                                                                  policy=policy, requested_mode=mode)
+                    with self.assertRaisesRegex(AssertionError, 'application frame'):
+                        profile.validate(prefix)
+
+    def test_preparation_frames_still_require_complete_gpu_measurements(self):
+        sequence = [('cold', 0), ('warmup', 0), ('measured', 0), ('measured', 1)]
+        with tempfile.TemporaryDirectory() as directory:
+            prefix, _, _ = self.write_preparation_capture(Path(directory), sequence, 2,
+                                                          statuses=('available', 'unsupported', 'available', 'available'))
+            self.assertTrue(profile.validate(prefix)['verified'])
+            with self.assertRaisesRegex(AssertionError, 'Not all application frames'):
+                profile.validate(prefix, require_frame_gpu=True)
+
+    def test_preparation_does_not_admit_missing_or_reordered_application_frames(self):
+        sequence = [('cold', 0), ('warmup', 0), ('warmup', 0), ('measured', 0), ('measured', 1)]
+        with tempfile.TemporaryDirectory() as directory:
+            prefix, frames, _ = self.write_preparation_capture(Path(directory), sequence, 2)
+            for indices in ((12, 13, 15, 16, 17), (12, 14, 13, 15, 16), (12, 13, 13, 15, 16)):
+                with self.subTest(indices=indices):
+                    changed = [dict(frame, frame_index=str(index)) for frame, index in zip(frames, indices)]
+                    self.write_rows(prefix, '.frames.csv', changed)
+                    with self.assertRaises(AssertionError):
+                        profile.validate(prefix)
 
 
 if __name__ == '__main__':

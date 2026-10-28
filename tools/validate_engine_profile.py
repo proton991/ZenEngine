@@ -12,6 +12,9 @@ STATUSES = {'available', 'disabled', 'pending', 'unsupported', 'dropped', 'disca
 
 PHASES = ('cold', 'warmup', 'measured')
 
+PREPARATION_POLICY = 'warmup excludes initial field preparation and refinement'
+LEGACY_PREPARATION_POLICY = 'warmup is excluded and includes frames rendered while GI builds its scene BVH'
+
 
 def statistics_for(values):
     values = sorted(values)
@@ -40,32 +43,61 @@ def finite_nonnegative(text):
     return value
 
 
+def validate_frame_identities(manifest, frames):
+    requested = manifest['requested_frames']
+    warmup = manifest['requested_warmup_frames']
+    gi_start = manifest['gi_start_frame']
+    assert all(type(value) is int and value >= 0 for value in (requested, warmup, gi_start))
+    assert requested > 0 and len(frames) >= requested + warmup, 'Incomplete application frames'
+    preparation = (manifest.get('preparation_frames_excluded', False)
+                   or PREPARATION_POLICY in manifest.get('phase_policy', '')
+                   or LEGACY_PREPARATION_POLICY in manifest.get('phase_policy', ''))
+    # Run(warmup) and Run(requested) have independent local counters. A preparation
+    # attempt keeps its counter, whereas a completed workload frame advances it.
+    # No explicit preparation flag was exported, so retain both possibilities for
+    # warmup/cold rows until later identities resolve them (notably warmup=1).
+    states = {(0 if warmup else 1, 0, False)}
+    previous = None
+    for position, frame in enumerate(frames):
+        index = int(frame['frame_index'])
+        assert index >= 0 and (previous is None or index == previous + 1), 'Missing or reordered application frame'
+        previous = index
+        next_states = set()
+        for stage, local, activated in states:
+            if stage == 2 or int(frame['phase_frame']) != local:
+                continue
+            phase = 'warmup' if stage == 0 else 'measured'
+            if stage == 1 and gi_start:
+                phase = ('warmup' if local < gi_start else 'cold' if local == gi_start and not activated
+                         else 'warmup' if local == gi_start else 'measured')
+                activated = activated or local == gi_start
+            elif position == 0:
+                phase = 'cold'
+            if frame['phase'] == phase:
+                limit = warmup if stage == 0 else requested
+                next_states.add((stage + 1, 0, activated) if local + 1 == limit
+                                else (stage, local + 1, activated))
+            if (preparation and frame.get('requested_mode') == '3'
+                    and not (stage == 1 and gi_start and local < gi_start)
+                    and frame['phase'] == ('warmup' if phase == 'measured' else phase)):
+                next_states.add((stage, local, activated))
+        assert next_states, 'Stale application frame identity or phase'
+        states = next_states
+    assert any(stage == 2 for stage, _, _ in states), 'Incomplete application frames'
+
+
 def validate_gpu_frames(manifest, frames, require_frame_gpu):
     if manifest['schema_version'] == 1:
         assert not require_frame_gpu, 'Schema v1 does not contain GPU frame measurements'
         return {}
 
     assert isinstance(manifest['gpu_frame_scope'], str) and manifest['gpu_frame_scope']
-    expected_frames = manifest['requested_frames'] + manifest['requested_warmup_frames']
-    assert expected_frames > 0 and len(frames) == expected_frames, 'Incomplete application frames'
+    validate_frame_identities(manifest, frames)
     gpu_frames = collections.defaultdict(list)
     unavailable = collections.Counter()
     statuses = collections.Counter()
-    previous = None
-    for position, frame in enumerate(frames):
-        index = int(frame['frame_index'])
-        assert index >= 0 and (previous is None or index == previous + 1), 'Missing or reordered application frame'
-        previous = index
-        warmup = position < manifest['requested_warmup_frames']
-        local = position if warmup else position - manifest['requested_warmup_frames']
-        assert int(frame['phase_frame']) == local, 'Stale application frame identity'
-        phase = 'warmup' if warmup else 'measured'
-        gi_start = manifest['gi_start_frame']
-        if not warmup and gi_start:
-            phase = 'warmup' if local < gi_start else 'cold' if local == gi_start else 'measured'
-        elif position == 0:
-            phase = 'cold'
-        assert frame['phase'] == phase, 'Stale application frame phase'
+    for frame in frames:
+        phase = frame['phase']
         assert frame['succeeded'] == 'true', 'Failed application frame'
         status = frame['gpu_status']
         assert status in ('available', 'unsupported'), ('Incomplete GPU frame measurement', status)
@@ -87,7 +119,7 @@ def validate_gpu_frames(manifest, frames, require_frame_gpu):
         check_statistics(manifest['gpu_frame_ms'][phase], gpu_frames[phase])
         assert manifest['gpu_frame_unavailable'][phase] == unavailable[phase], ('Stale GPU frame unavailable count', phase)
     if require_frame_gpu:
-        assert statuses['available'] == expected_frames, 'Not all application frames have GPU measurements'
+        assert statuses['available'] == len(frames), 'Not all application frames have GPU measurements'
     return dict(statuses)
 
 

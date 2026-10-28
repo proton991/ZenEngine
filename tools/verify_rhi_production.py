@@ -6,6 +6,7 @@ recorded as skipped, never counted as a pass. Hardware runs require a desktop.
 """
 
 import argparse
+from contextlib import nullcontext
 import itertools
 import json
 import os
@@ -14,6 +15,8 @@ import re
 import shutil
 import subprocess
 import time
+
+from rtss_runner import rtss_executable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,14 +53,18 @@ def main():
                 command.append("--device-loss-diagnostics")
             commands.append((f"smoke-m{mode}-t{thread}-a{compute}", command))
     for name, command in commands:
+        shared_alias = args.executable_alias and args.executable_alias.lower() == '7zfm.exe'
         if args.executable_alias:
             destination = args.output / "binaries" / Path(command[0]).stem / args.executable_alias
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(command[0], destination)
             command[0] = str(destination.resolve())
+        lease = rtss_executable(command[0]) if shared_alias else nullcontext()
         started = time.monotonic()
         log = args.output / (name + ".log")
-        with log.open("w", encoding="utf-8") as stream:
+        with lease as executable, log.open("w", encoding="utf-8") as stream:
+            if executable is not None:
+                command[0] = str(executable)
             try:
                 process = subprocess.run(command, cwd=ROOT, env=environment, stdout=stream,
                                          stderr=subprocess.STDOUT, timeout=300)

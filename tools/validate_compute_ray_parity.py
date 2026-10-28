@@ -1,10 +1,13 @@
-"""Compare pure-compute triangle lighting with HW RT or an archived Compute run.
+"""Compare Compute GI lighting, traced through the distance field, with HW RT or an archived Compute run.
 
-The default reference requires an RT-capable GPU. --compute-baseline uses saved
-Compute captures and tighter optimization tolerances without requiring RT. Every
-compute capture disables RT. Checks linear RGB per signal, closed geometry, and
-actual runtime metadata. The separately reproduced presentation hazard is opt-in,
-never hidden.
+The default reference requires an RT-capable GPU. The field approximates triangle
+visibility, so against HW RT each signal must stay within the plan's all-light mean
+bias gate (15%, Doc/ComputeGI/BrixelizerGIImplementationPlan.md) and no contiguous
+block of receivers may lose its sky (a leak or a closed opening shows as either).
+RMS and p99 errors are reported for inspection. --compute-baseline compares saved
+Compute captures of the same tracer with tight regression tolerances, without RT.
+Every compute capture disables RT. The separately reproduced presentation hazard is
+opt-in, never hidden.
 """
 import argparse
 import json
@@ -40,10 +43,10 @@ def compare(compute, reference, allow_present_baseline=False, compute_reference=
     a, ah, al = load(compute)
     b, bh, bl = load(reference)
     assert not a['ray_query_enabled'] and not a['acceleration_structure_enabled'], a
-    assert a['compute_traversal'] == 'software_bvh' and a['hardware_feature_mask'] == 0, a
+    assert a['compute_traversal'] == 'field' and a['hardware_feature_mask'] == 0, a
     if compute_reference:
         assert not b['ray_query_enabled'] and not b['acceleration_structure_enabled'], b
-        assert b['compute_traversal'] == 'software_bvh' and b['hardware_feature_mask'] == 0, b
+        assert b['compute_traversal'] == 'field' and b['hardware_feature_mask'] == 0, b
     else:
         assert b['ray_query_enabled'] and b['hardware_feature_mask'] == 63, b
     assert a['receiver_position'] == b['receiver_position'] == 'raster_fp32'
@@ -77,10 +80,11 @@ def compare(compute, reference, allow_present_baseline=False, compute_reference=
         error = abs(actual - expected)
         rms = float(np.sqrt(np.mean(error**2))/scale)
         p99 = float(np.quantile(error, .99)/scale)
-        limits = (.002, .01) if compute_reference else (.01, .02)
-        metrics[name] = dict(rms=rms, p99=p99, normalization=scale,
+        bias = float((actual - expected).mean()/scale)
+        passed = rms <= .002 and p99 <= .01 if compute_reference else abs(bias) <= .15
+        metrics[name] = dict(rms=rms, p99=p99, bias=bias, normalization=scale,
                              maximum_absolute_error=float(error.max()), identical=bool(np.array_equal(actual, expected)),
-                             passed=rms <= limits[0] and p99 <= limits[1])
+                             passed=passed)
     unexpected_dark = mask & np.all(ah[:, :, 1, :3] == 0, axis=2) & (np.max(bh[:, :, 1, :3], axis=2) > 1e-5)
     pending = set(map(tuple, np.argwhere(unexpected_dark)))
     largest = 0
