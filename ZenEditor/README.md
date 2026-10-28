@@ -288,12 +288,21 @@ capture run, without reaching the scripted navigation actions.
 
 By default, PBR + Global illumination traces every GI pass with hardware ray queries
 when the selected device supports the required features and dependencies. Other
-devices trace with Compute: GI rays use the sparse brick scene, and the sky cache and
-direct shadows use the software triangle BVH. Both gather GI through screen probes
-(`voxel_gi_gather=pixel` selects per-pixel rays). Set `voxel_gi_ray_provider=voxel` in
-`Data/engine.cfg` to use Compute on any device, `voxel_gi_compute_traversal=triangles`
-for exact (slow) Compute GI rays, and `ZEN_VULKAN_DEVICE` to a substring of an adapter
-name to select that GPU.
+devices trace with Compute: GI rays, sky visibility and local-light visibility use
+the GPU-built distance field; direct lighting uses shadow maps. Both gather GI
+through screen probes (`voxel_gi_gather=pixel` selects per-pixel rays). Set
+`voxel_gi_backend=compute` in `Data/engine.cfg` to force Compute, and
+`voxel_gi_field_resolution=64` to select the scene field's cell resolution. Local
+detail volumes preserve smaller openings around lamps. Cold scene activation shows
+voxel cone GI from the first rendered frame, with a "GI preview active" indicator.
+This preview has coarser visibility and diffuse bounce; full field-based sky,
+specular and probe gathering replace it automatically after initial preparation.
+Initial field construction favors throughput and can briefly stall rendering;
+dispatch sizes adapt to GPU timings. Later geometry edits use smaller background batches.
+The field stays available across warm backend switches. Preparation or unavailable
+geometry is reported explicitly. Set `ZEN_VULKAN_DEVICE` to a substring
+of an adapter name to select that GPU. Legacy triangle/brick traversal settings
+migrate to fields; no software triangle BVH remains.
 
 Open **Rendering → Environment** to select a skybox and image-based lighting
 texture together. The repository includes the papermill cubemap. An optional

@@ -1,5 +1,7 @@
 # Compute GI implementation plan
 
+The planned removal of the CPU BVH and migration to Brixelizer-style distance fields is specified in [BrixelizerGIImplementationPlan.md](E:/Dev/ZenEngine/Doc/ComputeGI/BrixelizerGIImplementationPlan.md). The implementation and measurements below describe the earlier occupancy-brick pipeline.
+
 2026-10-22. Implements the direction accepted in the [algorithm survey](AlgorithmSurvey.md): a screen-probe final gather over a sparse voxel-brick scene, reusing the existing voxel radiance cache for hit lighting. The quality bar is relaxed: results need not match HW RT or the Mitsuba references exactly.
 
 ## Scope decisions
