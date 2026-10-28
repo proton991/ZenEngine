@@ -1,7 +1,6 @@
 #ifndef ZEN_PROBE_RAY
 #define ZEN_PROBE_RAY
 #include "probe_common.glsl"
-#define HYBRID_MIXED_PROVIDER
 #include "hybrid_provider.glsl"
 #define HIT_LIGHT_CACHE
 #include "hit_radiance.glsl"
@@ -27,59 +26,46 @@ bool ProbeFeatureHardware(uint feature)
 
 HybridRayResult ProbeTraceFeature(uint feature, vec3 position, vec3 normal, vec3 direction, bool closest)
 {
-    HybridRayResult result;
+    // A HW-only variant has no Compute provider: a feature it does not trace has no result.
+    HybridRayResult result = HybridRayResult(false, position, vec3(0), ivec3(-1), false);
 #ifdef HYBRID_HARDWARE_PROVIDER
     if (ProbeFeatureHardware(feature))
     {
         result = HardwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
     }
-    else
 #endif
+#ifdef HYBRID_FIELD_TRAVERSAL
+    if (!ProbeFeatureHardware(feature))
     {
-#ifdef HYBRID_BRICK_TRAVERSAL
-        // Shading hits next to a lamp are re-traced by probe_retrace_bricks.comp (probe_trace.glsl).
-        result = BrickTraceRay(BrickTraceOrigin(position, normal), direction, 1e20);
-#else
-        result = SoftwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
-#endif
+        result = FieldTraceRay(FieldTraceOrigin(position, normal), direction, 1e20, closest);
     }
+#endif
     return result;
 }
 
-// Match hit_radiance.glsl's near-light fallback and the pixel gather's bounce provider. Under brick
-// traversal the trace marches bricks and the re-trace of hits next to a lamp traces opaque triangles,
-// since voxels block these rays there.
-bool HitLightVisible(HybridRayResult hit, SceneLight light)
+// Visibility of a nearby point or spot light from a shading hit (hit_radiance.glsl), with the bounce
+// provider, over the finite segment to the light. Only a covered miss is visible.
+float HitLightVisibility(HybridRayResult hit, SceneLight light, int lightIndex)
 {
-#if defined(HYBRID_BRICK_TRAVERSAL) && !defined(PROBE_RETRACE)
-    vec3 origin = BrickTraceOrigin(hit.position, hit.normal);
-#else
-    vec3 origin = HybridTraceOrigin(hit.position, hit.normal, 0.0);
-#endif
-    vec3  delta           = light.positionRange.xyz - origin;
-    float distanceToLight = length(delta);
-    vec3  direction       = delta / max(distanceToLight, 1e-20);
-    distanceToLight       = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
-    bool blocked          = false;
-    if (distanceToLight > 0.0)
-    {
+    float visibility = 1.0;
 #ifdef HYBRID_HARDWARE_PROVIDER
-        if (ProbeFeatureHardware(BOUNCE_PROVIDER))
-        {
-            blocked = HardwareTraceRay(origin, direction, distanceToLight, false).hit;
-        }
-        else
-#endif
-        {
-#if defined(HYBRID_BRICK_TRAVERSAL) && !defined(PROBE_RETRACE)
-            blocked = BrickTraceRay(origin, direction, distanceToLight).hit;
-#elif defined(HYBRID_BRICK_TRAVERSAL)
-            blocked = SoftwareTraceOpaqueRay(origin, direction, distanceToLight, false).hit;
-#else
-            blocked = SoftwareTraceRay(origin, direction, distanceToLight, false).hit;
-#endif
-        }
+    if (ProbeFeatureHardware(BOUNCE_PROVIDER))
+    {
+        vec3  origin          = HybridTraceOrigin(hit.position, hit.normal, 0.0);
+        vec3  delta           = light.positionRange.xyz - origin;
+        float distanceToLight = length(delta);
+        vec3  direction       = delta / max(distanceToLight, 1e-20);
+        // Exclude the endpoint itself, without dropping a finite interval before it.
+        distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
+        visibility      = distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit ? 0.0 : 1.0;
     }
-    return !blocked;
+    else
+#endif
+    {
+#ifdef HYBRID_FIELD_TRAVERSAL
+        visibility = FieldLightVisibility(hit, light.positionRange.xyz);
+#endif
+    }
+    return visibility;
 }
 #endif

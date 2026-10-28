@@ -159,6 +159,7 @@ template <class T> HeapVector<T> ReadStaticBuffer(RHIBuffer* buffer)
 }
 
 #include "ConeVoxelVisibilityTests.inl"
+#include "DistanceFieldIntegrationTests.inl"
 #include "ConeEnvironmentTests.inl"
 #include "HybridEstimatorTests.inl"
 #include "ScreenProbeGatherIntegrationTests.inl"

@@ -126,7 +126,9 @@ void RenderScene::Destroy()
 
         m_voxelTriangleCount   = 0;
 
-        m_numIndices           = 0;
+        m_instanceTriangleRanges.clear();
+
+        m_numIndices = 0;
 
         HeapVector<RHITexture*> images;
         images.reserve(m_sceneTextures.size());

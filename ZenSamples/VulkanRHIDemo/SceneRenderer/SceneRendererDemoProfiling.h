@@ -1,6 +1,7 @@
 #pragma once
 #include "Templates/HeapVector.h"
 #include "Utils/UniquePtr.h"
+#include <ostream>
 #include <string>
 
 namespace zen
@@ -11,11 +12,17 @@ namespace rc
 class RenderDevice;
 class RenderScene;
 class RDGMetrics;
+class VoxelGIRenderer;
 } // namespace rc
+
+// Distance-field visibility fields shared by profiles and lighting captures, each with a leading comma.
+void WriteDistanceFieldMetadata(std::ostream& output, const rc::VoxelGIRenderer& voxelGI);
 
 struct DemoProfilingOptions
 {
     std::string             prefix;
+    std::string             workload{"still"};
+    std::string             targetScene;
     HeapVector<std::string> arguments;
     uint32_t                frames{0};
     uint32_t                warmup{0};

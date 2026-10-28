@@ -33,7 +33,8 @@ namespace
 {
 constexpr size_t MaxProfileFrames = 100000;
 
-constexpr size_t MaxProfileGraphs = 16384;
+// Keep both cold builds when profiling an old-to-new Sponza scene transition.
+constexpr size_t MaxProfileGraphs = 65536;
 
 constexpr size_t MaxProfilePasses = 1000000;
 
@@ -109,6 +110,40 @@ void JSONString(std::ostream& output, std::string_view text)
 
     output << '"';
 }
+
+} // namespace
+
+void WriteDistanceFieldMetadata(std::ostream& output, const rc::VoxelGIRenderer& voxelGI)
+{
+    const rc::DistanceFieldScene* field = voxelGI.GetDistanceField();
+    const char*                   state = field == nullptr                                           ? "absent"
+                                        : field->GetState() == rc::DistanceFieldScene::State::Ready  ? "ready"
+                                        : field->GetState() == rc::DistanceFieldScene::State::Failed ? "failed"
+                                                                                                     : "pending";
+    output << ",\"compute_traversal\":\"" << (voxelGI.UsesFieldTraversal() ? "field" : "none") << "\""
+           << ",\"field_state\":\"" << state << "\""
+           << ",\"field_preparing\":" << (voxelGI.IsPreparingField() ? "true" : "false")
+           << ",\"field_refining\":" << (voxelGI.IsRefiningField() ? "true" : "false")
+           << ",\"field_visibility_generation\":" << voxelGI.GetVisibilityGeneration();
+    if (field != nullptr)
+    {
+        const rc::DistanceFieldSceneUniform& uniform = field->GetUniform();
+        output << ",\"field_cells_per_axis\":" << uniform.dimensions.x
+               << ",\"field_brick_extent\":" << uniform.gridMinCellSize.w << ",\"field_generation\":" << field->GetGeneration()
+               << ",\"field_allocated_bricks\":" << field->GetAllocatedBrickCount()
+               << ",\"field_unavailable_cells\":" << field->GetUnavailableCellCount()
+               << ",\"field_persistent_bytes\":" << field->GetPersistentBytes()
+               << ",\"field_scratch_bytes\":" << field->GetScratchBytes()
+               << ",\"field_construction_graphs\":" << field->GetSubmittedGraphCount()
+               << ",\"field_build_retries\":" << field->GetBuildRetryCount()
+               << ",\"field_local_volumes\":" << field->GetLocalsUniform().header.x
+               << ",\"field_local_volumes_ready\":" << field->GetReadyLocalVolumeCount() << ",\"field_failure\":";
+        JSONString(output, field->GetFailureReason());
+    }
+}
+
+namespace
+{
 
 void CSVString(std::ostream& output, std::string_view text)
 {
@@ -322,6 +357,10 @@ struct SceneRendererProfiling::State
         bool succeeded{false};
 
         uint32_t width{0}, height{0}, requestedMode{0}, resolvedMode{0};
+        uint64_t fieldGeneration{0}, fieldPersistent{0}, fieldScratch{0};
+        uint32_t fieldUnavailableCells{0};
+        uint32_t hardwareFeatures{0};
+        bool     fieldPreparing{false}, fieldRefining{false};
 
         const char* method{"none"};
 
@@ -390,7 +429,7 @@ struct SceneRendererProfiling::State
 
     bool frameOpen{false};
 
-    // The GI start frame repeats while its scene BVH builds; only its first frame is cold.
+    // The GI start frame repeats during field preparation; only its first frame is cold.
     bool giStartRecorded{false};
 
     void CollectGPUFrames(bool abandon = false);
@@ -583,7 +622,7 @@ void SceneRendererProfiling::State::RetainCurrentFrame()
 void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output, ProfileFrameSummary& summary) const
 {
     output
-        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,rhi_execution_ms,draws,dispatches,submissions,descriptor_hits,descriptor_misses,descriptor_inserts,descriptor_retirements,bindless_captures,frame_poll_ms,submit_groups_wait_ms,buffers_created,buffers_destroyed,staged_upload_bytes,native_counters_available\n";
+        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,rhi_execution_ms,draws,dispatches,submissions,descriptor_hits,descriptor_misses,descriptor_inserts,descriptor_retirements,bindless_captures,frame_poll_ms,submit_groups_wait_ms,buffers_created,buffers_destroyed,staged_upload_bytes,native_counters_available,field_generation,field_persistent_bytes,field_scratch_bytes,hardware_features,field_preparing,field_refining,field_unavailable_cells\n";
 
     for (const State::Frame& frame : frames)
     {
@@ -615,7 +654,9 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output, Profile
                << frame.counters.descriptorMisses << ',' << frame.counters.descriptorInserts << ','
                << frame.counters.descriptorRetirements << ',' << frame.counters.bindlessCaptures << ',' << frame.pollNS / 1.0e6
                << ',' << frame.submitWaitNS / 1.0e6 << ',' << frame.buffersCreated << ',' << frame.buffersDestroyed << ','
-               << frame.uploadBytes << ',' << frame.nativeCountersAvailable;
+               << frame.uploadBytes << ',' << frame.nativeCountersAvailable << ',' << frame.fieldGeneration << ','
+               << frame.fieldPersistent << ',' << frame.fieldScratch << ',' << frame.hardwareFeatures << ','
+               << frame.fieldPreparing << ',' << frame.fieldRefining << ',' << frame.fieldUnavailableCells;
 
         output << '\n';
 
@@ -744,7 +785,9 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream&         outpu
         << "},\"requested_frames\":" << options.frames << ",\"requested_warmup_frames\":" << options.warmup
         << ",\"gi_start_frame\":" << options.giStartFrame << ",\"fixed_step\":" << options.fixedStep
         << ",\"fixed_step_scope\":\"light and motion animation\""
-        << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup is excluded and includes frames rendered while GI builds its scene BVH; measured is the requested measurement interval\""
+        << ",\"preparation_frames_excluded\":true"
+        << ",\"profile_workload\":\"" << options.workload << "\""
+        << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup excludes initial field preparation and refinement; measured dynamic and switch workloads include their updates and effective-provider metadata\""
         << ",\"gpu_scope\":\"per-pass elapsed intervals including barriers; pass durations are not summed\""
         << ",\"gpu_frame_scope\":\"elapsed earliest TOP to latest BOTTOM across native graphics/compute-capable command buffers begun during the application render workload, including graph preparation GPU work and the graphics swapchain copy; excludes dedicated transfer-only buffers, asset startup outside the frame, and screenshot readback; does not directly measure host acquire/present calls or compositor/display latency; dependency waits and submission gaps may be included; requires a common device timestamp domain; this is not GPU-active time or occupancy\""
         << ",\"cpu_scope\":\"application frame wall time includes submission and frame-slot backpressure; pass CPU records measure command recording\""
@@ -1057,11 +1100,24 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device, RHIViewport& 
 
         frame.method        = server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "hybrid" : "none";
 
-        // A frame rendered while the requested GI still builds its scene BVH is not the
+        // A frame rendered while the requested GI still builds its distance field is not the
         // measured workload; SceneRendererDemo::Run does not count it either.
-        if (server.IsPreparingGI() && std::strcmp(frame.phase, "measured") == 0)
+        if ((server.IsPreparingGI() || server.IsRefiningGI()) && std::strcmp(frame.phase, "measured") == 0
+            && state.options.workload != "dynamic" && state.options.workload != "switch")
         {
             frame.phase = "warmup";
+        }
+        const rc::VoxelGIRenderer* gi       = server.RequestVoxelGI();
+        frame.fieldPreparing                = gi->IsPreparingField();
+        frame.fieldRefining                 = gi->IsRefiningField();
+        frame.hardwareFeatures              = gi->GetHardwareFeatureMask();
+        const rc::DistanceFieldScene* field = gi->GetDistanceField();
+        if (field != nullptr)
+        {
+            frame.fieldGeneration       = field->GetGeneration();
+            frame.fieldPersistent       = field->GetPersistentBytes();
+            frame.fieldScratch          = field->GetScratchBytes();
+            frame.fieldUnavailableCells = field->GetUnavailableCellCount();
         }
 
         state.RetainCurrentFrame();
@@ -1106,7 +1162,6 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
         const uint32_t sampleCount = probes ? 64u : cone.referenceSamples != 0 ? cone.referenceSamples : cone.samples;
         const uint32_t specularSamples =
             cone.specularOcclusion ? (cone.referenceSamples != 0 ? cone.referenceSamples : 1u) : 0u;
-        const rc::BrickScene& bricks = server.RequestVoxelGI()->GetBrickScene();
 
         // [0,0] when the last frame had no G-buffer (forward materials).
         const glm::uvec2 gbuffer = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
@@ -1150,14 +1205,9 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
                    : server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid == nullptr ? "cone"
                                                                                                  : "pbr")
                << "\""
-               << ",\"compute_traversal\":\"" << (server.RequestVoxelGI()->UsesBrickTraversal() ? "bricks" : "software_bvh")
-               << "\""
-               << ",\"requested_compute_traversal\":\""
-               << (cone.computeTraversal == rc::VoxelGISettings::ComputeTraversal::Bricks ? "bricks" : "triangles") << "\""
-               << ",\"brick_resolution\":" << cone.brickResolution
-               << ",\"brick_scene_ready\":" << (server.RequestVoxelGI()->UsesBrickTraversal() && bricks.IsReady())
-               << ",\"brick_scene_bytes\":" << bricks.GetResidentBytes() << ",\"brick_capacity\":" << bricks.GetCapacity()
-               << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider) << ",\"bounce_source\":\""
+               << ",\"requested_field_resolution\":" << cone.fieldResolution;
+        WriteDistanceFieldMetadata(output, *server.RequestVoxelGI());
+        output << ",\"requested_ray_provider\":" << static_cast<uint32_t>(cone.rayProvider) << ",\"bounce_source\":\""
                << (server.RequestVoxelGI()->UsesRayBounce() ? "rays" : "cone") << "\""
                << ",\"requested_gather\":\"" << (cone.gather == rc::VoxelGISettings::Gather::Probes ? "probes" : "pixel")
                << "\""

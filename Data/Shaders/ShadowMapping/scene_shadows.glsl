@@ -1,7 +1,7 @@
 #ifndef ZEN_SCENE_SHADOWS
 #define ZEN_SCENE_SHADOWS
 #include "../Common/scene_lighting.glsl"
-#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+#if defined(HARDWARE_SHADOWS)
 #    include "../VoxelGI/hybrid_provider.glsl"
 
 float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)

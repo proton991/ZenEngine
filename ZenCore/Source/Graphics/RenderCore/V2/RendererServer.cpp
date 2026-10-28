@@ -153,6 +153,8 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
         m_frameGI                 = false;
 
+        m_frameVisibility         = false;
+
         m_debugDescription        = {};
 
         m_debugDescription.output = m_debug.output;
@@ -163,35 +165,34 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
             const bool diagnostic =
                 m_debug.output != DebugOutput::eFinal && m_debug.output != DebugOutput::eDepth && !hybridDebug;
 
+            if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->Init())
+            {
+                m_frameRenderOption     = RenderOption::ePBR;
+
+                m_status.fallbackReason = "Voxelizer or GI resource initialization failed.";
+            }
+
+            if (m_frameRenderOption == RenderOption::eVoxelGI)
+            {
+                const bool visibilityReady = m_pVoxelGI->BuildRayQueryGraph();
+                m_frameGI                  = (visibilityReady || m_pVoxelGI->IsPreparingField()) && !diagnostic;
+                m_frameVisibility          = true;
+                if (!visibilityReady && !m_pVoxelGI->IsPreparingField())
+                {
+                    m_frameRenderOption     = RenderOption::ePBR;
+                    m_status.fallbackReason = "Scene visibility preparation failed.";
+                }
+            }
+
             if (diagnostic)
             {
                 BuildDiagnosticFrame(view);
             }
             else
             {
-                if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->Init())
-                {
-                    m_frameRenderOption     = RenderOption::ePBR;
-
-                    m_status.fallbackReason = "Voxelizer or GI resource initialization failed.";
-                }
-
-                if (m_frameRenderOption == RenderOption::eVoxelGI)
-                {
-                    m_frameGI = m_pVoxelGI->BuildRayQueryGraph();
-                    if (!m_frameGI)
-                    {
-                        m_frameRenderOption = RenderOption::ePBR;
-                        // A pending CPU build is retried next frame; only a genuine
-                        // preparation failure latches the PBR fallback.
-                        if (!m_pVoxelGI->IsPreparingSoftwareQueries())
-                        {
-                            m_status.fallbackReason = "Scene visibility preparation failed.";
-                        }
-                    }
-                }
-
-                if (m_frameRenderOption == RenderOption::eVoxelGI && !m_pVoxelGI->UsesRayShadows()
+                // Shadow maps serve map-shadowed lighting and near-light visibility of field GI hits.
+                const bool shadowMaps = !m_pVoxelGI->UsesRayShadows() || m_pVoxelGI->UsesFieldTraversal();
+                if (m_frameRenderOption == RenderOption::eVoxelGI && shadowMaps
                     && !m_pSceneShadows->Prepare(*m_pScene, m_pVoxelGI->GetSettings().shadows, false))
                 {
                     m_frameRenderOption     = RenderOption::ePBR;
@@ -203,11 +204,14 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
                 if (m_frameRenderOption == RenderOption::eVoxelGI)
                 {
-                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, true);
+                    // The radiance voxels provide indirect light from the first frame. Ray/probe
+                    // gather starts when its visibility is ready, with fresh temporal history.
+                    const bool rayGather = m_pVoxelGI->UsesFieldTraversal() || m_pVoxelGI->UsesHardwareQueries();
+                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, rayGather);
 
                     m_pVoxelizer->BuildVoxelizationGraph();
 
-                    if (m_pVoxelGI->UsesRayShadows())
+                    if (!shadowMaps)
                     {
                         m_pSceneShadows->Destroy();
                     }
@@ -299,6 +303,12 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
     m_pSkyboxRenderer->OnRenderGraphExecuted(result);
     m_pDeferredLightingRenderer->OnRenderGraphExecuted(result);
 
+    // Visibility preparation records work on PBR fallback frames as well.
+    if (m_frameVisibility)
+    {
+        m_pVoxelGI->OnVisibilityGraphExecuted(result);
+    }
+
     if (m_frameGI)
     {
         m_pVoxelGI->OnRenderGraphExecuted(result);
@@ -385,7 +395,12 @@ void RendererServer::ResetRenderingFailure()
 
 bool RendererServer::IsPreparingGI() const
 {
-    return m_renderOption == RenderOption::eVoxelGI && m_pVoxelGI != nullptr && m_pVoxelGI->IsPreparingSoftwareQueries();
+    return m_renderOption == RenderOption::eVoxelGI && m_pVoxelGI != nullptr && m_pVoxelGI->IsPreparingField();
+}
+
+bool RendererServer::IsRefiningGI() const
+{
+    return m_renderOption == RenderOption::eVoxelGI && m_pVoxelGI != nullptr && m_pVoxelGI->IsRefiningField();
 }
 
 void RendererServer::SetRenderScene(RenderScene* pScene)

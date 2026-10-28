@@ -48,10 +48,12 @@ void main()
                 bool sharedReflection = ProbeFeatureHardware(SPECULAR_PROVIDER) == ProbeFeatureHardware(REFLECTION_PROVIDER);
                 HybridRayResult hit   = ProbeTraceFeature(SPECULAR_PROVIDER, position, geometric, direction,
                                                           hybrid.reflection.x != 0u && sharedReflection);
+                bool            valid = hit.valid;
                 specular.a            = hit.hit ? 0.0 : 1.0;
                 if (hybrid.reflection.x != 0u && !sharedReflection)
                 {
-                    hit = ProbeTraceFeature(REFLECTION_PROVIDER, position, geometric, direction, true);
+                    hit   = ProbeTraceFeature(REFLECTION_PROVIDER, position, geometric, direction, true);
+                    valid = valid && hit.valid;
                 }
                 if (hit.hit && hybrid.reflection.x != 0u)
                 {
@@ -60,6 +62,15 @@ void main()
                     specular.rgb = HitRadiance(hitRadiance, hitNormal, hit, direction, false, rejected);
                     guide.z      = length(hit.position - position);
                     guide.w      = rejected ? 1.0 : 0.0;
+                }
+                if (!valid)
+                {
+                    // An unavailable trace is no observation: publish the block as untraced, so
+                    // resolve and filtering skip it and the pixel histories keep their values.
+                    specular = vec4(0, 0, 0, 1);
+                    guide    = vec4(-1, -1, 0, 0);
+                    surface  = uvec4(0);
+                    place    = vec4(0);
                 }
             }
         }

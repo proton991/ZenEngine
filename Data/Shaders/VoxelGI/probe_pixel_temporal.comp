@@ -90,12 +90,13 @@ void main()
                 }
             }
 
-            sky      = texelFetch(probeRawSky, pixel, 0);
-            bounce   = hybrid.bounce.x != 0u ? vec4(texelFetch(probeRawBounce, pixel, 0).rgb, 1) : vec4(0);
+            sky                = texelFetch(probeRawSky, pixel, 0);
+            bool diffuseSample = sky.a >= 0.0;
+            bounce   = hybrid.bounce.x != 0u && diffuseSample ? vec4(texelFetch(probeRawBounce, pixel, 0).rgb, 1) : vec4(0);
             specular = hybrid.rejection.y > 0.0 ? texelFetch(probeRawSpecular, pixel, 0) : vec4(0, 0, 0, 1);
             // probe_specular_resolve.comp marks receivers without a resolved sample by alpha -1.
             bool  specularSample = specular.a >= 0.0;
-            float skyLength      = 1.0;
+            float skyLength      = diffuseSample ? 1.0 : 0.0;
             float specularLength = hybrid.rejection.y > 0.0 && specularSample ? 1.0 : 0.0;
             // Probe-space histories already stabilize diffuse lighting. This short second
             // accumulation smooths what still changes per frame (contact samples, probes that move
@@ -105,9 +106,13 @@ void main()
             {
                 oldSky    /= diffuseWeight;
                 oldBounce /= diffuseWeight;
-                skyLength  = min(oldSkyLength / diffuseWeight + 1.0, diffuseLimit);
-                sky        = mix(oldSky, sky, 1.0 / skyLength);
-                if (hybrid.bounce.x != 0u && hybrid.bounce.y != 0u)
+                skyLength  = min(oldSkyLength / diffuseWeight + (diffuseSample ? 1.0 : 0.0), diffuseLimit);
+                sky        = diffuseSample ? mix(oldSky, sky, 1.0 / skyLength) : oldSky;
+                if (!diffuseSample && hybrid.bounce.x != 0u && hybrid.bounce.y != 0u)
+                {
+                    bounce = oldBounce;
+                }
+                else if (diffuseSample && hybrid.bounce.x != 0u && hybrid.bounce.y != 0u)
                 {
                     float bounceLimit = hybrid.bounce.z != 0u ? min(diffuseLimit, 2.0) : diffuseLimit;
                     bounce.a          = min(oldBounce.a + 1.0, bounceLimit);

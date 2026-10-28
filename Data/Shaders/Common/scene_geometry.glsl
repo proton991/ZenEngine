@@ -7,10 +7,17 @@ struct NodeData
     mat4 normalMatrix;
     vec4 surfaceScale;
 };
+#ifdef SCENE_COMPACT_POSITION_ALPHA
+layout(std430, set = VOXEL_GEOMETRY_SET, binding = 0) readonly buffer FieldVertexBuffer
+{
+    vec4 fieldVertices[]; // local position xyz and vertex alpha
+};
+#else
 layout(std430, set = VOXEL_GEOMETRY_SET, binding = 0) readonly buffer VertexBuffer
 {
     Vertex vertices[];
 };
+#endif
 layout(std430, set = VOXEL_GEOMETRY_SET, binding = 1) readonly buffer IndexBuffer
 {
     uint indices[];

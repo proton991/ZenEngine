@@ -125,24 +125,6 @@ private:
     void BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const;
     void Dispatch(RDGComputePassDesc&& pass);
     void DestroyPixelHistory();
-    // A brick trace pass's diffuse rays to re-trace against triangles (hybrid_retrace.glsl).
-    struct RetraceQueue
-    {
-        RDGBuffer header;
-        RDGBuffer rays;
-        RDGBuffer receivers;
-    };
-    // Resets a queue of up to the given rays and binds it to the trace pass that fills it.
-    RetraceQueue AddRetraceQueue(RDGComputePassDesc& trace, const char* name, uint64_t capacity) const;
-    // Re-traces a queue after its trace pass and adds the results to the images that pass wrote;
-    // with counts, its rays are added to the ray-count capture.
-    void AddRetracePass(const RetraceQueue& queue,
-                        VoxelGIRenderer&    voxelGI,
-                        const char*         tag,
-                        bool                counts,
-                        RDGTexture          sky,
-                        RDGTexture          bounce,
-                        RDGTexture          previous) const;
 
     enum HistoryTexture : uint32_t
     {
@@ -173,7 +155,6 @@ private:
     bool              m_historyNeedsClear[2][Count]{};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
     RHIBuffer*       m_guide[2]{};
-    RHIBuffer*       m_retraceHeader{nullptr}; // Host-written start of every re-trace queue's header.
     RDGTexture       m_outputSky, m_outputSpecular, m_outputBounce;
     RDGTexture       m_rawSky, m_rawSpecular;
     HeapVector<Mat4> m_previousModels;
@@ -193,8 +174,8 @@ private:
     VoxelGISettings           m_previousSettings;
     VoxelGISettings           m_recordedSettings;
     uint32_t                  m_previousHardwareMask{0};
-    bool                      m_previousBrickTraversal{false};
-    bool                      m_recordedBrickTraversal{false};
+    uint64_t                  m_previousVisibility{0}; // VoxelGIRenderer::GetVisibilityGeneration of the history.
+    uint64_t                  m_recordedVisibility{0};
     bool                      m_previousRayBounce{false};
     bool                      m_halfDiffuse{false};
     bool                      m_screenProbes{false};

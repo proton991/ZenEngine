@@ -1,0 +1,27 @@
+#version 450
+
+layout(local_size_x = 64) in;
+layout(std140, set = 1, binding = 0) uniform uFieldCopy
+{
+    uvec4 range; // offset and count in 32-bit words; zw reserved
+}
+fieldCopy;
+layout(std430, set = 1, binding = 1) readonly buffer FieldCopySource
+{
+    uint fieldCopySource[];
+};
+layout(std430, set = 1, binding = 2) writeonly buffer FieldCopyDestination
+{
+    uint fieldCopyDestination[];
+};
+
+void main()
+{
+    uint group = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    uint index = group * 64u + gl_LocalInvocationIndex;
+    if (index < fieldCopy.range.y)
+    {
+        uint word                  = fieldCopy.range.x + index;
+        fieldCopyDestination[word] = fieldCopySource[word];
+    }
+}

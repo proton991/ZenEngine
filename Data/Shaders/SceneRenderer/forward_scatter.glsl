@@ -12,7 +12,7 @@ layout(set = 1, binding = 0) uniform uCameraData
     mat4 uProjMatrix;
     mat4 uViewMatrix;
 };
-#if !defined(HARDWARE_SHADOWS) && !defined(SOFTWARE_SHADOWS)
+#if !defined(HARDWARE_SHADOWS)
 struct NodeData
 {
     mat4 modelMatrix;
@@ -45,7 +45,7 @@ void main()
     vec3 N                   = SurfaceNormal(material);
 #ifdef VOXEL_GI
     vec3 shadowNormal = GeometricNormal(material);
-#    if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+#    if defined(HARDWARE_SHADOWS)
     shadowNormal = TriangleNormal(shadowNormal);
 #    endif
 #endif

@@ -68,18 +68,18 @@ bool Frame(rc::RenderDevice& device, EditorController& editor)
 }
 
 // Image and GI-state checks need the completed cold preparation. Responsiveness
-// tests use Frame directly so they can inspect the intermediate PBR frames.
+// tests use Frame directly so they can inspect the initial voxel GI preview.
 bool FrameWithPreparedGI(rc::RenderDevice& device, EditorController& editor)
 {
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     bool                                        valid    = Frame(device, editor);
     const rc::VoxelGIRenderer&                  gi       = *device.GetRendererServer()->RequestVoxelGI();
-    while (valid && gi.IsPreparingSoftwareQueries() && std::chrono::steady_clock::now() < deadline)
+    while (valid && gi.IsPreparingField() && std::chrono::steady_clock::now() < deadline)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         valid = Frame(device, editor);
     }
-    return valid && !gi.IsPreparingSoftwareQueries();
+    return valid && !gi.IsPreparingField();
 }
 
 HeapVector<uint8_t> ReadScenePixels(rc::RenderDevice& device, RHITexture* image)

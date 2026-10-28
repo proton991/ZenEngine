@@ -1,8 +1,0 @@
-#version 450
-#extension GL_GOOGLE_include_directive : require
-#include "spatial_alpha_query.glsl"
-layout(local_size_x = 64) in;
-void main()
-{
-    TraceSpatialAlpha(gl_GlobalInvocationID.x);
-}

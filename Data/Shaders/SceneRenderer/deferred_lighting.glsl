@@ -16,7 +16,7 @@ layout(set = 1, binding = 5) uniform sampler2D depthMap;
 layout(set = 1, binding = 6) uniform samplerCube envIrradianceMap;
 layout(set = 1, binding = 7) uniform samplerCube envPrefilteredMap;
 layout(set = 1, binding = 8) uniform sampler2D lutBRDFMap;
-#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+#if defined(HARDWARE_SHADOWS)
 layout(set = 4, binding = 3) uniform sampler2D shadowReceiverPosition;
 #endif
 
@@ -45,6 +45,9 @@ capture;
 #    include "../VoxelGI/cone_trace.glsl"
 #    include "../ShadowMapping/scene_shadows.glsl"
 #    include "../VoxelGI/gi_ray_totals.glsl"
+#elif defined(SCENE_SHADOW_MAPS)
+// PBR with scene shadow maps, while GI preparation is pending without HW RT.
+#    include "../ShadowMapping/scene_shadows.glsl"
 #endif
 #ifdef HYBRID_GI
 #    include "../VoxelGI/hybrid_composition.glsl"
@@ -104,11 +107,11 @@ void main()
     vec3 relativePosition =
         ReconstructGBufferPosition(gl_FragCoord.xy, textureSize(depthMap, 0), depth, gbuffer.inverseViewProjection);
     vec3 worldPos = relativePosition + gbuffer.worldOrigin.xyz;
-#if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+#if defined(HARDWARE_SHADOWS)
     worldPos = texelFetch(shadowReceiverPosition, ivec2(gl_FragCoord.xy), 0).xyz;
 #endif
     vec3 N = DecodeGBufferNormal(SURFACE_SAMPLE(normalMap).rg);
-#if defined(VOXEL_GI)
+#if defined(VOXEL_GI) || defined(SCENE_SHADOW_MAPS)
 #    ifdef HYBRID_GI
     vec3 surfaceNormal = DecodeGBufferNormal(unpackUnorm2x16(texelFetch(hybridSurface, ivec2(gl_FragCoord.xy), 0).r));
 #    else
@@ -175,7 +178,7 @@ void main()
 
 
         float visibility = 1.0;
-#ifdef VOXEL_GI
+#if defined(VOXEL_GI) || defined(SCENE_SHADOW_MAPS)
         visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, worldPos, surfaceNormal);
 #endif
 #ifdef RECEIVER_LIGHT_VISIBILITY

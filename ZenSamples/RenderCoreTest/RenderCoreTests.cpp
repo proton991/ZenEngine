@@ -212,6 +212,12 @@ public:
         m_pDefaultView   = CreateView(view);
     }
 
+    // One byte per texel and layer: the R8 distance-field atlas accounts its native allocation.
+    uint64_t GetAllocationSize() const override
+    {
+        return uint64_t(GetWidth()) * GetHeight() * GetDepth() * GetBaseInfo().arrayLayers;
+    }
+
     RHITextureView* CreateView(const RHITextureViewCreateInfo& info) override
     {
         TestTextureView* view = ZEN_NEW() TestTextureView(this, info);
@@ -1644,6 +1650,8 @@ const HeapVector<RenderScene::ShadowCaster>& RenderScene::GetShadowCasters() con
 bool RenderScene::CommitGeometryUpdates()
 {
     ++m_geometryRevision;
+    ++m_staticRevision;
+    ++m_dynamicRevision;
     return true;
 }
 
@@ -1806,9 +1814,14 @@ protected:
 
         rhi->info.rayQuery               = rayQuery;
 
-        GDynamicRHI                      = rhi;
+        // Desktop compute limits, which distance-field construction requires.
+        rhi->info.maxComputeWorkGroupInvocations = 1024;
 
-        device                           = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode, asyncMode);
+        rhi->info.maxComputeWorkGroupSize        = {1024, 1024, 64};
+
+        GDynamicRHI                              = rhi;
+
+        device                                   = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode, asyncMode);
 
         device->Init(viewport);
     }
@@ -5027,12 +5040,12 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 
     EXPECT_TRUE(volumes.ProducesRadianceInputs());
 
-    // Radiance, sky irradiance, normal, emission and the class owners.
-    EXPECT_EQ(rhi->textureCreations, before + 8);
+    // Radiance, sky irradiance, normal, emission, the class owners and the unshadowed map placeholder.
+    EXPECT_EQ(rhi->textureCreations, before + 9);
 
     EXPECT_TRUE(gi.Init());
 
-    EXPECT_EQ(rhi->textureCreations, before + 8);
+    EXPECT_EQ(rhi->textureCreations, before + 9);
 
     VoxelGISettings invalid = gi.GetSettings();
 

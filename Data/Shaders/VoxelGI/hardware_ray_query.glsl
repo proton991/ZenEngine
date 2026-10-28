@@ -44,7 +44,7 @@ struct HardwareRayHit
 HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance, bool closest)
 {
     HardwareRayHit result;
-    result.ray      = HybridRayResult(false, origin, vec3(0), ivec3(-1));
+    result.ray      = HybridRayResult(false, origin, vec3(0), ivec3(-1), true);
     result.instance = result.primitive = result.material = 0xffffffffu;
     result.barycentrics                                  = vec2(0);
     result.generation                                    = rayScene.generation.xy;

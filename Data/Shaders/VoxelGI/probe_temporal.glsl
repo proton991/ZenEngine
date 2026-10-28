@@ -25,22 +25,6 @@ layout(std430, set = 7, binding = 24) readonly buffer ProbeSubtilesPrevious
 {
     uvec2 probeSubtilesPrevious[];
 };
-#ifdef PROBE_RETRACED
-// probe_retrace_bricks.comp's re-traced rays (probe_trace.glsl): per traced slot its last queued
-// ray, chained through .z, and per ray its sky and bounce.
-layout(std430, set = 7, binding = 33) readonly buffer ProbeRetraceHeads
-{
-    uint retraceHeads[];
-};
-layout(std430, set = 7, binding = 34) readonly buffer ProbeRetraceRays
-{
-    uvec4 retraceRays[];
-};
-layout(std430, set = 7, binding = 35) readonly buffer ProbeRetraceResults
-{
-    vec4 retraceResults[];
-};
-#endif
 
 ProbeRecord previous;
 float       weight;
@@ -66,32 +50,6 @@ void Accumulate(ProbeRecord current, ProbeRecord old, float screenWeight)
     }
 }
 
-#ifdef PROBE_RETRACED
-// Adds a traced slot's re-traced rays to its record, as the trace would have: projected like its
-// other rays and averaged over its batches. A slot queues at most 256 rays (64 lanes, four batches).
-void AddRetracedRays(uint slot, inout ProbeRecord current)
-{
-    float batches = max(current.screen.w, 1.0);
-    uint  ray     = retraceHeads[slot];
-    for (uint count = 0u; ray != ZEN_PROBE_INVALID && count < 256u; ++count)
-    {
-        uvec4 entry     = retraceRays[ray];
-        vec3  direction = ProbeRayDirection(current.screen, current.normal.xyz, entry.y & 63u, entry.y >> 6u);
-        vec4  basis     = ProbeSHBasis(direction) * (2.0 * HYBRID_PI / 64.0) / batches;
-        float cosine    = 2.0 / 64.0 * max(dot(direction, current.normal.xyz), 0.0) / batches;
-        vec4  sky       = retraceResults[ray * 2u];
-        vec4  bounce    = retraceResults[ray * 2u + 1u];
-        for (int coefficient = 0; coefficient < 4; ++coefficient)
-        {
-            current.sky[coefficient]    += sky * basis[coefficient];
-            current.bounce[coefficient] += bounce * basis[coefficient];
-        }
-        current.skyAnchor    += sky * cosine;
-        current.bounceAnchor += bounce * cosine;
-        ray                   = entry.z;
-    }
-}
-#endif
 
 void main()
 {
@@ -101,12 +59,6 @@ void main()
     {
         uint        index   = coordinate.y * probe.grid.x + coordinate.x;
         ProbeRecord current = index < ProbeUniformCount() + adaptiveProbes ? probeInput[index] : ProbeEmpty();
-#ifdef PROBE_RETRACED
-        if (index < ProbeUniformCount() + adaptiveProbes)
-        {
-            AddRetracedRays(index, current);
-        }
-#endif
         // probe_place.comp and probe_adaptive.comp name a kept probe's history slot by a negative normal.w,
         // and screen.w holds the ray batches the trace averaged (ProbeRayBatches): history counts batches.
         uint  kept       = current.normal.w < 0.0 ? uint(-current.normal.w) - 1u : ZEN_PROBE_INVALID;

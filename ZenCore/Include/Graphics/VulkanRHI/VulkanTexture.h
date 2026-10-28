@@ -100,6 +100,11 @@ public:
         return m_memAlloc;
     }
 
+    uint64_t GetAllocationSize() const override
+    {
+        return m_memAlloc.info.size;
+    }
+
     const VkImageCreateInfo& GetVkImageCreateInfo() const
     {
         return m_vkImageCI;

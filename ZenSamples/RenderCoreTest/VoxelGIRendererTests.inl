@@ -424,19 +424,80 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     device->DestroyTexture(sceneInputs.environment.pPrefiltered);
 }
 
-// The first Compute frame of a scene builds its software BVH in the background
-// (VoxelGIRenderer::IsPreparingSoftwareQueries). Tests that trace on that frame poll until
-// the build is published.
+// Compute GI waits for the distance field, built on the GPU in bounded per-frame work
+// (VoxelGIRenderer::IsPreparingField). Tests that trace on a prepared frame poll until it is ready.
 bool BuildPreparedRayQueryGraph(VoxelGIRenderer& gi)
 {
     const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     bool                                        ready    = gi.BuildRayQueryGraph();
-    while (!ready && gi.IsPreparingSoftwareQueries() && std::chrono::steady_clock::now() < deadline)
+    while (!ready && gi.IsPreparingField() && std::chrono::steady_clock::now() < deadline)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         ready = gi.BuildRayQueryGraph();
     }
     return ready;
+}
+
+// Field construction programs on this fake device, which reports desktop compute limits. The scene
+// needs whole vertex records and node, material and UV buffers to snapshot. Scenes here have
+// no triangles, so their field publishes once its clearing submission retires.
+void EnableDistanceFieldTestDevice(RenderDevice* device)
+{
+    const char* const programs[][2] = {{"DistanceFieldSnapshotSP", "distance_field_snapshot"},
+                                       {"DistanceFieldSnapshotVerticesSP", "distance_field_snapshot_vertices"},
+                                       {"DistanceFieldClearSP", "distance_field_clear"},
+                                       {"DistanceFieldPrepareSP", "distance_field_prepare"},
+                                       {"DistanceFieldAdvanceSP", "distance_field_advance"},
+                                       {"DistanceFieldBatchClearSP", "distance_field_batch_clear"},
+                                       {"DistanceFieldJobsSP", "distance_field_jobs"},
+                                       {"DistanceFieldCoverageSP", "distance_field_coverage"},
+                                       {"DistanceFieldCountSP", "distance_field_count"},
+                                       {"DistanceFieldScanSP", "distance_field_scan"},
+                                       {"DistanceFieldScanSumsSP", "distance_field_scan_sums"},
+                                       {"DistanceFieldAllocateSP", "distance_field_allocate"},
+                                       {"DistanceFieldCompactSP", "distance_field_compact"},
+                                       {"DistanceFieldEmitSP", "distance_field_emit"},
+                                       {"DistanceFieldHierarchySP", "distance_field_hierarchy"}};
+    for (const char* const(&program)[2] : programs)
+    {
+        if (ShaderProgramManager::GetInstance().RequestShaderProgram(program[0]) == nullptr)
+        {
+            RHIShaderCreateInfo shader;
+            shader.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+            shader.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] = std::string("VoxelGI/") + program[1] + ".comp.spv";
+            reflectedShaderInfos[program[0]]                             = shader;
+            CreateTestShaderProgram(device, program[0]);
+        }
+    }
+    if (ShaderProgramManager::GetInstance().RequestShaderProgram("intent") == nullptr)
+    {
+        CreateTestShaderProgram(device, "intent");
+    }
+}
+
+// One visibility-only frame: provider selection and bounded field construction, with the frame's callback.
+bool BuildRayQueryFrame(RenderDevice* device, VoxelGIRenderer& gi)
+{
+    RenderGraph& graph = *device->GetCurrentFrameRDG();
+    EXPECT_TRUE(graph.Begin());
+    const bool ready = gi.BuildRayQueryGraph();
+    graph.AddComputePass(IntentPass("keepalive"));
+    EXPECT_TRUE(graph.End()) << graph.GetResult().message;
+    EXPECT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+    gi.OnVisibilityGraphExecuted(RenderFrameResult::eSubmitted);
+    device->NextFrame();
+    return ready;
+}
+
+// Visibility-only frames until the scene's field is published and Compute GI traces it.
+bool PrepareComputeField(RenderDevice* device, VoxelGIRenderer& gi)
+{
+    EnableDistanceFieldTestDevice(device);
+    for (uint32_t frame = 0; frame < 32 && !gi.UsesFieldTraversal(); ++frame)
+    {
+        BuildRayQueryFrame(device, gi);
+    }
+    return gi.UsesFieldTraversal();
 }
 
 // One frame of a scene that changes every frame, as an animated one does: the facade's commit
@@ -450,22 +511,26 @@ bool BuildChangedRayQueryFrame(RenderDevice* device, RenderScene& scene, VoxelGI
     graph.AddComputePass(IntentPass("keepalive"));
     EXPECT_TRUE(graph.End()) << graph.GetResult().message;
     EXPECT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+    gi.OnVisibilityGraphExecuted(RenderFrameResult::eSubmitted);
     gi.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
     device->NextFrame();
     return ready;
 }
 
-// A scene that changes every frame still reaches Compute. A background build that the scene
-// moves past finishes synchronously, and frames already tracing the software BVH, in Compute
-// or mixed with HW RT, rebuild it on each change instead of preparing it again.
-TEST_F(RenderCoreTest, SoftwareSceneQueriesReachComputeWhileTheSceneChangesEveryFrame)
+// The field is prepared on the GPU whenever GI renders, also while HW RT traces every feature.
+// Compute without HW RT renders PBR until the field is published; HW toggles keep the published
+// field, so returning to Compute is immediate; a geometry change keeps tracing the published field
+// while the next generation builds.
+TEST_F(RenderCoreTest, ComputeFieldPreparationKeepsHardwareOrPBR)
 {
-    using Feature        = VoxelGISettings::Feature;
-    using Provider       = VoxelGISettings::RayProvider;
-    rhi->info.rayQuery   = {true, true, true, true, true, 256, 1024, 1024, 1024};
-    sceneInputs.vertices = Buffer();
-    sceneInputs.indices  = Buffer();
-    CreateTestShaderProgram(device, "intent");
+    using Feature         = VoxelGISettings::Feature;
+    using Provider        = VoxelGISettings::RayProvider;
+    sceneInputs.vertices  = Buffer(sizeof(asset::Vertex));
+    sceneInputs.indices   = Buffer();
+    sceneInputs.nodes     = Buffer();
+    sceneInputs.materials = Buffer();
+    sceneInputs.uv        = Buffer();
+    EnableDistanceFieldTestDevice(device);
     sg::Scene source;
     source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
     SceneData data{};
@@ -477,64 +542,61 @@ TEST_F(RenderCoreTest, SoftwareSceneQueriesReachComputeWhileTheSceneChangesEvery
     VoxelGIRenderer gi(device, &volumes);
     gi.SetRenderScene(&scene);
     ASSERT_TRUE(gi.Init());
-    const SoftwareSceneRayQuery& queries     = gi.GetSoftwareRayQuery();
-    const uint32_t               allFeatures = (1u << static_cast<uint32_t>(Feature::Count)) - 1u;
-    VoxelGISettings              settings;
+    const uint32_t  allFeatures = (1u << static_cast<uint32_t>(Feature::Count)) - 1u;
+    VoxelGISettings settings;
     settings.SetAllFeatureProviders(Provider::Voxel);
-    settings.computeTraversal = VoxelGISettings::ComputeTraversal::Triangles;
     ASSERT_TRUE(gi.SetSettings(settings));
 
-    // A new scene prepares in the background, with PBR frames until its BVH is published.
-    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    bool                                  ready    = BuildChangedRayQueryFrame(device, scene, gi);
-    EXPECT_FALSE(ready);
-    EXPECT_TRUE(gi.IsPreparingSoftwareQueries());
-    while (!ready && std::chrono::steady_clock::now() < deadline)
+    // Without HW RT, Compute renders PBR until the field is published.
+    EXPECT_FALSE(BuildRayQueryFrame(device, gi));
+    EXPECT_TRUE(gi.IsPreparingField());
+    EXPECT_FALSE(gi.UsesFieldTraversal());
+    EXPECT_EQ(gi.GetVisibilityGeneration(), 0u);
+    EXPECT_STREQ(gi.GetProviderReason(), "field_preparing");
+    bool ready = false;
+    for (uint32_t frame = 0; frame < 8 && !ready; ++frame)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        ready = BuildChangedRayQueryFrame(device, scene, gi);
+        ready = BuildRayQueryFrame(device, gi);
     }
     ASSERT_TRUE(ready);
-    for (uint32_t frame = 0; frame < 4; ++frame)
-    {
-        SCOPED_TRACE(frame);
-        EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
-        EXPECT_EQ(gi.GetHardwareFeatureMask(), 0u);
-        EXPECT_EQ(queries.GetRevision(), scene.GetGeometryRevision());
-        ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
-    }
+    ASSERT_TRUE(BuildRayQueryFrame(device, gi));
+    EXPECT_TRUE(gi.UsesFieldTraversal());
+    EXPECT_FALSE(gi.IsPreparingField());
+    EXPECT_EQ(gi.GetHardwareFeatureMask(), 0u);
+    const uint64_t visibility = gi.GetVisibilityGeneration();
+    EXPECT_NE(visibility, 0u);
 
-    // Switching from HW RT keeps HW RT for every feature until the BVH has caught up.
+    // HW RT needs no field and keeps the published one; returning to Compute uses it at once.
+    rhi->info.rayQuery = {true, true, true, true, true, 256, 1024, 1024, 1024};
     settings.SetAllFeatureProviders(Provider::Hardware);
     ASSERT_TRUE(gi.SetSettings(settings));
-    ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+    ASSERT_TRUE(BuildRayQueryFrame(device, gi));
+    EXPECT_FALSE(gi.UsesFieldTraversal());
     EXPECT_EQ(gi.GetHardwareFeatureMask(), allFeatures);
+    EXPECT_EQ(gi.GetDistanceField()->GetState(), DistanceFieldScene::State::Ready);
     settings.SetAllFeatureProviders(Provider::Voxel);
     ASSERT_TRUE(gi.SetSettings(settings));
-    deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
-    EXPECT_TRUE(gi.IsPreparingSoftwareQueries());
-    while (gi.IsPreparingSoftwareQueries() && std::chrono::steady_clock::now() < deadline)
-    {
-        EXPECT_EQ(gi.GetHardwareFeatureMask(), allFeatures);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
-    }
-    EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
-    EXPECT_EQ(gi.GetHardwareFeatureMask(), 0u);
-    EXPECT_EQ(queries.GetRevision(), scene.GetGeometryRevision());
+    ASSERT_TRUE(BuildRayQueryFrame(device, gi));
+    EXPECT_TRUE(gi.UsesFieldTraversal());
+    EXPECT_EQ(gi.GetVisibilityGeneration(), visibility);
 
-    // Mixed tracing keeps the requested providers and a current BVH on every frame.
+    // A geometry change keeps the published field, with the edited regions stale, while the next
+    // generation builds from a snapshot; publishing it restarts the visibility histories.
     settings.SetFeatureProvider(Feature::Sky, Provider::Hardware);
     ASSERT_TRUE(gi.SetSettings(settings));
-    for (uint32_t frame = 0; frame < 4; ++frame)
+    ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
+    EXPECT_FALSE(gi.IsPreparingField());
+    EXPECT_TRUE(gi.UsesFieldTraversal());
+    EXPECT_EQ(gi.GetHardwareFeatureMask(), 1u << static_cast<uint32_t>(Feature::Sky));
+    EXPECT_FALSE(gi.GetDistanceField()->IsCurrent(scene));
+    EXPECT_EQ(gi.GetVisibilityGeneration(), visibility);
+    for (uint32_t frame = 0; frame < 8 && !gi.GetDistanceField()->IsCurrent(scene); ++frame)
     {
-        SCOPED_TRACE(frame);
-        ASSERT_TRUE(BuildChangedRayQueryFrame(device, scene, gi));
-        EXPECT_FALSE(gi.IsPreparingSoftwareQueries());
-        EXPECT_EQ(gi.GetHardwareFeatureMask(), 1u << static_cast<uint32_t>(Feature::Sky));
-        EXPECT_EQ(queries.GetRevision(), scene.GetGeometryRevision());
+        ASSERT_TRUE(BuildRayQueryFrame(device, gi));
+        EXPECT_TRUE(gi.UsesFieldTraversal());
     }
+    EXPECT_TRUE(gi.GetDistanceField()->IsCurrent(scene));
+    EXPECT_NE(gi.GetVisibilityGeneration(), visibility);
     gi.Destroy();
     volumes.Destroy();
 }

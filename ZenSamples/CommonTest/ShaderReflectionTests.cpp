@@ -19,7 +19,7 @@ constexpr uint32_t kNoDeviceSetLimit = std::numeric_limits<uint32_t>::max();
 TEST(ShaderReflectionTests, RasterAndGIKeepMaterialNormalEncodingLayout)
 {
     for (const char* path :
-         {"SceneRenderer/offscreen.frag.spv", "VoxelGI/voxelization.comp.spv", "VoxelGI/probe_trace.comp.spv"})
+         {"SceneRenderer/offscreen.frag.spv", "VoxelGI/voxelization.comp.spv", "VoxelGI/distance_field_coverage.comp.spv"})
     {
         SCOPED_TRACE(path);
         const HeapVector<uint8_t> code = platform::FileSystem::LoadSpvFile(path);
@@ -695,9 +695,7 @@ TEST(ShaderReflectionTests, RayShadowedForwardLayersReadTheDeferredReceiversShad
 {
     for (const char* path :
          {"SceneRenderer/forward_material_shadows.frag.spv", "SceneRenderer/forward_material_shadows_capture.frag.spv",
-          "SceneRenderer/forward_material_shadows_counts.frag.spv", "SceneRenderer/forward_material_software_shadows.frag.spv",
-          "SceneRenderer/forward_material_software_shadows_capture.frag.spv",
-          "SceneRenderer/forward_material_software_shadows_counts.frag.spv"})
+          "SceneRenderer/forward_material_shadows_counts.frag.spv"})
     {
         SCOPED_TRACE(path);
 
@@ -726,9 +724,7 @@ TEST(ShaderReflectionTests, RayShadowedForwardLayersReadTheDeferredReceiversShad
 // visibility variants, which DeferredLightingRenderer selects when a decal will read them.
 TEST(ShaderReflectionTests, OnlyVisibilityVariantsExportDeferredShadowRays)
 {
-    for (const char* name :
-         {"hybrid_gi_shadows", "hybrid_gi_shadows_capture", "hybrid_gi_shadows_counts", "hybrid_gi_software_shadows",
-          "hybrid_gi_software_shadows_capture", "hybrid_gi_software_shadows_counts"})
+    for (const char* name : {"hybrid_gi_shadows", "hybrid_gi_shadows_capture", "hybrid_gi_shadows_counts"})
     {
         for (bool visibility : {false, true})
         {
@@ -790,7 +786,7 @@ TEST(ShaderReflectionTests, VoxelVolumeWorkgroupsExposeSpecializationAndSafeDefa
 {
     for (const char* path :
          {"VoxelGI/clear_owners.comp.spv", "VoxelGI/resolve_albedo.comp.spv", "VoxelGI/resolve_surface.comp.spv",
-          "VoxelGI/sky_irradiance.comp.spv", "VoxelGI/inject_radiance.comp.spv", "VoxelGI/filter_albedo.comp.spv",
+          "VoxelGI/sky_irradiance_field.comp.spv", "VoxelGI/inject_radiance.comp.spv", "VoxelGI/filter_albedo.comp.spv",
           "VoxelGI/filter_radiance.comp.spv", "VoxelGI/voxel_pre_draw.comp.spv"})
     {
         SCOPED_TRACE(path);

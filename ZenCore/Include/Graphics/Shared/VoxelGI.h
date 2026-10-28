@@ -6,6 +6,11 @@
 #define GI_DYNAMIC 2u
 #define GI_ALL     3u
 
+// Diagnostic words: four Compute rays, four HW rays, then field work (loads/samples/unknown/limits).
+#define ZEN_GI_TRACE_COUNT_WORDS 12u
+// Per non-gather slot: Compute/HW rays followed by the same four field work totals.
+#define ZEN_GI_TOTAL_COUNT_WORDS 6u
+
 // Safe shader defaults, specialized per device by the volume workgroup policy.
 #define ZEN_VOXEL_VOLUME_GROUP_SIZE 4
 #define ZEN_VOXEL_VOLUME_GROUP_X_ID 0

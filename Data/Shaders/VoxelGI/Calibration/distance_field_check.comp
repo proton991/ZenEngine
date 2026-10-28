@@ -1,0 +1,38 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../distance_field_trace.glsl"
+
+layout(local_size_x = 64) in;
+struct DistanceFieldCheckRay
+{
+    vec4  originMinimum;
+    vec4  directionMaximum;
+    uvec4 limits; // x per-ray budget override, yzw reserved
+};
+struct DistanceFieldCheckResult
+{
+    vec4  positionDistance;
+    vec4  normal;     // xyz gradient, w DistanceFieldTraceResult failure reason
+    uvec4 statistics; // status, brick, hierarchy/map/sample work, distance samples including normal
+};
+layout(std430, set = 1, binding = 0) readonly buffer DistanceFieldCheckRays
+{
+    DistanceFieldCheckRay rays[];
+};
+layout(std430, set = 1, binding = 1) writeonly buffer DistanceFieldCheckResults
+{
+    DistanceFieldCheckResult results[];
+};
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < rays.length())
+    {
+        DistanceFieldCheckRay    ray = rays[index];
+        DistanceFieldTraceResult hit = DistanceFieldTrace(ray.originMinimum.xyz, ray.directionMaximum.xyz, ray.originMinimum.w,
+                                                          ray.directionMaximum.w, ray.limits.x);
+        results[index].positionDistance = vec4(hit.position, hit.distance);
+        results[index].normal           = vec4(hit.normal, float(hit.failureReason));
+        results[index].statistics       = uvec4(hit.status, hit.brick, hit.iterations, hit.distanceSamples);
+    }
+}

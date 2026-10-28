@@ -17,9 +17,8 @@ enum class GIPass : uint32_t
 enum class GITracer : uint32_t
 {
     HardwareRT,
-    Bricks,      // Compute: sparse occupancy bricks, fast and approximate.
-    SoftwareBVH, // Compute: software triangle BVH, exact and slow.
-    ShadowMaps,  // Direct shadows only; traces no rays.
+    Field,      // Compute: GPU-built sparse distance field; GI rays and the sky cache.
+    ShadowMaps, // Direct shadows only; traces no rays.
     // The pass's GI is replaced by the unoccluded environment, as without GI. Diffuse GI keeps
     // tracing; specular GI, the sky cache and shadows trace no rays.
     Off,

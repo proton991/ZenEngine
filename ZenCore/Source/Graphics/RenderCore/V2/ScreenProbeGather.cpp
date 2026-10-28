@@ -37,9 +37,10 @@ const DataFormat   kHistoryFormats[]     = {DataFormat::eR16G16B16A16SFloat, Dat
                                             DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat,
                                             DataFormat::eR32G32UInt,         DataFormat::eR16G16B16A16SFloat};
 
-NameID ProbeTraceProgram(const char* base, bool hardware, bool bricks)
+// Variants without Field trace HW RT only; Compute features trace the distance field.
+NameID ProbeTraceProgram(const char* base, bool hardware, bool field)
 {
-    return NameID(fmt::format("{}{}{}SP", base, hardware ? "Hardware" : "", bricks ? "Bricks" : ""));
+    return NameID(fmt::format("{}{}{}SP", base, hardware ? "Hardware" : "", field ? "Field" : ""));
 }
 
 // Probe histories are also copy sources: a pool resize carries the previous probes across.
@@ -120,25 +121,6 @@ bool ScreenProbeGather::Prepare(uint32_t width, uint32_t height, uint32_t spacin
                     format, {.copyUsage = true}, NameID(fmt::format("probe_pixel_history_{}_{}", side, texture)));
                 ready = m_history[side][texture] != nullptr;
             }
-        }
-    }
-    if (ready && m_retraceHeader == nullptr)
-    {
-        // The brick trace's re-trace queue header at the start of every frame: no dispatch groups
-        // (x), one in y and z for the indirect dispatch, no rays (w).
-        RHIBufferCreateInfo info;
-        info.size         = sizeof(glm::uvec4);
-        info.tag          = "probe_retrace_header_reset";
-        info.allocateType = RHIBufferAllocateType::eCPUWrite;
-        info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-        m_retraceHeader = m_device->CreateBuffer(info);
-        uint8_t* data   = m_retraceHeader != nullptr ? m_retraceHeader->Map() : nullptr;
-        ready           = data != nullptr;
-        if (ready)
-        {
-            const glm::uvec4 header(0, 1, 1, 0);
-            std::memcpy(data, &header, sizeof(header));
-            m_retraceHeader->Unmap();
         }
     }
     if (!ready)
@@ -289,11 +271,10 @@ void ScreenProbeGather::BindTraceInputs(RDGPassDescBase& pass, VoxelGIRenderer& 
     else
     {
         voxelGI.BindRayInputs(pass);
-        voxelGI.BindSoftwareRayInputs(pass);
     }
-    if (voxelGI.UsesBrickTraversal())
+    if (voxelGI.UsesFieldTraversal())
     {
-        voxelGI.BindBrickInputs(pass);
+        voxelGI.BindFieldInputs(pass);
     }
 }
 
@@ -424,9 +405,9 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     probeDesc.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
     const RDGBuffer    rawProbes = resources->CreateBuffer(probeDesc);
     const bool         hardware  = uniforms.provider.x != 0;
-    const bool         bricks    = voxelGI.UsesBrickTraversal();
+    const bool         field     = voxelGI.UsesFieldTraversal();
     RDGComputePassDesc trace;
-    trace.SetShaderProgramName(ProbeTraceProgram("ProbeTrace", hardware, bricks));
+    trace.SetShaderProgramName(ProbeTraceProgram("ProbeTrace", hardware, field));
     trace.SetPassTag("ProbeTrace");
     BindInputs(trace, sampler, uniforms, scene);
     BindTraceInputs(trace, voxelGI, hardware);
@@ -436,69 +417,17 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     // Uniform probes and the allocated adaptive rows only; the temporal pass bounds its reads by
     // the same count.
     trace.BindStorageBuffer("ProbeOutput", rawProbes, RDGContentGuarantee::eProducedElements);
-    // Brick traversal queues shading rays whose hit lies next to a lamp (probe_trace.glsl):
-    // probe_retrace_bricks.comp re-traces them against triangles, one thread per ray, and the
-    // temporal pass adds them to their probes, so the brick trace carries no triangle traversal.
-    RDGBuffer retraceHeader, retraceHeads, retraceRays, retraceResults;
-    if (bricks)
-    {
-        const uint64_t capacity = uint64_t(SlotCount()) * ZEN_PROBE_RETRACE_RAYS_PER_SLOT;
-        RDGBufferDesc  headerDesc;
-        headerDesc.name = "probe_retrace_header";
-        headerDesc.size = sizeof(glm::uvec4);
-        headerDesc.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eIndirectBuffer,
-                                       RHIBufferUsageFlagBits::eTransferDstBuffer);
-        retraceHeader = resources->CreateBuffer(headerDesc);
-        graph->AddTransferPass("ResetProbeRetrace")
-            .CopyBuffer(resources->ImportHostWrittenBuffer(m_retraceHeader), retraceHeader, {0, 0, sizeof(glm::uvec4)});
-        probeDesc.name = "probe_retrace_heads";
-        probeDesc.size = uint64_t(SlotCount()) * sizeof(uint32_t);
-        retraceHeads   = resources->CreateBuffer(probeDesc);
-        probeDesc.name = "probe_retrace_rays";
-        probeDesc.size = capacity * sizeof(glm::uvec4);
-        retraceRays    = resources->CreateBuffer(probeDesc);
-        probeDesc.name = "probe_retrace_results";
-        probeDesc.size = capacity * 2u * sizeof(Vec4);
-        retraceResults = resources->CreateBuffer(probeDesc);
-        trace.BindStorageBuffer("ProbeRetraceHeader", retraceHeader);
-        trace.BindStorageBuffer("ProbeRetraceHeads", retraceHeads, RDGContentGuarantee::eProducedElements);
-        trace.BindStorageBuffer("ProbeRetraceRays", retraceRays, RDGContentGuarantee::eProducedElements);
-    }
     trace.UseIndirectBuffer(counters);
     graph->AddComputePass(std::move(trace)).RecordPassCommands([counters](RDGPassCmdEncoder& encoder) {
         encoder.DispatchIndirect(counters, kTraceArgumentsOffset);
     });
-    if (bricks)
-    {
-        RDGComputePassDesc retrace;
-        retrace.SetShaderProgramName("ProbeRetraceBricksSP");
-        retrace.SetPassTag("ProbeRetrace");
-        BindInputs(retrace, sampler, uniforms, scene);
-        BindTraceInputs(retrace, voxelGI, false);
-        retrace.BindStorageBuffer("ProbePlacements", placements);
-        retrace.BindStorageBuffer("ProbeAdaptivePlacements", adaptivePlacements, RDGContentGuarantee::eConsumeProducedElements);
-        retrace.BindStorageBuffer("ProbeCounters", counters);
-        retrace.BindStorageBuffer("ProbeRetraceHeader", retraceHeader);
-        retrace.BindStorageBuffer("ProbeRetraceRays", retraceRays, RDGContentGuarantee::eConsumeProducedElements);
-        retrace.BindStorageBuffer("ProbeRetraceResults", retraceResults, RDGContentGuarantee::eProducedElements);
-        retrace.UseIndirectBuffer(retraceHeader);
-        graph->AddComputePass(std::move(retrace)).RecordPassCommands([retraceHeader](RDGPassCmdEncoder& encoder) {
-            encoder.DispatchIndirect(retraceHeader, 0);
-        });
-    }
 
     RDGComputePassDesc temporal;
-    temporal.SetShaderProgramName(bricks ? "ProbeTemporalBricksSP" : "ProbeTemporalSP");
+    temporal.SetShaderProgramName("ProbeTemporalSP");
     temporal.SetPassTag("ProbeTemporal");
     temporal.allowCulling = false;
     BindInputs(temporal, sampler, uniforms, scene);
     temporal.BindStorageBuffer("ProbeInput", rawProbes, RDGContentGuarantee::eConsumeProducedElements);
-    if (bricks)
-    {
-        temporal.BindStorageBuffer("ProbeRetraceHeads", retraceHeads, RDGContentGuarantee::eConsumeProducedElements);
-        temporal.BindStorageBuffer("ProbeRetraceRays", retraceRays, RDGContentGuarantee::eConsumeProducedElements);
-        temporal.BindStorageBuffer("ProbeRetraceResults", retraceResults, RDGContentGuarantee::eConsumeProducedElements);
-    }
     temporal.BindStorageBuffer("ProbeCounters", counters);
     temporal.BindStorageBuffer("ProbeHistory", m_probes[1 - m_current]);
     temporal.BindStorageBuffer("ProbeOutput", m_probes[m_current], RDGContentGuarantee::eFullWrite);
@@ -556,7 +485,7 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     desc.texFormat.format              = DataFormat::eR32G32B32A32UInt;
     const RDGTexture   specularSurface = resources->CreateTexture(desc);
     RDGComputePassDesc specularTrace;
-    specularTrace.SetShaderProgramName(ProbeTraceProgram("ProbeSpecularTrace", hardware, bricks));
+    specularTrace.SetShaderProgramName(ProbeTraceProgram("ProbeSpecularTrace", hardware, field));
     specularTrace.SetPassTag("ProbeSpecularTrace");
     BindInputs(specularTrace, sampler, uniforms, scene);
     BindTraceInputs(specularTrace, voxelGI, hardware);
@@ -760,9 +689,7 @@ void ScreenProbeGather::Destroy()
         }
     }
     m_device->DestroyBuffer(m_statistics);
-    m_statistics = nullptr;
-    m_device->DestroyBuffer(m_retraceHeader);
-    m_retraceHeader      = nullptr;
+    m_statistics         = nullptr;
     m_statisticsRecorded = false;
     for (const PendingDemand& pending : m_pendingDemand)
     {

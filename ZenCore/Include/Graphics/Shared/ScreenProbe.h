@@ -20,8 +20,5 @@
 #define ZEN_PROBE_ADAPTIVE_ROW_RATIO 1u
 // Subtiles per workgroup of probe_allocate_count.comp and probe_allocate.comp.
 #define ZEN_PROBE_ALLOCATE_GROUP 256u
-// Queue entries per probe slot for rays the brick probe trace leaves to probe_retrace_bricks.comp
-// (brick hits next to a lamp). A ray that finds the queue full is shaded from its brick hit.
-#define ZEN_PROBE_RETRACE_RAYS_PER_SLOT 8u
 
 #endif // ZEN_SCREEN_PROBE_H

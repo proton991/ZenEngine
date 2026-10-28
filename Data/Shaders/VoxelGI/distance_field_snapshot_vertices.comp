@@ -1,0 +1,32 @@
+#version 450
+
+layout(local_size_x = 64) in;
+layout(std140, set = 1, binding = 0) uniform uFieldCopy
+{
+    uvec4 range; // first vertex, vertex count, source stride and alpha offset in words
+}
+fieldCopy;
+layout(std430, set = 1, binding = 1) readonly buffer FieldCopySource
+{
+    uint fieldCopySource[];
+};
+layout(std430, set = 1, binding = 2) writeonly buffer FieldCopyDestination
+{
+    uint fieldCopyDestination[];
+};
+
+void main()
+{
+    uint group = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    uint index = group * 64u + gl_LocalInvocationIndex;
+    if (index < fieldCopy.range.y)
+    {
+        uint vertex                            = fieldCopy.range.x + index;
+        uint source                            = vertex * fieldCopy.range.z;
+        uint destination                       = vertex * 4u;
+        fieldCopyDestination[destination]      = fieldCopySource[source];
+        fieldCopyDestination[destination + 1u] = fieldCopySource[source + 1u];
+        fieldCopyDestination[destination + 2u] = fieldCopySource[source + 2u];
+        fieldCopyDestination[destination + 3u] = fieldCopySource[source + fieldCopy.range.w];
+    }
+}

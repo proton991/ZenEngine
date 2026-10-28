@@ -31,10 +31,10 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
                               "voxel_gi_sky_backend=auto",
                               "voxel_gi_shadows_backend=invalid",
                               "voxel_gi_compute_traversal=invalid",
-                              "voxel_gi_brick_resolution=0",
-                              "voxel_gi_brick_resolution=63",
-                              "voxel_gi_brick_resolution=129",
-                              "voxel_gi_brick_resolution=512",
+                              "voxel_gi_field_resolution=0",
+                              "voxel_gi_field_resolution=16",
+                              "voxel_gi_field_resolution=96",
+                              "voxel_gi_field_resolution=128",
                               "voxel_gi_gather=invalid",
                               "voxel_gi_probe_spacing=0",
                               "voxel_gi_probe_spacing=7",
@@ -219,31 +219,33 @@ TEST(VoxelGIRuntimeSettings, DiffuseResolutionDefaultsToFullAndRejectsUnknownNam
     EXPECT_FALSE(ValidateVoxelGISettings(invalid));
 }
 
-TEST(VoxelGIRuntimeSettings, ComputeTraversalPreservesDefaultsAndAcceptsBrickResolutions)
+// Compute GI traces the distance field. Older configs that chose the software BVH or occupancy
+// bricks load as the field; an occupancy resolution does not set the field resolution.
+TEST(VoxelGIRuntimeSettings, LegacyTraversalKeysMigrateToTheFieldAndFieldResolutionsLoad)
 {
     const VoxelGISettings defaults;
-    EXPECT_EQ(defaults.computeTraversal, VoxelGISettings::ComputeTraversal::Triangles);
-    EXPECT_EQ(defaults.brickResolution, 128u);
-    const std::pair<const char*, VoxelGISettings::ComputeTraversal> traversals[] = {
-        {"triangles", VoxelGISettings::ComputeTraversal::Triangles}, {"bricks", VoxelGISettings::ComputeTraversal::Bricks}};
-    for (const std::pair<const char*, VoxelGISettings::ComputeTraversal>& traversal : traversals)
+    EXPECT_EQ(defaults.fieldResolution, 64u);
+    for (const char* traversal : {"triangles", "bricks", "field"})
     {
-        for (uint32_t resolution : {64u, 128u, 256u})
-        {
-            std::istringstream     stream(std::string("voxel_gi_compute_traversal=") + traversal.first
-                                          + "\nvoxel_gi_brick_resolution=" + std::to_string(resolution)
-                                          + "\nvoxel_gi_backend=compute\nvoxel_gi_shadows_backend=hardware\n");
-            platform::ConfigLoader config(stream);
-            VoxelGIRuntimeSettings settings;
-            ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
-            EXPECT_EQ(settings.cone.computeTraversal, traversal.second);
-            EXPECT_EQ(settings.cone.brickResolution, resolution);
-            EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 32u);
-        }
+        std::istringstream stream(
+            std::string("voxel_gi_compute_traversal=") + traversal
+            + "\nvoxel_gi_brick_resolution=256\nvoxel_gi_backend=compute\nvoxel_gi_shadows_backend=hardware\n");
+        platform::ConfigLoader config(stream);
+        VoxelGIRuntimeSettings settings;
+        ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings)) << traversal;
+        EXPECT_EQ(settings.cone.fieldResolution, 64u);
+        EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 32u);
+    }
+    for (uint32_t resolution : {32u, 64u})
+    {
+        std::istringstream     stream("voxel_gi_field_resolution=" + std::to_string(resolution) + "\n");
+        platform::ConfigLoader config(stream);
+        VoxelGIRuntimeSettings settings;
+        ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
+        EXPECT_EQ(settings.cone.fieldResolution, resolution);
     }
     VoxelGISettings inherited;
-    inherited.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
-    inherited.brickResolution  = 64;
+    inherited.fieldResolution = 32;
     std::istringstream     empty;
     platform::ConfigLoader config(empty);
     VoxelGISettings        loaded;
@@ -254,7 +256,7 @@ TEST(VoxelGIRuntimeSettings, ComputeTraversalPreservesDefaultsAndAcceptsBrickRes
 TEST(VoxelGIRuntimeSettings, TraversalValidationRejectsInvalidEnumsAndAcceptsProbeGather)
 {
     VoxelGISettings invalid;
-    invalid.computeTraversal = static_cast<VoxelGISettings::ComputeTraversal>(2);
+    invalid.fieldResolution = 96;
     EXPECT_FALSE(ValidateVoxelGISettings(invalid));
     invalid        = {};
     invalid.gather = VoxelGISettings::Gather::Probes;
@@ -316,28 +318,23 @@ TEST(VoxelGIRuntimeSettings, RemovedShadowTraversalKeyIsIgnored)
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
 }
 
-// Presets trace bricks for GI passes without HW RT; Software BVH remains a live choice.
-TEST(VoxelGIRuntimeSettings, BrickControlsRemainLiveAndPresetsRestoreBrickDefaults)
+// The field resolution is live, needs no voxel GI rebuild, and presets restore it.
+TEST(VoxelGIRuntimeSettings, FieldResolutionIsLiveAndPresetsRestoreIt)
 {
     VoxelGIRuntimeSettings settings;
     ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
-    EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
+    EXPECT_EQ(settings.cone.fieldResolution, 64u);
     const VoxelGIRuntimeSettings previous = settings;
-    settings.cone.computeTraversal        = VoxelGISettings::ComputeTraversal::Triangles;
-    EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
-    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
-    settings.cone.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
-    settings.cone.brickResolution  = 256;
+    settings.cone.fieldResolution         = 32;
     EXPECT_FALSE(RequiresVoxelGIRebuild(previous, settings));
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Custom);
     ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
-    EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
-    EXPECT_EQ(settings.cone.brickResolution, 128u);
+    EXPECT_EQ(settings.cone.fieldResolution, 64u);
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
 }
 
 // Without usable ray queries GI resolves to Compute, while default direct shadows use maps.
-TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeBricks)
+TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeField)
 {
     std::istringstream     stream("");
     platform::ConfigLoader config(stream);
@@ -345,7 +342,7 @@ TEST(VoxelGIRuntimeSettings, DefaultPresetUsesHardwareOrComputeBricks)
     ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
     EXPECT_EQ(GetVoxelGIPreset(settings), VoxelGIPreset::Medium);
     EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Auto);
-    EXPECT_EQ(settings.cone.computeTraversal, VoxelGISettings::ComputeTraversal::Bricks);
+    EXPECT_EQ(settings.cone.fieldResolution, 64u);
     EXPECT_EQ(settings.cone.gather, VoxelGISettings::Gather::Probes);
     VoxelGIRuntimeSettings compute = settings;
     EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(compute, RHIGPUInfo{}), "ray_query_unavailable");
@@ -374,9 +371,11 @@ TEST(VoxelGIRuntimeSettings, DefaultShadowFallbackKeepsRequestedProviders)
     EXPECT_TRUE(settings.UsesRayShadows(true));
     EXPECT_FALSE(settings.UsesRayShadows(false));
     EXPECT_EQ(settings.GetFeatureProvider(VoxelGISettings::Feature::Shadows), VoxelGISettings::RayProvider::Hardware);
+    // Compute direct shadows use shadow maps.
     settings.SetFeatureProvider(VoxelGISettings::Feature::Shadows, VoxelGISettings::RayProvider::Voxel);
-    EXPECT_TRUE(settings.UsesRayShadows(false));
-    EXPECT_TRUE(settings.UsesRayShadows(true));
+    EXPECT_FALSE(settings.UsesRayShadows(false));
+    EXPECT_FALSE(settings.UsesRayShadows(true));
+    settings.SetFeatureProvider(VoxelGISettings::Feature::Shadows, VoxelGISettings::RayProvider::Hardware);
     settings.rtShadows = false;
     EXPECT_FALSE(settings.UsesRayShadows(false));
     EXPECT_FALSE(settings.UsesRayShadows(true));
@@ -385,28 +384,24 @@ TEST(VoxelGIRuntimeSettings, DefaultShadowFallbackKeepsRequestedProviders)
     EXPECT_FALSE(settings.UsesRayShadows(false));
 }
 
-TEST(VoxelGIRuntimeSettings, ExplicitSoftwareShadowConfigsKeepTheirSelection)
+// Configs that selected software BVH shadow rays now use shadow maps; their providers are kept.
+TEST(VoxelGIRuntimeSettings, LegacySoftwareShadowConfigsUseShadowMaps)
 {
-    struct ShadowCase
+    const char* const configs[]{
+        "voxel_gi_backend=compute\n",          "voxel_gi_shadows_backend=compute\n",
+        "voxel_gi_ray_provider=voxel\n",       "voxel_gi_ray_provider=voxel\nvoxel_gi_rt_shadows=false\n",
+        "voxel_gi_shadows_backend=hardware\n", "voxel_gi_rt_shadows=false\n"};
+    for (const char* text : configs)
     {
-        const char* config;
-        bool        software;
-    };
-    const ShadowCase cases[]{
-        {"voxel_gi_backend=compute\n", true},           {"voxel_gi_shadows_backend=compute\n", true},
-        {"voxel_gi_ray_provider=voxel\n", true},        {"voxel_gi_ray_provider=voxel\nvoxel_gi_rt_shadows=false\n", false},
-        {"voxel_gi_shadows_backend=hardware\n", false}, {"voxel_gi_rt_shadows=false\n", false}};
-    for (const ShadowCase& test : cases)
-    {
-        SCOPED_TRACE(test.config);
-        std::istringstream     stream(test.config);
+        SCOPED_TRACE(text);
+        std::istringstream     stream(text);
         platform::ConfigLoader config(stream);
         VoxelGIRuntimeSettings settings;
         ASSERT_TRUE(LoadVoxelGIRuntimeSettings(config, settings));
-        EXPECT_EQ(settings.cone.UsesRayShadows(false), test.software);
+        EXPECT_FALSE(settings.cone.UsesRayShadows(false));
         const VoxelGISettings requested = settings.cone;
         ResolveVoxelGIAutomaticProvider(settings, RHIGPUInfo{});
-        EXPECT_EQ(settings.cone.UsesRayShadows(false), test.software);
+        EXPECT_FALSE(settings.cone.UsesRayShadows(false));
         EXPECT_EQ(settings.cone.featureProviders, requested.featureProviders);
         EXPECT_EQ(settings.cone.rtShadows, requested.rtShadows);
     }

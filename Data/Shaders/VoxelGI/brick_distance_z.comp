@@ -1,4 +1,0 @@
-#version 450
-#extension GL_GOOGLE_include_directive : require
-#define BRICK_DISTANCE_Z
-#include "brick_build.glsl"

@@ -1,6 +1,5 @@
 #include "hybrid_guides.glsl"
 #include "hybrid_sampling.glsl"
-#define HYBRID_MIXED_PROVIDER
 #include "hybrid_provider.glsl"
 #define HIT_LIGHT_CACHE
 #include "hit_radiance.glsl"
@@ -169,7 +168,7 @@ float GuidePowerValue()
 }
 #endif
 #ifdef HYBRID_COUNT_RAYS
-// Full and half passes write each tile's first two entries and clear the second two, to which
+// Full and half passes write each tile's first three entries and clear the second three, to which
 // the fallback pass adds.
 #    ifdef HYBRID_TRACE_FALLBACK
 layout(std430, set = 1, binding = 26) buffer HybridRayCounts
@@ -183,47 +182,7 @@ layout(std430, set = 1, binding = 26) writeonly buffer HybridRayCounts
 };
 #    endif
 shared uvec4 computeRaySums[TRACE_THREADS], hardwareRaySums[TRACE_THREADS];
-#endif
-#ifdef HYBRID_INLINE_RETRACE
-// Reference accumulation re-traces near-lamp hits in the trace itself (hybrid_retrace.glsl); this
-// marks the hit being shaded as re-traced, so its near-light visibility traces triangles as well.
-bool retracedHit = false;
-#elif defined(HYBRID_BRICK_TRAVERSAL)
-#    include "hybrid_retrace.glsl"
-// This invocation's last queued ray; one invocation traces one receiver's diffuse rays.
-uint retraceHead = HYBRID_RETRACE_NONE;
-
-// Queues a diffuse ray whose brick hit lies next to a cached point or spot light
-// (HitNearLocalLight). Returns false when the queue is full; the ray is then shaded from its brick hit.
-bool QueueRetrace(vec3 hitPosition, vec3 direction, float weight, bool source)
-{
-    uint ray    = atomicAdd(retraceHeader.claimedRays, 1u);
-    bool queued = ray < uint(retraceRays.length()) / 2u;
-    if (queued)
-    {
-        // Bricks are conservative, so no triangle lies closer than one fine voxel before the hit.
-        retraceRays[ray * 2u]      = uvec4(floatBitsToUint(hitPosition - direction * brick.voxel.x), retraceHead);
-        retraceRays[ray * 2u + 1u] = uvec4(floatBitsToUint(direction), floatBitsToUint(source ? -weight : weight));
-        retraceHead                = ray;
-    }
-    return queued;
-}
-
-// Lists this invocation's receiver for the re-trace pass when it queued rays; target is its texel
-// in the image the pass adds to.
-void PublishRetrace(ivec2 target)
-{
-    if (retraceHead != HYBRID_RETRACE_NONE)
-    {
-        // Each listed receiver queued at least one ray, so the list fits the ray capacity.
-        uint receiver = atomicAdd(retraceHeader.receivers, 1u);
-        if (receiver % 64u == 0u)
-        {
-            atomicAdd(retraceHeader.groups, 1u);
-        }
-        retraceReceivers[receiver] = uvec2(uint(target.x) | uint(target.y) << 16u, retraceHead);
-    }
-}
+shared uvec4 fieldWorkSums[TRACE_THREADS];
 #endif
 // Learned frames are averaged equally up to this count, then exponentially.
 const float HYBRID_GUIDE_FRAMES = 64.0;
@@ -243,59 +202,49 @@ HybridRayResult TraceFeature(uint feature, vec3 position, vec3 normal, vec3 dire
 #ifdef HYBRID_COUNT_RAYS
     issuedRayFeature = feature == SKY_PROVIDER ? 0u : feature == SPECULAR_PROVIDER ? 1u : feature == BOUNCE_PROVIDER ? 2u : 3u;
 #endif
+    // A HW-only variant has no Compute provider: a feature it does not trace has no result.
+    HybridRayResult result = HybridRayResult(false, position, vec3(0), ivec3(-1), false);
 #ifdef HYBRID_HARDWARE_PROVIDER
     if (FeatureHardware(feature))
     {
-        return HardwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
+        result = HardwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
     }
 #endif
-#ifdef HYBRID_BRICK_TRAVERSAL
-    // Diffuse hits next to a lamp are re-traced against triangles (TraceDiffuse).
-    return BrickTraceRay(BrickTraceOrigin(position, normal), direction, 1e20);
-#else
-    return SoftwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
+#ifdef HYBRID_FIELD_TRAVERSAL
+    if (!FeatureHardware(feature))
+    {
+        result = FieldTraceRay(FieldTraceOrigin(position, normal), direction, 1e20, closest);
+    }
 #endif
+    return result;
 }
-// Visibility of a nearby point or spot light from a ray hit (hit_radiance.glsl), with the bounce
-// provider. Under brick traversal, hits next to a lamp are re-traced with triangle visibility,
-// by hybrid_retrace_bricks.comp or, in reference variants, inline.
-bool HitLightVisible(HybridRayResult hit, SceneLight light)
+// Visibility of a nearby point or spot light from a shading hit (hit_radiance.glsl), with the bounce
+// provider, over the finite segment to the light. Only a covered miss is visible.
+float HitLightVisibility(HybridRayResult hit, SceneLight light, int lightIndex)
 {
 #ifdef HYBRID_COUNT_RAYS
     issuedRayFeature = 2u;
 #endif
-#if defined(HYBRID_INLINE_RETRACE)
-    vec3 origin = retracedHit ? HybridTraceOrigin(hit.position, hit.normal, 0.0) : BrickTraceOrigin(hit.position, hit.normal);
-#elif defined(HYBRID_BRICK_TRAVERSAL)
-    vec3 origin = BrickTraceOrigin(hit.position, hit.normal);
-#else
-    vec3 origin = HybridTraceOrigin(hit.position, hit.normal, 0.0);
-#endif
-    vec3  delta           = light.positionRange.xyz - origin;
-    float distanceToLight = length(delta);
-    vec3  direction       = delta / max(distanceToLight, 1e-20);
-    // Exclude the endpoint itself, without dropping a finite interval before it.
-    distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
-    bool blocked    = false;
+    float visibility = 1.0;
 #ifdef HYBRID_HARDWARE_PROVIDER
     if (FeatureHardware(BOUNCE_PROVIDER))
     {
-        blocked = distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit;
+        vec3  origin          = HybridTraceOrigin(hit.position, hit.normal, 0.0);
+        vec3  delta           = light.positionRange.xyz - origin;
+        float distanceToLight = length(delta);
+        vec3  direction       = delta / max(distanceToLight, 1e-20);
+        // Exclude the endpoint itself, without dropping a finite interval before it.
+        distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
+        visibility      = distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit ? 0.0 : 1.0;
     }
     else
 #endif
     {
-#if defined(HYBRID_INLINE_RETRACE)
-        blocked = distanceToLight > 0.0
-               && (retracedHit ? SoftwareTraceOpaqueRay(origin, direction, distanceToLight, false).hit
-                               : BrickTraceRay(origin, direction, distanceToLight).hit);
-#elif defined(HYBRID_BRICK_TRAVERSAL)
-        blocked = distanceToLight > 0.0 && BrickTraceRay(origin, direction, distanceToLight).hit;
-#else
-        blocked = distanceToLight > 0.0 && SoftwareTraceRay(origin, direction, distanceToLight, false).hit;
+#ifdef HYBRID_FIELD_TRAVERSAL
+        visibility = FieldLightVisibility(hit, light.positionRange.xyz);
 #endif
     }
-    return !blocked;
+    return visibility;
 }
 
 void GuideLearn(uint tile, float value)
@@ -574,6 +523,7 @@ vec3 ReconstructionGuide(vec3 n, float fullGuideTotal)
 DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequence, uint seed, float learning)
 {
     vec4  sky = vec4(0), bounce = vec4(0), previous = vec4(0);
+    uvec2 unavailable   = uvec2(0); // Sky and bounce traces that could not complete.
     uint  reducedBudget = 0u;
     float scale         = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y;
     float fullGuideTotal;
@@ -685,45 +635,20 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
         pdf                          = share.x * guided + share.y * residual + share.z * max(dot(n, w), 0.0) / HYBRID_PI;
         bool            inDomain     = pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0;
         bool            sharedBounce = FeatureHardware(SKY_PROVIDER) == FeatureHardware(BOUNCE_PROVIDER);
-        HybridRayResult hit          = HybridRayResult(false, position, vec3(0), ivec3(-1));
+        HybridRayResult hit          = HybridRayResult(false, position, vec3(0), ivec3(-1), true);
         if (inDomain)
         {
             hit = TraceFeature(SKY_PROVIDER, position, ng, w, hybrid.bounce.x != 0u && sharedBounce);
         }
-        bool escaped = inDomain && !hit.hit;
+        // Only a covered miss escapes; an unavailable trace leaves both estimates below.
+        bool escaped   = inDomain && hit.valid && !hit.hit;
+        unavailable.x += hit.valid ? 0u : 1u;
         if (inDomain && hybrid.bounce.x != 0u && !sharedBounce)
         {
             hit = TraceFeature(BOUNCE_PROVIDER, position, ng, w, true);
         }
-        bool queued = false;
-#if defined(HYBRID_INLINE_RETRACE)
-        // Reference accumulation re-traces a compute bounce ray whose brick hit lies next to a lamp
-        // here, as hybrid_retrace_bricks.comp does for queued rays. When the sky ray is the bounce
-        // ray, an escape adds sky and teaches the guide like any other.
-        if (inDomain && hit.hit && hybrid.bounce.x != 0u && !FeatureHardware(BOUNCE_PROVIDER)
-            && HitNearLocalLight(hit.position))
-        {
-#    ifdef HYBRID_COUNT_RAYS
-            issuedRayFeature = 2u;
-#    endif
-            hit         = BrickRetraceTriangles(hit.position - w * brick.voxel.x, w);
-            retracedHit = true;
-            if (sharedBounce)
-            {
-                escaped = !hit.hit;
-            }
-        }
-#elif defined(HYBRID_BRICK_TRAVERSAL)
-        // A compute bounce ray whose brick hit lies next to a lamp: hybrid_retrace_bricks.comp adds
-        // its bounce, and its sky when the sky ray is the bounce ray. Escapes found by the re-trace
-        // do not teach the guide.
-        if (inDomain && hit.hit && hybrid.bounce.x != 0u && !FeatureHardware(BOUNCE_PROVIDER)
-            && HitNearLocalLight(hit.position))
-        {
-            queued = QueueRetrace(hit.position, w, max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(diffuseSamples)), source);
-        }
-#endif
-        if (inDomain && hit.hit && hybrid.bounce.x != 0u && !queued)
+        unavailable.y += hit.valid ? 0u : 1u;
+        if (inDomain && hit.hit && hybrid.bounce.x != 0u)
         {
             bool  rejected;
             float weight  = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
@@ -737,9 +662,6 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
                 previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected) * weight;
             }
         }
-#ifdef HYBRID_INLINE_RETRACE
-        retracedHit = false;
-#endif
         if (escaped)
         {
             float weight = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
@@ -757,24 +679,37 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
             sky.a += weight;
         }
     }
-    sky          /= float(diffuseSamples);
-    bounce.rgb   /= float(diffuseSamples);
-    previous.rgb /= float(diffuseSamples);
+    // Average over completed samples. A receiver whose samples were all unavailable has no
+    // estimate this frame. Negative alpha keeps it out of temporal accumulation.
+    vec2 completed  = vec2(diffuseSamples) - vec2(unavailable);
+    sky            /= max(completed.x, 1.0);
+    bounce.rgb     /= max(completed.y, 1.0);
+    previous.rgb   /= max(completed.y, 1.0);
+    bounce.a        = completed.y > 0.0 ? bounce.a : -1.0;
+    sky.a           = completed.x > 0.0 ? sky.a : -1.0;
     // Each source tile gets its own rays, half the residual count (two at the shipping preset),
     // so sources are integrated without selection noise between them. Their directions are
     // coherent across pixels, so they cost far less than residual rays (P4Execution.md).
     uint sourceRays = max(hybrid.sampling.y / 2u, 1u);
     for (uint k = 0u; k < environmentSourceCount; ++k)
     {
+        vec3 sourceSky   = vec3(0);
+        uint sourceValid = sourceRays;
         for (uint j = 0u; j < sourceRays; ++j)
         {
-            float pdf;
-            vec2  u = HybridSkySample(uvec2(p), sequence * sourceRays + j, seed + 0x8000u + k * 0x1000u);
-            vec3  w = SampleEnvironmentTile(environmentSourceTiles[k], u, pdf);
-            if (pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0 && !TraceFeature(SKY_PROVIDER, position, ng, w, false).hit)
+            float           pdf;
+            vec2            u      = HybridSkySample(uvec2(p), sequence * sourceRays + j, seed + 0x8000u + k * 0x1000u);
+            vec3            w      = SampleEnvironmentTile(environmentSourceTiles[k], u, pdf);
+            HybridRayResult source = HybridRayResult(true, position, vec3(0), ivec3(-1), true);
+            if (pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0)
+            {
+                source       = TraceFeature(SKY_PROVIDER, position, ng, w, false);
+                sourceValid -= source.valid ? 0u : 1u;
+            }
+            if (source.valid && !source.hit)
             {
                 vec3 radiance  = textureLod(coneEnvironmentMap, EnvironmentDirection(w), 0).rgb;
-                sky.rgb       += radiance * max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(sourceRays)) * scale;
+                sourceSky      += radiance * max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(sourceRays)) * scale;
                 uint  face;
                 vec2  uv, st;
                 uvec2 cell;
@@ -787,6 +722,8 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
                 }
             }
         }
+        // Each source tile averages its completed rays only.
+        sky.rgb += sourceSky * (float(sourceRays) / float(max(sourceValid, 1u)));
     }
     return DiffuseResult(sky, bounce, previous, reconstructionGuide, reducedBudget);
 }
@@ -809,6 +746,7 @@ void TraceSpecular(ivec2      p,
         uint  specularSamples = hybrid.sampling.y > 4u ? hybrid.sampling.y : 1u;
         specular.a            = 0.0;
         float hitCount        = 0.0;
+        vec2  completed       = vec2(specularSamples); // Visibility and reflection samples with a result.
         for (uint i = 0u; i < specularSamples; ++i)
         {
             vec3 w = HybridSpecularDirection(n, view, roughness, uvec2(p), hybrid.sampling.x * specularSamples + i, 0x1234u);
@@ -817,7 +755,8 @@ void TraceSpecular(ivec2      p,
                 bool            sharedReflection = FeatureHardware(SPECULAR_PROVIDER) == FeatureHardware(REFLECTION_PROVIDER);
                 HybridRayResult hit =
                     TraceFeature(SPECULAR_PROVIDER, position, ng, w, hybrid.reflection.x != 0u && sharedReflection);
-                if (!hit.hit)
+                completed.x -= hit.valid ? 0.0 : 1.0;
+                if (hit.valid && !hit.hit)
                 {
                     specular.a += 1.0;
                 }
@@ -825,6 +764,7 @@ void TraceSpecular(ivec2      p,
                 {
                     hit = TraceFeature(REFLECTION_PROVIDER, position, ng, w, true);
                 }
+                completed.y -= hit.valid ? 0.0 : 1.0;
                 if (hit.hit && hybrid.reflection.x != 0u)
                 {
                     bool rejected;
@@ -841,9 +781,13 @@ void TraceSpecular(ivec2      p,
                 }
             }
         }
-        specular           /= float(specularSamples);
-        reflectionPrevious /= float(specularSamples);
+        // Negative markers distinguish missing observations from measured occlusion or black
+        // radiance. Temporal accumulation holds valid history without adding a sample.
+        specular.a          = completed.x > 0.0 ? specular.a / completed.x : -1.0;
+        specular.rgb       /= max(completed.y, 1.0);
+        reflectionPrevious /= max(completed.y, 1.0);
         reflection.x       /= max(hitCount, 1.0);
+        reflection.y        = completed.y > 0.0 ? reflection.y : -1.0;
     }
 }
 
@@ -880,6 +824,7 @@ void StoreRayCounts(uint lane, uint slot)
 {
     computeRaySums[lane]  = issuedComputeRays;
     hardwareRaySums[lane] = issuedHardwareRays;
+    fieldWorkSums[lane]   = issuedFieldWork;
     barrier();
     for (uint stride = TRACE_THREADS / 2u; stride > 0u; stride /= 2u)
     {
@@ -887,6 +832,7 @@ void StoreRayCounts(uint lane, uint slot)
         {
             computeRaySums[lane]  += computeRaySums[lane + stride];
             hardwareRaySums[lane] += hardwareRaySums[lane + stride];
+            fieldWorkSums[lane]   += fieldWorkSums[lane + stride];
         }
         barrier();
     }
@@ -894,6 +840,7 @@ void StoreRayCounts(uint lane, uint slot)
     {
         rayCounts[slot]      = computeRaySums[0];
         rayCounts[slot + 1u] = hardwareRaySums[0];
+        rayCounts[slot + 2u] = fieldWorkSums[0];
     }
 }
 #endif
@@ -921,11 +868,12 @@ void FinishGuide(uint lane)
     // The fallback pass adds to these entries (half resolution) or none runs (full resolution).
     if (lane == 0u)
     {
-        uint fallbackSlot            = (gl_NumWorkGroups.x * gl_NumWorkGroups.y + tile) * 2u;
+        uint fallbackSlot            = (gl_NumWorkGroups.x * gl_NumWorkGroups.y + tile) * (ZEN_GI_TRACE_COUNT_WORDS / 4u);
         rayCounts[fallbackSlot]      = uvec4(0);
         rayCounts[fallbackSlot + 1u] = uvec4(0);
+        rayCounts[fallbackSlot + 2u] = uvec4(0);
     }
-    StoreRayCounts(lane, tile * 2u);
+    StoreRayCounts(lane, tile * (ZEN_GI_TRACE_COUNT_WORDS / 4u));
 #    endif
 }
 #endif
@@ -988,9 +936,6 @@ void main()
         d       = TraceDiffuse(q, HybridPosition(q), HybridNormal(q), HybridGeometricNormal(q), hybrid.sampling.x / 4u,
                                0x10000u * (1u + phase), float(receivers));
     }
-#    if defined(HYBRID_BRICK_TRAVERSAL) && !defined(HYBRID_INLINE_RETRACE)
-    PublishRetrace(block);
-#    endif
     if (all(lessThan(block, imageSize(halfGuide))))
     {
         imageStore(halfSky, block, d.sky);
@@ -1110,12 +1055,10 @@ void main()
     pooledBase = (uint(p.y / 16) * ((width + 15u) / 16u) + uint(p.x / 16)) * POOLED_GUIDE_STRIDE;
     guideValid = hybrid.provider.y != 0u;
     StoreDiffuse(p, TraceDiffuse(p, HybridPosition(p), HybridNormal(p), HybridGeometricNormal(p), hybrid.sampling.x, 0u, 0.0));
-#    if defined(HYBRID_BRICK_TRAVERSAL) && !defined(HYBRID_INLINE_RETRACE)
-    PublishRetrace(p);
-#    endif
 #    ifdef HYBRID_COUNT_RAYS
     // Every fallback ray adds to the first tile's fallback entries, which the half pass cleared.
-    uint slot = (((uint(textureSize(receiverDepth, 0).y) + 15u) / 16u) * ((width + 15u) / 16u)) * 2u;
+    uint slot =
+        (((uint(textureSize(receiverDepth, 0).y) + 15u) / 16u) * ((width + 15u) / 16u)) * (ZEN_GI_TRACE_COUNT_WORDS / 4u);
     for (uint c = 0u; c < 4u; ++c)
     {
         if (issuedComputeRays[c] != 0u)
@@ -1125,6 +1068,10 @@ void main()
         if (issuedHardwareRays[c] != 0u)
         {
             atomicAdd(rayCounts[slot + 1u][c], issuedHardwareRays[c]);
+        }
+        if (issuedFieldWork[c] != 0u)
+        {
+            atomicAdd(rayCounts[slot + 2u][c], issuedFieldWork[c]);
         }
     }
 #    endif
@@ -1151,9 +1098,6 @@ void main()
         StoreDiffuse(p, d);
         StoreSpecular(p, specular, reflection, reflectionPrevious);
     }
-#    if defined(HYBRID_BRICK_TRAVERSAL) && !defined(HYBRID_INLINE_RETRACE)
-    PublishRetrace(p);
-#    endif
     FinishGuide(lane);
 }
 #endif

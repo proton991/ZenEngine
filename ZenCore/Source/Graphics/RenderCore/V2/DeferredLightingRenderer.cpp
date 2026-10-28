@@ -552,7 +552,11 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
 
     RDGGraphicsPassDesc lighting{};
 
-    lighting.SetShaderProgramName(voxelGI == nullptr ? (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP")
+    // Without GI, scene shadow maps still shadow direct light when the frame prepared them.
+    const bool mapShadowedPBR = voxelGI == nullptr && shadows != nullptr && !capture;
+    lighting.SetShaderProgramName(voxelGI == nullptr ? (capture          ? "DeferredLightingCaptureSP"
+                                                        : mapShadowedPBR ? "DeferredShadowMapsSP"
+                                                                         : "DeferredLightingSP")
                                                      : (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
 
     if (m_hybrid != nullptr && m_hybrid->IsActive())
@@ -564,16 +568,13 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
     {
         // Ray-count diagnostics never coincide with a lighting capture.
         const bool counts = !capture && voxelGI->CountsRays();
-        // [hardware, software][plain, capture, counts][color only, with receiver visibility]
-        static const char* const programs[2][3][2] = {
-            {{"DeferredHardwareShadowsSP", "DeferredHardwareShadowsVisibilitySP"},
-             {"DeferredHardwareShadowsCaptureSP", "DeferredHardwareShadowsCaptureVisibilitySP"},
-             {"DeferredHardwareShadowsCountsSP", "DeferredHardwareShadowsCountsVisibilitySP"}},
-            {{"DeferredSoftwareShadowsSP", "DeferredSoftwareShadowsVisibilitySP"},
-             {"DeferredSoftwareShadowsCaptureSP", "DeferredSoftwareShadowsCaptureVisibilitySP"},
-             {"DeferredSoftwareShadowsCountsSP", "DeferredSoftwareShadowsCountsVisibilitySP"}}};
+        // Ray shadows are HW RT; Compute uses shadow maps. [plain, capture, counts][color only, with receiver visibility]
+        static const char* const programs[3][2] = {
+            {"DeferredHardwareShadowsSP", "DeferredHardwareShadowsVisibilitySP"},
+            {"DeferredHardwareShadowsCaptureSP", "DeferredHardwareShadowsCaptureVisibilitySP"},
+            {"DeferredHardwareShadowsCountsSP", "DeferredHardwareShadowsCountsVisibilitySP"}};
         const uint32_t variant = capture ? 1 : counts ? 2 : 0;
-        lighting.SetShaderProgramName(programs[voxelGI->UsesHardwareShadows() ? 0 : 1][variant][visibility ? 1 : 0]);
+        lighting.SetShaderProgramName(programs[variant][visibility ? 1 : 0]);
         lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
         if (counts)
         {
@@ -644,6 +645,10 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
         voxelGI->BindLightingInputs(lighting);
 
         voxelGI->BindShadowInputs(lighting, shadows);
+    }
+    else if (mapShadowedPBR)
+    {
+        shadows->BindLightingInputs(lighting);
     }
 
     graph->AddGraphicsPass(std::move(lighting))
@@ -1029,10 +1034,8 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 if (voxelGI != nullptr && voxelGI->UsesRayShadows())
                 {
                     const bool counts = voxelGI->CountsRays();
-                    source.SetShaderProgramName(
-                        voxelGI->UsesHardwareShadows()
-                            ? (counts ? "ForwardScatterHardwareShadowsCountsSP" : "ForwardScatterHardwareShadowsSP")
-                            : (counts ? "ForwardScatterSoftwareShadowsCountsSP" : "ForwardScatterSoftwareShadowsSP"));
+                    source.SetShaderProgramName(counts ? "ForwardScatterHardwareShadowsCountsSP"
+                                                       : "ForwardScatterHardwareShadowsSP");
                     if (counts)
                     {
                         voxelGI->BindRayTotals(source);
@@ -1233,12 +1236,9 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             {
                 const bool counts = !capture && voxelGI->CountsRays();
                 forward.BindSampledTexture("receiverLightVisibility", m_pDepthSampler, lightVisibility);
-                forward.SetShaderProgramName(voxelGI->UsesHardwareShadows() ? (capture  ? "ForwardHardwareShadowsCaptureSP"
-                                                                               : counts ? "ForwardHardwareShadowsCountsSP"
-                                                                                        : "ForwardHardwareShadowsSP")
-                                                                            : (capture  ? "ForwardSoftwareShadowsCaptureSP"
-                                                                               : counts ? "ForwardSoftwareShadowsCountsSP"
-                                                                                        : "ForwardSoftwareShadowsSP"));
+                forward.SetShaderProgramName(capture  ? "ForwardHardwareShadowsCaptureSP"
+                                             : counts ? "ForwardHardwareShadowsCountsSP"
+                                                      : "ForwardHardwareShadowsSP");
                 if (counts)
                 {
                     voxelGI->BindRayTotals(forward);

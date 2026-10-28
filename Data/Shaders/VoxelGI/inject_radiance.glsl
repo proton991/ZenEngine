@@ -174,8 +174,9 @@ void main()
 #else
         vec3 diffuseReflectance = albedo.rgb * normalDiffuse.a;
 #endif
-        radiance =
-            vec4(texelFetch(voxelEmissive, p, 0).rgb * gi.lighting.z + diffuseReflectance * irradiance / 3.14159265359, 1);
+        // Sky-cache kind 3 has no sky estimate (sky_irradiance.glsl): the cell is not a valid source.
+        radiance = vec4(texelFetch(voxelEmissive, p, 0).rgb * gi.lighting.z + diffuseReflectance * irradiance / 3.14159265359,
+                        texelFetch(skyIrradiance, p, 0).a > 2.5 ? 0.0 : 1.0);
     }
     imageStore(voxelRadiance, p, vec4(ClampHDRStorage(radiance.rgb), radiance.a));
 #ifdef GI_COUNT_RAY_SLOT

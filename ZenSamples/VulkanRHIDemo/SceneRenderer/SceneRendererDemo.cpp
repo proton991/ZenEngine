@@ -88,6 +88,8 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      bool                          useAssetCache) :
     m_useAssetCache(useAssetCache), m_cameraType(type)
 {
+    m_profileWorkload    = profiling.workload;
+    m_profileTargetScene = profiling.targetScene;
     m_pWindow      = new platform::NativeWindow(windowConfig);
 
     m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, rc::RenderConfig::GetInstance().numFrames);
@@ -542,6 +544,71 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
     }
 }
 
+bool SceneRendererDemo::PrepareProfileWorkload()
+{
+    bool valid = true;
+    if (!m_profileInitialized)
+    {
+        m_profileCamera = m_camera->GetPos();
+        m_profileExtent = m_renderScene->GetAABB().GetMaxExtent();
+        if (m_profileWorkload == "dynamic" || m_profileWorkload == "expansion")
+        {
+            const HeapVector<rc::RenderScene::InstanceTriangleRange>& ranges  = m_renderScene->GetInstanceTriangleRanges();
+            const HeapVector<rc::RenderScene::ShadowCaster>&          casters = m_renderScene->GetShadowCasters();
+            for (const sg::Node* node : m_scene->GetRenderableNodes())
+            {
+                const uint32_t index = node->GetRenderableIndex();
+                const Vec3     size  = casters[index].bounds.GetMax() - casters[index].bounds.GetMin();
+                if (m_profileInstance == UINT32_MAX && ranges[index].triangleCount >= 12 && ranges[index].triangleCount <= 4096
+                    && std::max({size.x, size.y, size.z}) < m_profileExtent * 0.2f)
+                {
+                    m_profileInstance  = index;
+                    m_profileTransform = node->GetData().modelMatrix;
+                }
+            }
+            valid = m_profileInstance != UINT32_MAX
+                 && m_renderScene->SetInstanceClass(m_profileInstance, m_profileWorkload == "dynamic" ? GI_DYNAMIC : GI_STATIC);
+            LOGI("GI profile workload {}: instance={}, world extent={}", m_profileWorkload, m_profileInstance, m_profileExtent);
+        }
+        m_profileInitialized = valid;
+    }
+    return valid;
+}
+
+bool SceneRendererDemo::UpdateProfileWorkload(uint32_t frame)
+{
+    bool        valid = true;
+    const float phase = static_cast<float>(frame % 300) * (2.0f * 3.14159265359f / 300.0f);
+    if (m_profileWorkload == "camera")
+    {
+        m_camera->SetPosition(m_profileCamera
+                              + m_profileExtent * Vec3(0.03f * std::sin(phase), 0, 0.01f * std::sin(phase * 2)));
+    }
+    else if (m_profileWorkload == "dynamic")
+    {
+        const Vec3 offset = m_profileExtent * Vec3(0.005f * std::sin(phase), 0, 0.002f * std::sin(phase * 2));
+        valid = m_renderScene->SetInstanceTransform(m_profileInstance, glm::translate(Mat4(1), offset) * m_profileTransform);
+    }
+    else if (m_profileWorkload == "expansion" && frame == 0)
+    {
+        valid = m_renderScene->SetInstanceTransform(
+            m_profileInstance, glm::translate(Mat4(1), Vec3(m_profileExtent * 1.5f, 0, 0)) * m_profileTransform);
+    }
+    else if (m_profileWorkload == "switch" && frame % 30 == 0)
+    {
+        rc::VoxelGIRenderer* gi       = m_renderDevice->GetRendererServer()->RequestVoxelGI();
+        rc::VoxelGISettings  settings = gi->GetSettings();
+        settings.SetAllFeatureProviders((frame / 30) % 2 == 0 ? rc::VoxelGISettings::RayProvider::Hardware
+                                                              : rc::VoxelGISettings::RayProvider::Voxel);
+        valid = gi->SetSettings(settings);
+    }
+    else if (m_profileWorkload == "scene-switch" && frame == 0)
+    {
+        valid = !m_profileTargetScene.empty() && LoadModel(m_profileTargetScene, true);
+    }
+    return valid;
+}
+
 bool SceneRendererDemo::GetGIMotionFixture(uint32_t& moving, Mat4& original) const
 {
     // Fixed motion diagnostic fixture: four
@@ -856,7 +923,7 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
     m_renderDevice->GetRendererServer()->SetRenderOption(giStartFrame != 0 ? rc::RenderOption::ePBR
                                                                            : static_cast<rc::RenderOption>(initialMode - 1));
 
-    bool succeeded  = true;
+    bool succeeded  = PrepareProfileWorkload();
 
     uint32_t moving = 0;
 
@@ -873,6 +940,7 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
     }
 
     uint32_t frames              = 0;
+    uint32_t workloadFrame       = UINT32_MAX;
 
     uint32_t consecutiveDeclines = 0;
 
@@ -957,6 +1025,11 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
 #endif
 
         m_camera->Update(frameTime);
+        if (!profileWarmup && workloadFrame != frames)
+        {
+            succeeded     &= UpdateProfileWorkload(frames);
+            workloadFrame  = frames;
+        }
 
         succeeded &= m_renderScene->AdvanceAnimation(smokeTest ? 1.0f / 30.0f : fixedStep ? 1.0f / 60.0f : frameTime);
 
@@ -1028,10 +1101,13 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
 
         m_renderDevice->NextFrame();
 
-        // Scripted runs count only frames that rendered the requested GI. While its scene BVH
-        // builds in the background, frames fall back to HW RT or PBR: profiles record them as
-        // warm-up, and captures wait for the build.
-        const bool preparingGI  = frameLimit != 0 && m_renderDevice->GetRendererServer()->IsPreparingGI();
+        // Scripted runs count only frames that rendered the requested, complete GI. While its distance
+        // field builds in the background, frames fall back to HW RT or PBR, and while its local volumes
+        // build, lights near them use the coarser scene field: profiles record those frames as warm-up,
+        // and captures wait for the build.
+        const bool preparingGI =
+            frameLimit != 0 && (profileWarmup || (m_profileWorkload != "dynamic" && m_profileWorkload != "switch"))
+            && (m_renderDevice->GetRendererServer()->IsPreparingGI() || m_renderDevice->GetRendererServer()->IsRefiningGI());
 
         frames                 += preparingGI ? 0 : 1;
 
@@ -1118,6 +1194,8 @@ namespace
 {
 struct DemoOptions
 {
+    std::string profileWorkload{"still"};
+    std::string profileTargetScene;
     int      runtimeUI{-1}; // Interactive runs default on; diagnostic runs remain reproducible.
     uint32_t frames{0};
     uint32_t warmup{0};
@@ -1376,6 +1454,17 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
                                                                                    : zen::RHIBindlessHeapType::eSampler,
                                       count);
         }
+        else if (argument.starts_with("--profile-workload="))
+        {
+            options.profileWorkload = argument.substr(sizeof("--profile-workload=") - 1);
+            valid                   = options.profileWorkload == "still" || options.profileWorkload == "camera"
+                                   || options.profileWorkload == "dynamic" || options.profileWorkload == "expansion"
+                                   || options.profileWorkload == "switch" || options.profileWorkload == "scene-switch";
+        }
+        else if (argument.starts_with("--profile-target-scene="))
+        {
+            options.profileTargetScene = argument.substr(sizeof("--profile-target-scene=") - 1);
+        }
         else if (argument == "--gi-motion-fixture")
         {
             options.motionFixture = true;
@@ -1514,6 +1603,8 @@ int main(int argc, char** pArgv)
         DemoProfilingOptions profiling;
 
         profiling.prefix       = options.profilePath;
+        profiling.workload     = options.profileWorkload;
+        profiling.targetScene  = options.profileTargetScene;
 
         profiling.frames       = options.frames;
 
@@ -1656,7 +1747,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--no-asset-cache] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--scene-load-repeats=0..1000] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--deterministic-gi-capture] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--enable-validation|--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-camera-motion=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--no-asset-cache] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--scene-load-repeats=0..1000] [--frame-times=path.csv] [--profile=prefix] [--profile-workload=still|camera|dynamic|expansion|switch|scene-switch] [--profile-target-scene=path.gltf] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--deterministic-gi-capture] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--gpu=NAME] [--enable-validation|--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-ray-counts=path.json] [--capture-provider-switching=prefix] [--capture-feature-switching=prefix] [--capture-origin-stress=prefix] [--capture-stability=prefix] [--capture-camera-motion=prefix] [--capture-bounce-lights=prefix] [--capture-reflection-motion=prefix] [--capture-geometry-motion=prefix] [--capture-independent-views=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

@@ -1,0 +1,6 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_TRACE_HALF
+#define HYBRID_COUNT_RAYS
+#define HYBRID_FIELD_TRAVERSAL
+#include "hybrid_trace.glsl"

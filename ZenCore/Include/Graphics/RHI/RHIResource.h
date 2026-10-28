@@ -406,6 +406,13 @@ public:
         return m_baseInfo;
     }
 
+    // Native allocation extent, including image padding. Zero means that an
+    // owned allocation size is unavailable; it is not a texel-payload estimate.
+    virtual uint64_t GetAllocationSize() const
+    {
+        return 0;
+    }
+
     RHITextureSubResourceRange GetSubResourceRange() const;
 
     uint32_t GetWidth() const
@@ -590,6 +597,11 @@ class RHISampler : public RHIResource
 {
 public:
     ~RHISampler() {}
+
+    const RHISamplerCreateInfo& GetCreateInfo() const
+    {
+        return m_baseInfo;
+    }
 
 protected:
     explicit RHISampler(const RHISamplerCreateInfo& createInfo) : RHIResource(RHIResourceType::eSampler), m_baseInfo(createInfo)

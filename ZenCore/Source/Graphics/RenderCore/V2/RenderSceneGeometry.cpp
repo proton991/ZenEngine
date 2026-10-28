@@ -594,8 +594,10 @@ bool RenderScene::CommitGeometryUpdates()
     bool valid = m_geometryReady && !m_pRenderDevice->AreSubmissionsBlocked();
     if (valid && (m_dirtyClasses != 0 || m_verticesDirty || m_materialsDirty || m_triangleRecordsDirty))
     {
-        const bool                   geometryChanged = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;
-        const HeapVector<glm::uvec4> triangles = m_triangleRecordsDirty ? BuildTriangleRecords() : HeapVector<glm::uvec4>();
+        const bool                        geometryChanged = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;
+        HeapVector<InstanceTriangleRange> ranges;
+        const HeapVector<glm::uvec4>      triangles =
+            m_triangleRecordsDirty ? BuildTriangleRecords(ranges) : HeapVector<glm::uvec4>();
         const uint32_t triangleCount = m_triangleRecordsDirty ? static_cast<uint32_t>(triangles.size()) : m_voxelTriangleCount;
         const RHIGPUInfo& gpu           = m_pRenderDevice->GetGPUInfo();
         uint64_t          nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
@@ -637,6 +639,7 @@ bool RenderScene::CommitGeometryUpdates()
                 if (m_triangleRecordsDirty)
                 {
                     m_pRenderDevice->DestroyBuffer(m_pVoxelTriangleBuffer);
+                    m_instanceTriangleRanges = std::move(ranges);
                 }
                 m_pVoxelTriangleBuffer = records;
                 m_voxelTriangleCount   = triangleCount;

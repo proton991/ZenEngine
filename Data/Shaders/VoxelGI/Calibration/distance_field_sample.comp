@@ -1,0 +1,72 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../distance_field_trace.glsl"
+
+layout(local_size_x = 64) in;
+layout(std430, set = 1, binding = 0) readonly buffer DistanceFieldSamplePoints
+{
+    vec4 points[]; // xyz world position; w requests a raw, unoriented field gradient
+};
+struct DistanceFieldSampleRecord
+{
+    vec4  positionDistance; // World units; empty/outside have no stored distance (infinity).
+    vec4  normal;           // Raw local field gradient, not the tracer's approaching-side normal.
+    uvec4 storage;          // state: 0 empty, 1 stored, 2 unavailable, 3 outside; brick; normal valid; samples
+};
+layout(std430, set = 1, binding = 1) writeonly buffer DistanceFieldSampleRecords
+{
+    DistanceFieldSampleRecord records[];
+};
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < points.length())
+    {
+        vec4                      point  = points[index];
+        DistanceFieldSampleRecord result = DistanceFieldSampleRecord(vec4(point.xyz, uintBitsToFloat(0x7fc00000u)), vec4(0),
+                                                                     uvec4(2u, DISTANCE_FIELD_UNAVAILABLE, 0u, 0u));
+        if (DistanceFieldLayoutValid() && !any(isnan(point.xyz)) && !any(isinf(point.xyz)))
+        {
+            vec3 local = (point.xyz - distanceField.gridMinCellSize.xyz) / distanceField.gridMinCellSize.w;
+            if (any(lessThan(local, vec3(0))) || any(greaterThanEqual(local, vec3(distanceField.dimensions.x))))
+            {
+                result.storage.x          = 3u;
+                result.positionDistance.w = uintBitsToFloat(0x7f800000u);
+            }
+            else
+            {
+                uvec3 cell  = uvec3(floor(local));
+                uint  value = distanceFieldCells[DistanceFieldIndex(cell, distanceField.dimensions.x)];
+                value       = value == DISTANCE_FIELD_UNAVAILABLE ? value : value & DISTANCE_FIELD_BRICK_MASK;
+                if (value == DISTANCE_FIELD_EMPTY)
+                {
+                    result.storage.x          = 0u;
+                    result.positionDistance.w = uintBitsToFloat(0x7f800000u);
+                }
+                else if (value != DISTANCE_FIELD_UNAVAILABLE && value <= distanceField.dimensions.y)
+                {
+                    vec3  uvw        = local - vec3(cell);
+                    float distance   = DistanceFieldSample(value - 1u, uvw) * distanceField.gridMinCellSize.w;
+                    result.storage.w = 1u;
+                    if (!isnan(distance) && !isinf(distance) && distance >= 0.0)
+                    {
+                        result.positionDistance.w = distance;
+                        result.storage.xy         = uvec2(1u, value - 1u);
+                        if (point.w > 0.0)
+                        {
+                            vec3 normal       = DistanceFieldBrickNormal(DistanceFieldSceneLevel(), value - 1u, uvw);
+                            result.storage.w += 4u;
+                            if (!any(isnan(normal)) && !any(isinf(normal)) && dot(normal, normal) > 0.5)
+                            {
+                                result.normal.xyz = normal;
+                                result.storage.z  = 1u;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        records[index] = result;
+    }
+}

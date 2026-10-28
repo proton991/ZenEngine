@@ -1,9 +1,10 @@
 #pragma once
+#include "Graphics/Shared/VoxelGI.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
-#include "Graphics/RenderCore/V2/SoftwareSceneRayQuery.h"
-#include "Graphics/RenderCore/V2/BrickScene.h"
+#include "Graphics/RenderCore/V2/DistanceFieldScene.h"
+#include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
 #include <array>
 
@@ -48,7 +49,7 @@ struct VoxelGISettings
     void                                                         SetAllFeatureProviders(RayProvider provider);
     enum class BounceSource : uint32_t
     {
-        Auto, // Triangle hits with either traversal backend.
+        Auto, // Ray hits with either provider.
         Cone,
         Rays
     };
@@ -87,17 +88,10 @@ struct VoxelGISettings
         On
     };
     Reflections reflections{Reflections::On};
-    // What the Compute provider traces for GI gather rays (sky, specular, bounce, reflections):
-    // the software triangle BVH, or the sparse brick scene (BrickScene). The sky cache keeps
-    // triangles.
-    enum class ComputeTraversal : uint32_t
-    {
-        Triangles,
-        Bricks
-    };
-    ComputeTraversal computeTraversal{ComputeTraversal::Triangles};
-    // Brick cells per grid axis: 64, 128 or 256, each holding 8x8x8 occupancy bits.
-    uint32_t brickResolution{128};
+    // Compute GI rays (sky, specular, bounce, reflections and the sky cache) trace a GPU-built
+    // sparse distance field covering every committed occluder (DistanceFieldScene). Cells per
+    // axis: 32 or 64 (the builder's limit), each holding 8x8x8 distance samples over the scene bounds.
+    uint32_t fieldResolution{64};
     // Diffuse and specular estimation: per-pixel stochastic rays with a full-resolution filter,
     // or screen probes (ScreenProbeGather) with half-resolution specular rays.
     // Reference accumulation and ray-count captures use per-pixel gather for diagnostics.
@@ -116,7 +110,7 @@ struct VoxelGISettings
     uint32_t coneCount{6};
     uint32_t maxSteps{128};
     bool     shadows{true};
-    // False forces maps. True prefers HW rays, falling back to maps unless Compute is explicitly selected.
+    // False forces maps. True uses HW shadow rays when HW RT is selected and ready; Compute uses maps.
     bool rtShadows{true};
     bool analyticLighting{true};
     bool environmentLighting{true};
@@ -160,8 +154,9 @@ public:
     bool Init();
 
     // Select/build the provider before shadow-map preparation; call once per frame before BuildRenderGraph.
+    // Also records bounded distance-field construction, whether or not this frame composes GI; every
+    // call needs OnVisibilityGraphExecuted with the frame's result.
     bool BuildRayQueryGraph();
-    void BindSoftwareRayInputs(RDGPassDescBase& pass, bool forwardMaterialBound = false) const;
 
     void BuildRenderGraph(SceneShadowRenderer* shadows = nullptr);
 
@@ -204,25 +199,40 @@ public:
     {
         return m_hardwareFeatureMask;
     }
-    bool IsPreparingSoftwareQueries() const
+    // An enabled feature resolves to Compute while the distance field is still being built.
+    bool IsPreparingField() const
     {
-        return m_preparingSoftwareQueries;
+        return m_preparingField;
     }
-    // True when an enabled feature resolves to Compute and traces the software BVH.
-    bool UsesSoftwareQueries() const;
-    // True when Compute GI gather rays trace the brick scene and it is ready for this frame.
-    bool UsesBrickTraversal() const
+    // Compute traces a published field that is still being completed: it predates committed edits, or
+    // local volumes around lights are still building and those lights use the scene field.
+    bool IsRefiningField() const;
+    // True when an enabled GI feature resolves to Compute and traces the ready distance field.
+    bool UsesComputeQueries() const;
+    bool UsesFieldTraversal() const
     {
-        return m_bricksActive;
+        return m_fieldActive;
     }
-    void BindBrickInputs(RDGPassDescBase& pass) const
+    // The field and, for near-light visibility of field hits, this frame's shadow maps.
+    void BindFieldInputs(RDGPassDescBase& pass) const;
+    // Null until Init; recreated when the field resolution changes.
+    const DistanceFieldScene* GetDistanceField() const
     {
-        m_bricks.BindTraceInputs(pass);
+        return m_field.Get();
     }
-    const BrickScene& GetBrickScene() const
+    // Published visibility representation traced this frame: changes when a field generation is
+    // published or Compute tracing starts or stops, so caches and histories built from another
+    // visibility representation restart.
+    uint64_t GetVisibilityGeneration() const
     {
-        return m_bricks;
+        // Field serial, local volume revision and scene field generation; histories restart on a change.
+        return m_fieldActive && m_field ? (m_fieldSerial << 48) | (uint64_t(m_field->GetLocalRevision() & 0xffffu) << 32)
+                                              | (m_field->GetGeneration() & 0xffffffffu)
+                                        : 0;
     }
+    // Delivers this frame's result to construction work BuildRayQueryGraph recorded. Called for every
+    // frame, including PBR fallback frames, before OnRenderGraphExecuted.
+    void OnVisibilityGraphExecuted(RenderFrameResult result);
     bool UsesHardwareShadows() const
     {
         return m_settings.shadows && m_settings.rtShadows && UsesHardwareQueries(VoxelGISettings::Feature::Shadows);
@@ -249,10 +259,6 @@ public:
     {
         return m_rayQuery;
     }
-    const SoftwareSceneRayQuery& GetSoftwareRayQuery() const
-    {
-        return m_softwareRayQuery;
-    }
     void BindHardwareRayInputs(RDGPassDescBase& pass) const;
     void BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound = false) const;
 
@@ -266,7 +272,7 @@ public:
         return m_radiance != nullptr && m_skyIrradiance != nullptr && m_environmentColumns != nullptr
             && m_environmentRows != nullptr && m_environmentHarmonics != nullptr && m_environmentLuminance != nullptr
             && m_environmentTiles != nullptr && m_environmentSources != nullptr && m_environmentResidualColumns != nullptr
-            && m_environmentResidualRows != nullptr;
+            && m_environmentResidualRows != nullptr && m_unshadowedMap != nullptr;
     }
 
     RHITexture* GetRadianceTexture() const
@@ -292,7 +298,8 @@ public:
         ForwardShadows,
         Count
     };
-    static constexpr uint64_t kRayTotalsBytes = static_cast<uint64_t>(RayTotalSlot::Count) * 2 * sizeof(uint32_t);
+    static constexpr uint64_t kRayTotalsBytes =
+        static_cast<uint64_t>(RayTotalSlot::Count) * ZEN_GI_TOTAL_COUNT_WORDS * sizeof(uint32_t);
 
     void SetRayTotalsCapture(RHIBuffer* totals, RHIBuffer* zeros, RHIBuffer* readback)
     {
@@ -341,19 +348,26 @@ private:
 
     void BuildEnvironmentDistribution();
 
-    // Whether an enabled GI gather feature resolves to Compute with brick traversal requested.
-    bool RequestsBrickTraversal() const;
+    DistanceFieldSceneSettings BuildFieldSettings() const;
+    HeapVector<AABB>           BuildLocalFieldVolumes() const;
+    // Enabled features that do not resolve to HW RT under the given HW feature mask.
+    uint32_t ComputeFeatureMask(uint32_t hardwareMask) const;
 
     SceneRayQuery         m_rayQuery;
-    SoftwareSceneRayQuery m_softwareRayQuery;
-    BrickScene            m_bricks;
-    bool                  m_bricksActive{false}; // The brick scene is built for this frame's GI rays.
-    bool                  m_brickFallbackLogged{false};
+    UniquePtr<DistanceFieldScene> m_field;
+    uint32_t                      m_fieldResolution{0};
+    uint64_t                      m_fieldSerial{0};       // Distinguishes generations of recreated or reset owners.
+    bool                          m_fieldActive{false};   // Compute GI rays trace the ready field this frame.
+    bool                          m_fieldRecorded{false}; // BuildRayQueryGraph called the field owner this frame.
+    bool                          m_preparingField{false};
+    uint64_t                      m_skyVisibility{0};    // Visibility generation the sky cache was traced with.
+    SceneShadowRenderer*          m_shadowMaps{nullptr}; // This frame's shadow maps, which field gathers read.
+    RHITexture*                   m_unshadowedMap{nullptr};
+    RHISampler*                   m_unshadowedSampler{nullptr};
+    uint64_t                      m_recordedSkyVisibility{0};
     bool                  m_hardwareQueries{false};
     uint32_t              m_hardwareFeatureMask{0};
-    bool                  m_preparingSoftwareQueries{false};
-    bool                  m_softwareQueriesActive{false}; // The last frame traced the software BVH.
-    const char*           m_providerReason{"software_bvh_selected"};
+    const char*                   m_providerReason{"field_selected"};
     RenderDevice*         m_device{nullptr};
     RenderScene*          m_scene{nullptr};
     VoxelizerBase*        m_voxelizer{nullptr};

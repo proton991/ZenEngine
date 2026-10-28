@@ -19,19 +19,11 @@ const DataFormat  kHistoryFormats[] = {
     DataFormat::eR32G32B32A32SFloat, DataFormat::eR32SFloat,          DataFormat::eR8UInt};
 // The trace pass learns and reads the visibility guide per workgroup of this many pixels squared.
 constexpr uint32_t kGuideTile = 16;
-// Diffuse rays a brick trace pass may queue for a triangle re-trace (hybrid_retrace.glsl): one per
-// two receivers it traces, and one per eight pixels for the fallback pass, which traces only the
-// receivers its upsample lists. Further claims are shaded from their brick hit.
-constexpr uint32_t kRetraceReceiversPerRay      = 2;
-constexpr uint32_t kFallbackRetracePixelsPerRay = 8;
-// A re-trace queue's header at the start of every frame: no dispatch groups, one in y and z for the
-// indirect dispatch, no receivers listed, no rays claimed.
-constexpr uint32_t kRetraceHeader[] = {0, 1, 1, 0, 0};
-
-// Trace programs are named base, optional Counts, optional Bricks, then SP (ShaderProgram.cpp).
-NameID TraceProgram(const char* base, bool counts, bool bricks, bool exactGuide = false)
+// Trace programs are named base, optional Counts, optional Field, then SP (ShaderProgram.cpp).
+// Variants without Field trace HW RT only; Compute features trace the distance field.
+NameID TraceProgram(const char* base, bool counts, bool field, bool exactGuide = false)
 {
-    return NameID(fmt::format("{}{}{}{}SP", base, counts ? "Counts" : "", bricks ? "Bricks" : "", exactGuide ? "Exact" : ""));
+    return NameID(fmt::format("{}{}{}{}SP", base, counts ? "Counts" : "", field ? "Field" : "", exactGuide ? "Exact" : ""));
 }
 } // namespace
 
@@ -43,9 +35,9 @@ HybridGIRenderer::HybridGIRenderer(RenderDevice* device) : m_device(device), m_p
 
 uint64_t HybridGIRenderer::GetRayCountCaptureBytes(uint32_t width, uint32_t height)
 {
-    // Per tile: Compute and HW RT counts from the trace pass, then from the diffuse fallback pass.
-    return ((uint64_t(width) + kGuideTile - 1) / kGuideTile) * ((uint64_t(height) + kGuideTile - 1) / kGuideTile) * 16u
-         * sizeof(uint32_t);
+    // Per tile: ray and field-work counts from the trace pass, then the diffuse fallback pass.
+    return ((uint64_t(width) + kGuideTile - 1) / kGuideTile) * ((uint64_t(height) + kGuideTile - 1) / kGuideTile)
+         * (2u * ZEN_GI_TRACE_COUNT_WORDS) * sizeof(uint32_t);
 }
 
 void HybridGIRenderer::InvalidateHistory(const char* reason)
@@ -182,22 +174,6 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width,
             valid         = m_guide[side] != nullptr;
         }
     }
-    if (valid && m_retraceHeader == nullptr)
-    {
-        RHIBufferCreateInfo info;
-        info.size         = sizeof(kRetraceHeader);
-        info.tag          = "hybrid_retrace_header_reset";
-        info.allocateType = RHIBufferAllocateType::eCPUWrite;
-        info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-        m_retraceHeader = m_device->CreateBuffer(info);
-        uint8_t* data   = m_retraceHeader != nullptr ? m_retraceHeader->Map() : nullptr;
-        valid           = data != nullptr;
-        if (valid)
-        {
-            std::memcpy(data, kRetraceHeader, sizeof(kRetraceHeader));
-            m_retraceHeader->Unmap();
-        }
-    }
     if (!valid)
     {
         Destroy();
@@ -246,13 +222,11 @@ void HybridGIRenderer::BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer
     else
     {
         voxelGI.BindRayInputs(pass);
-
-        voxelGI.BindSoftwareRayInputs(pass);
     }
 
-    if (voxelGI.UsesBrickTraversal())
+    if (voxelGI.UsesFieldTraversal())
     {
-        voxelGI.BindBrickInputs(pass);
+        voxelGI.BindFieldInputs(pass);
     }
 
     pass.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
@@ -268,71 +242,6 @@ void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
     });
 }
 
-HybridGIRenderer::RetraceQueue HybridGIRenderer::AddRetraceQueue(RDGComputePassDesc& trace,
-                                                                 const char*         name,
-                                                                 uint64_t            capacity) const
-{
-    RenderGraph*        graph     = m_device->GetCurrentFrameRDG();
-    RDGResourceManager* resources = graph->GetResourceManager();
-    RetraceQueue        queue;
-    RDGBufferDesc       desc;
-    desc.name = NameID(fmt::format("{}_header", name));
-    desc.size = sizeof(kRetraceHeader);
-    desc.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eIndirectBuffer,
-                             RHIBufferUsageFlagBits::eTransferDstBuffer);
-    queue.header = resources->CreateBuffer(desc);
-    graph->AddTransferPass("ResetHybridRetrace")
-        .CopyBuffer(resources->ImportHostWrittenBuffer(m_retraceHeader), queue.header, {0, 0, sizeof(kRetraceHeader)});
-    RDGBufferDesc entries;
-    entries.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
-    entries.name = NameID(fmt::format("{}_rays", name));
-    entries.size = std::max<uint64_t>(capacity, 1) * 2u * sizeof(glm::uvec4);
-    queue.rays   = resources->CreateBuffer(entries);
-    // Every listed receiver queued at least one ray, so the list needs no more entries than rays.
-    entries.name    = NameID(fmt::format("{}_receivers", name));
-    entries.size    = std::max<uint64_t>(capacity, 1) * sizeof(glm::uvec2);
-    queue.receivers = resources->CreateBuffer(entries);
-    trace.BindStorageBuffer("HybridRetraceHeader", queue.header);
-    trace.BindStorageBuffer("HybridRetraceRays", queue.rays, RDGContentGuarantee::eProducedElements);
-    trace.BindStorageBuffer("HybridRetraceReceivers", queue.receivers, RDGContentGuarantee::eProducedElements);
-    return queue;
-}
-
-void HybridGIRenderer::AddRetracePass(const RetraceQueue& queue,
-                                      VoxelGIRenderer&    voxelGI,
-                                      const char*         tag,
-                                      bool                counts,
-                                      RDGTexture          sky,
-                                      RDGTexture          bounce,
-                                      RDGTexture          previous) const
-{
-    RDGComputePassDesc retrace;
-    // Ray-count captures include the re-trace's rays as bounce rays (hybrid_retrace_bricks.glsl).
-    retrace.SetShaderProgramName(counts ? "HybridRetraceCountsBricksSP" : "HybridRetraceBricksSP");
-    if (counts)
-    {
-        retrace.BindStorageBuffer("HybridRayCounts", m_rayCountOutput);
-    }
-    retrace.SetPassTag(tag);
-    BindGuides(retrace);
-    voxelGI.BindRayInputs(retrace);
-    voxelGI.BindSoftwareRayInputs(retrace);
-    voxelGI.BindHitRadianceInputs(retrace);
-    voxelGI.BindBrickInputs(retrace);
-    retrace.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
-    retrace.BindStorageBuffer("HybridRetraceHeader", queue.header);
-    retrace.BindStorageBuffer("HybridRetraceRays", queue.rays, RDGContentGuarantee::eConsumeProducedElements);
-    retrace.BindStorageBuffer("HybridRetraceReceivers", queue.receivers, RDGContentGuarantee::eConsumeProducedElements);
-    retrace.BindStorageImage("retraceSky", sky);
-    retrace.BindStorageImage("retraceBounce", bounce);
-    retrace.BindStorageImage("retraceBouncePrevious", previous);
-    retrace.UseIndirectBuffer(queue.header);
-    const RDGBuffer header = queue.header;
-    m_device->GetCurrentFrameRDG()->AddComputePass(std::move(retrace)).RecordPassCommands([header](RDGPassCmdEncoder& encoder) {
-        encoder.DispatchIndirect(header, 0);
-    });
-}
-
 bool HybridGIRenderer::HasSkyLight(const VoxelGISettings& settings, const SceneUniformData& scene)
 {
     return settings.environmentLighting && scene.environment.x > 0.0f && scene.environment.z > 0.0f;
@@ -344,7 +253,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
     const bool             rays           = voxelGI.UsesRayBounce();
     const bool             reflections    = voxelGI.UsesReflections();
     const uint32_t         hardwareMask   = voxelGI.GetHardwareFeatureMask();
-    const bool             bricks         = voxelGI.UsesBrickTraversal();
+    const bool             field          = voxelGI.UsesFieldTraversal();
+    const uint64_t         visibility     = voxelGI.GetVisibilityGeneration();
     const bool             countRequested = m_rayCountOutput != nullptr || m_rayCountReadback != nullptr;
     const uint64_t         countBytes     = GetRayCountCaptureBytes(view.width, view.height);
     const bool             countValid =
@@ -423,16 +333,15 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                  || settings.previousFrameRadiance != m_previousSettings.previousFrameRadiance
                  || settings.historyFrames != m_previousSettings.historyFrames
                  || settings.specularOcclusion != m_previousSettings.specularOcclusion
-                 || settings.computeTraversal != m_previousSettings.computeTraversal
-                 || settings.brickResolution != m_previousSettings.brickResolution
+                 || settings.fieldResolution != m_previousSettings.fieldResolution
                  || settings.gather != m_previousSettings.gather || settings.probeSpacing != m_previousSettings.probeSpacing)
         {
             InvalidateHistory("settings");
         }
-        // Allocation failure can select triangles without changing the requested settings.
-        // Histories and the visibility guide must follow the geometry actually traced.
-        if (m_previousHardwareMask != hardwareMask || m_previousBrickTraversal != bricks
-            || (bricks && settings.brickResolution != m_previousSettings.brickResolution))
+        // Field preparation can trace HW RT without changing the requested settings, and a published
+        // field generation changes Compute visibility. Histories and the visibility guide must follow
+        // the representation actually traced.
+        if (m_previousHardwareMask != hardwareMask || m_previousVisibility != visibility)
         {
             InvalidateHistory("provider_changed");
         }
@@ -475,7 +384,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             unchangedReceivers && m_previousSettings.filter && m_previousSettings.referenceSamples == 0 ? 1u : 0u,
             unchangedReceivers ? 1u : 0u, skyLight ? 1u : 0u, 0u);
         m_recordedSettings       = settings;
-        m_recordedBrickTraversal = bricks;
+        m_recordedVisibility     = visibility;
         m_uniforms.sampling = glm::uvec4(m_frame, probes ? 64u : (reference ? settings.referenceSamples : settings.samples),
                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
         // A guide from a successful frame can survive geometry, opacity and sampling-setting resets.
@@ -540,7 +449,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             // Half resolution traces diffuse rays for one rotating leader per 2x2 block; an upsample
             // reconstructs the other receivers and lists those that need full-resolution rays. It needs
             // valid history (dark and dissimilar receivers are found from it) and temporal accumulation
-            // to gather each receiver's own samples, and applies to the software trace variant.
+            // to gather each receiver's own samples, and applies to the Compute-only trace variant.
             const bool halfRequested       = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
                                           || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
                                               && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
@@ -548,15 +457,10 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             m_halfDiffuse                  = halfDiffuse;
             const glm::uvec2   guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
             RDGComputePassDesc trace;
-            // Reference accumulation traces hundreds of rays per receiver and frame, more than a
-            // re-trace queue holds, so its brick variants re-trace near-lamp hits inline.
-            const bool inlineRetrace = bricks && reference;
-            trace.SetShaderProgramName(
-                TraceProgram(halfDiffuse     ? "HybridTraceHalf"
-                             : hardwareTrace ? (inlineRetrace ? "HybridTraceHardwareReference" : "HybridTraceHardware")
-                             : inlineRetrace ? "HybridTraceReference"
-                                             : "HybridTrace",
-                             countRequested, bricks, m_deterministicGuideCapture));
+            trace.SetShaderProgramName(TraceProgram(halfDiffuse     ? "HybridTraceHalf"
+                                                    : hardwareTrace ? "HybridTraceHardware"
+                                                                    : "HybridTrace",
+                                                    countRequested, field, m_deterministicGuideCapture));
             trace.SetPassTag("HybridTrace");
             BindTraceInputs(trace, voxelGI, reuseData);
             trace.BindStorageImage("nextBudget", m_history[m_current][Budget]->GetDefaultView(),
@@ -621,26 +525,9 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 trace.BindStorageImage("rawBounce", rawBounce, RDGContentGuarantee::eFullWrite);
                 trace.BindStorageImage("rawBouncePrevious", previous, RDGContentGuarantee::eFullWrite);
             }
-            // Brick traversal queues diffuse rays whose hit lies next to a lamp; a re-trace pass adds
-            // them, traced against triangles, to the images their trace pass wrote (hybrid_retrace.glsl).
-            // Only compute bounce rays are queued.
-            const bool   queuesRays    = rays && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Bounce);
-            const bool   queueRetraces = bricks && !inlineRetrace;
-            RetraceQueue retrace;
-            if (queueRetraces)
-            {
-                const uint64_t receivers = halfDiffuse ? uint64_t((view.width + 1u) / 2u) * ((view.height + 1u) / 2u)
-                                                       : uint64_t(view.width) * view.height;
-                retrace = AddRetraceQueue(trace, "hybrid_retrace", queuesRays ? receivers / kRetraceReceiversPerRay : 1u);
-            }
             graph->AddComputePass(std::move(trace)).RecordPassCommands([guideGroups](RDGPassCmdEncoder& encoder) {
                 encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
             });
-            if (queueRetraces)
-            {
-                AddRetracePass(retrace, voxelGI, "HybridRetrace", countRequested, halfDiffuse ? halfSky : rawSky,
-                               halfDiffuse ? halfBounce : rawBounce, halfDiffuse ? halfBouncePrevious : previous);
-            }
             if (halfDiffuse)
             {
                 RDGComputePassDesc upsample;
@@ -664,7 +551,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                                            RDGContentGuarantee::eProducedElements);
                 Dispatch(std::move(upsample));
                 RDGComputePassDesc fallback;
-                fallback.SetShaderProgramName(TraceProgram("HybridTraceFallback", countRequested, bricks));
+                fallback.SetShaderProgramName(TraceProgram("HybridTraceFallback", countRequested, field));
                 fallback.SetPassTag("HybridTraceFallback");
                 BindTraceInputs(fallback, voxelGI, reuseData);
                 fallback.BindStorageImage("nextBudget", m_history[m_current][Budget]->GetDefaultView());
@@ -681,21 +568,9 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                     fallback.BindStorageBuffer("HybridRayCounts", m_rayCountOutput);
                 }
                 fallback.UseIndirectBuffer(fallbackArgs);
-                RetraceQueue fallbackRetrace;
-                if (queueRetraces)
-                {
-                    fallbackRetrace =
-                        AddRetraceQueue(fallback, "hybrid_fallback_retrace",
-                                        queuesRays ? uint64_t(view.width) * view.height / kFallbackRetracePixelsPerRay : 1u);
-                }
                 graph->AddComputePass(std::move(fallback)).RecordPassCommands([fallbackArgs](RDGPassCmdEncoder& encoder) {
                     encoder.DispatchIndirect(fallbackArgs, sizeof(uint32_t));
                 });
-                if (queueRetraces)
-                {
-                    AddRetracePass(fallbackRetrace, voxelGI, "HybridFallbackRetrace", countRequested, rawSky, rawBounce,
-                                   previous);
-                }
             }
             if (countRequested)
             {
@@ -991,7 +866,7 @@ void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_previousRayBounce               = m_uniforms.bounce.x != 0;
         m_previousReflections             = m_uniforms.reflection.x != 0;
         m_previousHardwareMask            = m_uniforms.provider.z;
-        m_previousBrickTraversal          = m_recordedBrickTraversal;
+        m_previousVisibility              = m_recordedVisibility;
         m_previousScreenProbes            = m_screenProbes;
         if (m_bounceResponsiveFrames != 0)
         {
@@ -1032,8 +907,6 @@ void HybridGIRenderer::DestroyPixelHistory()
         m_device->DestroyBuffer(m_guide[side]);
         m_guide[side] = nullptr;
     }
-    m_device->DestroyBuffer(m_retraceHeader);
-    m_retraceHeader = nullptr;
 }
 
 void HybridGIRenderer::Destroy()

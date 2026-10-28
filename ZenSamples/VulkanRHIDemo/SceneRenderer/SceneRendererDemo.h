@@ -114,6 +114,15 @@ private:
     void UpdateDynamicLight(float frameTime);
 
     bool GetGIMotionFixture(uint32_t& moving, Mat4& original) const;
+    bool        PrepareProfileWorkload();
+    bool        UpdateProfileWorkload(uint32_t frame);
+    std::string m_profileWorkload{"still"};
+    std::string m_profileTargetScene;
+    uint32_t    m_profileInstance{UINT32_MAX};
+    Mat4        m_profileTransform{1};
+    Vec3        m_profileCamera{0};
+    float       m_profileExtent{1};
+    bool        m_profileInitialized{false};
 
     bool m_useAssetCache{true};
 

@@ -127,11 +127,8 @@ bool WriteLightingMetadata(const std::string&        path,
     const uint32_t sampleCountMax = sampleCount + (adaptive ? 2u : 0u);
     const uint32_t specularSamples =
         settings.specularOcclusion ? (settings.referenceSamples != 0 ? settings.referenceSamples : 1u) : 0u;
-    const bool            brickTraversal = reconstructed && server.RequestVoxelGI()->UsesBrickTraversal();
-    const rc::BrickScene& bricks         = server.RequestVoxelGI()->GetBrickScene();
-    const bool            bricksReady    = brickTraversal && bricks.IsReady();
+    const bool fieldTraversal = reconstructed && server.RequestVoxelGI()->UsesFieldTraversal();
     // CaptureLighting has completed all GPU work before serializing metadata and readbacks.
-    const rc::BrickSceneStatistics  brickStatistics = bricksReady ? bricks.ReadStatistics() : rc::BrickSceneStatistics{};
     const rc::ScreenProbeStatistics probeStatistics = probes ? hybrid->GetScreenProbeStatistics() : rc::ScreenProbeStatistics{};
     std::ofstream                   output(path + ".lighting.json");
 
@@ -148,10 +145,7 @@ bool WriteLightingMetadata(const std::string&        path,
             : server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid == nullptr ? "cone"
                                                                                           : "pbr")
         << "\",\"analytic_visibility\":\""
-        << (reconstructed && server.RequestVoxelGI()->UsesRayShadows()
-                ? (server.RequestVoxelGI()->UsesHardwareShadows() ? "hardware_shadow_rays" : "software_shadow_rays")
-                : "mesh_shadow_maps")
-        << "\""
+        << (reconstructed && server.RequestVoxelGI()->UsesRayShadows() ? "hardware_shadow_rays" : "mesh_shadow_maps") << "\""
         << ",\"reflectance_policy\":\"" << (voxelizer.UsesAveragedReflectance() ? "averaged" : "owner")
         << "\",\"voxel_resolution\":" << voxelizer.GetVoxelTexResolution()
         << ",\"voxel_geometry_generation\":" << voxelizer.GetGeometryRevision()
@@ -171,27 +165,21 @@ bool WriteLightingMetadata(const std::string&        path,
 
     WriteFloatArray(output, &data.environment.x, 4);
 
+    output << ",\"tier\":\""
+           << (server.GetRenderOption() == rc::RenderOption::eVoxelGI
+                   ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "compute")
+                   : "minimum")
+           << "\",\"ray_provider\":\""
+           << (reconstructed ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "voxel") : "legacy")
+           << "\",\"receiver_position\":\"" << (reconstructed ? "raster_fp32" : "depth")
+           << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider) << ",\"provider_reason\":\""
+           << server.RequestVoxelGI()->GetProviderReason() << "\""
+           << ",\"hardware_feature_mask\":" << hardwareMask
+           << ",\"requested_hardware_feature_mask\":" << settings.GetHardwareFeatureMask() << ",\"visibility_geometry\":\""
+           << (fieldTraversal ? "triangles_and_distance_field" : "triangles") << "\""
+           << ",\"requested_field_resolution\":" << settings.fieldResolution;
+    WriteDistanceFieldMetadata(output, *server.RequestVoxelGI());
     output
-        << ",\"tier\":\""
-        << (server.GetRenderOption() == rc::RenderOption::eVoxelGI
-                ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "compute")
-                : "minimum")
-        << "\",\"ray_provider\":\""
-        << (reconstructed ? (server.RequestVoxelGI()->UsesHardwareQueries() ? "hardware" : "voxel") : "legacy")
-        << "\",\"receiver_position\":\"" << (reconstructed ? "raster_fp32" : "depth")
-        << "\",\"requested_provider\":" << static_cast<uint32_t>(settings.rayProvider) << ",\"provider_reason\":\""
-        << server.RequestVoxelGI()->GetProviderReason() << "\""
-        << ",\"hardware_feature_mask\":" << hardwareMask
-        << ",\"requested_hardware_feature_mask\":" << settings.GetHardwareFeatureMask() << ",\"visibility_geometry\":\""
-        << (brickTraversal ? "triangles_and_bricks" : "triangles") << "\""
-        << ",\"compute_traversal\":\"" << (brickTraversal ? "bricks" : "software_bvh") << "\""
-        << ",\"requested_compute_traversal\":\""
-        << (settings.computeTraversal == rc::VoxelGISettings::ComputeTraversal::Bricks ? "bricks" : "triangles") << "\""
-        << ",\"brick_resolution\":" << settings.brickResolution << ",\"brick_scene_ready\":" << (bricksReady ? "true" : "false")
-        << ",\"brick_scene_bytes\":" << bricks.GetResidentBytes() << ",\"brick_capacity\":" << bricks.GetCapacity()
-        << ",\"brick_allocated\":" << brickStatistics.allocatedBricks
-        << ",\"brick_overflow\":" << (brickStatistics.overflow ? "true" : "false")
-        << ",\"brick_large_triangles\":" << brickStatistics.largeTriangles
         << ",\"probe_uniform_count\":" << probeStatistics.uniformProbes
         << ",\"probe_adaptive_capacity\":" << probeStatistics.adaptiveCapacity
         << ",\"probe_adaptive_allocated\":" << probeStatistics.adaptiveAllocated
@@ -849,10 +837,10 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
         succeeded                     = values != nullptr && outsideValues != nullptr;
         if (succeeded)
         {
-            uint64_t totals[8]{};
+            uint64_t totals[ZEN_GI_TRACE_COUNT_WORDS]{};
             for (uint64_t index = 0; index < bytes / sizeof(uint32_t); ++index)
             {
-                totals[index % 8] += values[index];
+                totals[index % ZEN_GI_TRACE_COUNT_WORDS] += values[index];
             }
             uint32_t outside[rc::VoxelGIRenderer::kRayTotalsBytes / sizeof(uint32_t)]{};
             std::memcpy(outside, outsideValues, sizeof(outside));
@@ -863,9 +851,9 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
             if (succeeded)
             {
                 stream
-                    << "{\"version\":2,\"scope\":\"screen_space_hybrid_trace\",\"width\":" << width << ",\"height\":" << height
+                    << "{\"version\":3,\"scope\":\"screen_space_hybrid_trace\",\"width\":" << width << ",\"height\":" << height
                     << ",\"frame\":" << hybrid->GetFrame()
-                    << ",\"counter_point\":\"Software query entry before BVH culling; hardware rayQueryInitialize after scene-bounds culling\""
+                    << ",\"counter_point\":\"Field query entry; hardware rayQueryInitialize after scene-bounds culling. Field work includes retries.\""
                     << ",\"note\":\"Shared closest queries are counted once under sky/specular. Rays issued outside the hybrid trace are under outside_trace. Diagnostic shader timings are not production timings.\"";
                 const char* providers[] = {"compute", "hardware"};
                 const char* features[]  = {"sky", "specular", "bounce", "reflection"};
@@ -879,6 +867,13 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
                     }
                     stream << '}';
                 }
+                const char* work[] = {"iterations", "distance_samples", "unavailable_rays", "iteration_limits"};
+                stream << ",\"field_work\":{";
+                for (uint32_t counter = 0; counter < 4; ++counter)
+                {
+                    stream << (counter == 0 ? "" : ",") << '"' << work[counter] << "\":" << totals[8 + counter];
+                }
+                stream << '}';
                 // Sky-cache and injection rays are issued only on frames that update them.
                 stream
                     << ",\"outside_trace\":{\"sky_cache_updated\":" << (skyCache ? "true" : "false")
@@ -890,11 +885,23 @@ bool SceneRendererDemo::CaptureRayCounts(const std::string& path)
                     stream << ",\"" << providers[provider] << "\":{";
                     for (uint32_t slot = 0; slot < 4; ++slot)
                     {
-                        stream << (slot == 0 ? "" : ",") << '"' << slots[slot] << "\":" << outside[slot * 2 + provider];
+                        stream << (slot == 0 ? "" : ",") << '"' << slots[slot]
+                               << "\":" << outside[slot * ZEN_GI_TOTAL_COUNT_WORDS + provider];
                     }
                     stream << '}';
                 }
-                stream << "}}\n";
+                stream << ",\"field_work\":{";
+                for (uint32_t slot = 0; slot < 4; ++slot)
+                {
+                    stream << (slot == 0 ? "" : ",") << '"' << slots[slot] << "\":{";
+                    for (uint32_t counter = 0; counter < 4; ++counter)
+                    {
+                        stream << (counter == 0 ? "" : ",") << '"' << work[counter]
+                               << "\":" << outside[slot * ZEN_GI_TOTAL_COUNT_WORDS + 2 + counter];
+                    }
+                    stream << '}';
+                }
+                stream << "}}}\n";
                 stream.flush();
                 succeeded = stream.good();
             }

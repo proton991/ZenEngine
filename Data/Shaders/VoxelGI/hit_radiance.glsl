@@ -1,6 +1,9 @@
 #ifndef ZEN_HIT_RADIANCE
 #define ZEN_HIT_RADIANCE
 #ifdef HIT_LIGHT_CACHE
+#    if defined(HYBRID_FIELD_TRAVERSAL)
+#        include "../ShadowMapping/scene_shadows.glsl"
+#    endif
 #    include "light_visibility_cache.glsl"
 #    include "voxel_surface_class.glsl"
 // Light-visibility caches of hitRadiance and hitRadiancePrevious (light_visibility_cache.glsl).
@@ -20,9 +23,17 @@ layout(std430, set = 1, binding = 41) readonly buffer HitLightCachePrevious
 hitLightCachePrevious;
 // Averaged reflectance, or the owner albedo that the normal's alpha weights.
 layout(set = 1, binding = 42) uniform sampler3D hitReflectance;
-// Whether a point or spot light reaches a hit; the trace defines it with its bounce provider.
-bool HitLightVisible(HybridRayResult hit, SceneLight light);
+// Fraction of a point or spot light reaching a hit; the trace defines it with its bounce provider.
+// lightIndex is the scene light, which the light-visibility cache stores at the same index.
+float HitLightVisibility(HybridRayResult hit, SceneLight light, int lightIndex);
 #endif
+// Hits outside the radiance cache still block visibility, but no cache cell describes them: they
+// never borrow an edge cell's radiance, including through the neighbour retries below.
+bool HitInsideCache(vec3 position)
+{
+    vec3 local = (position - gi.gridMinVoxelSize.xyz) / gi.gridMinVoxelSize.w;
+    return all(greaterThanEqual(local, vec3(0))) && all(lessThan(local, vec3(gi.volume.x)));
+}
 // Base-level cache lookup shared by both query providers. The cache is isotropic,
 // but its owner normal must face the incoming ray; the back of a thin wall cannot
 // borrow radiance from its illuminated front. No radiance mips are sampled.
@@ -73,53 +84,6 @@ vec3 HitReflectance(sampler3D normals, HybridRayResult hit, int axis, bool avera
     }
     return reflectance;
 }
-// Brick hits closer than this many class cells to a cached point or spot light are re-traced
-// against triangles (BrickRetraceTriangles). On New Sponza, all lights' bounce with bricks and probes
-// against the CUDA reference: 0.5 cells -26% (floor -43%), 0.75 -19% (-25%), 1 -11% (-5%), 1.5
-// -11% (-4%); without re-tracing -26% (-41%). The radius barely changes the cost.
-#    define ZEN_BRICK_RETRACE_CELLS 1.0
-// Whether a ray hit lies within ZEN_BRICK_RETRACE_CELLS class cells of a cached point or spot light.
-// Lamp light reaches a room through lantern openings and frames centimetres wide, which fine voxels
-// close: on New Sponza (uniform albedo, 128-cell bricks) brick traversal lost 80-85% of the floor's
-// lamp bounce, and sun bounce was within 8%.
-bool HitNearLocalLight(vec3 position)
-{
-    bool near = false;
-    if (gi.limits.w > 0.5)
-    {
-        uvec4 header = hitLightCache.lightCount;
-        float size   = gi.gridMinVoxelSize.w * gi.volume.x / float(max(int(header.z), 1));
-        uint  count  = min(header.x, uint(ZEN_LIGHT_CACHE_LIGHTS));
-        for (uint i = 0u; i < count && !near; ++i)
-        {
-            SceneLight light = hitLightCache.cacheLights[i];
-            near =
-                int(light.directionType.w) != 0 && distance(light.positionRange.xyz, position) < ZEN_BRICK_RETRACE_CELLS * size;
-        }
-    }
-    return near;
-}
-#    ifdef HYBRID_BRICK_TRAVERSAL
-// Class cells a re-trace follows triangles before bricks take over again. A ray through a
-// lantern's openings would otherwise cross the room against every triangle.
-#        define ZEN_BRICK_RETRACE_SEGMENT_CELLS 2.0
-// Re-traces a ray queued by a brick trace (probe_trace.glsl, hybrid_trace.glsl) from one fine voxel
-// before its hit next to a lamp: bricks are conservative, so no triangle lies closer. Opaque
-// triangles over ZEN_BRICK_RETRACE_SEGMENT_CELLS class cells, then bricks from the segment's end,
-// in mid-air, so without the starting-run skip. Alpha masks are ignored: testing them more than
-// doubled the re-trace's cost in probe traces (software_ray_query.glsl).
-HybridRayResult BrickRetraceTriangles(vec3 start, vec3 direction)
-{
-    float           size    = gi.gridMinVoxelSize.w * gi.volume.x / float(max(int(hitLightCache.lightCount.z), 1));
-    float           segment = ZEN_BRICK_RETRACE_SEGMENT_CELLS * size;
-    HybridRayResult result  = SoftwareTraceOpaqueRay(start, direction, segment, true);
-    if (!result.hit)
-    {
-        result = BrickTraceRaySkip(start + direction * segment, direction, 1e20, false);
-    }
-    return result;
-}
-#    endif
 // Cached scene light leaving a hit. Visibility comes from the cell's surfaces of the hit's class,
 // or from a ray for near lights; attenuation and cosine are the hit's.
 vec3 HitCachedLight(sampler3D normals, HybridRayResult hit, bool previous, out bool found)
@@ -150,10 +114,9 @@ vec3 HitCachedLight(sampler3D normals, HybridRayResult hit, bool previous, out b
         float      distanceToLight;
         vec3       incoming = EvaluateLight(light, hit.position, direction, distanceToLight);
         float      cosine   = max(dot(hit.normal, direction), 0.0);
-        if (cosine > 0.0 && any(greaterThan(incoming, vec3(0)))
-            && (!LightCacheNear(light, center, size) || HitLightVisible(hit, light)))
+        if (cosine > 0.0 && any(greaterThan(incoming, vec3(0))))
         {
-            sum += incoming * cosine;
+            sum += incoming * cosine * (LightCacheNear(light, center, size) ? HitLightVisibility(hit, light, i) : 1.0);
         }
     }
     if (any(greaterThan(sum, vec3(0))))
@@ -167,8 +130,16 @@ vec3 HitCachedLight(sampler3D normals, HybridRayResult hit, bool previous, out b
 // uncached lights, and the cached scene lights are added per hit (light_visibility_cache.glsl).
 vec3 HitRadiance(sampler3D radiance, sampler3D normals, HybridRayResult hit, vec3 direction, bool previous, out bool rejected)
 {
-    vec3 value    = vec3(0);
-    bool hasFace  = hit.hit && dot(hit.normal, hit.normal) > 0.0;
+    vec3 value   = vec3(0);
+    bool hasFace = hit.hit && dot(hit.normal, hit.normal) > 0.0 && HitInsideCache(hit.position);
+    bool found   = false;
+    vec3 cached  = vec3(0);
+#ifdef HIT_LIGHT_CACHE
+    if (hasFace && gi.limits.w > 0.5)
+    {
+        cached = HitCachedLight(normals, hit, previous, found);
+    }
+#endif
     bool accepted = hasFace && HitRadianceCell(radiance, normals, hit.cell, direction, value);
     if (hasFace && !accepted)
     {
@@ -184,14 +155,6 @@ vec3 HitRadiance(sampler3D radiance, sampler3D normals, HybridRayResult hit, vec
         adjacent[axis] += direction[axis] > 0.0 ? -1 : 1;
         accepted        = HitRadianceCell(radiance, normals, adjacent, direction, value);
     }
-    bool found  = false;
-    vec3 cached = vec3(0);
-#ifdef HIT_LIGHT_CACHE
-    if (hasFace && gi.limits.w > 0.5)
-    {
-        cached = HitCachedLight(normals, hit, previous, found);
-    }
-#endif
     rejected = !accepted && !found;
     return ((accepted ? value : vec3(0)) + cached) * gi.volume.w;
 }

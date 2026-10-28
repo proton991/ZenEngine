@@ -113,7 +113,9 @@ vec4 ReconstructReflection(ivec2      p,
                            vec2       surfacePixel,
                            inout vec3 radiance)
 {
-    float distance = texelFetch(rawReflection, p, 0).x;
+    vec2  rawGuide = texelFetch(rawReflection, p, 0).xy;
+    float distance = rawGuide.x;
+    bool  observed = rawGuide.y >= 0.0;
     // A stochastic miss must still average its zero radiance with preceding hits. Borrow a current
     // same-surface distance for parallax when a neighbour hit; never infer radiance from this guide.
     if (distance <= 0.0 && roughness < 0.4)
@@ -203,13 +205,13 @@ vec4 ReconstructReflection(ivec2      p,
             }
         }
     }
-    float length = 1.0;
+    float length = observed ? 1.0 : 0.0;
     if (weight >= 0.01)
     {
         oldValue    /= weight;
         oldMoments  /= weight;
         float limit  = reference ? float(hybrid.sampling.z) : min(float(hybrid.sampling.z), roughness < 0.2 ? 4.0 : 16.0);
-        if (!reference && (hybrid.reflection.z != 0u || moving))
+        if (observed && !reference && (hybrid.reflection.z != 0u || moving))
         {
             // The box guards camera motion only. With one ray per pixel, dim reflections often leave a
             // whole 9x9 neighbourhood without a hit; after a cache change the box then emptied valid
@@ -218,9 +220,15 @@ vec4 ReconstructReflection(ivec2      p,
                                         hybrid.reflection.w != 0u, moving, oldValue, oldMoments);
             limit = min(limit, 8.0);
         }
-        length   = min(oldValue.a + 1.0, limit);
-        radiance = mix(oldValue.rgb, radiance, 1.0 / length);
-        moments  = mix(oldMoments, moments, 1.0 / length);
+        length      = min(oldValue.a + (observed ? 1.0 : 0.0), limit);
+        float alpha = observed ? 1.0 / max(length, 1.0) : 0.0;
+        radiance    = mix(oldValue.rgb, radiance, alpha);
+        moments     = mix(oldMoments, moments, alpha);
+    }
+    if (!observed && weight < 0.01)
+    {
+        radiance = vec3(0);
+        moments  = vec2(0);
     }
     if (identity == 0u)
     {
@@ -242,6 +250,8 @@ void main()
         return;
     }
     vec4  sky = texelFetch(rawSky, p, 0), spec = texelFetch(rawSpecular, p, 0);
+    bool  skySample      = sky.a >= 0.0;
+    bool  specularSample = spec.a >= 0.0;
     vec3  position = HybridPosition(p), n = HybridNormal(p), ng = HybridGeometricNormal(p);
     uvec2 identity = texelFetch(receiverSurface, p, 0).rg;
     if (texelFetch(receiverDepth, p, 0).r >= 1.0)
@@ -262,6 +272,7 @@ void main()
     // Bounce histories are allocated at full size only while ray-hit bounce is selected.
     bool  rays   = hybrid.bounce.x != 0u;
     vec4  bounce = rays ? vec4(texelFetch(rawBounce, p, 0).rgb, 1.0) : vec4(0), oldBounce = vec4(0);
+    bool  bounceSample     = !rays || texelFetch(rawBounce, p, 0).a >= 0.0;
     vec2  oldBounceMoments = vec2(0);
     float reason           = hybrid.sampling.w == 0u ? 1.0 : 2.0;
     float roughness        = texelFetch(receiverRoughness, p, 0).g;
@@ -320,22 +331,33 @@ void main()
     }
     float luminance = HybridLuminance(sky.rgb);
     vec4  moments   = vec4(luminance, luminance * luminance, spec.a, spec.a * spec.a);
-    vec2  lengths   = vec2(1);
+    vec2  lengths   = vec2(skySample ? 1.0 : 0.0, specularSample ? 1.0 : 0.0);
     if (weight >= 0.01)
     {
-        lengths.x   = min(oldLength.x / weight + 1.0, float(hybrid.sampling.z));
-        float alpha = 1.0 / lengths.x;
+        lengths.x   = min(oldLength.x / weight + (skySample ? 1.0 : 0.0), float(hybrid.sampling.z));
+        float alpha = skySample ? 1.0 / max(lengths.x, 1.0) : 0.0;
         sky         = mix(oldSky / weight, sky, alpha);
         moments.rg  = mix(oldMoments.rg / weight, moments.rg, alpha);
         reason      = 0.0;
     }
+    if (!skySample && weight < 0.01)
+    {
+        sky        = vec4(0);
+        moments.rg = vec2(0);
+    }
     if (specWeight >= 0.01)
     {
-        lengths.y  = min(oldLength.y / specWeight + 1.0,
-                         (hybrid.rejection.w > 0.5 ? float(hybrid.sampling.z)
-                                                   : mix(4.0, float(hybrid.sampling.z), smoothstep(0.04, 0.4, roughness))));
-        spec.a     = mix(oldSpec.a / specWeight, spec.a, 1.0 / lengths.y);
-        moments.ba = mix(oldMoments.ba / specWeight, moments.ba, 1.0 / lengths.y);
+        lengths.y   = min(oldLength.y / specWeight + (specularSample ? 1.0 : 0.0),
+                          (hybrid.rejection.w > 0.5 ? float(hybrid.sampling.z)
+                                                    : mix(4.0, float(hybrid.sampling.z), smoothstep(0.04, 0.4, roughness))));
+        float alpha = specularSample ? 1.0 / max(lengths.y, 1.0) : 0.0;
+        spec.a      = mix(oldSpec.a / specWeight, spec.a, alpha);
+        moments.ba  = mix(oldMoments.ba / specWeight, moments.ba, alpha);
+    }
+    if (!specularSample && specWeight < 0.01)
+    {
+        spec.a     = 0.0;
+        moments.ba = vec2(0);
     }
     if (identity.g == 0u)
     {
@@ -352,15 +374,21 @@ void main()
         oldBounceMoments /= weight;
         // Steady diffuse bounce uses the configured history; cache changes still respond within eight frames.
         float limit = float(hybrid.sampling.z);
-        if (hybrid.bounce.z != 0u && hybrid.rejection.w < 0.5)
+        if (bounceSample && hybrid.bounce.z != 0u && hybrid.rejection.w < 0.5)
         {
             HybridUpdateRadianceHistory(p, identity.g, position, ng, rawBounce, rawBouncePrevious, hybrid.bounce.w != 0u, true,
                                         oldBounce, oldBounceMoments);
             limit = min(limit, 8.0);
         }
-        bounce.a      = min(oldBounce.a + 1.0, limit);
-        bounce.rgb    = mix(oldBounce.rgb, bounce.rgb, 1.0 / bounce.a);
-        bounceMoments = mix(oldBounceMoments, bounceMoments, 1.0 / bounce.a);
+        bounce.a      = min(oldBounce.a + (bounceSample ? 1.0 : 0.0), limit);
+        float alpha   = bounceSample ? 1.0 / max(bounce.a, 1.0) : 0.0;
+        bounce.rgb    = mix(oldBounce.rgb, bounce.rgb, alpha);
+        bounceMoments = mix(oldBounceMoments, bounceMoments, alpha);
+    }
+    else if (!bounceSample)
+    {
+        bounce        = vec4(0);
+        bounceMoments = vec2(0);
     }
     if (identity.g == 0u)
     {

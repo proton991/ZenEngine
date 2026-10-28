@@ -1,5 +1,0 @@
-#version 450
-#extension GL_GOOGLE_include_directive : require
-// probe_temporal.comp with the brick probe trace's re-traced rays (probe_retrace_bricks.comp).
-#define PROBE_RETRACED
-#include "probe_temporal.glsl"

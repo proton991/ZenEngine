@@ -153,12 +153,11 @@ TEST_P(ConeVoxelGIIntegrationTest, HitLightCacheEvaluatesVisibleLightsAtTheHit)
     const Vec4 lit(Vec3(.1f, .2f, .3f) + (4.0f / ((3.6f - 1.75f) * (3.6f - 1.75f)) + 2.0f) * Vec3(.25f, .125f, .5f) / pi, 0);
     // The previous cache sees no light there; isotropic radiance remains.
     const Vec4 previousLit(.1f, .2f, .3f, 0);
-    // Near the point light, the hit's own ray decides; the cached bit does not. Hits 2 and 3 lie 0.7 cells
-    // from it, within ZEN_BRICK_RETRACE_CELLS, so brick traversal re-traces them (alpha + 2).
+    // Near the point light, the hit's own ray decides; the cached bit does not (hits 2 and 3, 0.7 cells away).
     const float nearLight = 4.0f / ((3.6f - 2.9f) * (3.6f - 2.9f)) / pi;
     // The +x class is absent from cell (1,2,1); the neighbor on the ray's side has it, with its reflectance.
     const Vec4 neighbor(Vec3(2.0f * .25f / pi), 0);
-    const Vec4 expected[6] = {lit, previousLit, Vec4(0, 0, 0, 2), Vec4(Vec3(nearLight), 2), Vec4(0, 0, 0, 1), neighbor};
+    const Vec4 expected[6] = {lit, previousLit, Vec4(0, 0, 0, 0), Vec4(Vec3(nearLight), 0), Vec4(0, 0, 0, 1), neighbor};
     for (uint32_t i = 0; i < 6; ++i)
     {
         SCOPED_TRACE(i);
@@ -166,60 +165,6 @@ TEST_P(ConeVoxelGIIntegrationTest, HitLightCacheEvaluatesVisibleLightsAtTheHit)
         {
             EXPECT_NEAR(result[i][component], expected[i][component], 1e-5f * (1.0f + std::abs(expected[i][component])));
         }
-    }
-}
-
-// Reference accumulation can queue hundreds of near-lamp rays for one receiver; the re-trace pass
-// must add every one, since the trace left them all out of its estimate.
-TEST_P(ConeVoxelGIIntegrationTest, RetraceVisitsEveryQueuedRayOfAReceiver)
-{
-    ShaderProgramManager::GetInstance().StoreProgram(
-        ZEN_NEW() ComputeFileSP(device, "RetraceChainCheckSP", "VoxelGI/Calibration/retrace_chain_check.comp.spv"));
-    // Receiver 0 chains 200 rays of weight 1, newest first; receiver 1 chains 3 rays of weight 0.5.
-    constexpr uint32_t   kLongChain = 200;
-    constexpr uint32_t   kRays      = kLongChain + 3;
-    constexpr uint32_t   kNone      = 0xffffffffu;
-    HeapVector<uint32_t> rays(kRays * 8u, 0u);
-    for (uint32_t ray = 0; ray < kRays; ++ray)
-    {
-        const bool  first   = ray == 0 || ray == kLongChain;
-        const float weight  = ray < kLongChain ? 1.0f : 0.5f;
-        rays[ray * 8u + 3u] = first ? kNone : ray - 1u;
-        std::memcpy(&rays[ray * 8u + 7u], &weight, sizeof(weight));
-    }
-    const uint32_t header[5]    = {1, 1, 1, 2, kRays};
-    const uint32_t receivers[4] = {0, kLongChain - 1u, 1, kRays - 1u};
-    RHIBuffer*     headerBuffer = Buffer(sizeof(header), RHIBufferAllocateType::eCPUWrite, header);
-    RHIBuffer*     rayBuffer =
-        Buffer(static_cast<uint32_t>(rays.size() * sizeof(uint32_t)), RHIBufferAllocateType::eCPUWrite, rays.data());
-    RHIBuffer*  receiverBuffer = Buffer(sizeof(receivers), RHIBufferAllocateType::eCPUWrite, receivers);
-    RHIBuffer*  output         = Buffer(2 * sizeof(glm::uvec2), RHIBufferAllocateType::eGPU);
-    RHIBuffer*  readback       = Buffer(2 * sizeof(glm::uvec2), RHIBufferAllocateType::eCPURead);
-    RenderGraph graph("retrace_chain_contract");
-    ASSERT_TRUE(graph.Begin());
-    RDGComputePassDesc pass;
-    pass.SetShaderProgramName("RetraceChainCheckSP");
-    pass.BindStorageBuffer("HybridRetraceHeader", headerBuffer);
-    pass.BindStorageBuffer("HybridRetraceRays", rayBuffer);
-    pass.BindStorageBuffer("HybridRetraceReceivers", receiverBuffer);
-    pass.BindStorageBuffer("Results", output, RDGContentGuarantee::eFullWrite);
-    graph.AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
-    graph.AddTransferPass("ReadRetraceChain").CopyBuffer(output, readback, {0, 0, 2 * sizeof(glm::uvec2)}).NeverCull();
-    ASSERT_TRUE(graph.End());
-    ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
-    device->FlushRHIThread();
-    device->WaitForIdle();
-    const HeapVector<glm::uvec2> result = ReadStaticBuffer<glm::uvec2>(readback);
-    ASSERT_EQ(result.size(), 2u);
-    const float    weights[2] = {static_cast<float>(kLongChain), 1.5f};
-    const uint32_t counts[2]  = {kLongChain, 3};
-    for (uint32_t receiver = 0; receiver < 2; ++receiver)
-    {
-        SCOPED_TRACE(receiver);
-        float weight = 0.0f;
-        std::memcpy(&weight, &result[receiver].y, sizeof(weight));
-        EXPECT_EQ(result[receiver].x, counts[receiver]);
-        EXPECT_FLOAT_EQ(weight, weights[receiver]);
     }
 }
 

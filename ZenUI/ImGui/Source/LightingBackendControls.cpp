@@ -23,16 +23,15 @@ bool DrawGIPresetControls(rc::VoxelGIRuntimeSettings& settings, const char* sele
         ImGui::EndCombo();
     }
     ImGui::TextWrapped(
-        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. All gather through screen probes; GI rays not on HW RT trace bricks.");
+        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. All gather through screen probes; GI rays not on HW RT trace the distance field.");
     ImGui::TextWrapped("Selection: %s. GI tracing can override the preset preference.", selectionReason);
     return changed;
 }
 
 namespace
 {
-using Feature   = rc::VoxelGISettings::Feature;
-using Provider  = rc::VoxelGISettings::RayProvider;
-using Traversal = rc::VoxelGISettings::ComputeTraversal;
+using Feature  = rc::VoxelGISettings::Feature;
+using Provider = rc::VoxelGISettings::RayProvider;
 
 // The ray features each pass traces, in GIPass order. The sky cache and shadows trace one feature.
 struct GIPassRow
@@ -50,26 +49,18 @@ const GIPassRow kGIPassRows[] = {
 static_assert(std::size(kGIPassRows) == static_cast<size_t>(GIPass::Count));
 
 // Indexed by GITracer.
-const char* const kTracerNames[] = {"HW RT", "Compute: Bricks", "Compute: Software BVH", "Shadow maps", "Off", "Mixed"};
+const char* const kTracerNames[] = {"HW RT", "Compute: Distance field", "Shadow maps", "Off", "Mixed"};
 
-const char* TracerName(GIPass pass, GITracer tracer)
+const char* TracerName(GITracer tracer)
 {
-    return pass == GIPass::Shadows && tracer == GITracer::SoftwareBVH ? "Software BVH"
-                                                                      : kTracerNames[static_cast<uint32_t>(tracer)];
+    return kTracerNames[static_cast<uint32_t>(tracer)];
 }
 
-bool IsComputeTracer(GITracer tracer)
-{
-    return tracer == GITracer::Bricks || tracer == GITracer::SoftwareBVH;
-}
-
-// Bricks serve only GI gather rays: the sky cache traces triangles, and direct shadows need exact
-// geometry (brick shadows were blocky and leaky for little gain). Only direct shadows can use
-// shadow maps. Diffuse and specular GI can be switched off to tell their contributions apart.
+// The distance field serves GI rays and the sky cache; direct shadows use HW RT or shadow maps.
+// Diffuse and specular GI can be switched off to tell their contributions apart.
 bool Offers(GIPass pass, GITracer tracer)
 {
-    return tracer == GITracer::HardwareRT || tracer == GITracer::SoftwareBVH
-        || (tracer == GITracer::Bricks && (pass == GIPass::Diffuse || pass == GIPass::Specular))
+    return tracer == GITracer::HardwareRT || (tracer == GITracer::Field && pass != GIPass::Shadows)
         || (tracer == GITracer::ShadowMaps && pass == GIPass::Shadows)
         || (tracer == GITracer::Off && (pass == GIPass::Diffuse || pass == GIPass::Specular));
 }
@@ -79,9 +70,8 @@ GITracer GetGIPassTracer(const rc::VoxelGISettings& settings, GIPass pass)
 {
     const GIPassRow& row = kGIPassRows[static_cast<uint32_t>(pass)];
     // A disabled feature traces no rays, so its provider does not make the pass Mixed.
-    bool      firstOn   = true;
-    bool      secondOn  = false;
-    Traversal traversal = settings.computeTraversal;
+    bool firstOn  = true;
+    bool secondOn = false;
     switch (pass)
     {
         case GIPass::Diffuse:
@@ -92,18 +82,12 @@ GITracer GetGIPassTracer(const rc::VoxelGISettings& settings, GIPass pass)
             firstOn  = settings.specularOcclusion;
             secondOn = settings.specularOcclusion && settings.reflections != rc::VoxelGISettings::Reflections::Off;
             break;
-        // The sky cache traces triangles; direct shadows use them only when explicitly selected.
-        case GIPass::SkyCache: traversal = Traversal::Triangles; break;
-        case GIPass::Shadows:
-            firstOn   = settings.UsesRayShadows(true);
-            traversal = Traversal::Triangles;
-            break;
+        // Direct shadows trace HW rays when selected; otherwise they use shadow maps.
+        case GIPass::Shadows: firstOn = settings.UsesRayShadows(true); break;
         default: break;
     }
     const Provider provider = settings.GetFeatureProvider(row.first);
-    GITracer       tracer   = provider == Provider::Hardware ? GITracer::HardwareRT
-                            : traversal == Traversal::Bricks ? GITracer::Bricks
-                                                             : GITracer::SoftwareBVH;
+    GITracer       tracer   = provider == Provider::Hardware ? GITracer::HardwareRT : GITracer::Field;
     if (secondOn && settings.GetFeatureProvider(row.second) != provider)
     {
         tracer = GITracer::Mixed;
@@ -129,7 +113,7 @@ void SetGIPassTracer(rc::VoxelGISettings& settings, GIPass pass, GITracer tracer
         settings.indirectDiffuse   = pass == GIPass::Diffuse ? false : settings.indirectDiffuse;
         settings.specularOcclusion = pass == GIPass::Specular ? false : settings.specularOcclusion;
     }
-    else if ((tracer == GITracer::HardwareRT || IsComputeTracer(tracer)) && Offers(pass, tracer))
+    else if ((tracer == GITracer::HardwareRT || tracer == GITracer::Field) && Offers(pass, tracer))
     {
         // SetFeatureProvider also enables the feature. A pass that already traces keeps its
         // bounce source and reflection setting; the voxel cone bounce is a GI attribute.
@@ -148,23 +132,14 @@ void SetGIPassTracer(rc::VoxelGISettings& settings, GIPass pass, GITracer tracer
         {
             settings.indirectDiffuse = true;
         }
-        if (IsComputeTracer(tracer) && (pass == GIPass::Diffuse || pass == GIPass::Specular))
-        {
-            settings.computeTraversal = tracer == GITracer::Bricks ? Traversal::Bricks : Traversal::Triangles;
-        }
     }
 }
 
 void SetGIRayTracing(rc::VoxelGISettings& settings, bool hardware)
 {
-    // Preserve feature enables, Compute traversal and explicit shadow-map choice.
+    // Preserve feature enables and the explicit shadow-map choice; Compute shadows use maps.
     settings.rayProvider = hardware ? Provider::Hardware : Provider::Voxel;
     settings.featureProviders.fill(settings.rayProvider);
-    if (!hardware)
-    {
-        // Global Compute defaults to maps; software shadow rays require a per-pass selection.
-        settings.featureProviders[static_cast<size_t>(Feature::Shadows)] = Provider::Auto;
-    }
 }
 
 bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason)
@@ -177,14 +152,14 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
         GITracer tracers[static_cast<size_t>(GIPass::Count)];
         bool     compute  = true;
         bool     hardware = true;
-        bool     bricks   = false;
+        bool     field    = false;
         for (uint32_t index = 0; index < static_cast<uint32_t>(GIPass::Count); ++index)
         {
             const GITracer tracer  = GetGIPassTracer(settings, static_cast<GIPass>(index));
             tracers[index]         = tracer;
             compute               &= tracer != GITracer::HardwareRT && tracer != GITracer::Mixed;
-            hardware              &= !IsComputeTracer(tracer) && tracer != GITracer::Mixed;
-            bricks                |= tracer == GITracer::Bricks;
+            hardware              &= tracer != GITracer::Field && tracer != GITracer::Mixed;
+            field                 |= tracer == GITracer::Field;
         }
 
         const char* choices[] = {"Compute", "HW RT"};
@@ -201,10 +176,10 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
             ImGui::EndCombo();
         }
         ImGui::TextWrapped(
-            "Compute uses software ray traversal for GI and shadow maps for direct shadows. HW RT uses the GPU's ray-tracing hardware. Per-pass choices below can override this.");
+            "Compute traces a GPU-built distance field for GI and uses shadow maps for direct shadows. HW RT uses the GPU's ray-tracing hardware. Per-pass choices below can override this.");
         // The scene view reports Compute GI preparation (DrawGIPreparationStatus); its
         // provider reason says nothing about HW RT availability.
-        if (!compute && std::strcmp(reason, "software_bvh_preparing") != 0)
+        if (!compute && std::strcmp(reason, "field_preparing") != 0)
         {
             if (hardwareReady)
             {
@@ -237,13 +212,13 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 const char* preview = current == GITracer::HardwareRT && !hardwareReady
                                         ? (pass == GIPass::Shadows ? "Shadow maps (HW RT unavailable)" : "HW RT (unavailable)")
-                                        : TracerName(pass, current);
+                                        : TracerName(current);
                 if (ImGui::BeginCombo("##tracer", preview))
                 {
                     for (uint32_t option = 0; option <= static_cast<uint32_t>(GITracer::Off); ++option)
                     {
                         const GITracer tracer = static_cast<GITracer>(option);
-                        if (Offers(pass, tracer) && ImGui::Selectable(TracerName(pass, tracer), tracer == current))
+                        if (Offers(pass, tracer) && ImGui::Selectable(TracerName(tracer), tracer == current))
                         {
                             SetGIPassTracer(settings, pass, tracer);
                             changed = true;
@@ -257,13 +232,9 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
         }
 
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextDisabled("Bricks are fast and approximate; Software BVH is exact and slow.%s",
-                            IsComputeTracer(tracers[static_cast<size_t>(GIPass::Diffuse)])
-                                    && IsComputeTracer(tracers[static_cast<size_t>(GIPass::Specular)])
-                                ? " Diffuse and specular GI share one Compute tracer."
-                                : "");
+        ImGui::TextDisabled("The distance field is approximate: surfaces lie within about half a sample spacing.");
         ImGui::TextDisabled("Probe placement, filtering, denoising and voxel light injection always run on Compute.");
-        ImGui::TextDisabled("Direct shadows use maps without HW RT unless Software BVH is explicitly selected.");
+        ImGui::TextDisabled("Direct shadows use shadow maps without HW RT.");
         if (tracers[static_cast<size_t>(GIPass::Diffuse)] == GITracer::Off
             || tracers[static_cast<size_t>(GIPass::Specular)] == GITracer::Off)
         {
@@ -271,13 +242,13 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
                 "Off lights that term from the unoccluded environment, as without GI. Diffuse GI keeps tracing while off.");
         }
         ImGui::PopTextWrapPos();
-        if (bricks)
+        if (field)
         {
-            const char* resolutionChoices[] = {"64", "128", "256"};
-            int         resolution          = settings.brickResolution == 64 ? 0 : settings.brickResolution == 128 ? 1 : 2;
-            if (ImGui::Combo("Brick cells per axis", &resolution, resolutionChoices, 3))
+            const char* resolutionChoices[] = {"32", "64"};
+            int         resolution          = settings.fieldResolution == 32 ? 0 : 1;
+            if (ImGui::Combo("Distance field cells per axis", &resolution, resolutionChoices, 2))
             {
-                settings.brickResolution = 64u << resolution;
+                settings.fieldResolution = 32u << resolution;
                 changed                  = true;
             }
         }
@@ -319,7 +290,7 @@ const char* GetGIPreparationStatus(bool preparing, bool hardwareReady)
 {
     return !preparing    ? nullptr
          : hardwareReady ? "Preparing Compute GI. HW RT stays active until it is ready."
-                         : "Preparing Compute GI. The view shows PBR until it is ready.";
+                         : "GI preview active. Refining lighting in the background.";
 }
 
 bool DrawGIPreparationStatus(ImDrawList& draw,

@@ -58,8 +58,10 @@ void main()
                 position     = pa * barycentric.x + pb * barycentric.y + pc * barycentric.z;
             }
         }
-        vec3 origin = HybridTraceOrigin(position, normal, 0.0);
-        // 48 environment and 16 cosine directions, the per-pixel proposal shares.
+        vec3 origin = ComputeTraceOrigin(position, normal);
+        // 48 environment and 16 cosine directions, the per-pixel proposal shares. Only a covered
+        // miss adds environment light; unavailable directions leave the average.
+        uint traced = 0u, valid = 0u;
         for (int i = 0; i < 64; ++i)
         {
             float pdf;
@@ -68,13 +70,22 @@ void main()
             vec2  u         = vec2((float(j) + 0.5) / (environmentSample ? 48.0 : 16.0), fract(float(j) * 0.61803398875));
             vec3  direction = HybridSkySample(normal, u, environmentSample, pdf);
             float cosine    = max(dot(normal, direction), 0.0);
-            if (cosine > 0.0 && !HybridTraceRay(voxelAlbedo, origin, direction, 1e20).hit)
+            if (cosine > 0.0)
             {
-                irradiance += textureLod(coneEnvironmentMap, EnvironmentDirection(direction), 0).rgb * cosine
-                            / (HYBRID_PI * max(pdf, 1e-8) * 64.0);
+                HybridRayResult hit  = HybridTraceRay(voxelAlbedo, origin, direction, 1e20);
+                traced              += 1u;
+                valid               += hit.valid ? 1u : 0u;
+                if (hit.valid && !hit.hit)
+                {
+                    irradiance += textureLod(coneEnvironmentMap, EnvironmentDirection(direction), 0).rgb * cosine
+                                / (HYBRID_PI * max(pdf, 1e-8) * 64.0);
+                }
             }
         }
-        irradiance *= 3.14159265359 * sceneUbo.environment.x;
+        irradiance *= 3.14159265359 * sceneUbo.environment.x * (valid > 0u ? float(traced) / float(valid) : 0.0);
+        // Kind 3: every traced direction was unavailable, so no estimate exists; injection then
+        // publishes the cell invalid instead of lighting it without sky.
+        receiverKind = traced > 0u && valid == 0u ? 3.0 : receiverKind;
     }
     imageStore(skyIrradiance, p, vec4(ClampHDRStorage(irradiance), receiverKind));
 #ifdef GI_COUNT_RAY_SLOT

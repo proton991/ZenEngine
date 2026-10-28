@@ -123,9 +123,13 @@ public:
         return m_renderOption;
     }
 
-    // The requested GI renders on HW RT or PBR until the scene's software BVH, built in the
-    // background, is ready (VoxelGIRenderer::IsPreparingSoftwareQueries).
+    // The requested GI renders on HW RT or PBR until the scene's distance field, built on the GPU in
+    // bounded per-frame work, is ready (VoxelGIRenderer::IsPreparingField).
     bool IsPreparingGI() const;
+
+    // The requested GI renders, but its distance field is still being completed
+    // (VoxelGIRenderer::IsRefiningField). Measurements of converged GI wait for it.
+    bool IsRefiningGI() const;
 
     VoxelGIRuntimeSettings GetVoxelGISettings() const;
 
@@ -169,5 +173,6 @@ private:
     const char*            m_giSelectionReason{"not_selected"};
     bool                   m_frameShadows{false};
     bool                   m_frameGI{false};
+    bool                   m_frameVisibility{false}; // BuildRayQueryGraph ran this frame.
 };
 } // namespace zen::rc

@@ -5,6 +5,7 @@
 #include "SceneGraph/Camera.h"
 #include "SceneGraph/SceneAnimation.h"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -18,6 +19,9 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
     m_envTextureName(sceneData.envTextureName.empty() ? "papermill.ktx" : sceneData.envTextureName),
     m_environmentOverride(sceneData.environmentOverride)
 {
+    static std::atomic<uint64_t> nextIdentity{1};
+    m_identity = nextIdentity.fetch_add(1, std::memory_order_relaxed);
+
     // Stop before changing the scene or allocating anything if the global heaps cannot bind it.
     const std::string capacityError = GetSceneBindlessCapacityError(m_pRenderDevice->GetGPUInfo().bindlessHeapCapacities,
                                                                     m_pScene->GetComponents<sg::Texture>().size(),
@@ -307,7 +311,8 @@ void RenderScene::UpdateAuthoredEnvironment()
 
 void RenderScene::PrepareBuffers()
 {
-    const HeapVector<glm::uvec4> voxelTriangles = BuildTriangleRecords();
+    HeapVector<InstanceTriangleRange> ranges;
+    const HeapVector<glm::uvec4>      voxelTriangles = BuildTriangleRecords(ranges);
 
     m_pRenderDevice->DestroyBuffer(m_pVoxelTriangleBuffer);
 
@@ -335,27 +340,47 @@ void RenderScene::PrepareBuffers()
     m_materialBuffers.MarkDirty(0, materialBytes);
     // Init runs this on empty rings: a failed allocation leaves no buffer, which
     // HasRequiredResources reports.
-    m_nodeBuffers.Update(*m_pRenderDevice, m_nodesData.empty() ? &emptyNode : m_nodesData.data(), nodeBytes, "node_data_ssbo");
-    m_materialBuffers.Update(*m_pRenderDevice, m_materialsData.empty() ? &emptyMaterial : m_materialsData.data(), materialBytes,
-                             "material_data_ssbo");
+    const bool nodesReady = m_nodeBuffers.Update(*m_pRenderDevice, m_nodesData.empty() ? &emptyNode : m_nodesData.data(),
+                                                 nodeBytes, "node_data_ssbo");
+    const bool materialsReady =
+        m_materialBuffers.Update(*m_pRenderDevice, m_materialsData.empty() ? &emptyMaterial : m_materialsData.data(),
+                                 materialBytes, "material_data_ssbo");
+    if (m_geometryReady && !m_triangleRecordsDirty && nodesReady && materialsReady && GetVertexBuffer() != nullptr
+        && m_pIndexBuffer != nullptr && GetUVBuffer() != nullptr)
+    {
+        m_instanceTriangleRanges = std::move(ranges);
+    }
 }
 
 HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const
 {
+    HeapVector<InstanceTriangleRange> ranges;
+    return BuildTriangleRecords(ranges);
+}
+
+HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges) const
+{
     HeapVector<glm::uvec4> voxelTriangles;
+    ranges.clear();
+    ranges.resize(m_instanceClasses.size());
 
     for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
     {
+        const uint32_t         instance = pNode->GetRenderableIndex();
+        InstanceTriangleRange& range    = ranges[instance];
+        range.firstTriangle             = static_cast<uint32_t>(voxelTriangles.size());
+        range.committedMask             = GetInstanceMask(instance);
         for (const sg::SubMesh* pMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
             // All triangle surfaces occlude GI. voxel_surface.glsl evaluates mask and blend
             // coverage; transmission uses the lighting contract's opaque-occluder approximation.
             for (uint32_t i = 0; pMesh->topology == sg::MeshTopology::Triangles && i + 2 < pMesh->GetIndexCount(); i += 3)
             {
-                voxelTriangles.push_back(glm::uvec4(pMesh->GetFirstIndex() + i, pNode->GetRenderableIndex(),
-                                                    pMesh->GetMaterial()->index, GetInstanceMask(pNode->GetRenderableIndex())));
+                voxelTriangles.push_back(
+                    glm::uvec4(pMesh->GetFirstIndex() + i, instance, pMesh->GetMaterial()->index, range.committedMask));
             }
         }
+        range.triangleCount = static_cast<uint32_t>(voxelTriangles.size()) - range.firstTriangle;
     }
 
     return voxelTriangles;

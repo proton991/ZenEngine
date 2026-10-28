@@ -98,13 +98,16 @@ protected:
         receiver[5] = Upload(graph, DataFormat::eR32G32B32A32SFloat, positions);
     }
 
-    void Inputs(RDGComputePassDesc& pass)
+    void Inputs(RDGComputePassDesc& pass, bool includeProbes = true)
     {
         const char* const names[] = {"receiverDepth",   "receiverNormal", "receiverRoughness",
                                      "receiverSurface", "receiverMotion", "receiverPosition"};
         pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
         pass.BindValue("uHybridData", hybrid);
-        pass.BindValue("uProbeData", probe);
+        if (includeProbes)
+        {
+            pass.BindValue("uProbeData", probe);
+        }
         pass.BindValue("uSceneData", scene);
         for (uint32_t index = 0; index < 6; ++index)
         {
@@ -868,7 +871,7 @@ TEST_P(ScreenProbeGatherIntegrationTest, PixelTemporalChecksReceiverHistoryAndSi
                                     DataFormat::eR32G32UInt,         DataFormat::eR16G16B16A16SFloat};
     const Vec4        current[]  = {Vec4(.25f, .5f, 1, .75f), Vec4(.1f, .2f, .4f, 1), Vec4(.5f, 1, 2, .25f)};
     const Vec4        previous[] = {Vec4(.75f, 1, 1.5f, .25f), Vec4(.6f, .8f, 1, 3), Vec4(1, 2, 3, .75f)};
-    for (uint32_t scenario = 0; scenario < 4; ++scenario)
+    for (uint32_t scenario = 0; scenario < 5; ++scenario)
     {
         SCOPED_TRACE(scenario);
         RenderGraph graph("TinyProbePixelHistory");
@@ -883,8 +886,9 @@ TEST_P(ScreenProbeGatherIntegrationTest, PixelTemporalChecksReceiverHistoryAndSi
         RHITexture* raw[3]{};
         for (uint32_t signal = 0; signal < 3; ++signal)
         {
-            raw[signal] = Upload(graph, DataFormat::eR32G32B32A32SFloat, HeapVector<Vec4>(Pixels, current[signal]));
-            old[signal] = Upload(graph, DataFormat::eR32G32B32A32SFloat, HeapVector<Vec4>(Pixels, previous[signal]));
+            const Vec4 sample = scenario == 4 ? Vec4(0, 0, 0, -1) : current[signal];
+            raw[signal]       = Upload(graph, DataFormat::eR32G32B32A32SFloat, HeapVector<Vec4>(Pixels, sample));
+            old[signal]       = Upload(graph, DataFormat::eR32G32B32A32SFloat, HeapVector<Vec4>(Pixels, previous[signal]));
         }
         HeapVector<Vec4>       positions(Pixels, Vec4(0, 0, 0, 3));
         HeapVector<glm::uvec2> surfaces(Pixels, glm::uvec2(0x80008000u, 1));
@@ -957,9 +961,131 @@ TEST_P(ScreenProbeGatherIntegrationTest, PixelTemporalChecksReceiverHistoryAndSi
                     {
                         expected = Vec4(.5f, .5f, .5f, reuseSignal ? 8.0f : 1.0f);
                     }
+                    if (scenario == 4 && valid)
+                    {
+                        // Unknown rays are no observation: preserve a valid history without
+                        // lengthening it, and keep rejected histories at zero length.
+                        if (signal < 3)
+                        {
+                            expected = reuseSignal ? previous[signal] : Vec4(0);
+                        }
+                        else if (signal == 3)
+                        {
+                            expected.w = reuse ? 3.0f : 0.0f;
+                        }
+                        else if (signal == 5)
+                        {
+                            expected.w = reuseSignal ? 7.0f : 0.0f;
+                        }
+                    }
                     ExpectColor(result[index], expected);
                 }
             }
+        }
+    }
+}
+
+TEST_P(ScreenProbeGatherIntegrationTest, DiagnosticTemporalKeepsMissingSamplesOutOfAllHistories)
+{
+    const char* const names[]    = {"Sky",    "Specular", "Moments", "Length",        "Position",
+                                    "Normal", "Receiver", "Bounce",  "BounceMoments", "Reflection"};
+    const DataFormat  formats[]  = {DataFormat::eR32G32B32A32SFloat, DataFormat::eR32G32B32A32SFloat,
+                                    DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
+                                    DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16SFloat,
+                                    DataFormat::eR32G32UInt,         DataFormat::eR32G32B32A32SFloat,
+                                    DataFormat::eR32G32SFloat,       DataFormat::eR32G32B32A32SFloat};
+    const Vec4        previous[] = {Vec4(.3f, .6f, .9f, .75f),
+                                    Vec4(.2f, .4f, .8f, .25f),
+                                    Vec4(.6f, .36f, .25f, .0625f),
+                                    Vec4(7, 5, 0, .5f),
+                                    Vec4(0, 0, 0, .5f),
+                                    Vec4(.5f, .5f, 0, 0),
+                                    Vec4(0),
+                                    Vec4(.1f, .2f, .3f, 9),
+                                    Vec4(.2f, .04f, 0, 0),
+                                    Vec4(.25f, .4f, .16f, 11)};
+    for (uint32_t scenario = 0; scenario < 3; ++scenario)
+    {
+        SCOPED_TRACE(scenario);
+        RenderGraph graph("DiagnosticMissingSamples");
+        ASSERT_TRUE(graph.Begin());
+        Receivers(graph);
+        hybrid.rejection.w           = 1;
+        hybrid.previousViewDirection = Vec4(0, 0, 1, 0);
+        hybrid.previousViewPosition  = scene.viewPos;
+        hybrid.sampling.w            = scenario == 2 ? 0u : 1u;
+        hybrid.bounce.y = hybrid.reflection.y = hybrid.sampling.w;
+        RDGComputePassDesc pass;
+        pass.SetShaderProgramName("HybridTemporalReferenceSP");
+        Inputs(pass, false);
+        RHITexture* output[10]{};
+        for (uint32_t signal = 0; signal < 10; ++signal)
+        {
+            RHITexture* history =
+                signal == 6 ? Upload(graph, DataFormat::eR32G32UInt, HeapVector<glm::uvec2>(Pixels, glm::uvec2(0x80008000u, 1)))
+                            : Upload(graph, DataFormat::eR32G32B32A32SFloat, HeapVector<Vec4>(Pixels, previous[signal]));
+            output[signal] = Texture(formats[signal]);
+            pass.BindSampledTexture(NameID(fmt::format("previous{}", names[signal])), sampler, history->GetDefaultView());
+            pass.BindStorageImage(NameID(fmt::format("next{}", names[signal])), output[signal]->GetDefaultView(),
+                                  RDGContentGuarantee::eFullWrite);
+        }
+        for (const char* name : {"rawSky", "rawSpecular", "rawBounce", "rawBouncePrevious", "rawReflectionPrevious"})
+        {
+            RHITexture* raw = Upload(graph, DataFormat::eR32G32B32A32SFloat,
+                                     HeapVector<Vec4>(Pixels, Vec4(0, 0, 0, scenario == 0 ? 0.0f : -1.0f)));
+            pass.BindSampledTexture(name, sampler, raw->GetDefaultView());
+        }
+        RHITexture* guide = Upload(graph, DataFormat::eR32G32B32A32SFloat,
+                                   HeapVector<Vec4>(Pixels, Vec4(0, scenario == 0 ? 0.0f : -1.0f, 0, 0)));
+        pass.BindSampledTexture("rawReflection", sampler, guide->GetDefaultView());
+        Dispatch(graph, std::move(pass), Width, Height);
+        RHIBuffer*     readback[5]{};
+        const uint32_t signals[] = {0, 1, 3, 7, 9};
+        for (uint32_t index = 0; index < 5; ++index)
+        {
+            readback[index] = ReadColor(graph, output[signals[index]]);
+        }
+        Execute(graph);
+        ASSERT_FALSE(HasFatalFailure());
+        for (uint32_t index = 0; index < 5; ++index)
+        {
+            const uint32_t signal = signals[index];
+            SCOPED_TRACE(signal);
+            const HeapVector<Vec4> result   = ReadStaticBuffer<Vec4>(readback[index]);
+            Vec4                   expected = scenario == 2 ? Vec4(0) : previous[signal];
+            if (scenario == 0)
+            {
+                if (signal == 0)
+                {
+                    expected *= 7.0f / 8.0f;
+                }
+                else if (signal == 1)
+                {
+                    expected = Vec4(Vec3(expected) * (11.0f / 12.0f), expected.w * (5.0f / 6.0f));
+                }
+                else if (signal == 3)
+                {
+                    expected = Vec4(8, 6, 0, .5f);
+                }
+                else if (signal == 7)
+                {
+                    expected = Vec4(Vec3(expected) * .9f, 10);
+                }
+                else
+                {
+                    expected = Vec4(0, expected.y * (11.0f / 12.0f), expected.z * (11.0f / 12.0f), 12);
+                }
+            }
+            if (signal == 3 && scenario == 2)
+            {
+                expected.z = 1;
+                expected.w = .5f;
+            }
+            if (signal == 9)
+            {
+                expected.x = 0; // No current hit-distance guide.
+            }
+            ExpectColor(result[76], expected);
         }
     }
 }

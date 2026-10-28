@@ -47,7 +47,8 @@ void main()
         weight         = 0.0;
         fallbackWeight = 0.0;
         footprint      = 0.0;
-        if (ProbeValidReceiver(pixel))
+        bool receiver  = ProbeValidReceiver(pixel);
+        if (receiver)
         {
             vec3 position  = HybridPosition(pixel);
             vec3 geometric = HybridGeometricNormal(pixel);
@@ -87,14 +88,16 @@ void main()
         }
         sky    /= max(weight, 1e-8);
         bounce /= max(weight, 1e-8);
-        if (ProbeValidReceiver(pixel))
+        if (receiver)
         {
             // Contact occlusion closer than a probe tile, applied to all indirect diffuse light.
             float contact  = ProbeContactVisibility(pixel, HybridPosition(pixel), HybridGeometricNormal(pixel), footprint);
             sky           *= contact;
             bounce.rgb    *= contact;
         }
-        imageStore(probeRawSky, pixel, vec4(max(sky.rgb, vec3(0)), clamp(sky.a, 0.0, 1.0)));
-        imageStore(probeRawBounce, pixel, vec4(max(bounce.rgb, vec3(0)), clamp(bounce.a, 0.0, 1.0)));
+        // Alpha -1 is missing data, distinct from a valid fully occluded sample.
+        bool missing = receiver && weight == 0.0;
+        imageStore(probeRawSky, pixel, vec4(max(sky.rgb, vec3(0)), missing ? -1.0 : clamp(sky.a, 0.0, 1.0)));
+        imageStore(probeRawBounce, pixel, vec4(max(bounce.rgb, vec3(0)), missing ? -1.0 : clamp(bounce.a, 0.0, 1.0)));
     }
 }

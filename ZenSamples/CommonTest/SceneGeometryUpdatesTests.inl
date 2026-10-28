@@ -22,6 +22,15 @@ glm::uvec4 ReadSceneTriangleRecord(RenderDevice* device, RHIBuffer* triangles, R
     return result;
 }
 
+void ExpectSceneTriangleRange(const RenderScene& scene, uint32_t instance, uint32_t first, uint32_t count, uint32_t mask)
+{
+    ASSERT_LT(instance, scene.GetInstanceTriangleRanges().size());
+    const RenderScene::InstanceTriangleRange& range = scene.GetInstanceTriangleRanges()[instance];
+    EXPECT_EQ(range.firstTriangle, first);
+    EXPECT_EQ(range.triangleCount, count);
+    EXPECT_EQ(range.committedMask, mask);
+}
+
 TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAcrossPoseUpdates)
 {
     ShaderProgramManager::GetInstance().StoreProgram(
@@ -73,6 +82,9 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     RHIBuffer* readback = Buffer(sizeof(glm::uvec4), RHIBufferAllocateType::eCPURead);
     RHIBuffer* original = scene.GetVoxelTriangleBuffer();
     EXPECT_EQ(scene.GetVoxelTriangleCount(), 4u);
+    ASSERT_EQ(scene.GetInstanceTriangleRanges().size(), 2u);
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_STATIC);
+    ExpectSceneTriangleRange(scene, 1, 2, 2, GI_STATIC);
     EXPECT_EQ(ReadSceneTriangleRecord(device, original, readback), glm::uvec4(0, 0, 0, GI_STATIC));
 
     HeapVector<RenderScene::ShadowCaster> casters = scene.GetShadowCasters();
@@ -87,6 +99,8 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
     EXPECT_EQ(scene.GetShadowCasters()[1].bounds, casters[1].bounds);
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), original);
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_STATIC);
+    ExpectSceneTriangleRange(scene, 1, 2, 2, GI_STATIC);
     EXPECT_EQ(scene.GetAABB(), sg::AABB(Vec3(-0.5f, -1, -0.5f), Vec3(2.5f, 1, 0.5f)));
     casters           = scene.GetShadowCasters();
     vertices[2].pos.y = 0.75f;
@@ -127,13 +141,18 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
 
     casters = scene.GetShadowCasters();
     EXPECT_TRUE(scene.SetInstanceClass(0, GI_DYNAMIC));
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_STATIC);
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_DYNAMIC);
+    ExpectSceneTriangleRange(scene, 1, 2, 2, GI_STATIC);
     EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
     EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
     EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback), glm::uvec4(0, 0, 0, GI_DYNAMIC));
     casters = scene.GetShadowCasters();
     EXPECT_TRUE(scene.SetInstanceEnabled(0, false));
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_DYNAMIC);
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    ExpectSceneTriangleRange(scene, 0, 0, 2, 0);
     EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
     EXPECT_EQ(scene.GetShadowCasters()[0].bounds, sg::AABB());
     EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
@@ -141,7 +160,9 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     EXPECT_EQ(scene.GetAABB(), sg::AABB(Vec3(-0.5f), Vec3(2.5f, 0.5f, 0.5f)));
     EXPECT_TRUE(scene.SetMaterialVariant(0));
     EXPECT_TRUE(scene.SetInstanceEnabled(0, true));
+    ExpectSceneTriangleRange(scene, 0, 0, 2, 0);
     EXPECT_TRUE(scene.CommitGeometryUpdates());
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_DYNAMIC);
     EXPECT_NE(scene.GetShadowCasters()[0].bounds, sg::AABB());
     EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback), glm::uvec4(0, 0, 1, GI_DYNAMIC));
     EXPECT_TRUE(scene.SetMaterialVariant(-1));
@@ -159,6 +180,7 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
         EXPECT_TRUE(scene.CommitGeometryUpdates());
         EXPECT_EQ(ReadSceneTriangleRecord(device, scene.GetVoxelTriangleBuffer(), readback),
                   glm::uvec4(0, 0, 0, visible ? GI_DYNAMIC : 0));
+        ExpectSceneTriangleRange(scene, 0, 0, 2, visible ? GI_DYNAMIC : 0);
         EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
         EXPECT_EQ(scene.GetShadowCasters()[0].bounds == sg::AABB(), !visible);
     }
@@ -236,18 +258,113 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
                   0);
     }
 
-    // A rejected generation cannot replace the bounds/revisions used by shadow caches.
-    casters                = scene.GetShadowCasters();
+    // A rejected generation cannot publish staged masks/ranges or replace committed bounds.
+    casters                                                                = scene.GetShadowCasters();
+    const HeapVector<RenderScene::InstanceTriangleRange> ranges            = scene.GetInstanceTriangleRanges();
+    RHIBuffer*                                           committedRecords  = scene.GetVoxelTriangleBuffer();
+    const uint64_t                                       committedRevision = scene.GetGeometryRevision();
+    EXPECT_TRUE(scene.SetInstanceClass(0, GI_STATIC));
+    EXPECT_TRUE(scene.SetInstanceEnabled(1, false));
     asset::Vertex overflow = scene.GetVertices()[0];
     overflow.pos.x         = std::numeric_limits<float>::max();
     EXPECT_TRUE(scene.UpdateVertices(0, MakeVecView(&overflow, 1)));
     EXPECT_FALSE(scene.CommitGeometryUpdates());
+    EXPECT_EQ(scene.GetVoxelTriangleBuffer(), committedRecords);
+    EXPECT_EQ(scene.GetVoxelTriangleCount(), 4u);
+    EXPECT_EQ(scene.GetGeometryRevision(), committedRevision);
     for (uint32_t instance = 0; instance < 2; ++instance)
     {
+        ExpectSceneTriangleRange(scene, instance, ranges[instance].firstTriangle, ranges[instance].triangleCount,
+                                 ranges[instance].committedMask);
         EXPECT_EQ(scene.GetShadowCasters()[instance].revision, casters[instance].revision);
         EXPECT_EQ(scene.GetShadowCasters()[instance].bounds, casters[instance].bounds);
     }
     scene.Destroy();
+    EXPECT_TRUE(scene.GetInstanceTriangleRanges().empty());
+}
+
+TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRangesPreserveSubmeshOrderAndEmptyInstances)
+{
+    sg::Scene               source;
+    sg::Node                triangleNode(0, "triangle primitives"), pointNode(1, "point"), emptyNode(2, "empty");
+    sg::Mesh                triangleMesh("triangle primitives"), pointMesh("point"), emptyMesh("empty");
+    UniquePtr<sg::Material> material    = MakeUnique<sg::Material>("transparent coverage");
+    material->index                     = 0;
+    material->data.surfaceProperties.y  = static_cast<float>(sg::AlphaMode::Blend);
+    material->data.baseColorFactor.a    = 0.0f;
+    const uint32_t         starts[]     = {0, 3, 5, 8};
+    const uint32_t         counts[]     = {3, 2, 3, 1};
+    const sg::MeshTopology topologies[] = {sg::MeshTopology::Triangles, sg::MeshTopology::Lines, sg::MeshTopology::Triangles,
+                                           sg::MeshTopology::Points};
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        UniquePtr<sg::SubMesh> primitive = MakeUnique<sg::SubMesh>("primitive", starts[index], counts[index], 3);
+        primitive->topology              = topologies[index];
+        primitive->SetMaterial(0, material.Get());
+        (index < 3 ? triangleMesh : pointMesh).AddSubMesh(primitive.Get());
+        source.AddComponent(std::move(primitive));
+    }
+    source.AddComponent(std::move(material));
+    sg::Node* nodes[]  = {&triangleNode, &pointNode, &emptyNode};
+    sg::Mesh* meshes[] = {&triangleMesh, &pointMesh, &emptyMesh};
+    for (uint32_t instance = 0; instance < 3; ++instance)
+    {
+        meshes[instance]->SetAABB(Vec3(-1), Vec3(1));
+        nodes[instance]->AddComponent(meshes[instance]);
+        nodes[instance]->SetData(instance, Mat4(1));
+        source.AddRenderableNode(nodes[instance]);
+    }
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    asset::Vertex vertices[3]{};
+    vertices[0].pos          = Vec4(-1, -1, 0, 1);
+    vertices[1].pos          = Vec4(1, -1, 0, 1);
+    vertices[2].pos          = Vec4(0, 1, 0, 1);
+    const uint32_t indices[] = {0, 1, 2, 0, 1, 2, 1, 0, 2};
+    SceneData      data{};
+    data.pScene      = &source;
+    data.pVertices   = vertices;
+    data.pIndices    = indices;
+    data.numVertices = 3;
+    data.numIndices  = 9;
+    RenderScene scene(device, data);
+    EXPECT_TRUE(scene.GetInstanceTriangleRanges().empty());
+    scene.LoadSceneMaterials();
+    scene.PrepareBuffers();
+    ASSERT_EQ(scene.GetInstanceTriangleRanges().size(), 3u);
+    EXPECT_EQ(scene.GetVoxelTriangleCount(), 2u);
+    ExpectSceneTriangleRange(scene, 0, 0, 2, GI_STATIC);
+    ExpectSceneTriangleRange(scene, 1, 2, 0, GI_STATIC);
+    ExpectSceneTriangleRange(scene, 2, 2, 0, GI_STATIC);
+    const HeapVector<glm::uvec4> records = scene.BuildTriangleRecords();
+    ASSERT_EQ(records.size(), 2u);
+    EXPECT_EQ(records[0], glm::uvec4(0, 0, 0, GI_STATIC));
+    EXPECT_EQ(records[1], glm::uvec4(5, 0, 0, GI_STATIC));
+    EXPECT_TRUE(scene.SetInstanceEnabled(1, false));
+    ExpectSceneTriangleRange(scene, 1, 2, 0, GI_STATIC);
+    EXPECT_TRUE(scene.CommitGeometryUpdates());
+    ExpectSceneTriangleRange(scene, 1, 2, 0, 0);
+    scene.Destroy();
+
+    sg::Scene emptySource;
+    sg::Node  onlyEmptyNode(0, "empty scene geometry");
+    sg::Mesh  onlyEmptyMesh("empty scene geometry");
+    onlyEmptyMesh.SetAABB(Vec3(-1), Vec3(1));
+    onlyEmptyNode.AddComponent(&onlyEmptyMesh);
+    onlyEmptyNode.SetData(0, Mat4(1));
+    emptySource.AddRenderableNode(&onlyEmptyNode);
+    SceneData emptyData{};
+    emptyData.pScene = &emptySource;
+    RenderScene emptyScene(device, emptyData);
+    emptyScene.LoadSceneMaterials();
+    emptyScene.PrepareBuffers();
+    ASSERT_EQ(emptyScene.GetInstanceTriangleRanges().size(), 1u);
+    ExpectSceneTriangleRange(emptyScene, 0, 0, 0, GI_STATIC);
+    EXPECT_EQ(emptyScene.GetVoxelTriangleCount(), 0u);
+    EXPECT_EQ(emptyScene.GetVoxelTriangleBuffer(), nullptr);
+    EXPECT_TRUE(emptyScene.SetInstanceEnabled(0, false));
+    EXPECT_TRUE(emptyScene.CommitGeometryUpdates());
+    ExpectSceneTriangleRange(emptyScene, 0, 0, 0, 0);
+    emptyScene.Destroy();
 }
 
 TEST_P(ConeVoxelGIIntegrationTest, BakedFbxMorphAndSkinPosesReachGpuGeometry)

@@ -1,4 +1,0 @@
-#version 450
-#extension GL_GOOGLE_include_directive : require
-#define HYBRID_BRICK_TRAVERSAL
-#include "hybrid_trace.glsl"

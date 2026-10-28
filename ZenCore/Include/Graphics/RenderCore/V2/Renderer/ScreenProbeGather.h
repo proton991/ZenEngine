@@ -119,9 +119,8 @@ private:
 
     RenderDevice* m_device;
     RHIBuffer*    m_probes[2]{};
-    RHIBuffer*    m_subtiles[2]{};          // Adaptive probe slot per subtile, for the next frame's reprojection.
-    RHIBuffer*    m_statistics{nullptr};    // Host copy of the counters, written only by capture frames.
-    RHIBuffer*    m_retraceHeader{nullptr}; // Host-written start of the brick trace's re-trace queue header.
+    RHIBuffer*    m_subtiles[2]{};       // Adaptive probe slot per subtile, for the next frame's reprojection.
+    RHIBuffer*    m_statistics{nullptr}; // Host copy of the counters, written only by capture frames.
     bool          m_statisticsRecorded{false};
     // Host copies of the requested count, in submission order, and the copies ready for reuse.
     HeapVector<PendingDemand> m_pendingDemand;

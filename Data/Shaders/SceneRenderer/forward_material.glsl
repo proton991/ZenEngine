@@ -12,7 +12,7 @@ layout(set = 1, binding = 0) uniform uCameraData
     mat4 uProjMatrix;
     mat4 uViewMatrix;
 };
-#if !defined(HARDWARE_SHADOWS) && !defined(SOFTWARE_SHADOWS)
+#if !defined(HARDWARE_SHADOWS)
 struct NodeData
 {
     mat4 modelMatrix;
@@ -53,7 +53,7 @@ layout(set = 4, binding = 2, std430) buffer LightingCapture
 };
 #endif
 layout(location = 0) out vec4 outColor;
-#if defined(HYBRID_GI) && (defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS))
+#if defined(HYBRID_GI) && defined(HARDWARE_SHADOWS)
 // The deferred receiver's shadow-ray results (deferred_lighting.glsl); zero when no deferred pass ran.
 layout(set = 4, binding = 4) uniform usampler2D receiverLightVisibility;
 #endif
@@ -203,7 +203,7 @@ void main()
     vec3     N             = SurfaceNormal(material);
 #ifdef VOXEL_GI
     vec3 shadowNormal = GeometricNormal(material);
-#    if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+#    if defined(HARDWARE_SHADOWS)
     shadowNormal = TriangleNormal(shadowNormal);
 #    endif
 #endif
@@ -259,7 +259,7 @@ void main()
         }
         if (diffuse)
         {
-#        if defined(HARDWARE_SHADOWS) || defined(SOFTWARE_SHADOWS)
+#        if defined(HARDWARE_SHADOWS)
             receiverVisibility = texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0).rg;
 #        endif
             vec3 escaped = indirect ? texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb : irradiance;

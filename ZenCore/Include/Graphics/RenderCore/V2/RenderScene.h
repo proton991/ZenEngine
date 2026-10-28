@@ -42,11 +42,25 @@ public:
         uint64_t revision{1};
     };
 
+    struct InstanceTriangleRange
+    {
+        uint32_t firstTriangle{0};
+        uint32_t triangleCount{0};
+        uint32_t committedMask{0};
+    };
+
     // Check loaded content before narrowing counts or constructing GPU resources.
     // Geometry/index/deformation validity remains the asset loader's contract.
     static std::string GetResourceError(const RHIGPUInfo& gpu, const sg::Scene& scene, uint64_t vertices, uint64_t indices);
 
     RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData);
+
+    // Unlike an address, this identity is not reused when a replacement scene occupies
+    // the same allocation. Geometry and lighting revisions are local to this identity.
+    uint64_t GetIdentity() const
+    {
+        return m_identity;
+    }
 
     // False leaves a partially initialized scene that must be destroyed, never published.
     bool Init();
@@ -113,6 +127,14 @@ public:
     // Empty bounds mean disabled or empty geometry. Consumers retain their own last
     // submitted snapshot so skipped or failed frames do not lose previous bounds.
     const HeapVector<ShadowCaster>& GetShadowCasters() const;
+
+    // Committed ranges in GetVoxelTriangleBuffer(), indexed by renderable slot.
+    // Disabled instances retain their records with mask zero; non-triangle/empty
+    // instances have zero count. Material alpha remains a GPU coverage decision.
+    const HeapVector<InstanceTriangleRange>& GetInstanceTriangleRanges() const
+    {
+        return m_instanceTriangleRanges;
+    }
 
     uint64_t GetGeometryRevision(uint32_t mask = GI_ALL) const
     {
@@ -264,6 +286,8 @@ private:
 
     bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2], HeapVector<ShadowCaster>& shadowCasters) const;
 
+    HeapVector<glm::uvec4> BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges) const;
+
     HeapVector<asset::Vertex> m_vertices;
 
     HeapVector<asset::Vertex> m_bindVertices;
@@ -289,6 +313,7 @@ private:
     HeapVector<uint32_t>                           m_instanceEnabled;
     HeapVector<uint32_t>                           m_authoredVisibility;
     HeapVector<ShadowCaster>                       m_shadowCasters;
+    HeapVector<InstanceTriangleRange>              m_instanceTriangleRanges;
     HeapVector<uint8_t>                            m_dirtyShadowInstances;
     HeapVector<uint8_t>                            m_dirtyShadowVertices;
     uint32_t                                       m_dirtyClasses{0};
@@ -298,6 +323,7 @@ private:
     // Triangle indices, material assignments and instance masks; independent of poses.
     bool          m_triangleRecordsDirty{false};
     bool          m_geometryReady{true};
+    uint64_t      m_identity{0};
     uint64_t      m_geometryRevision{1};
     uint64_t      m_staticRevision{1};
     uint64_t      m_dynamicRevision{1};

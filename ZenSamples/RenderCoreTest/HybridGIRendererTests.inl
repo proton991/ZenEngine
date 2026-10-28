@@ -3,48 +3,36 @@
 void CreateHybridTestShaders(RenderDevice* device)
 {
     for (const std::array<const char*, 2>& shader :
-         {std::array<const char*, 2>{"HybridTraceSP", "VoxelGI/hybrid_trace.comp.spv"},
-          {"HybridTraceCountsSP", "VoxelGI/hybrid_trace_counts.comp.spv"},
-          {"HybridTraceBricksSP", "VoxelGI/hybrid_trace_bricks.comp.spv"},
-          {"HybridTraceCountsBricksSP", "VoxelGI/hybrid_trace_counts_bricks.comp.spv"},
-          {"HybridTraceReferenceBricksSP", "VoxelGI/hybrid_trace_reference_bricks.comp.spv"},
-          {"HybridRetraceBricksSP", "VoxelGI/hybrid_retrace_bricks.comp.spv"},
-          {"HybridRetraceCountsBricksSP", "VoxelGI/hybrid_retrace_counts_bricks.comp.spv"},
+         {std::array<const char*, 2>{"HybridTraceHardwareSP", "VoxelGI/hybrid_trace_hardware.comp.spv"},
+          {"HybridTraceHardwareCountsSP", "VoxelGI/hybrid_trace_hardware_counts.comp.spv"},
+          {"HybridTraceFieldSP", "VoxelGI/hybrid_trace_field.comp.spv"},
+          {"HybridTraceCountsFieldSP", "VoxelGI/hybrid_trace_counts_field.comp.spv"},
           {"ProbeClearSP", "VoxelGI/probe_clear.comp.spv"},
           {"ProbeClaimSP", "VoxelGI/probe_claim.comp.spv"},
           {"ProbePlaceSP", "VoxelGI/probe_place.comp.spv"},
           {"ProbeAdaptiveSP", "VoxelGI/probe_adaptive.comp.spv"},
           {"ProbeAllocateCountSP", "VoxelGI/probe_allocate_count.comp.spv"},
           {"ProbeAllocateSP", "VoxelGI/probe_allocate.comp.spv"},
-          {"ProbeTraceSP", "VoxelGI/probe_trace.comp.spv"},
+          {"ProbeTraceHardwareSP", "VoxelGI/probe_trace_hardware.comp.spv"},
+          {"ProbeTraceFieldSP", "VoxelGI/probe_trace_field.comp.spv"},
           {"ProbeTemporalSP", "VoxelGI/probe_temporal.comp.spv"},
           {"ProbeFilterSP", "VoxelGI/probe_filter.comp.spv"},
           {"ProbeIntegrateSP", "VoxelGI/probe_integrate.comp.spv"},
-          {"ProbeSpecularTraceSP", "VoxelGI/probe_specular_trace.comp.spv"},
+          {"ProbeSpecularTraceHardwareSP", "VoxelGI/probe_specular_trace_hardware.comp.spv"},
+          {"ProbeSpecularTraceFieldSP", "VoxelGI/probe_specular_trace_field.comp.spv"},
           {"ProbeSpecularFilter0SP", "VoxelGI/probe_specular_filter.comp.spv"},
           {"ProbeSpecularFilter1SP", "VoxelGI/probe_specular_filter.comp.spv"},
           {"ProbeSpecularFilter2SP", "VoxelGI/probe_specular_filter.comp.spv"},
           {"ProbeSpecularFilter3SP", "VoxelGI/probe_specular_filter.comp.spv"},
           {"ProbeSpecularResolveSP", "VoxelGI/probe_specular_resolve.comp.spv"},
           {"ProbePixelTemporalSP", "VoxelGI/probe_pixel_temporal.comp.spv"},
-          {"BrickClearSP", "VoxelGI/brick_clear.comp.spv"},
-          {"BrickMarkSP", "VoxelGI/brick_mark.comp.spv"},
-          {"BrickFinalizeSP", "VoxelGI/brick_finalize.comp.spv"},
-          {"BrickMarkLargeSP", "VoxelGI/brick_mark_large.comp.spv"},
-          {"BrickAllocateSP", "VoxelGI/brick_allocate.comp.spv"},
-          {"BrickRasterizeSP", "VoxelGI/brick_rasterize.comp.spv"},
-          {"BrickRasterizeLargeSP", "VoxelGI/brick_rasterize_large.comp.spv"},
-          {"BrickPruneSP", "VoxelGI/brick_prune.comp.spv"},
-          {"BrickDistanceXSP", "VoxelGI/brick_distance_x.comp.spv"},
-          {"BrickDistanceYSP", "VoxelGI/brick_distance_y.comp.spv"},
-          {"BrickDistanceZSP", "VoxelGI/brick_distance_z.comp.spv"},
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
-          {"HybridTraceHalfSP", "VoxelGI/hybrid_trace_half.comp.spv"},
-          {"HybridTraceHalfCountsSP", "VoxelGI/hybrid_trace_half_counts.comp.spv"},
-          {"HybridTraceFallbackSP", "VoxelGI/hybrid_trace_fallback.comp.spv"},
-          {"HybridTraceFallbackCountsSP", "VoxelGI/hybrid_trace_fallback_counts.comp.spv"},
+          {"HybridTraceHalfFieldSP", "VoxelGI/hybrid_trace_half_field.comp.spv"},
+          {"HybridTraceHalfCountsFieldSP", "VoxelGI/hybrid_trace_half_counts_field.comp.spv"},
+          {"HybridTraceFallbackFieldSP", "VoxelGI/hybrid_trace_fallback_field.comp.spv"},
+          {"HybridTraceFallbackCountsFieldSP", "VoxelGI/hybrid_trace_fallback_counts_field.comp.spv"},
           {"HybridDiffuseUpsampleSP", "VoxelGI/hybrid_diffuse_upsample.comp.spv"},
           {"HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"},
           {"HybridTemporalReferenceSP", "VoxelGI/hybrid_temporal_reference.comp.spv"},
@@ -124,6 +112,9 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     // Opt into half-resolution diffuse to exercise its trace, upsample and fallback passes.
     bounceSettings.diffuseResolution = VoxelGISettings::DiffuseResolution::Half;
     ASSERT_TRUE(gi.SetSettings(bounceSettings));
+    // Compute GI traces the scene's distance field, published before the first gathered frame.
+    sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ASSERT_TRUE(PrepareComputeField(device, gi));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
     renderer.SetRenderScene(&scene);
@@ -319,12 +310,13 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
                     ++referenceDispatches;
                 }
                 // The trace runs one group per guide tile; the upsample one per 8x8 pixels.
-                if (shader == "VoxelGI/hybrid_trace.comp.spv" || shader == "VoxelGI/hybrid_trace_counts.comp.spv")
+                if (shader == "VoxelGI/hybrid_trace_field.comp.spv" || shader == "VoxelGI/hybrid_trace_counts_field.comp.spv")
                 {
                     EXPECT_EQ(dispatch.second, guideGroups);
                     ++fullTraces;
                 }
-                if (shader == "VoxelGI/hybrid_trace_half.comp.spv" || shader == "VoxelGI/hybrid_trace_half_counts.comp.spv")
+                if (shader == "VoxelGI/hybrid_trace_half_field.comp.spv"
+                    || shader == "VoxelGI/hybrid_trace_half_counts_field.comp.spv")
                 {
                     EXPECT_EQ(dispatch.second, guideGroups);
                     ++halfTraces;
@@ -341,7 +333,8 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
                 RHIShader* const  shader = rhi->graphics.indirectShaders[index];
                 const std::string file =
                     shader != nullptr ? shader->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] : "";
-                if (file == "VoxelGI/hybrid_trace_fallback.comp.spv" || file == "VoxelGI/hybrid_trace_fallback_counts.comp.spv")
+                if (file == "VoxelGI/hybrid_trace_fallback_field.comp.spv"
+                    || file == "VoxelGI/hybrid_trace_fallback_counts_field.comp.spv")
                 {
                     ++fallbacks;
                 }
@@ -491,249 +484,6 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     sceneInputs = {};
 }
 
-TEST_F(RenderCoreTest, HybridBrickFallbackRecoveryResetsHistoryOnlyAfterSubmission)
-{
-    CreateHybridTestShaders(device);
-    TestViewport            viewport;
-    HeapVector<RHIBuffer*>  ownedBuffers;
-    HeapVector<RHITexture*> ownedTextures;
-    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
-    sceneInputs.camera.projViewMatrix = Mat4(1);
-    sceneInputs.camera.proj           = Mat4(1);
-    sceneInputs.camera.view           = Mat4(1);
-    sg::Scene source;
-    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
-    SceneData data{};
-    data.pScene = &source;
-    RenderScene      scene(device, data);
-    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
-    volumes.Init();
-    volumes.SetRenderScene(&scene);
-    VoxelGIRenderer gi(device, &volumes);
-    gi.SetRenderScene(&scene);
-    ASSERT_TRUE(gi.Init());
-    VoxelGISettings settings;
-    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
-    settings.brickResolution = 64;
-    ASSERT_TRUE(gi.SetSettings(settings));
-    DeferredLightingRenderer renderer(device);
-    renderer.Init();
-    renderer.SetRenderScene(&scene);
-    const RenderView view = RenderView::FromViewport(viewport);
-    for (uint32_t frame = 0; frame < 5; ++frame)
-    {
-        SCOPED_TRACE(frame);
-        RenderGraph& graph = *device->GetCurrentFrameRDG();
-        ASSERT_TRUE(graph.Begin());
-        if (frame == 0)
-        {
-            for (RHITexture* texture : ownedTextures)
-            {
-                if (texture != viewport.depth)
-                {
-                    graph.AddTransferPass("InitializeBrickHistoryInput").ClearTexture(texture, Color(0));
-                }
-            }
-        }
-        if (volumes.BeginVolumeUpdate(graph))
-        {
-            for (RHITexture* texture :
-                 {volumes.GetVoxelTextures().pAlbedo, volumes.GetVoxelTextures().pNormal, volumes.GetVoxelTextures().pEmissive})
-            {
-                graph.AddTransferPass("InitializeBrickHistoryVoxels").ClearTexture(texture, Color(0));
-            }
-        }
-        renderer.BuildGBufferGraph(view, true);
-        HybridGIRenderer* hybrid = renderer.GetHybridGI();
-        if (frame == 1)
-        {
-            // The software scene is already warm. Fail only the first brick allocation,
-            // then accept the fallback frame with the brick request still in force.
-            settings.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
-            ASSERT_TRUE(gi.SetSettings(settings));
-            rhi->failBufferCreationAt = rhi->bufferCreations + 1;
-        }
-        const bool ready          = BuildPreparedRayQueryGraph(gi);
-        rhi->failBufferCreationAt = 0;
-        ASSERT_TRUE(ready);
-        EXPECT_EQ(gi.UsesBrickTraversal(), frame >= 2);
-        gi.BuildRenderGraph();
-        ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
-        EXPECT_EQ(hybrid->IsHistoryValid(), frame == 4);
-        if (frame == 2 || frame == 3)
-        {
-            // Declining frame 2 must leave the successful triangle baseline intact,
-            // so the same unchanged brick request resets history again on frame 3.
-            EXPECT_STREQ(hybrid->GetResetReason(), "provider_changed");
-        }
-        const uint32_t previousFrame = hybrid->GetFrame();
-        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
-        if (frame != 2)
-        {
-            const size_t firstValue = rhi->graphics.values.size();
-            ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
-            bool foundUniforms = false;
-            for (size_t value = firstValue; value < rhi->graphics.values.size(); ++value)
-            {
-                if (rhi->graphics.values[value].size() == sizeof(HybridGIUniformData))
-                {
-                    HybridGIUniformData uniforms;
-                    std::memcpy(&uniforms, rhi->graphics.values[value].data(), sizeof(uniforms));
-                    EXPECT_EQ(uniforms.sampling.w, frame == 4 ? 1u : 0u);
-                    EXPECT_EQ(uniforms.provider.y, frame == 1 || frame == 4 ? 1u : 0u);
-                    foundUniforms = true;
-                }
-            }
-            EXPECT_TRUE(foundUniforms);
-        }
-        const RenderFrameResult result = frame == 2 ? RenderFrameResult::eDeclined : RenderFrameResult::eSubmitted;
-        renderer.OnRenderGraphExecuted(result);
-        gi.OnRenderGraphExecuted(result);
-        volumes.OnRenderGraphExecuted(result);
-        EXPECT_TRUE(hybrid->IsHistoryValid());
-        EXPECT_EQ(hybrid->GetFrame(), previousFrame + (frame != 2 ? 1u : 0u));
-    }
-    renderer.Destroy();
-    gi.Destroy();
-    volumes.Destroy();
-    for (RHIBuffer* buffer : ownedBuffers)
-    {
-        device->DestroyBuffer(buffer);
-    }
-    for (RHITexture* texture : ownedTextures)
-    {
-        device->DestroyTexture(texture);
-    }
-    sceneInputs = {};
-}
-
-// Reference accumulation traces hundreds of rays per receiver, more than the re-trace queue holds,
-// so its brick trace re-traces inline and records no queue or re-trace pass. Ray-count captures
-// re-trace with the counting variant, which adds to the trace's counters.
-TEST_F(RenderCoreTest, HybridBrickReferenceRetracesInlineAndRayCountsIncludeRetraces)
-{
-    CreateHybridTestShaders(device);
-    RDGMetricsOptions metrics    = device->GetRDGMetrics().GetOptions();
-    metrics.maxNodeDetails       = 512;
-    metrics.includeTransferNodes = true;
-    device->GetRDGMetrics().Configure(metrics);
-    TestViewport            viewport;
-    HeapVector<RHIBuffer*>  ownedBuffers;
-    HeapVector<RHITexture*> ownedTextures;
-    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
-    sceneInputs.camera.projViewMatrix = Mat4(1);
-    sceneInputs.camera.proj           = Mat4(1);
-    sceneInputs.camera.view           = Mat4(1);
-    sg::Scene source;
-    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
-    SceneData data{};
-    data.pScene = &source;
-    RenderScene      scene(device, data);
-    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
-    volumes.Init();
-    volumes.SetRenderScene(&scene);
-    VoxelGIRenderer gi(device, &volumes);
-    gi.SetRenderScene(&scene);
-    ASSERT_TRUE(gi.Init());
-    VoxelGISettings settings;
-    settings.SetAllFeatureProviders(VoxelGISettings::RayProvider::Voxel);
-    settings.computeTraversal = VoxelGISettings::ComputeTraversal::Bricks;
-    settings.brickResolution  = 64;
-    ASSERT_TRUE(gi.SetSettings(settings));
-    DeferredLightingRenderer renderer(device);
-    renderer.Init();
-    renderer.SetRenderScene(&scene);
-    const RenderView view = RenderView::FromViewport(viewport);
-    for (uint32_t frame = 0; frame < 4; ++frame)
-    {
-        SCOPED_TRACE(frame);
-        RenderGraph& graph = *device->GetCurrentFrameRDG();
-        ASSERT_TRUE(graph.Begin());
-        if (frame == 0)
-        {
-            for (RHITexture* texture : ownedTextures)
-            {
-                if (texture != viewport.depth)
-                {
-                    graph.AddTransferPass("InitializeBrickReferenceInput").ClearTexture(texture, Color(0));
-                }
-            }
-        }
-        if (volumes.BeginVolumeUpdate(graph))
-        {
-            for (RHITexture* texture :
-                 {volumes.GetVoxelTextures().pAlbedo, volumes.GetVoxelTextures().pNormal, volumes.GetVoxelTextures().pEmissive})
-            {
-                graph.AddTransferPass("InitializeBrickReferenceVoxels").ClearTexture(texture, Color(0));
-            }
-        }
-        renderer.BuildGBufferGraph(view, true);
-        HybridGIRenderer* hybrid = renderer.GetHybridGI();
-        // Frame 2 accumulates a reference; frame 3 leaves it and captures ray counts.
-        if (frame == 2 || frame == 3)
-        {
-            settings.referenceSamples = frame == 2 ? 256 : 0;
-            ASSERT_TRUE(gi.SetSettings(settings));
-        }
-        if (frame == 3)
-        {
-            RHIBufferCreateInfo info;
-            info.size         = HybridGIRenderer::GetRayCountCaptureBytes(view.width, view.height);
-            info.allocateType = RHIBufferAllocateType::eGPU;
-            info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-            RHIBuffer* counts = device->CreateBuffer(info);
-            ASSERT_NE(counts, nullptr);
-            ownedBuffers.push_back(counts);
-            info.allocateType = RHIBufferAllocateType::eCPURead;
-            info.usageFlags   = 0;
-            info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
-            RHIBuffer* readback = device->CreateBuffer(info);
-            ASSERT_NE(readback, nullptr);
-            ownedBuffers.push_back(readback);
-            hybrid->SetRayCountCapture(counts, readback);
-        }
-        ASSERT_TRUE(BuildPreparedRayQueryGraph(gi));
-        gi.BuildRenderGraph();
-        ASSERT_TRUE(hybrid->BuildRenderGraph(view, gi));
-        ASSERT_TRUE(graph.End()) << graph.GetResult().message;
-        device->GetRDGMetrics().RequestCapture();
-        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
-        if (frame >= 2)
-        {
-            // Bindings were validated against each program's reflection on execution.
-            ASSERT_TRUE(gi.UsesBrickTraversal());
-            EXPECT_EQ(hybrid->WereRayCountsRecorded(), frame == 3);
-            bool trace   = false;
-            bool retrace = false;
-            bool reset   = false;
-            for (const RDGNodeMetrics& node : device->GetRDGMetrics().GetLastSnapshot().nodes)
-            {
-                trace   |= node.name == NameID("HybridTrace");
-                retrace |= node.name == NameID("HybridRetrace");
-                reset   |= node.name == NameID("ResetHybridRetrace");
-            }
-            EXPECT_TRUE(trace);
-            EXPECT_EQ(retrace, frame == 3);
-            EXPECT_EQ(reset, frame == 3);
-        }
-        renderer.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
-        gi.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
-        volumes.OnRenderGraphExecuted(RenderFrameResult::eSubmitted);
-    }
-    renderer.Destroy();
-    gi.Destroy();
-    volumes.Destroy();
-    for (RHIBuffer* buffer : ownedBuffers)
-    {
-        device->DestroyBuffer(buffer);
-    }
-    for (RHITexture* texture : ownedTextures)
-    {
-        device->DestroyTexture(texture);
-    }
-    sceneInputs = {};
-}
-
 TEST_F(RenderCoreTest, ScreenProbeAllocationFailureDropsPartialHistoryAndRetries)
 {
     ScreenProbeGather gather(device);
@@ -784,6 +534,8 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
     VoxelGIRenderer gi(device, &volumes);
     gi.SetRenderScene(&scene);
     ASSERT_TRUE(gi.Init());
+    sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ASSERT_TRUE(PrepareComputeField(device, gi));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
     renderer.SetRenderScene(&scene);
@@ -924,12 +676,12 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
                                            "probe_temporal",
                                            "probe_filter",
                                            "probe_integrate",
-                                           "probe_specular_trace",
+                                           "probe_specular_trace_field",
                                            "probe_specular_filter",
                                            "probe_specular_resolve",
                                            "probe_pixel_temporal",
                                            "probe_claim",
-                                           "probe_trace"};
+                                           "probe_trace_field"};
             const glm::uvec3   groups[] = {clearGroups, probeGroups, subtiles,    allocateGroups, allocateGroups,
                                            slotGroups,  slotGroups,  pixelGroups, specularGroups, specularGroups,
                                            pixelGroups, pixelGroups, probeGroups, glm::uvec3(0)};
@@ -941,7 +693,7 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
                 const std::pair<RHIShader*, glm::uvec3>& dispatch = rhi->graphics.dispatches[index];
                 ASSERT_NE(dispatch.first, nullptr);
                 const std::string file = dispatch.first->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eCompute)];
-                if (file == "VoxelGI/hybrid_trace.comp.spv" || file == "VoxelGI/hybrid_trace_counts.comp.spv")
+                if (file == "VoxelGI/hybrid_trace_field.comp.spv" || file == "VoxelGI/hybrid_trace_counts_field.comp.spv")
                 {
                     ++pixelTraces;
                 }
@@ -1029,6 +781,8 @@ TEST_F(RenderCoreTest, ScreenProbePoolFollowsReadBackDemandAndKeepsHistory)
     VoxelGIRenderer gi(device, &volumes);
     gi.SetRenderScene(&scene);
     ASSERT_TRUE(gi.Init());
+    sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ASSERT_TRUE(PrepareComputeField(device, gi));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
     renderer.SetRenderScene(&scene);
@@ -1195,6 +949,10 @@ TEST_P(DelayedRadianceTest, PublishesPairedCachesAcrossDeclineResizeResetAndIdle
 
     AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
 
+    // Field support before the first GI frame: a rejected field is not retried for the same scene.
+    sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    EnableDistanceFieldTestDevice(device);
+
     sceneInputs.camera.projViewMatrix = Mat4(1);
 
     sceneInputs.camera.proj           = Mat4(1);
@@ -1291,6 +1049,9 @@ TEST_P(DelayedRadianceTest, PublishesPairedCachesAcrossDeclineResizeResetAndIdle
         }
 
         ASSERT_TRUE(gi.SetSettings(settings));
+
+        sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+        ASSERT_TRUE(PrepareComputeField(device, gi));
 
         RenderGraph& graph = *device->GetCurrentFrameRDG();
 

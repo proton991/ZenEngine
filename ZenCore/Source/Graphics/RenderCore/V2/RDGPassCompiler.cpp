@@ -779,13 +779,24 @@ void RDGPassCmdEncoder::Dispatch(uint32_t groupCountX, int32_t groupCountY, int3
     }
 }
 
-void RDGPassCmdEncoder::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset)
+void RDGPassCmdEncoder::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset, const RHIGPUTimingPtr& timing)
 {
-    if (((ValidateDispatch()))
-        && (((RequireIndirect(indirectBuffer, offset, 12, "DispatchIndirect")))
-            && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list")))))
+    if (ValidateDispatch() && RequireIndirect(indirectBuffer, offset, 12, "DispatchIndirect")
+        && Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))
     {
+        if (timing)
+        {
+            m_pCmdList->BeginGPUTiming(timing);
+        }
         m_pCmdList->DispatchIndirect(indirectBuffer, offset);
+        if (timing)
+        {
+            m_pCmdList->EndGPUTiming(timing);
+        }
+    }
+    else if (timing)
+    {
+        timing->Publish(RHIGPUTimingStatus::eDiscarded);
     }
 }
 

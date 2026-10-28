@@ -39,10 +39,8 @@ bool VoxelGISettings::UsesAdaptiveSampling() const
 
 bool VoxelGISettings::UsesRayShadows(bool hardwareReady) const
 {
-    // Inherited Compute uses maps; only an explicit shadow provider opts into the software BVH.
-    return shadows && rtShadows
-        && ((hardwareReady && GetFeatureProvider(Feature::Shadows) == RayProvider::Hardware)
-            || featureProviders[static_cast<size_t>(Feature::Shadows)] == RayProvider::Voxel);
+    // Direct shadows trace HW rays when HW RT is selected and ready; Compute uses shadow maps.
+    return shadows && rtShadows && hardwareReady && GetFeatureProvider(Feature::Shadows) == RayProvider::Hardware;
 }
 
 VoxelGISettings::RayProvider VoxelGISettings::GetFeatureProvider(Feature feature) const
@@ -95,7 +93,7 @@ void VoxelGISettings::SetAllFeatureProviders(RayProvider provider)
 }
 
 VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) :
-    m_rayQuery(device), m_softwareRayQuery(device), m_bricks(device), m_device(device), m_voxelizer(voxelizer)
+    m_rayQuery(device), m_device(device), m_voxelizer(voxelizer)
 {
     LoadSettings();
 }
@@ -153,8 +151,7 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
         && static_cast<uint32_t>(settings.diffuseResolution) <= static_cast<uint32_t>(VoxelGISettings::DiffuseResolution::Half)
-        && static_cast<uint32_t>(settings.computeTraversal) <= static_cast<uint32_t>(VoxelGISettings::ComputeTraversal::Bricks)
-        && (settings.brickResolution == 64 || settings.brickResolution == 128 || settings.brickResolution == 256)
+        && (settings.fieldResolution == 32 || settings.fieldResolution == 64)
         && static_cast<uint32_t>(settings.gather) <= static_cast<uint32_t>(VoxelGISettings::Gather::Probes)
         && (settings.probeSpacing == 8 || settings.probeSpacing == 16)
         && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Hardware);
@@ -240,13 +237,19 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     settings.diffuseResolution            = resolution == "full" ? VoxelGISettings::DiffuseResolution::Full
                                           : resolution == "half" ? VoxelGISettings::DiffuseResolution::Half
                                                                  : VoxelGISettings::DiffuseResolution::Auto;
-    const char* defaultTraversal =
-        settings.computeTraversal == VoxelGISettings::ComputeTraversal::Bricks ? "bricks" : "triangles";
-    const std::string traversal  = config.GetString("voxel_gi_compute_traversal", defaultTraversal);
-    valid                       &= traversal == "triangles" || traversal == "bricks";
-    settings.computeTraversal =
-        traversal == "bricks" ? VoxelGISettings::ComputeTraversal::Bricks : VoxelGISettings::ComputeTraversal::Triangles;
-    valid &= config.ReadNumber("voxel_gi_brick_resolution", settings.brickResolution);
+    // Compute GI always traces the distance field. Older configs named the software BVH or occupancy
+    // bricks; both load as the field, and an occupancy resolution does not translate into a field one.
+    const std::string traversal  = config.GetString("voxel_gi_compute_traversal", "field");
+    valid                       &= traversal == "triangles" || traversal == "bricks" || traversal == "field";
+    if (traversal != "field")
+    {
+        LOGI("voxel_gi_compute_traversal={} migrated to the distance field", traversal);
+    }
+    if (!config.GetString("voxel_gi_brick_resolution", "").empty())
+    {
+        LOGI("voxel_gi_brick_resolution ignored; voxel_gi_field_resolution sets the distance field");
+    }
+    valid &= config.ReadNumber("voxel_gi_field_resolution", settings.fieldResolution);
     const std::string gather =
         config.GetString("voxel_gi_gather", settings.gather == VoxelGISettings::Gather::Probes ? "probes" : "pixel");
     valid                             &= gather == "pixel" || gather == "probes";
@@ -373,6 +376,20 @@ bool VoxelGIRenderer::Init()
             m_skyIrradiance = m_device->CreateTextureStorage(format, {.copyUsage = true}, "voxel_sky_irradiance");
         }
 
+        if (m_skyIrradiance != nullptr && m_unshadowedMap == nullptr)
+        {
+            // Field gathers without scene shadow maps read zeroed shadow data: every light unshadowed.
+            TextureFormat unshadowed;
+            unshadowed.format      = DataFormat::eR32SFloat;
+            unshadowed.dimension   = TextureDimension::e2D;
+            unshadowed.width       = 1;
+            unshadowed.height      = 1;
+            unshadowed.depth       = 1;
+            unshadowed.arrayLayers = 2;
+            m_unshadowedMap        = m_device->CreateTextureSampled(unshadowed, {}, "voxel_unshadowed_map");
+            m_unshadowedSampler    = m_device->CreateSampler({});
+        }
+
         if (m_skyIrradiance != nullptr)
         {
             m_environmentColumns = m_device->CreateStorageBuffer(ZEN_ENVIRONMENT_IMPORTANCE_ROWS
@@ -424,22 +441,25 @@ bool VoxelGIRenderer::Init()
 void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
 {
     m_rayQuery.Destroy();
-    m_softwareRayQuery.Destroy();
-    m_bricks.Destroy();
-    m_bricksActive             = false;
-    m_hardwareQueries          = false;
-    m_hardwareFeatureMask      = 0;
-    m_preparingSoftwareQueries = false;
-    m_softwareQueriesActive    = false;
-    m_scene                    = scene;
+    if (m_field)
+    {
+        m_field->Destroy();
+    }
+    ++m_fieldSerial;
+    m_fieldActive         = false;
+    m_preparingField      = false;
+    m_skyVisibility       = 0;
+    m_hardwareQueries     = false;
+    m_hardwareFeatureMask = 0;
+    m_scene               = scene;
 
-    m_geometryRevision         = 0;
+    m_geometryRevision    = 0;
 
-    m_lightingRevision         = 0;
+    m_lightingRevision    = 0;
 
-    m_environmentRevision      = 0;
+    m_environmentRevision = 0;
 
-    m_radianceValid            = false;
+    m_radianceValid       = false;
 
     if (m_settings.previousFrameRadiance)
     {
@@ -677,29 +697,72 @@ void VoxelGIRenderer::BuildMipChain(const HeapVector<RHITextureView*>& views, Na
     }
 }
 
-bool VoxelGIRenderer::UsesSoftwareQueries() const
+uint32_t VoxelGIRenderer::ComputeFeatureMask(uint32_t hardwareMask) const
 {
     using Feature = VoxelGISettings::Feature;
-    // Indexed by Feature: sky, specular occlusion, sky cache, bounce, reflections, shadows.
-    const bool enabled[] = {true, m_settings.specularOcclusion, true, UsesRayBounce(), UsesReflections(), UsesRayShadows()};
+    // Indexed by Feature: sky, specular occlusion, sky cache, bounce, reflections, shadows. Direct
+    // shadows never trace the field: without HW RT they use shadow maps.
+    const bool enabled[] = {true, m_settings.specularOcclusion, true, UsesRayBounce(), UsesReflections(), false};
     static_assert(std::size(enabled) == static_cast<size_t>(Feature::Count));
-    bool software = false;
+    uint32_t mask = 0;
     for (uint32_t feature = 0; feature < static_cast<uint32_t>(Feature::Count); ++feature)
     {
-        software |= enabled[feature] && !UsesHardwareQueries(static_cast<Feature>(feature));
+        mask |= enabled[feature] && (hardwareMask & (1u << feature)) == 0 ? 1u << feature : 0u;
     }
-    return software;
+    return mask;
 }
 
-bool VoxelGIRenderer::RequestsBrickTraversal() const
+bool VoxelGIRenderer::UsesComputeQueries() const
 {
-    using Feature = VoxelGISettings::Feature;
-    // The GI gather features: sky, specular occlusion, bounce and reflections.
-    const bool gather = !UsesHardwareQueries(Feature::Sky)
-                     || (m_settings.specularOcclusion && !UsesHardwareQueries(Feature::SpecularOcclusion))
-                     || (UsesRayBounce() && !UsesHardwareQueries(Feature::Bounce))
-                     || (UsesReflections() && !UsesHardwareQueries(Feature::Reflections));
-    return m_settings.computeTraversal == VoxelGISettings::ComputeTraversal::Bricks && gather;
+    return m_fieldActive && ComputeFeatureMask(m_hardwareFeatureMask) != 0;
+}
+
+bool VoxelGIRenderer::IsRefiningField() const
+{
+    return m_fieldActive && m_field && m_scene != nullptr && (m_field->LocalWorkRemains() || !m_field->IsCurrent(*m_scene));
+}
+
+HeapVector<AABB> VoxelGIRenderer::BuildLocalFieldVolumes() const
+{
+    // Lamps sit in fixtures whose centimetre openings the scene field closes, trapping their light.
+    // A finer volume around each point and spot light lets bounce rays leave and enter the fixture
+    // and resolves the brightly lit surfaces around it. Three voxels each way passed the New Sponza
+    // lamp gates; one and two voxels left 32% and 24% of the floor bounce missing
+    // (Doc/ComputeGI/BrixelizerGIExecution.md, milestone 6).
+    HeapVector<AABB> volumes;
+    const Vec3       extent(3.0f * m_voxelizer->GetVoxelSize());
+    for (const LightEntry& entry : m_scene->GetLights().GetEntries())
+    {
+        const SceneLight& light = entry.light;
+        if (light.enabled && light.type != SceneLightType::eDirectional && light.intensity > 0.0f
+            && volumes.size() < ZEN_FIELD_LOCAL_VOLUMES)
+        {
+            volumes.push_back(AABB(light.position - extent, light.position + extent));
+        }
+    }
+    return volumes;
+}
+
+DistanceFieldSceneSettings VoxelGIRenderer::BuildFieldSettings() const
+{
+    // Initial preparation favors throughput: larger reference windows avoid repeatedly clearing
+    // and scanning the same cells in dense meshes. The owner sizes dispatches from GPU timings and
+    // permits longer frames until the scene and local fields finish. Later edits retain the smaller
+    // background batches. The 320-texel atlas still holds the same 64,000 distance bricks.
+    DistanceFieldSceneSettings settings;
+    settings.cellsPerAxis                   = m_settings.fieldResolution;
+    settings.atlasTexelsPerAxis             = 320;
+    settings.triangleBatchSize              = 65536;
+    settings.cellBatchSize                  = 256;
+    settings.jobsPerDispatch                = 4096;
+    settings.dispatchesPerFrame             = 2;
+    settings.maxCyclesPerFrame              = 16;
+    settings.frameBudgetMicroseconds        = 2000.0;
+    settings.frameBudgetShare               = 1.0;
+    settings.initialBuildBudgetMicroseconds = 100000.0;
+    settings.referencesPerCell              = 8192;
+    settings.referenceCapacity              = 1u << 22;
+    return settings;
 }
 
 bool VoxelGIRenderer::BuildRayQueryGraph()
@@ -707,71 +770,60 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
     bool ready = IsInitialized() && m_scene != nullptr;
     if (ready)
     {
+        if (!m_field || m_fieldResolution != m_settings.fieldResolution)
+        {
+            if (m_field)
+            {
+                m_field->Destroy();
+            }
+            m_field           = MakeUnique<DistanceFieldScene>(m_device, BuildFieldSettings());
+            m_fieldResolution = m_settings.fieldResolution;
+            ++m_fieldSerial;
+        }
         const bool     previousHardware = m_hardwareQueries;
         const uint32_t previousMask     = m_hardwareFeatureMask;
         const char*    previousReason   = m_providerReason;
+        const bool     previousField    = m_fieldActive;
         const uint32_t requestedMask    = m_settings.GetHardwareFeatureMask();
-        // Retain a usable HW path until the requested software snapshot has been built
-        // and uploaded. Requested settings remain visible to the UI throughout the switch.
+        // Retain a usable HW path until the requested field is ready. Requested settings remain
+        // visible to the UI throughout the switch.
         m_hardwareQueries =
             (requestedMask != 0 || previousHardware)
             && m_rayQuery.BuildRenderGraph(*m_scene, uint64_t(m_settings.accelerationStructureBudgetMB) * 1024 * 1024);
-        m_hardwareFeatureMask      = m_hardwareQueries ? requestedMask : 0;
-        m_preparingSoftwareQueries = false;
-        const bool software        = UsesSoftwareQueries();
-        if (software)
+        m_hardwareFeatureMask = m_hardwareQueries ? requestedMask : 0;
+        // The field stays current whenever GI renders, also while HW RT traces every feature, so a
+        // switch to Compute needs no rebuild. Construction is bounded per frame and published only
+        // after its submissions complete.
+        m_field->SetLocalVolumes(BuildLocalFieldVolumes());
+        const DistanceFieldScene::State state = m_field->BuildRenderGraph(*m_scene);
+        m_fieldRecorded                       = true;
+        const bool compute                    = ComputeFeatureMask(m_hardwareFeatureMask) != 0;
+        m_fieldActive                         = compute && state == DistanceFieldScene::State::Ready;
+        m_preparingField                      = compute && state == DistanceFieldScene::State::Pending;
+        if (compute && !m_fieldActive && m_hardwareQueries)
         {
-            // A BVH that the last frame did not trace (a new scene, or a switch from HW RT)
-            // can be far behind the scene, so it is built in the background, on HW RT if
-            // available and otherwise with PBR. Frames already tracing it rebuild it on each
-            // scene change, keeping moving geometry current in Compute and mixed tracing.
-            if (!m_softwareQueriesActive || !m_softwareRayQuery.HoldsSceneGeometry())
-            {
-                const SoftwareSceneRayQuery::PreparationResult prepared = m_softwareRayQuery.PrepareAsync(*m_scene);
-                m_preparingSoftwareQueries = prepared == SoftwareSceneRayQuery::PreparationResult::Pending;
-                ready                      = prepared == SoftwareSceneRayQuery::PreparationResult::Ready
-                                          || (m_preparingSoftwareQueries && m_hardwareQueries);
-                if (m_preparingSoftwareQueries && m_hardwareQueries)
-                {
-                    m_hardwareFeatureMask = (1u << static_cast<uint32_t>(VoxelGISettings::Feature::Count)) - 1u;
-                }
-            }
-            else
-            {
-                ready = m_softwareRayQuery.Prepare(*m_scene);
-            }
+            // HW RT traces every feature while the field is prepared, or after it failed.
+            m_hardwareFeatureMask = (1u << static_cast<uint32_t>(VoxelGISettings::Feature::Count)) - 1u;
         }
-        else
-        {
-            ready = m_softwareRayQuery.PrepareUnused();
-        }
-        m_softwareQueriesActive = software && ready && !m_preparingSoftwareQueries;
-        if (!m_preparingSoftwareQueries && requestedMask == 0 && m_hardwareQueries)
+        ready = !compute || m_fieldActive || m_hardwareQueries;
+        if (requestedMask == 0 && m_hardwareQueries && (!compute || m_fieldActive))
         {
             m_rayQuery.Destroy();
             m_hardwareQueries     = false;
             m_hardwareFeatureMask = 0;
         }
-        m_providerReason = m_preparingSoftwareQueries ? "software_bvh_preparing"
-                         : requestedMask != 0         ? m_rayQuery.GetReason()
-                                                      : "software_bvh_selected";
-        // Bricks are built from the software query's triangles. A failed build falls back to them.
-        const bool     requested  = ready && RequestsBrickTraversal();
-        const bool     were       = m_bricksActive;
-        const uint32_t resolution = m_voxelizer->GetVoxelTexResolution();
-        m_bricksActive            = requested
-                                 && m_bricks.BuildRenderGraph(*m_scene, m_softwareRayQuery, m_voxelizer->GetSceneMinPoint(),
-                                                              m_voxelizer->GetVoxelSize() * static_cast<float>(resolution),
-                                                              m_settings.brickResolution);
-        // Warn once per fallback streak; BrickScene logs its own allocation failures.
-        if (requested && !m_bricksActive && !m_brickFallbackLogged)
+        const bool failed = compute && state == DistanceFieldScene::State::Failed;
+        m_providerReason  = m_preparingField   ? "field_preparing"
+                          : failed             ? "field_failed"
+                          : requestedMask != 0 ? m_rayQuery.GetReason()
+                                               : "field_selected";
+        if (failed && previousReason != m_providerReason)
         {
-            LOGW("Brick scene unavailable; Compute GI rays trace triangles");
+            LOGW("Distance field unavailable for Compute GI: {}", m_field->GetFailureReason());
         }
-        m_brickFallbackLogged = requested && !m_bricksActive;
-        if (were != m_bricksActive)
+        if (previousField != m_fieldActive)
         {
-            LOGI("Compute GI traversal: {}", m_bricksActive ? "bricks" : "triangles");
+            LOGI("Compute GI distance field {}", m_fieldActive ? "active" : "inactive");
         }
         if (previousMask != m_hardwareFeatureMask)
         {
@@ -780,7 +832,7 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
         }
         if (previousHardware != m_hardwareQueries || previousReason != m_providerReason)
         {
-            LOGI("Hybrid GI selected {}: {}", m_hardwareQueries ? "hardware" : "software", m_providerReason);
+            LOGI("Hybrid GI selected {}: {}", m_hardwareQueries ? "hardware" : "compute", m_providerReason);
         }
     }
     return ready;
@@ -788,6 +840,7 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
 
 void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 {
+    m_shadowMaps              = shadows;
     m_recordedRadiance        = false;
     m_recordedDelayedRadiance = false;
     m_rayTotalsCleared        = false;
@@ -828,9 +881,13 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 
         m_recordedEnvironment = m_scene->GetEnvironmentRevision();
 
-        const bool geometryChanged    = m_geometryRevision != m_recordedGeometry;
+        const bool geometryChanged = m_geometryRevision != m_recordedGeometry;
 
-        const bool skyChanged         = geometryChanged || m_environmentRevision != m_recordedEnvironment;
+        // The sky cache traces the published field or HW RT; a new field generation changes its visibility.
+        m_recordedSkyVisibility = UsesHardwareQueries(VoxelGISettings::Feature::SkyCache) ? 0 : GetVisibilityGeneration();
+
+        const bool skyChanged =
+            geometryChanged || m_environmentRevision != m_recordedEnvironment || m_skyVisibility != m_recordedSkyVisibility;
 
         const VoxelTextures& textures = m_voxelizer->GetVoxelTextures();
 
@@ -862,11 +919,13 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
         {
             RDGComputePassDesc sky;
 
-            const bool  surfaceSky     = m_scene->GetVoxelTriangleCount() != 0;
-            const bool  hardwareSky    = UsesHardwareQueries(VoxelGISettings::Feature::SkyCache);
-            const char* surfaceProgram = CountsRays()
-                                           ? (hardwareSky ? "VoxelSkyIrradianceHardwareCountsSP" : "VoxelSkyIrradianceCountsSP")
-                                           : (hardwareSky ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceSP");
+            const bool hardwareSky = UsesHardwareQueries(VoxelGISettings::Feature::SkyCache);
+            // During cold preparation the voxel cache already supplies a coarse GI preview.
+            // Publication changes the visibility generation and recomputes sky with the field.
+            const bool  surfaceSky = m_scene->GetVoxelTriangleCount() != 0 && (hardwareSky || m_fieldActive);
+            const char* surfaceProgram =
+                CountsRays() ? (hardwareSky ? "VoxelSkyIrradianceHardwareCountsSP" : "VoxelSkyIrradianceFieldCountsSP")
+                             : (hardwareSky ? "VoxelSkyIrradianceHardwareSP" : "VoxelSkyIrradianceFieldSP");
             sky.SetShaderProgramName(surfaceSky ? surfaceProgram : "VoxelSkyIrradianceLegacySP");
             m_countedSkyCache = CountsRays();
             if (surfaceSky)
@@ -883,7 +942,11 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
                 }
                 else
                 {
-                    m_softwareRayQuery.BindInputs(sky, *m_scene);
+                    // Owner-triangle receivers read scene geometry directly; the field holds no triangles.
+                    m_field->BindCompositeInputs(sky);
+                    sky.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
+                    sky.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
+                    sky.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
                 }
                 sky.BindStorageBuffer("TriangleRecords", m_scene->GetVoxelTriangleBuffer());
             }
@@ -933,14 +996,6 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
                     CountsRays()
                         ? (averaged ? "VoxelInjectHardwareRadianceAveragedCountsSP" : "VoxelInjectHardwareRadianceCountsSP")
                         : (averaged ? "VoxelInjectHardwareRadianceAveragedSP" : "VoxelInjectHardwareRadianceSP"));
-            }
-
-            if (UsesRayShadows() && !hardwareShadows && meshShadows)
-            {
-                inject.SetShaderProgramName(
-                    CountsRays()
-                        ? (averaged ? "VoxelInjectSoftwareRadianceAveragedCountsSP" : "VoxelInjectSoftwareRadianceCountsSP")
-                        : (averaged ? "VoxelInjectSoftwareRadianceAveragedSP" : "VoxelInjectSoftwareRadianceSP"));
             }
 
             if (CountsRays() && UsesRayShadows() && meshShadows)
@@ -1036,16 +1091,28 @@ void VoxelGIRenderer::BindRayInputs(RDGPassDescBase& pass) const
     pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
 }
 
-void VoxelGIRenderer::BindSoftwareRayInputs(RDGPassDescBase& pass, bool forwardMaterialBound) const
-{
-    m_softwareRayQuery.BindInputs(pass, *m_scene, forwardMaterialBound);
-}
-
 void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass) const
 {
     BindRayInputs(pass);
     m_rayQuery.BindInputs(pass, *m_scene);
-    m_softwareRayQuery.BindTraversalInputs(pass);
+}
+
+void VoxelGIRenderer::BindFieldInputs(RDGPassDescBase& pass) const
+{
+    // Gather passes read near-light visibility from the frame's shadow maps (hit_radiance.glsl). A frame
+    // without them, which the renderer never composes with field GI, sees every light unshadowed.
+    VERIFY_EXPR(m_fieldActive);
+    m_field->BindCompositeInputs(pass);
+    if (m_shadowMaps != nullptr)
+    {
+        m_shadowMaps->BindLightingInputs(pass);
+    }
+    else
+    {
+        static const SceneShadowUniformData unshadowed{};
+        pass.BindValue("uSceneShadows", unshadowed);
+        pass.BindSampledTexture("sceneShadowMaps", m_unshadowedSampler, m_unshadowedMap->GetDefaultView());
+    }
 }
 
 void VoxelGIRenderer::BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound) const
@@ -1053,10 +1120,6 @@ void VoxelGIRenderer::BindShadowInputs(RDGPassDescBase& pass, SceneShadowRendere
     if (UsesHardwareShadows())
     {
         m_rayQuery.BindInputs(pass, *m_scene, forwardMaterialBound);
-    }
-    else if (UsesRayShadows())
-    {
-        m_softwareRayQuery.BindInputs(pass, *m_scene, forwardMaterialBound);
     }
     else
     {
@@ -1192,6 +1255,7 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_radianceValid = true;
 
         ++m_radianceGeneration;
+        m_skyVisibility       = m_recordedSkyVisibility;
         m_geometryRevision    = m_recordedGeometry;
         m_lightingRevision    = m_recordedLighting;
         m_environmentRevision = m_recordedEnvironment;
@@ -1201,6 +1265,7 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_geometryRevision    = 0;
         m_lightingRevision    = 0;
         m_environmentRevision = 0;
+        m_skyVisibility       = UINT64_MAX;
 
         m_radianceValid       = false;
     }
@@ -1209,21 +1274,33 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
     m_recordedRadiance        = false;
 
     m_recordedDelayedRadiance = false;
+}
+
+void VoxelGIRenderer::OnVisibilityGraphExecuted(RenderFrameResult result)
+{
     m_rayQuery.OnRenderGraphExecuted(result);
-    m_softwareRayQuery.OnRenderGraphExecuted(result);
-    m_bricks.OnRenderGraphExecuted(result);
+    if (m_fieldRecorded && m_field)
+    {
+        m_field->OnRenderGraphExecuted(result);
+    }
+    m_fieldRecorded = false;
 }
 
 void VoxelGIRenderer::Destroy()
 {
     m_rayQuery.Destroy();
-    m_softwareRayQuery.Destroy();
-    m_bricks.Destroy();
-    m_bricksActive             = false;
-    m_hardwareQueries          = false;
-    m_hardwareFeatureMask      = 0;
-    m_preparingSoftwareQueries = false;
-    m_softwareQueriesActive    = false;
+    if (m_field)
+    {
+        m_field->Destroy();
+    }
+    m_field.Reset();
+    m_fieldResolution     = 0;
+    m_fieldActive         = false;
+    m_fieldRecorded       = false;
+    m_preparingField      = false;
+    m_skyVisibility       = 0;
+    m_hardwareQueries     = false;
+    m_hardwareFeatureMask = 0;
     m_device->DestroyTexture(m_radiance);
 
     m_device->DestroyTexture(m_previousRadiance);
@@ -1268,6 +1345,10 @@ void VoxelGIRenderer::Destroy()
     m_recordedDelayedRadiance                 = false;
 
     m_device->DestroyTexture(m_skyIrradiance);
+
+    m_device->DestroyTexture(m_unshadowedMap);
+
+    m_unshadowedMap = nullptr;
 
     m_device->DestroyBuffer(m_environmentColumns);
     m_device->DestroyBuffer(m_environmentRows);

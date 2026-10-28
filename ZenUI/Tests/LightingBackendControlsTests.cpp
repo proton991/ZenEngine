@@ -13,7 +13,6 @@ namespace
 {
 using Feature                  = rc::VoxelGISettings::Feature;
 using Provider                 = rc::VoxelGISettings::RayProvider;
-using Traversal                = rc::VoxelGISettings::ComputeTraversal;
 
 const char* const kPassNames[] = {"Diffuse GI", "Specular GI", "Sky cache", "Direct shadows"};
 
@@ -36,25 +35,21 @@ TEST(GITracingTest, PassTracersMapOntoTheSettings)
     for (uint32_t index = 0; index < static_cast<uint32_t>(GIPass::Count); ++index)
     {
         const GIPass pass = static_cast<GIPass>(index);
-        EXPECT_EQ(GetGIPassTracer(settings, pass), pass == GIPass::Shadows ? GITracer::ShadowMaps : GITracer::SoftwareBVH)
-            << index;
+        EXPECT_EQ(GetGIPassTracer(settings, pass), pass == GIPass::Shadows ? GITracer::ShadowMaps : GITracer::Field) << index;
     }
-
-    // Diffuse and specular GI share the Compute traversal; the sky cache has no bricks.
-    SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Bricks);
-    EXPECT_EQ(settings.computeTraversal, Traversal::Bricks);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Bricks);
+    // Direct shadows never trace the field: it is not offered, and shadows keep maps.
+    SetGIPassTracer(settings, GIPass::Shadows, GITracer::Field);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
-    SetGIPassTracer(settings, GIPass::SkyCache, GITracer::Bricks);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::SkyCache), GITracer::SoftwareBVH);
-    // Direct shadows need exact geometry: bricks are not offered, and shadows keep maps.
-    SetGIPassTracer(settings, GIPass::Shadows, GITracer::Bricks);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
+    EXPECT_FALSE(settings.UsesRayShadows(true));
 
     SetGIPassTracer(settings, GIPass::Specular, GITracer::HardwareRT);
     EXPECT_EQ(settings.GetFeatureProvider(Feature::SpecularOcclusion), Provider::Hardware);
     EXPECT_EQ(settings.GetFeatureProvider(Feature::Reflections), Provider::Hardware);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Bricks);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Field);
+    SetGIPassTracer(settings, GIPass::SkyCache, GITracer::HardwareRT);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::SkyCache), GITracer::HardwareRT);
+    SetGIPassTracer(settings, GIPass::SkyCache, GITracer::Field);
+    EXPECT_EQ(settings.GetFeatureProvider(Feature::SkyCache), Provider::Voxel);
 
     // Shadow maps trace no rays and keep the shadow ray provider for a later ray tracer.
     SetGIPassTracer(settings, GIPass::Shadows, GITracer::ShadowMaps);
@@ -62,7 +57,7 @@ TEST(GITracingTest, PassTracersMapOntoTheSettings)
     EXPECT_FALSE(settings.rtShadows);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
     SetGIPassTracer(settings, GIPass::Diffuse, GITracer::ShadowMaps);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Bricks);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Field);
     SetGIPassTracer(settings, GIPass::Shadows, GITracer::HardwareRT);
     EXPECT_TRUE(settings.rtShadows);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
@@ -70,41 +65,27 @@ TEST(GITracingTest, PassTracersMapOntoTheSettings)
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::Off);
 }
 
-TEST(GITracingTest, DefaultComputeShadowsUseMapsUntilSoftwareIsSelected)
-{
-    rc::VoxelGIRuntimeSettings settings;
-    ASSERT_TRUE(rc::ApplyVoxelGIPreset(rc::VoxelGIPreset::Low, settings));
-    EXPECT_EQ(GetGIPassTracer(settings.cone, GIPass::Shadows), GITracer::ShadowMaps);
-    SetGIPassTracer(settings.cone, GIPass::Shadows, GITracer::SoftwareBVH);
-    EXPECT_EQ(GetGIPassTracer(settings.cone, GIPass::Shadows), GITracer::SoftwareBVH);
-    EXPECT_TRUE(settings.cone.UsesRayShadows(false));
-    SetGIPassTracer(settings.cone, GIPass::Shadows, GITracer::ShadowMaps);
-    SetGIRayTracing(settings.cone, true);
-    EXPECT_EQ(GetGIPassTracer(settings.cone, GIPass::Shadows), GITracer::ShadowMaps);
-    EXPECT_FALSE(settings.cone.UsesRayShadows(true));
-}
-
-TEST(GITracingTest, GlobalComputeUsesMapsAndSoftwareShadowsRemainAnExplicitChoice)
+// Compute direct shadows use maps; HW RT shadows remain a choice.
+TEST(GITracingTest, GlobalComputeUsesMapsAndHardwareShadowsRemainAChoice)
 {
     rc::VoxelGISettings settings;
     SetGIRayTracing(settings, true);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
     SetGIRayTracing(settings, false);
     EXPECT_EQ(settings.rayProvider, Provider::Voxel);
-    EXPECT_EQ(settings.featureProviders[static_cast<size_t>(Feature::Shadows)], Provider::Auto);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
     EXPECT_FALSE(settings.UsesRayShadows(false));
     EXPECT_FALSE(settings.UsesRayShadows(true));
 
-    SetGIPassTracer(settings, GIPass::Shadows, GITracer::SoftwareBVH);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::SoftwareBVH);
-    EXPECT_TRUE(settings.UsesRayShadows(false));
+    SetGIPassTracer(settings, GIPass::Shadows, GITracer::HardwareRT);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
+    EXPECT_TRUE(settings.UsesRayShadows(true));
+    EXPECT_FALSE(settings.UsesRayShadows(false));
     SetGIRayTracing(settings, false);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
 
     SetGIRayTracing(settings, true);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::HardwareRT);
-    EXPECT_TRUE(settings.UsesRayShadows(true));
     settings.shadows = false;
     SetGIRayTracing(settings, false);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::Off);
@@ -122,8 +103,8 @@ TEST(GITracingTest, DisabledFeaturesNeitherMixNorReenableUnasked)
 
     // Voxel cone bounce traces no bounce rays, so only the sky rays decide the tracer.
     settings.bounceSource = rc::VoxelGISettings::BounceSource::Cone;
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::SoftwareBVH);
-    SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Bricks);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Field);
+    SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Field);
     EXPECT_EQ(settings.bounceSource, rc::VoxelGISettings::BounceSource::Cone);
 
     // A tracing pass keeps its reflection setting; a pass that is off turns on.
@@ -132,17 +113,18 @@ TEST(GITracingTest, DisabledFeaturesNeitherMixNorReenableUnasked)
     EXPECT_EQ(settings.reflections, rc::VoxelGISettings::Reflections::Off);
     settings.specularOcclusion = false;
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Off);
-    SetGIPassTracer(settings, GIPass::Specular, GITracer::Bricks);
+    SetGIPassTracer(settings, GIPass::Specular, GITracer::Field);
     EXPECT_TRUE(settings.specularOcclusion);
     EXPECT_EQ(settings.reflections, rc::VoxelGISettings::Reflections::On);
 
     // Level 1 changes only providers.
-    settings.rtShadows = false;
+    settings.rtShadows       = false;
+    settings.fieldResolution = 32;
     SetGIRayTracing(settings, true);
     EXPECT_EQ(settings.GetHardwareFeatureMask(), (1u << static_cast<uint32_t>(Feature::Count)) - 1u);
     EXPECT_FALSE(settings.rtShadows);
     EXPECT_EQ(settings.bounceSource, rc::VoxelGISettings::BounceSource::Cone);
-    EXPECT_EQ(settings.computeTraversal, Traversal::Bricks);
+    EXPECT_EQ(settings.fieldResolution, 32u);
 }
 
 // Diffuse and specular GI switch off on their own, to tell their contributions apart.
@@ -150,27 +132,26 @@ TEST(GITracingTest, DiffuseAndSpecularSwitchOffIndependently)
 {
     rc::VoxelGISettings settings;
     SetGIRayTracing(settings, false);
-    SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Bricks);
     SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Off);
     EXPECT_FALSE(settings.indirectDiffuse);
     EXPECT_TRUE(settings.specularOcclusion);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Off);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Bricks);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Field);
 
     SetGIPassTracer(settings, GIPass::Specular, GITracer::Off);
     EXPECT_FALSE(settings.specularOcclusion);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Off);
 
     // Choosing a tracer switches a pass back on.
-    SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Bricks);
+    SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Field);
     EXPECT_TRUE(settings.indirectDiffuse);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Bricks);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::Diffuse), GITracer::Field);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Specular), GITracer::Off);
 
     // The sky cache and direct shadows offer no Off.
     SetGIPassTracer(settings, GIPass::SkyCache, GITracer::Off);
     SetGIPassTracer(settings, GIPass::Shadows, GITracer::Off);
-    EXPECT_EQ(GetGIPassTracer(settings, GIPass::SkyCache), GITracer::SoftwareBVH);
+    EXPECT_EQ(GetGIPassTracer(settings, GIPass::SkyCache), GITracer::Field);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
 }
 
@@ -219,33 +200,19 @@ TEST_F(LightingBackendControlsTest, ComputeListsEveryPassWithItsTracer)
 {
     rc::VoxelGISettings settings;
     SetGIRayTracing(settings, false);
-    settings.computeTraversal = Traversal::Bricks;
-    settings.gather           = rc::VoxelGISettings::Gather::Probes;
-    const std::string text    = Draw(settings, false);
+    settings.gather        = rc::VoxelGISettings::Gather::Probes;
+    const std::string text = Draw(settings, false);
     for (const char* name : kPassNames)
     {
         const std::string row = std::string("| ") + name;
         EXPECT_EQ(CountOf(text, row.c_str()), 1u) << name;
     }
     // Tracer cells log their combo preview as "{ text } |".
-    EXPECT_EQ(CountOf(text, "{ Compute: Bricks } |"), 2u);
-    EXPECT_EQ(CountOf(text, "{ Compute: Software BVH } |"), 1u);
+    EXPECT_EQ(CountOf(text, "{ Compute: Distance field } |"), 3u);
     EXPECT_EQ(CountOf(text, "{ Shadow maps } |"), 1u);
-    EXPECT_EQ(CountOf(text, "{ Software BVH } |"), 0u);
-    EXPECT_NE(text.find("share one Compute tracer"), std::string::npos);
-    EXPECT_NE(text.find("Brick cells per axis"), std::string::npos);
+    EXPECT_NE(text.find("Distance field cells per axis"), std::string::npos);
     EXPECT_NE(text.find("Probe spacing"), std::string::npos);
     EXPECT_EQ(text.find("HW RT is"), std::string::npos);
-}
-
-TEST_F(LightingBackendControlsTest, SoftwareShadowsAreLabeledAfterAnExplicitPassSelection)
-{
-    rc::VoxelGISettings settings;
-    SetGIRayTracing(settings, false);
-    SetGIPassTracer(settings, GIPass::Shadows, GITracer::SoftwareBVH);
-    const std::string text = Draw(settings, false);
-    EXPECT_EQ(CountOf(text, "{ Software BVH } |"), 1u);
-    EXPECT_EQ(CountOf(text, "{ Shadow maps } |"), 0u);
 }
 
 // Compute GI preparation is reported over the scene view, not in the panel.
@@ -253,22 +220,22 @@ TEST_F(LightingBackendControlsTest, ComputePreparationIsLeftToTheSceneView)
 {
     rc::VoxelGISettings settings;
     SetGIRayTracing(settings, false);
-    std::string text = Draw(settings, true, "software_bvh_preparing");
+    std::string text = Draw(settings, true, "field_preparing");
     EXPECT_EQ(text.find("Preparing Compute GI"), std::string::npos);
-    EXPECT_EQ(text.find("software_bvh_preparing"), std::string::npos);
+    EXPECT_EQ(text.find("field_preparing"), std::string::npos);
     EXPECT_EQ(GetGIPassTracer(settings, GIPass::Shadows), GITracer::ShadowMaps);
     // A pass still on HW RT gives no false unavailability reason while Compute prepares.
     SetGIPassTracer(settings, GIPass::Specular, GITracer::HardwareRT);
-    text = Draw(settings, false, "software_bvh_preparing");
+    text = Draw(settings, false, "field_preparing");
     EXPECT_EQ(text.find("HW RT is unavailable"), std::string::npos);
-    EXPECT_EQ(text.find("software_bvh_preparing"), std::string::npos);
+    EXPECT_EQ(text.find("field_preparing"), std::string::npos);
 }
 
 TEST_F(LightingBackendControlsTest, PreparationStatusDrawsAtTheTopCenterClearOfCornerWidgets)
 {
     EXPECT_EQ(GetGIPreparationStatus(false, true), nullptr);
     EXPECT_STREQ(GetGIPreparationStatus(true, true), "Preparing Compute GI. HW RT stays active until it is ready.");
-    EXPECT_STREQ(GetGIPreparationStatus(true, false), "Preparing Compute GI. The view shows PBR until it is ready.");
+    EXPECT_STREQ(GetGIPreparationStatus(true, false), "GI preview active. Refining lighting in the background.");
 
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -310,7 +277,7 @@ TEST_F(LightingBackendControlsTest, HardwareReportsWhetherItIsActive)
     std::string text = Draw(settings, true);
     EXPECT_NE(text.find("HW RT is active"), std::string::npos);
     EXPECT_EQ(CountOf(text, "{ HW RT } |"), 4u);
-    EXPECT_EQ(text.find("Brick cells per axis"), std::string::npos);
+    EXPECT_EQ(text.find("Distance field cells per axis"), std::string::npos);
     EXPECT_EQ(text.find("Probe spacing"), std::string::npos);
     text = Draw(settings, false);
     EXPECT_NE(text.find("ray queries unsupported"), std::string::npos);
@@ -324,15 +291,13 @@ TEST_F(LightingBackendControlsTest, OffPassesSayWhatReplacesThem)
 {
     rc::VoxelGISettings settings;
     SetGIRayTracing(settings, false);
-    settings.computeTraversal = Traversal::Bricks;
-    std::string text          = Draw(settings, false);
+    std::string text = Draw(settings, false);
     EXPECT_EQ(text.find("unoccluded environment"), std::string::npos);
     SetGIPassTracer(settings, GIPass::Diffuse, GITracer::Off);
     text = Draw(settings, false);
     EXPECT_EQ(CountOf(text, "{ Off } |"), 1u);
-    EXPECT_EQ(CountOf(text, "{ Compute: Bricks } |"), 1u);
+    EXPECT_EQ(CountOf(text, "{ Compute: Distance field } |"), 2u);
     EXPECT_NE(text.find("unoccluded environment"), std::string::npos);
-    EXPECT_EQ(text.find("share one Compute tracer"), std::string::npos);
 }
 
 TEST_F(LightingBackendControlsTest, ShowsPerPassWhenPassesDiffer)
@@ -345,6 +310,5 @@ TEST_F(LightingBackendControlsTest, ShowsPerPassWhenPassesDiffer)
     EXPECT_NE(text.find("Per pass"), std::string::npos);
     EXPECT_EQ(CountOf(text, "{ HW RT } |"), 1u);
     EXPECT_EQ(CountOf(text, "{ Shadow maps } |"), 1u);
-    EXPECT_EQ(text.find("share one Compute tracer"), std::string::npos);
 }
 } // namespace zen::ui
