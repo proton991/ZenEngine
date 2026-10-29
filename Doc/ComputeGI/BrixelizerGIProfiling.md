@@ -71,6 +71,28 @@ Remaining Nsight gaps: complete cold-preparation, coverage-expansion, warm-switc
 
 The ordered optimization work that follows from these findings is in [the optimization plan](BrixelizerGIOptimizationPlan.md).
 
+## New Sponza camera approach and the construction fault, 2026-10-29
+
+Reported: walking from the outside of New Sponza toward its center halves the frame rate with both Compute GI and HW RT. Measured with the demo's `camera_pose_eye` / `camera_pose_target` keys, which override scene cameras, on the field-matched configuration at 1600×900. Stops lie on PhysCamera001's view line from beyond it (−2, −1, a close wall) through PhysCamera001 (0) to the hall center (1). Driver and reports: [approach.py and table.py](E:/Dev/ZenEngine/build/compute-gi/approach).
+
+| GPU frame median, ms | Wall (−2) | Hall end (0) | Hall center (1) |
+| --- | ---: | ---: | ---: |
+| Compute, before | 2.12 | 7.64 | 6.83 |
+| Compute, after | | 7.27 | 6.42 |
+| HW RT, before | 1.48 | 5.93 | 5.70 |
+| HW RT, after | | 5.17 | 4.82 |
+
+- **Cause.** The drop is the hall view's per-pixel workload, not a GI regression. Within the hall the frame rate stays flat. From the wall to the hall, every per-pixel pass grows: direct lighting with 22 unbounded, shadowed lamps (HW RT 2.7–3.0 ms of shadow rays), Compute's probe traces (about 2.4 ms against HW RT's 0.5 ms), the dirt decal layer (up to 1.5 ms) and the G-buffer.
+- **HW RT lamp shadow rays now start at the light** (`scene_shadows.glsl`). Segment visibility is symmetric, and 98% of New Sponza's lamp rays end at the lantern glass beside the lamp. A receiver-side any-hit ray first crosses the hall's BVH; a light-side ray meets the glass at once. `SceneLighting` drops 0.7–0.8 ms. Against the previous build's capture, 3 of 1.44 M pixels change, by at most 6 of 255; two captures of the new build are identical. A 1e-5 end margin, tried first, leaked light onto 3 lantern-trim pixels, where New Sponza's surfaces lie within 0.25 mm of each other. The final ray excludes only one ulp at the receiver end, behind the existing origin offset.
+- **Compute decals reuse the receiver's exact shadow-map results** (`hybrid_gi_visibility.frag`, `deferred_lighting.glsl`, `forward_material.glsl`). The receiver visibility bits that HW RT decals already used now mark a light exact when its shadow visibility is 0 or 1; layers recompute penumbra lights themselves. Ray results are always exact, so HW RT is unchanged. Lighting captures keep evaluating every light in the layer. `ForwardTranslucent` drops about 0.4 ms. The image changes by at most 6 of 255 in 26–63 pixels, none above 8: the decal's offset from its receiver at shadow-map edges, which the HW RT reuse already accepts.
+- **Measurement hazard.** With the editor open, the 16 GB adapter held about 15.2 GB during these runs (desktop compositor about 3 GB; the editor 5.4 GB dedicated plus 4.4 GB shared). The G-buffer pass then varied from run to run (1.0 and 2.7 ms native, 12.6 ms under Nsight) from residency changes. New Sponza's 72 textures at 4096² are uploaded uncompressed (5.25 GB). Close the editor before timing, or treat G-buffer spikes as residency noise.
+
+**Construction fault (fixed).** Short runs with async compute off lost the device about 0.35 s after the scene field published: `nvlddmkm` Xid 13, `Graphics Exception: SKEDCHECK36_DEPENDENCE_COUNTER_UNDERFLOW`, then `VK_ERROR_DEVICE_LOST`. It happened in both backends, because HW RT keeps the field current. The repro (`build/compute-gi/fault/repro.py`) lost the device in 7 of 8 runs. Synchronization validation reported no hazard over the whole build. Only the GPU's current phase has work, so most construction slices dispatched empty indirect grids between barriers on the graphics queue. The scheduler now launches one group for an idle slice, which exits on `ZEN_FIELD_CONTROL_WORK_IDLE`. The result is 0 of 19 runs lost (Compute, HW RT, async on), with an unchanged field (60,419 bricks, 0 unavailable cells, the same lamp volumes) and unchanged GPU time across the build (1,541 against 1,554 ms over the warmup frames).
+
+Validation (Release, all three changes): RenderCoreTest 728, RayQueryIntegrationTest 92, ConeVoxelGIIntegrationTest 112, EditorRenderingTest 59, SceneModelSwitchTest 8 and EditorPreviewTest 16 pass, with no validation messages ([logs](E:/Dev/ZenEngine/build/compute-gi/brixelizer-integration/hall-perf-release)). The CUDA bounce gates were not rerun. Lighting captures keep per-layer shadow evaluation, the field builds the same bricks, and HW RT shadow rays are not part of the Compute gates.
+
+The first launch after a shader change recompiled the ten field programs (570 ms in the first construction frame) on every run, because this machine's NVIDIA shader disk cache (4.9 GB) stored nothing new. The engine's `VkPipelineCache` is not persisted, so construction readiness here depends on that driver cache.
+
 ## Historical checkpoint — superseded
 
 The remainder records an earlier implementation and an unmatched direct-shadow baseline. It remains useful for explaining the optimization investigation, but its 47% whole-frame and 89% GI comparisons are not current acceptance results.
