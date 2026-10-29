@@ -73,10 +73,15 @@ void FieldPrepareSchedule()
         fieldControl[ZEN_FIELD_CONTROL_WORK_FIRST] = first;
         fieldControl[ZEN_FIELD_CONTROL_WORK_COUNT] = count;
     }
-    fieldIndirect[0] = groups;
-    fieldIndirect[1] = 1u;
-    fieldIndirect[2] = 1u;
-    fieldIndirect[3] = 0u;
+    // Empty indirect grids interleaved with barriers on the graphics queue faulted the NVIDIA
+    // scheduler (Xid 13, SKEDCHECK36_DEPENDENCE_COUNTER_UNDERFLOW, device lost) during initial
+    // builds. Most slices are idle, since only the current phase has work: launch one group
+    // that exits at once instead.
+    fieldControl[ZEN_FIELD_CONTROL_WORK_IDLE] = groups == 0u ? 1u : 0u;
+    fieldIndirect[0]                          = max(groups, 1u);
+    fieldIndirect[1]                          = 1u;
+    fieldIndirect[2]                          = 1u;
+    fieldIndirect[3]                          = 0u;
 }
 #endif
 

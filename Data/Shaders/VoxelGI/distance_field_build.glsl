@@ -715,7 +715,7 @@ void FieldEmit(uint activeIndex)
 }
 #endif
 
-void main()
+void FieldMain()
 {
 #ifdef FIELD_CLEAR
     uint index         = FieldLinearInvocation();
@@ -990,5 +990,20 @@ void main()
         }
         distanceFieldHierarchy[FieldParentOffset() + index] = value;
     }
+#endif
+}
+
+void main()
+{
+#if defined(FIELD_BATCH_CLEAR) || defined(FIELD_JOBS) || defined(FIELD_COVERAGE) || defined(FIELD_COUNT)    \
+    || defined(FIELD_SCAN) || defined(FIELD_SCAN_SUMS) || defined(FIELD_ALLOCATE) || defined(FIELD_COMPACT) \
+    || defined(FIELD_EMIT) || defined(FIELD_HIERARCHY)
+    // Scheduled work: an idle slice launches one group instead of an empty grid (distance_field_schedule.glsl).
+    if (fieldControl[ZEN_FIELD_CONTROL_WORK_IDLE] == 0u)
+    {
+        FieldMain();
+    }
+#else
+    FieldMain();
 #endif
 }
