@@ -19,13 +19,21 @@ float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
             vec3 origin = HybridTraceOrigin(position, dot(normal, direction) >= 0.0 ? normal : -normal, 0.0);
             if (int(light.directionType.w) != 0)
             {
-                vec3 delta      = light.positionRange.xyz - origin;
+                // Segment visibility is symmetric, so trace from the light. A fixture around the
+                // light (bulb, lantern glass) then ends the any-hit traversal at once instead of
+                // after crossing the scene from the receiver (New Sponza: 98% of lamp rays).
+                // The offset origin keeps the receiver itself beyond the segment's end; exclude
+                // that endpoint, without dropping a finite interval before it.
+                vec3 delta      = origin - light.positionRange.xyz;
                 distanceToLight = length(delta);
                 direction       = delta / max(distanceToLight, 1e-20);
-                // Exclude the endpoint itself, without dropping a finite interval before it.
                 distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
+                if (distanceToLight > 0.0)
+                {
+                    visibility = HybridTraceRay(0, light.positionRange.xyz, direction, distanceToLight).hit ? 0.0 : 1.0;
+                }
             }
-            if (distanceToLight > 0.0)
+            else if (distanceToLight > 0.0)
             {
                 visibility = HybridTraceRay(0, origin, direction, distanceToLight).hit ? 0.0 : 1.0;
             }
