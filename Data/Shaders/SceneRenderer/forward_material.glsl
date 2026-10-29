@@ -53,8 +53,8 @@ layout(set = 4, binding = 2, std430) buffer LightingCapture
 };
 #endif
 layout(location = 0) out vec4 outColor;
-#if defined(HYBRID_GI) && defined(HARDWARE_SHADOWS)
-// The deferred receiver's shadow-ray results (deferred_lighting.glsl); zero when no deferred pass ran.
+#if defined(HYBRID_GI)
+// The deferred receiver's exact shadow results (deferred_lighting.glsl); zero when no deferred pass ran.
 layout(set = 4, binding = 4) uniform usampler2D receiverLightVisibility;
 #endif
 #ifdef HYBRID_GI
@@ -259,11 +259,9 @@ void main()
         }
         if (diffuse)
         {
-#        if defined(HARDWARE_SHADOWS)
             receiverVisibility = texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0).rg;
-#        endif
-            vec3 escaped = indirect ? texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb : irradiance;
-            irradiance   = indirect ? irradiance + escaped : irradiance;
+            vec3 escaped       = indirect ? texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb : irradiance;
+            irradiance         = indirect ? irradiance + escaped : irradiance;
 #        ifdef LIGHTING_CAPTURE
             captureDiffuseEscaped = escaped;
             captureDiffuseBounced = irradiance - captureDiffuseEscaped;
