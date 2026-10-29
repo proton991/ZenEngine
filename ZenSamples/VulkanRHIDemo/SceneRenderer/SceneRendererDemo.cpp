@@ -335,6 +335,18 @@ bool SceneRendererDemo::PublishModel(UniquePtr<asset::LoadedScene> candidate, bo
             }
         }
 
+        Vec3 eye{};
+
+        Vec3 target{};
+
+        // A configured pose overrides scene cameras too, so profiling can place the view anywhere.
+        if (configuredCameraPosition && platform::ConfigLoader::GetInstance().ReadVec3("camera_pose_eye", eye)
+            && platform::ConfigLoader::GetInstance().ReadVec3("camera_pose_target", target)
+            && glm::length(target - eye) > 1e-4f)
+        {
+            camera->SetPose(eye, target);
+        }
+
         if (resourcesReady && m_renderDevice->PrepareForSceneReplacement())
         {
             m_renderDevice->GetRendererServer()->SetRenderScene(renderScene.Get());
