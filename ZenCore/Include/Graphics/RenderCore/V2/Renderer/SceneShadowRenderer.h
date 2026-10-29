@@ -66,6 +66,7 @@ private:
     RenderDevice*                         m_device;
     RHITexture*                           m_depth{nullptr};
     RHITexture*                           m_maps{nullptr};
+    RHITexture*                           m_maxDepth{nullptr}; // Deepest depth per 4x4 block of each layer.
     RHISampler*                           m_depthSampler{nullptr};
     RHISampler*                           m_materialSampler{nullptr};
     uint32_t                              m_resolution{1024};

@@ -396,6 +396,11 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                              "VoxelGI/inject_hardware_radiance.comp.spv", volumeConstants));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceAveragedSP",
                                              "VoxelGI/inject_hardware_radiance_averaged.comp.spv", volumeConstants));
+        // Lamp fixture masks for ray-traced shadows (LightFixtureMasks).
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "LightFixtureMaskBuildSP", "VoxelGI/light_fixture_mask_build.comp.spv"));
+        StoreProgram(
+            ZEN_NEW() ComputeFileSP(pRenderDevice, "LightFixtureMaskDilateSP", "VoxelGI/light_fixture_mask_dilate.comp.spv"));
         // Diagnostic variants count the rays they issue (gi_ray_totals.glsl); never used for timing.
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceHardwareCountsSP",
                                              "VoxelGI/sky_irradiance_hardware_counts.comp.spv", volumeConstants));
@@ -508,6 +513,9 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ForwardScatterSP(pRenderDevice, true));
 
     StoreProgram(ZEN_NEW() SceneShadowSP(pRenderDevice));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "SceneShadowMaxDepthSP", "ShadowMapping/scene_shadow_max_depth.comp.spv"));
 
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv", volumeConstants));

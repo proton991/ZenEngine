@@ -1,0 +1,29 @@
+#version 450
+// Deepest stored depth of each 4x4 texel block of the listed scene shadow-map layers. Lighting skips a
+// local light's filter where even the receiver plane's nearest point lies beyond it (scene_shadows.glsl).
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0) uniform sampler2DArray sceneShadowMaps;
+layout(set = 1, binding = 1, r32f) uniform writeonly image2DArray sceneShadowMaxDepth;
+layout(set = 1, binding = 2) uniform uShadowReduction
+{
+    uvec4 layers[50]; // Layer per dispatch slice, four per element (MaxSceneShadowFaces = 198).
+};
+
+void main()
+{
+    ivec2 block = ivec2(gl_GlobalInvocationID.xy);
+    uint  slice = gl_GlobalInvocationID.z;
+    int   layer = int(layers[slice / 4u][slice % 4u]);
+    if (all(lessThan(block, imageSize(sceneShadowMaxDepth).xy)))
+    {
+        float deepest = 0.0;
+        for (int y = 0; y < 4; ++y)
+        {
+            for (int x = 0; x < 4; ++x)
+            {
+                deepest = max(deepest, texelFetch(sceneShadowMaps, ivec3(block * 4 + ivec2(x, y), layer), 0).r);
+            }
+        }
+        imageStore(sceneShadowMaxDepth, ivec3(block, layer), vec4(deepest));
+    }
+}

@@ -226,7 +226,11 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
     {
         m_device->DestroyTexture(m_maps);
 
+        m_device->DestroyTexture(m_maxDepth);
+
         m_maps          = nullptr;
+
+        m_maxDepth      = nullptr;
 
         m_validContents = false;
     }
@@ -255,6 +259,19 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         m_maps             = m_device->CreateTextureSampled(format, {.copyUsage = true}, "scene_shadow_maps");
     }
 
+    if (fits && m_maps != nullptr && m_maxDepth == nullptr)
+    {
+        RHITextureCreateInfo reduced;
+        reduced.type        = RHITextureType::e2D;
+        reduced.format      = DataFormat::eR32SFloat;
+        reduced.width       = m_resolution / 4;
+        reduced.height      = m_resolution / 4;
+        reduced.arrayLayers = layers;
+        reduced.tag         = "scene_shadow_max_depth";
+        reduced.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+        m_maxDepth = m_device->CreateTexture(reduced);
+    }
+
     if (m_depthSampler == nullptr)
     {
         m_depthSampler = m_device->CreateSampler({});
@@ -265,8 +282,8 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         m_materialSampler = m_device->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
     }
 
-    const bool valid =
-        fits && m_depth != nullptr && m_maps != nullptr && m_depthSampler != nullptr && m_materialSampler != nullptr;
+    const bool valid = fits && m_depth != nullptr && m_maps != nullptr && m_maxDepth != nullptr && m_depthSampler != nullptr
+                    && m_materialSampler != nullptr;
 
     if (!valid)
     {
@@ -384,6 +401,7 @@ void SceneShadowRenderer::BuildRenderGraph(const RenderScene& scene)
 
     HeapVector<SceneMeshDraw> draws;
     bool                      snapshotDraws = false;
+    HeapVector<uint32_t>      rendered;
 
     for (uint32_t layer = 0; layer < m_maps->GetArrayLayers(); ++layer)
     {
@@ -410,7 +428,47 @@ void SceneShadowRenderer::BuildRenderGraph(const RenderScene& scene)
                 snapshotDraws = true;
             }
             BuildFace(scene, layer, draws);
+            rendered.push_back(layer);
         }
+    }
+
+    if (!rendered.empty())
+    {
+        // Lighting skips a local light's filter beyond the deepest depth under its taps (scene_shadows.glsl).
+        // Reduce after every copy, so the pass reads initialized layers. Reducing all layers defines
+        // the whole texture; later frames reduce only re-rendered layers.
+        struct ReductionUniforms
+        {
+            glm::uvec4 layers[(MaxSceneShadowFaces + 3) / 4]{};
+        } uniforms;
+
+        for (uint32_t index = 0; index < rendered.size(); ++index)
+        {
+            uniforms.layers[index / 4][index % 4] = rendered[index];
+        }
+
+        const bool complete = rendered.size() == m_maps->GetArrayLayers();
+
+        RDGComputePassDesc reduce;
+
+        reduce.SetShaderProgramName("SceneShadowMaxDepthSP");
+
+        reduce.SetPassTag("SceneShadowMaxDepth");
+
+        reduce.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_maps->GetDefaultView());
+
+        reduce.BindStorageImage("sceneShadowMaxDepth", m_maxDepth->GetDefaultView(),
+                                complete ? RDGContentGuarantee::eFullWrite : RDGContentGuarantee::eNone);
+
+        reduce.BindValue("uShadowReduction", uniforms);
+
+        const uint32_t groups = (m_resolution / 4 + 7) / 8;
+
+        const uint32_t layers = static_cast<uint32_t>(rendered.size());
+
+        m_device->GetCurrentFrameRDG()
+            ->AddComputePass(std::move(reduce))
+            .RecordPassCommands([groups, layers](RDGPassCmdEncoder& encoder) { encoder.Dispatch(groups, groups, layers); });
     }
 }
 
@@ -419,6 +477,8 @@ void SceneShadowRenderer::BindLightingInputs(RDGPassDescBase& pass) const
     pass.BindValue("uSceneShadows", m_uniforms);
 
     pass.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_maps->GetDefaultView());
+
+    pass.BindSampledTexture("sceneShadowMaxDepth", m_depthSampler, m_maxDepth->GetDefaultView());
 }
 
 DebugOutputDescription SceneShadowRenderer::BuildDebugView(const RenderScene&    scene,
@@ -499,9 +559,13 @@ void SceneShadowRenderer::Destroy()
 
     m_device->DestroyTexture(m_maps);
 
+    m_device->DestroyTexture(m_maxDepth);
+
     m_depth         = nullptr;
 
     m_maps          = nullptr;
+
+    m_maxDepth      = nullptr;
 
     m_validContents = false;
 

@@ -97,6 +97,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/ScreenProbeGather.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/LightFixtureMasks.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp

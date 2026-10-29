@@ -1,0 +1,36 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#define HYBRID_HARDWARE_PROVIDER 1
+#include "../VoxelGI/hybrid_provider.glsl"
+#include "light_fixture_mask.glsl"
+// Traces 4x4 rays through each mask texel of the queued lights. A texel stores the farthest
+// closest hit of its rays, or LIGHT_FIXTURE_MASK_OPEN when any ray leaves the shell first.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0, r32f) uniform writeonly image2DArray lightFixtureTexels;
+layout(set = 1, binding = 1) uniform uLightFixtureBuild
+{
+    uvec4 lights[MAX_SCENE_LIGHTS / 4]; // Queued scene light indices.
+    vec4  build;                        // Queued light count, shell radius.
+};
+
+void main()
+{
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    int   face  = int(gl_GlobalInvocationID.z) % 6;
+    int   slot  = int(gl_GlobalInvocationID.z) / 6;
+    if (all(lessThan(texel, ivec2(LIGHT_FIXTURE_MASK_SIZE))) && slot < int(build.x))
+    {
+        uint  lightIndex = lights[slot / 4][slot % 4];
+        vec3  origin     = sceneUbo.lights[lightIndex].positionRange.xyz;
+        float farthest   = 0.0;
+        for (int ray = 0; ray < 16 && farthest < LIGHT_FIXTURE_MASK_OPEN; ++ray)
+        {
+            vec2           position  = vec2(texel) + (vec2(ray % 4, ray / 4) + 0.5) / 4.0;
+            vec3           direction = normalize(LightFixtureMaskDirection(face, position));
+            HardwareRayHit hit       = HardwareQuery(origin, direction, build.y, true);
+            farthest = hit.ray.hit ? max(farthest, distance(hit.ray.position, origin)) : LIGHT_FIXTURE_MASK_OPEN;
+        }
+        imageStore(lightFixtureTexels, ivec3(texel, int(lightIndex) * 6 + face), vec4(farthest));
+    }
+}

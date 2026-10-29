@@ -1,0 +1,33 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "light_fixture_mask.glsl"
+// A texel occludes only as far as its whole 3x3 neighbourhood, across cube faces, so that an
+// opening narrower than the sampled rays still keeps its border texels traced.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0) uniform sampler2DArray lightFixtureTexels;
+layout(set = 1, binding = 1, r32f) uniform writeonly image2DArray lightFixtureMask;
+layout(set = 1, binding = 2) uniform uLightFixtureBuild
+{
+    uvec4 lights[8]; // Queued scene light indices (MAX_SCENE_LIGHTS / 4).
+    vec4  build;     // Queued light count, shell radius.
+};
+
+void main()
+{
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    int   face  = int(gl_GlobalInvocationID.z) % 6;
+    int   slot  = int(gl_GlobalInvocationID.z) / 6;
+    if (all(lessThan(texel, ivec2(LIGHT_FIXTURE_MASK_SIZE))) && slot < int(build.x))
+    {
+        int   layer    = int(lights[slot / 4][slot % 4]) * 6;
+        float farthest = 0.0;
+        for (int neighbour = 0; neighbour < 9; ++neighbour)
+        {
+            vec2  position = vec2(texel + ivec2(neighbour % 3, neighbour / 3) - 1) + 0.5;
+            int   other;
+            ivec2 source = LightFixtureMaskTexel(LightFixtureMaskDirection(face, position), other);
+            farthest     = max(farthest, texelFetch(lightFixtureTexels, ivec3(source, layer + other), 0).r);
+        }
+        imageStore(lightFixtureMask, ivec3(texel, layer + face), vec4(farthest));
+    }
+}

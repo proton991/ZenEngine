@@ -3,6 +3,10 @@
 #include "../Common/scene_lighting.glsl"
 #if defined(HARDWARE_SHADOWS)
 #    include "../VoxelGI/hybrid_provider.glsl"
+#    include "../VoxelGI/light_fixture_mask.glsl"
+// Per local light: how far every sampled ray of a direction travels before meeting geometry
+// (LightFixtureMasks; light_fixture_mask_build.comp).
+layout(set = 4, binding = 29) uniform sampler2DArray lightFixtureMask;
 
 float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
 {
@@ -30,7 +34,18 @@ float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
                 distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
                 if (distanceToLight > 0.0)
                 {
-                    visibility = HybridTraceRay(0, light.positionRange.xyz, direction, distanceToLight).hit ? 0.0 : 1.0;
+                    // Beyond the fixture mask's distance, every sampled ray of this direction already
+                    // met geometry: the segment is occluded without a ray. The camera light has no mask.
+                    bool  enclosed = false;
+                    int   face;
+                    ivec2 texel = LightFixtureMaskTexel(delta, face);
+                    if (lightIndex != MAX_SCENE_LIGHTS)
+                    {
+                        float shell = texelFetch(lightFixtureMask, ivec3(texel, lightIndex * 6 + face), 0).r;
+                        enclosed    = distanceToLight > shell * 1.01 + 1e-4;
+                    }
+                    visibility =
+                        enclosed || HybridTraceRay(0, light.positionRange.xyz, direction, distanceToLight).hit ? 0.0 : 1.0;
                 }
             }
             else if (distanceToLight > 0.0)
@@ -50,6 +65,8 @@ layout(std140, set = 4, binding = 0) uniform uSceneShadows
 }
 shadows;
 layout(set = 4, binding = 1) uniform sampler2DArray sceneShadowMaps;
+// Deepest depth of each 4x4 block of sceneShadowMaps (scene_shadow_max_depth.comp).
+layout(set = 4, binding = 29) uniform sampler2DArray sceneShadowMaxDepth;
 
 int PointShadowFace(vec3 direction)
 {
@@ -96,8 +113,29 @@ float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
             vec2  pixel         = (ndc.xy * 0.5 + 0.5) * shadows.settings.y - 0.5;
             ivec2 base          = ivec2(floor(pixel));
             visibility          = 0;
+            bool shadowed       = false;
+            if (!directional)
+            {
+                // Every tap's plane-corrected reference below is a distance to a point of the receiver
+                // plane, so none is nearer than the plane itself. Away from grazing incidence every tap
+                // ray meets the plane ahead of the light; if even the plane lies beyond the deepest
+                // stored depth under the taps, each tap is shadowed and the filter is exactly 0. A
+                // lamp's own fixture stores depths far nearer than its receivers.
+                vec3  toReceiver = receiver - light.positionRange.xyz;
+                vec3  unitNormal = normalize(normal);
+                float facing     = abs(dot(normalize(toReceiver), unitNormal));
+                ivec2 last       = ivec2(int(shadows.settings.y) - 1);
+                ivec2 low        = clamp(base - 1, ivec2(0), last) >> 2;
+                ivec2 high       = clamp(base + 2, ivec2(0), last) >> 2;
+                float deepest    = max(max(texelFetch(sceneShadowMaxDepth, ivec3(low, layer), 0).r,
+                                           texelFetch(sceneShadowMaxDepth, ivec3(high.x, low.y, layer), 0).r),
+                                       max(texelFetch(sceneShadowMaxDepth, ivec3(low.x, high.y, layer), 0).r,
+                                           texelFetch(sceneShadowMaxDepth, ivec3(high, layer), 0).r));
+                float nearest    = (abs(dot(toReceiver, unitNormal)) - shadows.settings.x) * info.z;
+                shadowed         = facing > 8.0 * info.w && nearest * (1.0 - 1e-4) > deepest;
+            }
             // Separable tent PCF: smooth subtexel transitions, without filtering depth itself.
-            for (int y = -1; y <= 2; ++y)
+            for (int y = -1; y <= 2 && !shadowed; ++y)
             {
                 for (int x = -1; x <= 2; ++x)
                 {

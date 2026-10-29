@@ -93,7 +93,7 @@ void VoxelGISettings::SetAllFeatureProviders(RayProvider provider)
 }
 
 VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) :
-    m_rayQuery(device), m_device(device), m_voxelizer(voxelizer)
+    m_rayQuery(device), m_fixtureMasks(device), m_device(device), m_voxelizer(voxelizer)
 {
     LoadSettings();
 }
@@ -834,6 +834,10 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
         {
             LOGI("Hybrid GI selected {}: {}", m_hardwareQueries ? "hardware" : "compute", m_providerReason);
         }
+        if (ready && UsesHardwareShadows())
+        {
+            ready = m_fixtureMasks.BuildRenderGraph(*m_scene, m_rayQuery, m_uniforms);
+        }
     }
     return ready;
 }
@@ -1112,6 +1116,7 @@ void VoxelGIRenderer::BindFieldInputs(RDGPassDescBase& pass) const
         static const SceneShadowUniformData unshadowed{};
         pass.BindValue("uSceneShadows", unshadowed);
         pass.BindSampledTexture("sceneShadowMaps", m_unshadowedSampler, m_unshadowedMap->GetDefaultView());
+        pass.BindSampledTexture("sceneShadowMaxDepth", m_unshadowedSampler, m_unshadowedMap->GetDefaultView());
     }
 }
 
@@ -1120,6 +1125,7 @@ void VoxelGIRenderer::BindShadowInputs(RDGPassDescBase& pass, SceneShadowRendere
     if (UsesHardwareShadows())
     {
         m_rayQuery.BindInputs(pass, *m_scene, forwardMaterialBound);
+        m_fixtureMasks.BindInputs(pass);
     }
     else
     {
@@ -1279,6 +1285,7 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 void VoxelGIRenderer::OnVisibilityGraphExecuted(RenderFrameResult result)
 {
     m_rayQuery.OnRenderGraphExecuted(result);
+    m_fixtureMasks.OnRenderGraphExecuted(result);
     if (m_fieldRecorded && m_field)
     {
         m_field->OnRenderGraphExecuted(result);
@@ -1289,6 +1296,7 @@ void VoxelGIRenderer::OnVisibilityGraphExecuted(RenderFrameResult result)
 void VoxelGIRenderer::Destroy()
 {
     m_rayQuery.Destroy();
+    m_fixtureMasks.Destroy();
     if (m_field)
     {
         m_field->Destroy();

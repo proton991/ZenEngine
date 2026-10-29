@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
+#include "Graphics/RenderCore/V2/LightFixtureMasks.h"
 #include "Graphics/RenderCore/V2/DistanceFieldScene.h"
 #include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
@@ -353,7 +354,8 @@ private:
     // Enabled features that do not resolve to HW RT under the given HW feature mask.
     uint32_t ComputeFeatureMask(uint32_t hardwareMask) const;
 
-    SceneRayQuery         m_rayQuery;
+    SceneRayQuery                 m_rayQuery;
+    LightFixtureMasks             m_fixtureMasks; // Ray-traced shadows skip rays a lamp's own fixture blocks.
     UniquePtr<DistanceFieldScene> m_field;
     uint32_t                      m_fieldResolution{0};
     uint64_t                      m_fieldSerial{0};       // Distinguishes generations of recreated or reset owners.

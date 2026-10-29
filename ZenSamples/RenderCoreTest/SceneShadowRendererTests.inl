@@ -141,6 +141,11 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightOrHand
     reflectedShaderInfos["SceneShadowSP"]                         = shader;
     CreateTestShaderProgram(device, "SceneShadowSP");
     CreateTestShaderProgram(device, "intent");
+    RHIShaderCreateInfo reduction;
+    reduction.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+    reduction.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] = "ShadowMapping/scene_shadow_max_depth.comp.spv";
+    reflectedShaderInfos["SceneShadowMaxDepthSP"]                   = reduction;
+    CreateTestShaderProgram(device, "SceneShadowMaxDepthSP");
     sceneInputs.vertices  = Buffer(128);
     sceneInputs.indices   = Buffer();
     sceneInputs.nodes     = Buffer(128);
@@ -212,6 +217,8 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightOrHand
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         shadows.OnRenderGraphExecuted(frame != 3 ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
         EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"), expectedFaces[frame]);
+        // Frames that render faces refresh their deepest-depth reduction in one pass.
+        EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowMaxDepth"), expectedFaces[frame] != 0 ? 1u : 0u);
     }
     shadows.Destroy();
     for (RHIBuffer* buffer :
@@ -231,6 +238,11 @@ TEST_F(RenderCoreTest, SceneShadowsCullDrawsAndInvalidateOnlyFacesTouchedByChang
     reflectedShaderInfos["SceneShadowSP"]                         = shader;
     CreateTestShaderProgram(device, "SceneShadowSP");
     CreateTestShaderProgram(device, "intent");
+    RHIShaderCreateInfo reduction;
+    reduction.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+    reduction.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] = "ShadowMapping/scene_shadow_max_depth.comp.spv";
+    reflectedShaderInfos["SceneShadowMaxDepthSP"]                   = reduction;
+    CreateTestShaderProgram(device, "SceneShadowMaxDepthSP");
     sceneInputs.vertices  = Buffer(512);
     sceneInputs.indices   = Buffer();
     sceneInputs.nodes     = Buffer(3 * sizeof(sg::NodeData));
@@ -368,6 +380,8 @@ TEST_F(RenderCoreTest, SceneShadowsCullDrawsAndInvalidateOnlyFacesTouchedByChang
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         shadows.OnRenderGraphExecuted(frame == 8 ? RenderFrameResult::eFailed : RenderFrameResult::eSubmitted);
         EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"), expectedFaces[frame]);
+        // Frames that render faces refresh their deepest-depth reduction in one pass.
+        EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowMaxDepth"), expectedFaces[frame] != 0 ? 1u : 0u);
         EXPECT_EQ(rhi->graphics.imageCopies.size() + rhi->compute.imageCopies.size() + rhi->transfer.imageCopies.size(),
                   expectedFaces[frame]);
         EXPECT_EQ(rhi->graphics.indexedDraws.size(), expectedDraws[frame]);
