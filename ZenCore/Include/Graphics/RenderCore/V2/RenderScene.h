@@ -47,6 +47,10 @@ public:
         uint32_t firstTriangle{0};
         uint32_t triangleCount{0};
         uint32_t committedMask{0};
+        // Object-space sums over the triangles of their bounding-box diagonal d and area a: x = sum(d),
+        // y = sum(d^2), z = sum(d^3), w = sum(a). Distance-field construction sizes its buffers from them
+        // (DistanceFieldScene::Start).
+        Vec4 triangleSums{0.0f};
     };
 
     // Check loaded content before narrowing counts or constructing GPU resources.
@@ -134,6 +138,12 @@ public:
     const HeapVector<InstanceTriangleRange>& GetInstanceTriangleRanges() const
     {
         return m_instanceTriangleRanges;
+    }
+
+    // Committed triangles per material index, whatever its alpha mode.
+    const HeapVector<uint32_t>& GetMaterialTriangleCounts() const
+    {
+        return m_materialTriangleCounts;
     }
 
     uint64_t GetGeometryRevision(uint32_t mask = GI_ALL) const
@@ -286,7 +296,8 @@ private:
 
     bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2], HeapVector<ShadowCaster>& shadowCasters) const;
 
-    HeapVector<glm::uvec4> BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges) const;
+    HeapVector<glm::uvec4> BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges,
+                                                HeapVector<uint32_t>&              materialTriangles) const;
 
     HeapVector<asset::Vertex> m_vertices;
 
@@ -314,6 +325,7 @@ private:
     HeapVector<uint32_t>                           m_authoredVisibility;
     HeapVector<ShadowCaster>                       m_shadowCasters;
     HeapVector<InstanceTriangleRange>              m_instanceTriangleRanges;
+    HeapVector<uint32_t>                           m_materialTriangleCounts;
     HeapVector<uint8_t>                            m_dirtyShadowInstances;
     HeapVector<uint8_t>                            m_dirtyShadowVertices;
     uint32_t                                       m_dirtyClasses{0};

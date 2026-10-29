@@ -50,11 +50,23 @@ struct DistanceFieldSceneSettings
     uint32_t maxCyclesPerFrame{1};
     double   frameBudgetMicroseconds{0};
     double   frameBudgetShare{0};
-    // Optional initial scene/local preparation budget. Dispatch sizes adapt to GPU timestamps;
-    // subsequent edits use the smaller background batches and the ordinary frame budget.
-    double   initialBuildBudgetMicroseconds{0};
+    // Throughput construction for every generation (scene, local volumes, edits) when nonzero: each
+    // heavy phase dispatches all of its pending work at once and coverage refines every queued
+    // triangle. While the frame interval stays within this budget, each frame doubles the triangle
+    // batch cap (starting at triangleBatchSize and kept across generations) until it covers the
+    // generation, then the cycles per frame, up to maxCyclesPerFrame; over budget, it halves the
+    // cycles, then the batch cap. Each generation starts at one cycle. Zero keeps the incremental
+    // schedule with fixed triangleBatchSize batches.
+    double   throughputFrameBudgetMicroseconds{0};
+    uint32_t jobCapacity{65536}; // Patch jobs per triangle batch.
     uint32_t referenceCapacity{1u << 20};
     uint32_t referencesPerCell{256};
+    // Size each workspace from its generation's triangles and the device's free memory instead of
+    // the fixed capacities above, which become floors: jobs, references and coverage slots aim to
+    // take every selected triangle in one batch, and scale down together to fit deviceMemoryShare
+    // of the free device-local memory, which replaces scratchBudgetBytes.
+    bool     deriveCapacities{false};
+    double   deviceMemoryShare{0.5};
     float    hitTolerance{0.25f / 7.0f}; // Brick units; requires scene/feature qualification.
     // Local detail volumes (SetLocalVolumes): cells per axis and atlas texels per slot side.
     uint32_t localCellsPerAxis{32};
@@ -189,8 +201,8 @@ private:
     };
     bool     Start(RenderScene& scene, bool local = false);
     uint32_t NextCycleCount();
-    bool     IsInitialBuild() const;
-    void     UpdateDispatchBudgets();
+    bool     UsesThroughputBuild() const;
+    uint32_t BatchCeiling() const;
     bool     SetVolumeCores(const HeapVector<AABB>& cores);
     void     UpdateDynamicVolume(const RenderScene& scene);
     AABB     LocalAuthority(const AABB& core) const;
@@ -260,18 +272,10 @@ private:
     AABB                       m_localCore;       // Core of the local volume being built.
     uint64_t                   m_localRequest{0}; // Bumped by each new volume set.
     uint32_t                   m_cyclesPerFrame{1};
-    bool                       m_initialBuild{true};
-    uint32_t                   m_dispatchLimits[ZEN_FIELD_PHASE_COMPLETE]{};
-    struct DispatchTiming
-    {
-        RHIGPUTimingPtr result;
-        uint64_t        generation;
-        uint32_t        phase;
-        uint32_t        limit;
-    };
-    HeapVector<DispatchTiming> m_dispatchTimings;
-    uint32_t                   m_recordedTimings{0}; // Tail samples belonging to the unsubmitted graph.
-    uint32_t                   m_recordedCycles{0};  // Cycles in this frame's graph, until it executes.
+    uint32_t                   m_batchCap{0};      // Throughput triangle batch cap; zero until the first build.
+    uint64_t                   m_scratchBudget{0}; // Scratch budget of the latest Start.
+    uint32_t                   m_dispatchLimits[ZEN_FIELD_PHASE_COMPLETE]{}; // Throughput work per dispatch.
+    uint32_t                   m_recordedCycles{0};                          // Cycles in this frame's graph, until it executes.
     uint32_t                   m_baselineFrames{0};  // Frames of this generation measured at one cycle.
     double                     m_baselineUs{0};      // Frame interval with one cycle per frame.
     double                     m_frameIntervalUs{0}; // Smoothed interval between BuildRenderGraph calls.

@@ -745,23 +745,20 @@ HeapVector<AABB> VoxelGIRenderer::BuildLocalFieldVolumes() const
 
 DistanceFieldSceneSettings VoxelGIRenderer::BuildFieldSettings() const
 {
-    // Initial preparation favors throughput: larger reference windows avoid repeatedly clearing
-    // and scanning the same cells in dense meshes. The owner sizes dispatches from GPU timings and
-    // permits longer frames until the scene and local fields finish. Later edits retain the smaller
-    // background batches. The 320-texel atlas still holds the same 64,000 distance bricks.
+    // Every build, including local volumes and edits, favors GPU throughput over frame time: seconds
+    // of stutter are acceptable for the fewest batches. Job, reference and coverage capacities come
+    // from each generation's triangles and half of the free device memory, aiming at one batch per
+    // generation; each heavy phase dispatches all of its pending work at once. The triangle batch
+    // cap starts at 65,536 on a device's first build and then follows the 250 ms frame budget. The
+    // 320-texel atlas still holds the same 64,000 distance bricks.
     DistanceFieldSceneSettings settings;
-    settings.cellsPerAxis                   = m_settings.fieldResolution;
-    settings.atlasTexelsPerAxis             = 320;
-    settings.triangleBatchSize              = 65536;
-    settings.cellBatchSize                  = 256;
-    settings.jobsPerDispatch                = 4096;
-    settings.dispatchesPerFrame             = 2;
-    settings.maxCyclesPerFrame              = 16;
-    settings.frameBudgetMicroseconds        = 2000.0;
-    settings.frameBudgetShare               = 1.0;
-    settings.initialBuildBudgetMicroseconds = 100000.0;
-    settings.referencesPerCell              = 8192;
-    settings.referenceCapacity              = 1u << 22;
+    settings.cellsPerAxis                      = m_settings.fieldResolution;
+    settings.atlasTexelsPerAxis                = 320;
+    settings.triangleBatchSize                 = 65536;
+    settings.maxCyclesPerFrame                 = 64;
+    settings.throughputFrameBudgetMicroseconds = 250000.0;
+    settings.referencesPerCell                 = ZEN_FIELD_MAX_CELL_REFS;
+    settings.deriveCapacities                  = true;
     return settings;
 }
 

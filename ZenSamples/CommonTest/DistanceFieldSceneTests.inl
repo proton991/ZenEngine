@@ -491,8 +491,8 @@ TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldBuildRetriesDeclinedGraph
     RegisterDistanceFieldPrograms(device);
     BuiltFieldSceneFixture fixture;
     ASSERT_TRUE(fixture.Init(device, false));
-    DistanceFieldSceneSettings settings     = SmallFieldSettings();
-    settings.initialBuildBudgetMicroseconds = 100000.0;
+    DistanceFieldSceneSettings settings        = SmallFieldSettings();
+    settings.throughputFrameBudgetMicroseconds = 100000.0;
     DistanceFieldScene field(device, settings);
     RenderGraph&       initial = *device->GetCurrentFrameRDG();
     ASSERT_TRUE(initial.Begin());
@@ -549,7 +549,7 @@ TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldRetriesDenseBatchBeforeAl
     }
 }
 
-TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldInitialThroughputPreservesDenseCellsAndBudgetsEdits)
+TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldThroughputPreservesDenseCellsInEveryBuild)
 {
     RegisterDistanceFieldPrograms(device);
     HeapVector<Vec3> triangles;
@@ -562,12 +562,14 @@ TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldInitialThroughputPreserve
     }
     BuiltFieldSceneFixture fixture;
     ASSERT_TRUE(fixture.InitTriangles(device, triangles, sg::AABB(Vec3(-1), Vec3(1.5f))));
-    DistanceFieldSceneSettings settings     = SmallFieldSettings();
-    settings.triangleBatchSize              = ZEN_FIELD_MAX_TRIANGLE_BATCH;
-    settings.referencesPerCell              = ZEN_FIELD_MAX_CELL_REFS;
-    settings.referenceCapacity              = 1u << 22;
-    settings.maxCyclesPerFrame              = 16;
-    settings.initialBuildBudgetMicroseconds = 100000.0;
+    // Capacities come from the scene and free memory. One batch puts all 2,049 references in the
+    // dense cells, which the emit splits into three chunks; the nearest triangle is in the last.
+    DistanceFieldSceneSettings settings        = SmallFieldSettings();
+    settings.triangleBatchSize                 = 4096;
+    settings.referencesPerCell                 = ZEN_FIELD_MAX_CELL_REFS;
+    settings.deriveCapacities                  = true;
+    settings.maxCyclesPerFrame                 = 16;
+    settings.throughputFrameBudgetMicroseconds = 100000.0;
     DistanceFieldScene field(device, settings);
     ASSERT_TRUE(CompleteBuiltField(*device, *fixture.scene, field));
     ASSERT_EQ(field.GetState(), DistanceFieldScene::State::Ready) << field.GetFailureReason();
@@ -578,14 +580,14 @@ TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldInitialThroughputPreserve
     ASSERT_EQ(initial.size(), 1u);
     EXPECT_EQ(initial[0].statistics.x, 1u);
     // The nearest triangle is beyond the old 1,024-reference limit in the source. Large
-    // batches must retain it, and a later background rebuild must produce the same surface.
+    // batches must retain it, and a later edit rebuilds without a retry.
     EXPECT_NEAR(initial[0].positionDistance.w, 0.65f, field.GetUniform().gridMinCellSize.w * 0.3f);
     ASSERT_TRUE(fixture.scene->SetInstanceTransform(0, glm::translate(Mat4(1), Vec3(0.05f, 0, 0))));
     ASSERT_TRUE(fixture.scene->Update());
     ASSERT_TRUE(CompleteBuiltField(*device, *fixture.scene, field));
     ASSERT_EQ(field.GetState(), DistanceFieldScene::State::Ready) << field.GetFailureReason();
-    EXPECT_LE(field.GetTriangleBatchQuota(), 4096u);
-    EXPECT_GT(field.GetBuildRetryCount(), 0u);
+    EXPECT_EQ(field.GetBuildRetryCount(), 0u);
+    EXPECT_EQ(field.GetProcessedTriangleCount(), 2049u);
     const HeapVector<BuiltFieldResult> updated = TraceBuiltField(*device, field, rays);
     ASSERT_EQ(updated.size(), 1u);
     EXPECT_EQ(updated[0].statistics.x, 1u);

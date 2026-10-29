@@ -15,7 +15,7 @@ void FieldPrepareSchedule()
         uint count = 0u;
         if (requested == ZEN_FIELD_PHASE_CLEAR_BATCH)
         {
-            groups = (max(FieldCellCount(), fieldBuild.triangleRange.y) + ZEN_FIELD_SCAN_GROUP - 1u) / ZEN_FIELD_SCAN_GROUP;
+            groups = (FieldCellCount() + ZEN_FIELD_SCAN_GROUP - 1u) / ZEN_FIELD_SCAN_GROUP;
         }
         else if (requested == ZEN_FIELD_PHASE_SCAN || requested == ZEN_FIELD_PHASE_ALLOCATE)
         {
@@ -37,8 +37,7 @@ void FieldPrepareSchedule()
             // Skip a bounded prefix here rather than submitting empty coverage dispatches
             // for every 64 finished entries on each refinement sweep.
             uint skipped = 0u;
-            while (first < total && skipped < 1024u
-                   && fieldCoverage[fieldCoverageQueue[first] * ZEN_FIELD_COVERAGE_STATE_WORDS] != 1u)
+            while (first < total && skipped < 1024u && fieldCoverage[first * ZEN_FIELD_COVERAGE_STATE_WORDS] != 1u)
             {
                 ++first;
                 ++skipped;
@@ -132,7 +131,8 @@ void FieldAdvanceSchedule(uint requested)
             else
             {
                 uint remaining = fieldBuild.triangleRange.z - fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_FIRST];
-                fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_COUNT] = min(fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA], remaining);
+                fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_COUNT] =
+                    min(min(fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA], fieldBuild.triangleRange.y), remaining);
                 fieldControl[ZEN_FIELD_CONTROL_PHASE] = remaining == 0u ? ZEN_FIELD_PHASE_HIERARCHY : ZEN_FIELD_PHASE_JOBS;
             }
         }
@@ -210,8 +210,8 @@ void FieldAdvanceSchedule(uint requested)
                     fieldControl[ZEN_FIELD_CONTROL_PROCESSED_TRIANGLES]  = fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_FIRST];
                     ++fieldControl[ZEN_FIELD_CONTROL_COMPLETED_BATCHES];
                     // Recover after a dense region without immediately retrying the
-                    // same oversized quota after every accepted batch. Growth remains
-                    // bounded by the caller's initial per-dispatch triangle budget, and
+                    // same oversized quota after every accepted batch. Growth is bounded
+                    // by the scene (the owner's batch cap applies separately), and
                     // requires two accepted batches that used at most half of every
                     // capacity a doubled batch of similar density could overflow. Growing
                     // after any two successes revisited oversized batches in dense
@@ -225,7 +225,7 @@ void FieldAdvanceSchedule(uint requested)
                     if (fieldControl[ZEN_FIELD_CONTROL_SUCCESS_STREAK] == 2u)
                     {
                         fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA] =
-                            min(fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA] * 2u, fieldBuild.triangleRange.y);
+                            min(fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA] * 2u, max(fieldBuild.triangleRange.z, 1u));
                         fieldControl[ZEN_FIELD_CONTROL_SUCCESS_STREAK] = 0u;
                     }
                     fieldControl[ZEN_FIELD_CONTROL_PHASE] =

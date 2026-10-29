@@ -135,6 +135,11 @@ layout(std430, set = 4, binding = 22) readonly buffer FieldPreviousCells
 #    define FIELD_ACTIVE_ACCESS readonly
 #endif
 #ifdef FIELD_CLEAR
+#    define FIELD_SPLIT_ACCESS writeonly
+#else
+#    define FIELD_SPLIT_ACCESS
+#endif
+#ifdef FIELD_CLEAR
 #    define FIELD_COUNTER_ACCESS writeonly
 #else
 #    define FIELD_COUNTER_ACCESS
@@ -178,7 +183,15 @@ layout(std430, set = 4, binding = 10) FIELD_REFERENCES_ACCESS buffer FieldBuildR
 #if defined(FIELD_ALLOCATE) || defined(FIELD_EMIT) || defined(FIELD_CLEAR)
 layout(std430, set = 4, binding = 11) FIELD_ACTIVE_ACCESS buffer FieldBuildActive
 {
-    uvec2 fieldActive[]; // cell index, one when this batch allocated the brick
+    // Cell index; bit 0 one when this batch allocated the brick, bits 1-7 the reference chunk,
+    // bits 8+ the split slot + 1 (zero when one workgroup emits the whole cell).
+    uvec2 fieldActive[];
+};
+// Dense cells' split slots (ZEN_FIELD_EMIT_SPLIT_WORDS each): texel minima as float bits, then the
+// number of chunks that have merged into them.
+layout(std430, set = 4, binding = 23) FIELD_SPLIT_ACCESS buffer FieldBuildEmitSplit
+{
+    uint fieldEmitSplit[];
 };
 #endif
 #if defined(FIELD_SCAN) || defined(FIELD_SCAN_SUMS) || defined(FIELD_ALLOCATE) || defined(FIELD_CLEAR)
@@ -225,8 +238,7 @@ fieldSchedule;
 #else
 #    define FIELD_COVERAGE_QUEUE_ACCESS readonly
 #endif
-#if defined(FIELD_CLEAR) || defined(FIELD_BATCH_CLEAR) || defined(FIELD_JOBS) || defined(FIELD_COVERAGE) \
-    || defined(FIELD_PREPARE_SCHEDULE)
+#if defined(FIELD_CLEAR) || defined(FIELD_JOBS) || defined(FIELD_COVERAGE) || defined(FIELD_PREPARE_SCHEDULE)
 layout(std430, set = 4, binding = 16) FIELD_COVERAGE_ACCESS buffer FieldBuildCoverage
 {
     uint fieldCoverage[];
@@ -644,6 +656,7 @@ void FieldExclusiveScan()
 
 #ifdef FIELD_EMIT
 shared uint fieldHitSamples;
+shared uint fieldEmitLast;
 shared vec3 fieldTriangleA[ZEN_FIELD_REFERENCE_TILE];
 shared vec3 fieldTriangleB[ZEN_FIELD_REFERENCE_TILE];
 shared vec3 fieldTriangleC[ZEN_FIELD_REFERENCE_TILE];
@@ -652,6 +665,7 @@ void FieldEmit(uint activeIndex)
 {
     uvec2 activeEntry = fieldActive[activeIndex];
     uint  cell        = activeEntry.x;
+    uint  split       = activeEntry.y >> 8u;
     uint  brick       = (distanceFieldCells[cell] & DISTANCE_FIELD_BRICK_MASK) - 1u;
     uint  lane        = gl_LocalInvocationIndex;
     if (lane == 0u)
@@ -660,11 +674,13 @@ void FieldEmit(uint activeIndex)
     }
     barrier();
     uint  count    = min(fieldCounts[cell], ZEN_FIELD_MAX_CELL_REFS);
+    uint  begin    = split != 0u ? ((activeEntry.y >> 1u) & 127u) * ZEN_FIELD_EMIT_CHUNK_REFERENCES : 0u;
+    uint  end      = split != 0u ? min(count, begin + ZEN_FIELD_EMIT_CHUNK_REFERENCES) : count;
     vec3  position = vec3(FieldCellCoordinate(cell)) + vec3(gl_LocalInvocationID) / 7.0;
     float nearest  = 1.0;
-    for (uint first = 0u; first < count; first += ZEN_FIELD_REFERENCE_TILE)
+    for (uint first = begin; first < end; first += ZEN_FIELD_REFERENCE_TILE)
     {
-        uint chunk = min(count - first, ZEN_FIELD_REFERENCE_TILE);
+        uint chunk = min(end - first, ZEN_FIELD_REFERENCE_TILE);
         if (lane < chunk)
         {
             uint job = fieldReferences[fieldOffsets[cell] + first + lane];
@@ -693,24 +709,50 @@ void FieldEmit(uint activeIndex)
         FieldGeometryFail(ZEN_FIELD_GEOMETRY_NONFINITE_DISTANCE, 0xffffffffu, cell, lane);
         nearest = 1.0;
     }
-    uvec3 tiles = distanceField.atlasDimensions.xyz / 8u;
-    uvec3 tile  = uvec3(brick % tiles.x, (brick / tiles.x) % tiles.y, brick / (tiles.x * tiles.y));
-    ivec3 texel = ivec3(tile * 8u + gl_LocalInvocationID);
-    if (activeEntry.y == 0u)
+    bool finish = true;
+    if (split != 0u)
     {
-        nearest = min(nearest, imageLoad(distanceFieldBuildAtlas, texel).r);
+        // Non-negative floats order as their bits, so the merged minimum is the one a single
+        // workgroup finds, in any chunk order; the brick stores the clamped value either way.
+        // The last chunk to merge finishes the cell.
+        uint base = (split - 1u) * ZEN_FIELD_EMIT_SPLIT_WORDS;
+        atomicMin(fieldEmitSplit[base + lane], nearest > 0.0 ? floatBitsToUint(nearest) : 0u);
+        memoryBarrierBuffer();
+        barrier();
+        if (lane == 0u)
+        {
+            uint chunks   = (count + ZEN_FIELD_EMIT_CHUNK_REFERENCES - 1u) / ZEN_FIELD_EMIT_CHUNK_REFERENCES;
+            fieldEmitLast = atomicAdd(fieldEmitSplit[base + 512u], 1u) + 1u == chunks ? 1u : 0u;
+        }
+        barrier();
+        finish = fieldEmitLast != 0u;
+        if (finish)
+        {
+            nearest = uintBitsToFloat(atomicMin(fieldEmitSplit[base + lane], 0xffffffffu));
+        }
     }
-    imageStore(distanceFieldBuildAtlas, texel, vec4(clamp(nearest, 0.0, 1.0)));
-    // Trilinear values cannot fall below their samples. Keep a quantization margin so a
-    // rounding-down UNORM sample cannot turn a skipped brick into a possible hit.
-    if (nearest <= 2.0 * distanceField.tracing.x + 1.0 / 255.0)
+    // Uniform across the workgroup, so its barrier is valid.
+    if (finish)
     {
-        atomicOr(fieldHitSamples, 1u);
-    }
-    barrier();
-    if (lane == 0u && fieldHitSamples != 0u)
-    {
-        distanceFieldCells[cell] &= DISTANCE_FIELD_BRICK_MASK;
+        uvec3 tiles = distanceField.atlasDimensions.xyz / 8u;
+        uvec3 tile  = uvec3(brick % tiles.x, (brick / tiles.x) % tiles.y, brick / (tiles.x * tiles.y));
+        ivec3 texel = ivec3(tile * 8u + gl_LocalInvocationID);
+        if ((activeEntry.y & 1u) == 0u)
+        {
+            nearest = min(nearest, imageLoad(distanceFieldBuildAtlas, texel).r);
+        }
+        imageStore(distanceFieldBuildAtlas, texel, vec4(clamp(nearest, 0.0, 1.0)));
+        // Trilinear values cannot fall below their samples. Keep a quantization margin so a
+        // rounding-down UNORM sample cannot turn a skipped brick into a possible hit.
+        if (nearest <= 2.0 * distanceField.tracing.x + 1.0 / 255.0)
+        {
+            atomicOr(fieldHitSamples, 1u);
+        }
+        barrier();
+        if (lane == 0u && fieldHitSamples != 0u)
+        {
+            distanceFieldCells[cell] &= DISTANCE_FIELD_BRICK_MASK;
+        }
     }
 }
 #endif
@@ -735,7 +777,14 @@ void FieldMain()
         fieldCounts[index]        = 0u;
         fieldOffsets[index]       = 0u;
         fieldCursors[index]       = 0u;
-        fieldActive[index]        = uvec2(0);
+    }
+    if (index < uint(fieldActive.length()))
+    {
+        fieldActive[index] = uvec2(0);
+    }
+    if (index < uint(fieldEmitSplit.length()))
+    {
+        fieldEmitSplit[index] = 0u;
     }
     if (index < fieldBuild.limits.x)
     {
@@ -757,7 +806,9 @@ void FieldMain()
         }
         fieldControl[ZEN_FIELD_CONTROL_PHASE] =
             fieldBuild.triangleRange.z > 0u ? ZEN_FIELD_PHASE_CLEAR_BATCH : ZEN_FIELD_PHASE_HIERARCHY;
-        fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA] = fieldBuild.triangleRange.y;
+        // The quota learns what the workspace capacities fit, from the whole scene down; the
+        // owner's per-frame batch cap (triangleRange.y) bounds each batch separately.
+        fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_QUOTA] = max(fieldBuild.triangleRange.z, 1u);
         fieldControl[ZEN_FIELD_CONTROL_TRIANGLE_COUNT] = min(fieldBuild.triangleRange.y, fieldBuild.triangleRange.z);
         fieldControl[ZEN_FIELD_CONTROL_INITIALIZED]    = 1u;
         for (uint word = 0u; word < ZEN_FIELD_INDIRECT_WORDS; ++word)
@@ -765,11 +816,12 @@ void FieldMain()
             fieldIndirect[word] = 0u;
         }
     }
-    if (index < fieldBuild.triangleRange.y * ZEN_FIELD_COVERAGE_STATE_WORDS)
+    // Coverage slots are sized by the scene's coverage triangles (DistanceFieldScene::Start).
+    if (index < uint(fieldCoverage.length()))
     {
         fieldCoverage[index] = 0u;
     }
-    if (index < fieldBuild.triangleRange.y)
+    if (index < uint(fieldCoverageQueue.length()))
     {
         fieldCoverageQueue[index] = 0u;
     }
@@ -813,14 +865,6 @@ void FieldMain()
         fieldCounts[index]  = 0u;
         fieldCursors[index] = 0u;
     }
-    if (index < fieldBuild.triangleRange.y && fieldControl[ZEN_FIELD_CONTROL_COVERAGE_RESUME] == 0u)
-    {
-        uint offset = index * ZEN_FIELD_COVERAGE_STATE_WORDS;
-        for (uint word = 0u; word < 4u; ++word)
-        {
-            fieldCoverage[offset + word] = 0u;
-        }
-    }
     if (index >= 2u && index < ZEN_FIELD_COUNTER_RETAINED
         && (index < ZEN_FIELD_COUNTER_FAILURE_SITE || index > ZEN_FIELD_COUNTER_FAILURE_CELL)
         && index != ZEN_FIELD_COUNTER_FAILURE_SAMPLE
@@ -846,7 +890,7 @@ void FieldMain()
     uint index = FieldLinearInvocation();
     if (index < FieldWorkCount())
     {
-        FieldContinueCoverage(fieldCoverageQueue[FieldWorkFirst() + index]);
+        FieldContinueCoverage(FieldWorkFirst() + index);
     }
 #elif defined(FIELD_PREPARE_JOBS)
     if (FieldLinearInvocation() == 0u)
@@ -922,8 +966,38 @@ void FieldMain()
             valid = valid && value != DISTANCE_FIELD_UNAVAILABLE;
             if (valid)
             {
-                uint activeSlot           = atomicAdd(fieldCounters[ZEN_FIELD_COUNTER_ACTIVE], 1u);
-                fieldActive[activeSlot]   = uvec2(index, fresh);
+                // A dense cell takes one emit workgroup per reference chunk. The workspace holds a
+                // split slot and active entries for every chunk the reference capacity allows.
+                uint chunks = (count + ZEN_FIELD_EMIT_CHUNK_REFERENCES - 1u) / ZEN_FIELD_EMIT_CHUNK_REFERENCES;
+                uint split  = 0u;
+                if (chunks > 1u)
+                {
+                    uint slot = atomicAdd(fieldCounters[ZEN_FIELD_COUNTER_SPLIT_CELLS], 1u);
+                    if (slot < uint(fieldEmitSplit.length()) / ZEN_FIELD_EMIT_SPLIT_WORDS)
+                    {
+                        uint base = slot * ZEN_FIELD_EMIT_SPLIT_WORDS;
+                        for (uint texel = 0u; texel < 512u; ++texel)
+                        {
+                            fieldEmitSplit[base + texel] = floatBitsToUint(1.0);
+                        }
+                        fieldEmitSplit[base + 512u] = 0u;
+                        split                       = slot + 1u;
+                    }
+                    else
+                    {
+                        chunks = 1u;
+                    }
+                }
+                uint activeSlot = atomicAdd(fieldCounters[ZEN_FIELD_COUNTER_ACTIVE], chunks);
+                if (activeSlot + chunks > uint(fieldActive.length()))
+                {
+                    // A missing chunk would leave its cell unfinished.
+                    FieldFail(ZEN_FIELD_FAILURE_REFERENCES);
+                }
+                for (uint chunk = 0u; chunk < chunks && activeSlot + chunk < uint(fieldActive.length()); ++chunk)
+                {
+                    fieldActive[activeSlot + chunk] = uvec2(index, fresh | (chunk << 1u) | (split << 8u));
+                }
                 distanceFieldCells[index] = value;
             }
             else
@@ -959,7 +1033,8 @@ void FieldMain()
 #elif defined(FIELD_EMIT)
     uint group       = FieldLinearGroup();
     uint activeIndex = FieldWorkFirst() + group;
-    if (group < FieldWorkCount() && activeIndex < fieldCounters[ZEN_FIELD_COUNTER_ACTIVE])
+    if (group < FieldWorkCount() && activeIndex < fieldCounters[ZEN_FIELD_COUNTER_ACTIVE]
+        && activeIndex < uint(fieldActive.length()))
     {
         FieldEmit(activeIndex);
     }

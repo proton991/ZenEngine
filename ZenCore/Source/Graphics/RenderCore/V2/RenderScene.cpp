@@ -312,7 +312,8 @@ void RenderScene::UpdateAuthoredEnvironment()
 void RenderScene::PrepareBuffers()
 {
     HeapVector<InstanceTriangleRange> ranges;
-    const HeapVector<glm::uvec4>      voxelTriangles = BuildTriangleRecords(ranges);
+    HeapVector<uint32_t>              materialTriangles;
+    const HeapVector<glm::uvec4>      voxelTriangles = BuildTriangleRecords(ranges, materialTriangles);
 
     m_pRenderDevice->DestroyBuffer(m_pVoxelTriangleBuffer);
 
@@ -349,20 +350,25 @@ void RenderScene::PrepareBuffers()
         && m_pIndexBuffer != nullptr && GetUVBuffer() != nullptr)
     {
         m_instanceTriangleRanges = std::move(ranges);
+        m_materialTriangleCounts = std::move(materialTriangles);
     }
 }
 
 HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const
 {
     HeapVector<InstanceTriangleRange> ranges;
-    return BuildTriangleRecords(ranges);
+    HeapVector<uint32_t>              materialTriangles;
+    return BuildTriangleRecords(ranges, materialTriangles);
 }
 
-HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges) const
+HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges,
+                                                         HeapVector<uint32_t>&              materialTriangles) const
 {
     HeapVector<glm::uvec4> voxelTriangles;
     ranges.clear();
     ranges.resize(m_instanceClasses.size());
+    materialTriangles.clear();
+    materialTriangles.resize(m_materialsData.size());
 
     for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
     {
@@ -370,17 +376,33 @@ HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords(HeapVector<InstanceTria
         InstanceTriangleRange& range    = ranges[instance];
         range.firstTriangle             = static_cast<uint32_t>(voxelTriangles.size());
         range.committedMask             = GetInstanceMask(instance);
+        glm::dvec4 triangleSums(0.0);
         for (const sg::SubMesh* pMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
+            const uint32_t material = pMesh->GetMaterial()->index;
             // All triangle surfaces occlude GI. voxel_surface.glsl evaluates mask and blend
             // coverage; transmission uses the lighting contract's opaque-occluder approximation.
             for (uint32_t i = 0; pMesh->topology == sg::MeshTopology::Triangles && i + 2 < pMesh->GetIndexCount(); i += 3)
             {
-                voxelTriangles.push_back(
-                    glm::uvec4(pMesh->GetFirstIndex() + i, instance, pMesh->GetMaterial()->index, range.committedMask));
+                const uint32_t first = pMesh->GetFirstIndex() + i;
+                voxelTriangles.push_back(glm::uvec4(first, instance, material, range.committedMask));
+                if (material < materialTriangles.size())
+                {
+                    ++materialTriangles[material];
+                }
+                if (first + 2 < m_indices.size())
+                {
+                    const Vec3   a(m_vertices[m_indices[first]].pos);
+                    const Vec3   b(m_vertices[m_indices[first + 1]].pos);
+                    const Vec3   c(m_vertices[m_indices[first + 2]].pos);
+                    const double diagonal  = glm::length(glm::max(a, glm::max(b, c)) - glm::min(a, glm::min(b, c)));
+                    const double area      = 0.5 * glm::length(glm::cross(b - a, c - a));
+                    triangleSums          += glm::dvec4(diagonal, diagonal * diagonal, diagonal * diagonal * diagonal, area);
+                }
             }
         }
         range.triangleCount = static_cast<uint32_t>(voxelTriangles.size()) - range.firstTriangle;
+        range.triangleSums  = Vec4(triangleSums);
     }
 
     return voxelTriangles;

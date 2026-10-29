@@ -3,7 +3,6 @@
 #include "RDGDefs.h"
 #include "Graphics/RHI/RHIResource.h"
 #include "Graphics/RHI/RHIAccelerationStructure.h"
-#include "Graphics/RHI/RHIGPUTiming.h"
 #include "Templates/HeapVector.h"
 // #include "Graphics/RHI/RHIResource.h"
 // #include "Graphics/RHI/RHICommon.h"
@@ -840,8 +839,7 @@ public:
 
     void Dispatch(uint32_t groupCountX, int32_t groupCountY, int32_t groupCountZ);
 
-    // Optional asynchronous service-time sample, independent of the graph profiler.
-    void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset, const RHIGPUTimingPtr& timing = {});
+    void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset);
 
     void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 

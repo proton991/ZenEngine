@@ -11,17 +11,21 @@
 #define ZEN_FIELD_STALE_BOXES 8u
 // Local detail volumes around point and spot lights, each a slot of one pool (DistanceFieldLocalsUniform).
 #define ZEN_FIELD_LOCAL_VOLUMES                   32u
-#define ZEN_FIELD_MAX_TRIANGLE_BATCH              65536u
+#define ZEN_FIELD_MAX_TRIANGLE_BATCH              (1u << 26)
 #define ZEN_FIELD_REGION_SIDE                     4u
 #define ZEN_FIELD_SCAN_GROUP                      256u
 #define ZEN_FIELD_MAX_SCAN_BLOCKS                 1024u
-#define ZEN_FIELD_MAX_CELL_REFS                   8192u
+#define ZEN_FIELD_MAX_CELL_REFS                   65536u
 #define ZEN_FIELD_REFERENCE_TILE                  256u
+// A cell with more references is emitted by one workgroup per chunk of this many, which merge their
+// texel minima in a split slot of ZEN_FIELD_EMIT_SPLIT_WORDS: 512 minima, then the finished chunks.
+#define ZEN_FIELD_EMIT_CHUNK_REFERENCES           1024u
+#define ZEN_FIELD_EMIT_SPLIT_WORDS                513u
 #define ZEN_FIELD_COUNTER_WORDS                   19u
 #define ZEN_FIELD_COVERAGE_MAX_DEPTH              12u
 #define ZEN_FIELD_COVERAGE_STACK_WORDS            (3u * ZEN_FIELD_COVERAGE_MAX_DEPTH + 1u)
 #define ZEN_FIELD_COVERAGE_STATE_WORDS            (4u + ZEN_FIELD_COVERAGE_STACK_WORDS)
-#define ZEN_FIELD_COVERAGE_NODES_PER_DISPATCH     32u
+#define ZEN_FIELD_COVERAGE_NODES_PER_DISPATCH     512u
 #define ZEN_FIELD_COVERAGE_MAX_NODES              65536u
 #define ZEN_FIELD_COVERAGE_TRIANGLES_PER_DISPATCH 64u
 // High bit of a patch job's depth, and of its resumable region cursor.
@@ -35,6 +39,7 @@
 #define ZEN_FIELD_FAILURE_COVERAGE        32u
 #define ZEN_FIELD_FAILURE_SETTINGS        64u
 #define ZEN_FIELD_FAILURE_COVERAGE_BUDGET 128u
+#define ZEN_FIELD_FAILURE_COVERAGE_SLOTS  256u // More coverage triangles in a batch than state slots.
 
 // Allocation, failure and first-failure diagnostics persist across triangle batches.
 #define ZEN_FIELD_COUNTER_ALLOCATED        0u
@@ -50,6 +55,7 @@
 #define ZEN_FIELD_COUNTER_COVERAGE_PENDING 10u
 #define ZEN_FIELD_COUNTER_CELL_PEAK        11u // Largest per-cell reference count of the batch.
 #define ZEN_FIELD_COUNTER_EMIT_DISPATCH    12u
+#define ZEN_FIELD_COUNTER_SPLIT_CELLS      13u // Split slots the batch's dense cells took.
 #define ZEN_FIELD_COUNTER_FAILURE_SAMPLE   15u
 #define ZEN_FIELD_COUNTER_RETAINED         16u
 #define ZEN_FIELD_COUNTER_FREE             17u

@@ -298,14 +298,24 @@ void FieldCreateCoverageJobs(uint triangle, uint localTriangle, vec3 a, vec3 b, 
                 }
                 else
                 {
-                    uint offset                    = localTriangle * ZEN_FIELD_COVERAGE_STATE_WORDS;
-                    fieldCoverage[offset]          = 1u;
-                    fieldCoverage[offset + 1u]     = 1u;
-                    fieldCoverage[offset + 2u]     = 0u;
-                    fieldCoverage[offset + 3u]     = 0u;
-                    fieldCoverage[offset + 4u]     = 1u;
-                    uint queueIndex                = atomicAdd(fieldCounters[ZEN_FIELD_COUNTER_COVERAGE_COUNT], 1u);
-                    fieldCoverageQueue[queueIndex] = localTriangle;
+                    // Refinement state lives in a compact slot per queued triangle, so storage scales
+                    // with the scene's coverage triangles rather than the batch. A batch with more
+                    // than the slots retries with fewer triangles.
+                    uint slot = atomicAdd(fieldCounters[ZEN_FIELD_COUNTER_COVERAGE_COUNT], 1u);
+                    if (slot < uint(fieldCoverageQueue.length()))
+                    {
+                        uint offset                = slot * ZEN_FIELD_COVERAGE_STATE_WORDS;
+                        fieldCoverage[offset]      = 1u;
+                        fieldCoverage[offset + 1u] = 1u;
+                        fieldCoverage[offset + 2u] = 0u;
+                        fieldCoverage[offset + 3u] = 0u;
+                        fieldCoverage[offset + 4u] = 1u;
+                        fieldCoverageQueue[slot]   = localTriangle;
+                    }
+                    else
+                    {
+                        FieldFail(ZEN_FIELD_FAILURE_COVERAGE_SLOTS);
+                    }
                 }
             }
         }
@@ -318,9 +328,10 @@ void FieldCreateCoverageJobs(uint triangle, uint localTriangle, vec3 a, vec3 b, 
 #endif
 
 #ifdef FIELD_COVERAGE
-void FieldContinueCoverage(uint localTriangle)
+void FieldContinueCoverage(uint slot)
 {
-    uint offset = localTriangle * ZEN_FIELD_COVERAGE_STATE_WORDS;
+    uint offset        = slot * ZEN_FIELD_COVERAGE_STATE_WORDS;
+    uint localTriangle = fieldCoverageQueue[slot];
     if (fieldCoverage[offset] == 1u)
     {
         uint triangle = FieldSourceTriangle(FieldTriangleFirst() + localTriangle);

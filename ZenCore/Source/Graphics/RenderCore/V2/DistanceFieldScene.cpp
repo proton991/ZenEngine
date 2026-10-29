@@ -15,7 +15,6 @@ namespace zen::rc
 {
 namespace
 {
-constexpr uint32_t kJobCapacity     = 65536;
 constexpr uint32_t kSnapshotBuffers = 4;
 constexpr uint32_t kStatusSlots     = RenderFrameState::kMaxFramesInFlight + 1;
 // Frames of each generation that run one cycle and measure the frame interval it adapts from.
@@ -60,6 +59,54 @@ uint64_t BufferBytes(const RHIBuffer* buffer)
     return buffer != nullptr ? std::max(buffer->GetRequiredSize(), buffer->GetAllocationSize()) : 0;
 }
 
+// The emit packs a dense cell's reference chunk into 7 bits of its active entry.
+static_assert(ZEN_FIELD_MAX_CELL_REFS / ZEN_FIELD_EMIT_CHUNK_REFERENCES <= 128);
+
+// Emit entries a workspace holds: one per cell, plus one per further reference chunk of a dense
+// cell. A batch's references, at most the reference capacity, bound the chunks and dense cells.
+uint64_t ActiveEntries(uint64_t cells, uint32_t references)
+{
+    return cells + references / ZEN_FIELD_EMIT_CHUNK_REFERENCES;
+}
+
+uint64_t SplitSlots(uint32_t references)
+{
+    return std::max<uint64_t>(references / ZEN_FIELD_EMIT_CHUNK_REFERENCES, 1);
+}
+
+// Elements of the given stride that one storage-buffer binding can address (ValidateGIStorageBuffer).
+uint64_t StorageElements(const RHIGPUInfo& gpu, uint32_t stride)
+{
+    const uint64_t alignment = std::max(uint64_t(1), uint64_t(gpu.storageBufferAlignment));
+    const uint64_t range     = std::min(uint64_t(gpu.maxStorageBufferRange), uint64_t(UINT32_MAX) - (alignment - 1));
+    return range / stride;
+}
+
+// Device-local bytes still free for new allocations: the driver's budget headroom where it reports
+// one, otherwise the capacity this allocator has not committed. UINT64_MAX when neither is known.
+uint64_t FreeDeviceMemory(const RenderDevice& device)
+{
+    const RHIGPUMemoryStats memory    = device.GetGPUMemoryStats();
+    const uint64_t          capacity  = device.GetGPUInfo().deviceLocalMemoryBytes;
+    uint64_t                available = capacity == 0                      ? UINT64_MAX
+                                      : capacity > memory.deviceLocalBytes ? capacity - memory.deviceLocalBytes
+                                                                           : 0;
+    if (memory.budgetAvailable)
+    {
+        uint64_t headroom = 0;
+        for (uint32_t index = 0; index < memory.heapCount && index < memory.heaps.size(); ++index)
+        {
+            const RHIGPUMemoryStats::Heap& heap = memory.heaps[index];
+            if (heap.deviceLocal && heap.budgetBytes > heap.usageBytes)
+            {
+                headroom = std::max(headroom, heap.budgetBytes - heap.usageBytes);
+            }
+        }
+        available = std::min(available, headroom);
+    }
+    return available;
+}
+
 uint32_t SamplerCoverageFlags(const RHISamplerCreateInfo& sampler)
 {
     const bool supported = sampler.minLod == 0.0f && sampler.lodBias == 0.0f && sampler.maxLod >= 0.0f && !sampler.useAnisotropy
@@ -99,11 +146,6 @@ void DispatchField(RenderGraph& graph, RDGComputePassDesc&& pass, uint32_t group
 
 struct DistanceFieldScene::GeometrySnapshot
 {
-    struct Instance
-    {
-        glm::uvec4 range{0};
-        AABB       bounds;
-    };
     uint64_t                                   scene{0};
     uint64_t                                   revision{0};
     uint64_t                                   bytes{0};
@@ -117,7 +159,6 @@ struct DistanceFieldScene::GeometrySnapshot
     HeapVector<RHIResourcePtr<RHITexture>>     textures;
     HeapVector<RHIResourcePtr<RHITextureView>> views;
     HeapVector<RHIResourcePtr<RHISampler>>     samplers;
-    HeapVector<Instance>                       instances;
     RHIBuffer*                                 samplerInfo{nullptr};
     ResourceRetirement                         retirement;
     ResourceRetirement                         snapshotRetirement;
@@ -155,6 +196,10 @@ struct DistanceFieldScene::BuildWorkspace
     uint64_t           bytes{0};
     uint64_t           cells{0}; // Cell capacity of its per-cell arrays; smaller local volumes reuse it.
     uint64_t           bricks{0};
+    uint32_t           jobCapacity{0};
+    uint32_t           referenceCapacity{0};
+    uint32_t           coverageSlots{0};
+    bool               memoryLimited{false}; // Capacities were scaled down to the memory budget.
     RHIBuffer*         brickUsed{nullptr};
     RHIBuffer*         freeBricks{nullptr};
     RHIBuffer*         counters{nullptr};
@@ -169,6 +214,7 @@ struct DistanceFieldScene::BuildWorkspace
     RHIBuffer*         indirect{nullptr};
     RHIBuffer*         coverage{nullptr};
     RHIBuffer*         coverageQueue{nullptr};
+    RHIBuffer*         emitSplit{nullptr};
     StatusSlot         status[kStatusSlots];
     ResourceRetirement retirement;
 };
@@ -830,7 +876,7 @@ void DistanceFieldScene::ReleaseWorkspace(SharedPtr<BuildWorkspace>& workspace, 
         for (RHIBuffer* buffer :
              {workspace->counters, workspace->jobs, workspace->counts, workspace->offsets, workspace->cursors,
               workspace->references, workspace->active, workspace->scan, workspace->control, workspace->indirect,
-              workspace->coverage, workspace->coverageQueue, workspace->brickUsed, workspace->freeBricks})
+              workspace->coverage, workspace->coverageQueue, workspace->emitSplit, workspace->brickUsed, workspace->freeBricks})
         {
             if (completed && buffer != nullptr)
             {
@@ -967,65 +1013,53 @@ void DistanceFieldScene::ReleaseSnapshotSources(Generation& generation)
     }
 }
 
-bool DistanceFieldScene::IsInitialBuild() const
+bool DistanceFieldScene::UsesThroughputBuild() const
 {
-    return m_initialBuild && m_settings.initialBuildBudgetMicroseconds > 0.0;
+    return m_settings.throughputFrameBudgetMicroseconds > 0.0;
 }
 
-void DistanceFieldScene::UpdateDispatchBudgets()
+// Largest triangle batch cap: fixed capacities take triangleBatchSize; derived ones any batch that
+// the jobs phase can launch, one workgroup per 64 triangles.
+uint32_t DistanceFieldScene::BatchCeiling() const
 {
-    double unitCost[ZEN_FIELD_PHASE_COMPLETE]{};
-    for (size_t index = 0; index < m_dispatchTimings.size();)
-    {
-        const DispatchTiming&    sample = m_dispatchTimings[index];
-        const RHIGPUTimingStatus status = sample.result->GetStatus();
-        if (status == RHIGPUTimingStatus::ePending)
-        {
-            ++index;
-        }
-        else
-        {
-            // Inactive indirect dispatches carry no throughput information. Completed timings
-            // from a replaced generation must not tune its successor's different workload.
-            if (IsInitialBuild() && m_pending && sample.generation == m_pending->generation
-                && status == RHIGPUTimingStatus::eAvailable && sample.result->GetMicroseconds() >= 10.0)
-            {
-                unitCost[sample.phase] = std::max(unitCost[sample.phase], sample.result->GetMicroseconds() / sample.limit);
-            }
-            m_dispatchTimings.erase(m_dispatchTimings.begin() + index);
-        }
-    }
-    if (m_pending && IsInitialBuild())
-    {
-        const uint32_t groupLimit = m_device->GetGPUInfo().maxComputeWorkGroupCount[0];
-        const double   target     = m_settings.initialBuildBudgetMicroseconds / 16.0;
-        for (uint32_t phase = 0; phase < ZEN_FIELD_PHASE_COMPLETE; ++phase)
-        {
-            if (unitCost[phase] > 0.0)
-            {
-                const uint32_t capacity = phase == ZEN_FIELD_PHASE_EMIT     ? static_cast<uint32_t>(m_pending->workspace->cells)
-                                        : phase == ZEN_FIELD_PHASE_COVERAGE ? m_settings.triangleBatchSize
-                                                                            : kJobCapacity;
-                const uint32_t maximum  = std::min(capacity, groupLimit);
-                const uint32_t current  = m_dispatchLimits[phase];
-                const double limit = std::clamp(target / unitCost[phase], double(std::min(maximum, std::max(1u, current / 2u))),
-                                                double(std::min(maximum, current * 2u)));
-                m_dispatchLimits[phase] = static_cast<uint32_t>(limit);
-            }
-        }
-    }
+    const uint64_t groups = m_device->GetGPUInfo().maxComputeWorkGroupCount[0];
+    return m_settings.deriveCapacities ? static_cast<uint32_t>(std::min<uint64_t>(ZEN_FIELD_MAX_TRIANGLE_BATCH, groups * 64))
+                                       : m_settings.triangleBatchSize;
 }
 
 uint32_t DistanceFieldScene::NextCycleCount()
 {
     uint32_t cycles = m_settings.maxCyclesPerFrame;
-    if (IsInitialBuild())
+    if (UsesThroughputBuild())
     {
-        if (m_pending && m_pending->submittedCycles != 0)
+        // Whole-batch dispatches make a cycle's cost scene- and device-dependent: start each
+        // generation at one cycle and the device's last batch cap, so a slow device cannot record
+        // seconds of work in one submission. Within the budget, grow the batch cap first, which
+        // finishes the generation in fewer dispatches than more cycles would; over it, shrink the
+        // cycles first.
+        const uint32_t ceiling = BatchCeiling();
+        cycles                 = m_pending && m_pending->submittedCycles != 0 ? m_cyclesPerFrame : 1u;
+        if (m_pending && m_pending->submittedCycles != 0 && m_frameIntervalUs <= m_settings.throughputFrameBudgetMicroseconds)
         {
-            cycles = m_frameIntervalUs <= m_settings.initialBuildBudgetMicroseconds
-                       ? std::min(m_settings.maxCyclesPerFrame, m_cyclesPerFrame + 1u)
-                       : std::max(1u, m_cyclesPerFrame / 2u);
+            if (m_batchCap < std::min(ceiling, m_pending->triangleCount))
+            {
+                m_batchCap = std::min(ceiling, m_batchCap * 2u);
+            }
+            else
+            {
+                cycles = std::min(m_settings.maxCyclesPerFrame, m_cyclesPerFrame * 2u);
+            }
+        }
+        else if (m_pending && m_pending->submittedCycles != 0)
+        {
+            if (m_cyclesPerFrame > 1)
+            {
+                cycles = m_cyclesPerFrame / 2u;
+            }
+            else
+            {
+                m_batchCap = std::max(1u, m_batchCap / 2u);
+            }
         }
     }
     else if (m_settings.frameBudgetMicroseconds > 0.0 || m_settings.frameBudgetShare > 0.0)
@@ -1055,7 +1089,6 @@ uint32_t DistanceFieldScene::NextCycleCount()
 
 void DistanceFieldScene::Poll()
 {
-    UpdateDispatchBudgets();
     for (size_t index = 0; index < m_retired.size();)
     {
         ReleaseSnapshotSources(*m_retired[index]);
@@ -1207,20 +1240,14 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     m_cyclesPerFrame = 1;
     m_baselineFrames = 0;
     m_baselineUs     = 0;
-    m_dispatchTimings.clear();
-    const uint32_t groupLimit                  = m_device->GetGPUInfo().maxComputeWorkGroupCount[0];
-    m_dispatchLimits[ZEN_FIELD_PHASE_COUNT]    = std::min(kJobCapacity, groupLimit);
-    m_dispatchLimits[ZEN_FIELD_PHASE_COMPACT]  = m_dispatchLimits[ZEN_FIELD_PHASE_COUNT];
-    m_dispatchLimits[ZEN_FIELD_PHASE_EMIT]     = std::min(8192u, groupLimit);
-    m_dispatchLimits[ZEN_FIELD_PHASE_COVERAGE] = ZEN_FIELD_COVERAGE_TRIANGLES_PER_DISPATCH;
-    const uint32_t side                        = local ? m_settings.localCellsPerAxis : m_settings.cellsPerAxis;
-    const uint32_t atlasSide                   = local ? m_settings.localAtlasTexelsPerAxis : m_settings.atlasTexelsPerAxis;
-    const uint64_t cells                       = uint64_t(side) * side * side;
-    const uint64_t atlasBytes                  = uint64_t(atlasSide) * atlasSide * atlasSide;
-    const uint64_t tiles                       = atlasSide / 8;
-    const uint64_t capacity                    = tiles * tiles * tiles;
-    bool           valid                       = true;
-    const char*    failed                      = "";
+    const uint32_t side       = local ? m_settings.localCellsPerAxis : m_settings.cellsPerAxis;
+    const uint32_t atlasSide  = local ? m_settings.localAtlasTexelsPerAxis : m_settings.atlasTexelsPerAxis;
+    const uint64_t cells      = uint64_t(side) * side * side;
+    const uint64_t atlasBytes = uint64_t(atlasSide) * atlasSide * atlasSide;
+    const uint64_t tiles      = atlasSide / 8;
+    const uint64_t capacity   = tiles * tiles * tiles;
+    bool           valid      = true;
+    const char*    failed     = "";
     Require(side >= 4 && side <= ZEN_FIELD_MAX_SIDE && (side & (side - 1)) == 0 && atlasSide >= 8 && atlasSide <= 2048
                 && atlasSide % 8 == 0 && capacity <= UINT32_MAX && m_settings.triangleBatchSize > 0
                 && m_settings.triangleBatchSize <= ZEN_FIELD_MAX_TRIANGLE_BATCH && m_settings.cellBatchSize > 0
@@ -1228,22 +1255,16 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
                 && m_settings.dispatchesPerFrame > 0 && m_settings.dispatchesPerFrame <= 16 && m_settings.maxCyclesPerFrame > 0
                 && m_settings.maxCyclesPerFrame <= 64 && m_settings.frameBudgetMicroseconds >= 0.0
                 && std::isfinite(m_settings.frameBudgetMicroseconds) && m_settings.frameBudgetShare >= 0.0
-                && std::isfinite(m_settings.frameBudgetShare) && m_settings.initialBuildBudgetMicroseconds >= 0.0
-                && std::isfinite(m_settings.initialBuildBudgetMicroseconds) && m_settings.referencesPerCell > 0
-                && m_settings.referencesPerCell <= ZEN_FIELD_MAX_CELL_REFS && m_settings.referenceCapacity > 0
-                && m_settings.hitTolerance > 0.0f && m_settings.hitTolerance < 1.0f && std::isfinite(m_settings.hitTolerance),
+                && std::isfinite(m_settings.frameBudgetShare) && m_settings.throughputFrameBudgetMicroseconds >= 0.0
+                && std::isfinite(m_settings.throughputFrameBudgetMicroseconds) && m_settings.jobCapacity > 0
+                && m_settings.referencesPerCell > 0 && m_settings.referencesPerCell <= ZEN_FIELD_MAX_CELL_REFS
+                && m_settings.referenceCapacity > 0 && m_settings.hitTolerance > 0.0f && m_settings.hitTolerance < 1.0f
+                && std::isfinite(m_settings.hitTolerance) && m_settings.deviceMemoryShare > 0.0
+                && m_settings.deviceMemoryShare <= 1.0,
             "settings", valid, failed);
     const bool reuseGeometry =
         m_geometry && m_geometry->scene == scene.GetIdentity() && m_geometry->revision == scene.GetGeometryRevision();
-    if (m_workspace && (m_workspace->cells < cells || m_workspace->bricks < capacity)
-        && m_device->IsResourceRetired(m_workspace->retirement))
-    {
-        // A finer local region may need a larger workspace than a small static field.
-        ReleaseWorkspace(m_workspace, true);
-    }
-    const bool        reuseWorkspace = m_workspace && m_device->IsResourceRetired(m_workspace->retirement)
-                                    && m_workspace->cells >= cells && m_workspace->bricks >= capacity;
-    const RHIGPUInfo& gpu            = m_device->GetGPUInfo();
+    const RHIGPUInfo& gpu = m_device->GetGPUInfo();
     Require(gpu.maxComputeWorkGroupInvocations >= 512 && gpu.maxComputeWorkGroupSize[0] >= 256
                 && gpu.maxComputeWorkGroupSize[1] >= 8 && gpu.maxComputeWorkGroupSize[2] >= 8,
             "device compute workgroup limits", valid, failed);
@@ -1275,14 +1296,8 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     Require(scene.GetVoxelTriangleCount() == 0
                 || (scene.GetVoxelTriangleBuffer() != nullptr && scene.GetIndexBuffer() != nullptr),
             "triangle record and index buffers", valid, failed);
-    const uint64_t samplerBytes  = (scene.GetSceneSamplers().size() + 3) * sizeof(uint32_t);
-    const uint64_t coverageBytes = uint64_t(m_settings.triangleBatchSize) * ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t);
-    const uint64_t scratch =
-        snapshotBytes + uint64_t(kJobCapacity) * sizeof(glm::uvec4) + cells * (3 * sizeof(uint32_t) + sizeof(glm::uvec2))
-        + uint64_t(m_settings.referenceCapacity) * sizeof(uint32_t) + ((cells + 255) / 256) * sizeof(uint32_t) + samplerBytes
-        + (ZEN_FIELD_STATUS_WORDS * (kStatusSlots + 1) + ZEN_FIELD_INDIRECT_WORDS) * sizeof(uint32_t) + coverageBytes
-        + uint64_t(m_settings.triangleBatchSize) * sizeof(uint32_t) + 2 * capacity * sizeof(uint32_t);
-    const uint64_t persistent  = atlasBytes + (cells + HierarchyWords(side)) * sizeof(uint32_t);
+    const uint64_t samplerBytes = (scene.GetSceneSamplers().size() + 3) * sizeof(uint32_t);
+    const uint64_t persistent   = atlasBytes + (cells + HierarchyWords(side)) * sizeof(uint32_t);
     const AABB     sceneBounds = local ? LocalAuthority(m_localCore) : scene.GetAABB();
     // A scene without triangles has no occluder to cover: any unit volume certifies empty space.
     const AABB bounds  = scene.GetVoxelTriangleCount() == 0 && !local ? AABB(Vec3(-0.5f), Vec3(0.5f)) : sceneBounds;
@@ -1306,18 +1321,170 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     Require(length > 0 && std::isfinite(length) && std::isfinite(minimum.x) && std::isfinite(minimum.y)
                 && std::isfinite(minimum.z) && std::isfinite(1.0f / (length / side)),
             "full-scene bounds", valid, failed);
-    uint64_t checkedBytes = 0;
-    for (uint64_t bytes :
-         {snapshotBytes, uint64_t(kJobCapacity) * sizeof(glm::uvec4), uint64_t(m_settings.referenceCapacity) * sizeof(uint32_t),
-          cells * sizeof(glm::uvec2), coverageBytes})
+    const float               brickSize = length / side;
+    DistanceFieldStaleUniform dirty;
+    if (partial)
     {
-        Require(ValidateGIStorageBuffer(bytes, 1, m_device->GetGPUInfo(), checkedBytes) == GIResourceStatus::eSuccess,
+        dirty.count = m_stale.count;
+        for (uint32_t box = 0; box < m_stale.count.x; ++box)
+        {
+            // Distances affect a full brick beyond the surface, in addition to the hit band.
+            dirty.minimum[box] =
+                Vec4(glm::max(glm::floor((Vec3(m_stale.minimum[box]) - minimum) / brickSize - Vec3(1.5f)), Vec3(0)), 0);
+            dirty.maximum[box] =
+                Vec4(glm::min(glm::ceil((Vec3(m_stale.maximum[box]) - minimum) / brickSize + Vec3(1.5f)), Vec3(side)), 0);
+        }
+    }
+    // Static construction excludes dynamic instances. Their bounded composite region is rebuilt
+    // independently, including only the scene instances intersecting that region. A partial
+    // refresh takes only the instances overlapping its dirty boxes.
+    const HeapVector<RenderScene::InstanceTriangleRange>& committedRanges = scene.GetInstanceTriangleRanges();
+    const HeapVector<RenderScene::ShadowCaster>&          casters         = scene.GetShadowCasters();
+    Require(committedRanges.size() == casters.size(), "instance triangle ranges", valid, failed);
+    HeapVector<glm::uvec4> ranges;
+    uint32_t               selectedTriangles = 0;
+    // Expected work if every selected triangle went into one batch, averaged over the triangles'
+    // placements in the grid, in cells for a triangle with bounding-box extents e, diagonal d, area a
+    // and unit normal n. References: cells whose 3-cell test box (FieldVisitJob) meets the triangle,
+    // the volume it sweeps, 3 a |n|1 + 9 (ex + ey + ez) + 27. Jobs: 4^3-cell regions meeting its box
+    // widened by one cell (FieldPatchRegionLayout), (ex / 4 + 1.5) (ey / 4 + 1.5) (ez / 4 + 1.5).
+    // Bounding |n|1 by sqrt(3), ex + ey + ez by sqrt(3) d, the extents' pairwise products by d^2 and
+    // their product by (d / sqrt(3))^3 leaves sums the scene records per instance (triangleSums) and
+    // makes both estimates upper ones. No triangle can reach more cells or regions than the instance's
+    // bounds do within the grid.
+    double referenceDemand = 0.0;
+    double jobDemand       = 0.0;
+    {
+        const Vec3 selectedMinimum = minimum - Vec3(brickSize);
+        const Vec3 selectedMaximum = minimum + Vec3(length + brickSize);
+        for (size_t index = 0; valid && index < committedRanges.size(); ++index)
+        {
+            const RenderScene::InstanceTriangleRange& range    = committedRanges[index];
+            const AABB&                               instance = casters[index].bounds;
+            bool                                      selected = local || !partial;
+            for (uint32_t box = 0; !selected && box < dirty.count.x; ++box)
+            {
+                const AABB dirtyBounds(minimum + Vec3(dirty.minimum[box]) * brickSize - Vec3(brickSize),
+                                       minimum + Vec3(dirty.maximum[box]) * brickSize + Vec3(brickSize));
+                selected = BoxesOverlap(instance, dirtyBounds);
+            }
+            if (selected && range.triangleCount != 0 && (range.committedMask & (local ? GI_ALL : GI_STATIC)) != 0
+                && glm::all(glm::greaterThanEqual(instance.GetMax(), selectedMinimum))
+                && glm::all(glm::lessThanEqual(instance.GetMin(), selectedMaximum)))
+            {
+                ranges.push_back(glm::uvec4(range.firstTriangle, range.triangleCount, selectedTriangles, 0));
+                selectedTriangles += range.triangleCount;
+                const glm::mat3 linear(scene.GetInstanceTransform(static_cast<uint32_t>(index)));
+                const double    root3 = std::sqrt(3.0);
+                const double c = std::max({glm::length(linear[0]), glm::length(linear[1]), glm::length(linear[2])}) / brickSize;
+                const glm::dvec4 sums(range.triangleSums);
+                const double     count      = range.triangleCount;
+                const double     references = 3.0 * root3 * c * c * sums.w + 9.0 * root3 * c * sums.x + 27.0 * count;
+                const double     jobs       = 3.375 * count + 2.25 * root3 * c / 4.0 * sums.x + 1.5 * c * c / 16.0 * sums.y
+                                            + c * c * c / (64.0 * 3.0 * root3) * sums.z;
+                const glm::dvec3 lower = glm::max(glm::dvec3(instance.GetMin() - minimum) / double(brickSize), glm::dvec3(0));
+                const glm::dvec3 upper =
+                    glm::min(glm::dvec3(instance.GetMax() - minimum) / double(brickSize), glm::dvec3(side));
+                const glm::dvec3 extent         = glm::max(upper - lower, glm::dvec3(0));
+                const glm::dvec3 cellsPerAxis   = glm::min(extent + 3.0, glm::dvec3(side));
+                const glm::dvec3 regionsPerAxis = glm::min(extent / 4.0 + 1.5, glm::dvec3(side / ZEN_FIELD_REGION_SIDE));
+                referenceDemand += std::min(references, count * cellsPerAxis.x * cellsPerAxis.y * cellsPerAxis.z);
+                jobDemand       += std::min(jobs, count * regionsPerAxis.x * regionsPerAxis.y * regionsPerAxis.z);
+            }
+        }
+    }
+    // Alpha-tested and blended triangles each take one coverage slot while their batch refines them.
+    // Without per-material counts, every selected triangle may need one.
+    const HeapVector<sg::MaterialData>& materials         = scene.GetMaterialsData();
+    const HeapVector<uint32_t>&         materialTriangles = scene.GetMaterialTriangleCounts();
+    uint64_t coverageTriangles = materialTriangles.size() == materials.size() ? 0 : selectedTriangles;
+    for (size_t material = 0; material < materials.size() && material < materialTriangles.size(); ++material)
+    {
+        coverageTriangles += materials[material].surfaceProperties.y != 0.0f ? materialTriangles[material] : 0;
+    }
+    coverageTriangles = std::max<uint64_t>(std::min<uint64_t>(coverageTriangles, selectedTriangles), 1);
+    // Workspace bytes that do not depend on the capacities, and per reference: its entry plus, per
+    // chunk of a dense cell, an emit entry and a split slot.
+    const uint64_t cellWorkspaceBytes =
+        cells * (3 * sizeof(uint32_t) + sizeof(glm::uvec2)) + ((cells + 255) / 256) * sizeof(uint32_t)
+        + (ZEN_FIELD_STATUS_WORDS * (kStatusSlots + 1) + ZEN_FIELD_INDIRECT_WORDS) * sizeof(uint32_t)
+        + 2 * capacity * sizeof(uint32_t);
+    const double referenceBytes =
+        sizeof(uint32_t)
+        + double(sizeof(glm::uvec2) + ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t)) / ZEN_FIELD_EMIT_CHUNK_REFERENCES;
+    const uint64_t coverageSlotBytes = (ZEN_FIELD_COVERAGE_STATE_WORDS + 1) * sizeof(uint32_t);
+    const uint64_t geometryEstimate  = snapshotBytes + samplerBytes;
+    const bool     retiredWorkspace  = m_workspace && m_device->IsResourceRetired(m_workspace->retirement);
+    uint32_t       jobCapacity       = m_settings.jobCapacity;
+    uint32_t       referenceCapacity = m_settings.referenceCapacity;
+    // A batch holds at most the generation's triangles.
+    uint32_t coverageSlots = std::max(std::min(m_settings.triangleBatchSize, selectedTriangles), 1u);
+    bool     memoryLimited = false;
+    // A retired workspace that is too small is released before its replacement is created, so its
+    // bytes count as free while sizing the replacement.
+    const uint64_t reclaimable = retiredWorkspace ? m_workspace->bytes : 0;
+    const uint64_t available   = m_settings.deriveCapacities ? FreeDeviceMemory(*m_device) : UINT64_MAX;
+    if (m_settings.deriveCapacities)
+    {
+        const double share  = available == UINT64_MAX ? double(m_settings.scratchBudgetBytes)
+                                                      : m_settings.deviceMemoryShare * double(available + reclaimable);
+        const double budget = share - double(reuseGeometry ? 0 : geometryEstimate) - double(cellWorkspaceBytes);
+        const double wanted =
+            referenceDemand * referenceBytes + jobDemand * sizeof(glm::uvec4) + double(coverageTriangles) * coverageSlotBytes;
+        // Short of memory, every capacity shrinks by the same factor, so batches stay balanced.
+        const double scale = wanted > budget ? std::max(budget, 0.0) / wanted : 1.0;
+        memoryLimited      = scale < 1.0;
+        referenceCapacity =
+            static_cast<uint32_t>(std::min(std::max(referenceDemand * scale, double(m_settings.referenceCapacity)),
+                                           double(std::min<uint64_t>(StorageElements(gpu, sizeof(uint32_t)), UINT32_MAX))));
+        jobCapacity =
+            static_cast<uint32_t>(std::min(std::max(jobDemand * scale, double(m_settings.jobCapacity)),
+                                           double(std::min<uint64_t>(StorageElements(gpu, sizeof(glm::uvec4)), UINT32_MAX))));
+        coverageSlots = static_cast<uint32_t>(
+            std::min(std::max(double(coverageTriangles) * scale, 1.0),
+                     double(std::min<uint64_t>(StorageElements(gpu, ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t)),
+                                               ZEN_FIELD_MAX_TRIANGLE_BATCH))));
+    }
+    // A workspace already sized to the memory budget is kept for another generation that is also
+    // short of memory: replacing it would only follow small changes in free memory.
+    const bool fits = m_workspace && m_workspace->cells >= cells && m_workspace->bricks >= capacity
+                   && ((m_workspace->jobCapacity >= jobCapacity && m_workspace->referenceCapacity >= referenceCapacity
+                        && m_workspace->coverageSlots >= coverageSlots)
+                       || (m_workspace->memoryLimited && memoryLimited));
+    if (m_workspace && !fits && retiredWorkspace)
+    {
+        // A finer local region or a larger scene may need a larger workspace.
+        ReleaseWorkspace(m_workspace, true);
+    }
+    const bool reuseWorkspace = fits && retiredWorkspace;
+    if (reuseWorkspace)
+    {
+        jobCapacity       = m_workspace->jobCapacity;
+        referenceCapacity = m_workspace->referenceCapacity;
+        coverageSlots     = m_workspace->coverageSlots;
+    }
+    // Scratch already allocated is part of the device's usage; a released workspace's is free again.
+    const uint64_t released = m_workspace ? 0 : reclaimable;
+    m_scratchBudget =
+        !m_settings.deriveCapacities || available == UINT64_MAX
+            ? m_settings.scratchBudgetBytes
+            : GetScratchBytes() + static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + released));
+    const uint64_t coverageBytes = uint64_t(coverageSlots) * ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t);
+    const uint64_t activeBytes   = ActiveEntries(cells, referenceCapacity) * sizeof(glm::uvec2);
+    const uint64_t splitBytes    = SplitSlots(referenceCapacity) * ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t);
+    const uint64_t workspaceEstimate =
+        cellWorkspaceBytes - cells * sizeof(glm::uvec2) + activeBytes + splitBytes + uint64_t(jobCapacity) * sizeof(glm::uvec4)
+        + uint64_t(referenceCapacity) * sizeof(uint32_t) + coverageBytes + uint64_t(coverageSlots) * sizeof(uint32_t);
+    const uint64_t scratch      = geometryEstimate + workspaceEstimate;
+    uint64_t       checkedBytes = 0;
+    for (uint64_t bytes : {snapshotBytes, uint64_t(jobCapacity) * sizeof(glm::uvec4),
+                           uint64_t(referenceCapacity) * sizeof(uint32_t), activeBytes, splitBytes, coverageBytes})
+    {
+        Require(ValidateGIStorageBuffer(bytes, 1, gpu, checkedBytes) == GIResourceStatus::eSuccess,
                 "device storage-buffer range", valid, failed);
     }
-    const uint64_t geometryEstimate  = snapshotBytes + samplerBytes;
-    const uint64_t workspaceEstimate = scratch - geometryEstimate;
-    const uint64_t newScratch        = (reuseGeometry ? 0 : geometryEstimate) + (reuseWorkspace ? 0 : workspaceEstimate);
-    if (!valid || persistent > m_settings.persistentBudgetBytes || scratch > m_settings.scratchBudgetBytes)
+    const uint64_t newScratch = (reuseGeometry ? 0 : geometryEstimate) + (reuseWorkspace ? 0 : workspaceEstimate);
+    if (!valid || persistent > m_settings.persistentBudgetBytes || scratch > m_scratchBudget)
     {
         LOGE(
             "Distance field allocation rejected ({}): snapshot {} bytes (vertices {}, nodes {}, materials {}, UV {}), persistent {}, scratch {}",
@@ -1331,7 +1498,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         valid = false;
     }
     else if ((m_workspace && !reuseWorkspace) || persistent + GetPersistentBytes() > m_settings.persistentBudgetBytes
-             || newScratch + GetScratchBytes() > m_settings.scratchBudgetBytes)
+             || newScratch + GetScratchBytes() > m_scratchBudget)
     {
         // Retired generations remain charged until the GPU is finished; try again on a later frame.
         // A refresh that cannot fit beside the published generation at all replaces it instead, as a
@@ -1353,19 +1520,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         Generation& generation = *m_pending;
         generation.local       = local;
         generation.partial     = partial;
-        if (partial)
-        {
-            generation.dirty.count = m_stale.count;
-            const float brickSize  = length / side;
-            for (uint32_t box = 0; box < m_stale.count.x; ++box)
-            {
-                // Distances affect a full brick beyond the surface, in addition to the hit band.
-                generation.dirty.minimum[box] =
-                    Vec4(glm::max(glm::floor((Vec3(m_stale.minimum[box]) - minimum) / brickSize - Vec3(1.5f)), Vec3(0)), 0);
-                generation.dirty.maximum[box] =
-                    Vec4(glm::min(glm::ceil((Vec3(m_stale.maximum[box]) - minimum) / brickSize + Vec3(1.5f)), Vec3(side)), 0);
-            }
-        }
+        generation.dirty       = dirty;
         generation.request = m_localRequest;
         if (!reuseGeometry)
         {
@@ -1382,51 +1537,16 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         generation.casters       = scene.GetShadowCasters();
         generation.generation    = m_nextGeneration++;
         generation.snapshotBytes = snapshotBytes;
-        generation.triangleCount = scene.GetVoxelTriangleCount();
+        generation.triangleCount = selectedTriangles;
         if (!reuseGeometry)
         {
             generation.geometry->scene         = generation.scene;
             generation.geometry->revision      = scene.GetGeometryRevision();
-            generation.geometry->triangleCount = generation.triangleCount;
+            generation.geometry->triangleCount = scene.GetVoxelTriangleCount();
             generation.geometry->snapshotBytes = snapshotBytes;
             for (const sg::MaterialData& material : scene.GetMaterialsData())
             {
                 generation.geometry->hasCoverageMaterials |= material.surfaceProperties.y != 0.0f;
-            }
-            const HeapVector<RenderScene::InstanceTriangleRange>& committedRanges = scene.GetInstanceTriangleRanges();
-            const HeapVector<RenderScene::ShadowCaster>&          casters         = scene.GetShadowCasters();
-            valid = valid && committedRanges.size() == casters.size();
-            for (size_t index = 0; valid && index < committedRanges.size(); ++index)
-            {
-                const RenderScene::InstanceTriangleRange& range = committedRanges[index];
-                generation.geometry->instances.push_back(
-                    {glm::uvec4(range.firstTriangle, range.triangleCount, 0, range.committedMask), casters[index].bounds});
-            }
-        }
-        HeapVector<glm::uvec4> ranges;
-        // Static construction excludes dynamic instances. Their bounded composite region is
-        // rebuilt independently, including only the scene instances intersecting that region.
-        {
-            generation.triangleCount    = 0;
-            const float brickSize       = length / side;
-            const Vec3  selectedMinimum = minimum - Vec3(brickSize);
-            const Vec3  selectedMaximum = minimum + Vec3(length + brickSize);
-            for (const GeometrySnapshot::Instance& instance : generation.geometry->instances)
-            {
-                bool selected = local || !partial;
-                for (uint32_t box = 0; !selected && box < generation.dirty.count.x; ++box)
-                {
-                    const AABB dirtyBounds(minimum + Vec3(generation.dirty.minimum[box]) * brickSize - Vec3(brickSize),
-                                           minimum + Vec3(generation.dirty.maximum[box]) * brickSize + Vec3(brickSize));
-                    selected = BoxesOverlap(instance.bounds, dirtyBounds);
-                }
-                if (selected && instance.range.y != 0 && (instance.range.w & (local ? GI_ALL : GI_STATIC)) != 0
-                    && glm::all(glm::greaterThanEqual(instance.bounds.GetMax(), selectedMinimum))
-                    && glm::all(glm::lessThanEqual(instance.bounds.GetMin(), selectedMaximum)))
-                {
-                    ranges.push_back(glm::uvec4(instance.range.x, instance.range.y, generation.triangleCount, 0));
-                    generation.triangleCount += instance.range.y;
-                }
             }
         }
         const uint32_t rangeCount = static_cast<uint32_t>(ranges.size());
@@ -1450,15 +1570,13 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         generation.uniform.atlasDimensions = glm::uvec4(atlasSide, atlasSide, atlasSide, 0);
         // Test-owner starting tolerance; this is not a qualified thin-feature preset.
         generation.uniform.tracing = Vec4(m_settings.hitTolerance, 64, 0, 0);
-        const bool     background  = m_settings.initialBuildBudgetMicroseconds > 0.0 && !IsInitialBuild();
-        const uint32_t referencesPerCell =
-            background ? std::min(1024u, m_settings.referencesPerCell) : m_settings.referencesPerCell;
-        const uint32_t triangleBatchSize =
-            background ? std::min(4096u, m_settings.triangleBatchSize) : m_settings.triangleBatchSize;
         generation.build.limits =
-            glm::uvec4(m_settings.referenceCapacity, referencesPerCell,
+            glm::uvec4(referenceCapacity, m_settings.referencesPerCell,
                        (local ? ZEN_FIELD_BUILD_CROP_VOLUME : 0u) | (partial ? ZEN_FIELD_BUILD_PARTIAL : 0u), rangeCount);
-        generation.build.triangleRange = glm::uvec4(0, triangleBatchSize, generation.triangleCount, kJobCapacity);
+        // Throughput builds keep the adapted batch cap across generations (NextCycleCount).
+        m_batchCap =
+            std::min(UsesThroughputBuild() && m_batchCap != 0 ? m_batchCap : m_settings.triangleBatchSize, BatchCeiling());
+        generation.build.triangleRange = glm::uvec4(0, m_batchCap, generation.triangleCount, jobCapacity);
         if (!reuseGeometry)
         {
             for (uint32_t index = 0; index < kSnapshotBuffers; ++index)
@@ -1516,7 +1634,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
                 CreateFieldBuffer(*m_device, ZEN_FIELD_CONTROL_WORDS * sizeof(uint32_t), "field_control");
             generation.workspace->coverage = CreateFieldBuffer(*m_device, coverageBytes, "field_coverage");
             generation.workspace->coverageQueue =
-                CreateFieldBuffer(*m_device, uint64_t(m_settings.triangleBatchSize) * sizeof(uint32_t), "field_coverage_queue");
+                CreateFieldBuffer(*m_device, uint64_t(coverageSlots) * sizeof(uint32_t), "field_coverage_queue");
             generation.workspace->indirect =
                 CreateFieldBuffer(*m_device, ZEN_FIELD_INDIRECT_WORDS * sizeof(uint32_t), "field_indirect", false,
                                   BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer));
@@ -1524,17 +1642,22 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
             {
                 slot.buffer = CreateFieldBuffer(*m_device, ZEN_FIELD_STATUS_WORDS * sizeof(uint32_t), "field_status", true);
             }
-            generation.workspace->jobs       = CreateFieldBuffer(*m_device, kJobCapacity * sizeof(glm::uvec4), "field_jobs");
-            generation.workspace->cells      = cells;
-            generation.workspace->bricks     = capacity;
+            generation.workspace->jobs = CreateFieldBuffer(*m_device, uint64_t(jobCapacity) * sizeof(glm::uvec4), "field_jobs");
+            generation.workspace->cells             = cells;
+            generation.workspace->bricks            = capacity;
+            generation.workspace->jobCapacity       = jobCapacity;
+            generation.workspace->referenceCapacity = referenceCapacity;
+            generation.workspace->coverageSlots     = coverageSlots;
+            generation.workspace->memoryLimited     = memoryLimited;
             generation.workspace->brickUsed  = CreateFieldBuffer(*m_device, capacity * sizeof(uint32_t), "field_brick_used");
             generation.workspace->freeBricks = CreateFieldBuffer(*m_device, capacity * sizeof(uint32_t), "field_free_bricks");
             generation.workspace->counts     = CreateFieldBuffer(*m_device, cells * sizeof(uint32_t), "field_counts");
             generation.workspace->offsets    = CreateFieldBuffer(*m_device, cells * sizeof(uint32_t), "field_offsets");
             generation.workspace->cursors    = CreateFieldBuffer(*m_device, cells * sizeof(uint32_t), "field_cursors");
             generation.workspace->references =
-                CreateFieldBuffer(*m_device, uint64_t(m_settings.referenceCapacity) * sizeof(uint32_t), "field_references");
-            generation.workspace->active = CreateFieldBuffer(*m_device, cells * sizeof(glm::uvec2), "field_active");
+                CreateFieldBuffer(*m_device, uint64_t(referenceCapacity) * sizeof(uint32_t), "field_references");
+            generation.workspace->active    = CreateFieldBuffer(*m_device, activeBytes, "field_active");
+            generation.workspace->emitSplit = CreateFieldBuffer(*m_device, splitBytes, "field_emit_split");
             generation.workspace->scan   = CreateFieldBuffer(*m_device, ((cells + 255) / 256) * sizeof(uint32_t), "field_scan");
         }
         for (BuildWorkspace::StatusSlot& slot : generation.workspace->status)
@@ -1561,7 +1684,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
               generation.workspace->offsets, generation.workspace->cursors, generation.workspace->references,
               generation.workspace->active, generation.workspace->scan, generation.workspace->control,
               generation.workspace->indirect, generation.workspace->coverage, generation.workspace->coverageQueue,
-              generation.workspace->brickUsed, generation.workspace->freeBricks})
+              generation.workspace->emitSplit, generation.workspace->brickUsed, generation.workspace->freeBricks})
         {
             valid = valid && buffer != nullptr;
             if (!reuseWorkspace)
@@ -1577,21 +1700,30 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
                 generation.workspace->bytes += BufferBytes(slot.buffer);
             }
         }
-        valid = valid && GetPersistentBytes() <= m_settings.persistentBudgetBytes
-             && GetScratchBytes() <= m_settings.scratchBudgetBytes;
+        valid = valid && GetPersistentBytes() <= m_settings.persistentBudgetBytes && GetScratchBytes() <= m_scratchBudget;
+        // Throughput dispatches take a phase's whole pending work, bounded only by its buffers and
+        // the device's group count.
+        const uint32_t groupLimit                 = gpu.maxComputeWorkGroupCount[0];
+        m_dispatchLimits[ZEN_FIELD_PHASE_COUNT]   = std::min(jobCapacity, groupLimit);
+        m_dispatchLimits[ZEN_FIELD_PHASE_COMPACT] = m_dispatchLimits[ZEN_FIELD_PHASE_COUNT];
+        m_dispatchLimits[ZEN_FIELD_PHASE_EMIT] =
+            static_cast<uint32_t>(std::min<uint64_t>(ActiveEntries(cells, referenceCapacity), groupLimit));
+        m_dispatchLimits[ZEN_FIELD_PHASE_COVERAGE] = std::min(coverageSlots, groupLimit);
         if (!valid)
         {
             LOGE("Distance field native allocations: persistent {} / {} bytes, scratch {} / {} bytes, atlas {} bytes",
-                 GetPersistentBytes(), m_settings.persistentBudgetBytes, GetScratchBytes(), m_settings.scratchBudgetBytes,
-                 atlasAllocation);
+                 GetPersistentBytes(), m_settings.persistentBudgetBytes, GetScratchBytes(), m_scratchBudget, atlasAllocation);
             Fail(generation.atlas != nullptr && atlasAllocation == 0
                      ? "atlas_allocation_size_unavailable"
                      : "resource allocation failed or aligned allocations exceed memory budget");
         }
         else
         {
-            LOGI("Distance field generation {}: snapshot {} bytes, persistent {} bytes, scratch {} bytes",
-                 generation.generation, generation.snapshotBytes, generation.persistentBytes, GetScratchBytes());
+            LOGI(
+                "Distance field generation {}: snapshot {} bytes, persistent {} bytes, scratch {} / {} bytes, {} triangles, {} jobs, {} references, {} coverage slots{}",
+                generation.generation, generation.snapshotBytes, generation.persistentBytes, GetScratchBytes(), m_scratchBudget,
+                generation.triangleCount, jobCapacity, referenceCapacity, coverageSlots,
+                memoryLimited ? " (memory-limited)" : "");
         }
     }
     return valid;
@@ -1690,12 +1822,13 @@ void DistanceFieldScene::BindBuild(RDGPassDescBase& pass, const Generation& gene
     if (clear || allocate || emit)
     {
         pass.BindStorageBuffer("FieldBuildActive", generation.workspace->active, initialized);
+        pass.BindStorageBuffer("FieldBuildEmitSplit", generation.workspace->emitSplit, initialized);
     }
     if (clear || scan || scanSums || allocate)
     {
         pass.BindStorageBuffer("FieldBuildScan", generation.workspace->scan, initialized);
     }
-    if (clear || batchClear || jobs || coverage || prepare)
+    if (clear || jobs || coverage || prepare)
     {
         pass.BindStorageBuffer("FieldBuildCoverage", generation.workspace->coverage, initialized);
     }
@@ -1745,10 +1878,13 @@ void DistanceFieldScene::RecordSnapshot(Generation& generation)
     clear.SetShaderProgramName("DistanceFieldClearSP");
     clear.SetPassTag("FieldClearGeneration");
     BindBuild(clear, generation);
-    const uint32_t words = std::max({HierarchyWords(m_settings.cellsPerAxis), m_settings.referenceCapacity, kJobCapacity,
-                                     m_settings.triangleBatchSize * ZEN_FIELD_COVERAGE_STATE_WORDS,
-                                     static_cast<uint32_t>(generation.workspace->bricks)});
-    DispatchField(graph, std::move(clear), (words + 255) / 256);
+    const BuildWorkspace& workspace = *generation.workspace;
+    const uint64_t        words =
+        std::max<uint64_t>({HierarchyWords(m_settings.cellsPerAxis), workspace.referenceCapacity, workspace.jobCapacity,
+                            uint64_t(workspace.coverageSlots) * ZEN_FIELD_COVERAGE_STATE_WORDS, workspace.bricks,
+                            ActiveEntries(workspace.cells, workspace.referenceCapacity),
+                            SplitSlots(workspace.referenceCapacity) * ZEN_FIELD_EMIT_SPLIT_WORDS});
+    DispatchField(graph, std::move(clear), static_cast<uint32_t>((words + 255) / 256));
     if (generation.partial)
     {
         for (const char* program : {"DistanceFieldRetainSP", "DistanceFieldRecycleSP"})
@@ -1774,8 +1910,9 @@ void DistanceFieldScene::RecordBuild(Generation& generation)
     // finishes at most one triangle batch: a batch's clear and jobs phases precede the previous
     // batch's emission. One cycle per frame tied readiness to the frame rate (New Sponza: about
     // 3,900 frames). Repeated cycles let a frame finish several batches.
-    const uint32_t cycles  = NextCycleCount();
-    m_recordedCycles       = cycles;
+    const uint32_t cycles            = NextCycleCount();
+    m_recordedCycles                 = cycles;
+    generation.build.triangleRange.y = m_batchCap;
     uint32_t previousPhase = ZEN_FIELD_PHASE_FAILED;
     for (uint32_t cycle = 0; cycle < cycles; ++cycle)
     {
@@ -1784,16 +1921,17 @@ void DistanceFieldScene::RecordBuild(Generation& generation)
             const bool     heavy      = phase == ZEN_FIELD_PHASE_COVERAGE || phase == ZEN_FIELD_PHASE_COUNT
                                      || phase == ZEN_FIELD_PHASE_COMPACT || phase == ZEN_FIELD_PHASE_EMIT;
             const uint32_t dispatches = phase == ZEN_FIELD_PHASE_COVERAGE && !generation.geometry->hasCoverageMaterials ? 0u
-                                      : heavy && !IsInitialBuild() ? m_settings.dispatchesPerFrame
-                                                                   : 1u;
+                                      : heavy && !UsesThroughputBuild() ? m_settings.dispatchesPerFrame
+                                                                        : 1u;
             for (uint32_t dispatch = 0; dispatch < dispatches; ++dispatch)
             {
                 // The previous work is complete at this dependency. Advance it and prepare the
                 // next dispatch together, avoiding a second serial scheduling pass per slice.
-                const uint32_t     jobs  = IsInitialBuild() && heavy         ? m_dispatchLimits[phase]
-                                         : phase == ZEN_FIELD_PHASE_COVERAGE ? ZEN_FIELD_COVERAGE_TRIANGLES_PER_DISPATCH
-                                                                             : m_settings.jobsPerDispatch;
-                const uint32_t     cells = IsInitialBuild() ? m_dispatchLimits[ZEN_FIELD_PHASE_EMIT] : m_settings.cellBatchSize;
+                const uint32_t jobs = UsesThroughputBuild() && heavy    ? m_dispatchLimits[phase]
+                                    : phase == ZEN_FIELD_PHASE_COVERAGE ? ZEN_FIELD_COVERAGE_TRIANGLES_PER_DISPATCH
+                                                                        : m_settings.jobsPerDispatch;
+                const uint32_t cells =
+                    UsesThroughputBuild() ? m_dispatchLimits[ZEN_FIELD_PHASE_EMIT] : m_settings.cellBatchSize;
                 const glm::uvec4   schedule(phase, jobs, cells, previousPhase);
                 RDGComputePassDesc prepare;
                 prepare.SetShaderProgramName("DistanceFieldPrepareSP");
@@ -1813,16 +1951,8 @@ void DistanceFieldScene::RecordBuild(Generation& generation)
                 RHIBuffer* arguments = generation.workspace->indirect;
                 work.UseIndirectBuffer(arguments);
                 work.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
-                RHIGPUTimingPtr timing;
-                if (IsInitialBuild() && heavy && cycle == 0 && dispatch == 0)
-                {
-                    timing = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
-                    m_dispatchTimings.push_back(
-                        {timing, generation.generation, phase, phase == ZEN_FIELD_PHASE_EMIT ? cells : jobs});
-                    ++m_recordedTimings;
-                }
-                graph.AddComputePass(std::move(work)).RecordPassCommands([arguments, timing](RDGPassCmdEncoder& encoder) {
-                    encoder.DispatchIndirect(arguments, 0, timing);
+                graph.AddComputePass(std::move(work)).RecordPassCommands([arguments](RDGPassCmdEncoder& encoder) {
+                    encoder.DispatchIndirect(arguments, 0);
                 });
                 previousPhase = phase;
             }
@@ -1880,7 +2010,6 @@ DistanceFieldScene::State DistanceFieldScene::BuildRenderGraph(RenderScene& scen
             Retire(m_local);
             RetireSharedInputs();
             m_state        = State::Pending;
-            m_initialBuild = true;
             m_buildingSlot = -1;
             m_copySlot     = -1;
             m_copyRecorded = false;
@@ -1912,7 +2041,6 @@ DistanceFieldScene::State DistanceFieldScene::BuildRenderGraph(RenderScene& scen
         }
         if (!LocalWorkRemains() && m_state == State::Ready && !m_pending)
         {
-            m_initialBuild = false;
             RetireSharedInputs();
         }
         if (!m_pending && m_geometry && m_geometry->revision != revision)
@@ -2039,13 +2167,6 @@ void DistanceFieldScene::UpdateStaleRegions(const RenderScene& scene)
 
 void DistanceFieldScene::OnRenderGraphExecuted(RenderFrameResult result)
 {
-    if (result != RenderFrameResult::eSubmitted && m_recordedTimings != 0)
-    {
-        // A declined graph may never execute its timing callbacks. Stop polling those samples;
-        // command-list recordings retain their own owners if they reached the RHI.
-        m_dispatchTimings.resize(m_dispatchTimings.size() - m_recordedTimings);
-    }
-    m_recordedTimings = 0;
     if (m_copyRecorded)
     {
         if (result == RenderFrameResult::eSubmitted && m_local && m_copySlot >= 0)
@@ -2160,9 +2281,6 @@ void DistanceFieldScene::Destroy()
         ReleaseGeometry(m_geometry, false);
         ReleaseWorkspace(m_workspace, false);
         m_retired.clear();
-        m_dispatchTimings.clear();
-        m_recordedTimings = 0;
-        m_initialBuild    = true;
         m_recordedCycles  = 0;
         m_state           = State::Pending;
         m_recorded        = false;

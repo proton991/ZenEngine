@@ -128,6 +128,8 @@ void RenderScene::Destroy()
 
         m_instanceTriangleRanges.clear();
 
+        m_materialTriangleCounts.clear();
+
         m_numIndices = 0;
 
         HeapVector<RHITexture*> images;
