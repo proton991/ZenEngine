@@ -48,6 +48,33 @@ None of these changes shipped behaviour. Temporary variants are built, measured 
 4. **SceneLighting +0.22 ms.** Compare the pass's shader variant, bindings and counters between the builds (its L1 texture hit rate is 81% against 20%). Its shader differs from the baseline's only in preprocessor guards.
 5. **Baseline coverage.** The milestone 0 executable has no `--profile-workload`. A matched baseline for camera motion needs that option backported to a build of the preserved source. Milestone 0 recorded no dynamic workload at all.
 
+### Phase 0 results: New Sponza hall view, 2026-10-29
+
+Temporary one-change shader variants at the approach path's hall end (PhysCamera001), Compute, 1600×900, native GPU frame median. The baseline is 6.00 ms, with ProbeTrace 1.58 ms ([attribute.py](E:/Dev/ZenEngine/build/compute-gi/approach/attribute.py); runs `attr-*`). Each variant was built, measured and reverted.
+
+| Variant | GPU frame | ProbeTrace |
+| --- | ---: | ---: |
+| (a) No lamp volumes; their code is compiled out | 5.17 ms | 1.10 ms |
+| (j) Lamp volumes skipped at run time; code kept | 5.40 ms | 1.21 ms |
+| (e) Candidate-tree walk kept, no volume traced | 5.18 ms | 1.12 ms |
+| (f) Rays still split at lamp boxes; every segment marches the scene field | 5.56 ms | 1.32 ms |
+| (b) Near-light visibility at hits forced visible | 5.98 ms | 1.58 ms |
+| (c) No hit shading | 5.95 ms | 1.52 ms |
+| (d) a + b + c | 4.82 ms | 0.82 ms |
+| (h) Candidate volumes scanned in one warp-uniform order | 6.04 ms | 1.59 ms |
+| (i) Unsafe 1.6× brick steps | 5.99 ms | 1.55 ms |
+
+- **Lamp volumes are the lever: about 0.83 ms.** About 0.23 ms is static: their code's registers and occupancy cost every ray, even when no lamp box is crossed. About 0.60 ms is run time: splitting rays at authority boxes, and marching the finer levels. The candidate-tree walk itself is free.
+- **Not bottlenecks here:**
+  - nested near-light visibility;
+  - hit shading;
+  - brick samples, so over-relaxation (step 2) and sub-brick skipping (step 3) cannot pay;
+  - divergent uniform-buffer reads of volume bounds.
+- **Tried and rejected; both reverted, do not retry:**
+  - **Starting each cell lookup at the previous step's empty hierarchy level.** Identical images (max 1 level, inside the noise floor), but no speedup.
+  - **A coarse scene-field pre-check that starts a lamp segment's fine march at the first allocated coarse cell.** ProbeTrace rose to 2.40 ms. The one-cell reference halo allocates most cells near walls, and the extra state cost more than it saved.
+- **Next candidate:** a single-loop composite trace. Segments switch levels inside the cell loop, instead of each segment running its own march to completion. A warp then no longer waits at every segment boundary for its slowest lane, and the per-segment setup disappears. It targets the 0.60 ms run-time share and part of the static share. Compute captures for A/B checks need 800 frames: two runs of the same build then differ by at most 1 level.
+
 ## Phase 1 — GI trace cost (target −0.34 ms native)
 
 Ordered by cost to try and by how directly each step addresses the measured bottleneck. Phase 0's results can reorder steps 3–6.

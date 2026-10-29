@@ -93,6 +93,24 @@ Validation (Release, all three changes): RenderCoreTest 728, RayQueryIntegration
 
 The first launch after a shader change recompiled the ten field programs (570 ms in the first construction frame) on every run, because this machine's NVIDIA shader disk cache (4.9 GB) stored nothing new. The engine's `VkPipelineCache` is not persisted, so construction readiness here depends on that driver cache.
 
+### Lamp shadow work
+
+With the editor closed, an upper bound came from a temporary shader that treats every point and spot light as fully occluded without shadow work. It saves 1.7–2.1 ms in the hall: Compute 7.26 → 5.36 ms and HW RT 5.15 → 3.12 ms at the hall end. Lighting the 22 lamps without shadows costs only 0.2 ms (the GI-off frame is 1.0–1.2 ms). Two changes now remove most of that work:
+
+- **Compute: exact shadow-map early-out** (`scene_shadows.glsl`, `scene_shadow_max_depth.comp`). Each rendered shadow face is reduced to the deepest depth of every 4×4 texel block. Every tap's plane-corrected reference is a distance to a point of the receiver plane, so none is nearer than the plane. Away from grazing incidence, where every tap ray meets the plane ahead of the light, a plane beyond the deepest depth under the taps means every tap is shadowed and the filter is exactly 0. Four fetches replace sixteen filtered taps. A diagnostic build that still ran the filter and amplified any disagreement found none in either view. The remaining image differences, at most 6 of 255, come from GI timing: lamp volumes publish at different frames when frames are faster. The shadow memory estimate includes the reduction, 1/16 of the maps.
+- **HW RT: lamp fixture masks** (`LightFixtureMasks`, `light_fixture_mask_build.comp`, `light_fixture_mask_dilate.comp`). Each shadowed point or spot light gets a 6×64×64 cube. A texel stores the farthest closest hit of 16 rays traced from the light within a shell of 2.5% of the scene extent, or "open" when any ray escapes. It then takes the maximum over its 3×3 neighbourhood across faces, so openings stay traced at their borders. A receiver beyond that distance in that direction is occluded without a ray. Masks rebuild only when a light moves, becomes shadowed, or a shadow caster changes within its shell. New Sponza's 22 masks build once in 0.92 ms. Captures at the hall end and center are bit-identical to the previous build. A gap narrower than the 16 sampled rays per texel in the middle of a blocked region would be missed; New Sponza has none that changes a pixel.
+
+| GPU frame median, ms (FPS) | Wall (−2) | Hall end (0) | Middle (0.5) | Center (1) |
+| --- | ---: | ---: | ---: | ---: |
+| Compute, before both | 2.13 (360) | 7.26 (137) | | 6.44 (155) |
+| Compute, after | 2.08 (357) | 5.96 (168) | 5.69 (176) | 5.21 (193) |
+| HW RT, before both | 1.51 (202) | 5.15 (157) | | 4.81 (165) |
+| HW RT, after | 1.47 (199) | 3.86 (191) | 3.56 (190) | 3.23 (192) |
+
+Validation (Release): RenderCoreTest 728, including the shadow-cache tests, which now also check one reduction pass per frame that renders faces. RayQueryIntegrationTest 92, ConeVoxelGIIntegrationTest 112, EditorRenderingTest 59, SceneModelSwitchTest 8, EditorPreviewTest 16, EditorModelTest 47 and VulkanRHIIntegrationTest 416 pass, with no validation messages or new render-graph warnings ([logs](E:/Dev/ZenEngine/build/compute-gi/brixelizer-integration/fixture-masks-release3)). Fixture-mask invalidation under moving geometry has no dedicated test yet.
+
+`SceneLighting` is now about 0.9 ms on both backends, against the 0.5 ms bound. HW RT frame rate is flat from the wall to the center (190–199 FPS): its GPU frame stays below the CPU frame interval. Compute's remaining drop is mostly its GI probe traces (about 2.2 ms in the hall against 0.4 ms at the wall).
+
 ## Historical checkpoint — superseded
 
 The remainder records an earlier implementation and an unmatched direct-shadow baseline. It remains useful for explaining the optimization investigation, but its 47% whole-frame and 89% GI comparisons are not current acceptance results.
