@@ -201,6 +201,11 @@ window resize, minimize/restore, cancellation, repeated runs and return to the
 editor. Native macOS behavior is untested.
 
 - Drag panel tabs to dock; use View to hide/reopen panels or Reset Layout.
+  The default layout reserves about 18% of the width for Hierarchy, 20% for the
+  right panels and 30% of the height for Assets/Output. UI scale and small-window
+  limits can increase those shares. Existing saved layouts are preserved; use
+  **View > Reset Layout** to apply the new defaults. Resizing the editor preserves
+  dock proportions so restoring a maximized window keeps the scene usable.
 - Select hierarchy nodes or click scene geometry to synchronize the Inspector.
   Hierarchy search retains ancestors and includes nodes without meshes.
 - Enable **Move lights** in the Scene toolbar, then left-drag a point or spot light's

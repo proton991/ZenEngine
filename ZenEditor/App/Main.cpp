@@ -1,6 +1,7 @@
 #include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
 #include "AssetLib/SceneLoader.h"
+#include "Platform/CommandLine.h"
 #include <charconv>
 #include <cstdio>
 #include <string_view>
@@ -117,7 +118,7 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
 }
 } // namespace
 
-int main(int argc, char** argv)
+int EditorMain(int argc, char** argv)
 {
     zen::editor::EditorOptions options;
 
@@ -143,3 +144,15 @@ int main(int argc, char** argv)
 
     return result;
 }
+
+#if defined(_WIN32)
+int wmain(int argc, wchar_t** argv)
+{
+    return zen::platform::RunUTF8Main(argc, argv, &EditorMain);
+}
+#else
+int main(int argc, char** argv)
+{
+    return EditorMain(argc, argv);
+}
+#endif

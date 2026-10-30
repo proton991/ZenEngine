@@ -8,12 +8,24 @@ namespace zen::editor
 {
 namespace
 {
-// Docks start at a preferred size in UI-scaled pixels, so panels keep room for their
-// labels at high DPI and wide screens give the extra space to the scene. In small
-// windows a dock takes at most 35% of the space it splits.
-float DockRatio(float preferred, float available)
+// Reserve a share of large workspaces for tools, with UI-scaled preferred sizes
+// keeping labels readable. In small windows each split is capped at 35%.
+float DockRatio(float preferred, float minimumRatio, float available)
 {
-    return std::min(preferred * EditorScale() / std::max(available, 1.0f), 0.35f);
+    return std::clamp(preferred * EditorScale() / std::max(available, 1.0f), minimumRatio, 0.35f);
+}
+
+void ScaleDockSizes(ImGuiDockNode& node, ImVec2 scale)
+{
+    node.SizeRef.x *= scale.x;
+    node.SizeRef.y *= scale.y;
+    for (ImGuiDockNode* child : node.ChildNodes)
+    {
+        if (child != nullptr)
+        {
+            ScaleDockSizes(*child, scale);
+        }
+    }
 }
 } // namespace
 
@@ -22,6 +34,19 @@ bool HasEditorLayout(unsigned int dockspace)
     const ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspace);
 
     return node != nullptr && node->IsDockSpace() && node->CentralNode != nullptr;
+}
+
+void ResizeEditorLayout(unsigned int dockspace, float width, float height)
+{
+    ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspace);
+    if (node != nullptr && node->Size.x > 0 && node->Size.y > 0 && width > 0 && height > 0
+        && (node->Size.x != width || node->Size.y != height))
+    {
+        // ImGui otherwise preserves side/bottom pixel sizes and assigns the entire
+        // window-size change to the scene's central node. Keep the user's proportions.
+        ScaleDockSizes(*node, ImVec2(width / node->Size.x, height / node->Size.y));
+        ImGui::DockBuilderSetNodeSize(dockspace, ImVec2(width, height));
+    }
 }
 
 // DockBuilder is internal to ImGui. All default construction is isolated here.
@@ -39,14 +64,16 @@ void BuildDefaultEditorLayout(unsigned int                              dockspac
     ImGuiID center = dockspace;
 
     // The Inspector spans the full height, as in the proposed workspace.
-    const float rightRatio = DockRatio(380, width);
+    const float rightRatio = DockRatio(320, 0.20f, width);
 
     ImGuiID right          = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, rightRatio, nullptr, &center);
 
-    ImGuiID bottom         = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, DockRatio(240, height), nullptr, &center);
+    ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, DockRatio(280, 0.30f, height), nullptr, &center);
 
-    ImGuiID left =
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, DockRatio(260, width * (1 - rightRatio)), nullptr, &center);
+    // Left occupies 18% of the whole workspace, rather than of the remaining center.
+    const float leftRatio = DockRatio(260, 0.18f / (1 - rightRatio), width * (1 - rightRatio));
+
+    ImGuiID left          = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, leftRatio, nullptr, &center);
 
     for (ImGuiID id : {center, right, bottom, left})
     {

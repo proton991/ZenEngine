@@ -54,6 +54,9 @@ private:
 
 bool HasEditorLayout(unsigned int dockspace);
 
+// Call before DockSpace so window resizing preserves the existing split proportions.
+void ResizeEditorLayout(unsigned int dockspace, float width, float height);
+
 // Docks each panel in its descriptor's area, in panel order.
 void BuildDefaultEditorLayout(unsigned int                              dockspace,
                               float                                     width,

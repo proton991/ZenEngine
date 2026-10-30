@@ -1,4 +1,5 @@
 #include "Editor/ImGui/EditorTheme.h"
+#include "Editor/ImGui/EditorWorkspace.h"
 #include "EditorWidgets.h"
 #include "EditorShortcuts.h"
 #include "SceneViewOverlays.h"
@@ -13,6 +14,31 @@ namespace zen::editor
 namespace
 {
 void DoNothing() {}
+
+void DrawLayoutFrame(ImVec2 size, const HeapVector<UniquePtr<EditorPanel>>& panels)
+{
+    ImGui::GetIO().DisplaySize = size;
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(size);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin("Layout resize test", nullptr, ImGuiWindowFlags_NoDecoration);
+    const ImGuiID dockspace = ImGui::GetID("LayoutResizeDockspace");
+    if (!HasEditorLayout(dockspace))
+    {
+        BuildDefaultEditorLayout(dockspace, size.x, size.y, panels);
+    }
+    ResizeEditorLayout(dockspace, size.x, size.y);
+    ImGui::DockSpace(dockspace, size);
+    ImGui::End();
+    ImGui::PopStyleVar();
+    for (const UniquePtr<EditorPanel>& panel : panels)
+    {
+        ImGui::Begin(panel->GetWindowName().c_str());
+        ImGui::End();
+    }
+    ImGui::Render();
+}
 
 // Exercises the frontend's actual ImGui configuration without a native window or GPU.
 class EditorInput : public testing::Test
@@ -105,6 +131,44 @@ protected:
     ViewSphereInput sphere;
     ViewAxesHover   hover;
 };
+
+TEST_F(EditorInput, RestoringLargeWindowPreservesDockProportionsAndSceneSpace)
+{
+    ImGui::GetIO().ConfigFlags                      |= ImGuiConfigFlags_DockingEnable;
+    const HeapVector<UniquePtr<EditorPanel>> panels  = CreateEditorPanels();
+    const ImVec2                             maximizedSize(2560, 1400);
+    const ImVec2                             restoredSize(960, 600);
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        DrawLayoutFrame(maximizedSize, panels);
+    }
+    ImGuiWindow* scene = ImGui::FindWindowByName("Scene###SceneViewport");
+    ASSERT_NE(scene, nullptr);
+    ASSERT_NE(scene->DockNode, nullptr);
+    const ImGuiID       sceneDock = scene->DockId;
+    const ImVec2        original  = scene->DockNode->Size;
+    HeapVector<ImGuiID> docks;
+    for (const UniquePtr<EditorPanel>& panel : panels)
+    {
+        docks.push_back(ImGui::FindWindowByName(panel->GetWindowName().c_str())->DockId);
+    }
+    for (ImVec2 size : {restoredSize, maximizedSize, restoredSize})
+    {
+        for (int frame = 0; frame < 3; ++frame)
+        {
+            DrawLayoutFrame(size, panels);
+        }
+        EXPECT_EQ(scene->DockId, sceneDock);
+        EXPECT_NEAR(scene->DockNode->Size.x / size.x, original.x / maximizedSize.x, 0.01f);
+        EXPECT_NEAR(scene->DockNode->Size.y / size.y, original.y / maximizedSize.y, 0.01f);
+        EXPECT_GT(scene->DockNode->Size.x, size.x * 0.4f);
+        EXPECT_GT(scene->DockNode->Size.y, size.y * 0.6f);
+        for (size_t index = 0; index < panels.size(); ++index)
+        {
+            EXPECT_EQ(ImGui::FindWindowByName(panels[index]->GetWindowName().c_str())->DockId, docks[index]);
+        }
+    }
+}
 
 TEST_F(EditorInput, AltDragOnSceneImageLeavesNavigationInputAvailable)
 {

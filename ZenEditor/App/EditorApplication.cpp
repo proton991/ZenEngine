@@ -8,6 +8,7 @@
 #include "Editor/Platform/EditorApplicationIcon.h"
 #include "ImGui/UIContext.h"
 #include "Platform/NativeWindow.h"
+#include "Platform/BuildInfo.h"
 #include "Platform/ConfigLoader.h"
 #include "Editor/Model/EditorText.h"
 #include "Graphics/RHI/RHIOptions.h"
@@ -129,7 +130,7 @@ public:
         RHIOptions::GetInstance().SetGPUMemoryStats(true);
 
         // Hidden until initialization completes; a pending maximize applies when shown.
-        const platform::WindowConfig config{"ZenEditor", true, 1440, 900, 0, false};
+        const platform::WindowConfig config{platform::BuildApplicationTitle("ZenEditor"), true, 1440, 900, 0, false};
 
         m_window = MakeUnique<platform::NativeWindow>(config);
 

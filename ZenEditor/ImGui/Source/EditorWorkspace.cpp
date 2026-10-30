@@ -6,6 +6,7 @@
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include "Editor/Model/EditorText.h"
+#include "Platform/BuildInfo.h"
 #include "imgui.h"
 #include <algorithm>
 #include <fstream>
@@ -514,9 +515,14 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
 
             if (ImGui::GetWindowWidth() > 640 * scale)
             {
-                ImGui::TextColored(GetEditorPalette().brand, "ZenEditor");
+                static const std::string title = platform::BuildApplicationTitle("ZenEditor");
+                ImGui::TextColored(GetEditorPalette().brand, "%s", title.c_str());
 
                 ImGui::TextDisabled("  |  ");
+            }
+            else
+            {
+                ImGui::TextDisabled("[%s]", platform::BuildConfiguration);
             }
 
             if (ImGui::BeginMenu("File"))
@@ -949,6 +955,8 @@ void EditorWorkspace::Draw(EditorContext& context)
 
         m_resetLayout = false;
     }
+
+    ResizeEditorLayout(dockspace, dockSize.x, dockSize.y);
 
     ImGui::DockSpace(dockspace);
 
