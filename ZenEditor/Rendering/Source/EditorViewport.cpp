@@ -1,5 +1,5 @@
-#include "AssetLib/SceneRuntimeBuilder.h"
 #include "Editor/Rendering/EditorViewport.h"
+#include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "EditorShaders.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
@@ -39,12 +39,13 @@ EditorViewport::EditorViewport(rc::RenderDevice&      device,
                                const EditorScene&     scene,
                                const EditorSelection& selection,
                                EditorCamera&          camera) :
-    m_device(device), m_editorScene(scene), m_selection(selection), m_camera(camera)
+    m_device(device), m_editorScene(scene), m_selection(selection), m_camera(camera), m_sceneRendering(device), m_target(device)
 {}
 
 bool EditorViewport::Init()
 {
-    m_defaultEnvironment = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
+    const std::string defaultEnvironment =
+        platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
 
     const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
 
@@ -56,7 +57,11 @@ bool EditorViewport::Init()
         && config.ReadBool("skybox_visible", environment.skybox) && std::isfinite(environment.intensity)
         && environment.intensity >= 0.0f && std::isfinite(environment.rotationDegrees))
     {
-        m_environment = environment;
+        m_sceneRendering.InitializeEnvironment(defaultEnvironment, environment);
+    }
+    else
+    {
+        m_sceneRendering.InitializeEnvironment(defaultEnvironment, {});
     }
 
     VERIFY_EXPR_MSG(m_device.GetRendererServer() != nullptr, "Initialize RendererServer before the editor scene viewport");
@@ -130,24 +135,11 @@ bool EditorViewport::Init()
 void EditorViewport::Destroy()
 {
     SetGPUTimingsEnabled(false);
-    DiscardScene();
-
-    m_device.GetRendererServer()->SetRenderScene(nullptr);
-
-    if (m_scene)
-    {
-        m_scene->Destroy();
-
-        m_scene.Reset();
-    }
+    m_sceneRendering.Destroy();
 
     ReleasePreviews();
 
-    m_device.DestroyTexture(m_view.color);
-
-    m_device.DestroyTexture(m_view.depth);
-
-    m_view = {};
+    m_target.Destroy();
 
     for (RHIBuffer* buffer : m_boundsBuffers)
     {
@@ -167,173 +159,37 @@ void EditorViewport::Destroy()
 
 const EditorEnvironment& EditorViewport::GetEnvironment() const
 {
-    return m_environment;
+    return m_sceneRendering.GetEnvironment();
 }
 
 bool EditorViewport::SetEnvironmentTexture(const std::string& path, std::string& error)
 {
-    error.clear();
-
-    // Allow clearing an override after opening an empty scene, including when its
-    // source file has disappeared and would prevent the next scene from loading.
-    const bool valid = m_scene ? m_scene->SetEnvironmentTexture(path, error) : path.empty();
-
-    if (valid)
-    {
-        m_environment.texturePath = path;
-    }
-    else if (!m_scene)
-    {
-        error = "Open a scene with renderable geometry first.";
-    }
-
-    return valid;
+    return m_sceneRendering.SetEnvironmentTexture(path, error);
 }
 
 bool EditorViewport::SetEnvironmentLighting(float intensity, float rotationDegrees, bool lighting, bool skybox)
 {
-    const bool valid = m_scene && m_scene->SetEnvironmentLighting(intensity, rotationDegrees, lighting, skybox);
-
-    if (valid)
-    {
-        m_environment.intensity       = intensity;
-
-        m_environment.rotationDegrees = rotationDegrees;
-
-        m_environment.lighting        = lighting;
-
-        m_environment.skybox          = skybox;
-    }
-
-    return valid;
+    return m_sceneRendering.SetEnvironmentLighting(intensity, rotationDegrees, lighting, skybox);
 }
 
 bool EditorViewport::PrepareScene(const LoadedScene& candidate, std::string& error)
 {
-    DiscardScene();
-
-    error      = rc::RenderScene::GetResourceError(m_device.GetGPUInfo(), *candidate.scene, candidate.vertices.size(),
-                                                   candidate.indices.size());
-
-    bool valid = error.empty() && m_device.PrepareForResourceReconfiguration();
-
-    if (valid && candidate.scene->GetRenderableCount() > 0)
-    {
-        asset::PrepareScenePlacement(*candidate.scene, asset::ScenePlacement::CenterAndNormalize);
-
-        rc::SceneData data{};
-
-        data.pScene              = candidate.scene.Get();
-
-        data.pVertices           = candidate.vertices.data();
-
-        data.numVertices         = uint32_t(candidate.vertices.size());
-
-        data.pIndices            = candidate.indices.data();
-
-        data.numIndices          = uint32_t(candidate.indices.size());
-
-        data.pCamera             = &m_camera.GetCamera();
-
-        data.envTextureName      = m_defaultEnvironment;
-
-        data.environmentOverride = m_environment.texturePath;
-
-        m_pendingScene           = MakeUnique<rc::RenderScene>(&m_device, data);
-
-        valid                    = m_pendingScene->Init()
-                                && m_pendingScene->SetEnvironmentLighting(m_environment.intensity, m_environment.rotationDegrees,
-                                                                          m_environment.lighting, m_environment.skybox);
-    }
-
-    // Finish candidate uploads without resetting the active scene's bindings. The
-    // progress dialog can render another frame with the old scene before commit.
-    valid = valid && m_device.PrepareForResourceReconfiguration();
-
-    if (!valid)
-    {
-        DiscardScene();
-
-        error = error.empty() ? "Scene GPU preparation failed. The previous scene remains active." : error;
-    }
-
-    m_pendingPrepared = valid;
-
-    return valid;
+    return m_sceneRendering.PrepareScene(candidate, m_camera.GetCamera(), error);
 }
 
 bool EditorViewport::CommitScene(std::string& error)
 {
-    VERIFY_EXPR_MSG(m_pendingPrepared, "EditorViewport::CommitScene requires a successful PrepareScene");
-
-    // Drain the last old-scene frame and reset its bindings at the actual switch.
-    // No rendering may occur between this boundary and publishing the new scene.
-    const bool valid = m_device.PrepareForSceneReplacement();
-
+    const bool valid = m_sceneRendering.CommitScene(error);
     if (valid)
     {
-        m_device.GetRendererServer()->SetRenderScene(m_pendingScene.Get());
-
-        if (m_scene)
-        {
-            m_scene->Destroy();
-        }
-
-        m_scene = std::move(m_pendingScene);
-
-        m_appliedLights.clear();
-
-        m_runtimeLightIds.clear();
-
-        if (m_scene)
-        {
-            m_scene->SetCameraLight(m_cameraLight);
-
-            for (const rc::LightEntry& entry : m_scene->GetLights().GetEntries())
-            {
-                m_appliedLights.push_back({entry.id, rc::LightOrigin::eImported, entry.light});
-
-                m_runtimeLightIds.push_back(entry.id);
-            }
-        }
-
-        rc::RendererServer& server = *m_device.GetRendererServer();
-
-        rc::DebugSelection debug   = server.GetDebugSelection();
-
-        debug.lightId              = m_runtimeLightIds.empty() ? 0 : m_runtimeLightIds.front();
-
-        server.SetRenderingSelection(server.GetRequestedRenderOption() == rc::RenderOption::eVoxelGI
-                                         ? rc::RenderAlgorithm::eVoxelGI
-                                         : rc::RenderAlgorithm::ePBR,
-                                     debug);
-
-        m_pendingPrepared = false;
-
-        m_pickRequested   = false;
-
-        error.clear();
+        m_pickRequested = false;
     }
-    else
-    {
-        error = "Could not prepare the renderer for the scene switch. The previous scene remains active.";
-    }
-
     return valid;
 }
 
 void EditorViewport::DiscardScene()
 {
-    if (m_pendingScene)
-    {
-        m_device.PrepareForResourceReconfiguration();
-
-        m_pendingScene->Destroy();
-
-        m_pendingScene.Reset();
-    }
-
-    m_pendingPrepared = false;
+    m_sceneRendering.DiscardScene();
 }
 
 void EditorViewport::RefreshSceneResources()
@@ -417,70 +273,32 @@ RHITexture* EditorViewport::GetAssetPreview(SceneAssetId id) const
     return current ? m_previews[id.index] : nullptr;
 }
 
-bool EditorViewport::Resize(uint32_t width, uint32_t height)
+bool EditorViewport::Resize(uint32_t width, uint32_t height, bool quantize)
 {
     // Quantize splitter motion to eight physical pixels. The frontend letterboxes
     // the image to its actual aspect ratio and uses that same rectangle for input.
-    width      = std::min(8192u, (width + 7u) & ~7u);
-
-    height     = std::min(8192u, (height + 7u) & ~7u);
-
-    bool valid = width > 0 && height > 0;
-
-    if (valid && (m_view.width != width || m_view.height != height))
+    if (quantize)
     {
-        rc::TextureFormat format;
-
-        format.width      = width;
-
-        format.height     = height;
-
-        format.depth      = 1;
-
-        format.format     = DataFormat::eR8G8B8A8UNORM;
-
-        RHITexture* color = m_device.CreateTextureColorRT(format, {.copyUsage = true}, "EditorSceneColor");
-
-        format.format     = DataFormat::eD32SFloat;
-
-        RHITexture* depth = m_device.CreateTextureDepthStencilRT(format, {}, "EditorSceneDepth");
-
-        valid             = color != nullptr && depth != nullptr;
-
-        if (valid)
-        {
-            m_device.DestroyTexture(m_view.color);
-
-            m_device.DestroyTexture(m_view.depth);
-
-            m_view = {color, depth, width, height};
-
-            ++m_targetRevision;
-        }
-        else
-        {
-            m_device.DestroyTexture(color);
-
-            m_device.DestroyTexture(depth);
-        }
+        width  = std::min(8192u, (width + 7u) & ~7u);
+        height = std::min(8192u, (height + 7u) & ~7u);
     }
 
-    return valid;
+    return m_target.Resize(width, height);
 }
 
 const rc::RenderView& EditorViewport::GetRenderView() const
 {
-    return m_view;
+    return m_target.GetView();
 }
 
 bool EditorViewport::HasScene() const
 {
-    return bool(m_scene);
+    return m_sceneRendering.GetScene() != nullptr;
 }
 
 const rc::RenderScene* EditorViewport::GetRenderScene() const
 {
-    return m_scene.Get();
+    return m_sceneRendering.GetScene();
 }
 
 EditorRenderSnapshot EditorViewport::GetSnapshot() const
@@ -557,151 +375,7 @@ void EditorViewport::SetGPUTimingsEnabled(bool enabled)
 
 bool EditorViewport::ApplyRenderingSettings(const rc::RenderingSettings& settings, bool retryResources, std::string& error)
 {
-    rc::RendererServer& server = *m_device.GetRendererServer();
-
-    uint64_t reflectanceBytes  = 0;
-
-    bool valid                 = rc::ValidateRenderingSettings(settings, error);
-
-    if (valid
-        && (settings.environment.texturePath != m_environment.texturePath
-            || (m_scene
-                && !m_scene->ValidateEnvironmentLighting(settings.environment.intensity,
-                                                         settings.environment.rotationDegrees))))
-    {
-        error = "Environment texture must finish loading and its intensity must fit the scene's authored environment.";
-
-        valid = false;
-    }
-
-    HeapVector<rc::SceneLight> lights;
-
-    HeapVector<rc::SceneLight> appliedLights;
-
-    HeapVector<rc::LightEntry> replacements;
-
-    bool lightsChanged = settings.lights.size() != m_appliedLights.size();
-
-    for (const rc::RenderingLight& light : m_appliedLights)
-    {
-        appliedLights.push_back(light.light);
-    }
-
-    for (size_t index = 0; index < settings.lights.size(); ++index)
-    {
-        const rc::RenderingLight& light = settings.lights[index];
-
-        lights.push_back(light.light);
-
-        rc::LightId runtimeId = 0;
-
-        for (size_t old = 0; old < m_appliedLights.size(); ++old)
-        {
-            if (m_appliedLights[old].id == light.id)
-            {
-                runtimeId = m_runtimeLightIds[old];
-            }
-        }
-
-        replacements.push_back({runtimeId, light.light});
-
-        lightsChanged |= index >= m_appliedLights.size() || light.id != m_appliedLights[index].id
-                      || !rc::EqualSceneLight(light.light, m_appliedLights[index].light);
-    }
-
-    const uint32_t shadowFaces = rc::CountShadowFaces(lights) + rc::CameraLightShadowFaces(settings.cameraLight);
-
-    if (valid && !server.ValidateShadowResources(settings, shadowFaces))
-    {
-        error = "Shadow memory preflight rejected the edit. Reduce resolution or the number of shadow-casting lights.";
-
-        valid = false;
-    }
-
-    if (valid && server.ValidateVoxelGIResources(settings.gi, reflectanceBytes) != rc::GIResourceStatus::eSuccess)
-    {
-        error = "GI resource preflight rejected the settings. Check the reflectance budget and device limits.";
-
-        valid = false;
-    }
-
-    // Light, environment and output edits arrive every frame during a drag. They skip the GI
-    // apply unless its values change or Apply explicitly retries resources.
-    if (valid && (retryResources || settings.gi != server.GetVoxelGISettings()))
-    {
-        valid = server.ApplyVoxelGISettings(settings.gi, retryResources);
-
-        if (!valid)
-        {
-            error = "Renderer could not apply the settings at this frame boundary.";
-        }
-    }
-
-    if (valid)
-    {
-        if (m_scene)
-        {
-            if (lightsChanged)
-            {
-                valid = m_scene->ReplaceLights(replacements);
-
-                if (valid)
-                {
-                    m_appliedLights = settings.lights;
-
-                    m_runtimeLightIds.clear();
-
-                    for (const rc::LightEntry& entry : replacements)
-                    {
-                        m_runtimeLightIds.push_back(entry.id);
-                    }
-                }
-
-                // A different shadow array may now fit, so a latched fallback gets one new attempt.
-                if (valid && rc::CountShadowFaces(lights) != rc::CountShadowFaces(appliedLights))
-                {
-                    server.ResetRenderingFailure();
-                }
-            }
-
-            valid = valid && m_scene->SetCameraLight(settings.cameraLight);
-
-            if (valid && rc::CameraLightShadowFaces(settings.cameraLight) != rc::CameraLightShadowFaces(m_cameraLight))
-            {
-                server.ResetRenderingFailure();
-            }
-
-            valid = valid
-                 && m_scene->SetEnvironmentLighting(settings.environment.intensity, settings.environment.rotationDegrees,
-                                                    settings.environment.lighting, settings.environment.skybox);
-        }
-
-        if (valid)
-        {
-            m_environment            = settings.environment;
-
-            m_cameraLight            = settings.cameraLight;
-
-            rc::DebugSelection debug = settings.debug;
-
-            debug.lightId            = 0;
-
-            for (size_t index = 0; index < m_appliedLights.size(); ++index)
-            {
-                if (m_appliedLights[index].id == settings.debug.lightId)
-                {
-                    debug.lightId = m_runtimeLightIds[index];
-                }
-            }
-
-            server.SetRenderingSelection(settings.algorithm, debug);
-
-            server.RequestDeferredLightingRenderer()->SetLightMarkers(
-                settings.lightMarkers && debug.output == rc::DebugOutput::eFinal, settings.lightMarkerSize);
-        }
-    }
-
-    return valid;
+    return m_sceneRendering.ApplyRenderingSettings(settings, retryResources, error);
 }
 
 void EditorViewport::SetRenderMode(rc::RenderOption mode)
@@ -716,7 +390,7 @@ RHISampler* EditorViewport::GetImageSampler() const
 
 uint64_t EditorViewport::GetTargetRevision() const
 {
-    return m_targetRevision;
+    return m_target.GetRevision();
 }
 
 void EditorViewport::RequestPick(Vec2 normalized, const PickStamp& stamp)
@@ -730,15 +404,15 @@ void EditorViewport::RequestPick(Vec2 normalized, const PickStamp& stamp)
 
 void EditorViewport::BuildPick(rc::RenderGraph& graph)
 {
-    if (m_scene && m_pickRequested && !m_pickInFlight)
+    if (m_sceneRendering.GetScene() && m_pickRequested && !m_pickInFlight)
     {
         HeapVector<PickDraw> draws;
 
         m_pickNodes.clear();
 
-        m_pickNodes.resize(m_scene->GetRenderableNodes().size() + 1);
+        m_pickNodes.resize(m_sceneRendering.GetScene()->GetRenderableNodes().size() + 1);
 
-        for (const sg::Node* node : m_scene->GetRenderableNodes())
+        for (const sg::Node* node : m_sceneRendering.GetScene()->GetRenderableNodes())
         {
             if (node->selectable)
             {
@@ -746,7 +420,7 @@ void EditorViewport::BuildPick(rc::RenderGraph& graph)
             }
         }
 
-        for (const rc::SceneMeshDraw& draw : rc::SnapshotSceneDraws(*m_scene))
+        for (const rc::SceneMeshDraw& draw : rc::SnapshotSceneDraws(*m_sceneRendering.GetScene()))
         {
             draws.push_back({draw, m_pickNodes[draw.nodeIndex + 1].generation != 0 ? draw.nodeIndex + 1 : 0});
         }
@@ -767,26 +441,27 @@ void EditorViewport::BuildPick(rc::RenderGraph& graph)
 
         pass.SetPipelineStates(states);
 
-        pass.SetRenderArea(0, 0, m_view.width, m_view.height);
+        pass.SetRenderArea(0, 0, m_target.GetView().width, m_target.GetView().height);
 
-        pass.AddColorOutput(DataFormat::eR32UInt, m_view.width, m_view.height, "EditorObjectIDs");
+        pass.AddColorOutput(DataFormat::eR32UInt, m_target.GetView().width, m_target.GetView().height, "EditorObjectIDs");
 
-        pass.AddDepthStencilOutput(DataFormat::eD32SFloat, m_view.width, m_view.height, "EditorPickDepth",
-                                   RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+        pass.AddDepthStencilOutput(DataFormat::eD32SFloat, m_target.GetView().width, m_target.GetView().height,
+                                   "EditorPickDepth", RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
-        pass.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+        pass.BindStorageBuffer("NodeBuffer", m_sceneRendering.GetScene()->GetNodesDataSSBO());
 
-        pass.BindStorageBuffer("MaterialBuffer", m_scene->GetMaterialsDataSSBO());
+        pass.BindStorageBuffer("MaterialBuffer", m_sceneRendering.GetScene()->GetMaterialsDataSSBO());
 
-        pass.BindStorageBuffer("UVBuffer", m_scene->GetUVBuffer());
+        pass.BindStorageBuffer("UVBuffer", m_sceneRendering.GetScene()->GetUVBuffer());
 
-        rc::BindSceneTextureArray(pass, m_materialSampler, m_scene->GetSceneTextureViews(), m_scene->GetSceneSamplers());
+        rc::BindSceneTextureArray(pass, m_materialSampler, m_sceneRendering.GetScene()->GetSceneTextureViews(),
+                                  m_sceneRendering.GetScene()->GetSceneSamplers());
 
-        pass.BindValue("uCameraData", m_scene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
+        pass.BindValue("uCameraData", m_sceneRendering.GetScene()->GetCameraUniformData(), sizeof(sg::CameraUniformData));
 
-        pass.BindVertexBuffer(m_scene->GetVertexBuffer());
+        pass.BindVertexBuffer(m_sceneRendering.GetScene()->GetVertexBuffer());
 
-        pass.BindIndexBuffer(m_scene->GetIndexBuffer());
+        pass.BindIndexBuffer(m_sceneRendering.GetScene()->GetIndexBuffer());
 
         graph.AddGraphicsPass(std::move(pass)).RecordPassCommands([draws = std::move(draws)](rc::RDGPassCmdEncoder& encoder) {
             RecordPick(encoder, draws);
@@ -802,7 +477,8 @@ void EditorViewport::BuildPick(rc::RenderGraph& graph)
 
         read.BindStorageBuffer("PickOutput", m_pickOutput, rc::RDGContentGuarantee::eFullWrite);
 
-        const glm::uvec2 pixel(uint32_t(m_pickPosition.x * m_view.width), uint32_t(m_pickPosition.y * m_view.height));
+        const glm::uvec2 pixel(uint32_t(m_pickPosition.x * m_target.GetView().width),
+                               uint32_t(m_pickPosition.y * m_target.GetView().height));
 
         graph.AddComputePass(std::move(read)).RecordPassCommands([pixel](rc::RDGPassCmdEncoder& encoder) {
             encoder.SetPushConstants(pixel);
@@ -876,9 +552,9 @@ void EditorViewport::BuildBounds(rc::RenderGraph& graph)
 
         pass.SetPipelineStates(states);
 
-        pass.SetRenderArea(0, 0, m_view.width, m_view.height);
+        pass.SetRenderArea(0, 0, m_target.GetView().width, m_target.GetView().height);
 
-        pass.AddColorOutput(m_view.color, RHIRenderTargetLoadOp::eLoad);
+        pass.AddColorOutput(m_target.GetView().color, RHIRenderTargetLoadOp::eLoad);
 
         pass.BindVertexBuffer(buffer);
 
@@ -904,6 +580,7 @@ void EditorViewport::BuildOverlays(rc::RenderGraph& graph)
 
 void EditorViewport::OnSubmitted(bool succeeded)
 {
+    m_target.OnSubmitted(succeeded);
     if (m_gpuTimingsEnabled)
     {
         m_device.GetRDGMetrics().CollectGPUResults();

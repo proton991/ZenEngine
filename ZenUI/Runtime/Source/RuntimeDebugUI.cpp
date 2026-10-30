@@ -1,4 +1,5 @@
 #include "RuntimeUI/RuntimeDebugUI.h"
+#include "RuntimeUI/SessionDebugUI.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
@@ -29,44 +30,6 @@ const char* RenderModeName(rc::RenderOption option)
     return name;
 }
 
-void DrawGPUMemoryStats(const rc::RenderDevice& device)
-{
-    const RHIGPUMemoryStats memory = device.GetGPUMemoryStats();
-
-    if (memory.available)
-    {
-        constexpr double bytesPerMiB = 1024.0 * 1024.0;
-
-        ImGui::Text("GPU memory (engine): %.0f MiB  |  peak %.0f MiB", memory.deviceLocalBytes / bytesPerMiB,
-                    memory.peakDeviceLocalBytes / bytesPerMiB);
-
-        if (ImGui::IsItemHovered())
-        {
-            ImGui::SetTooltip("Memory reserved for engine buffers and textures, including reusable pools.\n"
-                              "Excludes driver, swapchain and other applications.\n"
-                              "All engine memory heaps: %.0f MiB (peak %.0f MiB).",
-                              memory.committedBytes / bytesPerMiB, memory.peakCommittedBytes / bytesPerMiB);
-        }
-
-        const uint64_t capacity = device.GetGPUInfo().deviceLocalMemoryBytes;
-
-        if (capacity != 0)
-        {
-            char label[80]{};
-
-            std::snprintf(label, sizeof(label), "%.0f / %.0f MiB GPU capacity", memory.deviceLocalBytes / bytesPerMiB,
-                          capacity / bytesPerMiB);
-
-            const float fraction = std::clamp(float(double(memory.deviceLocalBytes) / double(capacity)), 0.0f, 1.0f);
-
-            ImGui::ProgressBar(fraction, ImVec2(-1, 0), label);
-        }
-    }
-    else
-    {
-        ImGui::TextDisabled("GPU memory usage unavailable");
-    }
-}
 } // namespace
 
 RuntimeDebugUI::RuntimeDebugUI(rc::RenderDevice& device, platform::NativeWindow& window, RuntimeSceneControls& sceneControls) :
@@ -190,7 +153,7 @@ void RuntimeDebugUI::BuildPanel()
 
         ImGui::Text("%.1f FPS  |  %.2f ms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 
-        DrawGPUMemoryStats(m_device);
+        DrawRuntimeMemoryStats(m_device.GetGPUMemoryStats(), m_device.GetGPUInfo().deviceLocalMemoryBytes);
 
         ImGui::Separator();
 

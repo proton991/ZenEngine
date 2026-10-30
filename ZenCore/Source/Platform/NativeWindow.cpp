@@ -13,12 +13,49 @@ namespace
 // Process event ownership belongs to the application, not individual windows.
 struct WindowApplication
 {
-    HeapVector<NativeWindow*> windows;
-    std::thread::id           owner;
-    uint32_t                  references{0};
+    HeapVector<NativeWindow*>    windows;
+    std::thread::id              owner;
+    uint32_t                     references{0};
+    const std::function<void()>* liveResize{nullptr};
+    bool                         drawingLiveResize{false};
 };
 
 WindowApplication application;
+
+// The callback exists only across an explicitly opted-in event pump. In particular,
+// native calls made during frame submission must never re-enter the renderer.
+class EventPumpScope
+{
+public:
+    explicit EventPumpScope(const std::function<void()>& callback) : m_previous(application.liveResize)
+    {
+        application.liveResize = &callback;
+    }
+    ~EventPumpScope()
+    {
+        application.liveResize = m_previous;
+    }
+
+private:
+    const std::function<void()>* m_previous;
+};
+
+#if defined(ZEN_WINDOW_SDL3)
+bool SDLCALL WatchLiveResize(void*, SDL_Event* event)
+{
+    if (event->type == SDL_EVENT_WINDOW_EXPOSED && event->window.data1 == 1 && SDL_IsMainThread()
+        && application.liveResize != nullptr && *application.liveResize && !application.drawingLiveResize)
+    {
+        application.drawingLiveResize = true;
+        // Windows consumes key-up events in its modal loop. Do not keep navigating
+        // with a stale held key while refreshing the scene.
+        KeyboardMouseInput::GetInstance().Reset();
+        (*application.liveResize)();
+        application.drawingLiveResize = false;
+    }
+    return true;
+}
+#endif
 } // namespace
 
 bool WindowBackend::IsInitialized()
@@ -36,6 +73,7 @@ void WindowBackend::Acquire()
         SDL_SetMainReady();
 
         VERIFY_EXPR_MSG(SDL_Init(SDL_INIT_VIDEO), SDL_GetError());
+        VERIFY_EXPR_MSG(SDL_AddEventWatch(WatchLiveResize, nullptr), SDL_GetError());
 #else
         VERIFY_EXPR_MSG(glfwInit() == GLFW_TRUE, "Cannot initialize GLFW fallback");
 #endif
@@ -62,6 +100,7 @@ void WindowBackend::Unregister(NativeWindow& window)
     if (application.references == 0)
     {
 #if defined(ZEN_WINDOW_SDL3)
+        SDL_RemoveEventWatch(WatchLiveResize, nullptr);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
 #else
         glfwTerminate();
@@ -200,9 +239,10 @@ void NativeWindow::CheckThreadOwnership() const
     ASSERT(std::this_thread::get_id() == m_ownerThread);
 }
 
-void NativeWindow::PollEvents()
+void NativeWindow::PollEvents(const std::function<void()>& liveResize)
 {
     ASSERT(application.references != 0 && application.owner == std::this_thread::get_id());
+    const EventPumpScope scope(liveResize);
 
 #if defined(ZEN_WINDOW_SDL3)
     SDL_Event event;
@@ -217,9 +257,10 @@ void NativeWindow::PollEvents()
     WindowBackend::DispatchResizes();
 }
 
-void NativeWindow::WaitEvents(double seconds)
+void NativeWindow::WaitEvents(double seconds, const std::function<void()>& liveResize)
 {
     ASSERT(application.references != 0 && application.owner == std::this_thread::get_id());
+    const EventPumpScope scope(liveResize);
 
 #if defined(ZEN_WINDOW_SDL3)
     SDL_Event event;
@@ -229,7 +270,7 @@ void NativeWindow::WaitEvents(double seconds)
         WindowBackend::Dispatch(event);
     }
 
-    PollEvents();
+    PollEvents(liveResize);
 #else
     glfwWaitEventsTimeout(seconds);
 
@@ -237,11 +278,11 @@ void NativeWindow::WaitEvents(double seconds)
 #endif
 }
 
-void NativeWindow::Update(bool processInputShortcuts)
+void NativeWindow::Update(bool processInputShortcuts, const std::function<void()>& liveResize)
 {
     CheckThreadOwnership();
 
-    PollEvents();
+    PollEvents(liveResize);
 
     KeyboardMouseInput& input = KeyboardMouseInput::GetInstance();
 

@@ -7,10 +7,12 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
+#include "Platform/InputController.h"
 #include "SceneGraph/Texture.h"
 #include "AssetLib/SceneAssetIO.h"
 #include <gtest/gtest.h>
@@ -23,11 +25,505 @@
 #include <sstream>
 #include <gli/gli.hpp>
 
+namespace zen::runtime
+{
+// Inspect queued input without depending on the desktop's foreground-window policy.
+struct RuntimeWindowTestAccess
+{
+    static void ProcessShortcuts(RuntimeWindow& session)
+    {
+        session.ProcessShortcuts();
+    }
+    static void DeliverWheel(RuntimeWindow& session, float delta)
+    {
+        platform::InputEvent event;
+        event.type   = platform::InputEventType::Wheel;
+        event.deltaY = delta;
+        session.OnInput(event);
+    }
+    static float PendingWheel(const RuntimeWindow& session)
+    {
+        return session.m_wheel;
+    }
+};
+} // namespace zen::runtime
+
 namespace zen::editor
 {
 namespace
 {
 #include "EditorRenderingTestSupport.inl"
+
+TEST_P(EditorRendering, PlayWindowReusesSceneAndRestoresAfterPauseResizeAndQuit)
+{
+    platform::NativeWindow    editorWindow({"Play test editor", true, 400, 300, 0, false});
+    EditorRenderingScope      scope(GetParam());
+    rc::RenderDevice&         device = *scope.device;
+    EditorController&         editor = scope.editor;
+    EditorRenderingValidation validation;
+    RHIViewport*              editorPresentation = device.CreateViewport(&editorWindow, 400, 300, false);
+    ASSERT_NE(editorPresentation, nullptr);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+    rc::RenderingSettings settings   = editor.GetRenderingState().GetDraft();
+    settings.algorithm               = rc::RenderAlgorithm::ePBR;
+    settings.gi.resolution           = 64;
+    settings.gi.shadowMapResolution  = 128;
+    settings.gi.cone.fieldResolution = 32;
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+    ASSERT_TRUE(Frame(device, editor));
+    const rc::RenderScene*          scene      = editor.GetViewport().GetRenderScene();
+    RHIBuffer*                      vertices   = scene->GetVertexBuffer();
+    RHITexture*                     image      = editor.GetViewport().GetRenderView().color;
+    const uint64_t                  generation = editor.GetScene().GetGeneration();
+    runtime::RuntimeWindowSettings& run        = editor.GetRunSettings();
+    run.windowWidth                            = 320;
+    run.windowHeight                           = 240;
+    run.renderWidth                            = 96;
+    run.renderHeight                           = 64;
+    run.followWindow                           = false;
+    run.vsync                                  = false;
+    settings.gi.shadowMapResolution            = 256;
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+    ASSERT_TRUE(editor.GetRenderingState().NeedsResourceApply());
+    ASSERT_TRUE(editor.GetActions().Execute(actions::Play));
+    EXPECT_FALSE(editor.GetRenderingState().NeedsResourceApply());
+    EXPECT_TRUE(editor.IsPreviewFrozen());
+    EXPECT_FALSE(editor.StartOrResumeRuntime());
+    EXPECT_FALSE(editor.RequestLoad(Fixture("inspection.gltf")));
+    EXPECT_FALSE(editor.GetActions().IsEnabled(actions::FrameAll));
+    editor.UpdatePlaySession();
+    runtime::RuntimeWindow& play = editor.GetPlaySession();
+    ASSERT_NE(play.GetWindow(), nullptr);
+    ASSERT_TRUE(play.Render()) << play.GetError();
+    ASSERT_EQ(play.GetState(), runtime::RuntimeState::Running);
+    EXPECT_EQ(editor.GetViewport().GetRenderScene(), scene);
+    EXPECT_EQ(scene->GetVertexBuffer(), vertices);
+    EXPECT_EQ(editor.GetViewport().GetRenderView().color, image);
+    EXPECT_EQ(editor.GetScene().GetGeneration(), generation);
+    ASSERT_TRUE(editor.GetActions().Execute(actions::Pause));
+    const uint64_t            frame  = play.GetSceneFrame();
+    const double              time   = play.GetSceneSeconds();
+    const HeapVector<uint8_t> frozen = ReadScenePixels(device, image);
+    play.GetWindow()->SetSize(480, 300);
+    platform::NativeWindow::PollEvents();
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        ASSERT_EQ(device.GetRendererServer()->DispatchRenderWorkloads(editor.GetViewport().GetRenderView(), nullptr, false,
+                                                                      editorPresentation),
+                  rc::RenderFrameResult::eSubmitted);
+        device.NextFrame();
+        ASSERT_TRUE(play.Render());
+    }
+    EXPECT_EQ(play.GetSceneFrame(), frame);
+    EXPECT_DOUBLE_EQ(play.GetSceneSeconds(), time);
+    EXPECT_EQ(editor.GetViewport().GetRenderView().color, image);
+    const HeapVector<uint8_t> paused = ReadScenePixels(device, image);
+    EXPECT_TRUE(std::equal(paused.begin(), paused.end(), frozen.begin(), frozen.end()));
+    ASSERT_TRUE(editor.GetActions().Execute(actions::Play));
+    ASSERT_TRUE(play.Render());
+    EXPECT_GT(play.GetSceneFrame(), frame);
+    play.GetWindow()->Minimize();
+    platform::NativeWindow::PollEvents();
+    ASSERT_TRUE(play.GetWindow()->IsMinimized());
+    const uint64_t beforeMinimize = play.GetSceneFrame();
+    ASSERT_TRUE(play.Render());
+    EXPECT_EQ(play.GetSceneFrame(), beforeMinimize);
+    play.GetWindow()->Restore();
+    platform::NativeWindow::PollEvents();
+    ASSERT_TRUE(play.Render());
+    EXPECT_GT(play.GetSceneFrame(), beforeMinimize);
+    ASSERT_TRUE(editor.GetActions().Execute(actions::Stop));
+    editor.UpdatePlaySession();
+    EXPECT_EQ(play.GetWindow(), nullptr);
+    EXPECT_FALSE(editor.IsPreviewFrozen());
+    EXPECT_EQ(editor.GetViewport().GetRenderScene(), scene);
+    EXPECT_EQ(scene->GetVertexBuffer(), vertices);
+    ASSERT_TRUE(editor.ResizeViewport(160, 96));
+    ASSERT_TRUE(Frame(device, editor));
+    // Cancel before a native window exists, then open and close through its title bar.
+    ASSERT_TRUE(editor.StartOrResumeRuntime());
+    ASSERT_TRUE(play.Quit());
+    editor.UpdatePlaySession();
+    EXPECT_EQ(play.GetWindow(), nullptr);
+    run.followWindow = true;
+    run.windowWidth  = 333;
+    run.windowHeight = 245;
+    ASSERT_TRUE(editor.StartOrResumeRuntime());
+    editor.UpdatePlaySession();
+    ASSERT_TRUE(play.Render());
+    const platform::WindowExtent extent = play.GetWindow()->GetFramebufferExtent();
+    EXPECT_EQ(editor.GetViewport().GetRenderView().width, extent.width);
+    EXPECT_EQ(editor.GetViewport().GetRenderView().height, extent.height);
+    for (uint32_t index = 0; index < 32; ++index)
+    {
+        play.GetWindow()->SetSize(321 + (index % 8) * 13, 241 + (index % 7) * 11);
+        platform::NativeWindow::PollEvents();
+        ASSERT_TRUE(play.Render()) << play.GetError();
+        const platform::WindowExtent resized = play.GetWindow()->GetFramebufferExtent();
+        EXPECT_EQ(editor.GetViewport().GetRenderView().width, resized.width);
+        EXPECT_EQ(editor.GetViewport().GetRenderView().height, resized.height);
+        EXPECT_EQ(scene->GetVertexBuffer(), vertices);
+    }
+    ASSERT_TRUE(play.Pause());
+    const uint64_t            pausedFrame    = play.GetSceneFrame();
+    const double              pausedTime     = play.GetSceneSeconds();
+    RHITexture*               retainedImage  = editor.GetViewport().GetRenderView().color;
+    const HeapVector<uint8_t> retainedPixels = ReadScenePixels(device, retainedImage);
+    for (uint32_t index = 0; index < 16; ++index)
+    {
+        play.GetWindow()->SetSize(350 + (index % 5) * 31, 250 + (index % 4) * 23);
+        platform::NativeWindow::PollEvents();
+        ASSERT_TRUE(play.Render());
+        EXPECT_EQ(editor.GetViewport().GetRenderView().color, retainedImage);
+        EXPECT_EQ(play.GetSceneFrame(), pausedFrame);
+        EXPECT_DOUBLE_EQ(play.GetSceneSeconds(), pausedTime);
+    }
+    const HeapVector<uint8_t> resizedPausedPixels = ReadScenePixels(device, retainedImage);
+    EXPECT_TRUE(
+        std::equal(retainedPixels.begin(), retainedPixels.end(), resizedPausedPixels.begin(), resizedPausedPixels.end()));
+    ASSERT_TRUE(play.Resume());
+    ASSERT_TRUE(play.Render());
+    const platform::WindowExtent resumedExtent = play.GetWindow()->GetFramebufferExtent();
+    EXPECT_EQ(editor.GetViewport().GetRenderView().width, resumedExtent.width);
+    EXPECT_EQ(editor.GetViewport().GetRenderView().height, resumedExtent.height);
+    play.GetWindow()->RequestClose();
+    editor.UpdatePlaySession();
+    EXPECT_FALSE(editor.IsPreviewFrozen());
+    for (uint32_t index = 0; index < 24; ++index)
+    {
+        ASSERT_TRUE(editor.ResizeViewport(95 + (index % 8) * 17, 65 + (index % 6) * 13));
+        ASSERT_TRUE(Frame(device, editor));
+        EXPECT_EQ(scene->GetVertexBuffer(), vertices);
+    }
+    ASSERT_TRUE(editor.StartOrResumeRuntime());
+    editor.UpdatePlaySession();
+    ASSERT_TRUE(play.Render());
+    ASSERT_TRUE(play.Pause());
+    play.Shutdown();
+    EXPECT_EQ(play.GetWindow(), nullptr);
+    EXPECT_EQ(editor.GetViewport().GetRenderScene(), scene);
+    EXPECT_TRUE(Frame(device, editor));
+}
+
+TEST_P(EditorRendering, PlayDiscardsPausedWheelInput)
+{
+    EditorRenderingScope scope(GetParam());
+    EditorController&    editor = scope.editor;
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    runtime::RuntimeWindowSettings& run = editor.GetRunSettings();
+    run.windowWidth                     = 320;
+    run.windowHeight                    = 240;
+    run.vsync                           = false;
+    ASSERT_TRUE(editor.StartOrResumeRuntime());
+    editor.UpdatePlaySession();
+    runtime::RuntimeWindow& play = editor.GetPlaySession();
+    ASSERT_TRUE(play.Render());
+    runtime::RuntimeWindowTestAccess::DeliverWheel(play, 1);
+    EXPECT_FLOAT_EQ(runtime::RuntimeWindowTestAccess::PendingWheel(play), 1);
+    ASSERT_TRUE(play.Pause());
+    EXPECT_FLOAT_EQ(runtime::RuntimeWindowTestAccess::PendingWheel(play), 0);
+    const Mat4 pausedView = editor.GetCamera().GetCamera().GetViewMatrix();
+    runtime::RuntimeWindowTestAccess::DeliverWheel(play, 3);
+    EXPECT_FLOAT_EQ(runtime::RuntimeWindowTestAccess::PendingWheel(play), 0);
+    ASSERT_TRUE(play.Render());
+    EXPECT_EQ(editor.GetCamera().GetCamera().GetViewMatrix(), pausedView);
+    ASSERT_TRUE(play.Resume());
+    ASSERT_TRUE(play.Render());
+    EXPECT_EQ(editor.GetCamera().GetCamera().GetViewMatrix(), pausedView);
+    // A new wheel event during active playback must still reach navigation.
+    runtime::RuntimeWindowTestAccess::DeliverWheel(play, 2);
+    EXPECT_FLOAT_EQ(runtime::RuntimeWindowTestAccess::PendingWheel(play), 2);
+}
+
+TEST_P(EditorRendering, PlayDiscardsSpaceTypedWhileDiagnosticsCaptureKeyboard)
+{
+    EditorRenderingScope scope(GetParam());
+    EditorController&    editor = scope.editor;
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    runtime::RuntimeWindowSettings& run = editor.GetRunSettings();
+    run.windowWidth                     = 320;
+    run.windowHeight                    = 240;
+    run.vsync                           = false;
+    ASSERT_TRUE(editor.StartOrResumeRuntime());
+    editor.UpdatePlaySession();
+    runtime::RuntimeWindow& play = editor.GetPlaySession();
+    ASSERT_TRUE(play.Render());
+    platform::KeyboardMouseInput& keys = platform::KeyboardMouseInput::GetInstance();
+    keys.SetUICapture(false, false);
+    for (runtime::RuntimeState state : {runtime::RuntimeState::Running, runtime::RuntimeState::Paused})
+    {
+        ASSERT_EQ(play.GetState(), state);
+        play.SetInputCapture(true, true);
+        keys.PressKey(platform::Key::Space);
+        keys.ReleaseKey(platform::Key::Space);
+        runtime::RuntimeWindowTestAccess::ProcessShortcuts(play);
+        EXPECT_EQ(play.GetState(), state);
+        play.SetInputCapture(false, false);
+        runtime::RuntimeWindowTestAccess::ProcessShortcuts(play);
+        EXPECT_EQ(play.GetState(), state);
+        keys.PressKey(platform::Key::Space);
+        keys.ReleaseKey(platform::Key::Space);
+        runtime::RuntimeWindowTestAccess::ProcessShortcuts(play);
+        EXPECT_NE(play.GetState(), state);
+    }
+    keys.Reset();
+}
+
+TEST_P(EditorRendering, PlayPreservesAnimatedCameraOnReturnAndNavigation)
+{
+    EditorRenderingScope scope(GetParam());
+    EditorController&    editor = scope.editor;
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    const HeapVector<sg::SceneCamera*> cameras = editor.GetScene().Get()->scene->GetComponents<sg::SceneCamera>();
+    ASSERT_FALSE(cameras.empty());
+    cameras.front()->infiniteFar = true;
+    sg::AnimationAsset   animation;
+    sg::AnimationSampler sampler;
+    sampler.components = 3;
+    sampler.times      = {0, 1};
+    sampler.values     = {0, 0, 5, 2, 1, 4};
+    animation.samplers.push_back(std::move(sampler));
+    sg::AnimationChannel channel;
+    channel.node = 4; // The fixture's camera node.
+    animation.channels.push_back(channel);
+    editor.GetScene().Get()->scene->GetAssetData().animations.push_back(std::move(animation));
+    ASSERT_TRUE(editor.GetViewport().GetSceneRendering().GetScene()->SetAnimation(0, false));
+    runtime::RuntimeWindowSettings& run = editor.GetRunSettings();
+    run.windowWidth                     = 320;
+    run.windowHeight                    = 240;
+    run.vsync                           = false;
+    run.fixedStep                       = true;
+    ASSERT_TRUE(editor.StartOrResumeRuntime());
+    editor.UpdatePlaySession();
+    runtime::RuntimeWindow& play = editor.GetPlaySession();
+    ASSERT_TRUE(play.Render());
+    const Vec3 initialEye = editor.GetCamera().GetCamera().GetPos();
+    ASSERT_TRUE(play.Render());
+    EXPECT_NE(editor.GetCamera().GetCamera().GetPos(), initialEye);
+    const Mat4 animatedView = editor.GetCamera().GetCamera().GetViewMatrix();
+    const Vec3 animatedEye  = editor.GetCamera().GetCamera().GetPos();
+    ASSERT_TRUE(play.Quit());
+    editor.UpdatePlaySession();
+    ASSERT_TRUE(editor.ResizeViewport(160, 96));
+    EXPECT_TRUE(editor.GetCamera().GetCamera().GetParameters().infiniteFar);
+    EXPECT_EQ(editor.GetCamera().GetCamera().GetViewMatrix(), animatedView);
+    EXPECT_EQ(editor.GetCamera().GetCamera().GetPos(), animatedEye);
+    CameraInput input;
+    input.move    = Vec3(0, 1, 0);
+    input.seconds = 0.02f;
+    editor.GetCamera().Apply(input);
+    EXPECT_LT(glm::distance(editor.GetCamera().GetCamera().GetPos(), animatedEye + Vec3(0, 0.02f, 0)), 0.00001f);
+    ASSERT_TRUE(Frame(*scope.device, editor));
+
+    // The returned lens must support editor actions as well as navigation.
+    const NodeId first{editor.GetScene().GetGeneration(), 1};
+    editor.GetSelection().SelectNode(first);
+    editor.FrameSelection();
+    editor.Pick(Vec2(0.5f));
+    EXPECT_EQ(editor.GetSelection().GetNode(), first);
+    ResolvePick(*scope.device, editor);
+    EXPECT_EQ(editor.GetSelection().GetNode(), first);
+    editor.Pick(Vec2(0));
+    EXPECT_EQ(editor.GetSelection().GetNode(), NodeId{});
+    ResolvePick(*scope.device, editor);
+    EXPECT_EQ(editor.GetSelection().GetNode(), NodeId{});
+    std::string error;
+    for (rc::SceneLightType type : {rc::SceneLightType::ePoint, rc::SceneLightType::eSpot, rc::SceneLightType::eDirectional})
+    {
+        ASSERT_TRUE(editor.AddRenderingLight(type));
+        ASSERT_TRUE(rc::ValidateRenderingSettings(editor.GetRenderingState().GetDraft(), error)) << error;
+    }
+    Vec3 origin;
+    Vec3 direction;
+    editor.GetCamera().MakeRay(Vec2(0.5f), origin, direction);
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+    settings.cameraLight.enabled   = true;
+    settings.cameraLight.position =
+        rc::CameraLightPosition(settings.cameraLight, editor.GetCamera().GetCamera().GetPos(), direction);
+    settings.cameraLight.followCamera = false;
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+    editor.FrameAll();
+    ASSERT_TRUE(Frame(*scope.device, editor));
+}
+
+TEST_P(EditorRendering, PlayFirstFrameMatchesEditorForPBRDepthAndGI)
+{
+    for (uint32_t variant = 0; variant < 3; ++variant)
+    {
+        EditorRenderingScope scope(GetParam());
+        rc::RenderDevice&    device = *scope.device;
+        EditorController&    editor = scope.editor;
+        ASSERT_TRUE(editor.Init());
+        ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+        ASSERT_TRUE(editor.ResizeViewport(96, 64));
+        rc::RenderingSettings settings   = editor.GetRenderingState().GetDraft();
+        settings.algorithm               = variant == 2 ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+        settings.debug.output            = variant == 1 ? rc::DebugOutput::eDepth : rc::DebugOutput::eFinal;
+        settings.gi.resolution           = 64;
+        settings.gi.shadowMapResolution  = 128;
+        settings.gi.cone.fieldResolution = 32;
+        settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings());
+        ASSERT_TRUE(FrameWithPreparedGI(device, editor));
+        const HeapVector<uint8_t>       expected = ReadScenePixels(device, editor.GetViewport().GetRenderView().color);
+        const rc::RenderScene*          scene    = editor.GetViewport().GetRenderScene();
+        const rc::VoxelGIRenderer*      gi       = device.GetRendererServer()->RequestVoxelGI();
+        runtime::RuntimeWindowSettings& run      = editor.GetRunSettings();
+        run.windowWidth                          = 320;
+        run.windowHeight                         = 240;
+        run.renderWidth                          = 96;
+        run.renderHeight                         = 64;
+        run.followWindow                         = false;
+        run.vsync                                = false;
+        ASSERT_TRUE(editor.StartOrResumeRuntime());
+        editor.UpdatePlaySession();
+        ASSERT_TRUE(editor.GetPlaySession().Render());
+        const HeapVector<uint8_t> actual = ReadScenePixels(device, editor.GetViewport().GetRenderView().color);
+        ASSERT_EQ(actual.size(), expected.size());
+        double totalDifference = 0;
+        for (size_t pixel = 0; pixel < actual.size(); ++pixel)
+        {
+            totalDifference += std::abs(int(expected[pixel]) - int(actual[pixel]));
+        }
+        EXPECT_LE(totalDifference / actual.size(), variant == 2 ? 2.0 : 0.1) << "variant=" << variant;
+        EXPECT_EQ(editor.GetViewport().GetRenderScene(), scene);
+        EXPECT_EQ(device.GetRendererServer()->RequestVoxelGI(), gi);
+        ASSERT_TRUE(editor.GetPlaySession().Quit());
+        editor.UpdatePlaySession();
+    }
+}
+
+
+TEST_P(EditorRendering, SceneCompositorRetainsAndLetterboxesWithoutSceneWork)
+{
+    EditorRenderingScope      scope(GetParam());
+    rc::RenderDevice&         device = *scope.device;
+    EditorRenderingValidation validation;
+    rc::RenderView            source;
+    rc::RenderView            destination;
+    rc::SceneCompositor       compositor;
+    ASSERT_TRUE(rc::ResizeSceneView(device, source, 8, 8));
+    ASSERT_TRUE(compositor.Init(device));
+    RHITexture* retained = source.color;
+    EXPECT_FALSE(rc::ResizeSceneView(device, source, 0, 8));
+    EXPECT_EQ(source.color, retained);
+    for (uint32_t frame = 0; frame < 4; ++frame)
+    {
+        const bool wide = frame % 2 == 0;
+        ASSERT_TRUE(rc::ResizeSceneView(device, destination, wide ? 16 : 8, wide ? 8 : 16));
+        rc::RenderGraph graph("CompositorWithoutSceneWork");
+        ASSERT_TRUE(graph.Begin());
+        if (frame == 0)
+        {
+            graph.AddTransferPass("InitializeRetainedImage").ClearTexture(source.color, Color(1, 0, 0, 1));
+        }
+        ASSERT_TRUE(compositor.BuildRenderGraph(graph, destination, source));
+        ASSERT_TRUE(graph.End());
+        ASSERT_TRUE(device.ExecuteRenderGraph(graph));
+        device.NextFrame();
+        const HeapVector<uint8_t> pixels = ReadScenePixels(device, destination.color);
+        ASSERT_EQ(pixels.size(), size_t(16 * 8 * 4));
+        for (uint32_t y = 0; y < destination.height; ++y)
+        {
+            for (uint32_t x = 0; x < destination.width; ++x)
+            {
+                const bool   image = wide ? x >= 4 && x < 12 : y >= 4 && y < 12;
+                const size_t pixel = (size_t(y) * destination.width + x) * 4;
+                EXPECT_NEAR(pixels[pixel], image ? 255 : 14, 1);
+                EXPECT_NEAR(pixels[pixel + 1], image ? 0 : 15, 1);
+                EXPECT_NEAR(pixels[pixel + 2], image ? 0 : 19, 1);
+            }
+        }
+        EXPECT_EQ(source.color, retained);
+    }
+    device.WaitForPreviousFrames();
+    rc::DestroySceneView(device, source);
+    rc::DestroySceneView(device, destination);
+}
+
+TEST_P(EditorRendering, RendererStartsWithExplicitGIAndMarkerSettings)
+{
+    rc::RenderingSettings initial;
+    initial.gi.resolution          = 64;
+    initial.gi.shadowMapResolution = 128;
+    initial.gi.cone.samples        = 1;
+    initial.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+    initial.gi.cone.indirectIntensity  = 0.375f;
+    initial.lightMarkers               = true;
+    initial.lightMarkerSize            = 0.047f;
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam(), false, &initial);
+    const rc::RendererServer&   server = *device->GetRendererServer();
+    EXPECT_EQ(server.GetVoxelGISettings().resolution, initial.gi.resolution);
+    EXPECT_EQ(server.GetVoxelGISettings().shadowMapResolution, initial.gi.shadowMapResolution);
+    EXPECT_EQ(server.RequestVoxelizer()->GetVoxelTexResolution(), initial.gi.resolution);
+    EXPECT_EQ(server.RequestVoxelGI()->GetSettings(), initial.gi.cone);
+    EXPECT_TRUE(server.RequestDeferredLightingRenderer()->GetLightMarkersEnabled());
+    EXPECT_FLOAT_EQ(server.RequestDeferredLightingRenderer()->GetLightMarkerSize(), initial.lightMarkerSize);
+    device->WaitForPreviousFrames();
+    rc::ShaderProgramManager::GetInstance().Destroy();
+    device->Destroy();
+}
+
+TEST_P(EditorRendering, PresentationOnlyFramesPreserveFrozenSceneAndRendererState)
+{
+    EditorRenderingScope scope(GetParam());
+    rc::RenderDevice&    device = *scope.device;
+    EditorController&    editor = scope.editor;
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+    rc::RendererServer& server = *device.GetRendererServer();
+    for (rc::RenderAlgorithm algorithm : {rc::RenderAlgorithm::ePBR, rc::RenderAlgorithm::eVoxelGI})
+    {
+        rc::RenderingSettings settings   = editor.GetRenderingState().GetDraft();
+        settings.algorithm               = algorithm;
+        settings.gi.resolution           = 64;
+        settings.gi.shadowMapResolution  = 128;
+        settings.gi.cone.fieldResolution = 32;
+        settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+        ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+        ASSERT_TRUE(editor.UpdateRenderingSettings()) << editor.GetRenderingState().GetError();
+        ASSERT_TRUE(FrameWithPreparedGI(device, editor));
+        const rc::DebugOutputDescription before           = server.GetDebugOutputDescription();
+        const rc::RenderingStatus        status           = server.GetRenderingStatus();
+        rc::HybridGIRenderer*            hybrid           = server.RequestDeferredLightingRenderer()->GetHybridGI();
+        const uint32_t                   historyFrame     = hybrid != nullptr ? hybrid->GetFrame() : 0;
+        const uint64_t                   geometryRevision = server.RequestVoxelizer()->GetGeometryRevision();
+        const HeapVector<uint8_t>        pixels           = ReadScenePixels(device, editor.GetViewport().GetRenderView().color);
+        for (uint32_t frame = 0; frame < 12; ++frame)
+        {
+            ASSERT_EQ(server.DispatchRenderWorkloads(editor.GetViewport().GetRenderView(), nullptr, false),
+                      rc::RenderFrameResult::eSubmitted);
+            device.NextFrame();
+        }
+        const rc::DebugOutputDescription after = server.GetDebugOutputDescription();
+        EXPECT_EQ(after.output, before.output);
+        EXPECT_EQ(after.available, before.available);
+        EXPECT_EQ(after.reason, before.reason);
+        EXPECT_EQ(after.width, before.width);
+        EXPECT_EQ(after.height, before.height);
+        EXPECT_EQ(after.interpretation, before.interpretation);
+        EXPECT_EQ(server.GetRenderingStatus().effective, status.effective);
+        EXPECT_EQ(server.GetRenderingStatus().fallbackReason, status.fallbackReason);
+        EXPECT_EQ(server.RequestVoxelizer()->GetGeometryRevision(), geometryRevision);
+        if (hybrid != nullptr)
+        {
+            EXPECT_EQ(hybrid->GetFrame(), historyFrame);
+        }
+        const HeapVector<uint8_t> frozen = ReadScenePixels(device, editor.GetViewport().GetRenderView().color);
+        ASSERT_EQ(frozen.size(), pixels.size());
+        EXPECT_TRUE(std::equal(frozen.begin(), frozen.end(), pixels.begin()));
+        EXPECT_TRUE(Frame(device, editor));
+    }
+}
 
 TEST_P(EditorRendering, ApplicationContinuesAfterDeclineAndRecordingFailureButStopsWhenBlocked)
 {

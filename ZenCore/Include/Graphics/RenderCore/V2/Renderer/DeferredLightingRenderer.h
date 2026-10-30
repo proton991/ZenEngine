@@ -36,6 +36,7 @@ public:
     explicit DeferredLightingRenderer(RenderDevice* pRenderDevice);
 
     void Init();
+    void Init(bool markersEnabled, float markerSize);
 
     void BuildRenderGraph(const RenderView& view, VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
 

@@ -76,6 +76,69 @@ TEST(WindowPlatform, TitleGeometryUsesWindowCoordinates)
 }
 
 #if defined(ZEN_WINDOW_SDL3)
+struct LiveResizeLog
+{
+    SDL_WindowID window{0};
+    uint32_t     draws{0};
+
+    void Expose(bool live)
+    {
+        SDL_Event event{};
+        event.type            = SDL_EVENT_WINDOW_EXPOSED;
+        event.window.windowID = window;
+        event.window.data1    = live ? 1 : 0;
+        EXPECT_TRUE(SDL_PushEvent(&event));
+    }
+
+    void Draw()
+    {
+        ++draws;
+        EXPECT_FALSE(KeyboardMouseInput::GetInstance().IsKeyPressed(Key::W));
+        Expose(true); // Native calls made by drawing must not re-enter drawing.
+    }
+
+    static void Observe(void* context, const void* raw)
+    {
+        const SDL_Event& event = *static_cast<const SDL_Event*>(raw);
+        if (event.type == SDL_EVENT_USER)
+        {
+            LiveResizeLog& log = *static_cast<LiveResizeLog*>(context);
+            log.Expose(false);
+            std::thread worker(&LiveResizeLog::Expose, &log, true);
+            worker.join(); // A producer thread must never run the application's drawing.
+            log.Expose(true);
+        }
+    }
+};
+
+TEST(WindowPlatform, LiveResizeDrawIsScopedToEventPumpAndCannotReenter)
+{
+    NativeWindow  window({"live resize", true, 320, 240, 0, false});
+    LiveResizeLog log;
+    log.window = SDL_GetWindowID(WindowBackend::Borrow(window));
+    WindowBackend::Observe(window, &LiveResizeLog::Observe, &log);
+    const std::function<void()> draw = [&log]() {
+        log.Draw();
+    };
+    log.Expose(true);
+    EXPECT_EQ(log.draws, 0u);
+    SDL_Event trigger{};
+    trigger.type = SDL_EVENT_USER;
+    ASSERT_TRUE(SDL_PushEvent(&trigger));
+    KeyboardMouseInput::GetInstance().PressKey(Key::W);
+    NativeWindow::PollEvents(draw);
+    EXPECT_EQ(log.draws, 1u);
+    log.Expose(true);
+    EXPECT_EQ(log.draws, 1u); // Callback was removed before frame submission resumes.
+    ASSERT_TRUE(SDL_PushEvent(&trigger));
+    NativeWindow::WaitEvents(0.001, draw);
+    EXPECT_EQ(log.draws, 2u);
+    ASSERT_TRUE(SDL_PushEvent(&trigger));
+    NativeWindow::PollEvents();
+    EXPECT_EQ(log.draws, 2u);
+    WindowBackend::Observe(window, nullptr, nullptr);
+}
+
 TEST(WindowPlatform, HeadlessRHIDoesNotInitializeVideo)
 {
     EXPECT_EQ(SDL_WasInit(SDL_INIT_VIDEO), 0u);

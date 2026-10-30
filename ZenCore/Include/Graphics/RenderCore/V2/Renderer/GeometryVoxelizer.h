@@ -12,7 +12,7 @@ class GeometryVoxelizer : public VoxelizerBase
 public:
     explicit GeometryVoxelizer(RenderDevice* pRenderDevice) : VoxelizerBase(pRenderDevice) {}
 
-    void Init() final;
+    void Init(uint32_t resolution = 0) final;
 
     void BuildVoxelizationGraph() final;
 

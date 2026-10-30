@@ -46,12 +46,17 @@ bool IntersectsShadowFace(const sg::AABB& bounds, const ShadowPlanes& planes)
 }
 } // namespace
 
-SceneShadowRenderer::SceneShadowRenderer(RenderDevice* device) : m_device(device)
+SceneShadowRenderer::SceneShadowRenderer(RenderDevice* device, uint32_t initialResolution) : m_device(device)
 {
     uint32_t resolution = m_resolution;
 
-    if (platform::ConfigLoader::GetInstance().ReadNumber("shadow_map_resolution", resolution) && resolution >= 128
-        && resolution <= 2048)
+    if (initialResolution != 0)
+    {
+        VERIFY_EXPR(initialResolution >= 128 && initialResolution <= 2048);
+        m_resolution = initialResolution;
+    }
+    else if (platform::ConfigLoader::GetInstance().ReadNumber("shadow_map_resolution", resolution) && resolution >= 128
+             && resolution <= 2048)
     {
         m_resolution = resolution;
     }

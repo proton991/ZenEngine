@@ -44,6 +44,7 @@ public:
     void Register(EditorAction action);
 
     const EditorAction* Find(const std::string& id) const;
+    void                SetLabel(const std::string& id, std::string label);
 
     bool IsEnabled(const std::string& id) const;
 

@@ -9,9 +9,9 @@
 
 namespace zen::rc
 {
-void GeometryVoxelizer::Init()
+void GeometryVoxelizer::Init(uint32_t resolution)
 {
-    m_voxelTexResolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
+    m_voxelTexResolution = resolution != 0 ? resolution : platform::ConfigLoader::GetInstance().GetVoxelResolution();
 
     m_voxelTexFormat     = DataFormat::eR8G8B8A8UNORM;
 

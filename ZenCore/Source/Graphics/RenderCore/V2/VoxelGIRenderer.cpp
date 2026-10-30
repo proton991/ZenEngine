@@ -92,10 +92,17 @@ void VoxelGISettings::SetAllFeatureProviders(RayProvider provider)
     }
 }
 
-VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer) :
+VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer, const VoxelGISettings* settings) :
     m_rayQuery(device), m_fixtureMasks(device), m_device(device), m_voxelizer(voxelizer)
 {
-    LoadSettings();
+    if (settings != nullptr)
+    {
+        m_settings = *settings;
+    }
+    else
+    {
+        LoadSettings();
+    }
 }
 
 VoxelGIVisibilityBounds BuildVoxelGIVisibilityBounds(const sg::AABB& geometryBounds,

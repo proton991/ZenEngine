@@ -1,4 +1,8 @@
 if (BUILD_TESTING)
+add_executable(RuntimeLaunchTest CommonTest/RuntimeLaunchTests.cpp)
+target_link_libraries(RuntimeLaunchTest PRIVATE ZenCore gtest_main)
+add_test(NAME RuntimeLaunchTest COMMAND RuntimeLaunchTest)
+set_tests_properties(RuntimeLaunchTest PROPERTIES LABELS "unit" TIMEOUT 30)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
 add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
 add_executable(VulkanRHITest

@@ -114,6 +114,7 @@ TEST_F(RenderCoreTest, HybridHistoriesPublishOnlySuccessfulFramesAndResizePerVie
     ASSERT_TRUE(gi.SetSettings(bounceSettings));
     // Compute GI traces the scene's distance field, published before the first gathered frame.
     sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ownedBuffers.push_back(sceneInputs.vertices);
     ASSERT_TRUE(PrepareComputeField(device, gi));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
@@ -535,6 +536,7 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
     gi.SetRenderScene(&scene);
     ASSERT_TRUE(gi.Init());
     sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ownedBuffers.push_back(sceneInputs.vertices);
     ASSERT_TRUE(PrepareComputeField(device, gi));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
@@ -782,6 +784,7 @@ TEST_F(RenderCoreTest, ScreenProbePoolFollowsReadBackDemandAndKeepsHistory)
     gi.SetRenderScene(&scene);
     ASSERT_TRUE(gi.Init());
     sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ownedBuffers.push_back(sceneInputs.vertices);
     ASSERT_TRUE(PrepareComputeField(device, gi));
     DeferredLightingRenderer renderer(device);
     renderer.Init();
@@ -951,6 +954,7 @@ TEST_P(DelayedRadianceTest, PublishesPairedCachesAcrossDeclineResizeResetAndIdle
 
     // Field support before the first GI frame: a rejected field is not retried for the same scene.
     sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+    ownedBuffers.push_back(sceneInputs.vertices);
     EnableDistanceFieldTestDevice(device);
 
     sceneInputs.camera.projViewMatrix = Mat4(1);
@@ -1051,6 +1055,7 @@ TEST_P(DelayedRadianceTest, PublishesPairedCachesAcrossDeclineResizeResetAndIdle
         ASSERT_TRUE(gi.SetSettings(settings));
 
         sceneInputs.vertices = Buffer(sizeof(asset::Vertex));
+        ownedBuffers.push_back(sceneInputs.vertices);
         ASSERT_TRUE(PrepareComputeField(device, gi));
 
         RenderGraph& graph = *device->GetCurrentFrameRDG();

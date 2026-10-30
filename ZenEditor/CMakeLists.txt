@@ -10,7 +10,6 @@ endif()
 add_library(ZenEditorModel STATIC
   Model/Source/EditorRenderingState.cpp
   Model/Source/EditorActions.cpp
-  Model/Source/EditorCamera.cpp
   Model/Source/EditorEnvironment.cpp
   Model/Source/EditorLog.cpp
   Model/Source/EditorPreferences.cpp
@@ -36,7 +35,7 @@ target_link_libraries(ZenEditorRender PUBLIC ZenEditorModel)
 # Transactions that span the model and render services, and the core actions.
 add_library(ZenEditorServices STATIC Services/Source/EditorController.cpp)
 target_include_directories(ZenEditorServices PUBLIC Services/Include)
-target_link_libraries(ZenEditorServices PUBLIC ZenEditorRender)
+target_link_libraries(ZenEditorServices PUBLIC ZenEditorRender ZenAppRuntime)
 
 # Native title-bar and system menu behavior; no UI toolkit types.
 add_library(ZenEditorPlatform STATIC Platform/Source/EditorWindowChrome.cpp)
@@ -80,7 +79,7 @@ target_compile_definitions(ZenEditorUI PRIVATE ZEN_EDITOR_FONT_PATH="${ZEN_EDITO
 target_link_libraries(ZenEditorUI PUBLIC ZenEditorServices ZenEditorPlatform ZenImGui)
 
 add_executable(zen_editor App/Main.cpp App/EditorApplication.cpp)
-target_link_libraries(zen_editor PRIVATE ZenEditorUI)
+target_link_libraries(zen_editor PRIVATE ZenAppRuntimeUI ZenEditorUI)
 
 if (APPLE)
   set_target_properties(zen_editor PROPERTIES

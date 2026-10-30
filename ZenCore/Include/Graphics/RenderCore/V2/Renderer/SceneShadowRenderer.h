@@ -26,7 +26,7 @@ static_assert(sizeof(SceneShadowUniformData) == MaxSceneShadowFaces * 64 + (MaxS
 class SceneShadowRenderer
 {
 public:
-    explicit SceneShadowRenderer(RenderDevice* device);
+    explicit SceneShadowRenderer(RenderDevice* device, uint32_t resolution = 0);
 
     // Call between frames; old maps retire through RenderDevice.
     bool SetResolution(uint32_t resolution);

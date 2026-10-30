@@ -1,4 +1,5 @@
 #include "Editor/ImGui/EditorPanel.h"
+#include "Editor/ImGui/EditorContext.h"
 #include "Panels/EditorPanels.h"
 #include "imgui.h"
 
@@ -22,7 +23,16 @@ void EditorPanel::Draw(EditorContext& context)
 
         if (expanded)
         {
+            const bool locked =
+                context.editor.IsPreviewFrozen()
+                && (std::string_view(m_desc.id) == "RenderSettings" || std::string_view(m_desc.id) == "CameraSettings");
+            if (locked)
+            {
+                ImGui::TextWrapped("Editing resumes after the play window closes.");
+            }
+            ImGui::BeginDisabled(locked);
             DrawContents(context);
+            ImGui::EndDisabled();
         }
 
         ImGui::End();

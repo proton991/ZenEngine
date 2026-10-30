@@ -1,10 +1,12 @@
 # ZenEditor scene viewer
 
 The editor supports glTF, GLB, FBX, OBJ/MTL and `.zenasset` inspection and a unified **Rendering** panel for lighting,
-GI, rendering algorithms and framebuffer diagnostics. Milestones 1–3 of the
+GI, rendering algorithms and framebuffer diagnostics. Milestones 1–4 of the
 [rendering plan](../Doc/ZenEditorRenderingPlan.md) are implemented. Scene and asset
-authoring remain deferred. Run/Restart/Stop and `zen_player` belong to milestone 4;
-rendering preset files belong to milestone 5.
+authoring remain deferred. The [Run, Pause and Quit plan](../Doc/ZenEditorRunSessionPlan.md)
+supersedes milestone 4's original player proposal. Run moves the current scene into
+a separate play window in the editor process. Pause/Resume controls scene time and
+rendering; Quit Play returns it to the editor. Rendering preset files belong to milestone 5.
 
 ![Running maximized ZenEditor](../Doc/imgs/zeneditor-sdl3.png)
 
@@ -14,9 +16,33 @@ From a Visual Studio developer terminal on Windows:
 
 ```powershell
 cmake --preset x64-windows-msvc-debug
-cmake --build build/x64-windows-msvc-debug --target zen_editor
+cmake --build build/x64-windows-msvc-debug --target zen_editor ZenApp
 .\build\x64-windows-msvc-debug\bin\zen_editor.exe
 ```
+
+`ZEN_BUILD_APP=ON` includes `ZenApp`, linked to ZenCore and optionally ZenAppRuntimeUI.
+For native acceptance checks, `MakeRuntimeFixture` writes a small processed package
+and complete `.zenrender` snapshot:
+
+```powershell
+cmake --build build/x64-windows-msvc-debug --target ZenApp MakeRuntimeFixture
+.\build\x64-windows-msvc-debug\bin\MakeRuntimeFixture.exe build/runtime-acceptance
+.\build\x64-windows-msvc-debug\bin\ZenApp.exe --setup=build/runtime-acceptance/scene.zenrender --frames=3 --fixed-step --capture=build/runtime-acceptance/scene.ppm
+```
+
+The runtime supports `--rhi=inline|threaded`, `--profile=<prefix>` and
+`--start-paused`. Space pauses/resumes the same scene; Escape closes the runtime.
+Start-paused submits one scene frame at time zero. Camera navigation matches the
+editor: right-drag with WASDQE, Alt-left-drag orbit, middle-drag pan, wheel dolly
+and Shift for faster movement. Captures exclude presentation and UI.
+Profile output uses `<prefix>.rdg.log` and `<prefix>.summary.json`.
+The setup supplies renderer configuration explicitly; ZenApp does not read or
+create the source-tree `engine.cfg`. Full runtime output is written beside the setup
+as a `.log` file. The standalone app has no editor IPC channel. The editor's play
+window maintains its own diagnostics log view; Clear leaves Editor Output intact.
+The popup displays scene frame/time, CPU graph statistics and shared GPU memory.
+Per-pass GPU timings remain in the editor and standalone profile output until
+the shared executor can attribute them to individual presentation windows.
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is a separate
 dependency. CMake fetches `git@github.com:proton991/ZenAssetProcessor.git` at the
@@ -54,7 +80,9 @@ The editor starts maximized in normal desktop window mode. The window stays
 hidden until initialization completes, then appears once at its final size. It
 activates and brings its window to the front when launched from an IDE or terminal.
 It uses the actual framebuffer dimensions for presentation and resizes the offscreen
-scene to the available viewport pixels. Use `--windowed` to start at 1440×900
+scene to the available viewport pixels. Windows modal move/resize operations also redraw
+both editor and play windows through a guarded event-pump callback; rendering never
+re-enters during native calls made by frame submission. Use `--windowed` to start at 1440×900
 instead. `--hidden` never shows the window, so a maximized start renders at the
 restored 1440×900 size.
 
@@ -131,6 +159,47 @@ configuration and do not depend on the launch working directory.
 
 ## Workspace and controls
 
+The three center toolbar buttons are **Run / Resume**, **Pause** and **Quit Play**.
+Run applies the complete valid Rendering draft, including pending Apply changes,
+and opens **ZenApp [Debug/Release]**. Both windows share one process, render
+device, scene, camera, geometry, textures, lighting and GI resources. It does not
+launch a child process, export a package, reload the scene, or release/rebuild the scene just
+to enter or leave Play. Build `zen_editor`; ZenApp is optional for this workflow.
+
+The editor Scene panel shows a placeholder while Play owns the scene output. The
+editor UI, Output, hierarchy and Inspector remain responsive. Scene navigation,
+picking, mesh previews, Rendering/Camera edits, Open and Recook are locked until
+Quit Play. Closing the play window or pressing Escape returns the existing scene
+to the editor; its camera and animation state are retained. Closing the editor
+also closes the play window. A play-window failure restores editor rendering when
+the device remains usable; both windows share the same process failure boundary.
+
+**Rendering > Run settings** controls render size and VSync.
+Matching the window is enabled by default and uses the exact framebuffer extent.
+A fixed render size is fitted without stretching, with bars when aspect ratios
+are different. While paused, resizing preserves and fits the last rendered image;
+the render extent catches up on Resume. Pause stops scene time, animation, camera
+navigation and scene/GI work while the controls remain responsive. Minimizing the
+play window also suspends its scene work without accumulating elapsed time.
+Minimizing the editor leaves a visible play window running.
+
+**F1** toggles play diagnostics: Pause/Resume/Quit, frame/time, render extent,
+UI frame timing, shared GPU allocations, GI/fallback status and editor output.
+**Space** pauses/resumes; **Escape** returns to the editor. There is no child process
+or IPC handshake in this path. `RuntimeWindow` in `ZenAppRuntime` owns presentation,
+clock and camera input in both hosts; `RuntimeOverlay` in `ZenAppRuntimeUI` supplies
+shared diagnostics. These libraries live under `ZenApp` and have no editor or
+asset-tool dependency. The editor lends its existing `SceneRendering`,
+`SceneRenderTarget` and camera; standalone `ZenApp.exe` loads/owns those resources
+from its setup file. This keeps the runtime path reusable for a future export flow.
+Right-drag look, Alt-left-drag orbit, middle-drag pan and wheel zoom use the same
+screen-coordinate convention as the editor.
+
+Windows integration coverage includes both RHI modes, scene/buffer identity,
+first-frame PBR/depth/GI comparisons, pending draft application, pause retention,
+window resize, minimize/restore, cancellation, repeated runs and return to the
+editor. Native macOS behavior is untested.
+
 - Drag panel tabs to dock; use View to hide/reopen panels or Reset Layout.
 - Select hierarchy nodes or click scene geometry to synchronize the Inspector.
   Hierarchy search retains ancestors and includes nodes without meshes.
@@ -201,8 +270,7 @@ wrap. Rendering properties keep their labels in a left column and stack them abo
 their fields when panels become narrow; help text is muted, and warnings and
 errors use amber and red. Camera Settings groups its compact speed input, boost
 readout and navigation shortcuts into cards. The Inspector keeps its read-only XYZ
-fields and full-height dock. Save and playback controls remain disabled in this
-viewer.
+fields and full-height dock. Save remains disabled in this viewer.
 
 ### Rendering configuration, lighting and diagnostics
 
@@ -440,9 +508,10 @@ initialization call. `RenderDevice::Destroy()` still owns server teardown.
 
 The offscreen `RenderView` contains borrowed color/depth images and physical extent.
 `RendererServer::DispatchRenderWorkloads` requires this view explicitly and passes
-it to scene graph builders. The runtime constructs a fresh
-`RenderView::FromViewport(*nativeViewport)` each frame; the editor supplies
-`EditorViewport::GetRenderView()`. Scene renderers retain neither a native viewport
+it to scene graph builders. ZenApp supplies an offscreen scene view and composites
+it into the native viewport before drawing its optional UI; paused frames reuse that
+image. The demo can supply `RenderView::FromViewport(*nativeViewport)`, and the editor
+supplies `EditorViewport::GetRenderView()`. Scene renderers retain neither a native viewport
 nor an optional target override. The server's native viewport is used separately
 for UI composition and presentation. `GetColorTarget()` and `GetDepthTarget()`
 refer to either kind of target; there is no runtime/editor selection in the renderers.
@@ -481,8 +550,8 @@ cmake --build build/x64-windows-msvc-debug --target EditorModelTest EditorRender
 ctest --test-dir build/x64-windows-msvc-debug -R "EditorModel|EditorRendering|UIDrawPacket|UIRendering|RuntimeUIIntegration|SceneModelSwitch" --output-on-failure
 ```
 
-Model tests initialize no window, GPU or ImGui. Rendering tests initialize no window
-or ImGui and exercise both RHI modes, including a CPU bounding-box hit that GPU
+Model tests initialize no window, GPU or ImGui. Most rendering tests initialize no window
+or ImGui; play-window tests create native windows. They exercise both RHI modes, including a CPU bounding-box hit that GPU
 surface picking correctly clears, stale results, resize and scene replacement.
 Neutral UI tests render a synthetic triangle and retire registered resources after
 graph declaration. Existing runtime UI and model-switch regression tests remain.

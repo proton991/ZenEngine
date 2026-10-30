@@ -165,7 +165,9 @@ Vec2 Project(const EditorCamera& camera, Vec3 world)
 }
 
 // Headless device setup leaves scene rendering uninitialized until explicitly requested.
-UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode mode, bool rayTracing = false)
+UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode             mode,
+                                         bool                         rayTracing      = false,
+                                         const rc::RenderingSettings* initialSettings = nullptr)
 {
     RHIOptions::GetInstance().SetRayTracingDisabled(!rayTracing);
 
@@ -179,7 +181,7 @@ UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode mode, bool rayTracing 
 
     EXPECT_EQ(device->GetRendererServer(), nullptr);
 
-    device->InitializeRendererServer();
+    device->InitializeRendererServer(initialSettings);
 
     return device;
 }

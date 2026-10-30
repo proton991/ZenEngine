@@ -18,11 +18,15 @@ RendererServer::RendererServer(RenderDevice* pRenderDevice, RHIViewport* present
     m_pRenderDevice(pRenderDevice), m_pPresentationViewport(presentationViewport)
 {}
 
-void RendererServer::Init()
+void RendererServer::Init(const RenderingSettings* initialSettings)
 {
     VoxelGIRuntimeSettings settings;
 
-    if (!LoadVoxelGIRuntimeSettings(platform::ConfigLoader::GetInstance(), settings))
+    if (initialSettings != nullptr)
+    {
+        settings = initialSettings->gi;
+    }
+    else if (!LoadVoxelGIRuntimeSettings(platform::ConfigLoader::GetInstance(), settings))
     {
         LOGW("Using GI defaults after rejected configuration");
 
@@ -39,7 +43,14 @@ void RendererServer::Init()
 
     m_pDeferredLightingRenderer = ZEN_NEW() DeferredLightingRenderer(m_pRenderDevice);
 
-    m_pDeferredLightingRenderer->Init();
+    if (initialSettings != nullptr)
+    {
+        m_pDeferredLightingRenderer->Init(initialSettings->lightMarkers, initialSettings->lightMarkerSize);
+    }
+    else
+    {
+        m_pDeferredLightingRenderer->Init();
+    }
 
     m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice);
 
@@ -58,13 +69,9 @@ void RendererServer::Init()
 
     m_voxelizerMode = selectedMode;
 
-    m_pVoxelizer    = CreateVoxelizer();
+    CreateVoxelGIResources();
 
-    m_pVoxelGI      = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pVoxelizer);
-
-    m_pVoxelGI->SetSettings(m_giSettings.cone);
-
-    m_pSceneShadows = ZEN_NEW() SceneShadowRenderer(m_pRenderDevice);
+    m_pSceneShadows = ZEN_NEW() SceneShadowRenderer(m_pRenderDevice, m_giSettings.shadowMapResolution);
 
     m_pSceneShadows->SetResolution(m_giSettings.shadowMapResolution);
 
@@ -100,37 +107,54 @@ void RendererServer::Destroy()
     ZEN_DELETE(m_pSkyboxRenderer);
 }
 
+void RendererServer::CreateVoxelGIResources()
+{
+    m_pVoxelizer = CreateVoxelizer();
+    m_pVoxelizer->SetRenderScene(m_pScene);
+    m_pVoxelGI = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pVoxelizer, &m_giSettings.cone);
+    m_pVoxelGI->SetSettings(m_giSettings.cone);
+    m_pVoxelGI->SetRenderScene(m_pScene);
+}
+
 RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requestedView,
                                                           RenderOverlay*    overlay,
-                                                          bool              drawScene)
+                                                          bool              drawScene,
+                                                          RHIViewport*      presentation)
 {
-    RenderView view = requestedView;
+    presentation                = presentation != nullptr ? presentation : m_pPresentationViewport;
+    RenderView view             = requestedView;
 
-    const bool presentationView =
-        m_pPresentationViewport != nullptr && view.color == m_pPresentationViewport->GetColorBackBuffer();
+    const bool presentationView = presentation != nullptr && view.color == presentation->GetColorBackBuffer();
 
     m_pRenderDevice->PrepareFrame();
 
     if (presentationView)
     {
         // Recreation can replace the native attachments after the caller captured its view.
-        view.color  = m_pPresentationViewport->GetColorBackBuffer();
+        view.color  = presentation->GetColorBackBuffer();
 
-        view.depth  = m_pPresentationViewport->GetDepthStencilBackBuffer();
+        view.depth  = presentation->GetDepthStencilBackBuffer();
 
-        view.width  = m_pPresentationViewport->GetWidth();
+        view.width  = presentation->GetWidth();
 
-        view.height = m_pPresentationViewport->GetHeight();
+        view.height = presentation->GetHeight();
     }
 
     RenderFrameResult result = RenderFrameResult::eFailed;
 
-    m_status.requested       = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
-
-    m_frameRenderOption      = m_status.fallbackReason.empty() ? m_renderOption : RenderOption::ePBR;
-
     const bool renderScene =
         drawScene && m_pScene != nullptr && view.color != nullptr && view.depth != nullptr && view.width > 0 && view.height > 0;
+
+    m_frameShadows    = false;
+    m_frameGI         = false;
+    m_frameVisibility = false;
+    if (renderScene)
+    {
+        m_status.requested  = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
+        m_frameRenderOption = m_status.fallbackReason.empty() ? m_renderOption : RenderOption::ePBR;
+        m_debugDescription  = {};
+        m_debugDescription.output = m_debug.output;
+    }
 
     bool succeeded         = !m_pRenderDevice->AreSubmissionsBlocked() && (!renderScene || m_pScene->Update());
 
@@ -142,22 +166,11 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
     {
         succeeded = pFrameRDG->Begin();
 
-        if (succeeded && m_pPresentationViewport != nullptr
-            && (!renderScene || view.color != m_pPresentationViewport->GetColorBackBuffer()))
+        if (succeeded && presentation != nullptr && (!renderScene || view.color != presentation->GetColorBackBuffer()))
         {
             pFrameRDG->AddTransferPass("WorkspaceClear")
-                .ClearTexture(m_pPresentationViewport->GetColorBackBuffer(), Color(0.055f, 0.06f, 0.075f, 1.0f));
+                .ClearTexture(presentation->GetColorBackBuffer(), Color(0.055f, 0.06f, 0.075f, 1.0f));
         }
-
-        m_frameShadows            = false;
-
-        m_frameGI                 = false;
-
-        m_frameVisibility         = false;
-
-        m_debugDescription        = {};
-
-        m_debugDescription.output = m_debug.output;
 
         if (succeeded && renderScene)
         {
@@ -277,14 +290,14 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
         if (succeeded && overlay != nullptr)
         {
-            succeeded = m_pPresentationViewport != nullptr && overlay->BuildRenderGraph(*pFrameRDG, *m_pPresentationViewport);
+            succeeded = presentation != nullptr && overlay->BuildRenderGraph(*pFrameRDG, *presentation);
         }
 
         succeeded = succeeded && pFrameRDG->End();
 
         if (succeeded)
         {
-            result = m_pPresentationViewport != nullptr ? m_pRenderDevice->ExecuteRenderGraph(m_pPresentationViewport)
+            result = presentation != nullptr                         ? m_pRenderDevice->ExecuteRenderGraph(presentation)
                    : m_pRenderDevice->ExecuteRenderGraph(*pFrameRDG) ? RenderFrameResult::eSubmitted
                                                                      : RenderFrameResult::eFailed;
         }
@@ -295,13 +308,15 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
         result = RenderFrameResult::eBlocked;
     }
 
-    if (m_pVoxelizer != nullptr)
+    if (renderScene)
     {
-        m_pVoxelizer->OnRenderGraphExecuted(result);
+        if (m_pVoxelizer != nullptr)
+        {
+            m_pVoxelizer->OnRenderGraphExecuted(result);
+        }
+        m_pSkyboxRenderer->OnRenderGraphExecuted(result);
+        m_pDeferredLightingRenderer->OnRenderGraphExecuted(result);
     }
-
-    m_pSkyboxRenderer->OnRenderGraphExecuted(result);
-    m_pDeferredLightingRenderer->OnRenderGraphExecuted(result);
 
     // Visibility preparation records work on PBR fallback frames as well.
     if (m_frameVisibility)
@@ -319,7 +334,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
         m_pSceneShadows->OnRenderGraphExecuted(result);
     }
 
-    if (result != RenderFrameResult::eSubmitted)
+    if (renderScene && result != RenderFrameResult::eSubmitted)
     {
         m_debugDescription.available = false;
 
@@ -327,7 +342,10 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
             result == RenderFrameResult::eDeclined ? "Waiting for swapchain recreation." : "Frame submission failed.";
     }
 
-    m_status.effective = m_frameRenderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
+    if (renderScene)
+    {
+        m_status.effective = m_frameRenderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
+    }
 
     return result;
 }
@@ -440,7 +458,7 @@ VoxelizerBase* RendererServer::CreateVoxelizer()
         voxelizer = ZEN_NEW() ComputeVoxelizer(m_pRenderDevice);
     }
 
-    voxelizer->Init();
+    voxelizer->Init(m_giSettings.resolution);
 
     voxelizer->Configure(m_giSettings.resolution, m_giSettings.averagedReflectance, m_giSettings.reflectanceBudgetBytes);
 

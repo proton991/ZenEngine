@@ -599,4 +599,10 @@ TEST_F(RenderCoreTest, ComputeFieldPreparationKeepsHardwareOrPBR)
     EXPECT_NE(gi.GetVisibilityGeneration(), visibility);
     gi.Destroy();
     volumes.Destroy();
+    for (RHIBuffer* buffer :
+         {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials, sceneInputs.uv})
+    {
+        device->DestroyBuffer(buffer);
+    }
+    sceneInputs = {};
 }

@@ -34,9 +34,11 @@ struct Placeholder
 } // namespace
 
 EditorController::EditorController(rc::RenderDevice& device) :
+    m_device(device),
     m_selection(m_scene),
     m_inspector(m_scene, m_selection),
     m_viewport(device, m_scene, m_selection, m_camera),
+    m_playSession(device, m_viewport.GetSceneRendering(), m_viewport.GetSceneTarget(), m_camera),
     m_meshPreview(device, m_viewport)
 {}
 
@@ -82,6 +84,7 @@ bool EditorController::Init()
 
 void EditorController::Destroy()
 {
+    m_playSession.Shutdown();
     CancelSceneLoad();
     m_sceneLoader.Reset();
 
@@ -106,14 +109,14 @@ void EditorController::RegisterActions()
                         "Open...",
                         {platform::Key::O, kCommand},
                         "Wait for the current scene to finish opening.",
-                        [this]() { return !m_loadState.IsActive() && !m_environmentPending; },
+                        [this]() { return !IsPreviewFrozen() && !m_loadState.IsActive() && !m_environmentPending; },
                         [this]() { m_openRequested = true; }});
 
     m_actions.Register({actions::FrameAll,
                         "Frame All",
                         {platform::Key::Home, 0},
                         "Open a scene first.",
-                        [this]() { return m_scene.Get() != nullptr; },
+                        [this]() { return !IsPreviewFrozen() && m_scene.Get() != nullptr; },
                         [this]() { FrameAll(); }});
 
     m_actions.Register({actions::Recook,
@@ -127,16 +130,33 @@ void EditorController::RegisterActions()
                         "Frame Selected",
                         {platform::Key::F, 0},
                         "Select a node first.",
-                        [this]() { return m_selection.GetNode().generation != 0; },
+                        [this]() { return !IsPreviewFrozen() && m_selection.GetNode().generation != 0; },
                         [this]() { FrameSelection(); }});
 
     const Placeholder placeholders[] = {
         {actions::Save, "Save", {platform::Key::S, kCommand}, "Available with scene documents (plan step 5)."},
         {actions::Undo, "Undo", {platform::Key::Z, kCommand}, "Available with undoable editing (plan step 6)."},
-        {actions::Redo, "Redo", kRedoShortcut, "Available with undoable editing (plan step 6)."},
-        {actions::Play, "Run", {}, "Available with zen_player (rendering milestone 4)."},
-        {actions::Pause, "Pause", {}, "Simulation is deferred; rendering sessions do not pause."},
-        {actions::Stop, "Stop", {}, "Available with zen_player (rendering milestone 4)."}};
+        {actions::Redo, "Redo", kRedoShortcut, "Available with undoable editing (plan step 6)."}};
+
+    m_actions.Register({actions::Play,
+                        "Run / Resume",
+                        {},
+                        "Run requires a loaded scene, valid settings and no active runtime. Resume is available when paused.",
+                        [this]() { return CanRun() || m_playSession.GetState() == runtime::RuntimeState::Paused; },
+                        [this]() { StartOrResumeRuntime(); }});
+    m_actions.Register({actions::Pause,
+                        "Pause",
+                        {},
+                        "Pause is available while the play window is running.",
+                        [this]() { return m_playSession.GetState() == runtime::RuntimeState::Running; },
+                        [this]() { m_playSession.Pause(); }});
+    m_actions.Register(
+        {actions::Stop,
+         "Quit Play",
+         {},
+         "Open the play window first.",
+         [this]() { return m_playSession.IsActive() && m_playSession.GetState() != runtime::RuntimeState::Stopping; },
+         [this]() { m_playSession.Quit(); }});
 
     for (const Placeholder& placeholder : placeholders)
     {
@@ -197,12 +217,14 @@ const EditorRenderingState& EditorController::GetRenderingState() const
 
 bool EditorController::StageRenderingSettings(const rc::RenderingSettings& settings, bool applyResources)
 {
-    const bool valid = m_rendering.Stage(settings);
-
-    // Every valid edit previews; Apply also publishes resource changes and retries failures.
-    m_renderResourcesRequested = valid && (applyResources || m_renderResourcesRequested);
-
-    m_renderApplyRequested     = valid;
+    bool valid = false;
+    if (!IsPreviewFrozen())
+    {
+        valid = m_rendering.Stage(settings);
+        // Every valid edit previews; Apply also publishes resource changes and retries failures.
+        m_renderResourcesRequested = valid && (applyResources || m_renderResourcesRequested);
+        m_renderApplyRequested     = valid;
+    }
 
     return valid;
 }
@@ -211,7 +233,7 @@ bool EditorController::UpdateRenderingSettings()
 {
     bool applied = false;
 
-    if (m_renderApplyRequested && !m_loadState.IsActive() && !m_environmentPending)
+    if (!IsPreviewFrozen() && m_renderApplyRequested && !m_loadState.IsActive() && !m_environmentPending)
     {
         const bool resources                 = m_renderResourcesRequested || !m_rendering.NeedsResourceApply();
 
@@ -353,9 +375,9 @@ void EditorController::ResetRenderingSetup()
     RequestEnvironmentTexture("");
 }
 
-bool EditorController::RecordRenderingResult(rc::RenderFrameResult result)
+bool EditorController::RecordRenderingResult(rc::RenderFrameResult result, bool drawScene)
 {
-    const bool succeeded                = result == rc::RenderFrameResult::eSubmitted;
+    const bool succeeded                = drawScene && result == rc::RenderFrameResult::eSubmitted;
 
     const bool retryDeclines            = rc::TrackDeclinedFrames(result, m_consecutiveDeclines);
 
@@ -478,7 +500,7 @@ bool EditorController::Load(const asset::SceneImportRequest& request)
 {
     bool valid = false;
 
-    if (!m_loadState.IsActive() && !m_environmentPending)
+    if (!IsPreviewFrozen() && !m_loadState.IsActive() && !m_environmentPending)
     {
         asset::SceneLoadResult imported  = asset::LoadSourceScene(request);
         std::string            error     = std::move(imported.error);
@@ -513,7 +535,7 @@ bool EditorController::RequestLoad(std::string path)
 
 bool EditorController::RequestLoad(asset::SceneImportRequest request)
 {
-    const bool accepted = !request.path.empty() && !m_loadState.IsActive() && !m_environmentPending;
+    const bool accepted = !IsPreviewFrozen() && !request.path.empty() && !m_loadState.IsActive() && !m_environmentPending;
 
     if (accepted)
     {
@@ -532,7 +554,7 @@ bool EditorController::RequestLoad(asset::SceneImportRequest request)
 
 bool EditorController::CanRecook() const
 {
-    return !m_sourceProcessing.sourcePath.empty() && !m_loadState.IsActive() && !m_environmentPending;
+    return !IsPreviewFrozen() && !m_sourceProcessing.sourcePath.empty() && !m_loadState.IsActive() && !m_environmentPending;
 }
 
 bool EditorController::RequestRecook()
@@ -623,7 +645,8 @@ void EditorController::RefreshEnvironmentTextures()
 
 bool EditorController::RequestEnvironmentTexture(std::string path)
 {
-    const bool accepted = !m_loadState.IsActive() && !m_environmentPending && (m_viewport.HasScene() || path.empty());
+    const bool accepted =
+        !IsPreviewFrozen() && !m_loadState.IsActive() && !m_environmentPending && (m_viewport.HasScene() || path.empty());
 
     if (accepted)
     {
@@ -835,7 +858,7 @@ void EditorController::ProcessPicks()
 {
     PickResult result;
 
-    if (m_viewport.TakePickResult(result) && result.stamp == MakeStamp())
+    if (m_viewport.TakePickResult(result) && !IsPreviewFrozen() && result.stamp == MakeStamp())
     {
         m_selection.SelectNode(result.node);
     }
@@ -843,23 +866,26 @@ void EditorController::ProcessPicks()
 
 void EditorController::Pick(Vec2 normalized)
 {
-    Vec3 origin;
+    if (!IsPreviewFrozen())
+    {
+        Vec3 origin;
 
-    Vec3 direction;
+        Vec3 direction;
 
-    m_camera.MakeRay(normalized, origin, direction);
+        m_camera.MakeRay(normalized, origin, direction);
 
-    m_selection.SelectNode(m_scene.PickBounds(origin, direction));
+        m_selection.SelectNode(m_scene.PickBounds(origin, direction));
 
-    // Stamped after the immediate selection, which advances the selection revision.
-    m_viewport.RequestPick(normalized, MakeStamp());
+        // Stamped after the immediate selection, which advances the selection revision.
+        m_viewport.RequestPick(normalized, MakeStamp());
+    }
 }
 
 bool EditorController::ResizeViewport(uint32_t width, uint32_t height)
 {
-    const bool valid = m_viewport.Resize(width, height);
+    const bool valid = IsPreviewFrozen() ? m_viewport.GetRenderView().color != nullptr : m_viewport.Resize(width, height);
 
-    if (valid)
+    if (valid && !IsPreviewFrozen())
     {
         m_camera.SetExtent(m_viewport.GetRenderView().width, m_viewport.GetRenderView().height);
     }
@@ -871,7 +897,7 @@ void EditorController::FrameAll()
 {
     sg::AABB bounds;
 
-    if (m_scene.GetSceneBounds(bounds))
+    if (!IsPreviewFrozen() && m_scene.GetSceneBounds(bounds))
     {
         m_camera.Frame(bounds);
     }
@@ -881,7 +907,7 @@ void EditorController::FrameSelection()
 {
     sg::AABB bounds;
 
-    if (m_scene.GetBounds(m_selection.GetNode(), bounds))
+    if (!IsPreviewFrozen() && m_scene.GetBounds(m_selection.GetNode(), bounds))
     {
         m_camera.Frame(bounds);
     }
@@ -906,7 +932,7 @@ bool EditorController::PreviewMesh(SceneAssetId mesh, uint32_t width, uint32_t h
 {
     const sg::Mesh* source = m_scene.GetAssets().ResolveMesh(mesh);
 
-    const bool valid       = source != nullptr && m_viewport.HasScene() && m_meshPreview.Resize(width, height);
+    const bool valid = !IsPreviewFrozen() && source != nullptr && m_viewport.HasScene() && m_meshPreview.Resize(width, height);
 
     if (valid)
     {
@@ -937,5 +963,62 @@ void EditorController::ResetMeshPreview()
     {
         m_previewCamera.Frame(bounds);
     }
+}
+
+runtime::RuntimeWindow& EditorController::GetPlaySession()
+{
+    return m_playSession;
+}
+
+runtime::RuntimeWindowSettings& EditorController::GetRunSettings()
+{
+    return m_runSettings;
+}
+
+bool EditorController::IsPreviewFrozen() const
+{
+    return m_playSession.IsActive();
+}
+
+bool EditorController::CanRun() const
+{
+    std::string error;
+    return !IsPreviewFrozen() && m_viewport.HasScene() && !m_loadState.IsActive() && !m_environmentPending
+        && rc::ValidateRenderingSettings(m_rendering.GetDraft(), error);
+}
+
+bool EditorController::StartOrResumeRuntime()
+{
+    bool accepted = false;
+    if (m_playSession.GetState() == runtime::RuntimeState::Paused)
+    {
+        accepted = m_playSession.Resume();
+    }
+    else if (CanRun())
+    {
+        bool ready = true;
+        // Apply pending edits once; an already-applied scene needs no reconfiguration.
+        if (m_rendering.IsPending() || m_renderApplyRequested)
+        {
+            m_renderApplyRequested     = true;
+            m_renderResourcesRequested = m_renderResourcesRequested || m_rendering.NeedsResourceApply();
+            ready                      = UpdateRenderingSettings();
+        }
+        if (ready)
+        {
+            accepted = m_playSession.Start(m_runSettings, m_preferences.cameraMoveSpeed);
+            if (accepted)
+            {
+                m_meshPreview.Cancel();
+            }
+        }
+    }
+    return accepted;
+}
+
+void EditorController::UpdatePlaySession()
+{
+    m_playSession.Update();
+    m_actions.SetLabel(actions::Play, m_playSession.GetState() == runtime::RuntimeState::Paused ? "Resume" : "Run");
 }
 } // namespace zen::editor

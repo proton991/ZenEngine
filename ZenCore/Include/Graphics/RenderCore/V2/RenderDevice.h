@@ -34,6 +34,7 @@ namespace zen::rc
 class RenderDevice;
 class RenderGraph;
 class RendererServer;
+struct RenderingSettings;
 class TextureManager;
 class SkyboxRenderer;
 
@@ -88,7 +89,7 @@ public:
     void Init(RHIViewport* pMainViewport);
 
     // Call once during setup, after Init() and shader registration, with or without a native viewport.
-    void InitializeRendererServer();
+    void InitializeRendererServer(const RenderingSettings* initialSettings = nullptr);
 
     void Destroy();
 
@@ -280,6 +281,8 @@ public:
 
     RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync = true);
 
+    void DestroyViewport(RHIViewport* pViewport);
+
     void ResizeViewport(RHIViewport* pViewport, uint32_t width, uint32_t height);
 
     // RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
@@ -433,8 +436,6 @@ private:
     // void UpdateTextureBatch(RHITexture* pTextureHandle,
     //                         const Vec3i& textureSize,
     //                         const uint8_t* pData);
-
-    void DestroyViewport(RHIViewport* pViewport);
 
     // Canonical field values, never raw struct padding or a hash used as identity.
     // Inline storage covers all graphics state plus common specialization overrides.

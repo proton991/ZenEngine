@@ -27,9 +27,9 @@ RDGComputePassDesc VoxelComputePass(NameID shader, NameID tag)
 }
 } // namespace
 
-void ComputeVoxelizer::Init()
+void ComputeVoxelizer::Init(uint32_t resolution)
 {
-    m_voxelTexResolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
+    m_voxelTexResolution = resolution != 0 ? resolution : platform::ConfigLoader::GetInstance().GetVoxelResolution();
 
     m_voxelTexFormat     = DataFormat::eR8G8B8A8UNORM;
 

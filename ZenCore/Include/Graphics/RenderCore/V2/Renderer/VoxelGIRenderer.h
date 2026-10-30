@@ -150,7 +150,7 @@ VoxelGIVisibilityBounds BuildVoxelGIVisibilityBounds(const sg::AABB& geometryBou
 class VoxelGIRenderer
 {
 public:
-    VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer);
+    VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer, const VoxelGISettings* settings = nullptr);
 
     bool Init();
 
@@ -367,13 +367,13 @@ private:
     RHITexture*                   m_unshadowedMap{nullptr};
     RHISampler*                   m_unshadowedSampler{nullptr};
     uint64_t                      m_recordedSkyVisibility{0};
-    bool                  m_hardwareQueries{false};
-    uint32_t              m_hardwareFeatureMask{0};
+    bool                          m_hardwareQueries{false};
+    uint32_t                      m_hardwareFeatureMask{0};
     const char*                   m_providerReason{"field_selected"};
-    RenderDevice*         m_device{nullptr};
-    RenderScene*          m_scene{nullptr};
-    VoxelizerBase*        m_voxelizer{nullptr};
-    RHITexture*           m_radiance{nullptr};
+    RenderDevice*                 m_device{nullptr};
+    RenderScene*                  m_scene{nullptr};
+    VoxelizerBase*                m_voxelizer{nullptr};
+    RHITexture*                   m_radiance{nullptr};
     // Base-level hit history normally; alternate full mip chain with previous-frame radiance enabled.
     RHITexture*                 m_previousRadiance{nullptr};
     HeapVector<RHITextureView*> m_previousRadianceMips;

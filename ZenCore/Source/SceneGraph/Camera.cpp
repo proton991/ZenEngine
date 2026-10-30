@@ -98,17 +98,7 @@ Camera::Camera(const Vec3&          eye,
 
     UpdateBaseVectors();
 
-    SetProjectionMatrix();
-
-    m_viewMatrix                = glm::lookAt(m_position, m_position + m_front, m_up);
-
-    m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
-
-    m_cameraData.proj           = GetProjectionMatrix();
-
-    m_cameraData.view           = GetViewMatrix();
-
-    m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
+    UpdatePoseMatrices();
 }
 
 void Camera::SetPose(const Vec3& eye, const Vec3& target)
@@ -116,6 +106,21 @@ void Camera::SetPose(const Vec3& eye, const Vec3& target)
     m_target = target;
 
     SetPosition(eye);
+}
+
+void Camera::SetPose(const Vec3& eye, const Vec2& viewAngles, float distance)
+{
+    m_position = eye;
+    m_yaw      = glm::degrees(viewAngles.x);
+    m_pitch    = glm::degrees(viewAngles.y);
+    UpdateBaseVectors();
+    m_target = m_position + m_front * distance;
+    UpdatePoseMatrices(true);
+}
+
+Vec2 Camera::GetViewAngles() const
+{
+    return glm::radians(Vec2(m_yaw, m_pitch));
 }
 
 void Camera::SetPosition(const Vec3& position)
@@ -126,9 +131,17 @@ void Camera::SetPosition(const Vec3& position)
 
     UpdateBaseVectors();
 
+    UpdatePoseMatrices();
+}
+
+void Camera::UpdatePoseMatrices(bool explicitDirection)
+{
     SetProjectionMatrix();
 
-    m_viewMatrix                = glm::lookAt(m_position, m_position + m_front, m_up);
+    // Explicit navigation angles must retain their yaw at a translated pole.
+    // Keep the established arithmetic for existing position/target camera callers.
+    m_viewMatrix                = explicitDirection ? glm::lookAt(Vec3(0), m_front, m_up) * glm::translate(Mat4(1), -m_position)
+                                                    : glm::lookAt(m_position, m_position + m_front, m_up);
 
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
 
@@ -357,6 +370,27 @@ void Camera::UpdateAspect(float aspect)
     m_cameraData.projViewMatrix = m_projMatrix * m_cameraData.view;
 
     m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
+}
+
+void Camera::SetFieldOfView(float degrees)
+{
+    m_fov = degrees;
+    SetProjectionMatrix();
+}
+
+asset::CameraParameters Camera::GetParameters() const
+{
+    asset::CameraParameters parameters;
+    parameters.orthographic = m_projectionType == CameraProjectionType::eOrthographic;
+    parameters.infiniteFar  = m_infiniteFar;
+    parameters.fixedAspect  = m_fixedAspect;
+    parameters.aspect       = m_aspect;
+    parameters.verticalFov  = glm::radians(m_fov);
+    parameters.nearPlane    = m_near;
+    parameters.farPlane     = m_far;
+    parameters.xmag         = (m_orthoRect.y - m_orthoRect.x) * 0.5f;
+    parameters.ymag         = (m_orthoRect.w - m_orthoRect.z) * 0.5f;
+    return parameters;
 }
 
 void Camera::SetFarPlane(float far)

@@ -33,7 +33,7 @@ private:
 
     void Synchronize(EditorContext& context) override
     {
-        if (!visible || !context.focused || context.editor.GetLoadState().IsActive()
+        if (!visible || !context.focused || context.editor.IsPreviewFrozen() || context.editor.GetLoadState().IsActive()
             || ImGui::GetFrameCount() > m_lastSceneFrame + 1)
         {
             CancelLightMove(context);
@@ -131,6 +131,9 @@ private:
 
     void DrawContents(EditorContext& context) override
     {
+        const bool                    frozen  = context.editor.IsPreviewFrozen();
+        const runtime::RuntimeWindow& session = context.editor.GetPlaySession();
+        ImGui::BeginDisabled(frozen);
         if (ImGui::Button("Frame All"))
         {
             context.editor.GetActions().Execute(actions::FrameAll);
@@ -154,14 +157,17 @@ private:
             ImGui::SetTooltip("Show draggable handles for point and spot lights, including disabled lights.\n"
                               "Drag across the view; orbit to change the movement plane. Esc cancels.");
         }
+        ImGui::EndDisabled();
 
         const RHIGPUMemoryStats& memory = GetRenderSnapshot(context).memory;
 
         const std::string usage =
             memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0)) : "GPU memory n/a";
 
-        const std::string profile = fmt::format("{:.1f} FPS  |  {:.2f} ms  |  {}  |  Vulkan",
-                                                context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
+        const std::string profile =
+            frozen ? fmt::format("Scene detached  |  {}  |  Vulkan", usage)
+                   : fmt::format("{:.1f} FPS  |  {:.2f} ms  |  {}  |  Vulkan",
+                                 context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
 
         // Reserve a stable field: changing digit counts must never reflow the toolbar
         // and resize the render target (or cancel a drag through a new camera aspect).
@@ -179,9 +185,25 @@ private:
         DrawClippedText(profile.c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), ImGui::GetFrameHeight()),
                         ImGui::GetColorU32(ImGuiCol_TextDisabled));
 
-        bool drewScene = false;
+        bool         drewScene    = false;
+        const ImVec2 statusOrigin = ImGui::GetCursorScreenPos();
+        const ImVec2 statusExtent = ImGui::GetContentRegionAvail();
 
-        if (context.editor.GetScene().Get() == nullptr || !context.editor.GetViewport().HasScene())
+        if (frozen)
+        {
+            if (m_renderer != nullptr && m_image.value != 0)
+            {
+                m_renderer->UnregisterTexture(m_image);
+                m_image    = {};
+                m_revision = 0;
+            }
+            DrawHint(fmt::format("{} in the play window. Quit Play to return it here.",
+                                 runtime::GetRuntimeStateName(session.GetState()))
+                         .c_str());
+            m_navigation = 0;
+            m_sphere.Cancel();
+        }
+        else if (context.editor.GetScene().Get() == nullptr || !context.editor.GetViewport().HasScene())
         {
             if (context.editor.GetScene().Get() == nullptr)
             {
@@ -235,7 +257,7 @@ private:
                 ImGui::SetCursorScreenPos(origin);
 
                 const bool allowed = DrawSceneImage(ui::ImGuiRenderer::GetTextureID(m_image), extent, context.focused)
-                                  && !context.editor.GetLoadState().IsActive();
+                                  && !frozen && !context.editor.GetLoadState().IsActive();
 
                 // Read before the overlays, whose tooltips are separate windows.
                 const bool hovered = ImGui::IsItemHovered();
@@ -244,11 +266,13 @@ private:
 
                 // The sphere responds only while no other camera drag is running.
                 const ViewAxesHover sphere =
-                    DrawViewAxes(context.editor.GetCamera().GetCamera().GetViewMatrix(), origin, end,
-                                 allowed && hovered && m_navigation == 0 && !m_sphere.IsActive() && !m_lightMove.IsActive(),
-                                 m_sphere.IsActive());
+                    frozen ? ViewAxesHover{}
+                           : DrawViewAxes(context.editor.GetCamera().GetCamera().GetViewMatrix(), origin, end,
+                                          allowed && hovered && m_navigation == 0 && !m_sphere.IsActive()
+                                              && !m_lightMove.IsActive(),
+                                          m_sphere.IsActive());
 
-                if (context.editor.GetPreferences().showSceneControls)
+                if (!frozen && context.editor.GetPreferences().showSceneControls)
                 {
                     DrawSceneControlsHint(context.editor.GetActions(), origin, end);
                 }
@@ -261,12 +285,12 @@ private:
 
                 const EditorRenderSnapshot& snapshot = GetRenderSnapshot(context);
 
-                ui::DrawGIPreparationStatus(*ImGui::GetWindowDrawList(), snapshot.preparingGI, snapshot.hardwareQueries, origin,
-                                            end, sphereInset);
+                ui::DrawGIPreparationStatus(*ImGui::GetWindowDrawList(), !frozen && snapshot.preparingGI,
+                                            snapshot.hardwareQueries, origin, end, sphereInset);
 
                 rc::RenderingSettings draft = context.editor.GetRenderingState().GetDraft();
                 if (m_lightMove.Draw(draft.lights, context.editor.GetCamera(), context.editor.GetScene().GetGeneration(),
-                                     origin, extent, m_moveLights, allowed,
+                                     origin, extent, !frozen && m_moveLights, allowed,
                                      hovered && m_navigation == 0 && !m_sphere.IsActive() && !sphere.sphere))
                 {
                     context.editor.StageRenderingSettings(draft);
@@ -279,6 +303,22 @@ private:
         if (!drewScene)
         {
             CancelLightMove(context);
+        }
+        const std::string& status = session.GetError();
+        if (!frozen && !status.empty() && statusExtent.x > 24 && statusExtent.y > 24)
+        {
+            // Draw over the image without consuming layout space or changing its fit.
+            const float  padding  = 8 * EditorScale();
+            const float  width    = std::max(1.0f, statusExtent.x - 4 * padding);
+            const ImVec2 textSize = ImGui::CalcTextSize(status.c_str(), nullptr, false, width);
+            const ImVec2 origin(statusOrigin.x + padding, statusOrigin.y + padding);
+            ImDrawList&  draw = *ImGui::GetWindowDrawList();
+            draw.PushClipRect(statusOrigin, ImVec2(statusOrigin.x + statusExtent.x, statusOrigin.y + statusExtent.y), true);
+            draw.AddRectFilled(origin, ImVec2(origin.x + textSize.x + 2 * padding, origin.y + textSize.y + 2 * padding),
+                               IM_COL32(20, 24, 30, 220), 4 * EditorScale());
+            draw.AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(origin.x + padding, origin.y + padding),
+                         IM_COL32(235, 238, 242, 255), status.c_str(), nullptr, width);
+            draw.PopClipRect();
         }
     }
 

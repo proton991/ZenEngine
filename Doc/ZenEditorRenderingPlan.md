@@ -1,5 +1,15 @@
 # ZenEditor rendering plan
 
+**Play-window update, 30 October 2026:** follow the current design in the
+[Run, Pause and Quit implementation plan](ZenEditorRunSessionPlan.md). The toolbar
+now moves the existing scene to an in-process play window, pauses/resumes scene
+time and returns it to the editor on Quit. Both windows share the renderer and
+GPU scene resources. The editor displays a placeholder while Play owns rendering.
+This supersedes the separate-process, prepared-package and resource-release
+workflow previously used by the toolbar. Standalone ZenApp remains available.
+Windows verification is required; macOS execution is untested. The remaining
+rendering and preset roadmap below stays in place.
+
 Revised direction, 4 October 2026. This is the active plan for work after the
 implemented ZenEditor viewer. It supersedes the delivery order of steps 5 onward
 in [the original implementation plan](ZenEditorImplementationPlan.md).

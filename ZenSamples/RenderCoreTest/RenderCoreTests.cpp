@@ -1571,7 +1571,7 @@ RendererServer::RendererServer(RenderDevice* device, RHIViewport* viewport) :
     m_pPresentationViewport(viewport), m_pRenderDevice(device)
 {}
 
-void RendererServer::Init()
+void RendererServer::Init(const RenderingSettings*)
 {
     m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice);
 }
@@ -1833,6 +1833,8 @@ protected:
         device->Destroy();
 
         ZEN_DELETE(device);
+
+        reflectedShaderInfos.clear();
     }
 
     TestBuffer* Buffer(uint32_t size = 64)
@@ -4109,7 +4111,7 @@ public:
         m_voxelTexFormat     = format;
     }
 
-    void Init() override
+    void Init(uint32_t = 0) override
     {
         RHIShaderCreateInfo info;
 

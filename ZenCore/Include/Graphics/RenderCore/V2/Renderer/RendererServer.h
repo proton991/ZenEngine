@@ -43,7 +43,7 @@ class RendererServer
 public:
     RendererServer(RenderDevice* pRenderDevice, RHIViewport* presentationViewport);
 
-    void Init();
+    void Init(const RenderingSettings* initialSettings = nullptr);
 
     void Destroy();
 
@@ -51,7 +51,10 @@ public:
 
     // Scene targets are explicit. Presentation and UI use the native viewport separately.
     // drawScene=false keeps UI alive while the scene panel is hidden.
-    RenderFrameResult DispatchRenderWorkloads(const RenderView& view, RenderOverlay* overlay = nullptr, bool drawScene = true);
+    RenderFrameResult DispatchRenderWorkloads(const RenderView& view,
+                                              RenderOverlay*    overlay      = nullptr,
+                                              bool              drawScene    = true,
+                                              RHIViewport*      presentation = nullptr);
 
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {
@@ -150,6 +153,7 @@ private:
     void BuildDiagnosticFrame(const RenderView& view);
 
     void DestroyVoxelGIResources();
+    void CreateVoxelGIResources();
 
     VoxelizerBase* CreateVoxelizer();
 

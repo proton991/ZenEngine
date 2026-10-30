@@ -126,13 +126,7 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
             if (rebuild)
             {
-                m_pVoxelizer = CreateVoxelizer();
-
-                m_pVoxelizer->SetRenderScene(m_pScene);
-
-                m_pVoxelGI = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pVoxelizer);
-
-                m_pVoxelGI->SetRenderScene(m_pScene);
+                CreateVoxelGIResources();
             }
 
             m_pVoxelGI->SetSettings(settings.cone);

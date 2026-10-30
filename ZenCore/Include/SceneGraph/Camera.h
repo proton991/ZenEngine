@@ -70,6 +70,12 @@ public:
     // Explicit pose path for tools and scripted cameras; does not consult global input.
     void SetPose(const Vec3& eye, const Vec3& target);
 
+    // Explicit yaw/pitch in radians keeps the yaw plane defined at vertical views.
+    // Both pose paths retain the current roll and projection.
+    void SetPose(const Vec3& eye, const Vec2& viewAngles, float distance);
+
+    Vec2 GetViewAngles() const;
+
     void SetProjectionType(CameraProjectionType type)
     {
         m_projectionType = type;
@@ -97,6 +103,10 @@ public:
     {
         return m_aspect;
     }
+
+    asset::CameraParameters GetParameters() const;
+
+    void SetFieldOfView(float degrees);
 
     void SetFarPlane(float far);
 
@@ -129,6 +139,8 @@ private:
     void SetViewDirection(const Vec3& direction);
 
     void UpdateBaseVectors();
+
+    void UpdatePoseMatrices(bool explicitDirection = false);
 
     void UpdatePosition(float velocity);
 

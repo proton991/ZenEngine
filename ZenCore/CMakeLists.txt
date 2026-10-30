@@ -272,6 +272,24 @@ set(ZEN_CORE_SOURCES
 
 
 add_library(ZenCore)
+if(WIN32)
+    target_sources(ZenCore PRIVATE Source/Platform/Win32CommandLine.cpp)
+endif()
+target_sources(ZenCore PRIVATE Source/Runtime/NavigationCamera.cpp Source/Runtime/RuntimeLaunchSettings.cpp
+    Source/Graphics/RenderCore/V2/ScenePresentation.cpp
+    Source/Graphics/RenderCore/V2/SceneCapture.cpp
+    Source/Graphics/RenderCore/V2/SceneRendering.cpp)
+
+# Runtime setup loading is needed even when source import tools are disabled.
+if(NOT TARGET simdjson)
+    include(FetchContent)
+    set(SIMDJSON_DEVELOPER_MODE OFF CACHE BOOL "Build simdjson developer tools")
+    FetchContent_Declare(simdjson
+        URL https://codeload.github.com/simdjson/simdjson/zip/refs/tags/v4.6.11
+        URL_HASH SHA256=5a3bc470d53b0324dfcbef952fdbd004655d7a4f7a6558fb94122cb9f233f2d0)
+    FetchContent_MakeAvailable(simdjson)
+endif()
+target_link_libraries(ZenCore PRIVATE simdjson)
 target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
 target_compile_definitions(ZenCore PUBLIC ZEN_DEBUG)
 target_include_directories(ZenCore PUBLIC

@@ -1352,5 +1352,39 @@ TEST(EditorModel, EmptySceneAndBoundedFilteredLogs)
 
     EXPECT_NE(log.GetRevision(), filled);
 }
+TEST(EditorLog, IndependentViewCopiesOnlyNewEntriesAndKeepsClearLocal)
+{
+    EditorLog                  log;
+    HeapVector<EditorLogEntry> view;
+    uint64_t                   cursor = 0;
+    log.Append(2, "first");
+    log.AppendSince(cursor, view);
+    ASSERT_EQ(view.size(), 1u);
+    log.AppendSince(cursor, view);
+    EXPECT_EQ(view.size(), 1u);
+
+    view.clear();
+    log.AppendSince(cursor, view);
+    EXPECT_TRUE(view.empty());
+    EXPECT_EQ(log.Query(0, "").size(), 1u);
+    log.Append(3, "second");
+    log.AppendSince(cursor, view);
+    ASSERT_EQ(view.size(), 1u);
+    EXPECT_EQ(view[0].text, "second");
+
+    log.Clear();
+    log.Append(4, "after editor clear");
+    log.AppendSince(cursor, view);
+    ASSERT_EQ(view.size(), 2u);
+    EXPECT_EQ(view[1].text, "after editor clear");
+    for (int index = 0; index < 2100; ++index)
+    {
+        log.Append(2, std::to_string(index));
+    }
+    log.AppendSince(cursor, view);
+    ASSERT_EQ(view.size(), 2048u);
+    EXPECT_EQ(view.front().text, "52");
+    EXPECT_EQ(view.back().text, "2099");
+}
 } // namespace
 } // namespace zen::editor

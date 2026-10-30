@@ -167,7 +167,7 @@ void RenderDevice::Init(RHIViewport* viewport)
     BeginFrame();
 }
 
-void RenderDevice::InitializeRendererServer()
+void RenderDevice::InitializeRendererServer(const RenderingSettings* initialSettings)
 {
     VERIFY_EXPR_MSG(m_pUploadQueue != nullptr, "Initialize the render device before its renderer server");
 
@@ -175,7 +175,7 @@ void RenderDevice::InitializeRendererServer()
 
     m_pRendererServer = ZEN_NEW() RendererServer(this, m_pMainViewport);
 
-    m_pRendererServer->Init();
+    m_pRendererServer->Init(initialSettings);
 }
 
 void RenderDevice::Destroy()

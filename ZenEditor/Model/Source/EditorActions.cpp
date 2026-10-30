@@ -3,6 +3,17 @@
 
 namespace zen::editor
 {
+void EditorActions::SetLabel(const std::string& id, std::string label)
+{
+    for (EditorAction& action : m_actions)
+    {
+        if (action.id == id)
+        {
+            action.label = std::move(label);
+            break;
+        }
+    }
+}
 namespace
 {
 constexpr uint16_t kMatchedModifiers = uint16_t(platform::KeyModifier::Shift) | uint16_t(platform::KeyModifier::Control)

@@ -137,8 +137,6 @@ DeferredLightingRenderer::DeferredLightingRenderer(RenderDevice* pRenderDevice) 
 
 void DeferredLightingRenderer::Init()
 {
-    PrepareSamplers();
-
     const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
 
     bool markersEnabled                  = false;
@@ -148,12 +146,18 @@ void DeferredLightingRenderer::Init()
     const bool valid                     = config.ReadBool("light_markers.enabled", markersEnabled)
                                         && config.ReadNumber("light_markers.size", markerSize) && std::isfinite(markerSize) && markerSize > 0.0f;
 
-    SetLightMarkers(valid && markersEnabled, valid ? markerSize : 0.02f);
+    Init(valid && markersEnabled, valid ? markerSize : 0.02f);
 
     if (!valid)
     {
         LOGW("Invalid light_markers configuration; markers disabled");
     }
+}
+
+void DeferredLightingRenderer::Init(bool markersEnabled, float markerSize)
+{
+    PrepareSamplers();
+    SetLightMarkers(markersEnabled, markerSize);
 }
 
 void DeferredLightingRenderer::Destroy()

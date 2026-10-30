@@ -1,8 +1,8 @@
 #pragma once
 #include "Editor/Model/EditorSelection.h"
 #include "Editor/Model/EditorEnvironment.h"
-#include "Graphics/RenderCore/V2/RenderScene.h"
-#include "Graphics/RenderCore/V2/RenderView.h"
+#include "Graphics/RenderCore/V2/SceneRendering.h"
+#include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGMetrics.h"
 
@@ -61,12 +61,25 @@ public:
     // Rebuilds previews and cancels picks for the model's current scene.
     void RefreshSceneResources();
 
-    bool Resize(uint32_t width, uint32_t height);
+    bool Resize(uint32_t width, uint32_t height, bool quantize = true);
+
+    rc::SceneRendering& GetSceneRendering()
+    {
+        return m_sceneRendering;
+    }
+    rc::SceneRenderTarget& GetSceneTarget()
+    {
+        return m_target;
+    }
 
     // Borrowed offscreen scene targets, independent of the native presentation window.
     const rc::RenderView& GetRenderView() const;
 
     bool HasScene() const;
+    bool HasCompletedImage() const
+    {
+        return m_target.HasCompletedImage();
+    }
 
     // The open scene's GPU data, or null when it has no renderable geometry.
     const rc::RenderScene* GetRenderScene() const;
@@ -82,8 +95,7 @@ public:
     bool ApplyRenderingSettings(const rc::RenderingSettings& settings, bool retryResources, std::string& error);
 
     const EditorEnvironment& GetEnvironment() const;
-
-    bool SetEnvironmentTexture(const std::string& path, std::string& error);
+    bool                     SetEnvironmentTexture(const std::string& path, std::string& error);
 
     bool SetEnvironmentLighting(float intensity, float rotationDegrees, bool lighting, bool skybox);
 
@@ -124,16 +136,8 @@ private:
     const EditorScene&             m_editorScene;
     const EditorSelection&         m_selection;
     EditorCamera&                  m_camera;
-    UniquePtr<rc::RenderScene>     m_scene;
-    UniquePtr<rc::RenderScene>     m_pendingScene;
-    bool                           m_pendingPrepared{false};
-    rc::RenderView                 m_view;
-    EditorEnvironment              m_environment;
-    HeapVector<rc::RenderingLight> m_appliedLights;
-    HeapVector<rc::LightId>        m_runtimeLightIds;
-    rc::CameraLightSettings        m_cameraLight;
-    std::string                    m_defaultEnvironment;
-    uint64_t                       m_targetRevision{0};
+    rc::SceneRendering             m_sceneRendering;
+    rc::SceneRenderTarget          m_target;
     HeapVector<RHIBuffer*>         m_boundsBuffers;
     RHISampler*                    m_pickSampler{nullptr};
     RHISampler*                    m_materialSampler{nullptr};

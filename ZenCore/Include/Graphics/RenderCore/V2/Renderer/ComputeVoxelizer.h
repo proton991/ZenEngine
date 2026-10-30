@@ -18,7 +18,7 @@ class ComputeVoxelizer : public VoxelizerBase
 public:
     explicit ComputeVoxelizer(RenderDevice* pRenderDevice) : VoxelizerBase(pRenderDevice) {}
 
-    void Init() final;
+    void Init(uint32_t resolution = 0) final;
 
     void BuildVoxelizationGraph() final;
 

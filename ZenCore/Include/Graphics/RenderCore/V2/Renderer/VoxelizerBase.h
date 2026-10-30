@@ -29,9 +29,9 @@ class VoxelizerBase
 public:
     explicit VoxelizerBase(RenderDevice* pRenderDevice);
 
-    virtual ~VoxelizerBase() = default;
+    virtual ~VoxelizerBase()                   = default;
 
-    virtual void Init()      = 0;
+    virtual void Init(uint32_t resolution = 0) = 0;
 
     // Configure a newly initialized producer before allocating any volume resources.
     bool Configure(uint32_t resolution, bool averagedReflectance, uint64_t reflectanceBudgetBytes);

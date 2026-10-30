@@ -87,11 +87,13 @@ public:
     void CheckThreadOwnership() const;
 
     // Polls the application event queue once and dispatches deferred resize callbacks.
-    void Update(bool processInputShortcuts = true);
+    void Update(bool processInputShortcuts = true, const std::function<void()>& liveResize = {});
 
-    static void PollEvents();
+    // Invoked only on the owner thread while an OS modal move/resize loop blocks
+    // event pumping. The callback must draw a frame without polling or waiting for events.
+    static void PollEvents(const std::function<void()>& liveResize = {});
 
-    static void WaitEvents(double seconds);
+    static void WaitEvents(double seconds, const std::function<void()>& liveResize = {});
 
     WindowExtent GetExtent2D() const;
 

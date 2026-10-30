@@ -8,6 +8,7 @@
 #include "Editor/Model/EditorRenderingState.h"
 #include "Editor/Rendering/EditorViewport.h"
 #include "Editor/Rendering/MeshPreviewRenderer.h"
+#include "ZenApp/RuntimeWindow.h"
 
 namespace zen::editor
 {
@@ -72,7 +73,7 @@ public:
     void ResetRenderingSetup();
 
     // Returns whether the application loop may continue. Recoverable errors remain visible in the renderer status.
-    bool RecordRenderingResult(rc::RenderFrameResult result);
+    bool RecordRenderingResult(rc::RenderFrameResult result, bool drawScene = true);
 
     bool CanRestoreRenderingSettings() const;
 
@@ -155,6 +156,13 @@ public:
     // Frames the previewed mesh again.
     void ResetMeshPreview();
 
+    runtime::RuntimeWindow&         GetPlaySession();
+    runtime::RuntimeWindowSettings& GetRunSettings();
+    bool                            CanRun() const;
+    bool                            StartOrResumeRuntime();
+    void                            UpdatePlaySession();
+    bool                            IsPreviewFrozen() const;
+
 private:
     void RegisterActions();
 
@@ -166,15 +174,18 @@ private:
 
     PickStamp MakeStamp() const;
 
-    EditorScene           m_scene;
-    EditorSelection       m_selection;
-    InspectorNavigation   m_inspector;
-    EditorCamera          m_camera;
-    EditorActions         m_actions;
-    EditorPreferences     m_preferences;
-    EditorViewport        m_viewport;
-    EditorRenderingState  m_rendering;
-    rc::RenderingSettings m_renderDefaults;
+    rc::RenderDevice&              m_device;
+    runtime::RuntimeWindowSettings m_runSettings;
+    EditorScene                    m_scene;
+    EditorSelection                m_selection;
+    InspectorNavigation            m_inspector;
+    EditorCamera                   m_camera;
+    EditorActions                  m_actions;
+    EditorPreferences              m_preferences;
+    EditorViewport                 m_viewport;
+    runtime::RuntimeWindow         m_playSession;
+    EditorRenderingState           m_rendering;
+    rc::RenderingSettings          m_renderDefaults;
     // engine.cfg's environment lighting, before a scene's imported lights replace it.
     bool                           m_configuredEnvironmentLighting{true};
     rc::RenderingSettings          m_lastSuccessfulRendering;

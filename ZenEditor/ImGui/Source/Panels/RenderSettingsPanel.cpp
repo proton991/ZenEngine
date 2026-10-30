@@ -712,6 +712,20 @@ private:
 
     void DrawSettings(EditorContext& context)
     {
+        if (ImGui::CollapsingHeader("Run settings"))
+        {
+            runtime::RuntimeWindowSettings& run = context.editor.GetRunSettings();
+            ImGui::Checkbox("Match play window", &run.followWindow);
+            ImGui::BeginDisabled(run.followWindow);
+            int extent[2] = {static_cast<int>(run.renderWidth), static_cast<int>(run.renderHeight)};
+            if (ImGui::InputInt2("Render size", extent))
+            {
+                run.renderWidth  = static_cast<uint32_t>(std::clamp(extent[0], 1, 8192));
+                run.renderHeight = static_cast<uint32_t>(std::clamp(extent[1], 1, 8192));
+            }
+            ImGui::EndDisabled();
+            ImGui::Checkbox("Play VSync", &run.vsync);
+        }
         EditorController& editor = context.editor;
 
         // The file name fits a docked panel; the tooltip shows the full path.

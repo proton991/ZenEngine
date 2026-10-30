@@ -1,7 +1,9 @@
+#include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorWorkspace.h"
+#include "ZenApp/RuntimeOverlay.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include "Editor/Platform/EditorApplicationIcon.h"
 #include "ImGui/UIContext.h"
@@ -105,122 +107,6 @@ RHITexture* CreateEditorIconTexture(rc::RenderDevice& device)
     return texture;
 }
 
-// Explicit diagnostic capture; this wait is never used by ordinary UI drawing/resize.
-bool CaptureFrame(rc::RenderDevice& device, RHITexture* source, const std::string& path)
-{
-    device.FlushRHIThread();
-
-    device.WaitForIdle();
-
-    const uint32_t width  = source->GetWidth();
-
-    const uint32_t height = source->GetHeight();
-
-    rc::TextureFormat format;
-
-    format.width        = width;
-
-    format.height       = height;
-
-    format.depth        = 1;
-
-    format.format       = source->GetFormat();
-
-    RHITexture* sampled = device.CreateTextureSampled(format, {.copyUsage = true}, "EditorCaptureColor");
-
-    RHIBufferCreateInfo info;
-
-    info.size         = width * height * 4;
-
-    info.allocateType = RHIBufferAllocateType::eGPU;
-
-    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-
-    RHIBuffer* packed = device.CreateBuffer(info);
-
-    info.allocateType = RHIBufferAllocateType::eCPURead;
-
-    info.usageFlags   = 0;
-
-    info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
-
-    RHIBuffer* readback = device.CreateBuffer(info);
-
-    RHISampler* sampler = device.CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
-
-    bool valid          = sampled != nullptr && packed != nullptr && readback != nullptr && sampler != nullptr;
-
-    if (valid)
-    {
-        rc::RenderGraph graph("EditorCapture");
-
-        valid = graph.Begin();
-
-        RHITextureCopyRegion region{};
-
-        region.size = Vec3i(width, height, 1);
-
-        region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-
-        region.dstSubresources = region.srcSubresources;
-
-        graph.AddTransferPass("CopyEditorCapture").CopyTexture(source, sampled, {&region, 1});
-
-        rc::RDGComputePassDesc pack;
-
-        pack.SetShaderProgramName("CaptureFrameSP");
-
-        pack.BindSampledTexture("sourceColor", sampler, sampled->GetDefaultView());
-
-        pack.BindStorageBuffer("packedColor", packed, rc::RDGContentGuarantee::eFullWrite);
-
-        graph.AddComputePass(std::move(pack)).RecordPassCommands([width, height](rc::RDGPassCmdEncoder& encoder) {
-            encoder.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
-        });
-
-        graph.AddTransferPass("ReadEditorCapture").CopyBuffer(packed, readback, {0, 0, info.size}).NeverCull();
-
-        valid = valid && graph.End() && device.ExecuteRenderGraph(graph);
-
-        device.FlushRHIThread();
-
-        device.WaitForIdle();
-
-        if (valid)
-        {
-            const uint8_t* pixels = readback->Map();
-
-            std::ofstream file(std::filesystem::u8path(path), std::ios::binary);
-
-            valid = pixels != nullptr && file.good();
-
-            if (valid)
-            {
-                file << "P6\n" << width << ' ' << height << "\n255\n";
-
-                for (uint32_t index = 0; index < width * height; ++index)
-                {
-                    file.write(reinterpret_cast<const char*>(pixels + index * 4), 3);
-                }
-
-                valid = file.good();
-            }
-
-            if (pixels != nullptr)
-            {
-                readback->Unmap();
-            }
-        }
-    }
-
-    device.DestroyTexture(sampled);
-
-    device.DestroyBuffer(packed);
-
-    device.DestroyBuffer(readback);
-
-    return valid;
-}
 } // namespace
 
 class EditorApplication::State final : public rc::RenderOverlay
@@ -380,13 +266,16 @@ public:
 
     bool BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewport) override
     {
-        if (m_context->sceneVisible)
+        if (m_context->sceneVisible && !m_controller->IsPreviewFrozen())
         {
             m_controller->GetViewport().BuildOverlays(graph);
         }
 
         // Before the UI pass, which samples the preview image in the same graph.
-        m_controller->GetMeshPreview().BuildGraph(graph);
+        if (!m_controller->IsPreviewFrozen())
+        {
+            m_controller->GetMeshPreview().BuildGraph(graph);
+        }
 
         const ImDrawData* data = m_ui.GetDrawData();
 
@@ -575,28 +464,60 @@ public:
 
         std::chrono::steady_clock::time_point previous = std::chrono::steady_clock::now();
 
+        const std::function<void()> redraw             = [this, &valid, &frame, &previous]() {
+            if (valid && !m_window->ShouldClose() && !m_exitRequested && (m_options.frames == 0 || frame < m_options.frames))
+            {
+                valid = RenderIteration(frame, previous);
+            }
+        };
         while (valid && !m_window->ShouldClose() && !m_exitRequested && (m_options.frames == 0 || frame < m_options.frames))
         {
             m_windowChrome->ProcessPendingAction();
-
             if (m_options.smokeTest && !m_controller->GetLoadState().IsActive())
             {
                 SmokeActions(frame);
             }
-
-            m_window->Update(false);
-
-            m_context->focused = m_window->IsFocused();
-
-            m_workspace->ProcessMenuCommands(*m_context);
-
-            ProcessFileDialog();
-
-            if (m_exitRequested)
+            m_window->Update(false, redraw);
+            redraw();
+            const runtime::RuntimeWindow& play = m_controller->GetPlaySession();
+            if (m_window->IsMinimized() && (!play.GetWindow() || play.GetWindow()->IsMinimized()))
             {
-                break;
+                platform::NativeWindow::WaitEvents(0.05, redraw);
             }
+        }
 
+        Shutdown();
+
+        return valid ? 0 : 1;
+    }
+
+    bool RenderIteration(uint32_t& frame, std::chrono::steady_clock::time_point& previous)
+    {
+        const bool returningToEditor = m_controller->GetPlaySession().IsClosing();
+        if (returningToEditor)
+        {
+            m_device->WaitForPreviousFrames();
+            m_playOverlay.Destroy();
+        }
+        m_controller->UpdatePlaySession();
+        if (returningToEditor && !m_options.hidden)
+        {
+            if (m_window->IsMinimized())
+            {
+                m_window->Restore();
+            }
+            m_window->Focus();
+        }
+        bool valid         = m_device->PollFrameSubmissions();
+
+        m_context->focused = m_window->IsFocused();
+
+        m_workspace->ProcessMenuCommands(*m_context);
+
+        ProcessFileDialog();
+
+        if (!m_exitRequested && valid)
+        {
             int width                                = 0;
 
             int height                               = 0;
@@ -609,8 +530,6 @@ public:
 
             if (width == 0 || height == 0)
             {
-                platform::NativeWindow::WaitEvents(0.05);
-
                 previous = std::chrono::steady_clock::now();
             }
             else
@@ -680,24 +599,25 @@ public:
                 EditorViewport& viewport           = m_controller->GetViewport();
 
                 const rc::RenderFrameResult result = m_device->GetRendererServer()->DispatchRenderWorkloads(
-                    viewport.GetRenderView(), this, m_context->sceneVisible);
+                    viewport.GetRenderView(), this, m_context->sceneVisible && !m_controller->IsPreviewFrozen());
 
                 const bool submitted = result == rc::RenderFrameResult::eSubmitted;
 
-                viewport.OnSubmitted(submitted);
+                viewport.OnSubmitted(submitted && m_context->sceneVisible && !m_controller->IsPreviewFrozen());
 
-                valid = m_controller->RecordRenderingResult(result);
+                valid =
+                    m_controller->RecordRenderingResult(result, m_context->sceneVisible && !m_controller->IsPreviewFrozen());
 
                 if (submitted && !m_options.capture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
                 {
-                    valid = CaptureFrame(*m_device, m_present->GetColorBackBuffer(), m_options.capture);
+                    valid = rc::CaptureSceneFrame(*m_device, m_present->GetColorBackBuffer(), m_options.capture);
                 }
 
                 if (valid && submitted && !m_options.sceneCapture.empty() && m_options.frames != 0
                     && frame + 1 == m_options.frames)
                 {
                     valid = viewport.HasScene() && viewport.GetRenderView().color != nullptr
-                         && CaptureFrame(*m_device, viewport.GetRenderView().color, m_options.sceneCapture);
+                         && rc::CaptureSceneFrame(*m_device, viewport.GetRenderView().color, m_options.sceneCapture);
                 }
 
                 m_device->NextFrame();
@@ -708,11 +628,27 @@ public:
                     ++frame;
                 }
             }
+            runtime::RuntimeWindow& play = m_controller->GetPlaySession();
+            if (valid && play.GetWindow() && !play.IsClosing())
+            {
+                if (!m_playOverlay.IsInitialized() && !m_playOverlay.Initialize(*m_device, *play.GetWindow()))
+                {
+                    LOGE("Could not initialize play diagnostics");
+                    play.Quit();
+                }
+                if (!play.IsClosing())
+                {
+                    m_log.AppendSince(m_playLogSequence, m_playLogs);
+                    if (m_playOverlay.Draw(play, m_playLogs, m_controller->GetRenderingState().GetDraft().scenePath,
+                                           "Editor Output", true))
+                    {
+                        m_playLogs.clear();
+                    }
+                    play.Render(&m_playOverlay);
+                }
+            }
         }
-
-        Shutdown();
-
-        return valid ? 0 : 1;
+        return valid;
     }
 
     void Shutdown()
@@ -720,6 +656,11 @@ public:
         if (m_device)
         {
             m_device->WaitForPreviousFrames();
+            m_playOverlay.Destroy();
+            if (m_controller)
+            {
+                m_controller->GetPlaySession().Shutdown();
+            }
 
             if (m_workspace)
             {
@@ -789,22 +730,25 @@ private:
         Environment
     };
 
-    FileDialogTarget                  m_fileDialog{FileDialogTarget::None};
-    EditorOptions                     m_options;
-    EditorLog                         m_log;
-    std::shared_ptr<EditorLogSink>    m_sink;
-    UniquePtr<platform::NativeWindow> m_window;
-    UniquePtr<EditorWindowChrome>     m_windowChrome;
-    UniquePtr<rc::RenderDevice>       m_device;
-    RHIViewport*                      m_present{nullptr};
-    RHITexture*                       m_iconTexture{nullptr};
-    ui::UIContext                     m_ui;
-    UniquePtr<ui::ImGuiRenderer>      m_renderer;
-    UniquePtr<EditorController>       m_controller;
-    UniquePtr<EditorContext>          m_context;
-    UniquePtr<EditorWorkspace>        m_workspace;
-    std::filesystem::path             m_settings;
-    bool                              m_exitRequested{false};
+    FileDialogTarget                     m_fileDialog{FileDialogTarget::None};
+    EditorOptions                        m_options;
+    EditorLog                            m_log;
+    uint64_t                             m_playLogSequence{0};
+    HeapVector<runtime::RuntimeLogEntry> m_playLogs;
+    std::shared_ptr<EditorLogSink>       m_sink;
+    UniquePtr<platform::NativeWindow>    m_window;
+    UniquePtr<EditorWindowChrome>        m_windowChrome;
+    UniquePtr<rc::RenderDevice>          m_device;
+    RHIViewport*                         m_present{nullptr};
+    RHITexture*                          m_iconTexture{nullptr};
+    ui::UIContext                        m_ui;
+    runtime::RuntimeOverlay              m_playOverlay;
+    UniquePtr<ui::ImGuiRenderer>         m_renderer;
+    UniquePtr<EditorController>          m_controller;
+    UniquePtr<EditorContext>             m_context;
+    UniquePtr<EditorWorkspace>           m_workspace;
+    std::filesystem::path                m_settings;
+    bool                                 m_exitRequested{false};
 };
 
 EditorApplication::EditorApplication(EditorOptions options) : m_state(MakeUnique<State>(std::move(options))) {}

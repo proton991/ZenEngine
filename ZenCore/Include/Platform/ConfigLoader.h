@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <sstream>
+#include <optional>
 #include "Math/Math.h"
 #include "Utils/Errors.h"
 #include "Templates/HashMap.h"
@@ -27,6 +28,19 @@ enum class AsyncComputeMode
 class ConfigLoader
 {
 public:
+    // Startup-only: install the launch snapshot before the singleton is first used.
+    // Even an empty explicit source suppresses all source-tree config file access.
+    static bool SetExplicitSource(std::string source, std::string baseDirectory)
+    {
+        const bool valid = !s_initialized;
+        if (valid)
+        {
+            s_explicitSource = std::move(source);
+            s_baseDirectory  = std::move(baseDirectory);
+        }
+        return valid;
+    }
+
     static ConfigLoader& GetInstance()
     {
         static ConfigLoader instance;
@@ -211,15 +225,14 @@ public:
     }
 
 private:
-    static std::string ResolveModelPath(const std::string& path)
+    std::string ResolveModelPath(const std::string& path) const
     {
         std::string                 resolved  = path;
         const std::filesystem::path modelPath = std::filesystem::u8path(path);
         if (!path.empty() && modelPath.is_relative())
         {
             // Config-relative paths also preserve the former repository/bin asset layout.
-            const std::u8string relative =
-                (std::filesystem::u8path(ZEN_CONFIG_PATH).parent_path() / modelPath).lexically_normal().generic_u8string();
+            const std::u8string relative = (m_baseDirectory / modelPath).lexically_normal().generic_u8string();
 
             resolved.assign(reinterpret_cast<const char*>(relative.data()), relative.size());
         }
@@ -243,10 +256,24 @@ private:
 
     ConfigLoader()
     {
-        LoadConfig(ZEN_CONFIG_PATH);
+        s_initialized = true;
+        if (s_explicitSource.has_value())
+        {
+            m_baseDirectory = std::filesystem::u8path(s_baseDirectory);
+            std::istringstream source(*s_explicitSource);
+            LoadConfig(source);
+        }
+        else
+        {
+            LoadConfig(ZEN_CONFIG_PATH);
+        }
     }
 
-    HashMap<std::string, std::string> m_configData;
+    inline static std::optional<std::string> s_explicitSource;
+    inline static std::string                s_baseDirectory;
+    inline static bool                       s_initialized{false};
+    std::filesystem::path                    m_baseDirectory{std::filesystem::u8path(ZEN_CONFIG_PATH).parent_path()};
+    HashMap<std::string, std::string>        m_configData;
 
     void LoadConfig(const std::string& configPath)
     {
