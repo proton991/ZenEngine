@@ -1,0 +1,28 @@
+# Text files are LF in the repository and in every working tree, whatever a
+# machine's core.autocrlf says. Editors and tools here write LF; CRLF checkouts
+# made rewritten files look modified with no content change.
+* text=auto eol=lf
+
+# cmd.exe needs CRLF batch files.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never convert binary assets, even when their first bytes look like text.
+*.bin binary
+*.dds binary
+*.exr binary
+*.gif binary
+*.glb binary
+*.hdr binary
+*.icns binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.ktx binary
+*.ktx2 binary
+*.otf binary
+*.pdf binary
+*.png binary
+*.spv binary
+*.ttf binary
+*.zenasset binary
