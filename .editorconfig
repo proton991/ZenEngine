@@ -1,0 +1,8 @@
+root = true
+
+# Matches .gitattributes, so editors never introduce line-ending-only changes.
+[*]
+end_of_line = lf
+
+[*.{bat,cmd}]
+end_of_line = crlf

@@ -1,11 +1,12 @@
-# Text files are LF in the repository and in every working tree, whatever a
-# machine's core.autocrlf says. Editors and tools here write LF; CRLF checkouts
-# made rewritten files look modified with no content change.
+# Every checkout gets exactly the committed bytes on Windows, macOS and Linux.
+# Text is LF in the repository and in every working tree, whatever a machine's
+# core.autocrlf or core.eol says; a CRLF file is normalized to LF when added.
 * text=auto eol=lf
 
-# cmd.exe needs CRLF batch files.
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# cmd.exe misreads labels in LF batch files, so these are committed with CRLF
+# and never converted.
+*.bat -text
+*.cmd -text
 
 # Never convert binary assets, even when their first bytes look like text.
 *.bin binary
