@@ -404,6 +404,14 @@ void EditorViewport::RequestPick(Vec2 normalized, const PickStamp& stamp)
 
 void EditorViewport::BuildPick(rc::RenderGraph& graph)
 {
+    // Keep a queued request until the older readback is discarded, even if its view
+    // has changed. Clearing it sooner would let that superseded result apply again.
+    if (m_pickRequested && !m_pickInFlight
+        && m_requestedStamp != MakePickStamp(m_editorScene, m_camera, m_selection, GetTargetRevision()))
+    {
+        m_pickRequested = false;
+    }
+
     if (m_sceneRendering.GetScene() && m_pickRequested && !m_pickInFlight)
     {
         HeapVector<PickDraw> draws;
@@ -604,7 +612,8 @@ bool EditorViewport::TakePickResult(PickResult& result)
 
     if (m_pickInFlight && m_pickRetirement.IsCompleteAt(m_device.GetCachedCompletedSerials()))
     {
-        uint8_t* bytes = m_pickReadback->Map();
+        // A newer click supersedes this readback even when the selection stamp is unchanged.
+        uint8_t* bytes = !m_pickRequested ? m_pickReadback->Map() : nullptr;
 
         if (bytes != nullptr)
         {

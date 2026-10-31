@@ -858,7 +858,8 @@ void EditorController::ProcessPicks()
 {
     PickResult result;
 
-    if (m_viewport.TakePickResult(result) && !IsPreviewFrozen() && result.stamp == MakeStamp())
+    if (m_viewport.TakePickResult(result) && !IsPreviewFrozen() && result.stamp.scene == m_scene.GetGeneration()
+        && result.stamp.selection == m_selection.GetRevision())
     {
         m_selection.SelectNode(result.node);
     }
@@ -868,15 +869,7 @@ void EditorController::Pick(Vec2 normalized)
 {
     if (!IsPreviewFrozen())
     {
-        Vec3 origin;
-
-        Vec3 direction;
-
-        m_camera.MakeRay(normalized, origin, direction);
-
-        m_selection.SelectNode(m_scene.PickBounds(origin, direction));
-
-        // Stamped after the immediate selection, which advances the selection revision.
+        // Keep the current selection until the visible-surface result is ready.
         m_viewport.RequestPick(normalized, MakeStamp());
     }
 }

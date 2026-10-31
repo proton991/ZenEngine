@@ -18,6 +18,23 @@ public:
     RenderSettingsPanel() : EditorPanel({"RenderSettings", "Rendering", EditorDockArea::Right}) {}
 
 private:
+    void Synchronize(EditorContext& context) override
+    {
+        const EditorSelection& selection = context.editor.GetSelection();
+        if (m_selectionRevision != selection.GetRevision())
+        {
+            // Preserve the saved tab on startup; only a new empty selection reveals Rendering.
+            const bool changed  = m_selectionRevision != UINT64_MAX;
+            m_selectionRevision = selection.GetRevision();
+            if (changed && selection.GetNode().generation == 0 && selection.GetAsset().generation == 0)
+            {
+                visible = true;
+                ImGui::SetNextWindowCollapsed(false);
+                ImGui::SetNextWindowFocus();
+            }
+        }
+    }
+
     void DrawEnvironment(EditorContext& context)
     {
         EditorController& editor = context.editor;
@@ -915,6 +932,8 @@ private:
 
         ImGui::EndDisabled();
     }
+
+    uint64_t m_selectionRevision{UINT64_MAX};
 
     int m_newLightType{1};
 

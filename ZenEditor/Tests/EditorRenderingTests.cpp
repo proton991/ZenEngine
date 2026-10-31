@@ -330,7 +330,7 @@ TEST_P(EditorRendering, PlayPreservesAnimatedCameraOnReturnAndNavigation)
     ResolvePick(*scope.device, editor);
     EXPECT_EQ(editor.GetSelection().GetNode(), first);
     editor.Pick(Vec2(0));
-    EXPECT_EQ(editor.GetSelection().GetNode(), NodeId{});
+    EXPECT_EQ(editor.GetSelection().GetNode(), first);
     ResolvePick(*scope.device, editor);
     EXPECT_EQ(editor.GetSelection().GetNode(), NodeId{});
     std::string error;
@@ -595,25 +595,52 @@ TEST_P(EditorRendering, OffscreenSceneAndAsyncVisibleSurfacePickingWithoutWindow
     EXPECT_EQ(editor.GetSelection().GetNode(), first);
 
     // This corner is inside the triangle's AABB but outside its visible surface.
-    // CPU feedback selects the mesh; the asynchronous ID pass must clear it.
+    // Keep the previous Inspector target until the asynchronous ID pass clears it.
     sg::AABB bounds;
 
     ASSERT_TRUE(editor.GetScene().GetBounds(first, bounds));
 
     const Vec3 corner = glm::mix(bounds.GetMin(), bounds.GetMax(), Vec3(0.9f, 0.9f, 0.5f));
 
+    const NodeId previous{editor.GetScene().GetGeneration(), 2};
+    editor.GetSelection().SelectNode(previous);
+    const uint64_t beforePick = editor.GetSelection().GetRevision();
     editor.Pick(Project(editor.GetCamera(), corner));
 
-    EXPECT_EQ(editor.GetSelection().GetNode(), first);
+    EXPECT_EQ(editor.GetSelection().GetNode(), previous);
+    EXPECT_EQ(editor.GetSelection().GetRevision(), beforePick);
 
     ResolvePick(*device, editor);
 
     EXPECT_EQ(editor.GetSelection().GetNode(), NodeId{});
+    EXPECT_EQ(editor.GetSelection().GetRevision(), beforePick + 1);
+
+    // A second click can arrive with the same stamp while the first readback is in flight.
+    // Only the latest click may publish, whether it selects a surface or empty space.
+    for (bool latestHits : {false, true})
+    {
+        editor.GetSelection().SelectNode(previous);
+        const uint64_t beforeClicks = editor.GetSelection().GetRevision();
+        const Vec2     hit(0.5f);
+        const Vec2     miss = Project(editor.GetCamera(), corner);
+        editor.Pick(latestHits ? miss : hit);
+        ASSERT_TRUE(Frame(*device, editor, false));
+        EXPECT_TRUE(editor.GetViewport().IsPickPending());
+        EXPECT_EQ(editor.GetSelection().GetNode(), previous);
+        EXPECT_EQ(editor.GetSelection().GetRevision(), beforeClicks);
+
+        editor.Pick(latestHits ? hit : miss);
+        EXPECT_EQ(editor.GetSelection().GetNode(), previous);
+        EXPECT_EQ(editor.GetSelection().GetRevision(), beforeClicks);
+        ResolvePick(*device, editor);
+        EXPECT_EQ(editor.GetSelection().GetNode(), latestHits ? first : NodeId{});
+        EXPECT_EQ(editor.GetSelection().GetRevision(), beforeClicks + 1);
+    }
 
     // A pick issued before a resize and a newer selection must not overwrite them.
     editor.Pick(Vec2(0.5f));
 
-    EXPECT_TRUE(Frame(*device, editor));
+    ASSERT_TRUE(Frame(*device, editor, false));
 
     ASSERT_TRUE(editor.ResizeViewport(411, 267));
 
@@ -647,6 +674,77 @@ TEST_P(EditorRendering, OffscreenSceneAndAsyncVisibleSurfacePickingWithoutWindow
 
     EXPECT_EQ(editor.GetPreferences().recentFiles.Get().size(), 2u);
 
+    DestroyDevice(*device, editor);
+}
+
+TEST_P(EditorRendering, PicksValidateViewAtRecordingAndSurviveLaterNavigation)
+{
+    UniquePtr<rc::RenderDevice> device = CreateDevice(GetParam());
+    EditorController            editor(*device);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    const NodeId first{editor.GetScene().GetGeneration(), 1};
+    const NodeId previous{editor.GetScene().GetGeneration(), 2};
+
+    for (bool recorded : {false, true})
+    {
+        for (bool resize : {false, true})
+        {
+            SCOPED_TRACE(testing::Message() << "recorded=" << recorded << " resize=" << resize);
+            ASSERT_TRUE(editor.ResizeViewport(320, 240));
+            editor.GetSelection().SelectNode(first);
+            editor.FrameSelection();
+            editor.GetSelection().SelectNode(previous);
+            const uint64_t revision = editor.GetSelection().GetRevision();
+            editor.Pick(Vec2(0.5f));
+            if (recorded)
+            {
+                ASSERT_TRUE(Frame(*device, editor, false));
+            }
+
+            if (resize)
+            {
+                ASSERT_TRUE(editor.ResizeViewport(411, 267));
+            }
+            else
+            {
+                CameraInput input;
+                input.dolly = 1;
+                editor.GetCamera().Apply(input);
+            }
+
+            ResolvePick(*device, editor);
+            EXPECT_EQ(editor.GetSelection().GetNode(), recorded ? first : previous);
+            EXPECT_EQ(editor.GetSelection().GetRevision(), revision + (recorded ? 1 : 0));
+        }
+    }
+
+    // A queued click whose view becomes stale must still supersede the older readback.
+    editor.GetSelection().SelectNode(first);
+    editor.FrameSelection();
+    editor.GetSelection().SelectNode(previous);
+    const uint64_t beforeClicks = editor.GetSelection().GetRevision();
+    editor.Pick(Vec2(0.5f));
+    ASSERT_TRUE(Frame(*device, editor, false));
+    editor.Pick(Vec2(0));
+    CameraInput input;
+    input.dolly = 1;
+    editor.GetCamera().Apply(input);
+    ResolvePick(*device, editor);
+    EXPECT_EQ(editor.GetSelection().GetNode(), previous);
+    EXPECT_EQ(editor.GetSelection().GetRevision(), beforeClicks);
+
+    // The captured object identity cannot carry over to a replacement scene.
+    editor.GetSelection().SelectNode(first);
+    editor.FrameSelection();
+    editor.GetSelection().SelectNode(previous);
+    editor.Pick(Vec2(0.5f));
+    ASSERT_TRUE(Frame(*device, editor, false));
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    const uint64_t afterLoad = editor.GetSelection().GetRevision();
+    ResolvePick(*device, editor);
+    EXPECT_EQ(editor.GetSelection().GetNode(), NodeId{});
+    EXPECT_EQ(editor.GetSelection().GetRevision(), afterLoad);
     DestroyDevice(*device, editor);
 }
 

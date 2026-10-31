@@ -103,9 +103,11 @@ public:
 
     uint64_t GetTargetRevision() const;
 
+    // Queued requests must still match their scene, camera, target and selection at recording.
     void RequestPick(Vec2 normalized, const PickStamp& stamp);
 
-    // Returns a result once its readback completes; never waits for the GPU.
+    // Returns the latest requested result once its readback completes; never waits for the GPU.
+    // A newer queued request discards an older in-flight result.
     bool TakePickResult(PickResult& result);
 
     void BuildOverlays(rc::RenderGraph& graph);

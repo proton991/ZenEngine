@@ -128,11 +128,11 @@ public:
 
     bool TakeEnvironmentFileOpenRequest();
 
-    // Applies completed GPU picks that still match the current scene, camera, target
-    // and selection.
+    // Applies completed GPU picks that still match the current scene and selection.
+    // Camera/target changes after recording do not invalidate the captured surface.
     void ProcessPicks();
 
-    // Immediate bounds selection, refined later by the GPU surface pick.
+    // Queues a GPU surface pick; the current selection remains until its result is ready.
     void Pick(Vec2 normalized);
 
     bool ResizeViewport(uint32_t width, uint32_t height);

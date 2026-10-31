@@ -421,7 +421,9 @@ Assets lists the open scene's meshes, materials, textures and animations, with
 category filters, search and grid/list views. Selecting one shows it in the
 Inspector, including links to the materials, meshes and nodes that reference it.
 Selecting a node or asset activates the Inspector's dock tab and reopens it if
-closed, including clicking the already selected item. The Inspector's permanent
+closed, including clicking the already selected item. Clicking empty Scene space
+clears selection and activates Rendering, reopening it if closed. Manual tab
+changes remain in effect until the next selection change. The Inspector's permanent
 Selection tab follows selection in Hierarchy, Scene and Assets. A reference link
 from Selection opens a closable tab without changing the
 scene selection. Further links navigate within that tab; Ctrl/Cmd-click opens or
@@ -486,7 +488,7 @@ headers of a layer it does not link:
 
 | Folder / target | Responsibility | Direct dependencies |
 | --- | --- | --- |
-| `Model/` `ZenEditorModel` | Scene parsing and the read-only `EditorScene` (node lookup, child lists, hierarchy filter, inspection, bounds, CPU picking), `SceneAssetIndex` and CPU previews, `EditorSelection` and pick stamps, `InspectorNavigation` tabs and history, `EditorCamera` and `ViewAxes` orientation math, the `EditorActions` registry, `EditorPreferences` and recent files, environment discovery, mesh preview settings, logs | `ZenCore` |
+| `Model/` `ZenEditorModel` | Scene parsing and the read-only `EditorScene` (node lookup, child lists, hierarchy filter, inspection, bounds), `SceneAssetIndex` and CPU previews, `EditorSelection` and pick stamps, `InspectorNavigation` tabs and history, `EditorCamera` and `ViewAxes` orientation math, the `EditorActions` registry, `EditorPreferences` and recent files, environment discovery, mesh preview settings, logs | `ZenCore` |
 | `Rendering/` `ZenEditorRender` | `EditorViewport`: GPU scene publication as a prepare/commit/discard transaction, offscreen images, preview textures, selection bounds and GPU pick results. `MeshPreviewRenderer`: the Inspector's material-free mesh image. Reads the model, never changes it | `ZenEditorModel` |
 | `Services/` `ZenEditorServices` | `EditorController`: owns the editor state, runs transactions across model and GPU (loading, applying picks, framing) and registers the core actions | `ZenEditorRender` |
 | `Platform/` `ZenEditorPlatform` | Native title-bar hit testing, window actions, and macOS system menus; no ImGui types | `ZenEditorModel` |
@@ -533,11 +535,17 @@ HDR, linear-light UI blending and MSAA resolution are not provided by this viewe
 
 ## Picking contract
 
-CPU bounds picking gives immediate feedback. An R32_UINT object-ID pass followed by
-a one-pixel compute extraction and asynchronous buffer readback refines selection.
-Results carry scene, camera, target and selection revisions; stale results cannot
-overwrite a newer action. No ImGui object or synchronous GPU wait is needed to apply
-a result. IDs map to scene-generation + node-index identities, never display names.
+Scene clicks retain the current selection and Inspector content until an R32_UINT
+object-ID pass, one-pixel compute extraction and asynchronous buffer readback finish.
+Only the completed visible-surface result updates selection; bounding-box candidates
+are not published. A newer click supersedes an older in-flight result even if the
+selection has not changed.
+
+Queued requests must match the scene, camera, target and selection when their pass
+is recorded. Recorded results survive later camera movement or viewport resizing,
+but scene replacement or a newer selection still invalidates them. No ImGui object
+or synchronous GPU wait is needed to apply a result. IDs map to scene-generation +
+node-index identities, never display names.
 
 The ID pass reuses scene geometry/transforms and material alpha-mask/backface rules.
 It includes visible opaque and alpha-masked triangles. Blended or transmissive

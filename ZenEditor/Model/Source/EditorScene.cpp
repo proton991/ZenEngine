@@ -2,44 +2,12 @@
 #include "Editor/Model/EditorScene.h"
 #include "Editor/Model/EditorText.h"
 #include "AssetLib/SceneLoader.h"
-#include <algorithm>
-#include <limits>
+#include <utility>
 
 namespace zen::editor
 {
 namespace
 {
-bool RayBounds(const sg::AABB& bounds, Vec3 origin, Vec3 direction, float& distance)
-{
-    float low  = 0.0f;
-
-    float high = std::numeric_limits<float>::max();
-
-    bool hit   = true;
-
-    for (int axis = 0; axis < 3; ++axis)
-    {
-        if (std::abs(direction[axis]) < 1e-8f)
-        {
-            hit = hit && origin[axis] >= bounds.GetMin()[axis] && origin[axis] <= bounds.GetMax()[axis];
-        }
-        else
-        {
-            const float first  = (bounds.GetMin()[axis] - origin[axis]) / direction[axis];
-
-            const float second = (bounds.GetMax()[axis] - origin[axis]) / direction[axis];
-
-            low                = std::max(low, std::min(first, second));
-
-            high               = std::min(high, std::max(first, second));
-        }
-    }
-
-    distance = low;
-
-    return hit && high >= low;
-}
-
 const HeapVector<NodeId>& GetEmptyNodeList()
 {
     static const HeapVector<NodeId> empty;
@@ -289,38 +257,6 @@ bool EditorScene::GetMeshBounds(SceneAssetId mesh, sg::AABB& bounds) const
         source != nullptr && source->GetNumIndices() > 0 && glm::all(glm::lessThanEqual(bounds.GetMin(), bounds.GetMax()));
 
     return valid;
-}
-
-NodeId EditorScene::PickBounds(Vec3 origin, Vec3 direction) const
-{
-    NodeId nearest;
-
-    float distance = std::numeric_limits<float>::max();
-
-    for (const std::pair<const uint32_t, const sg::Node*>& entry : m_nodes)
-    {
-        const sg::Node& node = *entry.second;
-
-        if (node.IsVisible() && node.selectable && node.HasComponent<sg::Mesh>())
-        {
-            sg::AABB bounds;
-
-            float current = 0;
-
-            const NodeId id{m_generation, entry.first};
-
-            // Ties keep the lower node index, independent of hash-map iteration order.
-            if (GetBounds(id, bounds) && RayBounds(bounds, origin, direction, current)
-                && (current < distance || (current == distance && id.index < nearest.index)))
-            {
-                distance = current;
-
-                nearest  = id;
-            }
-        }
-    }
-
-    return nearest;
 }
 
 const SceneAssetIndex& EditorScene::GetAssets() const

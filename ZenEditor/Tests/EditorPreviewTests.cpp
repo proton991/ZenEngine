@@ -241,7 +241,7 @@ void DrawDockedPanels(const HeapVector<UniquePtr<EditorPanel>>& panels, EditorCo
     ImGui::Render();
 }
 
-TEST_P(EditorPreview, SelectionRevealsDockedInspectorWithoutOverridingManualTabChanges)
+TEST_P(EditorPreview, SelectionSwitchesRightDockWithoutOverridingManualTabChanges)
 {
     platform::NativeWindow window({"Editor panel selection test", false, 900, 700, 0, false});
 
@@ -365,6 +365,37 @@ TEST_P(EditorPreview, SelectionRevealsDockedInspectorWithoutOverridingManualTabC
             EXPECT_EQ(editor.GetInspector().GetTabs().size(), 2u);
         }
     }
+
+    // Publish an empty surface result as ProcessPicks does after GPU completion.
+    editor.GetSelection().SelectNode({});
+    ASSERT_EQ(editor.GetSelection().GetNode().generation, 0u);
+    ASSERT_EQ(editor.GetSelection().GetAsset().generation, 0u);
+    DrawDockedPanels(panels, context);
+    DrawDockedPanels(panels, context);
+    EXPECT_EQ(inspector->DockNode->VisibleWindow, rendering);
+
+    // The user can still open the empty Inspector without the next frame switching back.
+    ImGui::SetWindowFocus(inspector->Name);
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        DrawDockedPanels(panels, context);
+    }
+    EXPECT_EQ(inspector->DockNode->VisibleWindow, inspector);
+
+    // Another background click works even with no selection and Rendering closed.
+    panels[0]->visible = false;
+    DrawDockedPanels(panels, context);
+    editor.GetSelection().SelectNode({});
+    DrawDockedPanels(panels, context);
+    DrawDockedPanels(panels, context);
+    EXPECT_TRUE(panels[0]->visible);
+    EXPECT_EQ(inspector->DockNode->VisibleWindow, rendering);
+
+    // Selecting geometry again restores the normal Inspector behavior.
+    editor.GetSelection().SelectNode(node);
+    DrawDockedPanels(panels, context);
+    DrawDockedPanels(panels, context);
+    EXPECT_EQ(inspector->DockNode->VisibleWindow, inspector);
 
     panels.clear();
 

@@ -32,7 +32,8 @@ private:
     uint64_t           m_revision{0};
 };
 
-// Inputs that decide whether a GPU pick result still describes what the user sees.
+// All inputs must match when recording a pick. After recording, only scene and
+// selection revisions must still match; the captured view survives camera/target changes.
 struct PickStamp
 {
     uint64_t scene{0};

@@ -181,7 +181,7 @@ TEST(EditorModel, PickStampsChangeWithCameraTargetSceneAndSelection)
     EXPECT_NE(selected, MakePickStamp(scene, camera, selection, 10));
 }
 
-TEST(EditorModel, BoundsPickingAndProjectionDoNotNeedAWindow)
+TEST(EditorModel, CameraProjectionAndSceneBoundsDoNotNeedAWindow)
 {
     EditorScene scene;
 
@@ -205,13 +205,13 @@ TEST(EditorModel, BoundsPickingAndProjectionDoNotNeedAWindow)
 
     camera.MakeRay(Vec2(0.5f), origin, direction);
 
-    EXPECT_EQ(scene.PickBounds(origin, direction), id);
+    EXPECT_NEAR(glm::dot(glm::normalize(bounds.GetCenter() - origin), direction), 1.0f, 0.0001f);
 
     camera.SetOrthographic(true);
 
     camera.MakeRay(Vec2(0.5f), origin, direction);
 
-    EXPECT_EQ(scene.PickBounds(origin, direction), id);
+    EXPECT_NEAR(glm::dot(glm::normalize(bounds.GetCenter() - origin), direction), 1.0f, 0.0001f);
 
     Vec3 firstOrigin;
 

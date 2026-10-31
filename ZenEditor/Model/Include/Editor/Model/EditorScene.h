@@ -47,9 +47,6 @@ public:
     // Current pose bounds in mesh vertex space, including normalization baked into skinned vertices.
     bool GetMeshBounds(SceneAssetId mesh, sg::AABB& bounds) const;
 
-    // Nearest visible, selectable mesh node whose bounds the ray crosses.
-    NodeId PickBounds(Vec3 origin, Vec3 direction) const;
-
     const SceneAssetIndex& GetAssets() const;
 
 private:

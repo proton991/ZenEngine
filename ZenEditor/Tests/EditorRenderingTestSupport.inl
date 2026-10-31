@@ -36,7 +36,7 @@ std::string Fixture(const char* name)
     return std::string(ZEN_EDITOR_FIXTURES) + name;
 }
 
-bool Frame(rc::RenderDevice& device, EditorController& editor)
+bool Frame(rc::RenderDevice& device, EditorController& editor, bool processPicks = true)
 {
     EditorViewport& viewport = editor.GetViewport();
 
@@ -62,7 +62,10 @@ bool Frame(rc::RenderDevice& device, EditorController& editor)
 
     device.NextFrame();
 
-    editor.ProcessPicks();
+    if (processPicks)
+    {
+        editor.ProcessPicks();
+    }
 
     return valid;
 }
