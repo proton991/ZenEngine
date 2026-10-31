@@ -41,11 +41,11 @@ public:
     bool                                     Quit();
     void                                     Update();
     void                                     Shutdown();
-    bool                                     Render(rc::RenderOverlay* overlay = nullptr);
-    bool                                     BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewport) override;
-    bool                                     IsActive() const;
-    bool                                     IsClosing() const;
-    runtime::RuntimeState                    GetState() const
+    bool                  Render(rc::RenderOverlay* overlay = nullptr, rc::RDGDebugSnapshot* capture = nullptr);
+    bool                  BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewport) override;
+    bool                  IsActive() const;
+    bool                  IsClosing() const;
+    runtime::RuntimeState GetState() const
     {
         return m_state;
     }

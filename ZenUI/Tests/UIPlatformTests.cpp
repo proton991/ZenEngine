@@ -89,6 +89,27 @@ TEST(UIPlatform, SDLEventsReachEachWindowContextOnceAndUnsubscribeOnDestruction)
     EXPECT_TRUE(replacement.Init(first));
 }
 
+TEST(UIPlatform, ExplicitCurrentContextAnchorsPopupLifetimeToItsOwner)
+{
+    platform::NativeWindow editor({"Editor context", true, 320, 240, 0, false});
+    platform::NativeWindow play({"Play context", true, 320, 240, 0, false});
+    platform::NativeWindow popup({"Popup context", true, 320, 240, 0, false});
+    UIContext              editorUI;
+    UIContext              playUI;
+    UIContext              popupUI;
+    ASSERT_TRUE(editorUI.Init(editor));
+    ImGuiContext* editorContext = ImGui::GetCurrentContext();
+    ASSERT_TRUE(playUI.Init(play));
+    EXPECT_NE(ImGui::GetCurrentContext(), editorContext);
+    editorUI.MakeCurrent();
+    ASSERT_TRUE(popupUI.Init(popup));
+    playUI.Destroy();
+    popupUI.MakeCurrent();
+    EXPECT_NE(ImGui::GetCurrentContext(), editorContext);
+    popupUI.Destroy();
+    EXPECT_EQ(ImGui::GetCurrentContext(), editorContext);
+}
+
 #if defined(ZEN_WIN32)
 TEST(UIPlatform, BorderlessWindowKeepsWorkAreaAcrossRestoreAndMaximize)
 {

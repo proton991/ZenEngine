@@ -310,7 +310,7 @@ void RenderDevice::Destroy()
     }
 }
 
-RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
+RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport, RDGDebugSnapshot* capture)
 {
     RenderFrameResult result = RenderFrameResult::eFailed;
 
@@ -326,7 +326,8 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
     }
     else if (viewport != nullptr && m_frameRDG.Get() != nullptr && m_frameActive && !m_frameWaitFailed)
     {
-        RenderGraph& graph = *m_frameRDG;
+        RenderGraph& graph   = *m_frameRDG;
+        graph.m_debugCapture = capture;
 
         RDGExecutor::ExecutionPlan plan;
 
@@ -413,6 +414,10 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
     }
 #endif
 
+    if (m_frameRDG)
+    {
+        m_frameRDG->m_debugCapture = nullptr;
+    }
     CollectDestroyedResourceHistory();
 
     return result;

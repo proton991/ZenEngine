@@ -203,7 +203,7 @@ void RuntimeWindow::ProcessShortcuts()
     }
 }
 
-bool RuntimeWindow::Render(rc::RenderOverlay* overlay)
+bool RuntimeWindow::Render(rc::RenderOverlay* overlay, rc::RDGDebugSnapshot* capture)
 {
     bool valid = true;
     if (m_window && m_present && !IsClosing())
@@ -241,9 +241,9 @@ bool RuntimeWindow::Render(rc::RenderOverlay* overlay)
             }
             if (valid)
             {
-                m_overlay = overlay;
-                const rc::RenderFrameResult result =
-                    m_device.GetRendererServer()->DispatchRenderWorkloads(m_target.GetView(), this, drawScene, m_present);
+                m_overlay                          = overlay;
+                const rc::RenderFrameResult result = m_device.GetRendererServer()->DispatchRenderWorkloads(
+                    m_target.GetView(), this, drawScene, m_present, capture);
                 m_overlay = nullptr;
                 valid     = result != rc::RenderFrameResult::eBlocked && result != rc::RenderFrameResult::eFailed
                          && rc::TrackDeclinedFrames(result, m_declines);

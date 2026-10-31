@@ -36,6 +36,14 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
         {
             options.sceneCapture = argument.substr(16);
         }
+        else if (argument.starts_with("--capture-graph="))
+        {
+            options.graphCapture = argument.substr(16);
+        }
+        else if (argument.starts_with("--graph-select="))
+        {
+            options.graphSelect = argument.substr(15);
+        }
         else if (argument.starts_with("--debug="))
         {
             const std::string_view names[] = {"final",       "depth",       "albedo", "normal",           "shadow",
@@ -111,7 +119,8 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
         options.frames = 40;
     }
 
-    valid = valid && ((options.capture.empty() && options.sceneCapture.empty()) || options.frames != 0)
+    valid = valid
+         && ((options.capture.empty() && options.sceneCapture.empty() && options.graphCapture.empty()) || options.frames != 0)
          && (options.environment.empty() || !options.scene.empty());
 
     return valid;
@@ -138,7 +147,8 @@ int EditorMain(int argc, char** argv)
             "[--environment=path.hdr|path.ktx|path.dds] [--mode=pbr|gi|voxels] "
             "[--enable-validation|--disable-validation] "
             "[--debug=final|depth|albedo|normal|shadow|voxels|voxel-slice|gi-raw|gi-reconstructed|gi-history|gi-hit-miss|gi-rejection] "
-            "[--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--capture-scene=path.ppm] [--smoke-test] [--hidden] [--windowed]\n");
+            "[--scale=1|1.5|2] [--settings-dir=path] [--capture=path.ppm] [--capture-scene=path.ppm] "
+            "[--capture-graph=path.ppm] [--graph-select=pass] [--smoke-test] [--hidden] [--windowed]\n");
         std::fprintf(stderr, "Supported scene extensions: %s\n", zen::asset::GetSourceSceneFileFilterExtensions().c_str());
     }
 

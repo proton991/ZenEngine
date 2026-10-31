@@ -679,6 +679,7 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
                 m_snapshot.diagnostics.clear();
 
                 m_snapshot.graph            = graph.m_rdgTag;
+                m_snapshot.sceneDispatch    = graph.m_sceneDispatch;
 
                 m_snapshot.transferOnly     = transfer;
 

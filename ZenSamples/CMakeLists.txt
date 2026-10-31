@@ -90,6 +90,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderGraph.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RDGMetrics.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RDGDebugSnapshot.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp

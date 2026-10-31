@@ -1,4 +1,5 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGDebugSnapshot.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RHI/RHICommandList.h"
@@ -1121,6 +1122,13 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
                 graph->m_activeMetrics = &m_metrics;
             }
 
+            RDGDebugSnapshot debugCandidate;
+            if (graph->m_debugCapture != nullptr)
+            {
+                const RDGDebugExecutionMode mode = grouped ? RDGDebugExecutionMode::Grouped : RDGDebugExecutionMode::Graphics;
+                debugCandidate =
+                    RDGDebugSnapshot::Capture(*graph, plan.schedule, grouped ? scheduledNodes : graph->m_compiledNodes, mode);
+            }
             graph->m_inExecution = true;
 
             bool success = graph->Execute(lists, nextTracker, grouped ? scheduledNodes : graph->m_compiledNodes, grouped);
@@ -1172,6 +1180,11 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
                 if (observe)
                 {
                     m_metrics.End(submissionCPUUs);
+                }
+                if (graph->m_debugCapture != nullptr)
+                {
+                    debugCandidate.accepted = true;
+                    *graph->m_debugCapture  = std::move(debugCandidate);
                 }
 
                 result = true;
@@ -5737,6 +5750,7 @@ void RenderGraph::ResetBuildState()
     }
     else
     {
+        m_sceneDispatch = false;
         ++m_buildGeneration;
 
         m_openTransferRecorders = 0;

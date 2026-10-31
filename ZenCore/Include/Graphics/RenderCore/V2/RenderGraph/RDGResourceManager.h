@@ -271,6 +271,7 @@ private:
     friend class RDGExecutor;
     friend class RenderDevice;
     friend class RDGMetrics;
+    friend struct RDGDebugSnapshot;
     friend class RDGPassCompiler;
     friend class RDGTransferPassCmdRecorder;
     struct Allocation

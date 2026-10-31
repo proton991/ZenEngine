@@ -165,9 +165,14 @@ void UIContext::Destroy()
     }
 }
 
-void UIContext::BeginFrame(float deltaSeconds, unsigned int targetWidth, unsigned int targetHeight)
+void UIContext::MakeCurrent()
 {
     ImGui::SetCurrentContext(m_context);
+}
+
+void UIContext::BeginFrame(float deltaSeconds, unsigned int targetWidth, unsigned int targetHeight)
+{
+    MakeCurrent();
 
 #if defined(ZEN_WINDOW_SDL3)
     ImGui_ImplSDL3_NewFrame();
@@ -208,7 +213,7 @@ void UIContext::BeginFrame(float deltaSeconds, unsigned int targetWidth, unsigne
 
 void UIContext::EndFrame()
 {
-    ImGui::SetCurrentContext(m_context);
+    MakeCurrent();
 
     ImGui::Render();
 
@@ -217,14 +222,14 @@ void UIContext::EndFrame()
 
 ImFontAtlas& UIContext::GetFonts()
 {
-    ImGui::SetCurrentContext(m_context);
+    MakeCurrent();
 
     return *ImGui::GetIO().Fonts;
 }
 
 const ImDrawData* UIContext::GetDrawData()
 {
-    ImGui::SetCurrentContext(m_context);
+    MakeCurrent();
 
     return ImGui::GetDrawData();
 }

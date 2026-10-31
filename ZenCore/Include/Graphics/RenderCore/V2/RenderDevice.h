@@ -95,7 +95,7 @@ public:
 
     // Executes the RDG on the render thread. In threaded mode, success means the RHI executor
     // accepted the recorded frame; poll/flush confirms native submission.
-    RenderFrameResult ExecuteRenderGraph(RHIViewport* pViewport);
+    RenderFrameResult ExecuteRenderGraph(RHIViewport* pViewport, RDGDebugSnapshot* capture = nullptr);
 
     // Poll ready submissions and recreate the swapchain before scene update and graph declaration.
     void PrepareFrame();

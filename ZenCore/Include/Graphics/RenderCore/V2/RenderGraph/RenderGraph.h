@@ -158,6 +158,7 @@ private:
 
 class RenderGraph;
 struct RDGCompiledNode;
+struct RDGDebugSnapshot;
 
 class RDGExecutor
 {
@@ -386,6 +387,11 @@ public:
 
     bool End();
 
+    void SetSceneDispatch(bool scene)
+    {
+        m_sceneDispatch = scene;
+    }
+
     const HeapVector<RDGResult>& GetWarnings() const
     {
         return m_warnings;
@@ -425,6 +431,7 @@ public:
 private:
     friend class RDGExecutor;
     friend class RDGMetrics;
+    friend struct RDGDebugSnapshot;
     friend class RDGPassCompiler;
     friend class RenderDevice;
     friend class RDGPassCmdEncoder;
@@ -675,8 +682,10 @@ private:
 
     RenderDevice* m_pRenderDevice{nullptr};
 
-    RHICommandList* m_pCmdList{nullptr};
-    RDGMetrics*     m_activeMetrics{nullptr}; // Active for captures or continuous validation.
+    RHICommandList*   m_pCmdList{nullptr};
+    bool              m_sceneDispatch{false};
+    RDGDebugSnapshot* m_debugCapture{nullptr};  // Scoped by the presenting execution only.
+    RDGMetrics*       m_activeMetrics{nullptr}; // Active for captures or continuous validation.
 
     PoolAllocator<LinearAllocator> m_poolAlloc;
 

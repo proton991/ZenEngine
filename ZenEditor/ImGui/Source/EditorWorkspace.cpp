@@ -396,7 +396,8 @@ void EditorWorkspace::UpdateNativeMenus(EditorContext& context)
 
         view.label    = "View";
 
-        view.children = {std::move(panels), MakeActionMenuItem(registry, actions::ResetLayout, blocked)};
+        view.children = {std::move(panels), MakeActionMenuItem(registry, actions::ShowRenderGraph, blocked),
+                         MakeActionMenuItem(registry, actions::ResetLayout, blocked)};
 
         EditorMenuItem scene;
 
@@ -568,6 +569,7 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
                     ImGui::EndMenu();
                 }
 
+                DrawActionMenuItem(registry, actions::ShowRenderGraph);
                 DrawActionMenuItem(registry, actions::ResetLayout);
 
                 ImGui::EndMenu();
@@ -658,11 +660,9 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
     }
 }
 
-void EditorWorkspace::DrawToolbar(EditorContext& context)
+void DrawEditorToolbar(EditorActions& registry)
 {
-    EditorActions& registry = context.editor.GetActions();
-
-    // Open is the only labeled button: it is the first thing to do in an empty editor.
+    // Keep Open labeled: it is the first thing to do in an empty editor.
     DrawActionButton(registry, actions::Open, EditorIcon::Open, true);
 
     ImGui::SameLine();
@@ -677,47 +677,35 @@ void EditorWorkspace::DrawToolbar(EditorContext& context)
 
     DrawActionButton(registry, actions::Redo, EditorIcon::Redo);
 
-    const float scale    = EditorScale();
+    const float scale                = EditorScale();
 
-    const float runWidth = ToolbarButtonsWidth(3);
+    const float runWidth             = ToolbarButtonsWidth(3);
 
-    const float editEnd  = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
+    const float editEnd              = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
 
-    const float padding  = ImGui::GetStyle().WindowPadding.x;
+    const float padding              = ImGui::GetStyle().WindowPadding.x;
 
-    // Run controls are centered in the window; narrow windows place them after the edit
-    // group, and windows too narrow for them omit them.
-    const float centeredX = (ImGui::GetWindowWidth() - runWidth) * 0.5f;
-
-    const float gap       = 24 * scale;
-
-    if (centeredX >= editEnd + gap || editEnd + gap + runWidth <= ImGui::GetWindowWidth() - padding)
+    const float         gap          = 12 * scale;
+    const EditorAction* graphAction  = registry.Find(actions::ShowRenderGraph);
+    const std::string   graphCaption = graphAction != nullptr ? GetActionCaption(*graphAction) : std::string{};
+    const float         labelWidth   = EditorToolButtonWidth(graphCaption.c_str());
+    const float         right        = ImGui::GetWindowWidth() - padding;
+    const float         runStart     = editEnd + gap;
+    const bool          labeled      = right - runStart - runWidth - gap >= labelWidth;
+    const float         graphWidth   = labeled ? labelWidth : EditorToolButtonWidth();
+    const float         graphX       = right - graphWidth;
+    const float runX = std::max(runStart, std::min((ImGui::GetWindowWidth() - runWidth) * 0.5f, graphX - gap - runWidth));
+    if (runX + runWidth + gap <= graphX)
     {
-        ImGui::SameLine(std::max(centeredX, editEnd + gap));
-
+        ImGui::SameLine(runX);
         DrawActionButton(registry, actions::Play, EditorIcon::Play);
-
         ImGui::SameLine();
-
         DrawActionButton(registry, actions::Pause, EditorIcon::Pause);
-
         ImGui::SameLine();
-
         DrawActionButton(registry, actions::Stop, EditorIcon::Stop);
     }
-
-    const char* badge  = "SCENE VIEWER";
-
-    const float badgeX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(badge).x - padding;
-
-    if (badgeX > ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + gap)
-    {
-        ImGui::SameLine(badgeX);
-
-        ImGui::AlignTextToFramePadding();
-
-        ImGui::TextDisabled("%s", badge);
-    }
+    ImGui::SameLine(graphX);
+    DrawActionButton(registry, actions::ShowRenderGraph, EditorIcon::Graph, labeled);
 }
 
 void EditorWorkspace::DrawStatusBar(EditorContext& context)
@@ -929,7 +917,7 @@ void EditorWorkspace::Draw(EditorContext& context)
 
     if (toolbar)
     {
-        DrawToolbar(context);
+        DrawEditorToolbar(context.editor.GetActions());
     }
 
     ImGui::End();

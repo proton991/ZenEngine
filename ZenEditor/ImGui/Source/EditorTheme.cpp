@@ -42,13 +42,15 @@ void ApplyEditorTheme(float scale)
     {
         io.Fonts->Clear();
 
-        ImFontConfig font;
+        ImFontConfig         font;
+        static const ImWchar ranges[] = {0x20, 0xff, 0x2026, 0x2026, 0x2190, 0x2192, 0};
+        font.GlyphRanges              = ranges;
 
-        font.SizePixels        = 16.0f * scale;
+        font.SizePixels               = 16.0f * scale;
 
-        font.RasterizerDensity = io.DisplayFramebufferScale.x;
+        font.RasterizerDensity        = io.DisplayFramebufferScale.x;
 
-        io.FontDefault         = io.Fonts->AddFontFromFileTTF(ZEN_EDITOR_FONT_PATH, font.SizePixels, &font);
+        io.FontDefault                = io.Fonts->AddFontFromFileTTF(ZEN_EDITOR_FONT_PATH, font.SizePixels, &font);
     }
     else
     {
@@ -226,6 +228,28 @@ void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color)
 
     switch (icon)
     {
+        case EditorIcon::Refresh:
+            draw.PathArcTo(ImVec2(x + s * 0.5f, y + s * 0.5f), s * 0.38f, 0.2f, 5.2f, 20);
+            draw.PathStroke(color, 0, stroke);
+            draw.AddTriangleFilled(ImVec2(x + s * 0.9f, y + s * 0.05f), ImVec2(x + s * 0.85f, y + s * 0.46f),
+                                   ImVec2(x + s * 0.52f, y + s * 0.2f), color);
+            break;
+        case EditorIcon::Fit:
+            for (uint32_t corner = 0; corner < 4; ++corner)
+            {
+                const float px = x + (corner % 2 == 0 ? 0 : s);
+                const float py = y + (corner < 2 ? 0 : s);
+                draw.AddLine(ImVec2(px, py), ImVec2(px + (corner % 2 == 0 ? 1 : -1) * s * 0.32f, py), color, stroke);
+                draw.AddLine(ImVec2(px, py), ImVec2(px, py + (corner < 2 ? 1 : -1) * s * 0.32f), color, stroke);
+            }
+            break;
+        case EditorIcon::Graph:
+            draw.AddLine(ImVec2(x + s * 0.25f, y + s * 0.25f), ImVec2(x + s * 0.75f, y + s * 0.25f), color, stroke);
+            draw.AddLine(ImVec2(x + s * 0.25f, y + s * 0.25f), ImVec2(x + s * 0.75f, y + s * 0.75f), color, stroke);
+            draw.AddRectFilled(ImVec2(x, y), ImVec2(x + s * 0.4f, y + s * 0.4f), color, 2);
+            draw.AddRectFilled(ImVec2(x + s * 0.6f, y), ImVec2(x + s, y + s * 0.4f), color, 2);
+            draw.AddRectFilled(ImVec2(x + s * 0.6f, y + s * 0.6f), ImVec2(x + s, y + s), color, 2);
+            break;
         case EditorIcon::Play:
             draw.AddTriangleFilled(ImVec2(x + s * 0.2f, y), ImVec2(x + s, y + s * 0.5f), ImVec2(x + s * 0.2f, y + s), color);
             break;
@@ -307,10 +331,18 @@ void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color)
     }
 }
 
-namespace
-{
 // Sizes the button from the measured icon and label instead of padding the caption
 // with spaces, so the icon never overlaps the text at any font size.
+float EditorToolButtonWidth(const char* label)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    return label != nullptr
+             ? 2 * style.FramePadding.x + 14.0f * EditorScale() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x
+             : ImGui::GetFrameHeight();
+}
+
+namespace
+{
 bool DrawIconButton(const char* id, const char* label, EditorIcon icon, bool enabled, const char* tooltip)
 {
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -319,9 +351,7 @@ bool DrawIconButton(const char* id, const char* label, EditorIcon icon, bool ena
 
     const float height      = ImGui::GetFrameHeight();
 
-    const float labelWidth  = label != nullptr ? style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x : 0.0f;
-
-    const float width       = label != nullptr ? 2 * style.FramePadding.x + iconSize + labelWidth : height;
+    const float width       = EditorToolButtonWidth(label);
 
     ImGui::BeginDisabled(!enabled);
 

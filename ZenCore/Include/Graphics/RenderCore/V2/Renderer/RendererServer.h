@@ -21,6 +21,7 @@ class VoxelGIRenderer;
 class SceneShadowRenderer;
 class RenderScene;
 class RenderGraph;
+struct RDGDebugSnapshot;
 class RenderOverlay;
 
 enum class RenderOption : uint32_t
@@ -54,7 +55,8 @@ public:
     RenderFrameResult DispatchRenderWorkloads(const RenderView& view,
                                               RenderOverlay*    overlay      = nullptr,
                                               bool              drawScene    = true,
-                                              RHIViewport*      presentation = nullptr);
+                                              RHIViewport*      presentation = nullptr,
+                                              RDGDebugSnapshot* capture      = nullptr);
 
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {

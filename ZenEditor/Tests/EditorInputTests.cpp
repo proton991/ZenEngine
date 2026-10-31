@@ -132,6 +132,54 @@ protected:
     ViewAxesHover   hover;
 };
 
+TEST_F(EditorInput, CompactGraphButtonKeepsRunControlsReachableAtDoubleScale)
+{
+    ApplyEditorTheme(2.0f);
+    ImGuiIO& io            = ImGui::GetIO();
+    io.ConfigFlags        |= ImGuiConfigFlags_NavEnableKeyboard;
+    unsigned char* pixels  = nullptr;
+    int            width   = 0;
+    int            height  = 0;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    io.Fonts->SetTexID(1);
+    EditorActions registry;
+    const char*   ids[]    = {actions::Open, actions::Save,  actions::Undo, actions::Redo,
+                              actions::Play, actions::Pause, actions::Stop, actions::ShowRenderGraph};
+    const char*   labels[] = {"Open", "Save", "Undo", "Redo", "Play", "Pause", "Stop", "Show RenderGraph"};
+    for (size_t index = 0; index < std::size(ids); ++index)
+    {
+        registry.Register({ids[index], labels[index], {}, {}, nullptr, DoNothing});
+    }
+    for (float toolbarWidth : {800.0f, 825.0f, 855.0f})
+    {
+        SCOPED_TRACE(toolbarWidth);
+        io.DisplaySize = ImVec2(toolbarWidth, 500);
+        for (int run = 0; run < 3; ++run)
+        {
+            ImGuiID expected = 0;
+            for (int frame = 0; frame < 3; ++frame)
+            {
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowSize(ImVec2(toolbarWidth, 100));
+                ImGui::Begin("Toolbar regression", nullptr, ImGuiWindowFlags_NoDecoration);
+                if (frame == 0)
+                {
+                    ImGui::SetWindowFocus();
+                    ImGui::SetKeyboardFocusHere(4 + run);
+                }
+                expected = ImGui::GetID((std::string("##") + ids[4 + run]).c_str());
+                DrawEditorToolbar(registry);
+                EXPECT_LE(ImGui::GetItemRectMax().x, toolbarWidth);
+                EXPECT_FLOAT_EQ(ImGui::GetItemRectSize().x, EditorToolButtonWidth());
+                ImGui::End();
+                ImGui::Render();
+            }
+            EXPECT_EQ(ImGui::GetFocusID(), expected);
+        }
+    }
+}
+
 TEST_F(EditorInput, RestoringLargeWindowPreservesDockProportionsAndSceneSpace)
 {
     ImGui::GetIO().ConfigFlags                      |= ImGuiConfigFlags_DockingEnable;

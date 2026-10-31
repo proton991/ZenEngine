@@ -15,7 +15,10 @@ enum class EditorIcon
     Cube,
     Folder,
     Image,
-    Sphere
+    Sphere,
+    Graph,
+    Refresh,
+    Fit
 };
 
 // Colors for custom drawing that ImGui's style does not cover. Panels take colors from
@@ -49,7 +52,8 @@ float EditorScale();
 void DrawEditorIcon(EditorIcon icon, ImVec2 origin, float size, ImU32 color);
 
 // The tooltip appears on hover, including while the button is disabled.
-bool EditorToolButton(const char* label, EditorIcon icon, bool enabled = true, const char* tooltip = nullptr);
+float EditorToolButtonWidth(const char* label = nullptr);
+bool  EditorToolButton(const char* label, EditorIcon icon, bool enabled = true, const char* tooltip = nullptr);
 
 // A square button showing only the icon; the ID names it, the tooltip describes it.
 bool EditorIconButton(const char* id, EditorIcon icon, bool enabled = true, const char* tooltip = nullptr);

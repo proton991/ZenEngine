@@ -1,6 +1,7 @@
 #include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
+#include "RenderGraphWindow.h"
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorWorkspace.h"
 #include "ZenApp/RuntimeOverlay.h"
@@ -217,6 +218,14 @@ public:
             m_controller->GetActions().Register(
                 {actions::Exit, quitLabel, quitShortcut, "", nullptr, [this]() { m_exitRequested = true; }});
 
+            m_graphWindow = MakeUnique<RenderGraphWindow>(*m_device, m_options.scale);
+            m_controller->GetActions().Register(
+                {actions::ShowRenderGraph, "Show RenderGraph", {}, "", nullptr, [this]() { m_showGraphRequested = true; }});
+            if (!m_options.graphCapture.empty())
+            {
+                m_showGraphRequested = true;
+                m_graphWindow->SelectPass(m_options.graphSelect);
+            }
             m_workspace   = MakeUnique<EditorWorkspace>(m_settings);
 
             m_context     = MakeUnique<EditorContext>(EditorContext{*m_controller, m_log, *m_renderer, *m_windowChrome});
@@ -466,12 +475,12 @@ public:
         std::chrono::steady_clock::time_point previous = std::chrono::steady_clock::now();
 
         const std::function<void()> redraw             = [this, &valid, &frame, &previous]() {
-            if (valid && !m_window->ShouldClose() && !m_exitRequested && (m_options.frames == 0 || frame < m_options.frames))
+            if (valid && !m_window->ShouldClose() && !m_exitRequested && HasPendingFrames(frame))
             {
                 valid = RenderIteration(frame, previous);
             }
         };
-        while (valid && !m_window->ShouldClose() && !m_exitRequested && (m_options.frames == 0 || frame < m_options.frames))
+        while (valid && !m_window->ShouldClose() && !m_exitRequested && HasPendingFrames(frame))
         {
             m_windowChrome->ProcessPendingAction();
             if (m_options.smokeTest && !m_controller->GetLoadState().IsActive())
@@ -481,7 +490,8 @@ public:
             m_window->Update(false, redraw);
             redraw();
             const runtime::RuntimeWindow& play = m_controller->GetPlaySession();
-            if (m_window->IsMinimized() && (!play.GetWindow() || play.GetWindow()->IsMinimized()))
+            if (m_window->IsMinimized() && (!play.GetWindow() || play.GetWindow()->IsMinimized())
+                && !m_graphWindow->NeedsRedraw())
             {
                 platform::NativeWindow::WaitEvents(0.05, redraw);
             }
@@ -490,6 +500,11 @@ public:
         Shutdown();
 
         return valid ? 0 : 1;
+    }
+
+    bool HasPendingFrames(uint32_t frame) const
+    {
+        return m_options.frames == 0 || frame < m_options.frames || m_graphWindow->IsFrameCapturePending();
     }
 
     bool RenderIteration(uint32_t& frame, std::chrono::steady_clock::time_point& previous)
@@ -514,6 +529,15 @@ public:
         m_context->focused = m_window->IsFocused();
 
         m_workspace->ProcessMenuCommands(*m_context);
+        // Keep the popup context's restoration target anchored to the editor,
+        // which outlives both secondary windows.
+        m_ui.MakeCurrent();
+        m_graphWindow->Update();
+        if (m_showGraphRequested)
+        {
+            m_showGraphRequested = false;
+            m_graphWindow->Open();
+        }
 
         ProcessFileDialog();
 
@@ -597,10 +621,20 @@ public:
 
                 m_ui.EndFrame();
 
-                EditorViewport& viewport           = m_controller->GetViewport();
+                EditorViewport& viewport      = m_controller->GetViewport();
 
+                rc::RDGDebugSnapshot* capture = nullptr;
+                if (!m_controller->GetPlaySession().IsActive())
+                {
+                    capture = m_graphWindow->PrepareCapture(*m_controller, m_context->sceneVisible, m_window->IsMinimized());
+                }
                 const rc::RenderFrameResult result = m_device->GetRendererServer()->DispatchRenderWorkloads(
-                    viewport.GetRenderView(), this, m_context->sceneVisible && !m_controller->IsPreviewFrozen());
+                    viewport.GetRenderView(), this, m_context->sceneVisible && !m_controller->IsPreviewFrozen(), nullptr,
+                    capture);
+                if (capture != nullptr)
+                {
+                    m_graphWindow->CompleteCapture(result == rc::RenderFrameResult::eSubmitted);
+                }
 
                 const bool submitted = result == rc::RenderFrameResult::eSubmitted;
 
@@ -623,8 +657,8 @@ public:
 
                 m_device->NextFrame();
 
-                // Smoke actions exercise the loaded scene, after asynchronous startup.
-                if (!m_options.smokeTest || !m_controller->GetLoadState().IsActive())
+                // Smoke actions and graph captures exercise the loaded scene, after asynchronous startup.
+                if ((!m_options.smokeTest && m_options.graphCapture.empty()) || !m_controller->GetLoadState().IsActive())
                 {
                     ++frame;
                 }
@@ -645,9 +679,30 @@ public:
                     {
                         m_playLogs.clear();
                     }
-                    play.Render(&m_playOverlay);
+                    rc::RDGDebugSnapshot* capture =
+                        m_graphWindow->PrepareCapture(*m_controller, m_context->sceneVisible, m_window->IsMinimized());
+                    const bool rendered = play.Render(&m_playOverlay, capture);
+                    if (capture != nullptr)
+                    {
+                        m_graphWindow->CompleteCapture(rendered && capture->accepted);
+                    }
                 }
             }
+        }
+        if (!m_controller->GetPlaySession().IsActive() && m_window->IsMinimized())
+        {
+            m_graphWindow->SynchronizeCapture(*m_controller, m_context->sceneVisible, true);
+        }
+        const bool graphCapture = !m_options.graphCapture.empty() && m_options.frames != 0 && frame >= m_options.frames;
+        if (valid && graphCapture && !m_graphWindow->IsFrameCapturePending() && !m_graphWindow->CaptureSucceeded())
+        {
+            m_graphWindow->RequestFrameCapture(m_options.graphCapture);
+        }
+        if (valid)
+        {
+            m_graphWindow->Draw();
+            valid = !m_device->AreSubmissionsBlocked()
+                 && (!graphCapture || m_graphWindow->CaptureSucceeded() || m_graphWindow->IsFrameCapturePending());
         }
         return valid;
     }
@@ -657,6 +712,7 @@ public:
         if (m_device)
         {
             m_device->WaitForPreviousFrames();
+            m_graphWindow.Reset();
             m_playOverlay.Destroy();
             if (m_controller)
             {
@@ -744,6 +800,8 @@ private:
     RHITexture*                          m_iconTexture{nullptr};
     ui::UIContext                        m_ui;
     runtime::RuntimeOverlay              m_playOverlay;
+    UniquePtr<RenderGraphWindow>         m_graphWindow;
+    bool                                 m_showGraphRequested{false};
     UniquePtr<ui::ImGuiRenderer>         m_renderer;
     UniquePtr<EditorController>          m_controller;
     UniquePtr<EditorContext>             m_context;

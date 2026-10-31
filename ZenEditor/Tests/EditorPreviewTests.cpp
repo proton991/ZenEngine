@@ -5,11 +5,24 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "imgui_internal.h"
+#include "RenderGraphWindow.h"
 #include <gtest/gtest.h>
+#include <filesystem>
+#include <fstream>
 #include <tuple>
 
 namespace zen::editor
 {
+// Inject the transient completion at the window boundary; the retry still uses
+// its real Vulkan viewport, UI renderer and image readback.
+struct RenderGraphWindowTestAccess
+{
+    static void DeclineFrame(RenderGraphWindow& window)
+    {
+        window.CompleteFrame(rc::RenderFrameResult::eDeclined);
+    }
+};
+
 namespace
 {
 class EditorPreview : public testing::TestWithParam<std::tuple<RHIExecutionMode, bool>>
@@ -23,6 +36,62 @@ void InitializePreviewDevice(rc::RenderDevice& device)
 
     device.InitializeRendererServer();
 }
+
+class RenderGraphWindowCapture : public testing::TestWithParam<RHIExecutionMode>
+{};
+
+TEST_P(RenderGraphWindowCapture, DeclinedFinalFrameRetriesAndRepeatedDeclinesTerminate)
+{
+    std::error_code             error;
+    const std::filesystem::path directory = std::filesystem::temp_directory_path(error);
+    ASSERT_FALSE(error);
+    const std::filesystem::path path =
+        directory / (GetParam() == RHIExecutionMode::eInline ? "zen-graph-retry-inline.ppm" : "zen-graph-retry-threaded.ppm");
+    std::filesystem::remove(path, error);
+    ASSERT_FALSE(error);
+    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    RHIOptions::GetInstance().SetValidationEnabled(true);
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2, GetParam());
+    InitializePreviewDevice(device);
+    {
+        RenderGraphWindow window(device, 1);
+        ASSERT_TRUE(window.Open());
+        window.Draw();
+        window.RequestFrameCapture(path.string());
+        RenderGraphWindowTestAccess::DeclineFrame(window);
+        EXPECT_TRUE(window.IsFrameCapturePending());
+        EXPECT_FALSE(window.CaptureSucceeded());
+        EXPECT_TRUE(window.NeedsRedraw());
+        EXPECT_FALSE(std::filesystem::exists(path, error));
+        EXPECT_FALSE(error);
+        window.Draw();
+        EXPECT_FALSE(window.IsFrameCapturePending());
+        EXPECT_TRUE(window.CaptureSucceeded());
+        std::ifstream image(path, std::ios::binary);
+        std::string   magic;
+        image >> magic;
+        EXPECT_EQ(magic, "P6");
+        image.close();
+        window.RequestFrameCapture(path.string());
+        for (uint32_t decline = 0; decline < 9; ++decline)
+        {
+            RenderGraphWindowTestAccess::DeclineFrame(window);
+        }
+        EXPECT_FALSE(window.IsVisible());
+        EXPECT_FALSE(window.IsFrameCapturePending());
+        EXPECT_FALSE(window.CaptureSucceeded());
+        window.RequestFrameCapture(path.string());
+        EXPECT_FALSE(window.IsFrameCapturePending());
+    }
+    std::filesystem::remove(path, error);
+    EXPECT_FALSE(error);
+    rc::ShaderProgramManager::GetInstance().Destroy();
+    device.Destroy();
+}
+
+INSTANTIATE_TEST_SUITE_P(Vulkan,
+                         RenderGraphWindowCapture,
+                         testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
 
 void InitializePreviewUI()
 {

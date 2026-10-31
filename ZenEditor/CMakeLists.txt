@@ -9,6 +9,7 @@ endif()
 # No window, GPU device or UI toolkit.
 add_library(ZenEditorModel STATIC
   Model/Source/EditorRenderingState.cpp
+  Model/Source/RenderGraphCaptureState.cpp
   Model/Source/EditorActions.cpp
   Model/Source/EditorEnvironment.cpp
   Model/Source/EditorLog.cpp
@@ -55,6 +56,9 @@ target_link_libraries(ZenEditorPlatform PUBLIC ZenEditorModel)
 # The ImGui frontend: workspace, panels, theme and input translation.
 add_library(ZenEditorUI STATIC
   ImGui/Source/EditorLayout.cpp
+  ImGui/Source/RenderGraphView.cpp
+  ImGui/Source/RenderGraphCanvas.cpp
+  ImGui/Source/RenderGraphLayout.cpp
   ImGui/Source/EditorPanel.cpp
   ImGui/Source/EditorShortcuts.cpp
   ImGui/Source/EditorTheme.cpp
@@ -78,7 +82,7 @@ FetchContent_GetProperties(zen_imgui SOURCE_DIR ZEN_EDITOR_IMGUI_SOURCE_DIR)
 target_compile_definitions(ZenEditorUI PRIVATE ZEN_EDITOR_FONT_PATH="${ZEN_EDITOR_IMGUI_SOURCE_DIR}/misc/fonts/Roboto-Medium.ttf")
 target_link_libraries(ZenEditorUI PUBLIC ZenEditorServices ZenEditorPlatform ZenImGui)
 
-add_executable(zen_editor App/Main.cpp App/EditorApplication.cpp)
+add_executable(zen_editor App/Main.cpp App/EditorApplication.cpp App/RenderGraphWindow.cpp)
 target_link_libraries(zen_editor PRIVATE ZenAppRuntimeUI ZenEditorUI)
 
 if (APPLE)
@@ -107,7 +111,7 @@ if (WIN32)
 endif ()
 
 if (BUILD_TESTING)
-  add_executable(EditorInputTest Tests/EditorInputTests.cpp Tests/LightMoveWidgetTests.cpp Tests/InspectorNavigationWidgetTests.cpp Tests/SceneLoadingDialogTests.cpp)
+  add_executable(EditorInputTest Tests/EditorInputTests.cpp Tests/RenderGraphViewTests.cpp Tests/LightMoveWidgetTests.cpp Tests/InspectorNavigationWidgetTests.cpp Tests/SceneLoadingDialogTests.cpp)
   target_link_libraries(EditorInputTest PRIVATE ZenEditorUI gtest_main)
   target_include_directories(EditorInputTest PRIVATE ImGui/Source)
   target_compile_definitions(EditorInputTest PRIVATE ZEN_EDITOR_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/")
@@ -129,7 +133,7 @@ if (BUILD_TESTING)
       set_tests_properties(EditorMenuBarTest PROPERTIES ENVIRONMENT "SDL_VULKAN_LIBRARY=${Vulkan_LIBRARY}")
     endif ()
   endif ()
-  add_executable(EditorModelTest Tests/EditorModelTests.cpp Tests/InspectorNavigationTests.cpp Tests/EnvironmentTests.cpp Tests/RenderingSettingsTests.cpp)
+  add_executable(EditorModelTest Tests/EditorModelTests.cpp Tests/RenderGraphCaptureTests.cpp Tests/InspectorNavigationTests.cpp Tests/EnvironmentTests.cpp Tests/RenderingSettingsTests.cpp)
   target_link_libraries(EditorModelTest PRIVATE ZenEditorModel gtest_main)
   target_compile_definitions(EditorModelTest PRIVATE ZEN_EDITOR_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/")
   add_test(NAME EditorModelTest COMMAND EditorModelTest)
@@ -141,9 +145,9 @@ if (BUILD_TESTING)
     ZEN_EDITOR_SHARED_FIXTURES="${PROJECT_SOURCE_DIR}/ZenSamples/CommonTest/Assets/")
   add_test(NAME EditorRenderingTest COMMAND EditorRenderingTest)
   set_tests_properties(EditorRenderingTest PROPERTIES LABELS "native;vulkan" TIMEOUT 120)
-  add_executable(EditorPreviewTest Tests/EditorPreviewTests.cpp)
+  add_executable(EditorPreviewTest Tests/EditorPreviewTests.cpp App/RenderGraphWindow.cpp)
   target_link_libraries(EditorPreviewTest PRIVATE ZenEditorUI gtest_main)
-  target_include_directories(EditorPreviewTest PRIVATE ImGui/Source)
+  target_include_directories(EditorPreviewTest PRIVATE ImGui/Source App)
   target_compile_definitions(EditorPreviewTest PRIVATE ZEN_EDITOR_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/")
   add_test(NAME EditorPreviewTest COMMAND EditorPreviewTest)
   set_tests_properties(EditorPreviewTest PROPERTIES LABELS "native;vulkan" TIMEOUT 120)

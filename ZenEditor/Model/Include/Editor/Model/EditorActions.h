@@ -71,6 +71,7 @@ inline constexpr const char* Save             = "file.save";
 inline constexpr const char* Exit             = "file.exit";
 inline constexpr const char* Undo             = "edit.undo";
 inline constexpr const char* Redo             = "edit.redo";
+inline constexpr const char* ShowRenderGraph  = "view.render_graph";
 inline constexpr const char* ResetLayout      = "view.reset_layout";
 inline constexpr const char* FrameAll         = "scene.frame_all";
 inline constexpr const char* FrameSelection   = "scene.frame_selection";

@@ -1,4 +1,5 @@
 #include "Editor/Services/EditorController.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGDebugSnapshot.h"
 #include "Editor/Model/EditorText.h"
 #include "SyntheticEnvironment.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
@@ -53,6 +54,61 @@ namespace zen::editor
 namespace
 {
 #include "EditorRenderingTestSupport.inl"
+
+TEST_P(EditorRendering, RenderGraphCaptureTracksSceneSettingsAndExcludesPresentationOnlyFrames)
+{
+    platform::NativeWindow    window({"Render graph capture test", true, 400, 300, 0, false});
+    EditorRenderingScope      scope(GetParam());
+    rc::RenderDevice&         device = *scope.device;
+    EditorController&         editor = scope.editor;
+    EditorRenderingValidation validation;
+    RHIViewport*              presentation = device.CreateViewport(&window, 400, 300, false);
+    ASSERT_NE(presentation, nullptr);
+    ASSERT_TRUE(editor.Init());
+    ASSERT_TRUE(editor.Load(Fixture("inspection.gltf")));
+    ASSERT_TRUE(editor.ResizeViewport(96, 64));
+    rc::RenderingSettings settings = editor.GetRenderingState().GetDraft();
+    settings.algorithm             = rc::RenderAlgorithm::ePBR;
+    ASSERT_TRUE(editor.StageRenderingSettings(settings, true));
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+    rc::RDGMetricsOptions metrics;
+    metrics.logging.enabled     = true;
+    metrics.logging.sampleEvery = 1;
+    metrics.logging.minInterval = std::chrono::milliseconds(0);
+    device.GetRDGMetrics().Configure(metrics);
+    rc::RDGDebugSnapshot snapshot;
+    ASSERT_EQ(device.GetRendererServer()->DispatchRenderWorkloads(editor.GetViewport().GetRenderView(), nullptr, true,
+                                                                  presentation, &snapshot),
+              rc::RenderFrameResult::eSubmitted);
+    EXPECT_TRUE(snapshot.accepted);
+    EXPECT_TRUE(device.GetRDGMetrics().GetLastSnapshot().sceneDispatch);
+    const uint64_t firstFrame    = snapshot.frame;
+    const uint64_t firstRevision = editor.GetRenderingState().GetAppliedRevision();
+    device.NextFrame();
+    settings.debug.output = rc::DebugOutput::eDepth;
+    ASSERT_TRUE(editor.StageRenderingSettings(settings));
+    ASSERT_TRUE(editor.UpdateRenderingSettings());
+    EXPECT_GT(editor.GetRenderingState().GetAppliedRevision(), firstRevision);
+    ASSERT_EQ(device.GetRendererServer()->DispatchRenderWorkloads(editor.GetViewport().GetRenderView(), nullptr, true,
+                                                                  presentation, &snapshot),
+              rc::RenderFrameResult::eSubmitted);
+    EXPECT_GT(snapshot.frame, firstFrame);
+    bool debugPass = false;
+    for (const rc::RDGDebugPass& pass : snapshot.passes)
+    {
+        debugPass |= pass.name == "RenderDebugVisualization";
+    }
+    EXPECT_TRUE(debugPass);
+    const uint64_t capturedFrame = snapshot.frame;
+    device.NextFrame();
+    ASSERT_EQ(device.GetRendererServer()->DispatchRenderWorkloads(editor.GetViewport().GetRenderView(), nullptr, false,
+                                                                  presentation, &snapshot),
+              rc::RenderFrameResult::eSubmitted);
+    EXPECT_EQ(snapshot.frame, capturedFrame);
+    EXPECT_FALSE(device.GetRDGMetrics().GetLastSnapshot().sceneDispatch);
+    device.NextFrame();
+    device.DestroyViewport(presentation);
+}
 
 TEST_P(EditorRendering, PlayWindowReusesSceneAndRestoresAfterPauseResizeAndQuit)
 {

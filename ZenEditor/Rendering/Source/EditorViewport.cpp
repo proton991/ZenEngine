@@ -331,7 +331,7 @@ void EditorViewport::UpdateGPUTimings(const rc::RDGMetricsSnapshot& timings)
 {
     // Upload, preview and readback graphs can complete after the scene graph.
     // Keep the last scene measurement instead of replacing it with unrelated work.
-    if (timings.graph == "frame_rdg")
+    if (timings.sceneDispatch)
     {
         m_giPassTimings.clear();
         for (const rc::RDGNodeMetrics& node : timings.nodes)

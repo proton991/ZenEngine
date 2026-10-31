@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" font-family="Roboto, 'Segoe UI', Arial, sans-serif" role="img">
+  <title>Render Graph viewer components before and after the restyle</title>
+  <desc>Top row: the current saturated node with zoom-scaled text, the proposed card in its default, selected, culled and host states, and three zoom levels of detail. Bottom row: current straight edges with overlapping labels, and proposed curved edges from spread ports with one labelled selected edge.</desc>
+  <defs>
+    <filter id="soft" x="-5%" y="-20%" width="110%" height="140%">
+      <feGaussianBlur stdDeviation="0.7"/>
+    </filter>
+    <marker id="headCurrent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#7aa0d0"/>
+    </marker>
+    <marker id="headViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#8f8cf2"/>
+    </marker>
+    <marker id="headTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4ec9a8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="460" fill="#1b1f28"/>
+
+  <!-- Section titles -->
+  <text x="20" y="30" font-size="13" font-weight="600" fill="#e8edf5">Current node</text>
+  <text x="250" y="30" font-size="13" font-weight="600" fill="#e8edf5">Proposed node states</text>
+  <text x="760" y="30" font-size="13" font-weight="600" fill="#e8edf5">Level of detail by zoom</text>
+  <text x="20" y="262" font-size="13" font-weight="600" fill="#e8edf5">Current edges</text>
+  <text x="620" y="262" font-size="13" font-weight="600" fill="#e8edf5">Proposed edges</text>
+  <line x1="20" y1="236" x2="1180" y2="236" stroke="#3a4557"/>
+
+  <!-- Current node: axis red fill, scaled bitmap text -->
+  <rect x="20" y="56" width="190" height="72" rx="5" fill="#e85957" fill-opacity="0.7" stroke="#e8edf5" stroke-width="2"/>
+  <g filter="url(#soft)">
+    <text x="30" y="80" font-size="15.5" fill="#e8edf5">DeferredLighting</text>
+    <text x="30" y="114" font-size="15.5" fill="#e8edf5">#37  order 8  Graphics</text>
+  </g>
+  <text x="20" y="150" font-size="11.5" fill="#9ba8bb">Red reads as an error; text is a</text>
+  <text x="20" y="166" font-size="11.5" fill="#9ba8bb">stretched static-atlas glyph.</text>
+
+  <!-- Proposed: default -->
+  <rect x="250" y="56" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <rect x="258" y="62" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+  <text x="262" y="84" font-size="13" font-weight="600" fill="#e8edf5">GBuffer</text>
+  <text x="262" y="102" font-size="11.5" fill="#9ba8bb">#12 · 0 in · 4 out</text>
+  <circle cx="406" cy="82" r="9" fill="#1b1f28"/>
+  <text x="406" y="86" font-size="10" fill="#9ba8bb" text-anchor="middle">2</text>
+  <text x="250" y="130" font-size="11.5" fill="#9ba8bb">Default</text>
+
+  <!-- Proposed: selected -->
+  <rect x="446" y="52" width="178" height="64" rx="11" fill="none" stroke="#8bb8ff" stroke-opacity="0.25" stroke-width="4"/>
+  <rect x="450" y="56" width="170" height="56" rx="8" fill="#2f3850" stroke="#8bb8ff" stroke-width="2"/>
+  <rect x="458" y="62" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+  <text x="462" y="84" font-size="13" font-weight="600" fill="#ffffff">DeferredLighting</text>
+  <text x="462" y="102" font-size="11.5" fill="#b8c4d6">#37 · 5 in · 1 out</text>
+  <circle cx="606" cy="82" r="9" fill="#1b1f28"/>
+  <text x="606" y="86" font-size="10" fill="#e8edf5" text-anchor="middle">8</text>
+  <text x="450" y="130" font-size="11.5" fill="#9ba8bb">Selected</text>
+
+  <!-- Proposed: culled -->
+  <rect x="250" y="148" width="170" height="56" rx="8" fill="#252a35" stroke="#6b778a" stroke-dasharray="5 4"/>
+  <text x="262" y="176" font-size="13" font-weight="600" fill="#9ba8bb">DebugOverlay</text>
+  <rect x="356" y="162" width="52" height="18" rx="9" fill="#2c3545"/>
+  <text x="382" y="175" font-size="10.5" fill="#9ba8bb" text-anchor="middle">culled</text>
+  <text x="262" y="194" font-size="11.5" fill="#6b778a">#58 · 2 declared</text>
+  <text x="250" y="222" font-size="11.5" fill="#9ba8bb">Culled</text>
+
+  <!-- Proposed: host pass with async badge example -->
+  <rect x="450" y="148" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.8" stroke-dasharray="5 4"/>
+  <text x="462" y="176" font-size="13" font-weight="600" fill="#e8edf5">EditorPick</text>
+  <rect x="540" y="162" width="38" height="18" rx="9" fill="#2c3545"/>
+  <text x="559" y="175" font-size="10.5" fill="#9ba8bb" text-anchor="middle">host</text>
+  <text x="462" y="194" font-size="11.5" fill="#9ba8bb">#131 · 2 in · 1 out</text>
+  <circle cx="606" cy="174" r="9" fill="#1b1f28"/>
+  <text x="606" y="178" font-size="10" fill="#9ba8bb" text-anchor="middle">10</text>
+  <text x="450" y="222" font-size="11.5" fill="#9ba8bb">Host pass</text>
+
+  <!-- Level of detail -->
+  <rect x="760" y="56" width="170" height="56" rx="8" fill="#2b3241" stroke="#4ec9a8" stroke-opacity="0.6"/>
+  <rect x="768" y="62" width="154" height="3" rx="1.5" fill="#4ec9a8"/>
+  <text x="772" y="84" font-size="13" font-weight="600" fill="#e8edf5">HybridTrace</text>
+  <rect x="853" y="71" width="44" height="18" rx="9" fill="#1d3a36"/>
+  <text x="875" y="84" font-size="10.5" fill="#4ec9a8" text-anchor="middle">async</text>
+  <text x="772" y="102" font-size="11.5" fill="#9ba8bb">#30 · 3 in · 1 out</text>
+  <text x="760" y="130" font-size="11.5" fill="#9ba8bb">Zoom ≥ 0.75: full card</text>
+
+  <rect x="960" y="62" width="102" height="34" rx="6" fill="#2b3241" stroke="#4ec9a8" stroke-opacity="0.6"/>
+  <rect x="966" y="66" width="90" height="2" rx="1" fill="#4ec9a8"/>
+  <text x="968" y="86" font-size="12" font-weight="600" fill="#e8edf5">HybridTr…</text>
+  <text x="960" y="130" font-size="11.5" fill="#9ba8bb">0.4–0.75: name only</text>
+
+  <rect x="1100" y="70" width="51" height="17" rx="3" fill="#4ec9a8" fill-opacity="0.75"/>
+  <text x="1100" y="130" font-size="11.5" fill="#9ba8bb">Below 0.4: block</text>
+  <text x="760" y="166" font-size="11.5" fill="#9ba8bb">Text always draws at a native atlas size;</text>
+  <text x="760" y="182" font-size="11.5" fill="#9ba8bb">long names end in an ellipsis instead of clipping.</text>
+
+  <!-- Current edges -->
+  <rect x="230" y="276" width="170" height="40" rx="5" fill="#e85957" fill-opacity="0.7"/>
+  <text x="242" y="301" font-size="13" fill="#e8edf5">GBuffer</text>
+  <rect x="40" y="386" width="170" height="40" rx="5" fill="#e85957" fill-opacity="0.7"/>
+  <text x="52" y="411" font-size="13" fill="#e8edf5">DeferredLighting</text>
+  <rect x="230" y="386" width="170" height="40" rx="5" fill="#e85957" fill-opacity="0.7"/>
+  <text x="242" y="411" font-size="13" fill="#e8edf5">EditorPick</text>
+  <rect x="420" y="386" width="170" height="40" rx="5" fill="#70c763" fill-opacity="0.7"/>
+  <text x="432" y="411" font-size="13" fill="#e8edf5">HybridTrace</text>
+  <g stroke="#7aa0d0" stroke-opacity="0.6" stroke-width="2" fill="none">
+    <path d="M315 316 L125 370 L125 384" marker-end="url(#headCurrent)"/>
+    <path d="M315 316 L315 370 L315 384" marker-end="url(#headCurrent)"/>
+    <path d="M315 316 L505 370 L505 384" marker-end="url(#headCurrent)"/>
+  </g>
+  <g font-size="12" fill="#7aa0d0">
+    <text x="210" y="352">GBufferNormal</text>
+    <text x="300" y="350">SceneDepth</text>
+    <text x="380" y="356">GBufferAlbedo</text>
+  </g>
+  <text x="40" y="448" font-size="11.5" fill="#9ba8bb">One start point, a 16 px bend, labels on every edge.</text>
+
+  <!-- Proposed edges -->
+  <rect x="830" y="276" width="170" height="40" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <text x="842" y="301" font-size="13" font-weight="600" fill="#e8edf5">GBuffer</text>
+  <rect x="640" y="386" width="170" height="40" rx="8" fill="#2f3850" stroke="#8bb8ff" stroke-width="2"/>
+  <text x="652" y="411" font-size="13" font-weight="600" fill="#ffffff">DeferredLighting</text>
+  <g opacity="0.32">
+    <rect x="830" y="386" width="170" height="40" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.8" stroke-dasharray="5 4"/>
+    <text x="842" y="411" font-size="13" font-weight="600" fill="#e8edf5">EditorPick</text>
+    <rect x="1010" y="386" width="170" height="40" rx="8" fill="#2b3241" stroke="#4ec9a8" stroke-opacity="0.6"/>
+    <text x="1022" y="411" font-size="13" font-weight="600" fill="#e8edf5">HybridTrace</text>
+    <path d="M915 316 L915 382" fill="none" stroke="#8f8cf2" stroke-width="1.4" marker-end="url(#headViolet)"/>
+    <path d="M960 316 C960 352, 1095 350, 1095 382" fill="none" stroke="#4ec9a8" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#headTeal)"/>
+  </g>
+  <path d="M870 316 C870 352, 725 350, 725 382" fill="none" stroke="#8f8cf2" stroke-width="2.2" marker-end="url(#headViolet)"/>
+  <rect x="650" y="324" width="110" height="22" rx="11" fill="#1b1f28" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <text x="705" y="339" font-size="11" fill="#d5d4fb" text-anchor="middle">GBufferNormal +2</text>
+  <text x="640" y="448" font-size="11.5" fill="#9ba8bb">Spread ports, curves, labels only on the selected pass, dashed cross-queue waits.</text>
+</svg>

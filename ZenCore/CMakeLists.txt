@@ -188,6 +188,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RendererServer.cpp
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
     Source/Graphics/RenderCore/V2/RDGMetrics.cpp
+    Source/Graphics/RenderCore/V2/RDGDebugSnapshot.cpp
     Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
     Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
     Source/Graphics/RenderCore/V2/SceneLighting.cpp

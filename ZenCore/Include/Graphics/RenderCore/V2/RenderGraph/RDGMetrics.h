@@ -208,6 +208,7 @@ struct RDGSubmissionMetrics
 struct RDGMetricsSnapshot
 {
     NameID                  graph;
+    bool                    sceneDispatch{false};
     uint64_t                execution{0};
     uint64_t                frameIndex{UINT64_MAX}; // Application frame identity; UINT64_MAX denotes startup/unset.
     uint64_t                windowExecutions{0};

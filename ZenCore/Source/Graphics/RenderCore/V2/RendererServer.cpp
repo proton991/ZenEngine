@@ -119,7 +119,8 @@ void RendererServer::CreateVoxelGIResources()
 RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requestedView,
                                                           RenderOverlay*    overlay,
                                                           bool              drawScene,
-                                                          RHIViewport*      presentation)
+                                                          RHIViewport*      presentation,
+                                                          RDGDebugSnapshot* capture)
 {
     presentation                = presentation != nullptr ? presentation : m_pPresentationViewport;
     RenderView view             = requestedView;
@@ -165,6 +166,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
     if (succeeded)
     {
         succeeded = pFrameRDG->Begin();
+        pFrameRDG->SetSceneDispatch(renderScene);
 
         if (succeeded && presentation != nullptr && (!renderScene || view.color != presentation->GetColorBackBuffer()))
         {
@@ -297,7 +299,8 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
         if (succeeded)
         {
-            result = presentation != nullptr                         ? m_pRenderDevice->ExecuteRenderGraph(presentation)
+            result = presentation != nullptr
+                       ? m_pRenderDevice->ExecuteRenderGraph(presentation, renderScene ? capture : nullptr)
                    : m_pRenderDevice->ExecuteRenderGraph(*pFrameRDG) ? RenderFrameResult::eSubmitted
                                                                      : RenderFrameResult::eFailed;
         }

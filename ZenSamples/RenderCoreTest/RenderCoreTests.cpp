@@ -1,4 +1,5 @@
 #include "Utils/Errors.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGDebugSnapshot.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderObject.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
@@ -17033,6 +17034,7 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 #include "AsyncComputeLifetimeTests.inl"
 #include "RDGQueuePreferenceTests.inl"
 #include "RDGScheduleTests.inl"
+#include "RDGDebugSnapshotTests.inl"
 #include "RDGGroupRecordingTests.inl"
 #include "RDGSubmissionHistoryTests.inl"
 

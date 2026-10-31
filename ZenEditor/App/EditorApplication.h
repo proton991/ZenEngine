@@ -9,11 +9,14 @@ namespace zen::editor
 {
 struct EditorOptions
 {
-    std::string      scene;
-    std::string      environment;
-    std::string      settingsDirectory;
-    std::string      capture;
-    std::string      sceneCapture;
+    std::string scene;
+    std::string environment;
+    std::string settingsDirectory;
+    std::string capture;
+    std::string sceneCapture;
+    // Opens the Render Graph window and captures it on the final frame.
+    std::string      graphCapture;
+    std::string      graphSelect;
     rc::DebugOutput  debugOutput{rc::DebugOutput::eFinal};
     bool             debugSpecified{false};
     uint32_t         frames{0};

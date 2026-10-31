@@ -36,6 +36,9 @@ public:
 
     void Destroy();
 
+    // Select this window's context for UI work outside BeginFrame/EndFrame.
+    void MakeCurrent();
+
     void BeginFrame(float deltaSeconds, unsigned int targetWidth, unsigned int targetHeight);
 
     void EndFrame();

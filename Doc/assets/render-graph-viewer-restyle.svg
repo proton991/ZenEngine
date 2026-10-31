@@ -1,0 +1,272 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" font-family="Roboto, 'Segoe UI', Arial, sans-serif" role="img">
+  <title>Expected Render Graph window after the restyle</title>
+  <desc>Compact header with chips, a top-to-bottom pass graph on a dot grid with tinted queue lanes, card nodes, curved edges from spread ports, the selected pass and its direct neighbours highlighted while unrelated work is dimmed, edge labels only on the selected pass, a minimap, a legend, and a table-based inspector.</desc>
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.1" fill="#3a4557"/>
+    </pattern>
+    <marker id="headViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#8f8cf2"/>
+    </marker>
+    <marker id="headTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4ec9a8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" fill="#1b1f28"/>
+
+  <!-- Toolbar row -->
+  <rect x="16" y="12" width="86" height="28" rx="5" fill="#2b3444"/>
+  <rect x="26" y="21" width="10" height="10" rx="2" fill="none" stroke="#8bb8ff" stroke-width="1.5"/>
+  <text x="44" y="31" font-size="13" fill="#e8edf5">Freeze</text>
+  <rect x="110" y="12" width="92" height="28" rx="5" fill="#2b3444"/>
+  <path d="M129 22a5 5 0 1 0 1.5 4" fill="none" stroke="#8bb8ff" stroke-width="1.5"/>
+  <path d="M127 19l3 3-3.5 1.5" fill="none" stroke="#8bb8ff" stroke-width="1.5"/>
+  <text x="140" y="31" font-size="13" fill="#e8edf5">Refresh</text>
+  <rect x="210" y="12" width="64" height="28" rx="5" fill="#2b3444"/>
+  <path d="M220 24v-4h4M230 20h4v4M234 28v4h-4M224 32h-4v-4" fill="none" stroke="#8bb8ff" stroke-width="1.5"/>
+  <text x="242" y="31" font-size="13" fill="#e8edf5">Fit</text>
+  <rect x="282" y="12" width="134" height="28" rx="5" fill="#2b3444"/>
+  <rect x="292" y="21" width="10" height="10" rx="2" fill="none" stroke="#9ba8bb" stroke-width="1.5"/>
+  <text x="310" y="31" font-size="13" fill="#e8edf5">Culled passes</text>
+  <rect x="424" y="12" width="220" height="28" rx="5" fill="#131720" stroke="#3a4557"/>
+  <circle cx="440" cy="25" r="5" fill="none" stroke="#9ba8bb" stroke-width="1.5"/>
+  <path d="M444 29l4 4" stroke="#9ba8bb" stroke-width="1.5"/>
+  <text x="456" y="31" font-size="13" fill="#9ba8bb">Find pass</text>
+
+  <!-- Status chips -->
+  <rect x="752" y="15" width="64" height="22" rx="11" fill="#2c3545"/>
+  <text x="784" y="30" font-size="12" fill="#e8edf5" text-anchor="middle">Editor</text>
+  <rect x="824" y="15" width="62" height="22" rx="11" fill="#1d3a36"/>
+  <circle cx="840" cy="26" r="4" fill="#4ec9a8"/>
+  <text x="850" y="30" font-size="12" fill="#4ec9a8">Live</text>
+  <rect x="894" y="15" width="78" height="22" rx="11" fill="#2c3545"/>
+  <text x="933" y="30" font-size="12" fill="#e8edf5" text-anchor="middle">GI → GI</text>
+  <rect x="980" y="15" width="150" height="22" rx="11" fill="#2c3545"/>
+  <text x="1055" y="30" font-size="12" fill="#e8edf5" text-anchor="middle">Grouped submissions</text>
+  <rect x="1140" y="12" width="44" height="28" rx="5" fill="#2b3444"/>
+  <text x="1162" y="31" font-size="14" fill="#8bb8ff" text-anchor="middle">?</text>
+
+  <text x="16" y="60" font-size="12" fill="#9ba8bb">NewSponza.gltf · revision 42 · frame 18,204 · 142 passes · 9 culled · 318 resources · accepted for submission</text>
+
+  <!-- Canvas -->
+  <rect x="12" y="72" width="840" height="636" rx="6" fill="#222732" stroke="#3a4557"/>
+  <rect x="13" y="73" width="838" height="634" rx="6" fill="url(#dots)"/>
+
+  <!-- Queue lanes -->
+  <rect x="24" y="84" width="542" height="612" rx="8" fill="#8f8cf2" fill-opacity="0.05" stroke="#8f8cf2" stroke-opacity="0.22"/>
+  <text x="38" y="103" font-size="12" font-weight="600" fill="#b9b7f7">Graphics queue</text>
+  <text x="140" y="103" font-size="12" fill="#9ba8bb">· 11 passes</text>
+  <rect x="578" y="84" width="262" height="612" rx="8" fill="#4ec9a8" fill-opacity="0.05" stroke="#4ec9a8" stroke-opacity="0.22"/>
+  <text x="592" y="103" font-size="12" font-weight="600" fill="#8fdcc7">Async compute</text>
+  <text x="684" y="103" font-size="12" fill="#9ba8bb">· 3 passes</text>
+
+  <!-- Dimmed edges (not connected to the selection) -->
+  <g opacity="0.3" fill="none" stroke-width="1.4">
+    <path d="M200 176 C200 290, 700 250, 700 306" stroke="#4ec9a8" stroke-dasharray="6 4" marker-end="url(#headTeal)"/>
+    <path d="M725 176 L725 211" stroke="#4ec9a8" marker-end="url(#headTeal)"/>
+    <path d="M750 271 L750 306" stroke="#4ec9a8" marker-end="url(#headTeal)"/>
+    <path d="M465 366 C465 440, 370 440, 370 496" stroke="#8f8cf2" marker-end="url(#headViolet)"/>
+    <path d="M345 556 L345 591" stroke="#8f8cf2" marker-end="url(#headViolet)"/>
+  </g>
+
+  <!-- Highlighted edges (selected pass inputs and output) -->
+  <g fill="none" stroke-width="2.2">
+    <path d="M150 176 C150 300, 200 290, 200 401" stroke="#8f8cf2" marker-end="url(#headViolet)"/>
+    <path d="M345 176 C345 300, 245 290, 245 401" stroke="#8f8cf2" marker-end="url(#headViolet)"/>
+    <path d="M725 366 C725 392, 290 376, 290 401" stroke="#8f8cf2" stroke-dasharray="7 5" marker-end="url(#headViolet)"/>
+    <path d="M245 461 C245 480, 320 478, 320 496" stroke="#8f8cf2" marker-end="url(#headViolet)"/>
+  </g>
+
+  <!-- Dimmed nodes -->
+  <g opacity="0.32">
+    <rect x="640" y="120" width="170" height="56" rx="8" fill="#2b3241" stroke="#4ec9a8" stroke-opacity="0.6"/>
+    <rect x="648" y="126" width="154" height="3" rx="1.5" fill="#4ec9a8"/>
+    <text x="652" y="148" font-size="13" font-weight="600" fill="#e8edf5">BuildSceneTLAS</text>
+    <text x="652" y="166" font-size="11.5" fill="#9ba8bb">#3 · 0 in · 1 out</text>
+    <circle cx="796" cy="146" r="9" fill="#1b1f28"/>
+    <text x="796" y="150" font-size="10" fill="#9ba8bb" text-anchor="middle">1</text>
+
+    <rect x="640" y="215" width="170" height="56" rx="8" fill="#2b3241" stroke="#4ec9a8" stroke-opacity="0.6"/>
+    <rect x="648" y="221" width="154" height="3" rx="1.5" fill="#4ec9a8"/>
+    <text x="652" y="243" font-size="13" font-weight="600" fill="#e8edf5">VoxelizeScene</text>
+    <text x="652" y="261" font-size="11.5" fill="#9ba8bb">#9 · 1 in · 1 out</text>
+    <circle cx="796" cy="241" r="9" fill="#1b1f28"/>
+    <text x="796" y="245" font-size="10" fill="#9ba8bb" text-anchor="middle">4</text>
+
+    <rect x="380" y="310" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.6"/>
+    <rect x="388" y="316" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+    <text x="392" y="338" font-size="13" font-weight="600" fill="#e8edf5">Skybox</text>
+    <text x="392" y="356" font-size="11.5" fill="#9ba8bb">#21 · 2 in · 1 out</text>
+    <circle cx="536" cy="336" r="9" fill="#1b1f28"/>
+    <text x="536" y="340" font-size="10" fill="#9ba8bb" text-anchor="middle">7</text>
+
+    <rect x="260" y="595" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.8" stroke-dasharray="5 4"/>
+    <text x="272" y="623" font-size="13" font-weight="600" fill="#e8edf5">UI</text>
+    <rect x="296" y="610" width="38" height="18" rx="9" fill="#2c3545"/>
+    <text x="315" y="623" font-size="10.5" fill="#9ba8bb" text-anchor="middle">host</text>
+    <text x="272" y="641" font-size="11.5" fill="#9ba8bb">#140 · present</text>
+    <circle cx="416" cy="621" r="9" fill="#1b1f28"/>
+    <text x="416" y="625" font-size="10" fill="#9ba8bb" text-anchor="middle">12</text>
+  </g>
+
+  <!-- Neighbour nodes -->
+  <rect x="60" y="120" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <rect x="68" y="126" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+  <text x="72" y="148" font-size="13" font-weight="600" fill="#e8edf5">GBuffer</text>
+  <text x="72" y="166" font-size="11.5" fill="#9ba8bb">#12 · 0 in · 4 out</text>
+  <circle cx="216" cy="146" r="9" fill="#1b1f28"/>
+  <text x="216" y="150" font-size="10" fill="#9ba8bb" text-anchor="middle">2</text>
+
+  <rect x="260" y="120" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <rect x="268" y="126" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+  <text x="272" y="148" font-size="13" font-weight="600" fill="#e8edf5">ShadowDepth</text>
+  <text x="272" y="166" font-size="11.5" fill="#9ba8bb">#14 · 0 in · 1 out</text>
+  <circle cx="416" cy="146" r="9" fill="#1b1f28"/>
+  <text x="416" y="150" font-size="10" fill="#9ba8bb" text-anchor="middle">3</text>
+
+  <rect x="640" y="310" width="170" height="56" rx="8" fill="#2b3241" stroke="#4ec9a8" stroke-opacity="0.6"/>
+  <rect x="648" y="316" width="154" height="3" rx="1.5" fill="#4ec9a8"/>
+  <text x="652" y="338" font-size="13" font-weight="600" fill="#e8edf5">HybridTrace</text>
+  <rect x="733" y="325" width="44" height="18" rx="9" fill="#1d3a36"/>
+  <text x="755" y="338" font-size="10.5" fill="#4ec9a8" text-anchor="middle">async</text>
+  <text x="652" y="356" font-size="11.5" fill="#9ba8bb">#30 · 3 in · 1 out</text>
+  <circle cx="796" cy="336" r="9" fill="#1b1f28"/>
+  <text x="796" y="340" font-size="10" fill="#9ba8bb" text-anchor="middle">6</text>
+
+  <rect x="260" y="500" width="170" height="56" rx="8" fill="#2b3241" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <rect x="268" y="506" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+  <text x="272" y="528" font-size="13" font-weight="600" fill="#e8edf5">Composite</text>
+  <text x="272" y="546" font-size="11.5" fill="#9ba8bb">#52 · 2 in · 1 out</text>
+  <circle cx="416" cy="526" r="9" fill="#1b1f28"/>
+  <text x="416" y="530" font-size="10" fill="#9ba8bb" text-anchor="middle">11</text>
+
+  <!-- Selected node -->
+  <rect x="156" y="401" width="178" height="64" rx="11" fill="none" stroke="#8bb8ff" stroke-opacity="0.25" stroke-width="4"/>
+  <rect x="160" y="405" width="170" height="56" rx="8" fill="#2f3850" stroke="#8bb8ff" stroke-width="2"/>
+  <rect x="168" y="411" width="154" height="3" rx="1.5" fill="#8f8cf2"/>
+  <text x="172" y="433" font-size="13" font-weight="600" fill="#ffffff">DeferredLighting</text>
+  <text x="172" y="451" font-size="11.5" fill="#b8c4d6">#37 · 5 in · 1 out</text>
+  <circle cx="316" cy="431" r="9" fill="#1b1f28"/>
+  <text x="316" y="435" font-size="10" fill="#e8edf5" text-anchor="middle">8</text>
+
+  <!-- Edge labels: selected pass only -->
+  <rect x="40" y="280" width="120" height="22" rx="11" fill="#1b1f28" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <text x="100" y="295" font-size="11" fill="#d5d4fb" text-anchor="middle">GBufferNormal +2</text>
+  <rect x="450" y="398" width="112" height="22" rx="11" fill="#1b1f28" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <text x="506" y="413" font-size="11" fill="#d5d4fb" text-anchor="middle">Semaphore wait</text>
+  <rect x="146" y="468" width="88" height="22" rx="11" fill="#1b1f28" stroke="#8f8cf2" stroke-opacity="0.6"/>
+  <text x="190" y="483" font-size="11" fill="#d5d4fb" text-anchor="middle">LightingHDR</text>
+
+  <!-- Minimap -->
+  <rect x="692" y="588" width="148" height="100" rx="6" fill="#1b1f28" stroke="#3a4557"/>
+  <g fill="#8f8cf2" fill-opacity="0.7">
+    <rect x="702" y="600" width="14" height="5" rx="1"/>
+    <rect x="720" y="600" width="14" height="5" rx="1"/>
+    <rect x="730" y="616" width="14" height="5" rx="1"/>
+    <rect x="712" y="626" width="14" height="5" rx="1"/>
+    <rect x="720" y="636" width="14" height="5" rx="1"/>
+    <rect x="720" y="646" width="14" height="5" rx="1"/>
+    <rect x="704" y="660" width="14" height="5" rx="1"/>
+    <rect x="724" y="660" width="14" height="5" rx="1"/>
+    <rect x="714" y="672" width="14" height="5" rx="1"/>
+  </g>
+  <g fill="#4ec9a8" fill-opacity="0.7">
+    <rect x="790" y="600" width="14" height="5" rx="1"/>
+    <rect x="790" y="608" width="14" height="5" rx="1"/>
+    <rect x="790" y="616" width="14" height="5" rx="1"/>
+  </g>
+  <rect x="698" y="596" width="112" height="66" rx="2" fill="none" stroke="#8bb8ff" stroke-width="1.2"/>
+
+  <!-- Legend -->
+  <rect x="30" y="670" width="12" height="12" rx="3" fill="#8f8cf2"/>
+  <text x="48" y="680" font-size="11.5" fill="#9ba8bb">Graphics</text>
+  <rect x="110" y="670" width="12" height="12" rx="3" fill="#4ec9a8"/>
+  <text x="128" y="680" font-size="11.5" fill="#9ba8bb">Async compute</text>
+  <rect x="222" y="670" width="12" height="12" rx="3" fill="#d9a46a"/>
+  <text x="240" y="680" font-size="11.5" fill="#9ba8bb">Transfer</text>
+  <rect x="300" y="670" width="12" height="12" rx="3" fill="none" stroke="#9ba8bb" stroke-dasharray="3 2"/>
+  <text x="318" y="680" font-size="11.5" fill="#9ba8bb">Host or culled</text>
+  <path d="M410 676 h30" stroke="#9ba8bb" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="448" y="680" font-size="11.5" fill="#9ba8bb">Cross-queue wait</text>
+
+  <!-- Inspector -->
+  <rect x="864" y="72" width="324" height="636" rx="6" fill="#222732" stroke="#3a4557"/>
+  <text x="880" y="100" font-size="15" font-weight="600" fill="#e8edf5">DeferredLighting</text>
+  <text x="880" y="120" font-size="12" fill="#9ba8bb">#37 · order 8 · graphics queue</text>
+  <rect x="880" y="132" width="46" height="20" rx="10" fill="#1d3a36"/>
+  <text x="903" y="146" font-size="11" fill="#4ec9a8" text-anchor="middle">Live</text>
+  <rect x="932" y="132" width="62" height="20" rx="10" fill="#2c3545"/>
+  <text x="963" y="146" font-size="11" fill="#e8edf5" text-anchor="middle">5 inputs</text>
+  <rect x="1000" y="132" width="62" height="20" rx="10" fill="#2c3545"/>
+  <text x="1031" y="146" font-size="11" fill="#e8edf5" text-anchor="middle">1 output</text>
+  <rect x="1068" y="132" width="108" height="20" rx="10" fill="#2c3545"/>
+  <text x="1122" y="146" font-size="11" fill="#e8edf5" text-anchor="middle">1 queue wait</text>
+
+  <text x="880" y="180" font-size="12" font-weight="600" fill="#9ba8bb">Resources</text>
+  <rect x="876" y="188" width="300" height="20" fill="#2c3545"/>
+  <g font-size="11" fill="#9ba8bb">
+    <text x="884" y="202">Resource</text>
+    <text x="1010" y="202">Access</text>
+    <text x="1062" y="202">Format</text>
+    <text x="1142" y="202">Ver</text>
+  </g>
+  <rect x="876" y="230" width="300" height="22" fill="#262c38"/>
+  <rect x="876" y="274" width="300" height="22" fill="#262c38"/>
+  <rect x="876" y="318" width="300" height="22" fill="#262c38"/>
+  <g font-size="11.5" fill="#e8edf5">
+    <text x="884" y="223">GBufferAlbedo</text>
+    <text x="884" y="245">GBufferNormal</text>
+    <text x="884" y="267">SceneDepth</text>
+    <text x="884" y="289">ShadowAtlas</text>
+    <text x="884" y="311">HybridRadiance</text>
+    <text x="884" y="333">LightingHDR</text>
+  </g>
+  <g font-size="11.5" fill="#9ba8bb">
+    <text x="1010" y="223">Read</text>
+    <text x="1010" y="245">Read</text>
+    <text x="1010" y="267">Read</text>
+    <text x="1010" y="289">Read</text>
+    <text x="1010" y="311">Read</text>
+    <text x="1062" y="223">RGBA8</text>
+    <text x="1062" y="245">RGBA16F</text>
+    <text x="1062" y="267">D32F</text>
+    <text x="1062" y="289">D32F</text>
+    <text x="1062" y="311">RGBA16F</text>
+    <text x="1062" y="333">RGBA16F</text>
+    <text x="1142" y="223">v1</text>
+    <text x="1142" y="245">v1</text>
+    <text x="1142" y="267">v2</text>
+    <text x="1142" y="289">v1</text>
+    <text x="1142" y="311">v3</text>
+  </g>
+  <text x="1010" y="333" font-size="11.5" fill="#8bb8ff">Write</text>
+  <text x="1142" y="333" font-size="11.5" fill="#8bb8ff">v1</text>
+
+  <text x="880" y="372" font-size="12" font-weight="600" fill="#9ba8bb">Dependencies</text>
+  <g font-size="11.5">
+    <rect x="876" y="382" width="300" height="24" rx="4" fill="#2b3444"/>
+    <text x="884" y="398" fill="#e8edf5">← GBuffer</text>
+    <text x="1010" y="398" fill="#9ba8bb">Producer ×3</text>
+    <text x="1166" y="398" fill="#9ba8bb">›</text>
+    <rect x="876" y="410" width="300" height="24" rx="4" fill="#2b3444"/>
+    <text x="884" y="426" fill="#e8edf5">← ShadowDepth</text>
+    <text x="1010" y="426" fill="#9ba8bb">Producer</text>
+    <text x="1166" y="426" fill="#9ba8bb">›</text>
+    <rect x="876" y="438" width="300" height="24" rx="4" fill="#2b3444"/>
+    <text x="884" y="454" fill="#e8edf5">← HybridTrace</text>
+    <text x="1010" y="454" fill="#4ec9a8">Semaphore wait</text>
+    <text x="1166" y="454" fill="#9ba8bb">›</text>
+    <rect x="876" y="466" width="300" height="24" rx="4" fill="#2b3444"/>
+    <text x="884" y="482" fill="#e8edf5">→ Composite</text>
+    <text x="1010" y="482" fill="#9ba8bb">Producer</text>
+    <text x="1166" y="482" fill="#9ba8bb">›</text>
+  </g>
+
+  <text x="880" y="520" font-size="12" font-weight="600" fill="#9ba8bb">Queue decision</text>
+  <text x="880" y="540" font-size="11.5" fill="#e8edf5">Graphics queue · no async request</text>
+  <text x="880" y="558" font-size="11.5" fill="#9ba8bb">Waits on HybridTrace (async compute)</text>
+
+  <path d="M882 588l5 4-5 4" fill="none" stroke="#9ba8bb" stroke-width="1.5"/>
+  <text x="896" y="596" font-size="12" font-weight="600" fill="#9ba8bb">Graph warnings (0)</text>
+</svg>

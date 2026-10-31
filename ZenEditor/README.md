@@ -356,6 +356,13 @@ selects an output and `--capture-scene=path.ppm --frames=N` captures the scene t
 without workspace chrome. `--capture=path.ppm` still captures the full workspace.
 Use `--smoke-test --frames=3` to wait for asynchronous loading before a short
 capture run, without reaching the scripted navigation actions.
+`--capture-graph=path.ppm --frames=N` opens the Render Graph window, counts frames
+only after loading, and captures that window on the last frame. If that
+presentation is declined, the request retries beyond the frame limit until
+accepted or the existing consecutive-decline limit is reached; add
+`--graph-select=PassName` to select and centre a pass first. Run it through a
+renamed copy of the executable on machines with an RTSS overlay, as the test
+runners do, or the overlay is drawn into the capture.
 
 ### Environment and skybox
 
@@ -480,6 +487,69 @@ Startup monitor scale controls the static font atlas and spacing; `--scale=1`,
 `--scale=1.5`, or `--scale=2` provides a diagnostic override. Dock widths remain
 adjustable; narrower panels wrap Inspector values. CJK/IME and rebuilding the
 atlas while moving between monitors are follow-up work, as specified in the plan.
+
+### Render graph viewer
+
+Click **Show RenderGraph** in the top toolbar or **View → Show RenderGraph** to
+open a separate, resizable window. The toolbar uses an icon with a tooltip when
+the full label would crowd Play/Pause/Stop. Further clicks focus the same window;
+closing it leaves the editor and Play running.
+
+The canvas flows from top to bottom, with dependencies pointing down and queue
+lanes arranged side by side. It shows the compiled graph for a captured editor or
+Play scene frame,
+including host passes such as picking, bounds, UI and the Play compositor. Its
+header identifies the scene, source, applied revision, frame, requested/effective
+algorithm, and submission mode. Pending Apply edits are excluded. The staging
+upload graph is excluded, and “accepted for submission” does not mean GPU completion.
+
+Live captures update at most four times a second, including slider edits. **Freeze**
+retains the captured graph even when changing scenes or starting Play; its original
+source remains labeled and it is marked stale. **Refresh** requests the next
+naturally rendered scene frame, including while frozen. Paused, hidden, or minimized
+scene views keep the previous capture; Refresh never advances a paused scene.
+If Freeze is enabled before a graph is available, the next successfully captured
+scene frame fills the view once rendering resumes, then stays frozen. Failed
+initial captures retry at the normal capture rate.
+
+Use the wheel to zoom, middle/right drag to pan, and the minimap to navigate.
+**Fit** rebuilds a compact layout and frames the graph; **Find pass** selects and
+centres a matching pass at a readable zoom. Both ease into the new view over 150 ms.
+Before manual navigation, auto-fit expands the view when new work outgrows it.
+Removing temporary passes keeps the camera steady; Fit or resizing frames the
+current graph again. Resizing after pan/zoom preserves zoom and the graph point
+at the canvas centre.
+Cards use queue colours, execution-order badges and host/async/culled chips.
+Text stays at its baked font size: zoomed-out cards show shortened titles, then
+colour blocks. Selecting or hovering a pass highlights its direct connections;
+**View → Trace upstream and downstream** extends the highlight along the graph.
+Only focused connections get resource labels; crowded labels are omitted and
+their full reasons remain available on hover.
+
+The inspector lists accesses, named formats and versions in a table. Hover a
+resource for its full name and subresource details; click a dependency to select
+and centre the other pass. **Culled passes** includes declared accesses
+for passes the compiler removed. Selection and valid surviving pass positions are
+preserved across conditional work by matching name/type/occurrence. Passes move
+when necessary to stay below their dependencies, and unused lanes consume no space.
+Indistinguishable repeated names depend on occurrence order. An absent selection is
+remembered until it returns.
+Each pair of passes has one edge containing its resource and group-ordering reasons.
+Full layouts use alternating ordering sweeps to reduce crossings and narrow
+routing points to take long edges around intervening cards. Independent passes
+wrap into rows of up to four cards per lane during Fit/full layout. Queue headers
+stay pinned while panning. Cross-queue connections are dashed in the waiting
+queue's colour. Faint frames group Hybrid/Voxel/Shadow name prefixes.
+**View → Hide host passes** hides UI, picking, bounds, mesh previews and scene
+presentation; these remain in the capture. The **?** popup explains the legend.
+At narrow widths the toolbar uses icons and moves Culled passes into **View**;
+extra status details remain in chip tooltips. The popup honours `--scale`.
+
+Geometry, labels and clipping use the existing ImGui → UIRenderer → VulkanRHI path
+into the popup's own swapchain. The CPU prepares metadata and geometry; Vulkan
+rasterizes the canvas. The window draws on changes, with one draw for each new
+capture and settling frames after interaction. A visible idle popup does not prevent
+the application from waiting for events when its scene windows are minimized.
 
 ## Boundaries for a future UI replacement
 

@@ -6,6 +6,10 @@
 namespace zen::editor
 {
 struct EditorContext;
+class EditorActions;
+
+// Shared action toolbar; measuring and drawing use the registry's current captions.
+void DrawEditorToolbar(EditorActions& registry);
 
 class EditorWorkspace
 {
@@ -38,8 +42,6 @@ private:
     void DrawRecentFiles(EditorContext& context);
 
     void UpdateNativeMenus(EditorContext& context);
-
-    void DrawToolbar(EditorContext& context);
 
     void DrawStatusBar(EditorContext& context);
 
