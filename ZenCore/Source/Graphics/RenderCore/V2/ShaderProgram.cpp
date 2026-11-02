@@ -316,6 +316,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverSP", "SceneRenderer/receiver.vert.spv",
                                             "SceneRenderer/receiver.frag.spv"));
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverMaskedSP", "SceneRenderer/receiver.vert.spv",
+                                            "SceneRenderer/receiver_masked.frag.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGISP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/hybrid_gi.frag.spv"));
     // Also exports each receiver's exact shadow-map results for resting decals.
@@ -544,6 +546,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 
         StoreProgram(pShaderProgram);
     }
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferMaskedSP", "SceneRenderer/offscreen.vert.spv",
+                                            "SceneRenderer/offscreen_masked.frag.spv"));
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() DeferredLightingSP(pRenderDevice);

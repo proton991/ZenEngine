@@ -1298,7 +1298,8 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
     // Validate descriptions before physical allocations or pipeline work.
     if (valid)
     {
-        valid = std::all_of(
+        valid = graph->ValidateShaderIdentities()
+             && std::all_of(
                     graph->m_pendingGfxPassDescs.begin(), graph->m_pendingGfxPassDescs.end(),
                     [graph](const RDGGraphicsPassDesc& desc) { return graph->ValidatePassDescription(desc, true) != nullptr; })
              && std::all_of(
@@ -1975,15 +1976,15 @@ bool RenderGraph::ValidateTextureRange(const RDGResourceManager::Allocation* res
     return result;
 }
 
-bool RenderGraph::ValidateShaderIdentity(const RDGPassDescBase& desc)
+bool RenderGraph::ValidateShaderIdentity(NameID programName, uint64_t identity, NameID passTag)
 {
     bool valid                   = true;
 
-    const ShaderProgram* program = ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
+    const ShaderProgram* program = ShaderProgramManager::GetInstance().RequestShaderProgram(programName);
 
-    if (program == nullptr || program->GetShader() == nullptr || desc.shaderIdentity != program->GetShader()->GetStableId())
+    if (program == nullptr || program->GetShader() == nullptr || identity != program->GetShader()->GetStableId())
     {
-        valid = Fail(RDGErrorCode::eShader, "Pass '" + desc.passTag.ToString() + "': Shader changed; rebuild the graph");
+        valid = Fail(RDGErrorCode::eShader, "Pass '" + passTag.ToString() + "': Shader changed; rebuild the graph");
     }
 
     return valid;
@@ -1995,7 +1996,12 @@ bool RenderGraph::ValidateShaderIdentities()
 
     for (const RDGGraphicsPassDesc& desc : m_pendingGfxPassDescs)
     {
-        valid = ValidateShaderIdentity(desc);
+        valid = ValidateShaderIdentity(desc.shaderProgramName, desc.shaderIdentity, desc.passTag);
+
+        for (const RDGGraphicsPipelineVariant& variant : desc.pipelineVariants)
+        {
+            valid = valid && ValidateShaderIdentity(variant.shaderProgramName, variant.shaderIdentity, desc.passTag);
+        }
 
         if (!valid)
         {
@@ -2007,7 +2013,7 @@ bool RenderGraph::ValidateShaderIdentities()
     {
         for (const RDGComputePassDesc& desc : m_pendingComputePassDescs)
         {
-            valid = ValidateShaderIdentity(desc);
+            valid = ValidateShaderIdentity(desc.shaderProgramName, desc.shaderIdentity, desc.passTag);
 
             if (!valid)
             {
@@ -2349,6 +2355,55 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
     return valid ? program : nullptr;
 }
 
+bool RenderGraph::ValidateGraphicsVariants(RDGGraphicsPassDesc& desc, const ShaderProgram& base)
+{
+    bool                                    valid    = true;
+    const RHIShaderResourceDescriptorTable& bindings = *base.GetShader()->GetSRDTable();
+    for (RDGGraphicsPipelineVariant& variant : desc.pipelineVariants)
+    {
+        ShaderProgram* program = ShaderProgramManager::GetInstance().RequestShaderProgram(variant.shaderProgramName);
+        valid = CheckPass(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader, desc.passTag,
+                          "Unknown graphics pipeline variant '{}'", variant.shaderProgramName.CStr());
+        if (valid)
+        {
+            RHIShader* shader = program->GetShader();
+            valid = CheckPass(variant.cullMode < RHIPolygonCullMode::eMax
+                                  && shader->GetCreateInfo().stageFlags == base.GetShader()->GetCreateInfo().stageFlags
+                                  && shader->GetSRDTable()->size() == bindings.size(),
+                              RDGErrorCode::eShader, desc.passTag, "Incompatible graphics pipeline variant");
+            for (uint32_t set = 0; valid && set < bindings.size(); ++set)
+            {
+                valid = CheckPass((*shader->GetSRDTable())[set].size() == bindings[set].size(), RDGErrorCode::eBinding,
+                                  desc.passTag, "Graphics variants must share the pass's resource interface");
+                for (const RHIShaderResourceDescriptor& binding : bindings[set])
+                {
+                    const RHIShaderResourceDescriptor* other = shader->GetSRDByName(binding.name);
+                    const bool compatible = other != nullptr && other->set == binding.set && other->binding == binding.binding
+                                         && other->type == binding.type && other->arraySize == binding.arraySize
+                                         && other->blockSize == binding.blockSize && other->bindless == binding.bindless
+                                         && other->stageFlags == binding.stageFlags && other->readable == binding.readable
+                                         && other->writable == binding.writable;
+                    valid                 = valid
+                                         && CheckPass(compatible, RDGErrorCode::eBinding, desc.passTag,
+                                                      "Graphics variant changes binding or access for '{}'", binding.name.CStr());
+                }
+            }
+            if (valid)
+            {
+                valid = CheckPass(variant.shaderIdentity == 0 || variant.shaderIdentity == shader->GetStableId(),
+                                  RDGErrorCode::eShader, desc.passTag, "Graphics variant changed; rebuild the graph");
+                variant.shaderIdentity = shader->GetStableId();
+                m_resourceManager.Retain(shader);
+            }
+        }
+        if (!valid)
+        {
+            break;
+        }
+    }
+    return valid;
+}
+
 template <typename Output> bool RenderGraph::ResolveAttachment(Output& output)
 {
     bool valid = true;
@@ -2619,6 +2674,8 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
         ShaderProgram* shader = ValidatePassDescription(desc, true);
 
         valid                 = (shader != nullptr);
+
+        valid                 = valid && ValidateGraphicsVariants(desc, *shader);
 
         valid                 = valid && (!((!ResolveAttachments(desc) || !ValidateGraphicsDescription(desc))));
 
@@ -5718,6 +5775,15 @@ void RenderGraph::ReleaseCompiledShaderPasses()
         pass->geometryBuffer.indexBufferFormat = DataFormat::eR32UInt;
 
         pass->geometryBuffer.indexBufferOffset = 0;
+
+        for (RHIPipeline* pipeline : pass->pipelineVariants)
+        {
+            if (m_pRenderDevice != nullptr)
+            {
+                m_pRenderDevice->DeferDestroyPipeline(pipeline);
+            }
+        }
+        pass->pipelineVariants.clear();
 
         ReleaseCompiledPass(pass, m_idleGfxPasses);
     }

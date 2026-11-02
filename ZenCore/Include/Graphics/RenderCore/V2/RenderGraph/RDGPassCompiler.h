@@ -455,14 +455,31 @@ struct RDGDepthStencilOutputDesc
     bool                   fullWrite{false}; // Assert full render-area coverage when Load=None.
 };
 
+// Variants share the pass's bindings, attachment operations and geometry. Only the
+// shader and culling differ; resource interfaces/accesses must match the base shader.
+struct RDGGraphicsPipelineVariant
+{
+    NameID             shaderProgramName;
+    RHIPolygonCullMode cullMode{RHIPolygonCullMode::eDisabled};
+    uint64_t           shaderIdentity{0};
+};
+
 struct RDGGraphicsPassDesc : RDGPassDescBase
 {
-    RHIGeometryBuffer     geometryBuffer; // Transitional raw adapter.
-    HeapVector<RDGBuffer> vertexBuffers;
-    RDGBuffer             indexBuffer;
-    DataFormat            indexBufferFormat{DataFormat::eR32UInt};
-    uint64_t              indexBufferOffset{0};
-    RHIGfxPipelineStates  pipelineStates;
+    RHIGeometryBuffer                      geometryBuffer; // Transitional raw adapter.
+    HeapVector<RDGBuffer>                  vertexBuffers;
+    RDGBuffer                              indexBuffer;
+    DataFormat                             indexBufferFormat{DataFormat::eR32UInt};
+    uint64_t                               indexBufferOffset{0};
+    RHIGfxPipelineStates                   pipelineStates;
+    HeapVector<RDGGraphicsPipelineVariant> pipelineVariants;
+
+    // Zero selects the base pipeline; returned indices select declared variants.
+    uint32_t AddPipelineVariant(NameID shader, RHIPolygonCullMode cullMode)
+    {
+        pipelineVariants.push_back({shader, cullMode});
+        return static_cast<uint32_t>(pipelineVariants.size());
+    }
 
     Rect2<int> renderArea;
 
@@ -734,14 +751,16 @@ struct RDGShaderPass : RDGCompiledPass
 
 struct RDGGraphicsPass : RDGShaderPass
 {
-    RHIRenderingLayout* pRenderingLayout{nullptr};
-    RHIGeometryBuffer   geometryBuffer;
+    RHIRenderingLayout*      pRenderingLayout{nullptr};
+    RHIGeometryBuffer        geometryBuffer;
+    HeapVector<RHIPipeline*> pipelineVariants;
 
     RDGGraphicsPass() : RDGShaderPass(RDGCompiledPassType::eGraphics) {}
 
     size_t GetStorageBytes() const
     {
-        return sizeof(*this) + GetDynamicStorageBytes() + geometryBuffer.vertexBuffers.capacity() * sizeof(RHIBuffer*);
+        return sizeof(*this) + GetDynamicStorageBytes() + geometryBuffer.vertexBuffers.capacity() * sizeof(RHIBuffer*)
+             + pipelineVariants.capacity() * sizeof(RHIPipeline*);
     }
 };
 
@@ -845,6 +864,9 @@ public:
 
     void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
+    // Restores the pass's declared bindings when changing pipelines.
+    void SetPipelineVariant(uint32_t index);
+
     void SetPushConstants(const void* pData, uint32_t dataSize, uint32_t offset = 0);
 
     template <typename T> void SetPushConstants(const T& data, uint32_t offset = 0)
@@ -905,6 +927,7 @@ private:
 
     RHICommandList* m_pCmdList{nullptr};
     RDGShaderPass*  m_pPass{nullptr};
+    RHIPipeline*    m_pPipeline{nullptr};
     RDGNodeMetrics* m_pMetrics{nullptr};
     friend class RDGTransferPassCmdRecorder;
 };

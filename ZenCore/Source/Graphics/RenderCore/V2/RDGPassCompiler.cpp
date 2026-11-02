@@ -201,6 +201,37 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
             {
                 pGfxPass->pPipeline->AddReference();
 
+                for (const RDGGraphicsPipelineVariant& variant : desc.pipelineVariants)
+                {
+                    ShaderProgram* program =
+                        ShaderProgramManager::GetInstance().RequestShaderProgram(variant.shaderProgramName);
+                    valid = CheckFormat(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader,
+                                        "Invalid shader program '{}'", variant.shaderProgramName.CStr());
+                    if (!valid)
+                    {
+                        break;
+                    }
+                    RHIGfxPipelineStates states        = desc.pipelineStates;
+                    states.rasterizationState.cullMode = variant.cullMode;
+                    RHIPipeline* pipeline              = nullptr;
+                    {
+                        ScopedMetricsTimer pipelineTimer(timings.enabled, timings.pipelineCPUUs);
+                        pipeline = m_pRenderDevice->GetOrCreateGfxPipeline(states, program->GetShader(),
+                                                                           pGfxPass->pRenderingLayout, {}, timings.enabled);
+                    }
+                    valid = CheckFormat(pipeline != nullptr, RDGErrorCode::eAllocation,
+                                        "Failed to create graphics pipeline variant for '{}'", desc.passTag.CStr());
+                    if (!valid)
+                    {
+                        break;
+                    }
+                    pipeline->AddReference();
+                    pGfxPass->pipelineVariants.push_back(pipeline);
+                }
+            }
+
+            if (valid)
+            {
                 RHIGeometryBuffer& geometry = pGfxPass->geometryBuffer;
 
                 geometry.vertexBuffers.reserve(desc.geometryBuffer.vertexBuffers.size() + desc.vertexBuffers.size());
@@ -571,7 +602,11 @@ RDGPassCmdEncoder::RDGPassCmdEncoder(RHICommandList*        pCmdList,
                                      RDGShaderPass*         pPass,
                                      RDGNodeMetrics*        pMetrics,
                                      const RDGPassDescBase* pDescription) :
-    m_pDescription(pDescription), m_pCmdList(pCmdList), m_pPass(pPass), m_pMetrics(pMetrics)
+    m_pDescription(pDescription),
+    m_pCmdList(pCmdList),
+    m_pPass(pPass),
+    m_pPipeline(pPass != nullptr ? pPass->pPipeline : nullptr),
+    m_pMetrics(pMetrics)
 {
     Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list");
 }
@@ -806,25 +841,40 @@ void RDGPassCmdEncoder::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, 
     }
 }
 
+void RDGPassCmdEncoder::SetPipelineVariant(uint32_t index)
+{
+    if (RequirePass(RDGCompiledPassType::eGraphics, "SetPipelineVariant"))
+    {
+        RDGGraphicsPass* pass = static_cast<RDGGraphicsPass*>(m_pPass);
+        if (Check(index <= pass->pipelineVariants.size(), RDGErrorCode::eRange, "Undeclared graphics pipeline variant"))
+        {
+            RHIPipeline* pipeline = index == 0 ? pass->pPipeline : pass->pipelineVariants[index - 1];
+            if (Check(pipeline != nullptr, RDGErrorCode::eAllocation, "Missing graphics pipeline variant")
+                && pipeline != m_pPipeline)
+            {
+                m_pPipeline = pipeline;
+                m_pCmdList->BindPipeline(RHIPipelineType::eGraphics, pipeline);
+                m_pCmdList->SetShaderParameters(pass->shaderParameters);
+            }
+        }
+    }
+}
+
 void RDGPassCmdEncoder::SetPushConstants(const void* pData, uint32_t dataSize, uint32_t offset)
 {
-    if (Check(m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0 && dataSize % 4 == 0
-                  && offset == 0,
+    if (Check(m_pPipeline != nullptr && pData != nullptr && dataSize > 0 && dataSize % 4 == 0 && offset == 0,
               RDGErrorCode::eBinding, "Invalid push constant data; nonzero offsets are not supported by this RHI path"))
     {
-        if (m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0)
-        {
-            m_pCmdList->SetPushConstants(m_pPass->pPipeline, static_cast<const uint8_t*>(pData), dataSize, offset);
-        }
+        m_pCmdList->SetPushConstants(m_pPipeline, static_cast<const uint8_t*>(pData), dataSize, offset);
     }
 }
 
 void RDGPassCmdEncoder::SetShaderValue(NameID glslName, const void* pData, uint32_t dataSize)
 {
-    if (Check(m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0, RDGErrorCode::eBinding,
+    if (Check(m_pPipeline != nullptr && pData != nullptr && dataSize > 0, RDGErrorCode::eBinding,
               "Invalid shader value command"))
     {
-        RHIShader* pShader                      = m_pPass->pPipeline->GetShader();
+        RHIShader* pShader                      = m_pPipeline->GetShader();
 
         const RHIShaderResourceDescriptor* pSRD = pShader->GetSRDByName(glslName);
 

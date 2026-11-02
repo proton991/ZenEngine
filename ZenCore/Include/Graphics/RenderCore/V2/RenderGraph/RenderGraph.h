@@ -466,10 +466,11 @@ private:
     void TrimCompiledPassStorage();
 
     ShaderProgram* ValidatePassDescription(const RDGPassDescBase& desc, bool graphics);
+    bool           ValidateGraphicsVariants(RDGGraphicsPassDesc& desc, const ShaderProgram& base);
 
     struct PassBindingValidator;
 
-    bool ValidateShaderIdentity(const RDGPassDescBase& desc);
+    bool ValidateShaderIdentity(NameID programName, uint64_t identity, NameID passTag);
 
     bool ValidateShaderIdentities();
 

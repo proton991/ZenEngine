@@ -98,6 +98,9 @@ public:
         return m_nodesData[instance].modelMatrix;
     }
 
+    // The same orientation sign consumed by the raster shaders, including runtime transforms.
+    float GetInstanceOrientation(uint32_t instance) const;
+
     // Call from the render/main thread between frame recordings. Setters stage one
     // generation; Update commits it before any raster, shadow, or voxel passes.
     // IDs are renderable slots assigned at load; disabling/promoting never compacts them.

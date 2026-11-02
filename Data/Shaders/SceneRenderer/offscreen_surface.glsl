@@ -31,16 +31,17 @@ void main()
     vec3 geometric = TriangleNormal(normal);
 #endif
     vec4 albedo = MaterialAlbedo(material, inUV, inUV1, inColor);
+#ifdef GBUFFER_ALPHA_MASK
     // Specular-glossiness coverage comes from the diffuse texture, as in the forward pass that
     // depth-tests against these receivers.
     float coverage = material.surfaceProperties.w > 0.5
                        ? material.diffuseFactor.a * inColor.a * MaterialFeatureTexture(material, 2, inUV, inUV1).a
                        : albedo.a;
-    if (!MaterialVisible(material, coverage)
-        || (material.materialProperties.z < 0.5 && !(gl_FrontFacing == (inOrientation >= 0.0))))
+    if (!MaterialVisible(material, coverage))
     {
         discard;
     }
+#endif
     vec4  mr        = MaterialSlotTexture(material, 1, material.mrTexIndex,
                                           MaterialTransformedUV(material, 1, material.mrTexSet, inUV, inUV1));
     vec3  emission  = material.emissiveFactor.rgb
@@ -52,12 +53,8 @@ void main()
                           .r;
     occlusion       = mix(1.0, occlusion, material.materialProperties.x);
 #ifdef HYBRID_RECEIVER
-    // Exclude layers that must retain per-surface lighting in the forward renderer.
-    if (material.surfaceProperties.y == 2.0 || material.sheenColorTransmission.w > 0.0
-        || material.diffuseTransmissionColorFactor.w > 0.0)
-    {
-        discard;
-    }
+    // Forward-only layers are excluded from the CPU draw list. Hardware culling handles
+    // single-sided geometry; preserve the logical facing for two-sided/mirrored receivers.
     bool facing = gl_FrontFacing == (inOrientation >= 0.0);
     outReceiver = uvec2(packUnorm2x16(EncodeGBufferNormal(geometric)), (uNodeIndex + 1u) * 2u + (facing ? 1u : 0u));
     // NDC motion (previous - current) and the previous w; w <= 0 lay behind the previous camera.

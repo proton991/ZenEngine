@@ -507,6 +507,16 @@ public:
 
     explicit TestPipeline(const RHIComputePipelineCreateInfo& info) : RHIPipeline(info) {}
 
+    RHIPolygonCullMode GetCullMode() const
+    {
+        return m_gfxStates.rasterizationState.cullMode;
+    }
+
+    RHIPolygonFrontFace GetFrontFace() const
+    {
+        return m_gfxStates.rasterizationState.frontFace;
+    }
+
 private:
     void Init() override {}
 
@@ -565,6 +575,9 @@ public:
     uint32_t                                        drawCount{0};
     uint32_t                                        dispatchCount{0};
     RHIShader*                                      boundShader{nullptr};
+    RHIPipeline*                                    boundPipeline{nullptr};
+    HeapVector<RHIPipeline*>                        indexedPipelines;
+    HeapVector<RHIPipeline*>                        pushConstantPipelines;
     HeapVector<std::pair<RHIShader*, glm::uvec3>>   dispatches;
     uint32_t                                        renderingCount{0};
     uint32_t                                        vertexBufferCount{0};
@@ -603,7 +616,8 @@ public:
 
     void RHIBindPipeline(RHIPipeline* pPipeline) override
     {
-        boundShader = pPipeline != nullptr ? pPipeline->GetShader() : nullptr;
+        boundPipeline = pPipeline;
+        boundShader   = pPipeline != nullptr ? pPipeline->GetShader() : nullptr;
     }
 
     void RHISetShaderParameters(RHIShaderParameterView parameters) override
@@ -657,6 +671,7 @@ public:
                         uint32_t   firstInstance) override
     {
         indexedDraws.push_back({firstIndex, indexCount});
+        indexedPipelines.push_back(boundPipeline);
     }
 
     void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
@@ -687,6 +702,7 @@ public:
     void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0) override
     {
         pushConstants.emplace_back(data.begin(), data.end());
+        pushConstantPipelines.push_back(pPipeline);
     }
 
     void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
@@ -1640,6 +1656,19 @@ bool RenderScene::HasVertexGeneration(const RHIBuffer* buffer, uint64_t generati
 uint32_t RenderScene::GetInstanceMask(uint32_t) const
 {
     return GI_STATIC;
+}
+
+float RenderScene::GetInstanceOrientation(uint32_t instance) const
+{
+    float orientation = 1.0f;
+    for (const sg::Node* node : m_pScene->GetRenderableNodes())
+    {
+        if (node->GetRenderableIndex() == instance)
+        {
+            orientation = node->GetData().surfaceScale.w;
+        }
+    }
+    return orientation;
 }
 
 const HeapVector<RenderScene::ShadowCaster>& RenderScene::GetShadowCasters() const
@@ -17036,6 +17065,7 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 #include "RDGScheduleTests.inl"
 #include "RDGDebugSnapshotTests.inl"
 #include "RDGGroupRecordingTests.inl"
+#include "RDGGraphicsVariantTests.inl"
 #include "RDGSubmissionHistoryTests.inl"
 
 #include "RDGScheduledSubmissionTests.inl"

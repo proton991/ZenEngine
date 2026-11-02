@@ -98,6 +98,11 @@ bool RenderScene::SetInstanceEnabled(uint32_t instance, bool enabled)
     return valid;
 }
 
+float RenderScene::GetInstanceOrientation(uint32_t instance) const
+{
+    return m_nodesData[instance].surfaceScale.w;
+}
+
 bool RenderScene::SetInstanceTransform(uint32_t instance, const Mat4& worldTransform)
 {
     const float determinant = glm::determinant(worldTransform);
