@@ -19,7 +19,15 @@ struct SceneMeshDraw
     sg::MeshTopology topology{sg::MeshTopology::Triangles};
 };
 
-void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDraw>& draws);
+class HybridGIRenderer;
+
+// Share material filtering and pipeline selection with diagnostic captures. Preserving draw
+// order is required for captures whose depth policy makes the last fragment win.
+void AddGBufferPass(RenderGraph&            graph,
+                    RDGGraphicsPassDesc     desc,
+                    const RenderScene&      scene,
+                    const HybridGIRenderer* hybrid            = nullptr,
+                    bool                    preserveDrawOrder = false);
 
 // Commands and resource declarations must describe the same scene snapshot.
 inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,

@@ -358,7 +358,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                             {"ProbeIntegrateSP", "VoxelGI/probe_integrate.comp.spv"},
                                             {"ProbeSpecularTraceFieldSP", "VoxelGI/probe_specular_trace_field.comp.spv"},
                                             {"ProbeSpecularResolveSP", "VoxelGI/probe_specular_resolve.comp.spv"},
-                                            {"ProbePixelTemporalSP", "VoxelGI/probe_pixel_temporal.comp.spv"},
                                             {"ProbeReconstructSP", "VoxelGI/probe_reconstruct.comp.spv"},
                                             {"ProbeCaptureSP", "VoxelGI/probe_capture.comp.spv"}};
     for (const char* const* program : probePrograms)

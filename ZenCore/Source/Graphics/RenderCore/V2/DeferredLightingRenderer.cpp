@@ -17,9 +17,10 @@
 #include "SceneGraph/Camera.h"
 #include <cmath>
 #include <algorithm>
-#include <array>
 
 namespace zen::rc
+{
+namespace
 {
 void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDraw>& draws)
 {
@@ -37,21 +38,21 @@ void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDr
     }
 }
 
-namespace
-{
 struct GBufferDrawGroup
 {
+    NameID                         shader;
+    RHIPolygonCullMode             cullMode{RHIPolygonCullMode::eDisabled};
     HeapVector<SceneMeshDraw>      draws;
     HeapVector<HybridReceiverDraw> receivers;
     uint32_t                       pipelineVariant{0};
 };
 
-using GBufferDrawGroups = std::array<GBufferDrawGroup, 6>;
+using GBufferDrawGroups = HeapVector<GBufferDrawGroup>;
 
 // Opaque before masked, with separate two-sided, mirrored and ordinary pipelines.
-GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRenderer* hybrid)
+GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRenderer* hybrid, bool preserveDrawOrder)
 {
-    GBufferDrawGroups groups;
+    GBufferDrawGroups groups(preserveDrawOrder ? 0 : 6);
     for (const sg::Node* node : scene.GetRenderableNodes())
     {
         const uint32_t instance = node->GetRenderableIndex();
@@ -68,9 +69,24 @@ GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRend
                                       || (hybrid != nullptr && material.diffuseTransmissionColorFactor.w > 0.0f);
                 if (mesh->topology == sg::MeshTopology::Triangles && !forwardOnly)
                 {
-                    const bool        masked = material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Mask);
-                    const uint32_t    cull   = material.materialProperties.z >= 0.5f ? 0u : mirrored ? 1u : 2u;
-                    GBufferDrawGroup& group  = groups[(masked ? 3u : 0u) + cull];
+                    const bool               masked   = material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Mask);
+                    const RHIPolygonCullMode cullMode = material.materialProperties.z >= 0.5f ? RHIPolygonCullMode::eDisabled
+                                                      : mirrored                              ? RHIPolygonCullMode::eFront
+                                                                                              : RHIPolygonCullMode::eBack;
+                    const NameID shader     = masked ? (hybrid != nullptr ? "HybridReceiverMaskedSP" : "GBufferMaskedSP")
+                                                     : (hybrid != nullptr ? "HybridReceiverSP" : "GBufferSP");
+                    uint32_t     groupIndex = (masked ? 3u : 0u) + static_cast<uint32_t>(cullMode);
+                    if (preserveDrawOrder)
+                    {
+                        if (groups.empty() || groups.back().shader != shader || groups.back().cullMode != cullMode)
+                        {
+                            groups.emplace_back();
+                        }
+                        groupIndex = static_cast<uint32_t>(groups.size() - 1);
+                    }
+                    GBufferDrawGroup& group = groups[groupIndex];
+                    group.shader            = shader;
+                    group.cullMode          = cullMode;
                     group.draws.push_back({instance, index, mesh->GetIndexCount(), mesh->GetFirstIndex()});
                     if (hybrid != nullptr)
                     {
@@ -113,6 +129,41 @@ void RecordGBufferGroups(RDGPassCmdEncoder& encoder, const GBufferDrawGroups& gr
     }
 }
 } // namespace
+
+void AddGBufferPass(RenderGraph&            graph,
+                    RDGGraphicsPassDesc     desc,
+                    const RenderScene&      scene,
+                    const HybridGIRenderer* hybrid,
+                    bool                    preserveDrawOrder)
+{
+    desc.SetShaderProgramName(hybrid != nullptr ? "HybridReceiverSP" : "GBufferSP");
+    GBufferDrawGroups groups = GroupGBufferDraws(scene, hybrid, preserveDrawOrder);
+    for (GBufferDrawGroup& group : groups)
+    {
+        if (!group.draws.empty()
+            && (group.shader != desc.shaderProgramName || group.cullMode != desc.pipelineStates.rasterizationState.cullMode))
+        {
+            // Ordered captures may revisit a group; reuse its declared pipeline.
+            for (uint32_t index = 0; index < desc.pipelineVariants.size(); ++index)
+            {
+                const RDGGraphicsPipelineVariant& variant = desc.pipelineVariants[index];
+                if (variant.shaderProgramName == group.shader && variant.cullMode == group.cullMode)
+                {
+                    group.pipelineVariant = index + 1;
+                    break;
+                }
+            }
+            if (group.pipelineVariant == 0)
+            {
+                group.pipelineVariant = desc.AddPipelineVariant(group.shader, group.cullMode);
+            }
+        }
+    }
+    graph.AddGraphicsPass(std::move(desc))
+        .RecordPassCommands([groups = std::move(groups), isHybrid = hybrid != nullptr](RDGPassCmdEncoder& encoder) {
+            RecordGBufferGroups(encoder, groups, isHybrid);
+        });
+}
 
 namespace
 {
@@ -417,8 +468,6 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
 
         RDGGraphicsPassDesc offscreen{};
 
-        offscreen.SetShaderProgramName(hybrid ? "HybridReceiverSP" : "GBufferSP");
-
         offscreen.AddColorOutput(DataFormat::eR16G16UNORM, width, height, "offscreen_normal");
 
         offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, width, height, "offscreen_albedo");
@@ -458,24 +507,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
 
         offscreen.BindIndexBuffer(m_pScene->GetIndexBuffer());
 
-        GBufferDrawGroups groups = GroupGBufferDraws(*m_pScene, m_hybrid);
-        // Keep frontFace unchanged: the shaders combine gl_FrontFacing with the transform sign.
-        // Mirrored single-sided geometry therefore culls front faces.
-        const RHIPolygonCullMode cullModes[] = {RHIPolygonCullMode::eDisabled, RHIPolygonCullMode::eFront,
-                                                RHIPolygonCullMode::eBack};
-        for (uint32_t index = 0; index < groups.size(); ++index)
-        {
-            if (!groups[index].draws.empty() && index != 0)
-            {
-                const NameID shader           = index < 3 ? (hybrid ? "HybridReceiverSP" : "GBufferSP")
-                                                          : (hybrid ? "HybridReceiverMaskedSP" : "GBufferMaskedSP");
-                groups[index].pipelineVariant = offscreen.AddPipelineVariant(shader, cullModes[index % 3]);
-            }
-        }
-        pRDG->AddGraphicsPass(std::move(offscreen))
-            .RecordPassCommands([groups = std::move(groups), hybrid](RDGPassCmdEncoder& encoder) {
-                RecordGBufferGroups(encoder, groups, hybrid);
-            });
+        AddGBufferPass(*pRDG, std::move(offscreen), *m_pScene, m_hybrid);
     }
 }
 

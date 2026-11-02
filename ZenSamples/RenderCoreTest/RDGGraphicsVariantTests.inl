@@ -196,6 +196,55 @@ TEST_F(RenderCoreTest, GBufferGroupsOpaqueMaskedAndMirroredDrawsWithoutChangingF
         EXPECT_EQ(pipeline->GetShader()->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eFragment)],
                   index < 3 ? "SceneRenderer/offscreen.frag.spv" : "SceneRenderer/offscreen_masked.frag.spv");
     }
+    // Calibration keeps scene order and its clockwise projection. Also exercise a base
+    // pipeline with culling enabled: two-sided draws must still select disabled culling.
+    // Revisit a masked group after opaque draws: it must reuse its declared variant. The device
+    // pipeline cache would return the same pipeline for a duplicate, so count requests instead.
+    source.AddRenderableNode(nodes[2].Get());
+    for (RHIPolygonCullMode baseCull : {RHIPolygonCullMode::eDisabled, RHIPolygonCullMode::eBack})
+    {
+        const size_t firstDraw = rhi->graphics.indexedDraws.size();
+        ASSERT_TRUE(graph.Begin());
+        RDGGraphicsPassDesc capture;
+        capture.SetRenderArea(0, 0, 8, 8);
+        capture.pipelineStates.rasterizationState.cullMode  = baseCull;
+        capture.pipelineStates.rasterizationState.frontFace = RHIPolygonFrontFace::eClockWise;
+        capture.pipelineStates.depthStencilState =
+            RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eAlways);
+        capture.pipelineStates.colorBlendState.AddAttachments(4);
+        capture.AddColorOutput(DataFormat::eR16G16UNORM, 8, 8, "normal");
+        capture.AddColorOutput(DataFormat::eR8G8B8A8UNORM, 8, 8, "albedo");
+        capture.AddColorOutput(DataFormat::eR8G8B8A8UNORM, 8, 8, "metallic");
+        capture.AddColorOutput(DataFormat::eR16G16B16A16SFloat, 8, 8, "emission");
+        capture.AddDepthStencilOutput(DataFormat::eD32SFloat, 8, 8, "depth", RHIRenderTargetLoadOp::eClear,
+                                      RHIRenderTargetStoreOp::eStore);
+        capture.BindStorageBuffer("NodeBuffer", scene.GetNodesDataSSBO());
+        capture.BindStorageBuffer("MaterialBuffer", scene.GetMaterialsDataSSBO());
+        capture.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
+        BindSceneTextureArray(capture, device->CreateSampler({}), scene.GetSceneTextureViews());
+        capture.BindValue("uCameraData", sceneInputs.camera);
+        capture.BindVertexBuffer(scene.GetVertexBuffer());
+        capture.BindIndexBuffer(scene.GetIndexBuffer());
+        AddGBufferPass(graph, std::move(capture), scene, nullptr, true);
+        ASSERT_TRUE(graph.End());
+        const PipelineCacheMetrics before = device->GetPipelineCacheMetrics();
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+        // The base pipeline plus five distinct variants.
+        EXPECT_EQ(device->GetPipelineCacheMetrics().Since(before).requests, 6u);
+        ASSERT_EQ(rhi->graphics.indexedDraws.size(), firstDraw + 7);
+        ASSERT_EQ(rhi->graphics.indexedPipelines.size(), firstDraw + 7);
+        EXPECT_EQ(rhi->graphics.indexedPipelines[firstDraw], rhi->graphics.indexedPipelines[firstDraw + 6]);
+        for (uint32_t index = 0; index < 7; ++index)
+        {
+            const uint32_t material = index < 6 ? 5 - index : 5;
+            TestPipeline*  pipeline = static_cast<TestPipeline*>(rhi->graphics.indexedPipelines[firstDraw + index]);
+            EXPECT_EQ(rhi->graphics.indexedDraws[firstDraw + index][0], material * 3);
+            EXPECT_EQ(pipeline->GetCullMode(), cullModes[material % 3]);
+            EXPECT_EQ(pipeline->GetFrontFace(), RHIPolygonFrontFace::eClockWise);
+            EXPECT_EQ(pipeline->GetShader()->GetCreateInfo().spirvFileName[ToUnderlying(RHIShaderStage::eFragment)],
+                      material < 3 ? "SceneRenderer/offscreen.frag.spv" : "SceneRenderer/offscreen_masked.frag.spv");
+        }
+    }
     lighting.Destroy();
     for (RHIBuffer* buffer : buffers)
     {

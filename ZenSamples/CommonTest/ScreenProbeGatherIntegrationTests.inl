@@ -33,6 +33,8 @@ protected:
         if (!HasFatalFailure())
         {
             ShaderProgramManager::GetInstance().StoreProgram(
+                ZEN_NEW() ComputeFileSP(device, "ProbePixelTemporalSP", "VoxelGI/probe_pixel_temporal.comp.spv"));
+            ShaderProgramManager::GetInstance().StoreProgram(
                 ZEN_NEW() ComputeFileSP(device, "ProbeTextureCheckSP", "VoxelGI/Calibration/probe_texture_check.comp.spv"));
             sampler           = device->CreateSampler({});
             hybrid.sampling   = glm::uvec4(0, 1, 32, 1);

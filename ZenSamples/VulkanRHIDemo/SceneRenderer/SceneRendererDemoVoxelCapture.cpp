@@ -303,7 +303,7 @@ bool SceneRendererDemo::CaptureVoxelOutput(const std::string& path, rc::Voxelize
 
 bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
 {
-    // Render the real GBufferSP with a diagnostic orthographic camera. Nine pixels
+    // Render the production G-buffer variants with a diagnostic orthographic camera. Nine pixels
     // per voxel keep the atlas at LOD 0 and include its exact XY center sample.
     rc::VoxelizerBase* voxelizer = m_renderDevice->GetRendererServer()->RequestVoxelizer();
 
@@ -376,8 +376,6 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
 
             draw.SetPipelineStates(states);
 
-            draw.SetShaderProgramName("GBufferSP");
-
             draw.SetRenderArea(0, 0, rasterSize, rasterSize);
 
             draw.AddColorOutput(DataFormat::eR16G16UNORM, rasterSize, rasterSize, "calibration_normal");
@@ -405,10 +403,7 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
 
             draw.BindIndexBuffer(m_renderScene->GetIndexBuffer());
 
-            graph.AddGraphicsPass(std::move(draw))
-                .RecordPassCommands([draws = rc::SnapshotSceneDraws(*m_renderScene)](rc::RDGPassCmdEncoder& encoder) {
-                    rc::RecordGBufferDraws(encoder, draws);
-                });
+            rc::AddGBufferPass(graph, std::move(draw), *m_renderScene, nullptr, true);
 
             rc::RDGComputePassDesc copy;
 
