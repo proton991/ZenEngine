@@ -1090,4 +1090,156 @@ TEST_P(ScreenProbeGatherIntegrationTest, DiagnosticTemporalKeepsMissingSamplesOu
     }
 }
 
+TEST_P(ScreenProbeGatherIntegrationTest, FusedReconstructionMatchesSeparatePassesAcrossHistoryStates)
+{
+    const char* const names[]   = {"Sky", "Bounce", "Specular", "Position", "Surface", "NormalRoughness"};
+    const DataFormat  formats[] = {DataFormat::eR16G16B16A16SFloat, DataFormat::eR16G16B16A16SFloat,
+                                   DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat,
+                                   DataFormat::eR32G32UInt,         DataFormat::eR16G16B16A16SFloat};
+    for (uint32_t scenario = 0; scenario < 5; ++scenario)
+    {
+        SCOPED_TRACE(scenario);
+        RenderGraph graph("FusedProbeReconstruction");
+        ASSERT_TRUE(graph.Begin());
+        Receivers(graph);
+        // Fractional reprojection, background, foreign surfaces and a displaced history pixel.
+        receiver[4] =
+            Upload(graph, DataFormat::eR32G32B32A32SFloat, HeapVector<Vec4>(Pixels, Vec4(.5f / Width, .5f / Height, 1, 0)));
+        probe.grid.w                 = scenario == 1 ? 0u : 1u;
+        hybrid.bounce.x              = scenario == 4 ? 0u : 1u;
+        hybrid.bounce.y              = scenario == 2 ? 0u : 1u;
+        hybrid.reflection.x          = scenario == 4 ? 0u : 1u;
+        hybrid.reflection.y          = scenario == 2 ? 0u : 1u;
+        hybrid.rejection.y           = scenario == 4 ? 0.0f : 1.0f;
+        hybrid.previousViewDirection = Vec4(0, 0, 1, 0);
+        HeapVector<ProbeFixtureRecord> records(Slots);
+        if (scenario != 3)
+        {
+            for (uint32_t index = 0; index < 7; ++index)
+            {
+                records[index] = Record(index, Vec4(.1234f, .4567f, 1.234f, .6789f), Vec4(.07123f, .3456f, .789f, .4321f), 1);
+            }
+            records[6].position.z = 1;
+            records[6].screen.x   = Width - 1;
+            records[6].screen.y   = Height - 1;
+        }
+        HeapVector<uint32_t> slots(SubtileCount * ZEN_PROBE_ADAPTIVE_PER_SUBTILE, ZEN_PROBE_INVALID);
+        slots.back()     = 6;
+        RHIBuffer* input = Buffer(Slots * sizeof(ProbeFixtureRecord), RHIBufferAllocateType::eCPUWrite, records.data());
+        RHIBuffer* map   = Buffer(slots.size() * sizeof(uint32_t), RHIBufferAllocateType::eCPUWrite, slots.data());
+        graph.GetResourceManager()->ImportHostWrittenBuffer(input);
+        graph.GetResourceManager()->ImportHostWrittenBuffer(map);
+        const uint32_t   halfWidth = (Width + 1) / 2, halfHeight = (Height + 1) / 2;
+        HeapVector<Vec4> guides(halfWidth * halfHeight, Vec4(-1, -1, 0, 0));
+        if (scenario != 3)
+        {
+            for (uint32_t y = 0; y < halfHeight; ++y)
+            {
+                for (uint32_t x = 0; x < halfWidth; ++x)
+                {
+                    guides[y * halfWidth + x] = Vec4(x * 2, y * 2, 0, 0);
+                }
+            }
+            guides.back() = Vec4(-1, -1, 0, 0);
+        }
+        RHITexture* samples =
+            Upload(graph, DataFormat::eR32G32B32A32SFloat,
+                   HeapVector<Vec4>(halfWidth * halfHeight, Vec4(.321f, .7654f, 1.345f, .4321f)), halfWidth, halfHeight);
+        RHITexture*        sources = Upload(graph, DataFormat::eR32G32B32A32SFloat, guides, halfWidth, halfHeight);
+        RHITexture*        raw[3]  = {Texture(formats[0]), Texture(formats[1]), Texture(formats[2])};
+        RDGComputePassDesc integrate;
+        integrate.SetShaderProgramName("ProbeIntegrateSP");
+        Inputs(integrate);
+        integrate.BindStorageBuffer("ProbeInput", input);
+        integrate.BindStorageBuffer("ProbeSubtiles", map);
+        integrate.BindStorageImage("probeRawSky", raw[0]->GetDefaultView(), RDGContentGuarantee::eFullWrite);
+        integrate.BindStorageImage("probeRawBounce", raw[1]->GetDefaultView(), RDGContentGuarantee::eFullWrite);
+        Dispatch(graph, std::move(integrate), Width, Height);
+        RDGComputePassDesc resolve;
+        resolve.SetShaderProgramName("ProbeSpecularResolveSP");
+        Inputs(resolve);
+        resolve.BindSampledTexture("rawProbeSpecular", sampler, samples->GetDefaultView());
+        resolve.BindSampledTexture("rawProbeSpecularGuide", sampler, sources->GetDefaultView());
+        resolve.BindStorageImage("probeRawSpecular", raw[2]->GetDefaultView(), RDGContentGuarantee::eFullWrite);
+        Dispatch(graph, std::move(resolve), Width, Height);
+        RHITexture* previous[6]{};
+        for (uint32_t signal = 0; signal < 3; ++signal)
+        {
+            previous[signal] = Upload(graph, DataFormat::eR32G32B32A32SFloat,
+                                      HeapVector<Vec4>(Pixels, Vec4(.75f, .5f, .25f, signal == 1 ? 3.0f : .5f)));
+        }
+        HeapVector<Vec4>       positions(Pixels, Vec4(0, 0, 0, 3));
+        HeapVector<glm::uvec2> surfaces(Pixels, glm::uvec2(0x80008000u, 1));
+        HeapVector<Vec4>       normals(Pixels, Vec4(.5f, .5f, .5f, 7));
+        surfaces[2].y  = 99;
+        positions[3].z = 1;
+        normals[4]     = Vec4(1, 1, .1f, 7);
+        previous[3]    = Upload(graph, formats[3], positions);
+        previous[4]    = Upload(graph, formats[4], surfaces);
+        previous[5]    = Upload(graph, DataFormat::eR32G32B32A32SFloat, normals);
+        RHIBuffer* readback[2][6]{};
+        for (uint32_t fused = 0; fused < 2; ++fused)
+        {
+            RDGComputePassDesc pass;
+            pass.SetShaderProgramName(fused != 0 ? "ProbeReconstructSP" : "ProbePixelTemporalSP");
+            Inputs(pass);
+            if (fused != 0)
+            {
+                pass.BindStorageBuffer("ProbeInput", input);
+                pass.BindStorageBuffer("ProbeSubtiles", map);
+                pass.BindSampledTexture("rawProbeSpecular", sampler, samples->GetDefaultView());
+                pass.BindSampledTexture("rawProbeSpecularGuide", sampler, sources->GetDefaultView());
+            }
+            else
+            {
+                for (uint32_t signal = 0; signal < 3; ++signal)
+                {
+                    pass.BindSampledTexture(NameID(fmt::format("probeRaw{}", names[signal])), sampler,
+                                            raw[signal]->GetDefaultView());
+                }
+            }
+            RHITexture* next[6]{};
+            for (uint32_t signal = 0; signal < 6; ++signal)
+            {
+                next[signal] = Texture(formats[signal]);
+                pass.BindSampledTexture(NameID(fmt::format("previousProbe{}", names[signal])), sampler,
+                                        previous[signal]->GetDefaultView());
+                pass.BindStorageImage(NameID(fmt::format("nextProbe{}", names[signal])), next[signal]->GetDefaultView(),
+                                      RDGContentGuarantee::eFullWrite);
+            }
+            Dispatch(graph, std::move(pass), Width, Height);
+            for (uint32_t signal = 0; signal < 6; ++signal)
+            {
+                if (signal != 4)
+                {
+                    readback[fused][signal] = ReadColor(graph, next[signal]);
+                }
+            }
+        }
+        Execute(graph);
+        ASSERT_FALSE(HasFatalFailure());
+        for (uint32_t signal = 0; signal < 6; ++signal)
+        {
+            if (signal != 4)
+            {
+                SCOPED_TRACE(names[signal]);
+                const HeapVector<Vec4> separate = ReadStaticBuffer<Vec4>(readback[0][signal]);
+                const HeapVector<Vec4> fused    = ReadStaticBuffer<Vec4>(readback[1][signal]);
+                for (uint32_t pixel = 0; pixel < Pixels; ++pixel)
+                {
+                    SCOPED_TRACE(pixel);
+                    if (signal >= 3)
+                    {
+                        EXPECT_EQ(fused[pixel], separate[pixel]);
+                    }
+                    else
+                    {
+                        ExpectColor(fused[pixel], separate[pixel]);
+                    }
+                }
+            }
+        }
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(SubmissionModes, ScreenProbeGatherIntegrationTest, testing::Values(0u, 1u, 2u, 3u));

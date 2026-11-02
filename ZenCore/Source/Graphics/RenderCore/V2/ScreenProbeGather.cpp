@@ -462,9 +462,12 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     m_rawBounce   = resources->CreateTexture(desc);
     desc.name     = "probe_raw_specular";
     m_rawSpecular = resources->CreateTexture(desc);
+    // Raw reconstruction is only consumed by captures/debug views. Normal rendering uses
+    // ProbeReconstruct below, so RDG culls these passes and their full-resolution textures.
     RDGComputePassDesc integrate;
     integrate.SetShaderProgramName("ProbeIntegrateSP");
     integrate.SetPassTag("ProbeIntegrate");
+    integrate.allowCulling = true;
     BindInputs(integrate, sampler, uniforms, scene);
     integrate.BindStorageBuffer("ProbeInput", integratedProbes);
     integrate.BindStorageBuffer("ProbeSubtiles", m_subtiles[m_current]);
@@ -520,6 +523,7 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     RDGComputePassDesc resolve;
     resolve.SetShaderProgramName("ProbeSpecularResolveSP");
     resolve.SetPassTag("ProbeSpecularResolve");
+    resolve.allowCulling = true;
     BindInputs(resolve, sampler, uniforms, scene);
     resolve.BindSampledTexture("rawProbeSpecular", sampler, specularSamples);
     resolve.BindSampledTexture("rawProbeSpecularGuide", sampler, specularGuide);
@@ -527,13 +531,14 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     Dispatch(std::move(resolve), pixelGroups);
 
     RDGComputePassDesc pixelTemporal;
-    pixelTemporal.SetShaderProgramName("ProbePixelTemporalSP");
-    pixelTemporal.SetPassTag("ProbePixelTemporal");
+    pixelTemporal.SetShaderProgramName("ProbeReconstructSP");
+    pixelTemporal.SetPassTag("ProbeReconstruct");
     pixelTemporal.allowCulling = false;
     BindInputs(pixelTemporal, sampler, uniforms, scene);
-    pixelTemporal.BindSampledTexture("probeRawSky", sampler, m_rawSky);
-    pixelTemporal.BindSampledTexture("probeRawBounce", sampler, m_rawBounce);
-    pixelTemporal.BindSampledTexture("probeRawSpecular", sampler, m_rawSpecular);
+    pixelTemporal.BindStorageBuffer("ProbeInput", integratedProbes);
+    pixelTemporal.BindStorageBuffer("ProbeSubtiles", m_subtiles[m_current]);
+    pixelTemporal.BindSampledTexture("rawProbeSpecular", sampler, specularSamples);
+    pixelTemporal.BindSampledTexture("rawProbeSpecularGuide", sampler, specularGuide);
     for (uint32_t texture = 0; texture < Count; ++texture)
     {
         pixelTemporal.BindSampledTexture(NameID(fmt::format("previousProbe{}", kHistoryNames[texture])), sampler,

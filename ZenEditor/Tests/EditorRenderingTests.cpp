@@ -3064,6 +3064,25 @@ TEST_P(EditorRendering, ScreenProbeGatherTracksPixelGatherOnCurvedGeometry)
         EXPECT_LT(difference, 0.06);
         EXPECT_LT(holeShare, 0.01);
     }
+    // Raw debug views retain reconstruction passes that normal fused rendering culls.
+    settings.gi.cone.SetAllFeatureProviders(rc::VoxelGISettings::RayProvider::Voxel);
+    settings.gi.cone.gather = rc::VoxelGISettings::Gather::Probes;
+    for (rc::DebugOutput output : {rc::DebugOutput::eGIRawSky, rc::DebugOutput::eGIHitMiss})
+    {
+        settings.debug.output = output;
+        const bool applied    = editor.StageRenderingSettings(settings, true) && editor.UpdateRenderingSettings();
+        EXPECT_TRUE(applied) << editor.GetRenderingState().GetError();
+        const bool rendered = applied && FrameWithPreparedGI(*device, editor);
+        EXPECT_TRUE(rendered);
+        if (rendered)
+        {
+            const rc::DebugOutputDescription description = editor.GetViewport().GetSnapshot().debug;
+            EXPECT_TRUE(description.available) << description.reason;
+            EXPECT_EQ(description.output, output);
+            const HeapVector<uint8_t> pixels = ReadScenePixels(*device, editor.GetViewport().GetRenderView().color);
+            EXPECT_EQ(pixels.size(), size_t(kWidth) * kHeight * 4);
+        }
+    }
     DestroyDevice(*device, editor);
 }
 

@@ -26,6 +26,7 @@ void CreateHybridTestShaders(RenderDevice* device)
           {"ProbeSpecularFilter3SP", "VoxelGI/probe_specular_filter.comp.spv"},
           {"ProbeSpecularResolveSP", "VoxelGI/probe_specular_resolve.comp.spv"},
           {"ProbePixelTemporalSP", "VoxelGI/probe_pixel_temporal.comp.spv"},
+          {"ProbeReconstructSP", "VoxelGI/probe_reconstruct.comp.spv"},
           {"EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"},
           {"EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"},
           {"EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"},
@@ -681,12 +682,13 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
                                            "probe_specular_trace_field",
                                            "probe_specular_filter",
                                            "probe_specular_resolve",
-                                           "probe_pixel_temporal",
+                                           "probe_reconstruct",
                                            "probe_claim",
+                                           "probe_pixel_temporal",
                                            "probe_trace_field"};
             const glm::uvec3   groups[] = {clearGroups, probeGroups, subtiles,    allocateGroups, allocateGroups,
                                            slotGroups,  slotGroups,  pixelGroups, specularGroups, specularGroups,
-                                           pixelGroups, pixelGroups, probeGroups, glm::uvec3(0)};
+                                           pixelGroups, pixelGroups, probeGroups, pixelGroups,    glm::uvec3(0)};
             constexpr uint32_t kPasses  = static_cast<uint32_t>(std::size(files));
             uint32_t           dispatches[kPasses]{};
             uint32_t           pixelTraces = 0;
@@ -712,7 +714,8 @@ TEST_F(RenderCoreTest, ScreenProbeHistoriesSurviveDeclinesAndResetAcrossGatherCh
             for (uint32_t pass = 0; pass < kPasses; ++pass)
             {
                 // The specular sample filter runs four passes, at block steps 1, 2, 4 and 8.
-                const uint32_t expected = !probes || pass == kPasses - 1               ? 0u
+                // Raw outputs have no consumer here; only the fused full-resolution pass survives.
+                const uint32_t expected = !probes || pass == 7 || pass == 10 || pass >= 13 ? 0u
                                         : pass == 0                                    ? (frame == 3 || frame >= 12 ? 0u : 2u)
                                         : (pass == 6 || pass == 9) && !settings.filter ? 0u
                                         : pass == 9                                    ? 4u
