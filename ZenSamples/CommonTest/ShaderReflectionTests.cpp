@@ -691,11 +691,12 @@ TEST(ShaderReflectionTests, SceneShadowsKeepTheMeshVertexLayoutAndUniformContrac
     EXPECT_EQ(FindBinding(shadow, "uShadowFace")->blockSize, 80u);
 }
 
-TEST(ShaderReflectionTests, RayShadowedForwardLayersReadTheDeferredReceiversShadowRays)
+TEST(ShaderReflectionTests, HybridForwardLayersReadDeferredReceiverVisibility)
 {
     for (const char* path :
          {"SceneRenderer/forward_material_shadows.frag.spv", "SceneRenderer/forward_material_shadows_capture.frag.spv",
-          "SceneRenderer/forward_material_shadows_counts.frag.spv"})
+          "SceneRenderer/forward_material_shadows_counts.frag.spv", "SceneRenderer/forward_material_hybrid.frag.spv",
+          "SceneRenderer/forward_material_hybrid_capture.frag.spv"})
     {
         SCOPED_TRACE(path);
 
@@ -714,10 +715,14 @@ TEST(ShaderReflectionTests, RayShadowedForwardLayersReadTheDeferredReceiversShad
         EXPECT_FALSE(visibility->writable);
     }
 
-    // Without ray shadows there are no shadow rays to reuse.
-    const RHIShaderGroupInfo hybrid = ReflectStage(RHIShaderStage::eFragment, "SceneRenderer/forward_material_hybrid.frag.spv");
-
-    EXPECT_EQ(FindBinding(hybrid, "receiverLightVisibility"), nullptr);
+    // Hybrid layers reuse exact shadow-map visibility as well as hardware shadow rays.
+    // Ordinary forward materials do not consume the deferred receiver's visibility.
+    for (const char* path : {"SceneRenderer/forward_material.frag.spv", "SceneRenderer/forward_material_voxel.frag.spv"})
+    {
+        SCOPED_TRACE(path);
+        const RHIShaderGroupInfo info = ReflectStage(RHIShaderStage::eFragment, path);
+        EXPECT_EQ(FindBinding(info, "receiverLightVisibility"), nullptr);
+    }
 }
 
 // Deferred lighting writes the receivers' shadow-ray results to color location 1 only in the

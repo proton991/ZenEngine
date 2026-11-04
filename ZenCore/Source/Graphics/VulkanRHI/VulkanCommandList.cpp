@@ -205,6 +205,17 @@ void FVulkanCommandBuffer::BindVertexBuffers(const HeapVector<VkBuffer>& buffers
     }
 }
 
+void FVulkanCommandBuffer::SetBlendConstants(const float* values)
+{
+    const uint32_t bit = ToUnderlying(RHIDynamicState::eBlendConstants);
+    if (!m_validDynamicStates.Test(bit) || !std::equal(m_blendConstants.begin(), m_blendConstants.end(), values))
+    {
+        vkCmdSetBlendConstants(m_vkHandle, values);
+        std::copy_n(values, m_blendConstants.size(), m_blendConstants.begin());
+        m_validDynamicStates.Set(bit);
+    }
+}
+
 bool FVulkanCommandBuffer::Begin()
 {
     DiscardGPUTimings();
@@ -1404,7 +1415,11 @@ bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
                 commandBuffer->SetLineWidth(m_rasterizationState.lineWidth);
             }
 
-            // Blend constants are static pipeline state in the current RHI dynamic-state enum.
+            if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eBlendConstants))
+            {
+                commandBuffer->SetBlendConstants(m_blendConstants);
+            }
+
             // Procedural draws declare no vertex inputs. Rebinding a previous draw's
             // cached handles would introduce an undeclared use after their owner retires.
             const VulkanShader* shader = TO_VK_SHADER(m_pCurrentPipeline->GetShader());

@@ -1,0 +1,15 @@
+#version 450
+layout(local_size_x = 1) in;
+// Combined image samplers and separate samplers share the same descriptor budget.
+layout(set = 1, binding = 0) uniform sampler2D combinedTextures[32];
+layout(set = 1, binding = 1) uniform sampler separateSamplers[33];
+layout(set = 1, binding = 2) uniform texture2D inputTexture;
+layout(set = 1, binding = 3, std430) buffer Result
+{
+    vec4 color;
+}
+result;
+void main()
+{
+    result.color = texture(combinedTextures[31], vec2(0.5)) + texture(sampler2D(inputTexture, separateSamplers[32]), vec2(0.5));
+}

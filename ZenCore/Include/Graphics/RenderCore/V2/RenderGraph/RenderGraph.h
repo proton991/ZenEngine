@@ -54,6 +54,13 @@ struct RDGBufferResourceState
     RDGWriterVisibility                writer;
 };
 
+struct RDGAccelerationStructureResourceState
+{
+    RHIAccessMode                      accessMode{RHIAccessMode::eNone};
+    BitField<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
+    RDGWriterVisibility                writer;
+};
+
 struct RDGBufferContentRange
 {
     uint64_t         begin{0};
@@ -88,15 +95,17 @@ public:
 
     ResourceStateTracker& operator=(ResourceStateTracker other)
     {
-        m_contents      = std::move(other.m_contents);
+        m_contents                    = std::move(other.m_contents);
 
-        m_textureStates = std::move(other.m_textureStates);
+        m_textureStates               = std::move(other.m_textureStates);
 
-        m_bufferStates  = std::move(other.m_bufferStates);
+        m_bufferStates                = std::move(other.m_bufferStates);
 
-        m_removed       = std::move(other.m_removed);
+        m_accelerationStructureStates = std::move(other.m_accelerationStructureStates);
 
-        m_base          = other.m_base;
+        m_removed                     = std::move(other.m_removed);
+
+        m_base                        = other.m_base;
 
         // Keep the receiving executor's metrics and invalidate plans on assignment/rollback.
         // Independent trackers can have the same numeric revision but different contents.
@@ -109,6 +118,8 @@ public:
 
     RDGBufferResourceState GetBufferState(const RHIBuffer* pBuffer) const;
 
+    RDGAccelerationStructureResourceState GetAccelerationStructureState(const RHIAccelerationStructure* structure) const;
+
     void UpdateTextureState(const RHITexture*                  pTexture,
                             RHIAccessMode                      accessMode,
                             RHITextureUsage                    usage,
@@ -118,6 +129,10 @@ public:
                            RHIAccessMode                      accessMode,
                            BitField<RHIBufferUsageFlagBits>   usage,
                            BitField<RHIPipelineStageFlagBits> pipelineStages);
+
+    void UpdateAccelerationStructureState(const RHIAccelerationStructure*    structure,
+                                          RHIAccessMode                      accessMode,
+                                          BitField<RHIPipelineStageFlagBits> pipelineStages);
 
     RDGResourceContent GetContents(const RHIResource* resource) const;
 
@@ -146,14 +161,18 @@ private:
 
     void SetBufferState(const RHIBuffer* buffer, const RDGBufferResourceState& state);
 
+    void SetAccelerationStructureState(const RHIAccelerationStructure*              structure,
+                                       const RDGAccelerationStructureResourceState& state);
+
     const ResourceStateTracker*           m_base{nullptr};
     std::unordered_set<uint64_t>          m_removed;
     HashMap<uint64_t, RDGResourceContent> m_contents;
     RDGMetrics*                           m_metrics{nullptr};
 
     // Resource StableId as Key
-    HashMap<uint64_t, RDGTextureResourceState> m_textureStates;
-    HashMap<uint64_t, RDGBufferResourceState>  m_bufferStates;
+    HashMap<uint64_t, RDGTextureResourceState>               m_textureStates;
+    HashMap<uint64_t, RDGBufferResourceState>                m_bufferStates;
+    HashMap<uint64_t, RDGAccelerationStructureResourceState> m_accelerationStructureStates;
 };
 
 class RenderGraph;
@@ -279,8 +298,9 @@ private:
     // Covers recording, submission, and commit/rollback of private tracker copies.
     bool m_executing{false};
 
-    FlatHashMap<RHIBuffer*, RDGBufferResourceState>   m_frameBufferStates;
-    FlatHashMap<RHITexture*, RDGTextureResourceState> m_frameTextureStates;
+    FlatHashMap<RHIBuffer*, RDGBufferResourceState>                               m_frameBufferStates;
+    FlatHashMap<RHIAccelerationStructure*, RDGAccelerationStructureResourceState> m_frameAccelerationStructureStates;
+    FlatHashMap<RHITexture*, RDGTextureResourceState>                             m_frameTextureStates;
 };
 
 enum class RDGExecutionState : uint8_t
@@ -334,6 +354,7 @@ struct RDGCompiledNode
     BitField<RHIPipelineStageFlagBits> prologueDstStages;
     uint32_t                           initialBarrierCount{0};
     HeapVector<RDGAccess>              initialResourceAccesses;
+    HeapVector<RHIMemoryTransition>    prologueMemoryTransitions;
     HeapVector<RHIBufferTransition>    prologueBufferTransitions;
     HeapVector<RHITextureTransition>   prologueTextureTransitions;
 };
@@ -502,6 +523,20 @@ private:
                                     bool                                  fullCoverage = true,
                                     bool                                  discardAfter = false,
                                     RDGResource                           value        = {});
+
+    bool DeclareAccelerationStructureAccessForPass(const RDGPassNode*                    node,
+                                                   const RDGResourceManager::Allocation* resource,
+                                                   RHIAccessMode                         accessMode,
+                                                   BitField<RHIPipelineStageFlagBits>    stages,
+                                                   RDGContentEffect                      intent = RDGContentEffect::eAutomatic);
+
+    bool DeclareResourceAccessForPass(const RDGPassNode*                    node,
+                                      const RDGResourceManager::Allocation* resource,
+                                      RDGAccess                             access,
+                                      RDGContentEffect                      intent,
+                                      bool                                  fullCoverage = true,
+                                      bool                                  discardAfter = false,
+                                      RDGResource                           value        = {});
 
     bool DeclareContentAccess(const RDGPassNode*                    node,
                               const RDGResourceManager::Allocation* resource,

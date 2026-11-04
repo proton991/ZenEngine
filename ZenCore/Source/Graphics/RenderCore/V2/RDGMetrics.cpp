@@ -174,7 +174,7 @@ bool Contains(const RHITextureSubResourceRange& outer, const RHITextureSubResour
 
 template <typename Resource> uint64_t StableId(const Resource& resource)
 {
-    return resource.type == RDGResourceType::eTexture ? resource.pTexture->GetStableId() : resource.pBuffer->GetStableId();
+    return resource.GetPhysicalResource()->GetStableId();
 }
 
 const char* IssueName(RDGMetricIssue issue)
@@ -766,6 +766,17 @@ void RDGMetrics::BeginGroups(const RenderGraph&                      graph,
 
                 m_groupLayouts[initial.resource]    = initial.layout;
             }
+            else if (resource->type == RDGResourceType::eAccelerationStructure)
+            {
+                const RDGAccelerationStructureResourceState state =
+                    tracker.GetAccelerationStructureState(resource->pAccelerationStructure);
+                initial.mode   = state.accessMode;
+                initial.stages = state.pipelineStages;
+                initial.access = state.accessMode == RHIAccessMode::eNone
+                                   ? 0
+                                   : int64_t(RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage,
+                                                                            state.accessMode));
+            }
             else
             {
                 const RDGBufferResourceState state = tracker.GetBufferState(resource->pBuffer);
@@ -1300,13 +1311,15 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
 {
     if (m_capture)
     {
+        m_node.memoryTransitions  = static_cast<uint32_t>(compiled.prologueMemoryTransitions.size());
+
         m_node.bufferTransitions  = static_cast<uint32_t>(buffers.size());
 
         m_node.textureTransitions = static_cast<uint32_t>(textures.size());
 
         m_node.initialResources   = initialResources;
 
-        m_node.barrierCalls       = !buffers.empty() || !textures.empty();
+        m_node.barrierCalls       = !compiled.prologueMemoryTransitions.empty() || !buffers.empty() || !textures.empty();
 
         m_node.srcStages          = srcStages;
 
@@ -1364,7 +1377,28 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
             m_barriers.push_back(barrier);
         }
 
-        const RDGNodeBase* node            = graph.GetNodeBaseById(compiled.nodeId);
+        const RDGNodeBase* node = graph.GetNodeBaseById(compiled.nodeId);
+
+        // AS barriers are native global memory barriers. Attribute their actual
+        // coverage to each AS accessed here without manufacturing a storage buffer.
+        for (uint32_t i = 0; i < node->accessCount; ++i)
+        {
+            const RDGAccess&                      access   = graph.m_accesses[node->accessOffset + i];
+            const RDGResourceManager::Allocation* resource = graph.m_resourceManager.FindResourceByIdx(access.resourceId);
+            if (resource->type == RDGResourceType::eAccelerationStructure)
+            {
+                for (const RHIMemoryTransition& memory : compiled.prologueMemoryTransitions)
+                {
+                    RDGMetricBarrier barrier;
+                    barrier.resource  = StableId(*resource);
+                    barrier.srcStages = srcStages;
+                    barrier.dstStages = dstStages;
+                    barrier.srcAccess = memory.srcAccess;
+                    barrier.dstAccess = memory.dstAccess;
+                    m_barriers.push_back(barrier);
+                }
+            }
+        }
 
         const RHIQueueCapabilities& queues = graph.m_pRenderDevice->GetQueueCapabilities();
 
@@ -1418,6 +1452,17 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
                     initial.access = RHITextureUsageToAccessFlagBits(previous.usage, previous.accessMode);
 
                     initial.layout = RHITextureUsageToLayout(previous.usage);
+                }
+                else if (resource->type == RDGResourceType::eAccelerationStructure)
+                {
+                    const RDGAccelerationStructureResourceState state =
+                        tracker.GetAccelerationStructureState(resource->pAccelerationStructure);
+                    initial.mode   = state.accessMode;
+                    initial.stages = state.pipelineStages;
+                    initial.access = state.accessMode == RHIAccessMode::eNone
+                                       ? 0
+                                       : int64_t(RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage,
+                                                                                state.accessMode));
                 }
                 else
                 {
@@ -1502,6 +1547,8 @@ void RDGMetrics::EndNode()
 
         total.initialResources           += m_node.initialResources;
 
+        total.memoryTransitions          += m_node.memoryTransitions;
+
         total.bufferTransitions          += m_node.bufferTransitions;
 
         total.textureTransitions         += m_node.textureTransitions;
@@ -1573,14 +1620,14 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
         "[RDG metrics] graph=\"{}\" stream={} execution={} window(executions={},nodes={}) "
         "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
         "edges={},dependency_hazards={},reordered={}) "
-        "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
+        "barriers(calls={},memory={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
         "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
         Label(sample.graph), sample.transferOnly ? "transfer" : "frame", sample.execution, sample.windowExecutions,
         sample.windowNodes, sample.nodeCount, sample.passCounts[1], sample.passCounts[2], sample.passCounts[3],
         sample.resources, sample.importedResources, sample.transientResources, sample.dependencyEdges, sample.dependencyHazards,
-        sample.reorderedNodes, t.barrierCalls, t.bufferTransitions, t.textureTransitions, t.initialResources,
-        t.internalMemoryTransitions, t.internalTextureTransitions, t.reads, t.writes, sample.compileCPUUs, sample.executeCPUUs,
-        sample.precompiled, sample.validated, sample.preparationPasses);
+        sample.reorderedNodes, t.barrierCalls, t.memoryTransitions, t.bufferTransitions, t.textureTransitions,
+        t.initialResources, t.internalMemoryTransitions, t.internalTextureTransitions, t.reads, t.writes, sample.compileCPUUs,
+        sample.executeCPUUs, sample.precompiled, sample.validated, sample.preparationPasses);
 
     text += fmt::format(" liveness(culled={},reused_allocations={}) "
                         "pool_estimated_bytes(assigned={},available={},retiring={}) "
@@ -1652,13 +1699,13 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
     {
         text += fmt::format(
             "\n  node={} order={} name=\"{}\" type={} queue_preference={} async_eligibility={} planned_queue={} group={} read={} read_write={} "
-            "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
+            "barriers(calls={},memory={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
             "stages=0x{:x}->0x{:x} record_cpu_us={}",
             node.id, node.order, Label(node.name), NodeTypeName(node.type), QueuePreferenceName(node.queuePreference),
             AsyncComputeEligibilityName(node.asyncComputeEligibility), RHIQueueName(node.plannedQueue), node.submissionGroup,
-            node.reads, node.writes, node.barrierCalls, node.bufferTransitions, node.textureTransitions, node.initialResources,
-            node.internalMemoryTransitions, node.internalTextureTransitions, node.srcStages, node.dstStages,
-            sample.nodeTimingsEnabled ? fmt::format("{:.1f}", node.recordCPUUs) : "disabled");
+            node.reads, node.writes, node.barrierCalls, node.memoryTransitions, node.bufferTransitions, node.textureTransitions,
+            node.initialResources, node.internalMemoryTransitions, node.internalTextureTransitions, node.srcStages,
+            node.dstStages, sample.nodeTimingsEnabled ? fmt::format("{:.1f}", node.recordCPUUs) : "disabled");
 
         if (sample.gpuTimingsEnabled)
         {

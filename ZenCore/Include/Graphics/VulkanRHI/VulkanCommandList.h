@@ -82,6 +82,8 @@ public:
 
     void SetLineWidth(float width);
 
+    void SetBlendConstants(const float* values);
+
     void BindVertexBuffers(const HeapVector<VkBuffer>& buffers, const HeapVector<uint64_t>& offsets);
 
     void SetSubmitted();
@@ -210,6 +212,7 @@ private:
     VkRect2D                     m_scissor{};
     float                        m_depthBias[3]{};
     float                        m_lineWidth{1.0f};
+    std::array<float, 4>         m_blendConstants{};
     HeapVector<VkBuffer>         m_boundVertexBuffers;
     HeapVector<uint64_t>         m_boundVertexOffsets;
 

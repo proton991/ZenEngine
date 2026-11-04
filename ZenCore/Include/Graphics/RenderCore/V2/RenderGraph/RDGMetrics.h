@@ -157,6 +157,7 @@ struct RDGNodeMetrics
     uint32_t                   reads{0};
     uint32_t                   writes{0};
     uint32_t                   initialResources{0};
+    uint32_t                   memoryTransitions{0};
     uint32_t                   bufferTransitions{0};
     uint32_t                   textureTransitions{0};
     uint32_t                   internalMemoryTransitions{0};

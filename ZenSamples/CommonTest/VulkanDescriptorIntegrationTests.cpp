@@ -704,4 +704,30 @@ TEST_F(VulkanDescriptorIntegrationTest, ShaderOverUniformBufferLimitIsRejectedBe
 
     EXPECT_EQ(PipelineLayoutCounter::calls, 1u);
 }
+TEST_F(VulkanDescriptorIntegrationTest, ShaderOverSamplerLimitIsRejectedBeforeNativeCreation)
+{
+    const VkPhysicalDeviceLimits limits = session->rhi.GetDevice()->GetPhysicalDeviceProperties().limits;
+    if (limits.maxDescriptorSetSamplers >= 65 && limits.maxPerStageDescriptorSamplers >= 65)
+    {
+        GTEST_SKIP() << "Device supports the fixture's 65 sampler descriptors";
+    }
+    PipelineLayoutCounter::create = vkCreatePipelineLayout;
+    PipelineLayoutCounter::calls  = 0;
+    test::ScopedVulkanCall<PFN_vkCreatePipelineLayout> counted(vkCreatePipelineLayout, PipelineLayoutCounter::Create);
+    RHIShaderCreateInfo                                info{};
+    info.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+    info.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] =
+        std::filesystem::relative(std::filesystem::path(RDG_REFLECTION_TEST_PATH) / "descriptor_sampler_limit.comp.spv",
+                                  SPV_SHADER_PATH)
+            .generic_string();
+    RHIShader* rejected = session->rhi.CreateShader(info);
+    EXPECT_EQ(rejected, nullptr);
+    if (rejected != nullptr)
+    {
+        session->rhi.DestroyShader(rejected);
+    }
+    EXPECT_EQ(PipelineLayoutCounter::calls, 0u);
+    EXPECT_NE(Pipeline("binding_sampler.comp.spv"), nullptr);
+    EXPECT_EQ(PipelineLayoutCounter::calls, 1u);
+}
 } // namespace

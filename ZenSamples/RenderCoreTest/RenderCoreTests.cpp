@@ -123,20 +123,11 @@ private:
 class TestAccelerationStructure : public RHIAccelerationStructure
 {
 public:
-    explicit TestAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) : RHIAccelerationStructure(info)
+    explicit TestAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) : RHIAccelerationStructure(info) {}
+
+    bool IsAsyncComputeAccessible() const override
     {
-        RHIBufferCreateInfo storage;
-        storage.size = info.size;
-        storage.usageFlags.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
-        buffer = ZEN_NEW() TestBuffer(storage);
-    }
-    uint64_t GetDeviceAddress() const override
-    {
-        return GetStableId() * 4096;
-    }
-    RHIBuffer* GetStorageBuffer() const override
-    {
-        return buffer;
+        return true;
     }
 
 private:
@@ -144,10 +135,8 @@ private:
     void Destroy() override
     {
         destroyed.insert(GetStableId());
-        buffer->ReleaseReference();
         ZEN_DELETE(this);
     }
-    RHIBuffer* buffer;
 };
 
 class TestTextureView : public RHITextureView
@@ -735,12 +724,18 @@ public:
         clearSize   = size;
     }
 
-    HeapVector<uint32_t> accelerationStructureBuildCounts;
-    void                 RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info) override
+    HeapVector<uint32_t>                         accelerationStructureBuildCounts;
+    HeapVector<RHIAccelerationStructureInstance> accelerationStructureInstances;
+    void RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info) override
     {
         accelerationStructureBuildCounts.push_back(info.description.type == RHIAccelerationStructureType::eTopLevel
-                                                       ? info.description.instanceCount
+                                                       ? static_cast<uint32_t>(info.description.instances.size())
                                                        : info.description.geometries[0].indexCount);
+        accelerationStructureInstances.clear();
+        for (const RHIAccelerationStructureInstance& instance : info.description.instances)
+        {
+            accelerationStructureInstances.push_back(instance);
+        }
     }
 
     void RHICopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region) override
@@ -1283,9 +1278,12 @@ public:
         return result;
     }
 
-    RHIAccelerationStructureBuildSizes GetAccelerationStructureBuildSizes(const RHIAccelerationStructureBuildDesc&) override
+    RHIAccelerationStructureBuildSizes GetAccelerationStructureBuildSizes(
+        const RHIAccelerationStructureBuildDesc& desc) override
     {
-        return info.rayQuery.IsUsable() ? RHIAccelerationStructureBuildSizes{4096, 1024, 512}
+        const uint64_t instanceBytes =
+            desc.type == RHIAccelerationStructureType::eTopLevel ? std::max(size_t(1), desc.instances.size()) * 64 : 0;
+        return info.rayQuery.IsUsable() ? RHIAccelerationStructureBuildSizes{4096, 1024, 512, instanceBytes}
                                         : RHIAccelerationStructureBuildSizes{};
     }
 

@@ -431,7 +431,9 @@ TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldShiftedObliqueNormals)
             for (uint32_t index = 0; index < rays.size(); ++index)
             {
                 SCOPED_TRACE(index);
-                EXPECT_EQ(results[index].statistics.x, 1u);
+                EXPECT_EQ(results[index].statistics.x, 1u)
+                    << "failure reason=" << results[index].normal.w << " work=" << results[index].statistics.z
+                    << " samples=" << results[index].statistics.w;
                 EXPECT_NEAR(results[index].positionDistance.w, 1.0f, spacing);
                 EXPECT_LT(glm::dot(Vec3(results[index].normal), Vec3(rays[index].directionMaximum)), -0.8f);
                 EXPECT_LE(results[index].statistics.z, field.GetUniform().dimensions.w);
@@ -574,7 +576,7 @@ double FieldMaskAlpha(const glm::dvec2& uv, bool linear, uint32_t address)
 // An unresolved region or explicit coverage failure is safe; publishing an empty field is not.
 TEST_P(DistanceFieldSceneIntegrationTest, DistanceFieldCoverageArithmeticRegression)
 {
-    ShaderProgramManager::GetInstance().BuildShaderPrograms(device);
+    RegisterDistanceFieldPrograms(device);
     device->InitializeRendererServer();
     const Vec2 barycentrics[] = {Vec2(0.3626762926578522f, 0.3864086866378784f),
                                  Vec2(0.23923003673553467f, 0.028369784355163574f)};

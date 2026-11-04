@@ -81,8 +81,7 @@ struct RHIRayQueryCapabilities
 
     bool IsUsable() const
     {
-        return bufferDeviceAddress && accelerationStructure && rayQuery && graphicsBuild && triangleFloat3
-            && scratchAlignment != 0;
+        return accelerationStructure && rayQuery && graphicsBuild && triangleFloat3 && scratchAlignment != 0;
     }
 };
 
@@ -120,7 +119,7 @@ struct RHIGPUInfo
     size_t storageBufferAlignment{0};
     // Conservative defaults; the backend supplies the physical device limits.
     uint32_t maxComputeWorkGroupInvocations{128};
-    // Every descriptor set index must be below this device limit (Vulkan guarantees at least 4).
+    // Every logical descriptor-set index must be below this backend limit (Vulkan guarantees at least 4).
     uint32_t                maxBoundDescriptorSets{4};
     std::array<uint32_t, 3> maxComputeWorkGroupSize{128, 128, 64};
     std::array<uint32_t, 3> maxComputeWorkGroupCount{65535, 65535, 65535};
@@ -323,7 +322,7 @@ struct RHIShaderResourceDescriptor
     bool                             writable{false}; // Storage image/buffer capability, unioned across shader stages.
     bool                             bindless{false};
 
-    // Size of arrays (in total elements), or ubos (in bytes * total elements).
+    // Descriptor-array element count. Uniform block byte size is stored separately.
     uint32_t arraySize{1};
     uint32_t blockSize{0};
     uint32_t set{0};
@@ -673,11 +672,12 @@ struct RHIGfxPipelineColorBlendState
 
 enum class RHIDynamicState : uint32_t
 {
-    eViewPort  = 0,
-    eScissor   = 1,
-    eLineWidth = 2,
-    eDepthBias = 3,
-    eMax       = 4
+    eViewPort       = 0,
+    eScissor        = 1,
+    eLineWidth      = 2,
+    eDepthBias      = 3,
+    eBlendConstants = 4,
+    eMax            = 5
 };
 
 struct RHIDynamicStateArray

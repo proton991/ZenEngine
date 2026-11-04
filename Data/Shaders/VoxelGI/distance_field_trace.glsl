@@ -235,10 +235,10 @@ bool DistanceFieldIntersectBounds(vec3        origin,
         }
         else
         {
-            float a = -origin[axis] * inverseDirection[axis];
-            float b = (extent - origin[axis]) * inverseDirection[axis];
-            enter   = max(enter, min(a, b));
-            leave   = min(leave, max(a, b));
+            precise float a = -origin[axis] * inverseDirection[axis];
+            precise float b = (extent - origin[axis]) * inverseDirection[axis];
+            enter           = max(enter, min(a, b));
+            leave           = min(leave, max(a, b));
         }
     }
     return intersects && enter < leave;
@@ -249,7 +249,8 @@ float DistanceFieldNodeExit(vec3 origin, vec3 direction, vec3 inverseDirection, 
     float side     = float(1u << mip);
     vec3  lower    = vec3(coordinate) * side;
     vec3  boundary = lower + mix(vec3(0), vec3(side), greaterThan(direction, vec3(0)));
-    vec3  leave    = mix(vec3(1e30), (boundary - origin) * inverseDirection, notEqual(direction, vec3(0)));
+    // Cell selection must evaluate the same crossing time at a shared face.
+    precise vec3 leave = mix(vec3(1e30), (boundary - origin) * inverseDirection, notEqual(direction, vec3(0)));
     return min(leave.x, min(leave.y, leave.z));
 }
 
@@ -260,14 +261,14 @@ bool DistanceFieldCellAtDistance(DistanceFieldLevel level,
                                  float              distance,
                                  out ivec3          cell)
 {
-    vec3 position      = origin + direction * distance;
-    cell               = ivec3(clamp(floor(position), vec3(0.0), vec3(level.dimensions.x - 1u)));
-    bvec3 moving       = notEqual(direction, vec3(0));
-    vec3  forward      = mix(vec3(-1), vec3(1), greaterThan(direction, vec3(0)));
-    vec3  nearBoundary = vec3(cell) + max(-forward, vec3(0));
-    vec3  farBoundary  = nearBoundary + forward;
-    vec3  nearDistance = (nearBoundary - origin) * inverseDirection;
-    vec3  farDistance  = (farBoundary - origin) * inverseDirection;
+    vec3 position             = origin + direction * distance;
+    cell                      = ivec3(clamp(floor(position), vec3(0.0), vec3(level.dimensions.x - 1u)));
+    bvec3        moving       = notEqual(direction, vec3(0));
+    vec3         forward      = mix(vec3(-1), vec3(1), greaterThan(direction, vec3(0)));
+    vec3         nearBoundary = vec3(cell) + max(-forward, vec3(0));
+    vec3         farBoundary  = nearBoundary + forward;
+    precise vec3 nearDistance = (nearBoundary - origin) * inverseDirection;
+    precise vec3 farDistance  = (farBoundary - origin) * inverseDirection;
     // Reconstructed positions can round behind a crossed face. Resolve all three axes
     // from the same half-open crossing times without divergent per-axis branches or bias.
     vec3 correction  = mix(vec3(0), -forward, lessThan(vec3(distance), nearDistance));

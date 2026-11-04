@@ -14,6 +14,7 @@
 #include <functional>
 #include <limits>
 #include <queue>
+#include <type_traits>
 #include <unordered_set>
 
 namespace zen::rc
@@ -419,11 +420,12 @@ bool NeedsVisibility(const RDGWriterVisibility& writer, const RDGAccess& next)
     return needsVisibility;
 }
 
-bool NeedsResourceBarrier(const RDGBufferResourceState& previous, const RDGAccess& next)
+// Buffers and acceleration structures share hazard rules, but retain distinct state and APIs.
+template <typename State> bool NeedsResourceBarrier(const State& previous, const RDGAccess& next)
 {
     bool result{};
 
-    // Buffers have no layout transition. With no prior access there is nothing to synchronize;
+    // These resources have no layout transition. With no prior access there is nothing to synchronize;
     // unknown external reads are still diagnosed independently by metrics.
     if (previous.accessMode != RHIAccessMode::eNone)
     {
@@ -477,7 +479,7 @@ void AdvanceVisibility(RDGWriterVisibility& writer,
     }
 }
 
-RDGBufferResourceState AdvanceState(RDGBufferResourceState previous, const RDGAccess& next, int64_t barrierDestinations)
+template <typename State> State AdvanceState(State previous, const RDGAccess& next, int64_t barrierDestinations)
 {
     const bool barrier = NeedsResourceBarrier(previous, next);
 
@@ -485,9 +487,12 @@ RDGBufferResourceState AdvanceState(RDGBufferResourceState previous, const RDGAc
 
     AdvanceVisibility(previous.writer, next, barrier ? barrierDestinations : 0);
 
-    previous.accessMode     = next.accessMode;
+    previous.accessMode = next.accessMode;
 
-    previous.usage          = int64_t(next.bufferUsage) | (readers ? int64_t(previous.usage) : 0);
+    if constexpr (std::is_same_v<State, RDGBufferResourceState>)
+    {
+        previous.usage = int64_t(next.bufferUsage) | (readers ? int64_t(previous.usage) : 0);
+    }
 
     previous.pipelineStages = int64_t(next.pipelineStages) | (readers ? int64_t(previous.pipelineStages) : 0);
 
@@ -512,11 +517,6 @@ RDGTextureResourceState AdvanceState(RDGTextureResourceState previous, const RDG
     previous.pipelineStages = int64_t(next.pipelineStages) | (readers ? int64_t(previous.pipelineStages) : 0);
 
     return previous;
-}
-
-template <typename Allocation> RHIResource* PhysicalResource(const Allocation* resource)
-{
-    return resource->type == RDGResourceType::eTexture ? static_cast<RHIResource*>(resource->pTexture) : resource->pBuffer;
 }
 
 bool TransferStages(BitField<RHIPipelineStageFlagBits> stages)
@@ -568,6 +568,17 @@ void AddBufferTransitions(HeapVector<RHIBufferTransition>& transitions,
             transitions.push_back(transition);
         }
     }
+}
+
+void AddAccelerationStructureTransition(RDGCompiledNode&                             compiled,
+                                        const RDGAccelerationStructureResourceState& previous,
+                                        const RDGAccess&                             access)
+{
+    RHIMemoryTransition transition;
+    transition.srcAccess = RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, previous.accessMode)
+                         | previous.writer.access;
+    transition.dstAccess = access.accessFlags;
+    compiled.prologueMemoryTransitions.push_back(transition);
 }
 
 template <typename Allocation> RHITextureSubResourceRange FullRange(const Allocation* resource)
@@ -683,6 +694,31 @@ RDGBufferResourceState ResourceStateTracker::GetBufferState(const RHIBuffer* buf
     return result;
 }
 
+RDGAccelerationStructureResourceState ResourceStateTracker::GetAccelerationStructureState(
+    const RHIAccelerationStructure* structure) const
+{
+    RDGAccelerationStructureResourceState result{};
+
+    if (structure != nullptr)
+    {
+        const uint64_t id = structure->GetStableId();
+
+        const HashMap<uint64_t, RDGAccelerationStructureResourceState>::const_iterator it =
+            m_accelerationStructureStates.find(id);
+
+        if (it != m_accelerationStructureStates.end())
+        {
+            result = it->second;
+        }
+        else if (m_base != nullptr && !m_removed.contains(id))
+        {
+            result = m_base->GetAccelerationStructureState(structure);
+        }
+    }
+
+    return result;
+}
+
 void ResourceStateTracker::UpdateTextureState(const RHITexture*                  texture,
                                               RHIAccessMode                      mode,
                                               RHITextureUsage                    usage,
@@ -739,6 +775,30 @@ void ResourceStateTracker::SetBufferState(const RHIBuffer* buffer, const RDGBuff
     }
 }
 
+void ResourceStateTracker::UpdateAccelerationStructureState(const RHIAccelerationStructure*    structure,
+                                                            RHIAccessMode                      mode,
+                                                            BitField<RHIPipelineStageFlagBits> stages)
+{
+    if (structure != nullptr)
+    {
+        RemoveResourceState(structure->GetStableId(), true);
+    }
+    RDGAccelerationStructureResourceState state{mode, stages};
+    state.writer = NewWriter(RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, mode), stages);
+    SetAccelerationStructureState(structure, state);
+}
+
+void ResourceStateTracker::SetAccelerationStructureState(const RHIAccelerationStructure*              structure,
+                                                         const RDGAccelerationStructureResourceState& state)
+{
+    if (structure != nullptr)
+    {
+        ++m_revision;
+
+        m_accelerationStructureStates[structure->GetStableId()] = state;
+    }
+}
+
 RDGResourceContent ResourceStateTracker::GetContents(const RHIResource* resource) const
 {
     RDGResourceContent result{};
@@ -770,6 +830,8 @@ void ResourceStateTracker::RemoveResourceState(uint64_t resourceId, bool invalid
 
     m_bufferStates.erase(resourceId);
 
+    m_accelerationStructureStates.erase(resourceId);
+
     m_contents.erase(resourceId);
 
     if (m_base != nullptr)
@@ -791,8 +853,8 @@ void ResourceStateTracker::RemoveResourceState(uint64_t resourceId, bool invalid
 
 bool ResourceStateTracker::HasResourceState(uint64_t resourceId) const
 {
-    const bool local =
-        m_textureStates.contains(resourceId) || m_bufferStates.contains(resourceId) || m_contents.contains(resourceId);
+    const bool local = m_textureStates.contains(resourceId) || m_bufferStates.contains(resourceId)
+                    || m_accelerationStructureStates.contains(resourceId) || m_contents.contains(resourceId);
 
     return local || (m_base != nullptr && !m_removed.contains(resourceId) && m_base->HasResourceState(resourceId));
 }
@@ -807,6 +869,8 @@ void ResourceStateTracker::CommitOverlay(ResourceStateTracker&& overlay)
 
         m_bufferStates.erase(id);
 
+        m_accelerationStructureStates.erase(id);
+
         m_contents.erase(id);
     }
 
@@ -818,6 +882,11 @@ void ResourceStateTracker::CommitOverlay(ResourceStateTracker&& overlay)
     for (HashMap<uint64_t, RDGBufferResourceState>::value_type& entry : overlay.m_bufferStates)
     {
         m_bufferStates.insert_or_assign(entry.first, std::move(entry.second));
+    }
+
+    for (HashMap<uint64_t, RDGAccelerationStructureResourceState>::value_type& entry : overlay.m_accelerationStructureStates)
+    {
+        m_accelerationStructureStates.insert_or_assign(entry.first, std::move(entry.second));
     }
 
     for (HashMap<uint64_t, RDGResourceContent>::value_type& entry : overlay.m_contents)
@@ -1208,9 +1277,7 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
                             continue;
                         }
 
-                        const RHIResource* rhiResource = resource->type == RDGResourceType::eTexture
-                                                           ? static_cast<const RHIResource*>(resource->pTexture)
-                                                           : static_cast<const RHIResource*>(resource->pBuffer);
+                        const RHIResource* rhiResource = resource->GetPhysicalResource();
 
                         if (rhiResource != nullptr)
                         {
@@ -1337,7 +1404,7 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
             valid = std::all_of(graph->m_resourceManager.m_resources.begin(), graph->m_resourceManager.m_resources.end(),
                                 [graph](const RDGResourceManager::Allocation* resource) {
                                     return graph->CheckFormat(resource->liveAccessCount == 0
-                                                                  || PhysicalResource(resource) != nullptr,
+                                                                  || resource->GetPhysicalResource() != nullptr,
                                                               RDGErrorCode::eAllocation, "Failed to materialize resource '{}'",
                                                               resource->name.CStr());
                                 });
@@ -1414,8 +1481,10 @@ struct GroupResourceState
     static constexpr size_t                           kQueueCount = size_t(RHICommandContextType::eMax);
     SmallVector<RDGBufferResourceState, kQueueCount>  buffers  = SmallVector<RDGBufferResourceState, kQueueCount>(kQueueCount);
     SmallVector<RDGTextureResourceState, kQueueCount> textures = SmallVector<RDGTextureResourceState, kQueueCount>(kQueueCount);
-    RHITextureUsage                                   layoutUsage{RHITextureUsage::eNone};
-    HeapVector<RDGExternalQueueState>                 externalProducers;
+    SmallVector<RDGAccelerationStructureResourceState, kQueueCount> accelerationStructures =
+        SmallVector<RDGAccelerationStructureResourceState, kQueueCount>(kQueueCount);
+    RHITextureUsage                   layoutUsage{RHITextureUsage::eNone};
+    HeapVector<RDGExternalQueueState> externalProducers;
 };
 
 void IncludeDependencyId(HeapVector<uint32_t>& dependencies, uint32_t id)
@@ -1451,6 +1520,18 @@ template <typename Allocation> void PlanGroupAccess(const Allocation*   resource
                                  previous.usage, access.bufferUsage, previous.writer.access);
         }
 
+        previous = AdvanceState(previous, access, barrier ? int64_t(access.pipelineStages) : 0);
+    }
+    else if (resource->type == RDGResourceType::eAccelerationStructure)
+    {
+        RDGAccelerationStructureResourceState& previous = state.accelerationStructures[queue];
+        barrier                                         = NeedsResourceBarrier(previous, access);
+        if (barrier)
+        {
+            compiled.prologueSrcStages.SetFlag(previous.pipelineStages);
+            compiled.prologueSrcStages.SetFlag(previous.writer.stages);
+            AddAccelerationStructureTransition(compiled, previous, access);
+        }
         previous = AdvanceState(previous, access, barrier ? int64_t(access.pipelineStages) : 0);
     }
     else
@@ -1584,7 +1665,7 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                 const RDGResourceManager::Allocation* resource = graph.m_resourceManager.FindResourceByIdx(access.resourceId);
 
-                const uint64_t id                              = PhysicalResource(resource)->GetStableId();
+                const uint64_t id                              = resource->GetPhysicalResource()->GetStableId();
 
                 const std::pair<HashMap<uint64_t, GroupResourceState>::iterator, bool> insertion = states.try_emplace(id);
 
@@ -1596,16 +1677,19 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                     const RDGTextureResourceState texture = InitialTextureState(resource, m_resourceStateTracker);
 
-                    const bool priorAccess                = resource->type == RDGResourceType::eBuffer
-                                                              ? buffer.accessMode != RHIAccessMode::eNone
-                                                              : texture.usage != RHITextureUsage::eNone;
+                    const RDGAccelerationStructureResourceState structure =
+                        m_resourceStateTracker.GetAccelerationStructureState(resource->pAccelerationStructure);
+
+                    const bool priorAccess = buffer.accessMode != RHIAccessMode::eNone
+                                          || structure.accessMode != RHIAccessMode::eNone
+                                          || texture.usage != RHITextureUsage::eNone;
 
                     const HashMap<uint64_t, HeapVector<RDGExternalQueueState>>::const_iterator producer = external.find(id);
 
                     valid                                                                               = graph.CheckFormat(
                         !priorAccess || resource->hasInitialState || producer != external.end(), RDGErrorCode::eLifecycle,
                         "Initial resource state requires queue provenance before group recording: {} (id {})",
-                        PhysicalResource(resource)->GetResourceTag().CStr(), id);
+                        resource->GetPhysicalResource()->GetResourceTag().CStr(), id);
 
                     if (producer != external.end())
                     {
@@ -1644,6 +1728,11 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                                 state.layoutUsage         = prior.access.textureUsage;
                             }
+                            else if (resource->type == RDGResourceType::eAccelerationStructure)
+                            {
+                                state.accelerationStructures[local] =
+                                    AdvanceState(state.accelerationStructures[local], prior.access, 0);
+                            }
                             else
                             {
                                 state.buffers[local] = AdvanceState(state.buffers[local], prior.access, 0);
@@ -1657,9 +1746,11 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
                         const size_t initialQueue = queues.GetNativeQueueIndex(
                             producer != external.end() ? producer->second[0].queue : RHICommandContextType::eGraphics);
 
-                        state.buffers[initialQueue]  = buffer;
+                        state.accelerationStructures[initialQueue] = structure;
 
-                        state.textures[initialQueue] = texture;
+                        state.buffers[initialQueue]                = buffer;
+
+                        state.textures[initialQueue]               = texture;
                     }
 
                     for (size_t initialQueue = 0; valid && initialQueue < size_t(RHICommandContextType::eMax); ++initialQueue)
@@ -1668,8 +1759,14 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
 
                         const RDGTextureResourceState& initialTexture = state.textures[initialQueue];
 
+                        const RDGAccelerationStructureResourceState& initialStructure =
+                            state.accelerationStructures[initialQueue];
+
                         const BitField<RHIPipelineStageFlagBits> initialStages =
-                            resource->type == RDGResourceType::eBuffer
+                            resource->type == RDGResourceType::eAccelerationStructure
+                                ? BitField<RHIPipelineStageFlagBits>(initialStructure.pipelineStages
+                                                                     | initialStructure.writer.stages)
+                            : resource->type == RDGResourceType::eBuffer
                                 ? BitField<RHIPipelineStageFlagBits>(int64_t(initialBuffer.pipelineStages)
                                                                      | int64_t(initialBuffer.writer.stages))
                                 : BitField<RHIPipelineStageFlagBits>(int64_t(initialTexture.pipelineStages)
@@ -1690,7 +1787,7 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
                 for (const RDGExternalQueueState& prior : state.externalProducers)
                 {
                     const bool depends = prior.ordersReaders || access.accessMode == RHIAccessMode::eReadWrite || layoutChange
-                                      || !PhysicalResource(resource)->IsAsyncComputeAccessible();
+                                      || !resource->GetPhysicalResource()->IsAsyncComputeAccessible();
 
                     if (valid && depends)
                     {
@@ -1699,7 +1796,8 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
                         if (queues.GetNativeQueueIndex(prior.queue) != queue)
                         {
                             valid = graph.Check(
-                                queues.asyncSubmissionDependencies && PhysicalResource(resource)->IsAsyncComputeAccessible(),
+                                queues.asyncSubmissionDependencies
+                                    && resource->GetPhysicalResource()->IsAsyncComputeAccessible(),
                                 RDGErrorCode::eLifecycle,
                                 "External queue dependency requires semaphore support and a shared resource contract");
                         }
@@ -1742,6 +1840,8 @@ bool RDGExecutor::AttachGraphBarriers(RenderGraph* graph)
 
     m_frameBufferStates.clear();
 
+    m_frameAccelerationStructureStates.clear();
+
     m_frameTextureStates.clear();
 
     graph->m_compileStats.dependencyBarrierCount = 0;
@@ -1756,6 +1856,8 @@ bool RDGExecutor::AttachGraphBarriers(RenderGraph* graph)
 
         compiled.initialResourceAccesses.clear();
 
+        compiled.prologueMemoryTransitions.clear();
+
         compiled.prologueBufferTransitions.clear();
 
         compiled.prologueTextureTransitions.clear();
@@ -1768,7 +1870,7 @@ bool RDGExecutor::AttachGraphBarriers(RenderGraph* graph)
 
             const RDGResourceManager::Allocation* resource = graph->m_resourceManager.FindResourceByIdx(access.resourceId);
 
-            valid = graph->Check(resource != nullptr && PhysicalResource(resource) != nullptr, RDGErrorCode::eAllocation,
+            valid = graph->Check(resource != nullptr && resource->GetPhysicalResource() != nullptr, RDGErrorCode::eAllocation,
                                  "RDG resource has not been materialized");
 
             if (valid)
@@ -1805,6 +1907,25 @@ bool RDGExecutor::AttachGraphBarriers(RenderGraph* graph)
 
                         AddBufferTransitions(compiled.prologueBufferTransitions, resource->pBuffer, previous.accessMode,
                                              access.accessMode, previous.usage, access.bufferUsage, previous.writer.access);
+                    }
+                }
+                else if (resource->type == RDGResourceType::eAccelerationStructure)
+                {
+                    const std::pair<FlatHashMap<RHIAccelerationStructure*, RDGAccelerationStructureResourceState>::iterator,
+                                    bool>
+                        insertion = m_frameAccelerationStructureStates.try_emplace(resource->pAccelerationStructure);
+                    RDGAccelerationStructureResourceState& previous = insertion.first->second;
+                    first                                           = insertion.second;
+                    if (first)
+                    {
+                        previous = m_resourceStateTracker.GetAccelerationStructureState(resource->pAccelerationStructure);
+                    }
+                    barrier = NeedsResourceBarrier(previous, access);
+                    if (barrier)
+                    {
+                        compiled.prologueSrcStages.SetFlag(previous.pipelineStages);
+                        compiled.prologueSrcStages.SetFlag(previous.writer.stages);
+                        AddAccelerationStructureTransition(compiled, previous, access);
                     }
                 }
                 else
@@ -1894,6 +2015,12 @@ bool RDGExecutor::AttachGraphBarriers(RenderGraph* graph)
                     RDGBufferResourceState& state = m_frameBufferStates.find(resource->pBuffer)->second;
 
                     state                         = AdvanceState(state, access, compiled.prologueDstStages);
+                }
+                else if (resource->type == RDGResourceType::eAccelerationStructure)
+                {
+                    RDGAccelerationStructureResourceState& state =
+                        m_frameAccelerationStructureStates.find(resource->pAccelerationStructure)->second;
+                    state = AdvanceState(state, access, compiled.prologueDstStages);
                 }
                 else
                 {
@@ -3047,12 +3174,10 @@ bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                 
                                              RDGResource                           value)
 {
     bool result{};
-
     if (Check(resource != nullptr && resource->type == RDGResourceType::eBuffer, RDGErrorCode::eBinding,
               "Invalid buffer access"))
     {
         const uint32_t required = uint32_t(int64_t(usage));
-
         if (Check(required != 0 && (required & ~kRHIBufferAccessUsageMask) == 0, RDGErrorCode::eBinding,
                   "Invalid buffer usage"))
         {
@@ -3063,42 +3188,63 @@ bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                 
                 {
                     const_cast<RDGResourceManager::Allocation*>(resource)->usageFlags.SetFlag(required);
                 }
-
-                if (DeclareVersionAccess(node, resource, value, mode))
-                {
-                    RDGAccess access{};
-
-                    access.explicitVersion = value.IsVersioned();
-
-                    access.nodeId          = node->id;
-
-                    access.resourceId      = resource->id;
-
-                    access.accessMode      = mode;
-
-                    access.bufferUsage     = usage;
-
-                    access.pipelineStages  = ResourceStages(node, RHIBufferUsageToPipelineStageFlags(usage), shaderStages);
-
-                    access.accessFlags     = RHIBufferUsageToAccessFlagBits(usage, mode, access.pipelineStages);
-
-                    if (AddResourceAccess(const_cast<RDGPassNode*>(node), const_cast<RDGResourceManager::Allocation*>(resource),
-                                          access))
-                    {
-                        SetPipelineStatesForPassNode(const_cast<RDGPassNode*>(node), access.pipelineStages);
-
-                        if (intent == RDGContentEffect::eAutomatic)
-                        {
-                            intent = mode == RHIAccessMode::eRead ? RDGContentEffect::eRead : RDGContentEffect::eReadWrite;
-                        }
-
-                        result = DeclareContentAccess(node, resource, intent, {}, fullCoverage, discardAfter);
-                    }
-                }
+                RDGAccess access{};
+                access.accessMode     = mode;
+                access.bufferUsage    = usage;
+                access.pipelineStages = ResourceStages(node, RHIBufferUsageToPipelineStageFlags(usage), shaderStages);
+                access.accessFlags    = RHIBufferUsageToAccessFlagBits(usage, mode, access.pipelineStages);
+                result = DeclareResourceAccessForPass(node, resource, access, intent, fullCoverage, discardAfter, value);
             }
         }
     }
+    return result;
+}
 
+bool RenderGraph::DeclareAccelerationStructureAccessForPass(const RDGPassNode*                    node,
+                                                            const RDGResourceManager::Allocation* resource,
+                                                            RHIAccessMode                         mode,
+                                                            BitField<RHIPipelineStageFlagBits>    stages,
+                                                            RDGContentEffect                      intent)
+{
+    bool result = false;
+    if (Check(resource != nullptr && resource->type == RDGResourceType::eAccelerationStructure, RDGErrorCode::eBinding,
+              "Invalid acceleration-structure access"))
+    {
+        RDGAccess access{};
+        access.accessMode = mode;
+        access.bufferUsage.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
+        access.pipelineStages = ResourceStages(
+            node, BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild), stages);
+        access.accessFlags = RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, mode);
+        result             = DeclareResourceAccessForPass(node, resource, access, intent);
+    }
+    return result;
+}
+
+bool RenderGraph::DeclareResourceAccessForPass(const RDGPassNode*                    node,
+                                               const RDGResourceManager::Allocation* resource,
+                                               RDGAccess                             access,
+                                               RDGContentEffect                      intent,
+                                               bool                                  fullCoverage,
+                                               bool                                  discardAfter,
+                                               RDGResource                           value)
+{
+    bool result = false;
+    if (DeclareVersionAccess(node, resource, value, access.accessMode))
+    {
+        access.explicitVersion = value.IsVersioned();
+        access.nodeId          = node->id;
+        access.resourceId      = resource->id;
+        if (AddResourceAccess(const_cast<RDGPassNode*>(node), const_cast<RDGResourceManager::Allocation*>(resource), access))
+        {
+            SetPipelineStatesForPassNode(const_cast<RDGPassNode*>(node), access.pipelineStages);
+            if (intent == RDGContentEffect::eAutomatic)
+            {
+                intent = access.accessMode == RHIAccessMode::eRead ? RDGContentEffect::eRead : RDGContentEffect::eReadWrite;
+            }
+            result = DeclareContentAccess(node, resource, intent, {}, fullCoverage, discardAfter);
+        }
+    }
     return result;
 }
 
@@ -3157,12 +3303,14 @@ bool RenderGraph::ApplyContentStatus(const RDGPassNode*           node,
 
             if ((valid) && (warned.insert(int32_t(resource->id)).second))
             {
-                const RHIResource* physical = PhysicalResource(resource);
+                const RHIResource* physical = resource->GetPhysicalResource();
 
                 const std::string name =
                     !resource->name.IsNone()
                         ? resource->name.ToString()
-                        : std::string(resource->type == RDGResourceType::eBuffer ? "buffer #" : "texture #")
+                        : std::string(resource->type == RDGResourceType::eTexture                 ? "texture #"
+                                      : resource->type == RDGResourceType::eAccelerationStructure ? "acceleration structure #"
+                                                                                                  : "buffer #")
                               + std::to_string(physical ? physical->GetStableId() : uint64_t(int32_t(resource->id)));
 
                 const std::string message =
@@ -3265,7 +3413,7 @@ bool RenderGraph::ApplyContentAccess(std::unordered_set<int32_t>& warned,
 
     bool applied = true;
 
-    if (resource->type == RDGResourceType::eBuffer)
+    if (resource->type != RDGResourceType::eTexture)
     {
         const uint64_t offset   = access.bufferOffset;
 
@@ -3360,7 +3508,7 @@ bool RenderGraph::ValidateContents(const ResourceStateTracker& tracker)
         }
         else if (resource->initialContents == RDGImportContents::ePreserve)
         {
-            contents = tracker.GetContents(PhysicalResource(resource));
+            contents = tracker.GetContents(resource->GetPhysicalResource());
         }
         else
         {
@@ -3368,7 +3516,7 @@ bool RenderGraph::ValidateContents(const ResourceStateTracker& tracker)
                             : resource->initialContents == RDGImportContents::eUndefined ? RDGContentStatus::eUndefined
                                                                                          : RDGContentStatus::eUnknown;
 
-            contents.unknownWarningLogged = tracker.GetContents(PhysicalResource(resource)).unknownWarningLogged;
+            contents.unknownWarningLogged = tracker.GetContents(resource->GetPhysicalResource()).unknownWarningLogged;
         }
 
         m_finalContents.push_back(std::move(contents));
@@ -3444,7 +3592,7 @@ void RenderGraph::CommitContents(ResourceStateTracker& tracker)
 
             if (resource->lastUse == order)
             {
-                tracker.SetContents(PhysicalResource(resource), m_finalContents[resource->id]);
+                tracker.SetContents(resource->GetPhysicalResource(), m_finalContents[resource->id]);
             }
         }
     }
@@ -3528,10 +3676,9 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
         for (RHIAccelerationStructure* structure : structures)
         {
             valid = valid
-                 && DeclareBufferAccessForPass(
-                        node, m_resourceManager.ImportBufferAllocation(structure->GetStorageBuffer()),
-                        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eAccelerationStructureStorage),
-                        RHIAccessMode::eRead, ShaderPipelineStages(descriptor->stageFlags), RDGContentEffect::eRead);
+                 && DeclareAccelerationStructureAccessForPass(
+                        node, m_resourceManager.ImportAccelerationStructureAllocation(structure), RHIAccessMode::eRead,
+                        ShaderPipelineStages(descriptor->stageFlags), RDGContentEffect::eRead);
         }
     }
 
@@ -4768,6 +4915,19 @@ RDGAccess RenderGraph::GetInitialScheduleAccess(RDG_ID id, const ResourceStateTr
 
         result.textureSubResourceRange = FullRange(resource);
     }
+    else if (resource->type == RDGResourceType::eAccelerationStructure)
+    {
+        const RDGAccelerationStructureResourceState state =
+            tracker.GetAccelerationStructureState(resource->pAccelerationStructure);
+        result.accessMode     = state.accessMode;
+        result.pipelineStages = state.pipelineStages | state.writer.stages;
+        if (state.accessMode != RHIAccessMode::eNone)
+        {
+            result.bufferUsage.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
+            result.accessFlags = RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, state.accessMode)
+                               | state.writer.access;
+        }
+    }
     else
     {
         const RDGBufferResourceState state = InitialBufferState(resource, tracker);
@@ -5209,7 +5369,7 @@ bool RenderGraph::ValidateSchedule()
 
         for (const RDGResourceManager::Allocation* resource : m_resourceManager.m_resources)
         {
-            const RHIResource* physical = PhysicalResource(resource);
+            const RHIResource* physical = resource->GetPhysicalResource();
 
             if (!resource->imported && resource->liveAccessCount != 0 && physical != nullptr)
             {
@@ -5373,11 +5533,13 @@ bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& tracker)
                 {
                     const RDGResourceManager::Allocation* resource = m_resourceManager.FindResourceByIdx(access.resourceId);
 
-                    BitField<RHIPipelineStageFlagBits> stages = resource->type == RDGResourceType::eTexture
-                                                                  ? tracker.GetTextureState(resource->pTexture).pipelineStages
-                                                                  : tracker.GetBufferState(resource->pBuffer).pipelineStages;
+                    BitField<RHIPipelineStageFlagBits> stages =
+                        resource->type == RDGResourceType::eTexture ? tracker.GetTextureState(resource->pTexture).pipelineStages
+                        : resource->type == RDGResourceType::eAccelerationStructure
+                            ? tracker.GetAccelerationStructureState(resource->pAccelerationStructure).pipelineStages
+                            : tracker.GetBufferState(resource->pBuffer).pipelineStages;
 
-                    valid                                     = TransferStages(stages);
+                    valid = TransferStages(stages);
 
                     if (!valid)
                     {
@@ -5406,9 +5568,10 @@ void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiled, ResourceSt
 
     m_recordedInitBarrierCount                 += compiled.initialBarrierCount;
 
-    if (!buffers.empty() || !textures.empty())
+    if (!compiled.prologueMemoryTransitions.empty() || !buffers.empty() || !textures.empty())
     {
-        m_pCmdList->AddTransitions(compiled.prologueSrcStages, compiled.prologueDstStages, {}, buffers, textures);
+        m_pCmdList->AddTransitions(compiled.prologueSrcStages, compiled.prologueDstStages, compiled.prologueMemoryTransitions,
+                                   buffers, textures);
     }
 
     if (m_activeMetrics != nullptr)
@@ -5432,6 +5595,13 @@ void RenderGraph::UpdateResourceStatesForNodeAccesses(const RDGCompiledNode& com
         {
             tracker.SetTextureState(resource->pTexture, AdvanceState(tracker.GetTextureState(resource->pTexture), access,
                                                                      compiled.prologueDstStages));
+        }
+        else if (resource->type == RDGResourceType::eAccelerationStructure)
+        {
+            tracker.SetAccelerationStructureState(
+                resource->pAccelerationStructure,
+                AdvanceState(tracker.GetAccelerationStructureState(resource->pAccelerationStructure), access,
+                             compiled.prologueDstStages));
         }
         else
         {

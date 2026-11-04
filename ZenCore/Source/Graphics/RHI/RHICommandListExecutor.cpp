@@ -1280,7 +1280,11 @@ void RHICommandListExecutor::Init()
 
 void RHICommandListExecutor::DestroyViewport(RHIViewport* viewport)
 {
-    GetRHIThread().Invoke(&DynamicRHI::DestroyViewport, m_backend, viewport);
+    ASSERT(std::this_thread::get_id() == m_renderThread);
+
+    // Surface teardown belongs to the window owner. Resource ReleaseReference
+    // dispatches the final GPU resource cleanup to RHI as usual.
+    m_backend->DestroyViewport(viewport);
 }
 
 RHIViewport* RHICommandListExecutor::CreateViewport(void* window, uint32_t width, uint32_t height, bool vsync)

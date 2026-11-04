@@ -8,6 +8,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
+#include "Graphics/VulkanRHI/VulkanAccelerationStructure.h"
 #include <unordered_map>
 #include <vector>
 #include <type_traits>
@@ -43,17 +44,17 @@ TEST(VulkanSynchronizationTests, RayQueryEnumsMatchNativeValues)
 
     RHIAccelerationStructureInstance instance;
     instance.transform[0][0] = instance.transform[1][1] = instance.transform[2][2] = 1.0f;
-    instance.customIndexAndMask                                                    = 7u | (0xffu << 24);
-    instance.offsetAndFlags = ToUnderlying(RHIAccelerationStructureInstanceFlagBits::eDisableTriangleCulling) << 24;
-    instance.accelerationStructureAddress = 4096;
-    VkAccelerationStructureInstanceKHR native{};
-    static_assert(sizeof(instance) == sizeof(native));
-    std::memcpy(&native, &instance, sizeof(native));
+    instance.customIndex                                                           = 7;
+    instance.mask                                                                  = 0xa5;
+    instance.flags.SetFlag(RHIAccelerationStructureInstanceFlagBits::eDisableTriangleCulling);
+    instance.transform[0][3]                        = 3.25f;
+    const VkAccelerationStructureInstanceKHR native = VulkanAccelerationStructure::EncodeInstance(instance, 4096);
     EXPECT_EQ(native.instanceCustomIndex, 7u);
-    EXPECT_EQ(native.mask, 0xffu);
+    EXPECT_EQ(native.mask, 0xa5u);
     EXPECT_EQ(native.instanceShaderBindingTableRecordOffset, 0u);
     EXPECT_EQ(native.flags, VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR);
     EXPECT_EQ(native.accelerationStructureReference, 4096u);
+    EXPECT_EQ(std::memcmp(native.transform.matrix, instance.transform, sizeof(native.transform.matrix)), 0);
 }
 
 TEST(VulkanSynchronizationTests, NativeBufferFlagsKeepBuildAndShaderAccessesDistinct)

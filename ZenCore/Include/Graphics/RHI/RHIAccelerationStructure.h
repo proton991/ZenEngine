@@ -1,6 +1,7 @@
 #pragma once
 #include "RHIResource.h"
 #include "Templates/VectorView.h"
+#include <cmath>
 
 namespace zen
 {
@@ -16,6 +17,21 @@ enum class RHIAccelerationStructureInstanceFlagBits : uint32_t
     eReverseTriangleFacing  = 1u << 1,
     eForceOpaque            = 1u << 2,
     eForceNonOpaque         = 1u << 3
+};
+
+class RHIAccelerationStructure;
+
+// CPU description, never native instance bytes. Recorded builds copy this data
+// and retain pStructure. The backend encodes its own address or instance index.
+struct RHIAccelerationStructureInstance
+{
+    float                                              transform[3][4]{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}};
+    uint32_t                                           customIndex{0}; // Shader-visible 24-bit custom index.
+    uint8_t                                            mask{0xff};
+    BitField<RHIAccelerationStructureInstanceFlagBits> flags;
+    RHIAccelerationStructure*                          pStructure{nullptr};
+
+    bool IsValid() const;
 };
 
 // Triangle ranges use the same indexing as DrawIndexed: indices are relative to
@@ -38,9 +54,8 @@ struct RHIAccelerationStructureBuildDesc
 {
     RHIAccelerationStructureType                       type{RHIAccelerationStructureType::eBottomLevel};
     VectorView<const RHIAccelerationStructureGeometry> geometries;
-    RHIBuffer*                                         pInstanceBuffer{nullptr};
-    uint64_t                                           instanceOffset{0};
-    uint32_t                                           instanceCount{0};
+    // Size queries use the count; builds additionally require valid BLAS references.
+    VectorView<const RHIAccelerationStructureInstance> instances;
     bool                                               allowUpdate{false};
 };
 
@@ -49,14 +64,14 @@ struct RHIAccelerationStructureBuildSizes
     uint64_t storageSize{0};
     uint64_t buildScratchSize{0};
     uint64_t updateScratchSize{0};
+    // Native packed instance upload owned by a recorded build until GPU completion.
+    uint64_t instanceDataSize{0};
 
     bool IsValid() const
     {
         return storageSize != 0;
     }
 };
-
-class RHIAccelerationStructure;
 
 struct RHIAccelerationStructureCreateInfo
 {
@@ -76,10 +91,10 @@ public:
         return m_type;
     }
 
-    virtual uint64_t GetDeviceAddress() const = 0;
-
-    // The graph tracks AS accesses on this allocation, including indirect BLAS reads.
-    virtual RHIBuffer* GetStorageBuffer() const = 0;
+    uint64_t GetSize() const
+    {
+        return m_size;
+    }
 
     const HeapVector<RHIAccelerationStructure*>& GetReferencedStructures() const
     {
@@ -88,7 +103,7 @@ public:
 
 protected:
     explicit RHIAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) :
-        RHIResource(RHIResourceType::eAccelerationStructure, info.tag), m_type(info.type)
+        RHIResource(RHIResourceType::eAccelerationStructure, info.tag), m_type(info.type), m_size(info.size)
     {
         for (RHIAccelerationStructure* structure : info.referencedStructures)
         {
@@ -107,6 +122,7 @@ protected:
 
 private:
     RHIAccelerationStructureType          m_type;
+    uint64_t                              m_size{0};
     HeapVector<RHIAccelerationStructure*> m_referencedStructures;
 };
 
@@ -120,14 +136,23 @@ struct RHIAccelerationStructureBuildInfo
     uint64_t                  scratchOffset{0};
 };
 
-// Portable instance payload: row-major affine transform followed by packed
-// 24-bit custom index / 8-bit mask, zero SBT offset / 8-bit flags, and BLAS address.
-struct RHIAccelerationStructureInstance
+inline bool RHIAccelerationStructureInstance::IsValid() const
 {
-    float    transform[3][4]{};
-    uint32_t customIndexAndMask{0};
-    uint32_t offsetAndFlags{0};
-    uint64_t accelerationStructureAddress{0};
-};
-static_assert(sizeof(RHIAccelerationStructureInstance) == 64);
+    bool valid = pStructure != nullptr && pStructure->GetType() == RHIAccelerationStructureType::eBottomLevel
+              && customIndex <= 0xffffffu && (uint32_t(flags) & ~0xfu) == 0
+              && !(flags.HasFlag(RHIAccelerationStructureInstanceFlagBits::eForceOpaque)
+                   && flags.HasFlag(RHIAccelerationStructureInstanceFlagBits::eForceNonOpaque));
+    for (const float (&row)[4] : transform)
+    {
+        for (float value : row)
+        {
+            valid &= std::isfinite(value);
+        }
+    }
+    const double determinant =
+        double(transform[0][0]) * (double(transform[1][1]) * transform[2][2] - double(transform[1][2]) * transform[2][1])
+        - double(transform[0][1]) * (double(transform[1][0]) * transform[2][2] - double(transform[1][2]) * transform[2][0])
+        + double(transform[0][2]) * (double(transform[1][0]) * transform[2][1] - double(transform[1][1]) * transform[2][0]);
+    return valid && std::isfinite(determinant) && determinant != 0;
+}
 } // namespace zen

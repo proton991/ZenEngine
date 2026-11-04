@@ -94,11 +94,11 @@ uint64_t SceneRayQuery::GetMemoryBytes() const
     // Cached TLASes retain their immutable BLAS dependencies even when the current
     // scene no longer contains those meshes. Count those allocations too, once.
     SmallVector<RHIAccelerationStructure*, 64> structures;
-    uint64_t                                   bytes = m_scratchBytes;
+    uint64_t                                   bytes = m_scratchBytes + m_pendingInstanceBytes;
     for (uint32_t i = 0; i < RenderFrameState::kMaxFramesInFlight + 2; ++i)
     {
         const Generation& generation = i == 0 ? m_active : i == 1 ? m_pending : m_cached[i - 2];
-        for (RHIBuffer* buffer : {generation.instances, generation.geometryMetadata, generation.instanceMetadata})
+        for (RHIBuffer* buffer : {generation.geometryMetadata, generation.instanceMetadata})
         {
             bytes += buffer != nullptr ? buffer->GetRequiredSize() : 0;
         }
@@ -123,7 +123,7 @@ uint64_t SceneRayQuery::GetMemoryBytes() const
     {
         if (i == 0 || structures[i] != structures[i - 1])
         {
-            bytes += structures[i]->GetStorageBuffer()->GetRequiredSize();
+            bytes += structures[i]->GetSize();
         }
     }
     for (const RetiredMemory& retired : m_retired)
@@ -150,7 +150,6 @@ void SceneRayQuery::Release(Generation& generation)
     {
         m_device->DeferReleaseResource(mesh.structure);
     }
-    m_device->DestroyBuffer(generation.instances);
     m_device->DestroyBuffer(generation.geometryMetadata);
     m_device->DestroyBuffer(generation.instanceMetadata);
     generation = Generation{};
@@ -188,42 +187,20 @@ void SceneRayQuery::Destroy()
         m_retired.push_back({m_scratchBytes, m_device->CaptureResourceRetirement()});
     }
     m_device->DestroyBuffer(m_scratch);
-    m_scratch      = nullptr;
-    m_scratchBytes = 0;
-    m_recorded     = false;
-    m_scene        = nullptr;
-    m_reason       = "scene_not_ready";
+    m_scratch              = nullptr;
+    m_scratchBytes         = 0;
+    m_pendingInstanceBytes = 0;
+    m_recorded             = false;
+    m_scene                = nullptr;
+    m_reason               = "scene_not_ready";
 }
 
-RHIBuffer* SceneRayQuery::CreateInputBuffer(NameID name, uint64_t size, const void* data)
-{
-    RHIBufferCreateInfo info;
-    info.size         = size;
-    info.tag          = name;
-    info.allocateType = RHIBufferAllocateType::eGPU;
-    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIBufferUsageFlagBits::eDeviceAddress,
-                             RHIBufferUsageFlagBits::eTransferDstBuffer);
-    RHIBuffer* buffer = m_device->CreateBuffer(info);
-    if (buffer != nullptr && !m_device->UpdateBuffer(buffer, static_cast<uint32_t>(size), static_cast<const uint8_t*>(data)))
-    {
-        m_device->DestroyBuffer(buffer);
-        buffer = nullptr;
-    }
-    return buffer;
-}
-
-bool SceneRayQuery::UpdateInput(RHIBuffer*&          buffer,
-                                HeapVector<uint8_t>& payload,
-                                NameID               name,
-                                uint32_t             size,
-                                const void*          data,
-                                bool                 instances)
+bool SceneRayQuery::UpdateInput(RHIBuffer*& buffer, HeapVector<uint8_t>& payload, NameID name, uint32_t size, const void* data)
 {
     bool valid = true;
     if (buffer == nullptr || buffer->GetRequiredSize() < size)
     {
-        RHIBuffer* replacement = instances ? CreateInputBuffer(name, size, data)
-                                           : m_device->CreateStorageBuffer(size, static_cast<const uint8_t*>(data), name);
+        RHIBuffer* replacement = m_device->CreateStorageBuffer(size, static_cast<const uint8_t*>(data), name);
         valid                  = replacement != nullptr;
         if (valid)
         {
@@ -383,6 +360,7 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     HeapVector<glm::uvec4>                       geometryMetadata;
     HeapVector<glm::uvec4>                       instanceMetadata;
     HeapVector<RHIAccelerationStructureInstance> instances;
+    HeapVector<size_t>                           instanceMeshes;
     bool                                         valid = PrepareMeshes(scene, geometryMetadata);
     for (const sg::Node* node : scene.GetRenderableNodes())
     {
@@ -402,25 +380,23 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
                             instance.transform[row][column] = transform[column][row];
                         }
                     }
-                    instance.customIndexAndMask = static_cast<uint32_t>(instances.size()) | (0xffu << 24);
+                    instance.customIndex = static_cast<uint32_t>(instances.size());
                     // Culling is evaluated with the raster material in the candidate shader.
-                    instance.offsetAndFlags = ToUnderlying(RHIAccelerationStructureInstanceFlagBits::eDisableTriangleCulling)
-                                           << 24;
-                    instance.accelerationStructureAddress = meshIndex; // Filled after the allocation preflight.
+                    instance.flags.SetFlag(RHIAccelerationStructureInstanceFlagBits::eDisableTriangleCulling);
                     instances.push_back(instance);
+                    instanceMeshes.push_back(meshIndex);
                     instanceMetadata.push_back({node->GetRenderableIndex(), mesh.metadataOffset, 0, 0});
                     break;
                 }
             }
         }
     }
-    m_pending.instanceCount = static_cast<uint32_t>(instances.size());
     valid &= instances.size() <= 0xffffffu && instances.size() <= m_device->GetGPUInfo().rayQuery.maxInstances;
     // The TLAS is rebuilt for every generation: it is small, and refitting it would
     // let BVH quality degrade without bound while instances move.
     RHIAccelerationStructureBuildDesc tlasDesc;
     tlasDesc.type                                       = RHIAccelerationStructureType::eTopLevel;
-    tlasDesc.instanceCount                              = m_pending.instanceCount;
+    tlasDesc.instances                                  = MakeVecView(instances);
     const RHIAccelerationStructureBuildSizes tlasSizes  = GDynamicRHI->GetAccelerationStructureBuildSizes(tlasDesc);
     valid                                              &= tlasSizes.IsValid();
     uint64_t scratchSize                                = tlasSizes.buildScratchSize;
@@ -437,11 +413,7 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     scratchSize              += alignment;
     // Scratch only grows; a replacement retires the previous buffer.
     const uint64_t scratchGrowth = scratchSize > m_scratchBytes ? scratchSize : 0;
-    // Dummy records permit zero-instance scenes with valid descriptors.
-    if (instances.empty())
-    {
-        instances.push_back(RHIAccelerationStructureInstance{});
-    }
+    // Shader metadata descriptors remain valid even for zero-instance scenes.
     if (instanceMetadata.empty())
     {
         instanceMetadata.push_back(glm::uvec4(0));
@@ -450,8 +422,7 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     {
         geometryMetadata.push_back(glm::uvec4(0));
     }
-    bool reuseTLAS =
-        m_pending.tlas != nullptr && m_pending.tlas->GetStorageBuffer()->GetRequiredSize() >= tlasSizes.storageSize;
+    bool reuseTLAS = m_pending.tlas != nullptr && m_pending.tlas->GetSize() >= tlasSizes.storageSize;
     if (reuseTLAS)
     {
         const HeapVector<RHIAccelerationStructure*>& references = m_pending.tlas->GetReferencedStructures();
@@ -462,21 +433,20 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
         }
     }
     uint64_t       bytes        = reuseTLAS ? 0 : tlasSizes.storageSize;
-    const uint64_t inputSizes[] = {instances.size() * sizeof(RHIAccelerationStructureInstance),
-                                   geometryMetadata.size() * sizeof(glm::uvec4), instanceMetadata.size() * sizeof(glm::uvec4)};
-    RHIBuffer*     inputs[]     = {m_pending.instances, m_pending.geometryMetadata, m_pending.instanceMetadata};
-    for (uint32_t i = 0; i < 3; ++i)
+    const uint64_t inputSizes[] = {geometryMetadata.size() * sizeof(glm::uvec4), instanceMetadata.size() * sizeof(glm::uvec4)};
+    RHIBuffer*     inputs[]     = {m_pending.geometryMetadata, m_pending.instanceMetadata};
+    for (uint32_t i = 0; i < 2; ++i)
     {
         bytes += inputs[i] == nullptr || inputs[i]->GetRequiredSize() < inputSizes[i] ? inputSizes[i] : 0;
     }
-    uint64_t metadataBytes = 0;
+    uint64_t metadataBytes  = 0;
 
-    valid &= scratchSize <= UINT32_MAX && instances.size() * sizeof(RHIAccelerationStructureInstance) <= UINT32_MAX
-          && ValidateGIStorageBuffer(geometryMetadata.size(), sizeof(glm::uvec4), m_device->GetGPUInfo(), metadataBytes)
-                 == GIResourceStatus::eSuccess
-          && ValidateGIStorageBuffer(instanceMetadata.size(), sizeof(glm::uvec4), m_device->GetGPUInfo(), metadataBytes)
-                 == GIResourceStatus::eSuccess;
-    const uint64_t added = bytes + newStructureBytes + scratchGrowth;
+    valid                  &= scratchSize <= UINT32_MAX && tlasSizes.instanceDataSize <= UINT32_MAX
+                           && ValidateGIStorageBuffer(geometryMetadata.size(), sizeof(glm::uvec4), m_device->GetGPUInfo(), metadataBytes)
+                                  == GIResourceStatus::eSuccess
+                           && ValidateGIStorageBuffer(instanceMetadata.size(), sizeof(glm::uvec4), m_device->GetGPUInfo(), metadataBytes)
+                                  == GIResourceStatus::eSuccess;
+    const uint64_t added    = bytes + newStructureBytes + scratchGrowth + tlasSizes.instanceDataSize;
     if (valid && budgetBytes != 0 && (added > budgetBytes || GetMemoryBytes() > budgetBytes - added))
     {
         valid    = false;
@@ -499,10 +469,9 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
         }
         if (valid)
         {
-            for (uint32_t i = 0; i < m_pending.instanceCount; ++i)
+            for (size_t i = 0; i < instances.size(); ++i)
             {
-                instances[i].accelerationStructureAddress =
-                    references[instances[i].accelerationStructureAddress]->GetDeviceAddress();
+                instances[i].pStructure = references[instanceMeshes[i]];
             }
             if (!reuseTLAS)
             {
@@ -523,12 +492,10 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
                 }
             }
             valid = valid
-                 && UpdateInput(m_pending.instances, m_pending.instancePayload, "ray_instances",
-                                static_cast<uint32_t>(inputSizes[0]), instances.data(), true)
                  && UpdateInput(m_pending.geometryMetadata, m_pending.geometryMetadataPayload, "ray_geometry_metadata",
-                                static_cast<uint32_t>(inputSizes[1]), geometryMetadata.data())
+                                static_cast<uint32_t>(inputSizes[0]), geometryMetadata.data())
                  && UpdateInput(m_pending.instanceMetadata, m_pending.instanceMetadataPayload, "ray_instance_metadata",
-                                static_cast<uint32_t>(inputSizes[2]), instanceMetadata.data());
+                                static_cast<uint32_t>(inputSizes[1]), instanceMetadata.data());
             if (valid && scratchGrowth != 0)
             {
                 if (m_scratchBytes != 0)
@@ -539,13 +506,22 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
                 RHIBufferCreateInfo scratch;
                 scratch.size         = scratchSize;
                 scratch.allocateType = RHIBufferAllocateType::eGPU;
-                scratch.usageFlags.SetFlags(RHIBufferUsageFlagBits::eDeviceAddress, RHIBufferUsageFlagBits::eStorageBuffer);
+                scratch.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+                if (m_device->GetGPUInfo().rayQuery.bufferDeviceAddress)
+                {
+                    scratch.usageFlags.SetFlag(RHIBufferUsageFlagBits::eDeviceAddress);
+                }
                 scratch.tag    = "ray_build_scratch";
                 m_scratch      = m_device->CreateBuffer(scratch);
                 m_scratchBytes = m_scratch != nullptr ? scratchSize : 0;
             }
-            valid = valid && m_pending.tlas != nullptr && m_pending.instances != nullptr
-                 && m_pending.geometryMetadata != nullptr && m_pending.instanceMetadata != nullptr && m_scratch != nullptr;
+            valid = valid && m_pending.tlas != nullptr && m_pending.geometryMetadata != nullptr
+                 && m_pending.instanceMetadata != nullptr && m_scratch != nullptr;
+            if (valid)
+            {
+                m_pending.instances    = std::move(instances);
+                m_pendingInstanceBytes = tlasSizes.instanceDataSize;
+            }
         }
     }
     return valid;
@@ -574,13 +550,12 @@ void SceneRayQuery::RecordBuilds(RenderScene& scene)
             graph->AddTransferPass(mesh.update ? "UpdateSceneBLAS" : "BuildSceneBLAS").BuildAccelerationStructure(info);
         }
     }
-    info.description.geometries      = {};
-    info.description.type            = RHIAccelerationStructureType::eTopLevel;
-    info.description.pInstanceBuffer = m_pending.instances;
-    info.description.instanceCount   = m_pending.instanceCount;
-    info.description.allowUpdate     = false;
-    info.pDestination                = m_pending.tlas;
-    info.pSource                     = nullptr;
+    info.description.geometries  = {};
+    info.description.type        = RHIAccelerationStructureType::eTopLevel;
+    info.description.instances   = MakeVecView(m_pending.instances);
+    info.description.allowUpdate = false;
+    info.pDestination            = m_pending.tlas;
+    info.pSource                 = nullptr;
     graph->AddTransferPass("BuildSceneTLAS").BuildAccelerationStructure(info);
     m_pending.geometryRevision = scene.GetGeometryRevision();
     m_pending.surfaceRevision  = scene.GetSurfaceRevision();
@@ -675,6 +650,11 @@ void SceneRayQuery::OnRenderGraphExecuted(RenderFrameResult result)
 
     if (m_recorded)
     {
+        if (result != RenderFrameResult::eDeclined && m_pendingInstanceBytes != 0)
+        {
+            m_retired.push_back({m_pendingInstanceBytes, m_device->CaptureResourceRetirement()});
+        }
+        m_pendingInstanceBytes = 0;
         if (succeeded)
         {
             Cache(m_active);

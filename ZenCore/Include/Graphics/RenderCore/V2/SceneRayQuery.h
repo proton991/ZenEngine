@@ -78,22 +78,20 @@ private:
 
     struct Generation
     {
-        HeapVector<MeshBuild>     meshes;
-        RHIAccelerationStructure* tlas{nullptr};
-        RHIBuffer*                instances{nullptr};
-        RHIBuffer*                geometryMetadata{nullptr};
-        RHIBuffer*                instanceMetadata{nullptr};
-        uint64_t                  geometryRevision{0};
-        uint64_t                  surfaceRevision{0};
-        uint64_t                  vertexIdentity{0};
-        uint64_t                  vertexGeneration{0};
-        uint64_t                  indexIdentity{0};
-        uint64_t                  generation{0};
-        uint32_t                  instanceCount{0};
-        uint32_t                  slot{0};
-        HeapVector<uint8_t>       instancePayload;
-        HeapVector<uint8_t>       geometryMetadataPayload;
-        HeapVector<uint8_t>       instanceMetadataPayload;
+        HeapVector<MeshBuild>                        meshes;
+        RHIAccelerationStructure*                    tlas{nullptr};
+        HeapVector<RHIAccelerationStructureInstance> instances;
+        RHIBuffer*                                   geometryMetadata{nullptr};
+        RHIBuffer*                                   instanceMetadata{nullptr};
+        uint64_t                                     geometryRevision{0};
+        uint64_t                                     surfaceRevision{0};
+        uint64_t                                     vertexIdentity{0};
+        uint64_t                                     vertexGeneration{0};
+        uint64_t                                     indexIdentity{0};
+        uint64_t                                     generation{0};
+        uint32_t                                     slot{0};
+        HeapVector<uint8_t>                          geometryMetadataPayload;
+        HeapVector<uint8_t>                          instanceMetadataPayload;
     };
 
     struct RetiredMemory
@@ -102,16 +100,10 @@ private:
         ResourceRetirement retirement;
     };
 
-    bool       Prepare(RenderScene& scene, uint64_t budgetBytes);
-    bool       PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& metadata);
-    RHIBuffer* CreateInputBuffer(NameID name, uint64_t size, const void* data);
-    bool       UpdateInput(RHIBuffer*&          buffer,
-                           HeapVector<uint8_t>& payload,
-                           NameID               name,
-                           uint32_t             size,
-                           const void*          data,
-                           bool                 instances = false);
-    void       RecordBuilds(RenderScene& scene);
+    bool Prepare(RenderScene& scene, uint64_t budgetBytes);
+    bool PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& metadata);
+    bool UpdateInput(RHIBuffer*& buffer, HeapVector<uint8_t>& payload, NameID name, uint32_t size, const void* data);
+    void RecordBuilds(RenderScene& scene);
     // Callers bracket releases with GetMemoryBytes()/RetireReleasedMemory().
     void              Release(Generation& generation);
     void              ReleaseGenerations();
@@ -130,6 +122,7 @@ private:
     // Grow-only build scratch shared by generations; the graph orders its reuse.
     RHIBuffer*      m_scratch{nullptr};
     uint64_t        m_scratchBytes{0};
+    uint64_t        m_pendingInstanceBytes{0};
     BuildStatistics m_statistics;
     bool            m_recorded{false};
     const char*     m_reason{"scene_not_ready"};

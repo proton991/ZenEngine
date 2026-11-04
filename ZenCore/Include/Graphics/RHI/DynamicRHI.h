@@ -111,21 +111,23 @@ public:
     // and dispatch swapchain/backbuffer initialization to RHI.
     virtual RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) = 0;
 
-    virtual void DestroyViewport(RHIViewport* pViewport)                                                  = 0;
+    // Called on the window owner after outstanding frames drain, as for CreateViewport/Resize.
+    // Backends detach window objects here; GPU resource destruction runs through RHI cleanup.
+    virtual void DestroyViewport(RHIViewport* pViewport)                                = 0;
 
-    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo)                                = 0;
+    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo)              = 0;
 
-    virtual void DestroyShader(RHIShader* pShader)                                                        = 0;
+    virtual void DestroyShader(RHIShader* pShader)                                      = 0;
 
-    virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo)                   = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
 
-    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)                       = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)     = 0;
 
-    virtual void DestroyPipeline(RHIPipeline* pPipeline)                                                  = 0;
+    virtual void DestroyPipeline(RHIPipeline* pPipeline)                                = 0;
 
-    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo)                             = 0;
+    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo)           = 0;
 
-    virtual void DestroySampler(RHISampler* pSampler)                                                     = 0;
+    virtual void DestroySampler(RHISampler* pSampler)                                   = 0;
 
     virtual RHIBindlessHandle RegisterBindlessResource(RHIResource* pResource, uint32_t slotIndex = kInvalidBindlessSlotIndex)
     {

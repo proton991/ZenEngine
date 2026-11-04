@@ -15,21 +15,24 @@ public:
 
     bool ValidateBuild(const RHIAccelerationStructureBuildInfo& info) const;
 
-    void RecordBuild(VkCommandBuffer commandBuffer, const RHIAccelerationStructureBuildInfo& info);
+    static VkAccelerationStructureInstanceKHR EncodeInstance(const RHIAccelerationStructureInstance& instance,
+                                                             uint64_t                                address);
 
-    uint64_t GetDeviceAddress() const override
+    void RecordBuild(VkCommandBuffer commandBuffer, const RHIAccelerationStructureBuildInfo& info, uint64_t instanceAddress);
+
+    uint64_t GetDeviceAddress() const
     {
         return m_deviceAddress;
-    }
-
-    RHIBuffer* GetStorageBuffer() const override
-    {
-        return m_pStorageBuffer;
     }
 
     VkAccelerationStructureKHR GetVkHandle() const
     {
         return m_vkHandle;
+    }
+
+    bool IsAsyncComputeAccessible() const override
+    {
+        return m_pStorageBuffer != nullptr && m_pStorageBuffer->IsAsyncComputeAccessible();
     }
 
 protected:
@@ -38,15 +41,12 @@ protected:
     void Destroy() override;
 
 private:
-    explicit VulkanAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) :
-        RHIAccelerationStructure(info), m_size(info.size)
-    {}
+    explicit VulkanAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) : RHIAccelerationStructure(info) {}
 
     bool IsUpdateCompatible(const RHIAccelerationStructureBuildDesc& desc) const;
 
     VkAccelerationStructureKHR m_vkHandle{VK_NULL_HANDLE};
     RHIBuffer*                 m_pStorageBuffer{nullptr};
-    uint64_t                   m_size{0};
     uint64_t                   m_deviceAddress{0};
     // Recording metadata only. Submission success and generation publication belong
     // to the caller; discarded builds must never be reused as update sources.

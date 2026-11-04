@@ -308,7 +308,6 @@ void RHICommandList::BuildAccelerationStructure(const RHIAccelerationStructureBu
     RetainResource(info.pDestination);
     RetainResource(info.pSource);
     RetainResource(info.pScratchBuffer);
-    RetainResource(info.description.pInstanceBuffer);
     RHICommandBuildAccelerationStructure* command    = ALLOC_CMD(RHICommandBuildAccelerationStructure)(info);
     const size_t                          count      = info.description.geometries.size();
     RHIAccelerationStructureGeometry*     geometries = AllocateCmdData<RHIAccelerationStructureGeometry>(count);
@@ -318,7 +317,15 @@ void RHICommandList::BuildAccelerationStructure(const RHIAccelerationStructureBu
         RetainResource(geometries[i].pVertexBuffer);
         RetainResource(geometries[i].pIndexBuffer);
     }
-    command->info.description.geometries = MakeVecView(geometries, count);
+    command->info.description.geometries            = MakeVecView(geometries, count);
+    const size_t                      instanceCount = info.description.instances.size();
+    RHIAccelerationStructureInstance* instances     = AllocateCmdData<RHIAccelerationStructureInstance>(instanceCount);
+    for (size_t i = 0; i < instanceCount; ++i)
+    {
+        instances[i] = info.description.instances[i];
+        RetainResource(instances[i].pStructure);
+    }
+    command->info.description.instances = MakeVecView(instances, instanceCount);
 }
 
 void RHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region)

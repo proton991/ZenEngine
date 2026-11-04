@@ -77,13 +77,9 @@ bool RDGResourceManager::GetResourceInfo(RDGResource resource, RDGResourceInfo& 
             result.version = int32_t(m_versions[resource.m_version].number);
         }
 
-        if (allocation->pTexture != nullptr)
+        if (allocation->GetPhysicalResource() != nullptr)
         {
-            result.physicalStableId = allocation->pTexture->GetStableId();
-        }
-        else if (allocation->pBuffer != nullptr)
-        {
-            result.physicalStableId = allocation->pBuffer->GetStableId();
+            result.physicalStableId = allocation->GetPhysicalResource()->GetStableId();
         }
 
         info        = result;
@@ -1024,6 +1020,37 @@ const RDGResourceManager::Allocation* RDGResourceManager::ImportBufferAllocation
     return result;
 }
 
+const RDGResourceManager::Allocation* RDGResourceManager::ImportAccelerationStructureAllocation(
+    RHIAccelerationStructure* structure)
+{
+    const Allocation* result = nullptr;
+    if (CheckMutation())
+    {
+        if (structure == nullptr)
+        {
+            Reject("Null imported acceleration structure");
+        }
+        else
+        {
+            result = FindResourceByStableId(structure->GetStableId());
+            if (result == nullptr)
+            {
+                Allocation* allocation             = AllocAllocation();
+                allocation->type                   = RDGResourceType::eAccelerationStructure;
+                allocation->imported               = true;
+                allocation->name                   = structure->GetResourceTag();
+                allocation->pAccelerationStructure = structure;
+                // AS contents are tracked as one whole allocation, never byte ranges.
+                allocation->bufferSize = structure->GetSize();
+                Retain(structure);
+                m_resourceTable[structure->GetStableId()] = allocation->id;
+                result                                    = allocation;
+            }
+        }
+    }
+    return result;
+}
+
 RDGBuffer RDGResourceManager::ImportHostWrittenBuffer(RHIBuffer* pBuffer)
 {
     const Allocation* resource = ImportBufferAllocation(pBuffer);
@@ -1081,7 +1108,7 @@ uint64_t RDGResourceManager::EstimateBytes(const Allocation& resource)
 {
     uint64_t estimatedBytes = resource.bufferSize;
 
-    if (resource.type != RDGResourceType::eBuffer)
+    if (resource.type == RDGResourceType::eTexture)
     {
         const TextureFormat& format = resource.texFormat;
 
@@ -1460,7 +1487,7 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
 
     for (Allocation* resource : ordered)
     {
-        if (resource->pTexture || resource->pBuffer)
+        if (resource->GetPhysicalResource() != nullptr)
         {
             continue;
         }

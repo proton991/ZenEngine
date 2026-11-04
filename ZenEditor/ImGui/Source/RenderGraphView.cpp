@@ -109,6 +109,10 @@ void ResourceTooltip(const rc::RDGDebugResource& resource, const rc::RDGAccess& 
                     access.textureSubResourceRange.levelCount, access.textureSubResourceRange.baseArrayLayer,
                     access.textureSubResourceRange.layerCount);
     }
+    else if (resource.type == rc::RDGResourceType::eAccelerationStructure)
+    {
+        ImGui::Text("%llu bytes (acceleration structure)", static_cast<unsigned long long>(resource.bufferSize));
+    }
     else
     {
         ImGui::Text("%llu bytes (whole buffer)", static_cast<unsigned long long>(resource.bufferSize));
@@ -553,6 +557,8 @@ void RenderGraphView::DrawInspector(const rc::RDGDebugSnapshot& snapshot)
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(resource != nullptr && resource->type == rc::RDGResourceType::eTexture
                                            ? FormatName(resource->texture.format)
+                                       : resource != nullptr && resource->type == rc::RDGResourceType::eAccelerationStructure
+                                           ? "Acceleration structure"
                                            : "Buffer");
                 ImGui::TableNextColumn();
                 for (const rc::RDGVersionAccess& version : pass.versions)

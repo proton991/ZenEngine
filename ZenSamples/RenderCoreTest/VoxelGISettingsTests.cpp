@@ -476,12 +476,12 @@ TEST(VoxelGIRuntimeSettings, AutomaticProviderFollowsRayQueryCapabilityAndKeepsE
     EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
     EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 63u);
     // Device and driver identity never select the tier.
-    for (const auto& [vendor, device, driver] :
+    for (const std::tuple<uint32_t, uint32_t, uint32_t>& identity :
          {std::tuple{0x10DEu, 0x2C02u, 0u}, std::tuple{0x1002u, 0x744Cu, 1u}, std::tuple{0x8086u, 0x56A0u, 0xFFFFFFFFu}})
     {
-        gpu.vendorID         = vendor;
-        gpu.deviceID         = device;
-        gpu.driverVersionRaw = driver;
+        gpu.vendorID         = std::get<0>(identity);
+        gpu.deviceID         = std::get<1>(identity);
+        gpu.driverVersionRaw = std::get<2>(identity);
         ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
         EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
         EXPECT_EQ(settings.cone.rayProvider, VoxelGISettings::RayProvider::Hardware);
@@ -491,11 +491,15 @@ TEST(VoxelGIRuntimeSettings, AutomaticProviderFollowsRayQueryCapabilityAndKeepsE
     settings.resolution = 128;
     EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
     EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 63u);
-    // Each missing capability selects Compute; explicit per-feature requests survive.
+    // Native-address support is optional; Metal encodes native instance references.
+    gpu.rayQuery.bufferDeviceAddress = false;
+    ASSERT_TRUE(ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings));
+    EXPECT_STREQ(ResolveVoxelGIAutomaticProvider(settings, gpu), "ray_query_available");
+    EXPECT_EQ(settings.cone.GetHardwareFeatureMask(), 63u);
+    // Each missing required capability selects Compute; explicit per-feature requests survive.
     for (bool RHIRayQueryCapabilities::* feature :
-         {&RHIRayQueryCapabilities::bufferDeviceAddress, &RHIRayQueryCapabilities::accelerationStructure,
-          &RHIRayQueryCapabilities::rayQuery, &RHIRayQueryCapabilities::graphicsBuild,
-          &RHIRayQueryCapabilities::triangleFloat3})
+         {&RHIRayQueryCapabilities::accelerationStructure, &RHIRayQueryCapabilities::rayQuery,
+          &RHIRayQueryCapabilities::graphicsBuild, &RHIRayQueryCapabilities::triangleFloat3})
     {
         gpu.rayQuery          = {true, true, true, true, true, 256};
         gpu.rayQuery.*feature = false;

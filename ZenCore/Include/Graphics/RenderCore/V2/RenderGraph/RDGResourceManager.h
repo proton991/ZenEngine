@@ -5,6 +5,7 @@
 #include "Templates/FlatHashMap.h"
 #include "Templates/NameID.h"
 #include "Graphics/RHI/RHICommon.h"
+#include "Graphics/RHI/RHIAccelerationStructure.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
@@ -16,10 +17,11 @@ class RenderGraph;
 
 enum class RDGResourceType : uint8_t
 {
-    eNone    = 0,
-    eBuffer  = 1,
-    eTexture = 2,
-    eMax     = 3
+    eNone                  = 0,
+    eBuffer                = 1,
+    eTexture               = 2,
+    eAccelerationStructure = 3,
+    eMax                   = 4
 };
 
 enum class RDGResourceLifeCycle : uint8_t
@@ -298,8 +300,23 @@ private:
         uint64_t              bufferSize{0};
         BitField<uint32_t>    usageFlags{0u};
 
-        RHITexture* pTexture{nullptr};
-        RHIBuffer*  pBuffer{nullptr};
+        RHITexture*               pTexture{nullptr};
+        RHIBuffer*                pBuffer{nullptr};
+        RHIAccelerationStructure* pAccelerationStructure{nullptr};
+
+        RHIResource* GetPhysicalResource() const
+        {
+            RHIResource* result = pBuffer;
+            if (type == RDGResourceType::eTexture)
+            {
+                result = pTexture;
+            }
+            else if (type == RDGResourceType::eAccelerationStructure)
+            {
+                result = pAccelerationStructure;
+            }
+            return result;
+        }
 
         RDGResourceLifeCycle GetLifeCycle() const
         {
@@ -388,6 +405,8 @@ private:
     const Allocation* ImportTextureAllocation(RHITexture* texture, bool finalState = false);
 
     const Allocation* ImportBufferAllocation(RHIBuffer* buffer);
+
+    const Allocation* ImportAccelerationStructureAllocation(RHIAccelerationStructure* structure);
 
     void Retain(RHIResource* resource);
 

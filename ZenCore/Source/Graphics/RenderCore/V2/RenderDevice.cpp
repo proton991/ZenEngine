@@ -948,12 +948,9 @@ bool RenderDevice::PrepareScheduledSubmissionHistory(const RenderGraph&      gra
 
                 const RDGResourceManager::Allocation* resource = graph.m_resourceManager.FindResourceByIdx(access.resourceId);
 
-                const RHIResource* physical                    = resource == nullptr ? nullptr
-                                                               : resource->type == RDGResourceType::eTexture
-                                                                   ? static_cast<const RHIResource*>(resource->pTexture)
-                                                                   : resource->pBuffer;
+                const RHIResource* physical = resource == nullptr ? nullptr : resource->GetPhysicalResource();
 
-                valid                                          = physical != nullptr;
+                valid                       = physical != nullptr;
 
                 if (valid)
                 {
@@ -1959,8 +1956,7 @@ RDGAsyncComputeEligibility RenderDevice::ResolveAsyncComputeEligibility(const Re
             const RDGResourceManager::Allocation* allocation =
                 graph.m_resourceManager.FindResourceByIdx(graph.m_accesses[node.accessOffset + i].resourceId);
 
-            const RHIResource* resource =
-                allocation->pTexture != nullptr ? static_cast<const RHIResource*>(allocation->pTexture) : allocation->pBuffer;
+            const RHIResource* resource = allocation->GetPhysicalResource();
 
             if (!RHIQueueSupportsStages(m_pRHIExecutor->GetQueueCopyCapabilities(RHICommandContextType::eAsyncCompute),
                                         graph.m_accesses[node.accessOffset + i].pipelineStages))
@@ -2294,7 +2290,11 @@ RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pD
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
     if (GetGPUInfo().rayQuery.IsUsable())
     {
-        usages.SetFlags(RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIBufferUsageFlagBits::eDeviceAddress);
+        usages.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureInput);
+        if (GetGPUInfo().rayQuery.bufferDeviceAddress)
+        {
+            usages.SetFlag(RHIBufferUsageFlagBits::eDeviceAddress);
+        }
     }
 
     RHIBufferCreateInfo createInfo{};
@@ -2319,7 +2319,11 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
     if (GetGPUInfo().rayQuery.IsUsable())
     {
-        usages.SetFlags(RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIBufferUsageFlagBits::eDeviceAddress);
+        usages.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureInput);
+        if (GetGPUInfo().rayQuery.bufferDeviceAddress)
+        {
+            usages.SetFlag(RHIBufferUsageFlagBits::eDeviceAddress);
+        }
     }
 
     RHIBufferCreateInfo createInfo{};

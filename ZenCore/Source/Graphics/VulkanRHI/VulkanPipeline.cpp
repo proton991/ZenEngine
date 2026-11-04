@@ -318,19 +318,52 @@ void VulkanShader::Init()
 
         const VkPhysicalDeviceLimits limits         = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
 
-        m_fitsDeviceLimits                          = UniformBuffersFitLimits(uniformUsage, limits);
+        uint64_t samplerCount                       = 0;
+        uint64_t perStageSamplers[ToUnderlying(RHIShaderStage::eMax)]{};
+        for (const SmallVector<RHIShaderResourceDescriptor>& set : m_SRDTable)
+        {
+            for (const RHIShaderResourceDescriptor& descriptor : set)
+            {
+                // The global heap uses separate update-after-bind limits.
+                if (!descriptor.bindless
+                    && (descriptor.type == RHIShaderResourceType::eSampler
+                        || descriptor.type == RHIShaderResourceType::eSamplerWithTexture))
+                {
+                    samplerCount += descriptor.arraySize;
+                    for (uint32_t stage = 0; stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
+                    {
+                        if (descriptor.stageFlags.HasFlag(RHIShaderStageToFlagBits(static_cast<RHIShaderStage>(stage))))
+                        {
+                            perStageSamplers[stage] += descriptor.arraySize;
+                        }
+                    }
+                }
+            }
+        }
+        const uint64_t maxStageSamplers = *std::max_element(std::begin(perStageSamplers), std::end(perStageSamplers));
+        const bool     samplersFit =
+            samplerCount <= limits.maxDescriptorSetSamplers && maxStageSamplers <= limits.maxPerStageDescriptorSamplers;
+        const bool uniformsFit = UniformBuffersFitLimits(uniformUsage, limits);
+        m_fitsDeviceLimits     = uniformsFit && samplersFit;
 
         if (m_fitsDeviceLimits)
         {
             InitNativeObjects(sgInfo);
         }
-        else
+        if (!uniformsFit)
         {
             LOGE("Shader '{}' exceeds device uniform-buffer limits: {} dynamic descriptors per "
                  "layout (limit {}), {} in one stage (limit {})",
                  m_name.CStr(), uniformUsage.dynamicCount,
                  std::min(limits.maxDescriptorSetUniformBuffersDynamic, limits.maxDescriptorSetUniformBuffers),
                  uniformUsage.maxPerStageCount, limits.maxPerStageDescriptorUniformBuffers);
+        }
+        if (!samplersFit)
+        {
+            LOGE("Shader '{}' exceeds device sampler limits: {} descriptors per layout (limit {}), "
+                 "{} in one stage (limit {})",
+                 m_name.CStr(), samplerCount, limits.maxDescriptorSetSamplers, maxStageSamplers,
+                 limits.maxPerStageDescriptorSamplers);
         }
     }
 }

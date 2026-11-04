@@ -1482,6 +1482,68 @@ TEST_F(VulkanRecordingIntegrationTest, StaticPipelineSwitchRestoresDynamicValues
     CheckPixel(readback, 6, 4, Color(0, 0, 1, 1));
 }
 
+TEST_F(VulkanRecordingIntegrationTest, BlendConstantsSurviveStaticPipelinesAndNewRecordings)
+{
+    VulkanTexture*                             target = Texture();
+    RHIRenderingLayout                         layout = Layout(target);
+    VulkanShader*                              shader = Shader();
+    RHIGfxPipelineCreateInfo                   info   = PipelineInfo(shader, layout);
+    RHIGfxPipelineColorBlendState::Attachment& blend  = info.states.colorBlendState.attachments[0];
+    blend.enableBlend                                 = true;
+    blend.srcColorBlendFactor                         = RHIBlendFactor::eConstantColor;
+    blend.srcAlphaBlendFactor                         = RHIBlendFactor::eConstantAlpha;
+    info.states.colorBlendState.blendConstants        = Color(0, 1, 0, 1);
+    RHIPipeline* staticPipeline                       = Graphics(info);
+    info.states.dynamicStates.Enable(RHIDynamicState::eBlendConstants);
+    RHIPipeline* dynamicPipeline = Graphics(info);
+    ASSERT_NE(staticPipeline, nullptr);
+    ASSERT_NE(dynamicPipeline, nullptr);
+    VulkanBuffer* uniform = Buffer();
+    Uniform(uniform, 0, Color(1, 1, 1, 1));
+
+    for (uint32_t recording = 0; recording < 2; ++recording)
+    {
+        SCOPED_TRACE(recording);
+        Transition(target, recording == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        context->RHIBeginRendering(&layout);
+        DynamicState();
+        ResetCounts();
+        context->RHIBindPipeline(dynamicPipeline);
+        context->RHISetShaderParameters(Parameters(shader, uniform));
+        context->RHISetScissor(0, 0, 2, 8);
+        context->RHISetBlendConstants(Color(1, 0, 0, 1));
+        context->RHIDraw(3, 1, 0, 0);
+        context->RHIDraw(3, 1, 0, 0);
+        EXPECT_EQ(blendConstants->calls, 1u);
+
+        context->RHISetScissor(2, 0, 4, 8);
+        context->RHISetBlendConstants(Color(0, 0, 1, 1));
+        context->RHIDraw(3, 1, 0, 0);
+        EXPECT_EQ(blendConstants->calls, 2u);
+
+        context->RHIBindPipeline(staticPipeline);
+        context->RHISetShaderParameters(Parameters(shader, uniform));
+        context->RHISetScissor(4, 0, 6, 8);
+        context->RHIDraw(3, 1, 0, 0);
+        EXPECT_EQ(blendConstants->calls, 2u);
+
+        // Rebinding a dynamic pipeline must restore the cached blue constant.
+        context->RHIBindPipeline(dynamicPipeline);
+        context->RHISetShaderParameters(Parameters(shader, uniform));
+        context->RHISetScissor(6, 0, 8, 8);
+        context->RHIDraw(3, 1, 0, 0);
+        EXPECT_EQ(blendConstants->calls, 3u);
+        context->RHIEndRendering();
+        VulkanBuffer* readback = Copy(target);
+        SubmitAndWait();
+        CheckPixel(readback, 0, 4, Color(1, 0, 0, 1));
+        CheckPixel(readback, 2, 4, Color(0, 0, 1, 1));
+        CheckPixel(readback, 4, 4, Color(0, 1, 0, 1));
+        CheckPixel(readback, 6, 4, Color(0, 0, 1, 1));
+    }
+}
+
 TEST_F(VulkanRecordingIntegrationTest, GraphicsAndComputeKeepIndependentBindings)
 {
     VulkanTexture* target       = Texture();

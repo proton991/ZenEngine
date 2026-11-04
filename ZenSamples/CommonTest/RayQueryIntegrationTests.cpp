@@ -574,16 +574,15 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
             {
                 instances[i].transform[axis][axis] = 1.0f;
             }
-            instances[i].transform[0][3]              = float(i) * 2.0f;
-            instances[i].customIndexAndMask           = (i == 0 ? 7u : 11u) | (0xffu << 24);
-            instances[i].accelerationStructureAddress = blas.pDestination->GetDeviceAddress();
+            instances[i].transform[0][3] = float(i) * 2.0f;
+            instances[i].customIndex     = i == 0 ? 7u : 11u;
+            instances[i].pStructure      = blas.pDestination;
         }
         RHIAccelerationStructureBuildInfo tlas;
-        tlas.description.type            = RHIAccelerationStructureType::eTopLevel;
-        tlas.description.pInstanceBuffer = Buffer(sizeof(instances), inputUsage, instances);
-        tlas.description.instanceCount   = 2;
-        tlas.description.allowUpdate     = true;
-        tlas.pDestination                = Structure(tlas.description, MakeVecView(&blas.pDestination, 1));
+        tlas.description.type        = RHIAccelerationStructureType::eTopLevel;
+        tlas.description.instances   = MakeVecView(instances, 2);
+        tlas.description.allowUpdate = true;
+        tlas.pDestination            = Structure(tlas.description, MakeVecView(&blas.pDestination, 1));
         ASSERT_NE(tlas.pDestination, nullptr);
         const RHIAccelerationStructureBuildSizes blasSizes = GDynamicRHI->GetAccelerationStructureBuildSizes(blas.description);
         const RHIAccelerationStructureBuildSizes tlasSizes = GDynamicRHI->GetAccelerationStructureBuildSizes(tlas.description);
@@ -606,9 +605,11 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         ASSERT_TRUE(graph.Begin());
         graph.GetResourceManager()->ImportBuffer(geometry.pVertexBuffer, RDGImportContents::eDefined);
         graph.GetResourceManager()->ImportBuffer(geometry.pIndexBuffer, RDGImportContents::eDefined);
-        graph.GetResourceManager()->ImportBuffer(tlas.description.pInstanceBuffer, RDGImportContents::eDefined);
         graph.AddTransferPass("BLAS").BuildAccelerationStructure(blas);
         graph.AddTransferPass("TLAS").BuildAccelerationStructure(tlas);
+        const RHIAccelerationStructureInstance original = instances[0];
+        instances[0].customIndex                        = 1234;
+        instances[0].transform[0][3]                    = 100;
         Query(graph, tlas.pDestination, output);
         // Prove the graph owns the geometry array, including threaded translation.
         geometry.indexCount = 0;
@@ -626,12 +627,15 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         EXPECT_NEAR(result[1].x, 1.5f, 1e-5f);
         EXPECT_EQ(result[2].w, 11.0f);
         EXPECT_EQ(result[3].x, -1.0f);
+        instances[0]                               = original;
 
         RHIAccelerationStructureBuildInfo invalid  = tlas;
         invalid.scratchOffset                     += 1;
         EXPECT_FALSE(static_cast<VulkanAccelerationStructure*>(tlas.pDestination)->ValidateBuild(invalid));
-        invalid                            = tlas;
-        invalid.description.instanceOffset = 1;
+        invalid                                          = tlas;
+        RHIAccelerationStructureInstance invalidInstance = instances[0];
+        invalidInstance.customIndex                      = 0x1000000u;
+        invalid.description.instances                    = MakeVecView(&invalidInstance, 1);
         EXPECT_FALSE(static_cast<VulkanAccelerationStructure*>(tlas.pDestination)->ValidateBuild(invalid));
 
         // Out-of-place update shares BLASes, with old-query -> update dependencies.
@@ -656,19 +660,16 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         {
             deformed[vertex * 3 + 2] += 0.25f;
         }
-        geometry.indexCount                       = 6;
-        geometry.pVertexBuffer                    = Buffer(sizeof(deformed), inputUsage, deformed);
-        blas.pSource                              = blas.pDestination;
-        blas.pDestination                         = Structure(blas.description);
-        instances[0].accelerationStructureAddress = instances[1].accelerationStructureAddress =
-            blas.pDestination->GetDeviceAddress();
-        instances[1].transform[0][3]     = 3.0f;
-        tlas.description.pInstanceBuffer = Buffer(sizeof(instances), inputUsage, instances);
-        tlas.pSource                     = tlas.pDestination;
-        tlas.pDestination                = Structure(tlas.description, MakeVecView(&blas.pDestination, 1));
+        geometry.indexCount     = 6;
+        geometry.pVertexBuffer  = Buffer(sizeof(deformed), inputUsage, deformed);
+        blas.pSource            = blas.pDestination;
+        blas.pDestination       = Structure(blas.description);
+        instances[0].pStructure = instances[1].pStructure = blas.pDestination;
+        instances[1].transform[0][3]                      = 3.0f;
+        tlas.pSource                                      = tlas.pDestination;
+        tlas.pDestination                                 = Structure(tlas.description, MakeVecView(&blas.pDestination, 1));
         ASSERT_TRUE(graph.Begin());
         graph.GetResourceManager()->ImportHostWrittenBuffer(geometry.pVertexBuffer);
-        graph.GetResourceManager()->ImportHostWrittenBuffer(tlas.description.pInstanceBuffer);
         graph.AddTransferPass("DeformBLAS").BuildAccelerationStructure(blas);
         graph.AddTransferPass("MoveTLAS").BuildAccelerationStructure(tlas);
         Query(graph, tlas.pDestination, output);
@@ -683,9 +684,9 @@ TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
         EXPECT_EQ(result[2].x, -1.0f);
 
         // Empty TLAS is valid and misses every ray; never bind an unbuilt/null AS.
-        tlas.description.instanceCount = 0;
-        tlas.pSource                   = nullptr;
-        tlas.pDestination              = Structure(tlas.description);
+        tlas.description.instances = {};
+        tlas.pSource               = nullptr;
+        tlas.pDestination          = Structure(tlas.description);
         ASSERT_TRUE(graph.Begin());
         graph.AddTransferPass("EmptyTLAS").BuildAccelerationStructure(tlas);
         Query(graph, tlas.pDestination, output);

@@ -1159,28 +1159,35 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
         m_pNode->selfStages = BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
         // An in-place update reads the structure it rewrites, so its prior contents are live.
         const bool inPlace = info.pSource == info.pDestination;
-        valid =
-            DeclareBuildBuffer(info.pDestination->GetStorageBuffer(), RHIBufferUsageFlagBits::eAccelerationStructureStorage,
-                               RHIAccessMode::eReadWrite, inPlace ? RDGContentEffect::eReadWrite : RDGContentEffect::eFullWrite)
-            && DeclareBuildBuffer(info.pScratchBuffer, RHIBufferUsageFlagBits::eStorageBuffer, RHIAccessMode::eReadWrite,
-                                  RDGContentEffect::eFullWrite);
+        valid              = m_pRDG->DeclareAccelerationStructureAccessForPass(
+                                 m_pNode, resources.ImportAccelerationStructureAllocation(info.pDestination), RHIAccessMode::eReadWrite,
+                                 m_pNode->selfStages, inPlace ? RDGContentEffect::eReadWrite : RDGContentEffect::eFullWrite)
+                          && DeclareBuildBuffer(info.pScratchBuffer, RHIBufferUsageFlagBits::eStorageBuffer, RHIAccessMode::eReadWrite,
+                                                RDGContentEffect::eFullWrite);
         if (info.pSource != nullptr && !inPlace)
         {
             valid = valid
-                 && DeclareBuildBuffer(info.pSource->GetStorageBuffer(), RHIBufferUsageFlagBits::eAccelerationStructureStorage,
-                                       RHIAccessMode::eRead);
+                 && m_pRDG->DeclareAccelerationStructureAccessForPass(
+                     m_pNode, resources.ImportAccelerationStructureAllocation(info.pSource), RHIAccessMode::eRead,
+                     m_pNode->selfStages, RDGContentEffect::eRead);
         }
         for (RHIAccelerationStructure* dependency : info.pDestination->GetReferencedStructures())
         {
             valid = valid
-                 && DeclareBuildBuffer(dependency->GetStorageBuffer(), RHIBufferUsageFlagBits::eAccelerationStructureStorage,
-                                       RHIAccessMode::eRead);
+                 && m_pRDG->DeclareAccelerationStructureAccessForPass(
+                     m_pNode, resources.ImportAccelerationStructureAllocation(dependency), RHIAccessMode::eRead,
+                     m_pNode->selfStages, RDGContentEffect::eRead);
         }
         if (info.description.type == RHIAccelerationStructureType::eTopLevel)
         {
-            valid = valid
-                 && DeclareBuildBuffer(info.description.pInstanceBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
-                                       RHIAccessMode::eRead);
+            const HeapVector<RHIAccelerationStructure*>& references = info.pDestination->GetReferencedStructures();
+            for (const RHIAccelerationStructureInstance& instance : info.description.instances)
+            {
+                valid = valid
+                     && Check(instance.IsValid()
+                                  && std::find(references.begin(), references.end(), instance.pStructure) != references.end(),
+                              RDGErrorCode::eBinding, "Invalid TLAS instance or missing retained BLAS dependency");
+            }
         }
         for (const RHIAccelerationStructureGeometry& geometry : info.description.geometries)
         {
@@ -1194,11 +1201,15 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
         {
             HeapVector<RHIAccelerationStructureGeometry> geometries(info.description.geometries.size());
             std::ranges::copy(info.description.geometries, geometries.begin());
-            m_ops.push_back([info, geometries = std::move(geometries)](RDGPassCmdEncoder& encoder) {
-                RHIAccelerationStructureBuildInfo owned = info;
-                owned.description.geometries            = MakeVecView(geometries.data(), geometries.size());
-                encoder.BuildAccelerationStructure(owned);
-            });
+            HeapVector<RHIAccelerationStructureInstance> instances(info.description.instances.size());
+            std::ranges::copy(info.description.instances, instances.begin());
+            m_ops.push_back(
+                [info, geometries = std::move(geometries), instances = std::move(instances)](RDGPassCmdEncoder& encoder) {
+                    RHIAccelerationStructureBuildInfo owned = info;
+                    owned.description.geometries            = MakeVecView(geometries.data(), geometries.size());
+                    owned.description.instances             = MakeVecView(instances.data(), instances.size());
+                    encoder.BuildAccelerationStructure(owned);
+                });
         }
     }
     return *this;

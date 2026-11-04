@@ -46,7 +46,7 @@ set(RDG_REFLECTION_TEST_PATH "${CMAKE_CURRENT_BINARY_DIR}/rdg-reflection/")
 set(RDG_REFLECTION_TEST_BINARIES)
 foreach(SHADER review_acceleration.comp review_runtime_array.comp review_reserved_set.comp review_duplicate.vert review_duplicate.frag rdg_access.comp rdg_shared.vert rdg_shared.frag
         descriptor_storage.comp descriptor_array.comp descriptor_bindings.comp
-        descriptor_uniform.comp descriptor_uniform_large.comp descriptor_uniform_limit.comp
+        descriptor_uniform.comp descriptor_uniform_large.comp descriptor_uniform_limit.comp descriptor_sampler_limit.comp
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
         binding_sampler.comp binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
         recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp
