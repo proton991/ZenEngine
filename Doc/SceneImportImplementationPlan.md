@@ -113,7 +113,7 @@ unchanged structure counts. Logs are under `build/scene-import/milestone4`.
 | Import | The former `FastGLTFLoader` accepts glTF and GLB and builds `sg::Scene` directly | Keep format parsing behind an engine import API |
 | Ownership | The loader owns vertices and indices; the scene owns components and supplemental asset data | Return one owning asset containing all imported data |
 | Editor loading | [ParseScene](../ZenEditor/Model/Source/EditorScene.cpp) combines the scene and copied geometry in editor-owned `LoadedScene` | Move reusable asset loading and runtime construction into ZenCore |
-| Other consumers | [SceneRendererDemo](../ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp) and [RenderObject](../ZenCore/Source/Graphics/RenderCore/V2/RenderObject.cpp) instantiate the glTF loader | Consume the same engine result |
+| Other consumers | [SceneRendererDemo](../ZenTest/SceneRegression/SceneRenderer/SceneRendererDemo.cpp) and [RenderObject](../ZenCore/Source/Graphics/RenderCore/V2/RenderObject.cpp) instantiate the glTF loader | Consume the same engine result |
 | Runtime animation | The former `SceneAnimationPointer` resolves glTF paths and consults retained source JSON | Resolve source paths during import and evaluate typed engine targets |
 | Placement | [RenderScene](../ZenCore/Source/Graphics/RenderCore/V2/RenderScene.cpp) calls `CenterAndNormalizeScene` during construction | Apply explicit placement before renderer construction |
 | Discovery | The former `GLTFModelCatalog`, file filters and UI wording assume glTF | Derive supported extensions from the importer registry |
@@ -530,7 +530,7 @@ them would add one-call forwarding layers.
 | Existing scene graph animation and material files | Runtime evaluation, instance state and GPU-data publication |
 | Existing texture loader and model catalog files | Shared decoding and format-neutral discovery |
 | `External/CMakeLists.txt` and `ZenCore/CMakeLists.txt` | Pinned dependency and private importer integration |
-| `ZenSamples/CommonTest` and `ZenEditor/Tests` | Import, runtime and transaction regressions |
+| `ZenTest/CommonTest` and `ZenTest/ZenEditor` | Import, runtime and transaction regressions |
 
 Use `HeapVector`, `HashMap` and suitable existing engine utilities. Follow the
 global C++ rules: one final return, explicit types except iterators, short

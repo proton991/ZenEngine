@@ -339,7 +339,7 @@ without exceptions, and the repository `.clang-format`.
 
 Extend existing targets rather than creating an unrelated test framework:
 `RenderCoreTest` for snapshot extraction (sources registered in
-`ZenSamples/CMakeLists.txt`, beside `RDGMetricsTests.cpp`), `EditorModelTest` for
+`ZenTest/CMakeLists.txt`, beside `RDGMetricsTests.cpp`), `EditorModelTest` for
 the capture policy, `EditorInputTest` for layout, hit testing and toolbar fit, and
 `EditorRenderingTest` for Vulkan editor integration.
 

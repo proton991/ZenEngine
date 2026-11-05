@@ -27,7 +27,7 @@ Paths below are relative to the repository root. Findings are from the current s
 
 | Area | Existing behavior | Required work |
 | --- | --- | --- |
-| `ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp` | Binds `1` and `2`; creates four hardcoded point lights; has an animation timer and smoke runner | Mode 3, config-driven light creation, runtime animation, expanded smoke coverage |
+| `ZenTest/SceneRegression/SceneRenderer/SceneRendererDemo.cpp` | Binds `1` and `2`; creates four hardcoded point lights; has an animation timer and smoke runner | Mode 3, config-driven light creation, runtime animation, expanded smoke coverage |
 | `ZenCore/Include/Graphics/RenderCore/V2/Renderer/RendererServer.h` and corresponding `.cpp` | Owns skybox, deferred renderer, and selected voxelizer; enum contains only `eVoxelize` and `ePBR` | Own GI renderer, explicitly dispatch three modes, handle failed GI updates |
 | `VoxelizerBase`, `GeometryVoxelizer`, `ComputeVoxelizer` | Both active paths produce albedo only at a hardcoded resolution of 256; update and voxel drawing share `BuildRenderGraph()` | Separate production from visualization; expose common surface attributes and volume bounds |
 | `VoxelGIRenderer.h/.cpp` and `Data/Shaders/VoxelGI/inject_radiance.comp` | Dormant injection stub; requires unused normal/emissive inputs and a shadow renderer; allocates one RGBA8 mip; uses a hardcoded directional light | Replace the stub with HDR injection, mip generation, and a real deferred consumer |

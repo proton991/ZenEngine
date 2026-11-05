@@ -41,7 +41,7 @@ For ZenEngine, use these as search starting points, and verify that they still d
 - `ZenCore/Include/Graphics/RenderCore/V2` and its source implementation: rendering policy, render-graph work, frame/resource management.
 - `ZenCore/Include/Graphics/RHI` and its source implementation: backend-facing interfaces and contracts; consult the local RHI `README.md` when relevant.
 - `ZenCore/Include/Graphics/VulkanRHI` and its source implementation: native Vulkan mechanisms.
-- `ZenCore/Include/Templates`: existing containers and utilities. `Doc`, `ZenSamples`, and the CMake files: plans, verification, tests, and build configuration.
+- `ZenCore/Include/Templates`: existing containers and utilities. `Doc`, `ZenTest`, and the CMake files: plans, verification, tests, and build configuration.
 
 Do not assume V2 or a particular path is active merely because it exists. Do not copy today's implementation details into universal rules.
 

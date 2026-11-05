@@ -69,7 +69,7 @@ At 128³ the four light cells are empty; their visibility bits cover 975 / 950 /
 
 ## Temporal validation
 
-[`QualityConvergenceStationaryVarianceAndLightRemoval`](../ZenSamples/CommonTest/DynamicVoxelGIFilterTests.inl) adds a native GPU test with fixed and elapsed temporal modes at a controlled 60 Hz, spatial filtering enabled, and all four RHI/queue combinations. It starts from valid black history, enables a constant source, records startup at frames 1/32/128/320, then measures 32 stationary samples. It removes the light and checks frames 1/10/32/64/128/320 against the independent `0.97^frames` response. Existing rate-dependence, padding, motion/cooldown and revealed-static tests run alongside it: **28/28 pass**.
+[`QualityConvergenceStationaryVarianceAndLightRemoval`](../ZenTest/CommonTest/DynamicVoxelGIFilterTests.inl) adds a native GPU test with fixed and elapsed temporal modes at a controlled 60 Hz, spatial filtering enabled, and all four RHI/queue combinations. It starts from valid black history, enables a constant source, records startup at frames 1/32/128/320, then measures 32 stationary samples. It removes the light and checks frames 1/10/32/64/128/320 against the independent `0.97^frames` response. Existing rate-dependence, padding, motion/cooldown and revealed-static tests run alongside it: **28/28 pass**.
 
 At frame 320, normalized startup energy is approximately `0.99994147`; normalized residual energy 320 frames after removal is approximately `0.000058472`. Stationary RMS is `1.03e-5` of fullscale, below `0.001`. A three-frame image is not used as evidence of convergence.
 

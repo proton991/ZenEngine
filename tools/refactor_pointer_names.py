@@ -24,7 +24,7 @@ PYTHON_BINDING_CANDIDATES = [
     Path("/opt/homebrew/Cellar/llvm/20.1.5/lib/python3.13/site-packages"),
     Path("/opt/homebrew/opt/llvm/lib/python3.12/site-packages"),
 ]
-PROJECT_ROOTS = (ROOT / "ZenCore", ROOT / "ZenSamples")
+PROJECT_ROOTS = (ROOT / "ZenCore", ROOT / "ZenTest")
 PROJECT_ROOT_STRS = tuple(str(root) for root in PROJECT_ROOTS)
 EXCLUDED_DIRS = {"External", "build", "bin", ".git", ".idea"}
 REFERENCE_KINDS = {

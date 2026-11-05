@@ -1,5 +1,12 @@
 # ZenEngine
 
+Samples and tests are independent Git submodules: [ZenSample](https://github.com/proton991/ZenSample)
+and [ZenTest](https://github.com/proton991/ZenTest). Clone with `--recurse-submodules`,
+or run `git submodule update --init --recursive` in an existing checkout.
+`ZEN_BUILD_SAMPLES=OFF` disables examples; `BUILD_TESTING=OFF` disables tests.
+Commit and push changes inside each submodule separately, then commit the updated
+submodule pointers in ZenEngine.
+
 Asset processor tests and validation tools are maintained in the independent
 [ZenAssetProcessor repository](https://github.com/proton991/ZenAssetProcessor). Its optional
 [engine consumer suite](https://github.com/proton991/ZenAssetProcessor/tree/main/tests/integration/zenengine)
@@ -130,7 +137,7 @@ Everything except ZenUI and the samples lives in the `ZenCore` library
 | **RenderDevice** | `RenderCore/V2/` | Frames in flight and frame slots, the per-frame graph, a staging upload queue on async transfer, texture manager, scene resource ownership, GPU-safe resource retirement, and cross-graph submission history. |
 | **Renderers** | `RenderCore/V2/Renderer/` | `RendererServer` (view selection and runtime GI reconfiguration), `SkyboxRenderer` (irradiance, prefiltered environment, BRDF LUT, skybox), `DeferredLightingRenderer` (G-buffer, deferred lighting, forward HDR path with transmission/scattering, tone map, light markers), `SceneShadowRenderer` (point/spot/directional shadow maps shared by lighting and GI), `GeometryVoxelizer`/`ComputeVoxelizer`, `VoxelGIRenderer`. |
 | **ZenUI** | `ZenUI/` | Dear ImGui context and renderer recorded as an RDG overlay, plus the runtime debug UI described in the gallery. Optional via `ZEN_BUILD_RUNTIME_UI`. |
-| **Samples & tools** | `ZenSamples/`, `tools/` | `scene_renderer_demo`, unit and Vulkan integration suites, a glTF corpus importer, and Python scripts for corpus rendering, GI quality, voxelization calibration and profiling. |
+| **Samples & tools** | `ZenTest/`, `tools/` | `scene_renderer_demo`, unit and Vulkan integration suites, a glTF corpus importer, and Python scripts for corpus rendering, GI quality, voxelization calibration and profiling. |
 
 ### Anatomy of a Voxel GI frame
 

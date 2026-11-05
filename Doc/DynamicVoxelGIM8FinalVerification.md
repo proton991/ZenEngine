@@ -213,7 +213,7 @@ The exact original `Data/engine.cfg` bytes are restored and no configuration loc
 | Lighting, emission, material, texture/UV and normal-transform contracts | 54 captures passed | [M6](../build/dynamic-voxel-m8-final/correctness-v3/m6/results.json) |
 | Grids, switches, triangle fixtures, Sponza, budget fallback | 111 captures passed | [M7](../build/dynamic-voxel-m8-final/correctness-v3/m7/all-results.json) |
 | Material/opacity, fixed bounds, explicit rebuild and cone/PBR contracts | 184 captures passed | [Contracts](../build/dynamic-voxel-m8-final/correctness-v4/contracts/results.json) |
-| Profiler/runner Python tests | 19 + 7 passed | `tools/test_engine_profile.py`, `tools/test_dynamic_voxel_benchmark.py` |
+| Profiler/runner Python tests | 19 + 7 passed | `ZenTest/Python/test_engine_profile.py`, `tools/test_dynamic_voxel_benchmark.py` |
 | Owned C++ formatting | 20 files pass clang-format 19 dry-run | [Formatting record](../build/dynamic-voxel-m8-final/formatting.json) |
 
 The four planar failures are exactly `0.0021588802337646484` against the unchanged

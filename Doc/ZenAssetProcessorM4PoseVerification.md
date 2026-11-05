@@ -8,7 +8,7 @@ semantic remapping audit. It does not complete all M4 or release requirements.
 
 ## Fixture and path
 
-`ZenEditor/Tests/Fixtures/generate_geometry_scene.py` generates two original,
+`ZenTest/ZenEditor/Fixtures/generate_geometry_scene.py` generates two original,
 self-contained glTF files. Six vertices form two overlapping, coplanar triangles
 in one alpha-blended primitive. Vertex storage is deliberately shuffled while
 indices retain the authored corner sequence. The fixture contains two skin
@@ -84,7 +84,7 @@ Evidence is under `build/asset-integration-release/`:
 Reproduce with the existing configured engine build:
 
 ```powershell
-python ZenEditor/Tests/Fixtures/generate_geometry_scene.py
+python ZenTest/ZenEditor/Fixtures/generate_geometry_scene.py
 cmake --build build/asset-integration-release --target EditorAssetRenderingTest --parallel 2
 # Set this to a fresh, existing output directory to retain packages and captures.
 $env:ZEN_EDITOR_GEOMETRY_CAPTURE_DIR = 'E:/Dev/ZenEngine/build/geometry-pose-rerun'

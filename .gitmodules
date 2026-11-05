@@ -1,0 +1,6 @@
+[submodule "ZenSample"]
+	path = ZenSample
+	url = https://github.com/proton991/ZenSample.git
+[submodule "ZenTest"]
+	path = ZenTest
+	url = https://github.com/proton991/ZenTest.git

@@ -8,7 +8,7 @@ sequence. The implemented viewer and architectural boundaries remain the baselin
 
 Architecture revised and adopted, 3 October 2026. Based on the current checkout.
 
-Create a top-level **`ZenEditor/`** beside `ZenCore/`, `ZenUI/`, and `ZenSamples/`.
+Create a top-level **`ZenEditor/`** beside `ZenCore/`, `ZenUI/`, and `ZenTest/`.
 Build it as a separate application that reuses the engine and shared UI backend.
 Deliver the docked workspace and a useful scene viewer first, then add document
 persistence, undoable editing, asset composition, and runtime preview.
@@ -111,7 +111,7 @@ The precise arrangement above is a proposal for ZenEditor.
 | [RendererServer](../ZenCore/Source/Graphics/RenderCore/V2/RendererServer.cpp) and [RenderOverlay](../ZenCore/Include/Graphics/RenderCore/V2/Renderer/RenderOverlay.h) | One engine-owned graph/submission path with application-owned final composition | Scene output and extent independent of the native viewport; UI-only frame path |
 | [Scene](../ZenCore/Include/SceneGraph/Scene.h), [Node](../ZenCore/Include/SceneGraph/Node.h), [Transform](../ZenCore/Include/SceneGraph/Transform.h) | Scene ownership, parent links, component data and transforms | Stable authoring identity, controlled hierarchy mutation and document serialization |
 | [RenderScene](../ZenCore/Include/Graphics/RenderCore/V2/RenderScene.h) | Staged transform, visibility, material and geometry updates before frame recording | Document-to-runtime adapter, authoring transactions and structural rebuild handling |
-| [SceneRendererDemo](../ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp) and [model switching](../ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp) | Proven loading, camera setup and transactional scene replacement patterns | Editor-owned application loop and document lifecycle |
+| [SceneRendererDemo](../ZenTest/SceneRegression/SceneRenderer/SceneRendererDemo.cpp) and [model switching](../ZenTest/SceneRegression/SceneRenderer/SceneRendererDemoModels.cpp) | Proven loading, camera setup and transactional scene replacement patterns | Editor-owned application loop and document lifecycle |
 | [Existing UI review](UIIntegrationReview.md) | Agreed separation of runtime UI, shared renderer and future editor | Concrete shell, viewport, persistence and editing milestones below |
 
 `ZenCore/Systems/SceneEditor` is currently a scene normalization utility. Its name
@@ -195,7 +195,7 @@ ZenEditorPlatform   -> ZenCore
 ZenImGui            -> ZenUI + zen_imgui (+ ZenWindowBackendInternal, privately)
 ZenUI               -> ZenCore
 ZenRuntimeUI        -> ZenImGui
-scene_renderer_demo -> ZenRuntimeUI (linked from ZenSamples)
+scene_renderer_demo -> ZenRuntimeUI (linked from ZenTest)
 ```
 
 `zen_editor` owns startup, the window, the frame loop, the platform file picker and
@@ -241,7 +241,7 @@ Add `ZEN_BUILD_EDITOR` with default `OFF`. Build/fetch shared UI when
 `ZEN_BUILD_RUNTIME_UI OR ZEN_BUILD_EDITOR`; include `ZenUI` and `ZenImGui` for
 either consumer, and build runtime panels only for the runtime option. Define
 both options before `add_subdirectory(External)`. `ZenUI` is configured before
-`ZenSamples`, and the demo links `ZenRuntimeUI` from its own CMake file, so
+`ZenTest`, and the demo links `ZenRuntimeUI` from its own CMake file, so
 editor-only configurations are valid and libraries never modify sample targets.
 
 Keep one pinned `zen_imgui` dependency (`v1.92.9b-docking`) shared by both

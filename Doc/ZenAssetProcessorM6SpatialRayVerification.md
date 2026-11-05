@@ -9,7 +9,7 @@ frames, broader sampling profiles, other devices and workload benefit remain ope
 
 ## Inputs and execution
 
-The original [fixture generator](../ZenEditor/Tests/Fixtures/generate_spatial_alpha_scene.py)
+The original [fixture generator](../ZenTest/ZenEditor/Fixtures/generate_spatial_alpha_scene.py)
 creates four embedded RGBA8 checker images, alternating 16x8 and 8x16 dimensions.
 Six front panels use metallic/roughness or specular/glossiness materials, MASK or
 BLEND alpha, vertex alpha, factor alpha, UV0 or UV1 and authored UV transforms.

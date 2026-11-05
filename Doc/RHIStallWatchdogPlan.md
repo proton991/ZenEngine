@@ -89,7 +89,7 @@ Add to `RHIOptions`:
 | `SetStallReportThreshold(std::chrono::milliseconds)` | 10 s | 0 disables reports. Tests use sub-second values. |
 | `SetStallFatalThreshold(std::chrono::milliseconds)` | 0 (disabled) | For automated runs. |
 
-Demo flags: `--rhi-stall-report-seconds=N` and `--rhi-stall-fatal-seconds=N`, parsed next to `--rhi-counters` in [SceneRendererDemo.cpp](../ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp) and added to its usage line.
+Demo flags: `--rhi-stall-report-seconds=N` and `--rhi-stall-fatal-seconds=N`, parsed next to `--rhi-counters` in [SceneRendererDemo.cpp](../ZenTest/SceneRegression/SceneRenderer/SceneRendererDemo.cpp) and added to its usage line.
 
 The fatal path uses `spdlog::critical`, flushes the default logger and calls `std::abort()`.
 

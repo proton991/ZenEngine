@@ -46,7 +46,7 @@ Windows/MSVC debug build passed for `ConfigLoaderTest`, `VulkanRHITest`, `Render
 
 Total: **566 enabled tests passed**. Native integration and all demo runs had zero `VUID-` messages, zero `SYNC-HAZARD` messages, and no reported memory leaks. RHI and RenderCore unit binaries also reported no leaks. The build retains the existing external GLI `GLM_ENABLE_EXPERIMENTAL` redefinition warning.
 
-The 16 added test cases in [AsyncComputeLifetimeTests.inl](../ZenSamples/RenderCoreTest/AsyncComputeLifetimeTests.inl) cover:
+The 16 added test cases in [AsyncComputeLifetimeTests.inl](../ZenTest/RenderCoreTest/AsyncComputeLifetimeTests.inl) cover:
 
 - independent timeline comparisons and reset;
 - compute completion protecting pool reuse, eviction accounting, frame slots, and extracted owners;

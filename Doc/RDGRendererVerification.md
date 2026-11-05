@@ -87,7 +87,7 @@ Track writer visibility until all subsequent reader access types are covered, or
 
 The voxel-first startup reported missing-barrier candidates when uploaded resources reached compute consumers after graphics consumers. Those reports warrant investigation, but the exact count is inflated by the metrics issue below. The live Vulkan logs did not separately confirm these candidates.
 
-Sources: [RenderGraph.cpp](../ZenCore/Source/Graphics/RenderCore/V2/RenderGraph.cpp), `NeedsBarrier`, `AttachGraphBarriers`, and `EmitCompiledNodeBarriers`; [RenderCoreTests.cpp](../ZenSamples/RenderCoreTest/RenderCoreTests.cpp), `WriterVisibilityReachesLaterReaderUsagesInOneGraph` (formerly `MetricsExposeReaderVisibilityGapInCurrentRDG`).
+Sources: [RenderGraph.cpp](../ZenCore/Source/Graphics/RenderCore/V2/RenderGraph.cpp), `NeedsBarrier`, `AttachGraphBarriers`, and `EmitCompiledNodeBarriers`; [RenderCoreTests.cpp](../ZenTest/RenderCoreTest/RenderCoreTests.cpp), `WriterVisibilityReachesLaterReaderUsagesInOneGraph` (formerly `MetricsExposeReaderVisibilityGapInCurrentRDG`).
 
 ### P2: The new metrics validator overstates some missing barriers
 

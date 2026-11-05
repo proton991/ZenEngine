@@ -53,7 +53,7 @@ python tools/format_active.py --check
 ```
 
 `python tools/format_active.py` applies the repository's `.clang-format` to the
-606 active C++ and GLSL files (shaders in `Data/Shaders/` and `ZenSamples/*/Shaders/`
+606 active C++ and GLSL files (shaders in `Data/Shaders/` and `ZenTest/*/Shaders/`
 are formatted as C++). `--check` verifies formatting without writing files.
 Vulkan integration tests require a compatible GPU and validation layer.
 

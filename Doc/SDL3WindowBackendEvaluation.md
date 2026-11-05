@@ -9,7 +9,7 @@ see [migration status](SDL3Migration.md) for the current behavior and acceptance
 
 **Required platform scope: Windows and macOS. Linux is deferred.** Both required platforms must provide the shared combined title/menu layout and pass native window, input, DPI, and rendering acceptance checks. Linux, X11, and Wayland work does not block making SDL the default or removing GLFW once Windows and macOS reach parity. Keep the API portable so Linux can be added later.
 
-The original evaluation added an isolated Windows probe under `ZenSamples/SDL3WindowProbe`. The production migration is now implemented: `ZEN_WINDOW_BACKEND=SDL3` selects the pinned, statically linked SDL source build; `GLFW` remains a selectable fallback pending native macOS acceptance. SDL owns windowing, events, and Vulkan surface integration; ZenEngine retains its RDG/RHI renderer. See [migration status and validation](SDL3Migration.md) for current results. The probe evidence below describes the original investigation.
+The original evaluation added an isolated Windows probe under `ZenTest/SDL3WindowProbe`. The production migration is now implemented: `ZEN_WINDOW_BACKEND=SDL3` selects the pinned, statically linked SDL source build; `GLFW` remains a selectable fallback pending native macOS acceptance. SDL owns windowing, events, and Vulkan surface integration; ZenEngine retains its RDG/RHI renderer. See [migration status and validation](SDL3Migration.md) for current results. The probe evidence below describes the original investigation.
 
 ## Evidence and scope
 
@@ -111,4 +111,4 @@ The recommendation is a **go for staged SDL integration on Windows and macOS**. 
 
 ## Reproduction
 
-See [the probe README](../ZenSamples/SDL3WindowProbe/README.md) for the dependency digests and build commands. Local evaluation logs are in `build/sdl3-evaluation/probe-debug.log` and `build/sdl3-evaluation/probe-release.log`; these are ignored build artifacts. The repository probe remains independent of the production CMake configuration.
+See [the probe README](../ZenTest/SDL3WindowProbe/README.md) for the dependency digests and build commands. Local evaluation logs are in `build/sdl3-evaluation/probe-debug.log` and `build/sdl3-evaluation/probe-release.log`; these are ignored build artifacts. The repository probe remains independent of the production CMake configuration.

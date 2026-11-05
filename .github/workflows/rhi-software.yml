@@ -17,6 +17,8 @@ jobs:
       VK_LOADER_LAYERS_DISABLE: '~implicit~'
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Install pinned Vulkan SDK
         shell: pwsh
         run: |

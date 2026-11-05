@@ -183,7 +183,7 @@ Implementation details and diagnostic limits:
   Brick cells appear while a pass uses bricks. Gather and probe spacing are GI attributes, alongside
   indirect intensity, contributions, and the voxel cone numbers, which light translucent surfaces and
   the optional cone bounce. `GetGIPassTracer` and `SetGIPassTracer` hold the mapping onto
-  `VoxelGISettings`, and `ZenUI/Tests/LightingBackendControlsTests.cpp` covers it.
+  `VoxelGISettings`, and `ZenTest/ZenUI/LightingBackendControlsTests.cpp` covers it.
 - Native tests: settings parsing, brick build/trace oracle, probe path smoke test in all four submission modes.
 - Measurements on Sponza/Papermill views: per-pass GPU time and composed-diffuse error against the archived references, for triangles and bricks, pixel and probe gather.
 - Portability: shared memory under 16 KB per workgroup, no 64-bit integers, atomics only on 32-bit integers.

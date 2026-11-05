@@ -309,5 +309,5 @@ python build/rhi-deferred/review-fixes/validate.py performance
 python build/rhi-deferred/review-fixes/validate.py memory
 python build/rhi-deferred/review-fixes/validate.py pacing
 python build/rhi-deferred/review-fixes/summarize.py
-python tools/test_engine_profile.py
+python ZenTest/Python/test_engine_profile.py
 ```

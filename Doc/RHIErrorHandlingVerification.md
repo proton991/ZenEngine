@@ -4,7 +4,7 @@ Status: implemented, 2026-10-03. This completes the no-exception error-handling 
 
 ## Implemented contracts
 
-- Engine-owned C++ under `ZenCore`, `ZenSamples` and `ZenUI` has no `try`, `catch`, `throw`, legacy throwing macros or exception-based test assertions. Fatal invariants use release-active `VERIFY_EXPR*` diagnostics and abort; supported local failures use checked status/null results. Third-party code and its exception compiler settings are unchanged.
+- Engine-owned C++ under `ZenCore`, `ZenTest` and `ZenUI` has no `try`, `catch`, `throw`, legacy throwing macros or exception-based test assertions. Fatal invariants use release-active `VERIFY_EXPR*` diagnostics and abort; supported local failures use checked status/null results. Third-party code and its exception compiler settings are unchanged.
 - Fixed-size `RHIError` causes survive finalization, submission, batch cancellation and terminal publication. First cause and later device-loss escalation remain separate. Primary terminal diagnostics include frame/slot, operation, native code, source, resource ID and cached queue submission serials.
 - Worker admission distinguishes accepted, full, closed and failed states. Explicit failure wakes producers; checked invocation runs or cancels exactly once. Ordered cleanup stays admitted through the established backend finalizer boundary.
 - Checked progress/waits and acquire/present results distinguish incomplete conditions, surface reconstruction and failures. Present queue acceptance remains separate from accepted rendering and resource retirement. Failed construction releases partial ownership; failed output handles are not published. Uncertain idle/retirement errors abort before unsafe force-retirement.

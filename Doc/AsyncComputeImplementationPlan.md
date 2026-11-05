@@ -325,7 +325,7 @@ Extend RDG captures with pass logical queue, native-queue equivalence ID, submis
 
 ## 7. Validation and acceptance criteria
 
-Use existing fake-backend fixtures in [RenderCoreTests.cpp](../ZenSamples/RenderCoreTest/RenderCoreTests.cpp), [RHIThreadingTests.inl](../ZenSamples/RenderCoreTest/RHIThreadingTests.inl), and [AsyncUploadTests.inl](../ZenSamples/RenderCoreTest/AsyncUploadTests.inl). Add focused async-compute cases and reuse real-backend coverage in [VulkanUploadIntegrationTests.cpp](../ZenSamples/CommonTest/VulkanUploadIntegrationTests.cpp) and [VulkanAsyncComputeIntegrationTests.cpp](../ZenSamples/CommonTest/VulkanAsyncComputeIntegrationTests.cpp) where applicable. The existing async-compute fixture requires a compute family distinct from graphics and transfer; add topology-aware cases for shared native queues and distinct queues within one family so those paths are not skipped by that prerequisite.
+Use existing fake-backend fixtures in [RenderCoreTests.cpp](../ZenTest/RenderCoreTest/RenderCoreTests.cpp), [RHIThreadingTests.inl](../ZenTest/RenderCoreTest/RHIThreadingTests.inl), and [AsyncUploadTests.inl](../ZenTest/RenderCoreTest/AsyncUploadTests.inl). Add focused async-compute cases and reuse real-backend coverage in [VulkanUploadIntegrationTests.cpp](../ZenTest/CommonTest/VulkanUploadIntegrationTests.cpp) and [VulkanAsyncComputeIntegrationTests.cpp](../ZenTest/CommonTest/VulkanAsyncComputeIntegrationTests.cpp) where applicable. The existing async-compute fixture requires a compute family distinct from graphics and transfer; add topology-aware cases for shared native queues and distinct queues within one family so those paths are not skipped by that prerequisite.
 
 | Test group | Required cases and evidence |
 | --- | --- |

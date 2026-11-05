@@ -411,7 +411,7 @@
       "sha256": "8cec3f443426dd12b1be0898ba1bbd32a8b5ca7c10b97eaa901ec3790a0a4574"
     },
     {
-      "path": "ZenSamples/RenderCoreTest/HybridGIRendererTests.inl",
+      "path": "ZenTest/RenderCoreTest/HybridGIRendererTests.inl",
       "sha256": "951302a58f2532b30d692dc4634704a556da751179017f5d94a15db0ab4659bb"
     },
     {
@@ -439,11 +439,11 @@
       "sha256": "686748d681ea3e5368077bee8e1c58383b2b1627af81023d9cf019e8c5439491"
     },
     {
-      "path": "ZenSamples/RenderCoreTest/VoxelGISettingsTests.cpp",
+      "path": "ZenTest/RenderCoreTest/VoxelGISettingsTests.cpp",
       "sha256": "e9a9bdc21039b24e5ff7bcc049b4cd1dadcfc1b0db2c9be57737b35ae22aad93"
     },
     {
-      "path": "ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp",
+      "path": "ZenTest/SceneRegression/SceneRenderer/SceneRendererDemoLightingCapture.cpp",
       "sha256": "0d47865f55d680bed1c4c335d88e09560ec377545d5d71eb7c805f3a474bd108"
     },
     {

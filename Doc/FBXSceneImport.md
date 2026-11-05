@@ -112,7 +112,7 @@ gloss textures are rejected. Existing warnings for unmapped material textures
 and approximate material/light conversion also apply to animated scenes.
 
 Tests and fixture provenance are in
-`ZenSamples/CommonTest/Assets/FBX/README.md`. CPU tests compare canonical world
+`ZenTest/CommonTest/Assets/FBX/README.md`. CPU tests compare canonical world
 geometry and material bindings with ufbx, compare ASCII/binary and equivalent
 glTF assets, exercise external/embedded images, and compare serial/parallel
 loads. Animation tests compare world matrices and deformed positions with the

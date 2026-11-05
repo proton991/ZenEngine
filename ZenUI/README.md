@@ -13,7 +13,7 @@ None of these targets is a dependency of `ZenCore`.
 
 Each target exposes only its own include root, so code that links `ZenUI` alone cannot
 include ImGui or runtime-panel headers. `scene_renderer_demo` links `ZenRuntimeUI` from
-`ZenSamples/CMakeLists.txt`; ZenUI does not modify sample targets. The ImGui adapter
+`ZenTest/CMakeLists.txt`; ZenUI does not modify sample targets. The ImGui adapter
 reaches the native window through ZenCore's `ZenWindowBackendInternal` interface
 target, which exposes only the window adapter boundary header.
 
@@ -201,7 +201,7 @@ API applies the automatic profile to both the settings and the voxelizer.
 Model selector checks cover filtering, loading feedback, rejected requests,
 and resetting drafts after a switch. `SceneModelCatalog` tests cover recursive variant
 discovery, extension matching, Unicode paths, and missing directories.
-`SceneModelSwitchTest` (defined with the demo in `ZenSamples`) loads and renders
+`SceneModelSwitchTest` (defined with the demo in `ZenTest`) loads and renders
 several models through the demo in inline and threaded RHI modes, checks
 orthographic/infinite camera transitions, and verifies that a failed import retains
 the current scene. Resource lifetime tests cover scene retirement and partial loads.
