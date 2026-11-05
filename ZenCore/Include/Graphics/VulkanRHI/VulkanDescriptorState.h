@@ -52,6 +52,8 @@ private:
 
     BindingState& FindOrAddBinding(SetState& setState, uint32_t bindingIdx, RHIShaderResourceType type);
 
+    bool ValidateResourceParameter(const RHIShaderResourceParameter& param);
+
     void WriteResourceParameter(const RHIShaderResourceParameter& param);
 
     bool ValidateBindingState(const BindingState& bindingState);

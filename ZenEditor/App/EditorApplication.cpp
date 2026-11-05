@@ -490,8 +490,9 @@ public:
             m_window->Update(false, redraw);
             redraw();
             const runtime::RuntimeWindow& play = m_controller->GetPlaySession();
-            if (m_window->IsMinimized() && (!play.GetWindow() || play.GetWindow()->IsMinimized())
-                && !m_graphWindow->NeedsRedraw())
+            // No present paces this loop while the main window has nothing to show.
+            const bool mainIdle = m_window->IsMinimized() || m_present->GetColorBackBuffer() == nullptr;
+            if (mainIdle && (!play.GetWindow() || play.GetWindow()->IsMinimized()) && !m_graphWindow->NeedsRedraw())
             {
                 platform::NativeWindow::WaitEvents(0.05, redraw);
             }
@@ -640,8 +641,8 @@ public:
 
                 viewport.OnSubmitted(submitted && m_context->sceneVisible && !m_controller->IsPreviewFrozen());
 
-                valid =
-                    m_controller->RecordRenderingResult(result, m_context->sceneVisible && !m_controller->IsPreviewFrozen());
+                valid = m_controller->RecordRenderingResult(rc::ScriptedFrameResult(result, m_options.frames != 0),
+                                                            m_context->sceneVisible && !m_controller->IsPreviewFrozen());
 
                 if (submitted && !m_options.capture.empty() && m_options.frames != 0 && frame + 1 == m_options.frames)
                 {

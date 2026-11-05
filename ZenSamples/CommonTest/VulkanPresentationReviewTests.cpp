@@ -1,6 +1,8 @@
 #include "VulkanIntegrationFixture.h"
+#include "ScopedVulkanCall.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
@@ -9,12 +11,42 @@
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Platform/NativeWindow.h"
 #include <gtest/gtest.h>
+#include <atomic>
 #include <tuple>
 
 namespace
 {
 using namespace zen;
 using namespace zen::rc;
+
+struct ZeroSurfaceExtent
+{
+    static inline PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR original{};
+
+    static VKAPI_ATTR VkResult VKAPI_CALL Query(VkPhysicalDevice          device,
+                                                VkSurfaceKHR              surface,
+                                                VkSurfaceCapabilitiesKHR* capabilities)
+    {
+        const VkResult result = original(device, surface, capabilities);
+        if (result == VK_SUCCESS)
+        {
+            capabilities->currentExtent = {0, 0};
+        }
+        return result;
+    }
+};
+
+struct CountDeviceIdleWaits
+{
+    static inline PFN_vkDeviceWaitIdle  original{};
+    static inline std::atomic<uint32_t> count{0};
+
+    static VKAPI_ATTR VkResult VKAPI_CALL Wait(VkDevice device)
+    {
+        ++count;
+        return original(device);
+    }
+};
 
 // Parameters: RHI worker, async compute, and ray tracing disabled before device creation.
 class VulkanPresentationReviewTest : public testing::TestWithParam<std::tuple<bool, bool, bool>>
@@ -75,7 +107,30 @@ public:
         GVulkanRHI->WaitDeviceIdle();
     }
 
+    void PrepareRenderer()
+    {
+        ShaderProgramManager::GetInstance().BuildShaderPrograms(device.Get());
+        device->InitializeRendererServer();
+        ZeroSurfaceExtent::original = vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+    }
+
+    RHIViewport* CreateSecondViewport()
+    {
+        platform::WindowConfig config;
+        config.visible = false;
+        config.width = config.height = 128;
+        secondWindow                 = MakeUnique<platform::NativeWindow>(config);
+        return device->CreateViewport(secondWindow.Get(), 128, 128, false);
+    }
+
+    RenderFrameResult PresentFrame(RHIViewport* target)
+    {
+        return device->GetRendererServer()->DispatchRenderWorkloads(RenderView::FromViewport(*target), nullptr, false, target);
+    }
+
     UniquePtr<platform::NativeWindow> window;
+    // Outlives the device, which destroys every viewport during teardown.
+    UniquePtr<platform::NativeWindow> secondWindow;
     UniquePtr<RenderDevice>           device;
     RHIViewport*                      viewport{nullptr};
     bool                              previousRayTracingDisabled{false};
@@ -119,6 +174,85 @@ TEST_P(VulkanPresentationReviewTest, ClearOnlyGraphPresentsAndNextAttachmentFram
     EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
     EXPECT_TRUE(result.presented);
     device->WaitForIdle();
+}
+
+TEST_P(VulkanPresentationReviewTest, SameSizeRestoreRetriesDeferredNativeZeroExtent)
+{
+    PrepareRenderer();
+    {
+        test::ScopedVulkanCall queryExtent(vkGetPhysicalDeviceSurfaceCapabilitiesKHR, &ZeroSurfaceExtent::Query);
+        device->ResizeViewport(viewport, 257, 256);
+        ASSERT_EQ(viewport->GetWidth(), 257u);
+        ASSERT_EQ(viewport->GetHeight(), 256u);
+        ASSERT_EQ(viewport->GetColorBackBuffer(), nullptr);
+        ASSERT_TRUE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+
+        // The wait outlasts the decline limit, and polling the surface does not drain frames.
+        CountDeviceIdleWaits::original = vkDeviceWaitIdle;
+        CountDeviceIdleWaits::count    = 0;
+        test::ScopedVulkanCall countIdleWaits(vkDeviceWaitIdle, &CountDeviceIdleWaits::Wait);
+        uint32_t               declines = 0;
+        for (uint32_t frame = 0; frame < 16; ++frame)
+        {
+            const RenderFrameResult result = PresentFrame(viewport);
+            EXPECT_EQ(result, RenderFrameResult::eSuspended);
+            EXPECT_TRUE(TrackDeclinedFrames(result, declines));
+            device->NextFrame();
+        }
+        EXPECT_EQ(CountDeviceIdleWaits::count.load(), 0u);
+        ASSERT_EQ(viewport->GetColorBackBuffer(), nullptr);
+    }
+
+    // PrepareFrame must restore the same requested dimensions without another resize event.
+    EXPECT_EQ(PresentFrame(viewport), RenderFrameResult::eSubmitted);
+    ASSERT_NE(viewport->GetColorBackBuffer(), nullptr);
+    ASSERT_NE(viewport->GetDepthStencilBackBuffer(), nullptr);
+    EXPECT_FALSE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    device->WaitForIdle();
+    EXPECT_TRUE(device->PollFrameSubmissions(true));
+}
+
+TEST_P(VulkanPresentationReviewTest, DeferredViewportLeavesOtherViewportsPresenting)
+{
+    PrepareRenderer();
+    RHIViewport* other = CreateSecondViewport();
+    ASSERT_NE(other, nullptr);
+    {
+        test::ScopedVulkanCall queryExtent(vkGetPhysicalDeviceSurfaceCapabilitiesKHR, &ZeroSurfaceExtent::Query);
+        device->ResizeViewport(viewport, 257, 256);
+        ASSERT_EQ(viewport->GetColorBackBuffer(), nullptr);
+        for (uint32_t frame = 0; frame < 16; ++frame)
+        {
+            EXPECT_EQ(PresentFrame(other), RenderFrameResult::eSubmitted);
+            device->NextFrame();
+        }
+        ASSERT_EQ(viewport->GetColorBackBuffer(), nullptr);
+    }
+
+    EXPECT_EQ(PresentFrame(viewport), RenderFrameResult::eSubmitted);
+    ASSERT_NE(viewport->GetColorBackBuffer(), nullptr);
+    device->WaitForIdle();
+    EXPECT_TRUE(device->PollFrameSubmissions(true));
+}
+
+TEST_P(VulkanPresentationReviewTest, InitialZeroExtentViewportRecoversWithoutResizeEvent)
+{
+    PrepareRenderer();
+    RHIViewport* deferred = nullptr;
+    {
+        test::ScopedVulkanCall queryExtent(vkGetPhysicalDeviceSurfaceCapabilitiesKHR, &ZeroSurfaceExtent::Query);
+        deferred = CreateSecondViewport();
+        ASSERT_NE(deferred, nullptr);
+        ASSERT_EQ(deferred->GetColorBackBuffer(), nullptr);
+        EXPECT_EQ(PresentFrame(deferred), RenderFrameResult::eSuspended);
+        device->NextFrame();
+        ASSERT_EQ(deferred->GetColorBackBuffer(), nullptr);
+    }
+
+    EXPECT_EQ(PresentFrame(deferred), RenderFrameResult::eSubmitted);
+    ASSERT_NE(deferred->GetColorBackBuffer(), nullptr);
+    device->WaitForIdle();
+    EXPECT_TRUE(device->PollFrameSubmissions(true));
 }
 
 TEST_P(VulkanPresentationReviewTest, RendererInitializationWarmsRegisteredComputeKeysForLaterReuse)

@@ -73,45 +73,189 @@ bool ValidateShaderLayout(const RHIShaderGroupInfo& info, uint32_t maxDescriptor
     return valid;
 }
 
-VulkanUniformBufferUsage CountUniformBufferDescriptors(const RHIShaderResourceDescriptorTable& srdTable)
+namespace
 {
-    VulkanUniformBufferUsage usage{};
+enum class DescriptorLimitClass : uint32_t
+{
+    eSampler,
+    eUniformBuffer,
+    eStorageBuffer,
+    eSampledImage,
+    eStorageImage,
+    eInputAttachment,
+    eAccelerationStructure,
+    eMax
+};
 
-    uint32_t perStageCounts[ToUnderlying(RHIShaderStage::eMax)] = {};
+struct DescriptorCounts
+{
+    uint64_t values[ToUnderlying(DescriptorLimitClass::eMax)]{};
 
-    for (const SmallVector<RHIShaderResourceDescriptor>& setSRDs : srdTable)
+    void Add(const RHIShaderResourceDescriptor& descriptor)
     {
-        for (const RHIShaderResourceDescriptor& srd : setSRDs)
+        DescriptorLimitClass descriptorClass = DescriptorLimitClass::eMax;
+        switch (descriptor.type)
         {
-            if (srd.type == RHIShaderResourceType::eUniformBuffer && !srd.bindless)
-            {
-                usage.dynamicCount += srd.arraySize;
+            case RHIShaderResourceType::eSampler: descriptorClass = DescriptorLimitClass::eSampler; break;
+            case RHIShaderResourceType::eSamplerWithTexture:
+                values[ToUnderlying(DescriptorLimitClass::eSampler)] += descriptor.arraySize;
+                [[fallthrough]];
+            case RHIShaderResourceType::eTexture:
+            case RHIShaderResourceType::eTextureBuffer:
+            case RHIShaderResourceType::eSamplerWithTextureBuffer: descriptorClass = DescriptorLimitClass::eSampledImage; break;
+            case RHIShaderResourceType::eImage:
+            case RHIShaderResourceType::eImageBuffer: descriptorClass = DescriptorLimitClass::eStorageImage; break;
+            case RHIShaderResourceType::eUniformBuffer: descriptorClass = DescriptorLimitClass::eUniformBuffer; break;
+            case RHIShaderResourceType::eStorageBuffer: descriptorClass = DescriptorLimitClass::eStorageBuffer; break;
+            case RHIShaderResourceType::eInputAttachment: descriptorClass = DescriptorLimitClass::eInputAttachment; break;
+            case RHIShaderResourceType::eAccelerationStructure:
+                descriptorClass = DescriptorLimitClass::eAccelerationStructure;
+                break;
+            case RHIShaderResourceType::eMax: break;
+        }
+        if (descriptorClass != DescriptorLimitClass::eMax)
+        {
+            // KHR acceleration-structure limits count bindings, unlike the descriptor-element limits above.
+            values[ToUnderlying(descriptorClass)] +=
+                descriptorClass == DescriptorLimitClass::eAccelerationStructure ? 1 : descriptor.arraySize;
+        }
+    }
 
-                for (uint32_t stage = 0; stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
+    uint64_t ResourceCount() const
+    {
+        // Combined image samplers count once; separate samplers and acceleration structures are excluded.
+        return values[ToUnderlying(DescriptorLimitClass::eUniformBuffer)]
+             + values[ToUnderlying(DescriptorLimitClass::eStorageBuffer)]
+             + values[ToUnderlying(DescriptorLimitClass::eSampledImage)]
+             + values[ToUnderlying(DescriptorLimitClass::eStorageImage)]
+             + values[ToUnderlying(DescriptorLimitClass::eInputAttachment)];
+    }
+};
+
+bool CheckShaderLimit(NameID name, const char* limitName, uint64_t count, uint32_t limit)
+{
+    const bool valid = count <= limit;
+    if (!valid)
+    {
+        LOGE("Shader '{}' exceeds {}: {} (limit {})", name.CStr(), limitName, count, limit);
+    }
+    return valid;
+}
+
+DescriptorCounts CountStageDescriptors(const RHIShaderResourceDescriptorTable& table, RHIShaderStage stage)
+{
+    DescriptorCounts counts;
+    for (const SmallVector<RHIShaderResourceDescriptor>& set : table)
+    {
+        for (const RHIShaderResourceDescriptor& descriptor : set)
+        {
+            if (!descriptor.bindless && descriptor.stageFlags.HasFlag(RHIShaderStageToFlagBits(stage)))
+            {
+                counts.Add(descriptor);
+            }
+        }
+    }
+    return counts;
+}
+
+bool StageResourcesFitLimits(NameID                                              name,
+                             uint64_t                                            ordinaryCount,
+                             uint64_t                                            globalImages,
+                             uint32_t                                            colorAttachmentCount,
+                             const VkPhysicalDeviceLimits&                       limits,
+                             const VkPhysicalDeviceDescriptorIndexingProperties& indexingLimits)
+{
+    bool valid =
+        CheckShaderLimit(name, "maxPerStageResources", ordinaryCount + colorAttachmentCount, limits.maxPerStageResources);
+    valid &= CheckShaderLimit(name, "maxPerStageUpdateAfterBindResources", ordinaryCount + globalImages + colorAttachmentCount,
+                              indexingLimits.maxPerStageUpdateAfterBindResources);
+    return valid;
+}
+} // namespace
+
+bool ShaderLayoutFitsLimits(const RHIShaderGroupInfo&                                 info,
+                            const VkPhysicalDeviceLimits&                             limits,
+                            const VkPhysicalDeviceDescriptorIndexingProperties&       indexingLimits,
+                            const VkPhysicalDeviceAccelerationStructurePropertiesKHR& accelerationLimits,
+                            const RHIBindlessHeapCapacities&                          globalCapacities)
+{
+    bool valid = CheckShaderLimit(info.name, "maxPushConstantsSize", info.pushConstants.size, limits.maxPushConstantsSize);
+    DescriptorCounts total;
+    for (const SmallVector<RHIShaderResourceDescriptor>& set : info.SRDTable)
+    {
+        for (const RHIShaderResourceDescriptor& descriptor : set)
+        {
+            if (!descriptor.bindless)
+            {
+                total.Add(descriptor);
+                if (descriptor.type == RHIShaderResourceType::eUniformBuffer)
                 {
-                    if (srd.stageFlags.HasFlag(RHIShaderStageToFlagBits(static_cast<RHIShaderStage>(stage))))
-                    {
-                        perStageCounts[stage] += srd.arraySize;
-                    }
+                    valid &= CheckShaderLimit(info.name, "maxUniformBufferRange", descriptor.blockSize,
+                                              limits.maxUniformBufferRange);
                 }
             }
         }
     }
 
-    for (uint32_t count : perStageCounts)
+    const uint32_t layoutLimits[] = {
+        limits.maxDescriptorSetSamplers,
+        std::min(limits.maxDescriptorSetUniformBuffers, limits.maxDescriptorSetUniformBuffersDynamic),
+        limits.maxDescriptorSetStorageBuffers,
+        limits.maxDescriptorSetSampledImages,
+        limits.maxDescriptorSetStorageImages,
+        limits.maxDescriptorSetInputAttachments,
+        accelerationLimits.maxDescriptorSetAccelerationStructures};
+    const uint32_t stageLimits[] = {limits.maxPerStageDescriptorSamplers,
+                                    limits.maxPerStageDescriptorUniformBuffers,
+                                    limits.maxPerStageDescriptorStorageBuffers,
+                                    limits.maxPerStageDescriptorSampledImages,
+                                    limits.maxPerStageDescriptorStorageImages,
+                                    limits.maxPerStageDescriptorInputAttachments,
+                                    accelerationLimits.maxPerStageDescriptorAccelerationStructures};
+    const char*    classNames[]  = {"sampler descriptors",
+                                    "dynamic uniform-buffer descriptors",
+                                    "storage-buffer descriptors",
+                                    "sampled-image/texel-buffer descriptors",
+                                    "storage-image/texel-buffer descriptors",
+                                    "input-attachment descriptors",
+                                    "acceleration-structure bindings"};
+    static_assert(std::size(layoutLimits) == ToUnderlying(DescriptorLimitClass::eMax));
+    static_assert(std::size(stageLimits) == ToUnderlying(DescriptorLimitClass::eMax));
+    static_assert(std::size(classNames) == ToUnderlying(DescriptorLimitClass::eMax));
+
+    const uint64_t globalSamplers = globalCapacities.Get(RHIBindlessHeapType::eSampler);
+    const uint64_t globalImages   = globalCapacities.GetImageSlots();
+    for (uint32_t descriptorClass = 0; descriptorClass < ToUnderlying(DescriptorLimitClass::eMax); ++descriptorClass)
     {
-        usage.maxPerStageCount = std::max(usage.maxPerStageCount, count);
+        valid &= CheckShaderLimit(info.name, classNames[descriptorClass], total.values[descriptorClass],
+                                  layoutLimits[descriptorClass]);
     }
-
-    return usage;
-}
-
-bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage, const VkPhysicalDeviceLimits& limits)
-{
-    // Dynamic uniform buffers also count against the general uniform-buffer limits.
-    return usage.dynamicCount <= limits.maxDescriptorSetUniformBuffersDynamic
-        && usage.dynamicCount <= limits.maxDescriptorSetUniformBuffers
-        && usage.maxPerStageCount <= limits.maxPerStageDescriptorUniformBuffers;
+    // Only sampled images and samplers occur in the global update-after-bind layout. Vulkan
+    // requires each update-after-bind limit to reach its ordinary limit, so the other combined
+    // limits follow from the stricter ordinary-layout checks above.
+    valid &= CheckShaderLimit(info.name, "combined layout samplers",
+                              total.values[ToUnderlying(DescriptorLimitClass::eSampler)] + globalSamplers,
+                              indexingLimits.maxDescriptorSetUpdateAfterBindSamplers);
+    valid &= CheckShaderLimit(info.name, "combined layout sampled images",
+                              total.values[ToUnderlying(DescriptorLimitClass::eSampledImage)] + globalImages,
+                              indexingLimits.maxDescriptorSetUpdateAfterBindSampledImages);
+    for (uint32_t stage = 0; stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
+    {
+        const DescriptorCounts counts = CountStageDescriptors(info.SRDTable, static_cast<RHIShaderStage>(stage));
+        for (uint32_t descriptorClass = 0; descriptorClass < ToUnderlying(DescriptorLimitClass::eMax); ++descriptorClass)
+        {
+            valid &= CheckShaderLimit(info.name, classNames[descriptorClass], counts.values[descriptorClass],
+                                      stageLimits[descriptorClass]);
+        }
+        valid &= CheckShaderLimit(info.name, "combined per-stage samplers",
+                                  counts.values[ToUnderlying(DescriptorLimitClass::eSampler)] + globalSamplers,
+                                  indexingLimits.maxPerStageDescriptorUpdateAfterBindSamplers);
+        valid &= CheckShaderLimit(info.name, "combined per-stage sampled images",
+                                  counts.values[ToUnderlying(DescriptorLimitClass::eSampledImage)] + globalImages,
+                                  indexingLimits.maxPerStageDescriptorUpdateAfterBindSampledImages);
+        valid &= StageResourcesFitLimits(info.name, counts.ResourceCount(), globalImages, 0, limits, indexingLimits);
+    }
+    return valid;
 }
 
 RHIShader* VulkanResourceFactory::CreateShader(const RHIShaderCreateInfo& createInfo)
@@ -166,7 +310,14 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 
     new (pShader) VulkanShader(createInfo);
 
-    bool created = createInfo.spirv != nullptr || pShader->LoadSpirvFiles();
+    const bool tessellation = pShader->m_shaderGroupSPIRV->HasShaderStage(RHIShaderStage::eTesselationControl)
+                           || pShader->m_shaderGroupSPIRV->HasShaderStage(RHIShaderStage::eTesselationEvaluation);
+    bool       created      = !tessellation && (createInfo.spirv != nullptr || pShader->LoadSpirvFiles());
+    if (tessellation)
+    {
+        LOGE("Shader '{}' requests tessellation, which the current RHI pipeline contract does not support",
+             createInfo.name.CStr());
+    }
 
     if (created)
     {
@@ -312,58 +463,14 @@ void VulkanShader::Init()
 
         m_specializationInfo.pData         = m_specializationData.empty() ? nullptr : m_specializationData.data();
 
-        // Reject an over-limit layout before creating native objects. Drivers need not reject
-        // one; only the validation layer reports it.
-        const VulkanUniformBufferUsage uniformUsage = CountUniformBufferDescriptors(m_SRDTable);
-
-        const VkPhysicalDeviceLimits limits         = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
-
-        uint64_t samplerCount                       = 0;
-        uint64_t perStageSamplers[ToUnderlying(RHIShaderStage::eMax)]{};
-        for (const SmallVector<RHIShaderResourceDescriptor>& set : m_SRDTable)
-        {
-            for (const RHIShaderResourceDescriptor& descriptor : set)
-            {
-                // The global heap uses separate update-after-bind limits.
-                if (!descriptor.bindless
-                    && (descriptor.type == RHIShaderResourceType::eSampler
-                        || descriptor.type == RHIShaderResourceType::eSamplerWithTexture))
-                {
-                    samplerCount += descriptor.arraySize;
-                    for (uint32_t stage = 0; stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
-                    {
-                        if (descriptor.stageFlags.HasFlag(RHIShaderStageToFlagBits(static_cast<RHIShaderStage>(stage))))
-                        {
-                            perStageSamplers[stage] += descriptor.arraySize;
-                        }
-                    }
-                }
-            }
-        }
-        const uint64_t maxStageSamplers = *std::max_element(std::begin(perStageSamplers), std::end(perStageSamplers));
-        const bool     samplersFit =
-            samplerCount <= limits.maxDescriptorSetSamplers && maxStageSamplers <= limits.maxPerStageDescriptorSamplers;
-        const bool uniformsFit = UniformBuffersFitLimits(uniformUsage, limits);
-        m_fitsDeviceLimits     = uniformsFit && samplersFit;
-
+        // Reject every device-limit violation before creating modules, set layouts, or the pipeline layout.
+        const VulkanDevice* device = GVulkanRHI->GetDevice();
+        m_fitsDeviceLimits         = ShaderLayoutFitsLimits(
+            sgInfo, device->GetPhysicalDeviceProperties().limits, device->GetDescriptorIndexingProperties(),
+            device->GetAccelerationStructureProperties(), GVulkanRHI->GetBindlessDescriptorPoolManager()->GetCapacities());
         if (m_fitsDeviceLimits)
         {
             InitNativeObjects(sgInfo);
-        }
-        if (!uniformsFit)
-        {
-            LOGE("Shader '{}' exceeds device uniform-buffer limits: {} dynamic descriptors per "
-                 "layout (limit {}), {} in one stage (limit {})",
-                 m_name.CStr(), uniformUsage.dynamicCount,
-                 std::min(limits.maxDescriptorSetUniformBuffersDynamic, limits.maxDescriptorSetUniformBuffers),
-                 uniformUsage.maxPerStageCount, limits.maxPerStageDescriptorUniformBuffers);
-        }
-        if (!samplersFit)
-        {
-            LOGE("Shader '{}' exceeds device sampler limits: {} descriptors per layout (limit {}), "
-                 "{} in one stage (limit {})",
-                 m_name.CStr(), samplerCount, limits.maxDescriptorSetSamplers, maxStageSamplers,
-                 limits.maxPerStageDescriptorSamplers);
         }
     }
 }
@@ -680,10 +787,19 @@ static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
     const RHIRenderingLayout* layout = createInfo.pRenderingLayout;
 
     bool valid = createInfo.pShader != nullptr && createInfo.pShader->GetResourceType() == RHIResourceType::eShader
-              && layout != nullptr && layout->numColorRenderTargets <= MAX_NUM_COLOR_ATTACHMENTS;
+              && layout != nullptr && layout->numColorRenderTargets <= MAX_NUM_COLOR_ATTACHMENTS
+              && createInfo.states.primitiveType != RHIDrawPrimitiveType::ePatchList;
 
     if (valid)
     {
+        const VulkanDevice*    device = GVulkanRHI->GetDevice();
+        const DescriptorCounts fragmentCounts =
+            CountStageDescriptors(*createInfo.pShader->GetSRDTable(), RHIShaderStage::eFragment);
+        valid &= StageResourcesFitLimits(createInfo.pShader->GetName(), fragmentCounts.ResourceCount(),
+                                         GVulkanRHI->GetBindlessDescriptorPoolManager()->GetCapacities().GetImageSlots(),
+                                         layout->numColorRenderTargets, device->GetPhysicalDeviceProperties().limits,
+                                         device->GetDescriptorIndexingProperties());
+
         // Layouts may describe formats without owning concrete textures/views.
         const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
 
@@ -713,7 +829,7 @@ static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
 
     if (!valid)
     {
-        LOGE("Graphics pipeline requires a compatible shader and rendering layout");
+        LOGE("Graphics pipeline requires a compatible shader, rendering layout, and supported non-patch topology");
     }
 
     return valid;

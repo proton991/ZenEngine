@@ -258,6 +258,7 @@ public:
     bool        presentResult{true};
     bool        recordPresentCommands{false};
     bool        recreationRequested{false};
+    bool        recreationPossible{true};
     uint32_t    resizes{0};
 
     void PrepareForPresent(RHICommandList* commands) override
@@ -280,6 +281,11 @@ public:
     bool NeedsRecreation() const override
     {
         return recreationRequested;
+    }
+
+    bool CanRecreate() const override
+    {
+        return recreationPossible;
     }
 
     uint32_t GetWidth() const override
@@ -1728,12 +1734,14 @@ struct RDGSubmissionTestAccess
 
     static RHIViewport* RecreateViewport(const RenderDevice& device)
     {
-        return device.m_pRecreateViewport;
+        return device.m_recreateViewports.empty() ? nullptr : device.m_recreateViewports.back();
     }
 
     static void SetRecreateViewport(RenderDevice& device, RHIViewport* viewport)
     {
-        device.m_pRecreateViewport = viewport;
+        device.m_recreateViewports.clear();
+
+        device.SetViewportRecreationPending(viewport, true);
     }
 
     static RenderSubmissionHistory& History(RenderDevice& device)

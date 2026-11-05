@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x = 1) in;
+layout(set = 1, binding = 0, std140) uniform Values
+{
+    uvec4 value;
+}
+values[2];
+layout(set = 1, binding = 1, std430) buffer Data
+{
+    uint value;
+}
+data[2];
+layout(set = 1, binding = 2) uniform sampler2D sampledImages[2];
+layout(set = 1, binding = 3, rgba8) uniform image2D storageImages[2];
+layout(set = 1, binding = 4) uniform usamplerBuffer inputBuffers[2];
+layout(set = 1, binding = 5, r32ui) uniform uimageBuffer outputBuffers[2];
+void main()
+{
+    uvec4 result  = values[0].value + texelFetch(inputBuffers[0], 0);
+    data[0].value = result.x;
+    imageStore(outputBuffers[0], 0, result);
+    imageStore(storageImages[0], ivec2(0), texelFetch(sampledImages[0], ivec2(0), 0));
+}

@@ -26,7 +26,7 @@ struct TimingReadObserver
 
     static inline uint32_t calls{0};
 
-    static inline bool fail{false};
+    static inline VkResult failure{VK_SUCCESS};
 
     static VKAPI_ATTR VkResult VKAPI_CALL Read(VkDevice           device,
                                                VkQueryPool        pool,
@@ -45,7 +45,7 @@ struct TimingReadObserver
 
         EXPECT_NE(flags & VK_QUERY_RESULT_WITH_AVAILABILITY_BIT, 0u);
 
-        return fail ? VK_ERROR_OUT_OF_HOST_MEMORY : original(device, pool, first, count, size, data, stride, flags);
+        return failure != VK_SUCCESS ? failure : original(device, pool, first, count, size, data, stride, flags);
     }
 };
 
@@ -103,7 +103,7 @@ protected:
 
         TimingReadObserver::calls    = 0;
 
-        TimingReadObserver::fail     = false;
+        TimingReadObserver::failure  = VK_SUCCESS;
     }
 
     void TearDown() override
@@ -371,7 +371,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, QueryReadFailureDoesNotFailRendering)
         GTEST_SKIP() << "Graphics timestamps unavailable";
     }
 
-    TimingReadObserver::fail = true;
+    TimingReadObserver::failure = VK_ERROR_OUT_OF_HOST_MEMORY;
 
     test::ScopedVulkanCall hook(vkGetQueryPoolResults, TimingReadObserver::Read);
 
@@ -386,6 +386,56 @@ TEST_F(VulkanGPUTimingIntegrationTest, QueryReadFailureDoesNotFailRendering)
     EXPECT_EQ(result->GetStatus(), RHIGPUTimingStatus::eError);
 
     EXPECT_FALSE(session->rhi.AreSubmissionsBlocked());
+
+    EXPECT_FALSE(session->rhi.HasDeviceLoss());
+}
+
+TEST_F(VulkanGPUTimingIntegrationTest, QueryReadDeviceLossBlocksSubmissionsWithOriginalCause)
+{
+    FVulkanCommandListContext context(RHICommandContextType::eGraphics, session->rhi.GetDevice());
+
+    if (!SupportsTiming(context))
+    {
+        GTEST_SKIP() << "Graphics timestamps unavailable";
+    }
+
+    TimingReadObserver::failure = VK_ERROR_DEVICE_LOST;
+
+    test::ScopedVulkanCall hook(vkGetQueryPoolResults, TimingReadObserver::Read);
+
+    RHIGPUTimingPtr result = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+
+    context.RHIBeginGPUTiming(result);
+
+    context.RHIEndGPUTiming(result);
+
+    SubmitAndComplete(context);
+
+    EXPECT_EQ(TimingReadObserver::calls, 1u);
+
+    EXPECT_EQ(result->GetStatus(), RHIGPUTimingStatus::eError);
+
+    EXPECT_TRUE(session->rhi.HasDeviceLoss());
+
+    EXPECT_TRUE(session->rhi.AreSubmissionsBlocked());
+
+    const RHIError error = session->rhi.GetTerminalError();
+
+    EXPECT_EQ(error.code, RHIErrorCode::eDeviceLost);
+
+    EXPECT_EQ(error.nativeCode, int64_t(VK_ERROR_DEVICE_LOST));
+
+    EXPECT_STREQ(error.operation, "vkGetQueryPoolResults");
+
+    RHIGPUTimingPtr next = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+
+    context.RHIBeginGPUTiming(next);
+
+    context.RHIEndGPUTiming(next);
+
+    EXPECT_EQ(context.SubmitRecordedWorkloads(), RHISubmissionResult::eFatal);
+
+    EXPECT_STREQ(session->rhi.GetTerminalError().operation, "vkGetQueryPoolResults");
 }
 
 TEST_F(VulkanGPUTimingIntegrationTest, PoolAllocationFailureReleasesCapacityForRetry)

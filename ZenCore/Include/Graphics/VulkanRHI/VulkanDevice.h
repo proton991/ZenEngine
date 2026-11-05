@@ -72,7 +72,7 @@ public:
         return m_pipelineCache;
     }
 
-    VkPhysicalDeviceProperties GetPhysicalDeviceProperties() const
+    const VkPhysicalDeviceProperties& GetPhysicalDeviceProperties() const
     {
         return m_gpuProps;
     }
@@ -92,6 +92,11 @@ public:
     const VkPhysicalDeviceDescriptorIndexingProperties& GetDescriptorIndexingProperties() const
     {
         return m_descriptorIndexingProperties;
+    }
+
+    const VkPhysicalDeviceAccelerationStructurePropertiesKHR& GetAccelerationStructureProperties() const
+    {
+        return m_accelerationStructureProperties;
     }
 
 
@@ -187,7 +192,8 @@ private:
     VkPhysicalDeviceProperties m_physicalDeviceProperties{};
 
     // descriptor indexing properties
-    VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties{};
+    VkPhysicalDeviceDescriptorIndexingProperties       m_descriptorIndexingProperties{};
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR m_accelerationStructureProperties{};
 
     DeviceExtensionFlags m_extensionFlags{};
 

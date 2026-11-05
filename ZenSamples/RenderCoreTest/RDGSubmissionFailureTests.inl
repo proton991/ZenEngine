@@ -151,6 +151,58 @@ TEST_P(RDGScheduledSubmissionTest, RecreationPreservesPublicationAndComputeRetir
     device->DestroyBuffer(buffer);
 }
 
+TEST_P(RDGScheduledSubmissionTest, PendingRecreationDeclinesOnlyItsOwnViewport)
+{
+    TestViewport       waiting;
+    TestBuffer*        buffer    = Buffer();
+    RenderGraph&       graph     = *device->GetCurrentFrameRDG();
+    RDGExtractedBuffer extracted = BuildFailureGraph(graph, buffer);
+    waiting.recreationPossible   = false;
+    RDGSubmissionTestAccess::SetRecreateViewport(*device, &waiting);
+    EXPECT_EQ(device->ExecuteRenderGraph(&viewport), RenderFrameResult::eSubmitted);
+    device->FlushRHIThread();
+    EXPECT_TRUE(extracted);
+    EXPECT_EQ(viewport.presents, 1u);
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), &waiting);
+    device->NextFrame();
+    EXPECT_EQ(waiting.resizes, 0u);
+    EXPECT_EQ(viewport.resizes, 0u);
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), &waiting);
+    waiting.recreationPossible = true;
+    device->PrepareFrame();
+    EXPECT_EQ(waiting.resizes, 1u);
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), nullptr);
+    extracted.Reset();
+    device->DestroyBuffer(buffer);
+}
+
+TEST_P(RDGScheduledSubmissionTest, ViewportWithoutBackbuffersRetriesWithoutResizeEvent)
+{
+    TestViewport deferred;
+    deferred.recreationPossible = false;
+    device->PrepareFrame(&deferred);
+    EXPECT_EQ(deferred.resizes, 0u);
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), &deferred);
+    deferred.recreationPossible = true;
+    device->PrepareFrame();
+    EXPECT_EQ(deferred.resizes, 1u);
+    EXPECT_EQ(RDGSubmissionTestAccess::RecreateViewport(*device), nullptr);
+}
+
+TEST(RenderFrameResultTest, SuspensionOnlySpendsTheDeclineBudgetOfScriptedRuns)
+{
+    uint32_t interactive = 0;
+    uint32_t scripted    = 0;
+    for (uint32_t frame = 0; frame < 8; ++frame)
+    {
+        EXPECT_TRUE(TrackDeclinedFrames(ScriptedFrameResult(RenderFrameResult::eSuspended, false), interactive));
+        EXPECT_TRUE(TrackDeclinedFrames(ScriptedFrameResult(RenderFrameResult::eSuspended, true), scripted));
+    }
+    EXPECT_TRUE(TrackDeclinedFrames(ScriptedFrameResult(RenderFrameResult::eSuspended, false), interactive));
+    EXPECT_FALSE(TrackDeclinedFrames(ScriptedFrameResult(RenderFrameResult::eSuspended, true), scripted));
+    EXPECT_EQ(ScriptedFrameResult(RenderFrameResult::eSubmitted, true), RenderFrameResult::eSubmitted);
+}
+
 TEST_P(RDGScheduledSubmissionTest, DeclinedHandoffRetainsPriorHistoryAndAllowsRetry)
 {
     TestBuffer*        buffer  = Buffer();

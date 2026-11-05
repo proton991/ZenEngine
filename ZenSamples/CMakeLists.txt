@@ -11,6 +11,7 @@ add_executable(VulkanRHITest
     CommonTest/VulkanSynchronizationTests.cpp
     CommonTest/VulkanLifetimeTrackerTests.cpp
     CommonTest/VulkanResourceCreationTests.cpp
+    CommonTest/VulkanShaderLayoutTests.cpp
     CommonTest/VulkanVerificationTests.cpp
     CommonTest/VulkanQueueSelectionTests.cpp
 )
@@ -29,6 +30,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanCommandBufferLifetimeTests.cpp
     CommonTest/VulkanGPUTimingIntegrationTests.cpp
     CommonTest/VulkanPipelineIntegrationTests.cpp
+    CommonTest/VulkanShaderLayoutIntegrationTests.cpp
     CommonTest/VulkanProductionFailureTests.cpp
     CommonTest/VulkanBindingIntegrationTests.cpp
     CommonTest/VulkanSwapchainIntegrationTests.cpp
@@ -36,6 +38,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanAttachmentIntegrationTests.cpp
     CommonTest/VulkanRecordingIntegrationTests.cpp
     CommonTest/VulkanBindlessRetirementIntegrationTests.cpp
+    CommonTest/VulkanAliasedQueueIntegrationTests.cpp
     CommonTest/VulkanAsyncComputeIntegrationTests.cpp
     CommonTest/VulkanUploadIntegrationTests.cpp
     CommonTest/BindlessSceneCapacityIntegrationTests.cpp
@@ -50,7 +53,8 @@ foreach(SHADER review_acceleration.comp review_runtime_array.comp review_reserve
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
         binding_sampler.comp binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
         recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp
-        binding_high_set.comp binding_required_sets.comp)
+        binding_high_set.comp binding_required_sets.comp binding_validation.comp
+        unsupported_tessellation.tesc unsupported_tessellation.tese)
     set(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/CommonTest/Shaders/${SHADER}")
     set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
     add_custom_command(OUTPUT "${OUTPUT}"

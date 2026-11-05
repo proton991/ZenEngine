@@ -97,8 +97,9 @@ public:
     // accepted the recorded frame; poll/flush confirms native submission.
     RenderFrameResult ExecuteRenderGraph(RHIViewport* pViewport, RDGDebugSnapshot* capture = nullptr);
 
-    // Poll ready submissions and recreate the swapchain before scene update and graph declaration.
-    void PrepareFrame();
+    // Poll ready submissions and recreate pending swapchains before scene update and graph
+    // declaration. A presentation viewport without backbuffers joins the pending viewports.
+    void PrepareFrame(RHIViewport* presentation = nullptr);
 
     bool PollFrameSubmissions(bool wait = false);
 
@@ -403,6 +404,10 @@ private:
 
     void ProcessDeferredViewportResize();
 
+    bool IsViewportRecreationPending(const RHIViewport* viewport) const;
+
+    void SetViewportRecreationPending(RHIViewport* viewport, bool pending);
+
     uint32_t GetCurrentFrameSlot() const
     {
         return ToIndex(GRenderFrameState.GetFrameSlot());
@@ -514,7 +519,8 @@ private:
     // Render-thread submission history; the graph never queries backend queue progress.
     RenderSubmissionHistory m_submissionHistory;
     HeapVector<uint64_t>    m_destroyedResourceIds;
-    RHIViewport*            m_pRecreateViewport{nullptr};
+    // Each viewport waits on its own surface; the others keep presenting.
+    HeapVector<RHIViewport*> m_recreateViewports;
 
 #if defined(ZEN_DEBUG)
     uint32_t m_forceRecreationInterval{0};

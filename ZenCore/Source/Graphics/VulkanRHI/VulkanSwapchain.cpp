@@ -480,6 +480,16 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
     }
 }
 
+bool VulkanSwapchain::HasPresentableExtent() const
+{
+    VkSurfaceCapabilitiesKHR capabilities{};
+
+    const VkResult result =
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(GVulkanRHI->GetPhysicalDevice(), m_surface, &capabilities);
+
+    return result != VK_SUCCESS || (capabilities.currentExtent.width != 0 && capabilities.currentExtent.height != 0);
+}
+
 int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** outSemaphore)
 {
     return AcquireNextImageChecked(outSemaphore).imageIndex;

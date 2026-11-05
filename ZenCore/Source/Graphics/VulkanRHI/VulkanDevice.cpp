@@ -393,6 +393,15 @@ void VulkanDevice::Init()
         }
     }
 
+    if (m_extensionFlags.hasAccelerationStructure)
+    {
+        InitVkStruct(m_accelerationStructureProperties,
+                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR);
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties.pNext = &m_accelerationStructureProperties;
+        vkGetPhysicalDeviceProperties2(m_gpu, &properties);
+    }
+
     SetupDevice(extensionArray);
 
     m_pFenceManager    = ZEN_NEW() VulkanFenceManager(this);
@@ -534,7 +543,8 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
 
     enabledFeatures.drawIndirectFirstInstance      = m_physicalDeviceFeatures.drawIndirectFirstInstance;
 
-    enabledFeatures.tessellationShader             = m_physicalDeviceFeatures.tessellationShader;
+    // The current graphics pipeline contract has no patch-control-point state.
+    enabledFeatures.tessellationShader = VK_FALSE;
 
     enabledFeatures.robustBufferAccess =
         RHIOptions::GetInstance().RobustBufferAccessEnabled() ? m_physicalDeviceFeatures.robustBufferAccess : VK_FALSE;

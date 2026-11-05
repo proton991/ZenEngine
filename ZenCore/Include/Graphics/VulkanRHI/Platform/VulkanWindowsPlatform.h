@@ -14,7 +14,7 @@ class VulkanWindowsPlatform
 public:
     static void AddInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
-    static VkSurfaceKHR CreateSurface(VkInstance instance, platform::NativeWindow& window);
+    static RHIResult<VkSurfaceKHR> CreateSurface(VkInstance instance, platform::NativeWindow& window);
 
     static void DestroySurface(VkInstance instance, VkSurfaceKHR surface);
 };

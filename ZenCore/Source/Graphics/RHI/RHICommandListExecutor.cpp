@@ -718,11 +718,10 @@ bool RHICommandListExecutor::ResolvePredecessors(RHICommandBatch& batch, size_t 
 
     for (const RHISubmissionPoint& point : batch.groups[group].predecessors)
     {
-        // Earlier groups in this same native-queue run are ordered by the queue and
+        // Earlier groups in this same logical-queue run are ordered by the queue and
         // recorded barriers. Every other point must already have native acceptance.
-        const bool sameRun =
-            point.state.Get() == batch.submissionState.Get() && point.group >= first && point.group < group
-            && m_submissionQueueCapabilities.AreQueuesShared(point.queue, commands.GetContext()->GetContextType());
+        const bool sameRun = point.state.Get() == batch.submissionState.Get() && point.group >= first && point.group < group
+                          && point.queue == commands.GetContext()->GetContextType();
 
         if (ready && !sameRun)
         {
@@ -760,9 +759,10 @@ bool RHICommandListExecutor::ExecuteGroups(RHICommandBatch& batch)
 
         // The fence path keeps its existing per-group failure behavior. Timeline
         // submissions atomically accept or reject every batch in this native call.
-        while (
-            m_submissionQueueCapabilities.asyncSubmissionDependencies && end < batch.groups.size()
-            && m_submissionQueueCapabilities.AreQueuesShared(queue, batch.groups[end].commands->GetContext()->GetContextType()))
+        // Logical queues can share a native handle but keep separate pending workloads;
+        // flush each logical run before advancing so backend queue-drain order cannot reorder it.
+        while (m_submissionQueueCapabilities.asyncSubmissionDependencies && end < batch.groups.size()
+               && queue == batch.groups[end].commands->GetContext()->GetContextType())
         {
             ++end;
         }

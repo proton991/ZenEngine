@@ -58,6 +58,12 @@ struct RHIBindlessHeapCapacities
         return heapType < RHIBindlessHeapType::eMax ? slots[ToUnderlying(heapType)] : 0;
     }
 
+    // 64 bits cannot wrap for any pair of 32-bit heap counts.
+    uint64_t GetImageSlots() const
+    {
+        return uint64_t(Get(RHIBindlessHeapType::eTexture2D)) + Get(RHIBindlessHeapType::eTextureCube);
+    }
+
     void Set(RHIBindlessHeapType heapType, uint32_t count)
     {
         if (heapType < RHIBindlessHeapType::eMax)

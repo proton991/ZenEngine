@@ -127,7 +127,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
     const bool presentationView = presentation != nullptr && view.color == presentation->GetColorBackBuffer();
 
-    m_pRenderDevice->PrepareFrame();
+    m_pRenderDevice->PrepareFrame(presentation);
 
     if (presentationView)
     {
@@ -141,7 +141,9 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
         view.height = presentation->GetHeight();
     }
 
-    RenderFrameResult result = RenderFrameResult::eFailed;
+    const bool presentationReady = presentation == nullptr || presentation->GetColorBackBuffer() != nullptr;
+
+    RenderFrameResult result     = presentationReady ? RenderFrameResult::eFailed : RenderFrameResult::eDeclined;
 
     const bool renderScene =
         drawScene && m_pScene != nullptr && view.color != nullptr && view.depth != nullptr && view.width > 0 && view.height > 0;
@@ -157,7 +159,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
         m_debugDescription.output = m_debug.output;
     }
 
-    bool succeeded         = !m_pRenderDevice->AreSubmissionsBlocked() && (!renderScene || m_pScene->Update());
+    bool succeeded = presentationReady && !m_pRenderDevice->AreSubmissionsBlocked() && (!renderScene || m_pScene->Update());
 
     RenderGraph* pFrameRDG = m_pRenderDevice->GetCurrentFrameRDG();
 
@@ -350,7 +352,9 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
         m_status.effective = m_frameRenderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
     }
 
-    return result;
+    // Frame owners above retain state as for any declined frame. Callers see the suspension,
+    // which lasts until the surface returns and does not spend their decline budget.
+    return result == RenderFrameResult::eDeclined && !presentationReady ? RenderFrameResult::eSuspended : result;
 }
 
 void RendererServer::SetRenderingSelection(RenderAlgorithm algorithm, const DebugSelection& selection)

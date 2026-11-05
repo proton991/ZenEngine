@@ -1,6 +1,7 @@
 #include "VulkanWindowBridge.h"
 #include "Platform/WindowBackend.h"
 #include "Utils/Errors.h"
+#include "Graphics/VulkanRHI/VulkanCommon.h"
 #if defined(ZEN_WINDOW_SDL3)
 #    include <SDL3/SDL_vulkan.h>
 #endif
@@ -43,16 +44,18 @@ void AddWindowInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>&
     }
 }
 
-VkSurfaceKHR CreateWindowSurface(VkInstance instance, platform::NativeWindow& window)
+RHIResult<VkSurfaceKHR> CreateWindowSurface(VkInstance instance, platform::NativeWindow& window)
 {
     window.CheckThreadOwnership();
 
     VkSurfaceKHR surface = VK_NULL_HANDLE;
+    RHIError     error;
 
 #if defined(ZEN_WINDOW_SDL3)
     if (!SDL_Vulkan_CreateSurface(platform::WindowBackend::Borrow(window), instance, nullptr, &surface))
     {
         LOGE("SDL Vulkan surface creation failed: {}", SDL_GetError());
+        error = MakeRHIError(RHIErrorCode::eBackendFailure, "SDL_Vulkan_CreateSurface", __FILE__, __LINE__);
     }
 #else
     const VkResult result = glfwCreateWindowSurface(instance, platform::WindowBackend::Borrow(window), nullptr, &surface);
@@ -60,8 +63,13 @@ VkSurfaceKHR CreateWindowSurface(VkInstance instance, platform::NativeWindow& wi
     if (result != VK_SUCCESS)
     {
         LOGE("GLFW fallback surface creation failed: {}", int32_t(result));
+        error = MakeVulkanError(result, "glfwCreateWindowSurface", __FILE__, __LINE__);
     }
 #endif
-    return surface;
+    if (surface == VK_NULL_HANDLE && !error.IsFailure())
+    {
+        error = MakeRHIError(RHIErrorCode::eBackendFailure, "CreateWindowSurface returned no surface", __FILE__, __LINE__);
+    }
+    return error.IsFailure() ? RHIResult<VkSurfaceKHR>(error) : RHIResult<VkSurfaceKHR>(surface);
 }
 } // namespace zen

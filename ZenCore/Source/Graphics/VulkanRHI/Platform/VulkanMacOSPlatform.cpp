@@ -17,7 +17,7 @@ void VulkanMacOSPlatform::AddInstanceExtensions(HeapVector<UniquePtr<VulkanInsta
     AddWindowInstanceExtensions(extensions);
 }
 
-VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, platform::NativeWindow& window)
+RHIResult<VkSurfaceKHR> VulkanMacOSPlatform::CreateSurface(VkInstance instance, platform::NativeWindow& window)
 {
     return CreateWindowSurface(instance, window);
 }

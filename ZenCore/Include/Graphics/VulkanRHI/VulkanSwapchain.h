@@ -83,6 +83,9 @@ public:
             || m_lastResult == VK_ERROR_SURFACE_LOST_KHR;
     }
 
+    // A failed query also reports true, so recreation surfaces the native error.
+    bool HasPresentableExtent() const;
+
     int32_t AcquireNextImage(VulkanSemaphore** pOutSemaphore);
 
     RHIAcquireResult AcquireNextImageChecked(VulkanSemaphore** pOutSemaphore);

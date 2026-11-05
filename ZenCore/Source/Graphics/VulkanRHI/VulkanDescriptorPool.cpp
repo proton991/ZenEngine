@@ -1015,13 +1015,11 @@ bool IsValidBindlessResource(const RHIResource* pResource, RHIBindlessHeapType h
 bool BindlessHeapsFitLimits(const VkPhysicalDeviceDescriptorIndexingProperties& limits,
                             const RHIBindlessHeapCapacities&                    capacities)
 {
-    // 64-bit sums cannot wrap for any pair of 32-bit requested counts.
-    const uint64_t sampledImageCount =
-        uint64_t(capacities.Get(RHIBindlessHeapType::eTexture2D)) + capacities.Get(RHIBindlessHeapType::eTextureCube);
+    const uint64_t sampledImageCount = capacities.GetImageSlots();
 
-    const uint64_t samplerCount    = capacities.Get(RHIBindlessHeapType::eSampler);
+    const uint64_t samplerCount      = capacities.Get(RHIBindlessHeapType::eSampler);
 
-    const uint64_t descriptorCount = sampledImageCount + samplerCount;
+    const uint64_t descriptorCount   = sampledImageCount + samplerCount;
 
     return sampledImageCount <= limits.maxDescriptorSetUpdateAfterBindSampledImages
         && sampledImageCount <= limits.maxPerStageDescriptorUpdateAfterBindSampledImages

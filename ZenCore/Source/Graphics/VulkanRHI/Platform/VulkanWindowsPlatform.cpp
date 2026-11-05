@@ -15,7 +15,7 @@ void VulkanWindowsPlatform::AddInstanceExtensions(HeapVector<UniquePtr<VulkanIns
     AddWindowInstanceExtensions(extensions);
 }
 
-VkSurfaceKHR VulkanWindowsPlatform::CreateSurface(VkInstance instance, platform::NativeWindow& window)
+RHIResult<VkSurfaceKHR> VulkanWindowsPlatform::CreateSurface(VkInstance instance, platform::NativeWindow& window)
 {
     return CreateWindowSurface(instance, window);
 }

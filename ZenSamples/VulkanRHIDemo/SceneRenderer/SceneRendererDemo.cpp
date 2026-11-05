@@ -1098,10 +1098,12 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
 
         const rc::RenderFrameResult result = m_renderDevice->GetRendererServer()->DispatchRenderWorkloads(view, overlay);
 
-        const bool retryDeclines           = rc::TrackDeclinedFrames(result, consecutiveDeclines);
+        const bool retryDeclines =
+            rc::TrackDeclinedFrames(rc::ScriptedFrameResult(result, frameLimit != 0), consecutiveDeclines);
 
-        succeeded &=
-            (result == rc::RenderFrameResult::eSubmitted || result == rc::RenderFrameResult::eDeclined) && retryDeclines;
+        succeeded &= (result == rc::RenderFrameResult::eSubmitted || result == rc::RenderFrameResult::eDeclined
+                      || result == rc::RenderFrameResult::eSuspended)
+                  && retryDeclines;
 
         if (smokeTest)
         {
@@ -1112,6 +1114,12 @@ bool SceneRendererDemo::Run(uint32_t           frameLimit,
         }
 
         m_renderDevice->NextFrame();
+
+        if (result == rc::RenderFrameResult::eSuspended)
+        {
+            // No present paces this loop until the surface returns.
+            platform::NativeWindow::WaitEvents(0.05);
+        }
 
         // Scripted runs count only frames that rendered the requested, complete GI. While its distance
         // field builds in the background, frames fall back to HW RT or PBR, and while its local volumes

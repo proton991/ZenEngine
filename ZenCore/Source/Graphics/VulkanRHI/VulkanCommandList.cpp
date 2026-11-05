@@ -713,6 +713,8 @@ void FVulkanCommandBuffer::ResolveGPUTimings()
                                                       count * sizeof(TimestampValue), values.data(), sizeof(TimestampValue),
                                                       VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 
+        ReportVulkanDeviceLoss(status, "vkGetQueryPoolResults");
+
         for (uint32_t index = 0; index < m_timingScopes.size(); ++index)
         {
             GPUTimingScope& scope = m_timingScopes[index];

@@ -141,15 +141,39 @@ struct ReviewWriteObserver
 {
     static inline PFN_vkUpdateDescriptorSets original{};
     static inline uint32_t                   calls{0};
-    static VKAPI_ATTR void VKAPI_CALL        Update(VkDevice                    device,
-                                                    uint32_t                    count,
-                                                    const VkWriteDescriptorSet* writes,
-                                                    uint32_t                    copyCount,
-                                                    const VkCopyDescriptorSet*  copies)
+    static VKAPI_ATTR void VKAPI_CALL
+    Suppress(VkDevice, uint32_t, const VkWriteDescriptorSet*, uint32_t, const VkCopyDescriptorSet*)
+    {
+        ++calls;
+    }
+    static VKAPI_ATTR void VKAPI_CALL Update(VkDevice                    device,
+                                             uint32_t                    count,
+                                             const VkWriteDescriptorSet* writes,
+                                             uint32_t                    copyCount,
+                                             const VkCopyDescriptorSet*  copies)
     {
         ++calls;
         original(device, count, writes, copyCount, copies);
     }
+};
+
+struct ScopedDescriptorRangeLimits
+{
+    explicit ScopedDescriptorRangeLimits(VulkanDevice* device) :
+        limits(const_cast<VkPhysicalDeviceLimits&>(device->GetPhysicalDeviceProperties().limits)),
+        uniform(limits.maxUniformBufferRange),
+        storage(limits.maxStorageBufferRange)
+    {}
+
+    ~ScopedDescriptorRangeLimits()
+    {
+        limits.maxUniformBufferRange = uniform;
+        limits.maxStorageBufferRange = storage;
+    }
+
+    VkPhysicalDeviceLimits& limits;
+    const uint32_t          uniform;
+    const uint32_t          storage;
 };
 
 class VulkanBindingIntegrationTest : public testing::Test
@@ -584,6 +608,133 @@ TEST_F(VulkanBindingIntegrationTest, InvalidSamplerElementsNeverWriteOrPublishDe
         // The second valid set may reuse the first valid content-cache entry.
         EXPECT_EQ(ReviewWriteObserver::calls, scenario == 0 ? 1u : 0u);
     }
+}
+
+TEST_F(VulkanBindingIntegrationTest, DescriptorUsagesRejectBeforeNativeWritesAndAllowCorrection)
+{
+    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("binding_validation.comp.spv"));
+    ASSERT_NE(pipeline, nullptr);
+    VulkanBuffer*  uniform      = Buffer(16, true);
+    VulkanBuffer*  storage      = Buffer();
+    VulkanTexture* sampledImage = Texture();
+    VulkanTexture* storageImage = Texture(RHITextureUsageFlagBits::eStorage);
+    VulkanBuffer*  uniformTexel = TexelBuffer(16, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTextureBuffer));
+    VulkanBuffer*  storageTexel = TexelBuffer(16, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eImageBuffer));
+    ASSERT_TRUE(uniformTexel->SetTexelFormat(DataFormat::eR32UInt));
+    ASSERT_TRUE(storageTexel->SetTexelFormat(DataFormat::eR32UInt));
+    RHISampler*                    sampler = Sampler();
+    const HeapVector<RHIResource*> validResources{uniform, storage, sampledImage, storageImage, uniformTexel, storageTexel};
+    const HeapVector<RHIResource*> invalidResources{storage, uniform, storageImage, sampledImage, storageTexel, uniformTexel};
+    context->GetCommandBuffer();
+    ReviewWriteObserver::original = vkUpdateDescriptorSets;
+    for (uint32_t binding = 0; binding < validResources.size(); ++binding)
+    {
+        SCOPED_TRACE(binding);
+        VulkanDescriptorSetState state;
+        state.SetPipeline(pipeline);
+        const RHIShaderResourceDescriptor& descriptor = *pipeline->GetShader()->GetSRDByLocation(1, binding);
+        RHIResource*                       auxiliary  = binding == 2 || binding == 4 ? sampler : nullptr;
+        RHIBatchedShaderParameters         parameters;
+        parameters.AddResourceParam(descriptor, invalidResources[binding], auxiliary, 0);
+        ASSERT_TRUE(state.SetShaderParameters(parameters));
+        HeapVector<VkDescriptorSet> sets;
+        HeapVector<uint32_t>        offsets;
+        uint32_t                    first = 0;
+        ReviewWriteObserver::calls        = 0;
+        const uint64_t inserts            = session->rhi.GetExecutionCounters().descriptorInserts;
+        {
+            test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> suppress(vkUpdateDescriptorSets, ReviewWriteObserver::Suppress);
+            EXPECT_FALSE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+        }
+        EXPECT_EQ(ReviewWriteObserver::calls, 0u);
+        EXPECT_EQ(session->rhi.GetExecutionCounters().descriptorInserts, inserts);
+        EXPECT_TRUE(sets.empty());
+        RHIBatchedShaderParameters corrected;
+        corrected.AddResourceParam(descriptor, validResources[binding], auxiliary, 0);
+        ASSERT_TRUE(state.SetShaderParameters(corrected));
+        test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> observeWrites(vkUpdateDescriptorSets, ReviewWriteObserver::Update);
+        ASSERT_TRUE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+        EXPECT_EQ(ReviewWriteObserver::calls, 1u);
+        EXPECT_EQ(session->rhi.GetExecutionCounters().descriptorInserts, inserts + 1);
+        ASSERT_EQ(sets.size(), 1u);
+        EXPECT_NE(sets[0], VK_NULL_HANDLE);
+    }
+}
+
+TEST_F(VulkanBindingIntegrationTest, DescriptorRangesRejectOverLimitAndAcceptBoundary)
+{
+    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("binding_validation.comp.spv"));
+    ASSERT_NE(pipeline, nullptr);
+    context->GetCommandBuffer();
+    ReviewWriteObserver::original = vkUpdateDescriptorSets;
+    ScopedDescriptorRangeLimits deviceLimits(session->rhi.GetDevice());
+    for (uint32_t binding = 0; binding < 2; ++binding)
+    {
+        SCOPED_TRACE(binding);
+        const uint32_t range = binding == 0 ? 16 : 32;
+        uint32_t& limit = binding == 0 ? deviceLimits.limits.maxUniformBufferRange : deviceLimits.limits.maxStorageBufferRange;
+        VulkanBuffer*            buffer = Buffer(range, binding == 0);
+        VulkanDescriptorSetState state;
+        state.SetPipeline(pipeline);
+        RHIBatchedShaderParameters parameters;
+        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, binding), buffer, nullptr, 0);
+        ASSERT_TRUE(state.SetShaderParameters(parameters));
+        HeapVector<VkDescriptorSet> sets;
+        HeapVector<uint32_t>        offsets;
+        uint32_t                    first = 0;
+        ReviewWriteObserver::calls        = 0;
+        const uint64_t inserts            = session->rhi.GetExecutionCounters().descriptorInserts;
+        limit                             = range - 1;
+        {
+            test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> suppress(vkUpdateDescriptorSets, ReviewWriteObserver::Suppress);
+            EXPECT_FALSE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+        }
+        EXPECT_EQ(ReviewWriteObserver::calls, 0u);
+        EXPECT_EQ(session->rhi.GetExecutionCounters().descriptorInserts, inserts);
+        EXPECT_TRUE(sets.empty());
+        limit = range;
+        test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> observeWrites(vkUpdateDescriptorSets, ReviewWriteObserver::Update);
+        ASSERT_TRUE(state.FlushPendingDescriptorWrites(context, sets, first, offsets));
+        EXPECT_EQ(ReviewWriteObserver::calls, 1u);
+        EXPECT_EQ(session->rhi.GetExecutionCounters().descriptorInserts, inserts + 1);
+    }
+}
+
+TEST_F(VulkanBindingIntegrationTest, DescriptorArrayIndicesRejectBeforeMutationAndRecoverAfterDiscard)
+{
+    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(Compute("binding_validation.comp.spv"));
+    ASSERT_NE(pipeline, nullptr);
+    ReviewWriteObserver::calls            = 0;
+    BindingObserver::suppressedDispatches = 0;
+    test::ScopedVulkanCall<PFN_vkUpdateDescriptorSets> suppressWrites(vkUpdateDescriptorSets, ReviewWriteObserver::Suppress);
+    test::ScopedVulkanCall<PFN_vkCmdDispatch>          suppressDispatch(vkCmdDispatch, BindingObserver::SuppressDispatch);
+    const uint64_t                                     inserts = session->rhi.GetExecutionCounters().descriptorInserts;
+    for (uint32_t binding = 0; binding < 6; ++binding)
+    {
+        SCOPED_TRACE(binding);
+        const RHIShaderResourceDescriptor& descriptor = *pipeline->GetShader()->GetSRDByLocation(1, binding);
+        ASSERT_EQ(descriptor.arraySize, 2u);
+        for (uint32_t index : {descriptor.arraySize, 0x7fffffffu, UINT32_MAX})
+        {
+            SCOPED_TRACE(index);
+            context->RHIDiscardRecording();
+            context->RHIBindPipeline(pipeline);
+            RHIBatchedShaderParameters parameters;
+            parameters.AddResourceParam(descriptor, nullptr, nullptr, index);
+            context->RHISetShaderParameters(parameters);
+            EXPECT_EQ(context->GetRecordingError().code, RHIErrorCode::eInvalidArgument);
+            context->RHIDispatch(1, 1, 1);
+        }
+    }
+    EXPECT_EQ(ReviewWriteObserver::calls, 0u);
+    EXPECT_EQ(BindingObserver::suppressedDispatches, 0u);
+    EXPECT_EQ(session->rhi.GetExecutionCounters().descriptorInserts, inserts);
+    context->RHIDiscardRecording();
+    context->RHIBindPipeline(pipeline);
+    RHIBatchedShaderParameters corrected;
+    corrected.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(1, 0), Buffer(16, true), nullptr, 1);
+    context->RHISetShaderParameters(corrected);
+    EXPECT_FALSE(context->GetRecordingError().IsFailure());
 }
 
 TEST_F(VulkanBindingIntegrationTest, MisalignedUniformOffsetCannotPoisonTheOffsetIndependentCacheKey)

@@ -37,6 +37,7 @@ enum class RenderFrameResult : uint8_t
 {
     eSubmitted, // Accepted inline, or handed off for threaded submission.
     eDeclined,  // No frame work accepted; retry after NextFrame.
+    eSuspended, // The viewport has no backbuffers until its surface returns; keep retrying.
     eFailed,    // Declaration, compilation or recording failed; rebuild the graph.
     eBlocked    // Submission failure requires device teardown.
 };
@@ -55,6 +56,13 @@ inline bool TrackDeclinedFrames(RenderFrameResult result, uint32_t& consecutiveD
     }
 
     return consecutiveDeclines <= kMaxConsecutiveDeclines;
+}
+
+// Interactive loops wait out a suspended surface. Scripted runs need every frame, so a
+// suspension spends their decline budget and fails instead of finishing without rendering.
+inline RenderFrameResult ScriptedFrameResult(RenderFrameResult result, bool scripted)
+{
+    return scripted && result == RenderFrameResult::eSuspended ? RenderFrameResult::eDeclined : result;
 }
 
 enum class TextureDimension : uint32_t

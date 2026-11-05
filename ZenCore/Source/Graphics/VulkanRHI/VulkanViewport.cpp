@@ -30,7 +30,7 @@ struct ScopedViewportSurface
     }
 };
 
-VkSurfaceKHR CreateViewportSurface(void* window)
+RHIResult<VkSurfaceKHR> CreateViewportSurface(void* window)
 {
     platform::NativeWindow* nativeWindow = static_cast<platform::NativeWindow*>(window);
 
@@ -45,11 +45,18 @@ RHIViewport* VulkanRHI::CreateViewport(void* pWindow, uint32_t width, uint32_t h
 
     RHIViewport* viewport = nullptr;
 
-    surface.info.surface  = AreSubmissionsBlocked() ? VK_NULL_HANDLE : CreateViewportSurface(pWindow);
-
-    if (surface.info.surface != VK_NULL_HANDLE)
+    if (!AreSubmissionsBlocked())
     {
-        viewport = GetRHIThread().Invoke(&VulkanViewport::CreateObject, pWindow, width, height, enableVSync, &surface.info);
+        RHIResult<VkSurfaceKHR> created = CreateViewportSurface(pWindow);
+        if (created)
+        {
+            surface.info.surface = created.GetValue();
+            viewport = GetRHIThread().Invoke(&VulkanViewport::CreateObject, pWindow, width, height, enableVSync, &surface.info);
+        }
+        else
+        {
+            GetRHIThread().Invoke(&VulkanRHI::SetCreationError, this, created.GetError());
+        }
     }
 
     return viewport;
@@ -327,11 +334,16 @@ bool VulkanViewport::BeginResize(uint32_t width, uint32_t height, VulkanSwapchai
     return rebuild;
 }
 
-void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo)
+void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHIError surfaceError)
 {
     ASSERT(GetRHIThread().IsCurrentThread());
 
-    if (!CreateSwapchain(recreateInfo))
+    m_recreationError = surfaceError;
+    if (surfaceError.IsFailure())
+    {
+        GVulkanRHI->SetCreationError(surfaceError);
+    }
+    if (surfaceError.IsFailure() || !CreateSwapchain(recreateInfo))
     {
         DestroySwapchain(nullptr);
 
@@ -580,7 +592,14 @@ RHIPresentResult VulkanViewport::PresentChecked()
 
 bool VulkanViewport::NeedsRecreation() const
 {
-    return m_pSwapchain != nullptr && m_pSwapchain->NeedsRecreation();
+    return m_suspended || (m_pSwapchain != nullptr && m_pSwapchain->NeedsRecreation());
+}
+
+bool VulkanViewport::CanRecreate() const
+{
+    GetRHIThread().CheckOwnership();
+
+    return m_pSwapchain == nullptr || m_pSwapchain->GetNumSwapchainImages() != 0 || m_pSwapchain->HasPresentableExtent();
 }
 
 void VulkanViewport::Resize(uint32_t width, uint32_t height)
@@ -591,12 +610,21 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
 
     if (GetRHIThread().Invoke(&VulkanViewport::BeginResize, this, width, height, &recreateInfo))
     {
+        RHIError surfaceError;
         if (recreateInfo.surface == VK_NULL_HANDLE)
         {
-            recreateInfo.surface = CreateViewportSurface(m_pWindow);
+            RHIResult<VkSurfaceKHR> created = CreateViewportSurface(m_pWindow);
+            if (created)
+            {
+                recreateInfo.surface = created.GetValue();
+            }
+            else
+            {
+                surfaceError = created.GetError();
+            }
         }
 
-        GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo);
+        GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo, surfaceError);
     }
 }
 

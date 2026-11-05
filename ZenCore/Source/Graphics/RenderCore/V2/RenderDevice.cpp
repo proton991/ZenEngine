@@ -320,7 +320,7 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport, RDGDeb
     {
         result = RenderFrameResult::eBlocked;
     }
-    else if (m_pRecreateViewport != nullptr)
+    else if (IsViewportRecreationPending(viewport))
     {
         result = RenderFrameResult::eDeclined;
     }
@@ -408,7 +408,7 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport, RDGDeb
     {
         m_framesSinceRecreation = 0;
 
-        m_pRecreateViewport     = viewport;
+        SetViewportRecreationPending(viewport, true);
 
         LOGI("Forced viewport recreation after {} submitted frames", m_forceRecreationInterval);
     }
@@ -423,9 +423,15 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport, RDGDeb
     return result;
 }
 
-void RenderDevice::PrepareFrame()
+void RenderDevice::PrepareFrame(RHIViewport* presentation)
 {
     PollFrameSubmissions(false);
+
+    // No resize event wakes a viewport that was created or left at zero native extent.
+    if (presentation != nullptr && presentation->GetColorBackBuffer() == nullptr)
+    {
+        SetViewportRecreationPending(presentation, true);
+    }
 
     ProcessDeferredViewportResize();
 }
@@ -457,7 +463,7 @@ void RenderDevice::CompleteSubmission(PendingSubmission& pending, const RHIBatch
 
         if (result.needsRecreation)
         {
-            m_pRecreateViewport = pending.viewport;
+            SetViewportRecreationPending(pending.viewport, true);
         }
     }
     else
@@ -617,11 +623,36 @@ RHIThreadMetrics RenderDevice::GetRHIThreadMetrics() const
 
 void RenderDevice::ProcessDeferredViewportResize()
 {
-    if (m_pRecreateViewport != nullptr && !AreSubmissionsBlocked())
+    if (!m_recreateViewports.empty() && !AreSubmissionsBlocked())
     {
-        RHIViewport* viewport = m_pRecreateViewport;
+        // ResizeViewport updates the pending list as each viewport resolves.
+        const HeapVector<RHIViewport*> pending = m_recreateViewports;
 
-        ResizeViewport(viewport, viewport->GetWidth(), viewport->GetHeight());
+        for (RHIViewport* viewport : pending)
+        {
+            ResizeViewport(viewport, viewport->GetWidth(), viewport->GetHeight());
+        }
+    }
+}
+
+bool RenderDevice::IsViewportRecreationPending(const RHIViewport* viewport) const
+{
+    return std::find(m_recreateViewports.begin(), m_recreateViewports.end(), viewport) != m_recreateViewports.end();
+}
+
+void RenderDevice::SetViewportRecreationPending(RHIViewport* viewport, bool pending)
+{
+    const HeapVector<RHIViewport*>::iterator it = std::find(m_recreateViewports.begin(), m_recreateViewports.end(), viewport);
+
+    const bool listed                           = it != m_recreateViewports.end();
+
+    if (listed && !pending)
+    {
+        m_recreateViewports.erase(it);
+    }
+    else if (!listed && pending && viewport != nullptr)
+    {
+        m_recreateViewports.push_back(viewport);
     }
 }
 
@@ -766,8 +797,8 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph&             
 
     RHISubmissionResult result = RHISubmissionResult::eRejected;
 
-    bool valid                 = !AreSubmissionsBlocked() && (viewport == nullptr || m_pRecreateViewport == nullptr)
-                              && m_submissionHistory.CanCommit(update) && lists.size() == schedule.groups.size();
+    bool valid = !AreSubmissionsBlocked() && !IsViewportRecreationPending(viewport) && m_submissionHistory.CanCommit(update)
+              && lists.size() == schedule.groups.size();
 
     HeapVector<RHISubmissionGroup> submissions;
 
@@ -841,9 +872,9 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph&             
 
         result = native.submission;
 
-        if (native.needsRecreation && viewport != nullptr)
+        if (native.needsRecreation)
         {
-            m_pRecreateViewport = viewport;
+            SetViewportRecreationPending(viewport, true);
         }
 
         if (pPresented != nullptr)
@@ -1611,10 +1642,7 @@ void RenderDevice::DestroyViewport(RHIViewport* viewport)
             m_viewports.erase(it);
         }
 
-        if (m_pRecreateViewport == viewport)
-        {
-            m_pRecreateViewport = nullptr;
-        }
+        SetViewportRecreationPending(viewport, false);
 
         if (m_pMainViewport == viewport)
         {
@@ -1627,9 +1655,11 @@ void RenderDevice::DestroyViewport(RHIViewport* viewport)
 
 void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height)
 {
+    // A surface with no extent cannot produce images, so polling it must not drain frames.
     if (viewport != nullptr && width != 0 && height != 0
-        && (m_pRecreateViewport == viewport || viewport->GetWidth() != width || viewport->GetHeight() != height
-            || GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport)))
+        && (IsViewportRecreationPending(viewport) || viewport->GetWidth() != width || viewport->GetHeight() != height
+            || GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport))
+        && GetRHIThread().Invoke(&RHIViewport::CanRecreate, viewport))
     {
         if (m_pUploadQueue != nullptr)
         {
@@ -1648,7 +1678,7 @@ void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_
 
             viewport->Resize(width, height);
 
-            m_pRecreateViewport = nullptr;
+            SetViewportRecreationPending(viewport, GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
         }
     }
 }

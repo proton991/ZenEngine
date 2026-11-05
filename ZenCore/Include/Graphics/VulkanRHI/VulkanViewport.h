@@ -55,6 +55,8 @@ public:
 
     bool NeedsRecreation() const final;
 
+    bool CanRecreate() const final;
+
     RHITexture* GetColorBackBuffer() final;
 
     RHITextureSubResourceRange GetColorBackBufferRange() final
@@ -97,6 +99,8 @@ protected:
     void Destroy() override;
 
 private:
+    friend struct VulkanViewportTestAccess;
+
     VulkanViewport(void* pWindowPtr, uint32_t width, uint32_t height, bool enableVSync);
 
     bool CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
@@ -109,7 +113,7 @@ private:
 
     bool BeginResize(uint32_t width, uint32_t height, VulkanSwapchainRecreateInfo* recreateInfo);
 
-    void FinishResize(VulkanSwapchainRecreateInfo* recreateInfo);
+    void FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHIError surfaceError);
 
     void CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                                         VkImage         dstImage,

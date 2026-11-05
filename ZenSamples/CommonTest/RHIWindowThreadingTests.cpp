@@ -122,12 +122,30 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 #include "ScopedVulkanCall.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/VulkanRHI/VulkanViewport.h"
 #include "Platform/NativeWindow.h"
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
 #include <memory>
 #include <thread>
+
+namespace zen
+{
+struct VulkanViewportTestAccess
+{
+    static void FailSurfaceRecreation(VulkanViewport* viewport, uint32_t width, uint32_t height, RHIError error)
+    {
+        VulkanSwapchainRecreateInfo info;
+        const bool rebuild = GetRHIThread().Invoke(&VulkanViewport::BeginResize, viewport, width, height, &info);
+        ASSERT_TRUE(rebuild);
+        ASSERT_EQ(info.surface, VK_NULL_HANDLE);
+        ASSERT_EQ(info.swapchain, VK_NULL_HANDLE);
+        // Model the window backend's checked failure at the window/RHI thread handoff.
+        GetRHIThread().Invoke(&VulkanViewport::FinishResize, viewport, &info, error);
+    }
+};
+} // namespace zen
 
 namespace
 {
@@ -431,6 +449,43 @@ TEST_P(RHIWindowSurfaceIntegrationTest, ZeroExtentDefersSwapchainUntilRestore)
     EXPECT_EQ(creations, 2u);
 
     EXPECT_NE(oldSwapchain, VK_NULL_HANDLE);
+}
+
+TEST_P(RHIWindowSurfaceIntegrationTest, LostSurfaceCreationFailureBlocksWithoutCreatingSwapchain)
+{
+    CreateViewport();
+    ASSERT_NE(viewport, nullptr);
+    {
+        test::ScopedVulkanCall hook(vkAcquireNextImageKHR, &LoseSurface);
+        GetRHIThread().Invoke(&RHIViewport::PrepareForPresent, viewport, nullptr);
+    }
+    ASSERT_TRUE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    const RHIError failure{RHIErrorCode::eOutOfHostMemory, VK_ERROR_OUT_OF_HOST_MEMORY, "surface creation injection", __FILE__,
+                           __LINE__};
+    VulkanViewportTestAccess::FailSurfaceRecreation(static_cast<VulkanViewport*>(viewport), 96, 80, failure);
+    EXPECT_EQ(creations, 1u);
+    EXPECT_EQ(viewport->GetColorBackBuffer(), nullptr);
+    const RHIError terminal = GetRHIThread().Invoke(&VulkanRHI::GetTerminalError, backend);
+    EXPECT_EQ(terminal.code, failure.code);
+    EXPECT_EQ(terminal.nativeCode, failure.nativeCode);
+    EXPECT_STREQ(terminal.operation, failure.operation);
+    EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
+}
+
+TEST_P(RHIWindowSurfaceIntegrationTest, InitialZeroExtentSurfaceCreationFailureRetainsCause)
+{
+    CreateViewport(0, 0);
+    ASSERT_NE(viewport, nullptr);
+    const RHIError failure = MakeRHIError(RHIErrorCode::eBackendFailure, "SDL_Vulkan_CreateSurface", __FILE__, __LINE__);
+    VulkanViewportTestAccess::FailSurfaceRecreation(static_cast<VulkanViewport*>(viewport), 96, 80, failure);
+    EXPECT_EQ(creations, 0u);
+    EXPECT_EQ(viewport->GetColorBackBuffer(), nullptr);
+    const RHIError terminal = GetRHIThread().Invoke(&VulkanRHI::GetTerminalError, backend);
+    const RHIError creation = GetRHIThread().Invoke(&VulkanRHI::GetLastCreationError, backend);
+    EXPECT_EQ(terminal.code, failure.code);
+    EXPECT_STREQ(terminal.operation, failure.operation);
+    EXPECT_STREQ(creation.operation, failure.operation);
+    EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewport)

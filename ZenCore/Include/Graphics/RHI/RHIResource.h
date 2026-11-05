@@ -276,6 +276,12 @@ public:
         return false;
     }
 
+    // False only while a deferred surface still has no extent, so polling it stays cheap.
+    virtual bool CanRecreate() const
+    {
+        return true;
+    }
+
 protected:
     RHIViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) :
         RHIResource(RHIResourceType::eViewport),
@@ -628,6 +634,11 @@ class RHIShader : public RHIResource
 {
 public:
     ~RHIShader() override = default;
+
+    NameID GetName() const
+    {
+        return m_name;
+    }
 
     RHIShaderCreateInfo GetCreateInfo() const
     {

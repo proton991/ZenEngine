@@ -32,19 +32,22 @@ uint32_t GetResourceStride(RHIShaderResourceType type)
     return stride;
 }
 
-VkImageView GetImageView(RHIResource* pResource)
+VkImageView GetImageView(RHIResource* pResource, RHITextureUsageFlagBits requiredUsage)
 {
-    VkImageView imageView = VK_NULL_HANDLE;
+    VkImageView              imageView = VK_NULL_HANDLE;
+    const VulkanTextureView* view      = nullptr;
 
     if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTextureView)
     {
-        imageView = TO_VK_TEXTURE_VIEW(pResource)->GetVkImageView();
+        view = TO_VK_TEXTURE_VIEW(pResource);
     }
     else if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTexture)
     {
-        const VulkanTextureView* pDefaultView = TO_VK_TEXTURE_VIEW(TO_VK_TEXTURE(pResource)->GetDefaultView());
-
-        imageView                             = pDefaultView != nullptr ? pDefaultView->GetVkImageView() : VK_NULL_HANDLE;
+        view = TO_VK_TEXTURE_VIEW(TO_VK_TEXTURE(pResource)->GetDefaultView());
+    }
+    if (view != nullptr && view->GetTexture()->GetBaseInfo().usageFlags.HasFlag(requiredUsage))
+    {
+        imageView = view->GetVkImageView();
     }
 
     return imageView;
@@ -117,7 +120,7 @@ bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
                 valid                  = image.sampler != VK_NULL_HANDLE;
                 if (binding.type == RHIShaderResourceType::eSamplerWithTexture)
                 {
-                    image.imageView   = GetImageView(auxiliary);
+                    image.imageView   = GetImageView(auxiliary, RHITextureUsageFlagBits::eSampled);
                     image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     valid             = valid && image.imageView != VK_NULL_HANDLE;
                 }
@@ -127,20 +130,30 @@ bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
             case RHIShaderResourceType::eTexture:
             case RHIShaderResourceType::eImage:
             case RHIShaderResourceType::eInputAttachment:
-                image.imageView   = GetImageView(resource);
+            {
+                const RHITextureUsageFlagBits usage =
+                    binding.type == RHIShaderResourceType::eImage             ? RHITextureUsageFlagBits::eStorage
+                    : binding.type == RHIShaderResourceType::eInputAttachment ? RHITextureUsageFlagBits::eInputAttachment
+                                                                              : RHITextureUsageFlagBits::eSampled;
+                image.imageView   = GetImageView(resource, usage);
                 image.imageLayout = binding.type == RHIShaderResourceType::eImage ? VK_IMAGE_LAYOUT_GENERAL
                                                                                   : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                 valid             = image.imageView != VK_NULL_HANDLE;
                 write.pImageInfo  = &image;
                 break;
+            }
             case RHIShaderResourceType::eTextureBuffer:
             case RHIShaderResourceType::eSamplerWithTextureBuffer:
             case RHIShaderResourceType::eImageBuffer:
             {
-                VulkanBuffer* buffer   = TryVulkanBuffer(stride == 2 ? auxiliary : resource);
-                view                   = buffer != nullptr ? buffer->GetVkBufferView() : VK_NULL_HANDLE;
-                valid                  = view != VK_NULL_HANDLE && (stride != 2 || TryVulkanSampler(resource) != nullptr);
-                write.pTexelBufferView = &view;
+                VulkanBuffer* buffer               = TryVulkanBuffer(stride == 2 ? auxiliary : resource);
+                view                               = buffer != nullptr ? buffer->GetVkBufferView() : VK_NULL_HANDLE;
+                const RHIBufferUsageFlagBits usage = binding.type == RHIShaderResourceType::eImageBuffer
+                                                       ? RHIBufferUsageFlagBits::eImageBuffer
+                                                       : RHIBufferUsageFlagBits::eTextureBuffer;
+                valid                              = view != VK_NULL_HANDLE && buffer->GetUsageFlags().HasFlag(usage)
+                                                  && (stride != 2 || TryVulkanSampler(resource) != nullptr);
+                write.pTexelBufferView             = &view;
                 break;
             }
             case RHIShaderResourceType::eUniformBuffer:
@@ -150,12 +163,18 @@ bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
                 valid                = buffer != nullptr;
                 if (valid)
                 {
-                    bufferInfo.buffer         = buffer->GetVkBuffer();
-                    bufferInfo.range          = valueRange > 0 ? valueRange : buffer->GetRequiredSize();
-                    const uint64_t     offset = index < offsets.size() ? offsets[index] : 0;
-                    const VkDeviceSize alignment =
-                        GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
-                    valid = bufferInfo.buffer != VK_NULL_HANDLE && bufferInfo.range > 0 && offset <= buffer->GetRequiredSize()
+                    bufferInfo.buffer                     = buffer->GetVkBuffer();
+                    bufferInfo.range                      = valueRange > 0 ? valueRange : buffer->GetRequiredSize();
+                    const uint64_t                offset  = index < offsets.size() ? offsets[index] : 0;
+                    const VkPhysicalDeviceLimits& limits  = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+                    const bool                    uniform = binding.type == RHIShaderResourceType::eUniformBuffer;
+                    const VkDeviceSize            alignment =
+                        uniform ? limits.minUniformBufferOffsetAlignment : limits.minStorageBufferOffsetAlignment;
+                    const VkDeviceSize maxRange = uniform ? limits.maxUniformBufferRange : limits.maxStorageBufferRange;
+                    const RHIBufferUsageFlagBits usage =
+                        uniform ? RHIBufferUsageFlagBits::eUniformBuffer : RHIBufferUsageFlagBits::eStorageBuffer;
+                    valid = buffer->GetUsageFlags().HasFlag(usage) && bufferInfo.buffer != VK_NULL_HANDLE
+                         && bufferInfo.range > 0 && bufferInfo.range <= maxRange && offset <= buffer->GetRequiredSize()
                          && bufferInfo.range <= buffer->GetRequiredSize() - offset && (offset == 0 || offset % alignment == 0);
                 }
                 write.pBufferInfo = &bufferInfo;
@@ -224,6 +243,46 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     }
 }
 
+bool VulkanDescriptorSetState::ValidateResourceParameter(const RHIShaderResourceParameter& param)
+{
+    RHIShader* shader                             = m_pPipeline->GetShader();
+
+    const RHIShaderResourceDescriptor* descriptor = shader->GetSRDByLocation(param.set, param.binding);
+
+    const uint64_t resourceCount                  = (uint64_t(param.arrayIndex) + 1) * GetResourceStride(param.resourceType);
+
+    const char* problem                           = nullptr;
+
+    if (param.set >= m_setStates.size() || descriptor == nullptr)
+    {
+        problem = "the shader declares no such binding";
+    }
+    else if (descriptor->bindless)
+    {
+        problem = "the binding belongs to the global bindless heap";
+    }
+    else if (descriptor->type != param.resourceType)
+    {
+        problem = "the resource type differs from the reflected type";
+    }
+    else if (param.arrayIndex >= descriptor->arraySize || resourceCount > UINT32_MAX)
+    {
+        problem = "the element is outside the reflected array";
+    }
+    else if (param.bufferOffset != 0 && param.resourceType != RHIShaderResourceType::eUniformBuffer)
+    {
+        problem = "only uniform-buffer parameters accept a buffer offset";
+    }
+
+    if (problem != nullptr)
+    {
+        LOGE("Shader '{}' rejected the resource parameter at set {}, binding {}, element {}: {}", shader->GetName().CStr(),
+             param.set, param.binding, param.arrayIndex, problem);
+    }
+
+    return problem == nullptr;
+}
+
 bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parameters,
                                                    uint64_t               recordedEpoch,
                                                    uint64_t               transaction)
@@ -239,8 +298,7 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
 
     for (const RHIShaderResourceParameter& parameter : parameters.GetResourceParams())
     {
-        valid &= parameter.set < m_setStates.size()
-              && (parameter.bufferOffset == 0 || parameter.resourceType == RHIShaderResourceType::eUniformBuffer);
+        valid &= m_pPipeline != nullptr && ValidateResourceParameter(parameter);
     }
 
     const VectorView<const RHIShaderResourceParameter> bindless = parameters.GetBindlessParams();
@@ -625,13 +683,6 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
 
     if (m_pPipeline != nullptr && param.set < m_setStates.size())
     {
-        if (param.bufferOffset != 0 && param.resourceType != RHIShaderResourceType::eUniformBuffer)
-        {
-            m_parametersValid = false;
-
-            LOGE("Only uniform-buffer parameters accept a buffer offset");
-        }
-
         SetState& setState         = m_setStates[param.set];
 
         BindingState& bindingState = FindOrAddBinding(setState, param.binding, param.resourceType);

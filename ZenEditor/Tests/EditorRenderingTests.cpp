@@ -610,6 +610,12 @@ TEST_P(EditorRendering, ApplicationContinuesAfterDeclineAndRecordingFailureButSt
 
     EXPECT_TRUE(Frame(*device, editor));
 
+    // A suspended surface may stay unavailable for as long as the window does.
+    for (uint32_t frame = 0; frame < 32; ++frame)
+    {
+        EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eSuspended));
+    }
+
     for (uint32_t frame = 0; frame < 8; ++frame)
     {
         EXPECT_TRUE(editor.RecordRenderingResult(rc::RenderFrameResult::eDeclined));

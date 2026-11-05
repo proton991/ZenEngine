@@ -22,6 +22,29 @@ struct TestOwnedSchedule
     }
 };
 
+struct TestQueueFlushOrder
+{
+    explicit TestQueueFlushOrder(TestRHI& backend) : backend(backend) {}
+
+    void BeforeSubmission()
+    {
+        // Vulkan drains its distinct logical wrappers in queue-enum order, including
+        // wrappers that share a native queue. Reproduce that behavior at the fake boundary.
+        std::stable_sort(backend.pendingCommandLists.begin(), backend.pendingCommandLists.end(),
+                         [](const RHICommandList* first, const RHICommandList* second) {
+                             return first->GetContext()->GetContextType() < second->GetContext()->GetContextType();
+                         });
+
+        for (const RHICommandList* list : backend.pendingCommandLists)
+        {
+            queues.push_back(list->GetContext()->GetContextType());
+        }
+    }
+
+    TestRHI&                          backend;
+    HeapVector<RHICommandContextType> queues;
+};
+
 class RHIScheduledSubmissionTest : public testing::TestWithParam<std::tuple<RHIExecutionMode, bool>>
 {
 protected:
@@ -50,6 +73,56 @@ protected:
         RHIBufferCreateInfo info;
         info.size = 64;
         return RHIResourcePtr<RHIBuffer>(executor->CreateBuffer(info), false);
+    }
+
+    void VerifyQueueSubmissionOrder(VectorView<const RHICommandContextType> queues, uint32_t expectedSubmissions)
+    {
+        TestOwnedSchedule   schedule(*executor, queues);
+        TestQueueFlushOrder flushOrder(*rhi);
+        rhi->beforeSubmission = std::bind_front(&TestQueueFlushOrder::BeforeSubmission, &flushOrder);
+
+        HeapVector<RHIResourcePtr<RHIBuffer>> buffers;
+        buffers.push_back(Buffer());
+        TestBuffer* input = static_cast<TestBuffer*>(buffers[0].Get());
+        for (size_t i = 0; i < input->bytes.size(); ++i)
+        {
+            input->bytes[i] = uint8_t(i + 7);
+        }
+        for (uint32_t i = 0; i < queues.size(); ++i)
+        {
+            buffers.push_back(Buffer());
+            schedule.lists[i]->CopyBuffer(buffers[i].Get(), buffers[i + 1].Get(), {0, 0, 64});
+            if (i != 0)
+            {
+                schedule.Depends(i, i - 1);
+            }
+        }
+
+        const RHIBatchResult result = executor->SubmitGroups(schedule.groups, schedule.state);
+        rhi->beforeSubmission       = {};
+
+        ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
+        ASSERT_EQ(result.groups.size(), queues.size());
+        ASSERT_EQ(flushOrder.queues.size(), queues.size());
+        std::array<uint64_t, RHICompletionSet::kQueueCount> serials{};
+        for (uint32_t i = 0; i < queues.size(); ++i)
+        {
+            const uint64_t serial = ++serials[ToUnderlying(queues[i])];
+            EXPECT_EQ(flushOrder.queues[i], queues[i]);
+            EXPECT_EQ(result.groups[i].accepted.queue, queues[i]);
+            EXPECT_EQ(result.groups[i].accepted.serial, serial);
+            EXPECT_EQ(static_cast<TestBuffer*>(buffers[i + 1].Get())->bytes, input->bytes);
+
+            RHISubmissionDependency accepted;
+            EXPECT_EQ(schedule.state->Resolve(i, accepted), RHISubmissionPointStatus::eAccepted);
+            EXPECT_EQ(accepted.queue, queues[i]);
+            EXPECT_EQ(accepted.serial, serial);
+        }
+        EXPECT_EQ(rhi->submissionAttempts, expectedSubmissions);
+        EXPECT_EQ(rhi->gpuDependencies.size(), std::get<1>(GetParam()) ? 0u : expectedSubmissions - 1);
+        EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eAsyncCompute), serials[1]);
+        EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eTransfer), serials[2]);
+        EXPECT_TRUE(rhi->submissionWaits.empty());
     }
 
     TestRHI*                rhi{nullptr};
@@ -155,40 +228,62 @@ TEST_P(RHIScheduledSubmissionTest, AliasedNativeQueueRunsRetainDistinctLogicalTi
     const RHICommandContextType queues[] = {RHICommandContextType::eAsyncCompute, RHICommandContextType::eTransfer,
                                             RHICommandContextType::eTransfer, RHICommandContextType::eAsyncCompute};
 
-    TestOwnedSchedule schedule(*executor, MakeVecView(queues, 4));
+    VerifyQueueSubmissionOrder(MakeVecView(queues, 4), 3);
+}
 
-    for (uint32_t i = 0; i < 4; ++i)
+TEST_P(RHIScheduledSubmissionTest, AliasedNativeQueuesPreserveTransferBeforeCompute)
+{
+    const RHICommandContextType queues[] = {RHICommandContextType::eTransfer, RHICommandContextType::eAsyncCompute};
+
+    VerifyQueueSubmissionOrder(MakeVecView(queues, 2), 2);
+}
+
+TEST_P(RHIScheduledSubmissionTest, AliasedNativeQueueRejectionPreservesAcceptedPrefix)
+{
+    const RHICommandContextType queues[] = {RHICommandContextType::eTransfer, RHICommandContextType::eAsyncCompute,
+                                            RHICommandContextType::eTransfer};
+    TestOwnedSchedule           schedule(*executor, MakeVecView(queues, 3));
+    TestQueueFlushOrder         flushOrder(*rhi);
+    rhi->beforeSubmission            = std::bind_front(&TestQueueFlushOrder::BeforeSubmission, &flushOrder);
+    RHIResourcePtr<RHIBuffer> source = Buffer();
+    RHIResourcePtr<RHIBuffer> buffer = Buffer();
+    TestBuffer*               output = static_cast<TestBuffer*>(buffer.Get());
+    TestBuffer*               input  = static_cast<TestBuffer*>(source.Get());
+    std::fill(input->bytes.begin(), input->bytes.end(), uint8_t(0));
+    std::fill(output->bytes.begin(), output->bytes.end(), uint8_t(7));
+
+    for (uint32_t i = 0; i < 3; ++i)
     {
-        schedule.lists[i]->Dispatch(1, 1, 1);
-
+        schedule.lists[i]->CopyBuffer(source.Get(), buffer.Get(), {0, i * 16, 16});
         if (i != 0)
         {
             schedule.Depends(i, i - 1);
         }
     }
-
+    rhi->failSubmissionAt       = 2;
     const RHIBatchResult result = executor->SubmitGroups(schedule.groups, schedule.state);
+    rhi->beforeSubmission       = {};
 
-    ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
-
-    ASSERT_EQ(result.groups.size(), 4u);
-
-    const uint64_t serials[] = {1, 1, 2, 2};
-
-    for (uint32_t i = 0; i < 4; ++i)
+    ASSERT_EQ(result.submission, RHISubmissionResult::eFatal);
+    ASSERT_EQ(result.groups.size(), 3u);
+    EXPECT_EQ(result.groups[0].submission, RHISubmissionResult::eSuccess);
+    EXPECT_EQ(result.groups[0].accepted.queue, RHICommandContextType::eTransfer);
+    EXPECT_EQ(result.groups[0].accepted.serial, 1u);
+    EXPECT_EQ(result.groups[1].submission, RHISubmissionResult::eFatal);
+    EXPECT_EQ(result.groups[1].accepted.serial, 0u);
+    EXPECT_EQ(result.groups[2].submission, RHISubmissionResult::eRejected);
+    EXPECT_EQ(result.groups[2].accepted.serial, 0u);
+    EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eTransfer), 1u);
+    EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eAsyncCompute), 0u);
+    for (size_t i = 0; i < output->bytes.size(); ++i)
     {
-        EXPECT_EQ(result.groups[i].accepted.queue, queues[i]);
-
-        EXPECT_EQ(result.groups[i].accepted.serial, serials[i]);
+        EXPECT_EQ(output->bytes[i], i < 16 ? 0u : 7u);
     }
-
-    EXPECT_EQ(rhi->submissionAttempts, std::get<1>(GetParam()) ? 1u : 3u);
-
-    EXPECT_EQ(rhi->gpuDependencies.size(), std::get<1>(GetParam()) ? 0u : 2u);
-
-    EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eAsyncCompute), 2u);
-
-    EXPECT_EQ(result.requiredSerials.Get(RHICommandContextType::eTransfer), 2u);
+    EXPECT_EQ(rhi->submissionAttempts, 2u);
+    ASSERT_EQ(flushOrder.queues.size(), 2u);
+    EXPECT_EQ(flushOrder.queues[0], RHICommandContextType::eTransfer);
+    EXPECT_EQ(flushOrder.queues[1], RHICommandContextType::eAsyncCompute);
+    EXPECT_TRUE(executor->AreSubmissionsBlocked());
 }
 
 TEST_P(RHIScheduledSubmissionTest, RejectedFirstRunRejectsEveryGroupAndCanRetry)

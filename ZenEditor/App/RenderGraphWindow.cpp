@@ -169,7 +169,7 @@ bool RenderGraphWindow::NeedsRedraw() const
         needed                              = extent.width > 0 && extent.height > 0
                                            && (m_settleFrames > 0 || m_changeSerial != m_capture.GetChangeSerial() || m_window->IsFocused() != m_focused
                                                || m_minimized || m_window->GetUIScale() != m_scale || extent.width != m_present->GetWidth()
-                                               || extent.height != m_present->GetHeight());
+                                               || extent.height != m_present->GetHeight() || m_present->GetColorBackBuffer() == nullptr);
     }
     return needed;
 }
@@ -241,7 +241,7 @@ void RenderGraphWindow::CompleteFrame(rc::RenderFrameResult result)
         m_settleFrames = 3;
     }
     if (result == rc::RenderFrameResult::eFailed || result == rc::RenderFrameResult::eBlocked
-        || !rc::TrackDeclinedFrames(result, m_declines))
+        || !rc::TrackDeclinedFrames(rc::ScriptedFrameResult(result, !m_capturePath.empty()), m_declines))
     {
         LOGE("Render Graph presentation failed; closing the viewer");
         Destroy();

@@ -42,18 +42,12 @@ template <> struct hash<zen::VulkanDescriptorPoolKey>
 
 namespace zen
 {
-// Uniform-buffer descriptors of one pipeline layout. Every reflected uniform buffer is a
-// dynamic descriptor; array elements count individually. Bindless descriptors are
-// excluded: they are checked against the update-after-bind limits instead.
-struct VulkanUniformBufferUsage
-{
-    uint32_t dynamicCount{0};
-    uint32_t maxPerStageCount{0};
-};
-
-VulkanUniformBufferUsage CountUniformBufferDescriptors(const RHIShaderResourceDescriptorTable& srdTable);
-
-bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage, const VkPhysicalDeviceLimits& limits);
+// Includes the actual global set even when the shader does not declare its runtime arrays.
+bool ShaderLayoutFitsLimits(const RHIShaderGroupInfo&                                 info,
+                            const VkPhysicalDeviceLimits&                             limits,
+                            const VkPhysicalDeviceDescriptorIndexingProperties&       indexingLimits,
+                            const VkPhysicalDeviceAccelerationStructurePropertiesKHR& accelerationLimits,
+                            const RHIBindlessHeapCapacities&                          globalCapacities);
 
 // maxDescriptorSets is the device's maxBoundDescriptorSets.
 bool ValidateShaderLayout(const RHIShaderGroupInfo& info, uint32_t maxDescriptorSets);

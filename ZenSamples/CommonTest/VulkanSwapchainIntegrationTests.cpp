@@ -673,7 +673,9 @@ protected:
 
         window->CheckThreadOwnership();
 
-        surfaceInfo.surface = VulkanPlatform::CreateSurface(session->rhi.GetInstance(), *window);
+        RHIResult<VkSurfaceKHR> created = VulkanPlatform::CreateSurface(session->rhi.GetInstance(), *window);
+        ASSERT_TRUE(created);
+        surfaceInfo.surface = created.GetValue();
 
         swapchain           = std::make_unique<VulkanSwapchain>(64, 64, vsync, &surfaceInfo);
     }
