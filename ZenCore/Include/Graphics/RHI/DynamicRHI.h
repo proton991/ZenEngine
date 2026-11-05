@@ -112,7 +112,8 @@ public:
     virtual RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) = 0;
 
     // Called on the window owner after outstanding frames drain, as for CreateViewport/Resize.
-    // Backends detach window objects here; GPU resource destruction runs through RHI cleanup.
+    // The owner may destroy the native window next, so backends release everything bound to it
+    // before returning. Other GPU resource destruction runs through RHI cleanup.
     virtual void DestroyViewport(RHIViewport* pViewport)                                = 0;
 
     virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo)              = 0;

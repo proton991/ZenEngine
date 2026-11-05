@@ -124,11 +124,19 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Platform/NativeWindow.h"
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
 #include <memory>
+#include <thread>
 
 namespace
 {
 using namespace zen;
+
+void DelayRHIThread()
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
 
 struct SurfaceExecutionMode
 {
@@ -187,12 +195,23 @@ protected:
         return originalAcquire(device, swapchain, timeout, semaphore, fence, image);
     }
 
-    static inline PFN_vkQueueSubmit     originalSubmit{};
-    static inline PFN_vkQueuePresentKHR originalPresent{};
-    static inline uint32_t              submitCalls{0};
-    static inline uint32_t              failSubmitAt{0};
-    static inline uint32_t              presentCalls{0};
-    static inline uint32_t              acquireCalls{0};
+    static VKAPI_ATTR void VKAPI_CALL CountSurfaceDestruction(VkInstance                   instance,
+                                                              VkSurfaceKHR                 surface,
+                                                              const VkAllocationCallbacks* allocator)
+    {
+        ++surfaceDestructions;
+
+        originalDestroySurface(instance, surface, allocator);
+    }
+
+    static inline PFN_vkDestroySurfaceKHR originalDestroySurface{};
+    static inline std::atomic<uint32_t>   surfaceDestructions{0};
+    static inline PFN_vkQueueSubmit       originalSubmit{};
+    static inline PFN_vkQueuePresentKHR   originalPresent{};
+    static inline uint32_t                submitCalls{0};
+    static inline uint32_t                failSubmitAt{0};
+    static inline uint32_t                presentCalls{0};
+    static inline uint32_t                acquireCalls{0};
 
     void SetUp() override
     {
@@ -335,6 +354,29 @@ TEST_P(RHIWindowSurfaceIntegrationTest, CreatesSurfaceOnWindowThreadAndSwapchain
     EXPECT_EQ(creationThread, rhiThread);
 
     EXPECT_NE(oldSwapchain, VK_NULL_HANDLE);
+}
+
+// The owner destroys its native window as soon as DestroyViewport returns, so the surface
+// must already be gone by then, even while the RHI thread is finishing earlier work.
+TEST_P(RHIWindowSurfaceIntegrationTest, DestroyViewportReleasesTheSurfaceBeforeReturning)
+{
+    CreateViewport();
+
+    ASSERT_NE(viewport, nullptr);
+
+    originalDestroySurface = vkDestroySurfaceKHR;
+
+    surfaceDestructions    = 0;
+
+    test::ScopedVulkanCall<PFN_vkDestroySurfaceKHR> counted(vkDestroySurfaceKHR, &CountSurfaceDestruction);
+
+    GetRHIThread().Dispatch(&DelayRHIThread);
+
+    executor->DestroyViewport(viewport);
+
+    viewport = nullptr;
+
+    EXPECT_EQ(surfaceDestructions.load(), 1u);
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, SurfaceLossReturnsToWindowThreadBeforeRebuilding)

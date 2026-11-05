@@ -31,6 +31,8 @@ struct RHIAccelerationStructureInstance
     BitField<RHIAccelerationStructureInstanceFlagBits> flags;
     RHIAccelerationStructure*                          pStructure{nullptr};
 
+    // Vulkan requires an invertible upper 3x3 (VUID-VkTransformMatrixKHR-matrix-03799).
+    bool HasInvertibleTransform() const;
     bool IsValid() const;
 };
 
@@ -136,12 +138,9 @@ struct RHIAccelerationStructureBuildInfo
     uint64_t                  scratchOffset{0};
 };
 
-inline bool RHIAccelerationStructureInstance::IsValid() const
+inline bool RHIAccelerationStructureInstance::HasInvertibleTransform() const
 {
-    bool valid = pStructure != nullptr && pStructure->GetType() == RHIAccelerationStructureType::eBottomLevel
-              && customIndex <= 0xffffffu && (uint32_t(flags) & ~0xfu) == 0
-              && !(flags.HasFlag(RHIAccelerationStructureInstanceFlagBits::eForceOpaque)
-                   && flags.HasFlag(RHIAccelerationStructureInstanceFlagBits::eForceNonOpaque));
+    bool valid = true;
     for (const float (&row)[4] : transform)
     {
         for (float value : row)
@@ -154,5 +153,14 @@ inline bool RHIAccelerationStructureInstance::IsValid() const
         - double(transform[0][1]) * (double(transform[1][0]) * transform[2][2] - double(transform[1][2]) * transform[2][0])
         + double(transform[0][2]) * (double(transform[1][0]) * transform[2][1] - double(transform[1][1]) * transform[2][0]);
     return valid && std::isfinite(determinant) && determinant != 0;
+}
+
+inline bool RHIAccelerationStructureInstance::IsValid() const
+{
+    return pStructure != nullptr && pStructure->GetType() == RHIAccelerationStructureType::eBottomLevel
+        && customIndex <= 0xffffffu && (uint32_t(flags) & ~0xfu) == 0
+        && !(flags.HasFlag(RHIAccelerationStructureInstanceFlagBits::eForceOpaque)
+             && flags.HasFlag(RHIAccelerationStructureInstanceFlagBits::eForceNonOpaque))
+        && HasInvertibleTransform();
 }
 } // namespace zen

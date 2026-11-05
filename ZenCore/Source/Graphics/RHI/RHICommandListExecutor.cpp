@@ -1282,8 +1282,8 @@ void RHICommandListExecutor::DestroyViewport(RHIViewport* viewport)
 {
     ASSERT(std::this_thread::get_id() == m_renderThread);
 
-    // Surface teardown belongs to the window owner. Resource ReleaseReference
-    // dispatches the final GPU resource cleanup to RHI as usual.
+    // The window owner drives surface teardown, and the backend finishes with the native
+    // window before returning. Other resources reach RHI cleanup through ReleaseReference.
     m_backend->DestroyViewport(viewport);
 }
 

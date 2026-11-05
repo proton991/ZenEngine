@@ -157,9 +157,12 @@ TEST_F(RenderCoreTest, PortableRayQueryInstancesValidateMetadataWithoutNativeAdd
     EXPECT_FALSE(instance.IsValid());
     instance.flags           = {};
     instance.transform[1][1] = 0;
+    EXPECT_FALSE(instance.HasInvertibleTransform());
     EXPECT_FALSE(instance.IsValid());
     instance.transform[1][1] = 1;
+    EXPECT_TRUE(instance.HasInvertibleTransform());
     instance.transform[0][3] = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(instance.HasInvertibleTransform());
     EXPECT_FALSE(instance.IsValid());
     instance.transform[0][3] = 3.25f;
     EXPECT_TRUE(instance.IsValid());

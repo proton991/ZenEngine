@@ -57,7 +57,9 @@ RHIViewport* VulkanRHI::CreateViewport(void* pWindow, uint32_t width, uint32_t h
 
 void VulkanRHI::DestroyViewport(RHIViewport* pViewport)
 {
-    pViewport->ReleaseReference();
+    // As in CreateViewport, the window owner waits for the RHI thread: it may destroy the
+    // native window next, so the swapchain and surface must be gone before this returns.
+    GetRHIThread().Invoke(&RHIResource::ReleaseReference, pViewport);
 }
 
 VulkanViewport* VulkanViewport::CreateObject(void*                        pWindow,

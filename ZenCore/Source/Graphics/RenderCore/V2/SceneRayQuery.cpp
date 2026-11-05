@@ -383,9 +383,14 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
                     instance.customIndex = static_cast<uint32_t>(instances.size());
                     // Culling is evaluated with the raster material in the candidate shader.
                     instance.flags.SetFlag(RHIAccelerationStructureInstanceFlagBits::eDisableTriangleCulling);
-                    instances.push_back(instance);
-                    instanceMeshes.push_back(meshIndex);
-                    instanceMetadata.push_back({node->GetRenderableIndex(), mesh.metadataOffset, 0, 0});
+                    // A singular transform is invalid in a TLAS and covers no area, so no ray
+                    // could hit the instance; omitting it keeps the rest of the frame valid.
+                    if (instance.HasInvertibleTransform())
+                    {
+                        instances.push_back(instance);
+                        instanceMeshes.push_back(meshIndex);
+                        instanceMetadata.push_back({node->GetRenderableIndex(), mesh.metadataOffset, 0, 0});
+                    }
                     break;
                 }
             }

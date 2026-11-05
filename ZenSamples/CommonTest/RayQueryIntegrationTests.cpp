@@ -166,7 +166,11 @@ protected:
         EXPECT_EQ(queries, 1u);
     }
 
-    void CheckSceneHits(RenderScene& scene, SceneRayQuery& queries, float dynamicDistance, bool rawIntersection = false)
+    void CheckSceneHits(RenderScene&   scene,
+                        SceneRayQuery& queries,
+                        float          dynamicDistance,
+                        bool           rawIntersection = false,
+                        float          staticDistance  = 1.5f)
     {
         RenderGraph&                     graph = *device->GetCurrentFrameRDG();
         BitField<RHIBufferUsageFlagBits> usage;
@@ -211,7 +215,7 @@ protected:
         device->WaitForIdle();
         const Vec4* result = reinterpret_cast<const Vec4*>(readback->Map());
         EXPECT_NEAR(result[0].x, dynamicDistance, 1e-5f);
-        EXPECT_NEAR(result[rawIntersection ? 2 : 1].x, 1.5f, 1e-5f);
+        EXPECT_NEAR(result[rawIntersection ? 2 : 1].x, staticDistance, 1e-5f);
         if (!rawIntersection)
         {
             EXPECT_EQ(result[0].w, float(queries.GetGeneration()));
@@ -544,6 +548,73 @@ TEST_P(RayQueryIntegrationTest, DeformingOneMeshRefitsOnlyItInPlaceAndRebuildsAf
     }
     queries.Destroy();
     scene.Destroy();
+}
+
+// A node authored with zero scale covers no area, and Vulkan requires invertible instance
+// transforms. It stays out of the TLAS without costing the frame or the visible instances.
+TEST_P(RayQueryIntegrationTest, SingularAuthoredInstanceStaysOutOfTheSceneTLAS)
+{
+    if (device->GetGPUInfo().rayQuery.IsUsable())
+    {
+        sg::Scene source;
+        source.GetAABB()                    = sg::AABB(Vec3(-0.5f), Vec3(0.5f));
+        UniquePtr<sg::Material> material    = MakeUnique<sg::Material>("opaque");
+        material->index                     = 0;
+        material->data.materialProperties.z = 1.0f;
+        material->data.baseColorFactor.a    = 1.0f;
+        UniquePtr<sg::Mesh> mesh            = MakeUnique<sg::Mesh>("shared triangle");
+        mesh->SetAABB(Vec3(-0.5f, -0.5f, 0), Vec3(0.5f));
+        UniquePtr<sg::SubMesh> primitive = MakeUnique<sg::SubMesh>("triangle", 0, 3, 3);
+        primitive->SetMaterial(0, material.Get());
+        mesh->AddSubMesh(primitive.Get());
+        const Mat4                      transforms[] = {Mat4(1), glm::scale(glm::translate(Mat4(1), Vec3(2, 0, 0)), Vec3(0))};
+        HeapVector<UniquePtr<sg::Node>> nodes;
+        for (uint32_t i = 0; i < 2; ++i)
+        {
+            UniquePtr<sg::Node> node = MakeUnique<sg::Node>(i, "instance");
+            node->SetData(i, transforms[i]);
+            node->AddComponent(mesh.Get());
+            source.AddRenderableNode(node.Get());
+            nodes.push_back(std::move(node));
+        }
+        source.SetNodes(std::move(nodes));
+        source.AddComponent(std::move(primitive));
+        source.AddComponent(std::move(mesh));
+        source.AddComponent(std::move(material));
+        asset::Vertex  vertices[3]{};
+        const uint32_t indices[] = {0, 1, 2};
+        for (uint32_t i = 0; i < 3; ++i)
+        {
+            vertices[i].pos    = Vec4(i == 0 ? -0.5f : i == 1 ? 0.5f : 0.0f, i == 2 ? 0.5f : -0.5f, 0, 1);
+            vertices[i].normal = Vec4(0, 0, 1, 0);
+            vertices[i].color  = Vec4(1);
+        }
+        sg::Camera camera(Vec3(0, 0, -1), Vec3(0), 1);
+        SceneData  data{};
+        data.pScene      = &source;
+        data.pVertices   = vertices;
+        data.numVertices = 3;
+        data.pIndices    = indices;
+        data.numIndices  = 3;
+        data.pCamera     = &camera;
+        asset::PrepareScenePlacement(*data.pScene, asset::ScenePlacement::CenterAndNormalize);
+        RenderScene scene(device, data);
+        scene.LoadSceneMaterials();
+        scene.PrepareBuffers();
+        ASSERT_TRUE(scene.Update());
+        SceneRayQuery queries(device);
+        RenderGraph&  graph = *device->GetCurrentFrameRDG();
+        ASSERT_TRUE(graph.Begin());
+        ASSERT_TRUE(queries.BuildRenderGraph(scene));
+        CheckSceneHits(scene, queries, 1.0f, false, -1.0f);
+        EXPECT_TRUE(queries.IsReady());
+        queries.Destroy();
+        scene.Destroy();
+    }
+    else
+    {
+        GTEST_SKIP() << "Ray queries unavailable on this device";
+    }
 }
 
 TEST_P(RayQueryIntegrationTest, GraphBuildQueryUpdateAndEmptyScene)
