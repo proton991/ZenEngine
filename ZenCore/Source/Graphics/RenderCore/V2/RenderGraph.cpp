@@ -574,11 +574,17 @@ void AddAccelerationStructureTransition(RDGCompiledNode&                        
                                         const RDGAccelerationStructureResourceState& previous,
                                         const RDGAccess&                             access)
 {
-    RHIMemoryTransition transition;
-    transition.srcAccess = RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, previous.accessMode)
-                         | previous.writer.access;
-    transition.dstAccess = access.accessFlags;
-    compiled.prologueMemoryTransitions.push_back(transition);
+    // A memory barrier is global and this batch shares one stage mask, so a single entry covers
+    // every structure. A TLAS binding reads each of its BLASes, and drivers pay per entry.
+    if (compiled.prologueMemoryTransitions.empty())
+    {
+        compiled.prologueMemoryTransitions.emplace_back();
+    }
+    RHIMemoryTransition& transition = compiled.prologueMemoryTransitions.back();
+    transition.srcAccess.SetFlag(
+        RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, previous.accessMode));
+    transition.srcAccess.SetFlag(previous.writer.access);
+    transition.dstAccess.SetFlag(access.accessFlags);
 }
 
 template <typename Allocation> RHITextureSubResourceRange FullRange(const Allocation* resource)

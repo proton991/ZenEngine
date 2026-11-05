@@ -324,6 +324,73 @@ TEST_P(PortableAccelerationStructureGraphTest, BuildQueryAndRefitTrackNativeStru
     }
 }
 
+// Binding a TLAS reads every BLAS it references. Memory barriers are global, so a pass needs one
+// entry however many structures it touches: one per structure cost New Sponza 4.8 ms a frame.
+TEST_P(PortableAccelerationStructureGraphTest, StructuresShareOneMemoryBarrierPerBatch)
+{
+    RHIBufferCreateInfo bufferInfo;
+    bufferInfo.size = 256;
+    bufferInfo.usageFlags.SetFlags(RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIBufferUsageFlagBits::eStorageBuffer);
+    RHIResourcePtr<RHIBuffer>          input   = RHIResourcePtr<RHIBuffer>::Adopt(device->CreateBuffer(bufferInfo));
+    RHIResourcePtr<RHIBuffer>          scratch = RHIResourcePtr<RHIBuffer>::Adopt(device->CreateBuffer(bufferInfo));
+    RHIResourcePtr<RHIBuffer>          output  = RHIResourcePtr<RHIBuffer>::Adopt(device->CreateBuffer(bufferInfo));
+    RHIAccelerationStructureCreateInfo create;
+    create.size = 4096;
+    HeapVector<RHIResourcePtr<RHIAccelerationStructure>> owners;
+    HeapVector<RHIAccelerationStructure*>                structures;
+    HeapVector<RHIAccelerationStructureInstance>         instances;
+    for (uint32_t i = 0; i < 8; ++i)
+    {
+        owners.push_back(RHIResourcePtr<RHIAccelerationStructure>::Adopt(rhi->CreateAccelerationStructure(create)));
+        structures.push_back(owners.back().Get());
+        RHIAccelerationStructureInstance instance;
+        instance.pStructure = structures.back();
+        instances.push_back(instance);
+    }
+    create.type                 = RHIAccelerationStructureType::eTopLevel;
+    create.referencedStructures = MakeVecView(structures);
+    RHIResourcePtr<RHIAccelerationStructure> tlas =
+        RHIResourcePtr<RHIAccelerationStructure>::Adopt(rhi->CreateAccelerationStructure(create));
+    RenderGraph graph("SharedMemoryBarrier");
+    ASSERT_TRUE(graph.Begin());
+    graph.GetResourceManager()->ImportHostWrittenBuffer(input.Get());
+    RHIAccelerationStructureGeometry geometry;
+    geometry.pVertexBuffer = geometry.pIndexBuffer = input.Get();
+    geometry.vertexStride                          = 12;
+    geometry.vertexCount = geometry.indexCount = 3;
+    RHIAccelerationStructureBuildInfo build;
+    build.pScratchBuffer         = scratch.Get();
+    build.description.geometries = MakeVecView(&geometry, 1);
+    for (RHIAccelerationStructure* structure : structures)
+    {
+        build.pDestination = structure;
+        graph.AddTransferPass("BuildBLAS").BuildAccelerationStructure(build);
+    }
+    build.pDestination           = tlas.Get();
+    build.description.type       = RHIAccelerationStructureType::eTopLevel;
+    build.description.geometries = {};
+    build.description.instances  = MakeVecView(instances);
+    graph.AddTransferPass("BuildTLAS").BuildAccelerationStructure(build);
+    Query(graph, tlas.Get(), output.Get());
+    ASSERT_TRUE(graph.End()) << graph.GetResult().message;
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+    GetRHIThread().Invoke([] {});
+    const RDGMetricsSnapshot& metrics = device->GetRDGMetrics().GetLastSnapshot();
+    EXPECT_TRUE(metrics.validated);
+    EXPECT_GE(metrics.totals.memoryTransitions, 1u);
+    ASSERT_FALSE(metrics.nodes.empty());
+    for (const RDGNodeMetrics& node : metrics.nodes)
+    {
+        EXPECT_LE(node.memoryTransitions, 1u) << node.name.CStr();
+    }
+    // The merged entry must still protect every structure it stands for.
+    for (RDGMetricIssue issue :
+         {RDGMetricIssue::eMissingBarrier, RDGMetricIssue::eStageCoverage, RDGMetricIssue::eAccessCoverage})
+    {
+        EXPECT_EQ(metrics.issues[size_t(issue)], 0u);
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(ExecutionAndQueueModes, PortableAccelerationStructureGraphTest, testing::Range(0u, 4u));
 
 TEST_F(RenderCoreTest, RayQueryGeometryRequestsAddressesOnlyWhenSupported)
