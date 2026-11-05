@@ -238,15 +238,22 @@ cmake --build --preset x64-windows-msvc-release --target scene_renderer_demo --p
 ```
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is an independent
-library. CMake fetches `git@github.com:proton991/ZenAssetProcessor.git` and follows
-`origin/main`, without a commit or release pin. Each configure/reconfigure checks
-GitHub for updates; an ordinary incremental build does not check the remote.
-GitHub SSH authentication and network access are required for this default mode.
-Fetched sources live in `<build-directory>/_deps/zen_asset_processor-src`.
+library, and the engine always follows the latest GitHub `origin/main`, without a
+commit or release pin. Every configure/reconfigure fetches
+`git@github.com:proton991/ZenAssetProcessor.git` into `External/ZenAssetProcessor`,
+alongside the other external dependencies. All build trees share that checkout and
+keep their build files in `<build-directory>/External/ZenAssetProcessor`, so a
+configure in one tree updates the source for every tree. An ordinary incremental
+build does not check the remote.
 
-Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty path for an explicit local
-checkout. Existing build trees that cached the previous sibling-checkout default
-need `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub. To use an installed
+GitHub SSH authentication and network access are required for this default mode. A
+failed fetch stops configuration and leaves the checkout unchanged. Configuration
+also stops if the checkout has local changes, so do not develop in it.
+
+Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty path to develop against a local
+checkout or to configure offline; CMake does not fetch in that mode. Existing build
+trees that cached the previous sibling-checkout default need
+`-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub. To use an installed
 package, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=`,
 `-DZEN_ASSET_PROCESSOR_USE_INSTALLED=ON` and
 `-DCMAKE_PREFIX_PATH=<installation-prefix>`; the installed-package option defaults

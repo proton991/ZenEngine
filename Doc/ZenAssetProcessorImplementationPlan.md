@@ -1,10 +1,10 @@
 # Standalone ZenAssetProcessor implementation plan
 
 **Status:** Processor implementation is complete for the verified Windows configuration; current development integration passes Debug/Release and focused Vulkan checks. Broader rendering and release gates remain open.
-**Updated:** 26 October 2026.
+**Updated:** 5 November 2026.
 **Library location:** [proton991/ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor), a separate Git repository and standalone CMake project; the development checkout is `E:/Dev/ZenAssetProcessor`.
 **Engine integration:** ZenEngine fetches the GitHub repository over SSH and follows `origin/main` through `External/ZenAssetProcessor.cmake`. Explicit local-source and installed-package modes remain supported.
-**Development policy:** Keep ZenAssetProcessor unpinned while it is under active development. Release publication and version-pinning policy are deferred until a release is requested.
+**Development policy:** Keep ZenAssetProcessor unpinned and always follow the latest GitHub `origin/main`. Release publication and version-pinning policy are deferred until a release is requested.
 
 Build a reusable asset processor that imports source models, converts them to a
 defined scene/material representation, optimizes their resources, and writes
@@ -204,6 +204,7 @@ E:/Dev/ZenAssetProcessor/
 
 E:/Dev/ZenEngine/
   External/ZenAssetProcessor.cmake # GitHub branch, local checkout or installed package
+  External/ZenAssetProcessor/      # Fetched source; ignored by the engine repository
   ZenCore/.../AssetLib/      # Runtime adapter and scene construction
   .../AssetTools/           # Source-enabled integration target; location finalized in M1
 ```
@@ -240,9 +241,11 @@ For dependency consumption:
 
 - Export/install the library's CMake targets and package version information.
 - Fetch `git@github.com:proton991/ZenAssetProcessor.git` at `origin/main` without
-  a release or commit pin during active development. Refresh the remote branch
-  during configure/reconfigure. Keep the fetched source under the build tree's
-  `_deps/zen_asset_processor-src`, and revisit release distribution only when requested.
+  a release or commit pin. Refresh the remote branch during every configure/reconfigure.
+  Keep one fetched source in `External/ZenAssetProcessor`, shared by all build trees,
+  and build files in each build tree's `External/ZenAssetProcessor` directory. Git runs
+  under a lock and never deletes an existing checkout: a failed fetch or local changes
+  stop configuration. Revisit release distribution only when requested.
 - Default `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to empty for GitHub consumption. A
   nonempty value selects an explicit local checkout; do not hard-code the
   machine's drive layout. Existing build caches with a sibling path need an

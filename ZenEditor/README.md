@@ -45,10 +45,10 @@ Per-pass GPU timings remain in the editor and standalone profile output until
 the shared executor can attribute them to individual presentation windows.
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is a separate
-dependency. CMake fetches `git@github.com:proton991/ZenAssetProcessor.git` at the
-moving `origin/main` branch, without a commit or release pin. Configure/reconfigure
-checks for updates using GitHub SSH authentication; ordinary incremental builds
-use the fetched checkout in `<build-directory>/_deps/zen_asset_processor-src`.
+dependency that always follows the latest GitHub `origin/main`, without a commit or
+release pin. Configure/reconfigure updates the checkout in
+`External/ZenAssetProcessor`, which every build tree shares; the
+[build instructions](../README.md#build) describe how it behaves.
 Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty local checkout path to develop
 against that source instead. Existing build trees with the old sibling path
 cached need `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub.
