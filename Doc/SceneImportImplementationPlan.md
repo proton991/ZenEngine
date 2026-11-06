@@ -113,7 +113,7 @@ unchanged structure counts. Logs are under `build/scene-import/milestone4`.
 | Import | The former `FastGLTFLoader` accepts glTF and GLB and builds `sg::Scene` directly | Keep format parsing behind an engine import API |
 | Ownership | The loader owns vertices and indices; the scene owns components and supplemental asset data | Return one owning asset containing all imported data |
 | Editor loading | [ParseScene](../ZenEditor/Model/Source/EditorScene.cpp) combines the scene and copied geometry in editor-owned `LoadedScene` | Move reusable asset loading and runtime construction into ZenCore |
-| Other consumers | [SceneRendererDemo](../ZenTest/SceneRegression/SceneRenderer/SceneRendererDemo.cpp) and [RenderObject](../ZenCore/Source/Graphics/RenderCore/V2/RenderObject.cpp) instantiate the glTF loader | Consume the same engine result |
+| Other consumers | [SceneRendererDemo](https://github.com/proton991/ZenTest/blob/main/SceneRegression/SceneRenderer/SceneRendererDemo.cpp) and [RenderObject](../ZenCore/Source/Graphics/RenderCore/V2/RenderObject.cpp) instantiate the glTF loader | Consume the same engine result |
 | Runtime animation | The former `SceneAnimationPointer` resolves glTF paths and consults retained source JSON | Resolve source paths during import and evaluate typed engine targets |
 | Placement | [RenderScene](../ZenCore/Source/Graphics/RenderCore/V2/RenderScene.cpp) calls `CenterAndNormalizeScene` during construction | Apply explicit placement before renderer construction |
 | Discovery | The former `GLTFModelCatalog`, file filters and UI wording assume glTF | Derive supported extensions from the importer registry |

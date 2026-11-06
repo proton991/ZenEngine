@@ -32,7 +32,7 @@ Status: review complete; all eight confirmed findings (one P1 and seven P2) are 
 
 For an upload into an intermediate buffer followed by a compute-queue copy or dispatch consuming it, this submits the consumer and its barrier before the producer. The barrier cannot make the later upload visible to the earlier read. Results can contain stale or uninitialized data. Mixed logical runs also lose the single-native-call acceptance behavior assumed by the executor.
 
-The current [ScheduledTransferComputeAliasesKeepSubmissionOrderAndBufferBarrier test](../ZenTest/RenderCoreTest/RDGGroupRecordingTests.inl), line 527, constructs this exact scheduling topology, but replays mocked contexts rather than checking native submission order. The local RTX 5080 reports three distinct native queues, so the passing GPU suites do not exercise this fallback.
+The current [ScheduledTransferComputeAliasesKeepSubmissionOrderAndBufferBarrier test](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RDGGroupRecordingTests.inl), line 527, constructs this exact scheduling topology, but replays mocked contexts rather than checking native submission order. The local RTX 5080 reports three distinct native queues, so the passing GPU suites do not exercise this fallback.
 
 **Correction direction:** preserve the submitted list order across logical wrappers sharing a native queue, while retaining separate logical completion serials. Alternatively, restrict grouped submission to one logical queue so each group is flushed in input order. Deduplicating wrappers by native handle alone would drop one wrapper's pending work and is insufficient.
 
@@ -62,7 +62,7 @@ This bypasses the existing suspended/blocked recreation-failure handling in `Fin
 
 `SetCompleted` returns to `VulkanQueue::ProcessPendingWorkloads` after completion was already established. The backend therefore remains healthy and admits further work until another native operation reports the loss. If no workloads remain pending, a later progress poll need not perform another native completion call. The original query-read operation is also missing from terminal diagnostics. This does not invalidate the completion established before the loss; it violates the separate requirement to stop on observed device loss in the [RHI contract](../ZenCore/Include/Graphics/RHI/README.md), line 269.
 
-**Correction direction:** report device loss from the query result while keeping ordinary optional-profiler failures nonfatal. The existing [QueryReadFailureDoesNotFailRendering test](../ZenTest/CommonTest/VulkanGPUTimingIntegrationTests.cpp), line 365, injects `VK_ERROR_OUT_OF_HOST_MEMORY`, not device loss, and should retain its current distinction.
+**Correction direction:** report device loss from the query result while keeping ordinary optional-profiler failures nonfatal. The existing [QueryReadFailureDoesNotFailRendering test](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanGPUTimingIntegrationTests.cpp), line 365, injects `VK_ERROR_OUT_OF_HOST_MEMORY`, not device loss, and should retain its current distinction.
 
 **Regression coverage:** add a separate device-loss query hook and assert timing failure, `HasDeviceLoss`, blocked submission/admission, and preservation of the `vkGetQueryPoolResults` operation.
 

@@ -72,7 +72,7 @@ renderer in one test. It shares setup/readback helpers with `EditorRenderingTest
 Each temporary source file is deleted after cooking and before loading the package.
 The reader therefore runs with its recorded source absent.
 
-The original, self-contained `ZenTest/ZenEditor/Fixtures/array_scene.gltf` fixture
+The original, self-contained `ZenEditor/Tests/Fixtures/array_scene.gltf` fixture
 has five visible instances of three meshes, two material variants, authored
 UV transforms, two color maps, two normal maps, two occlusion maps and a repeating
 alpha-mask map. `generate_array_scene.py` recreates it without external assets.

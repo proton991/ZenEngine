@@ -359,7 +359,7 @@ Revisit these items only if the workload changes, for example if steady frames s
 
 **Status.** Fixed during the 2026-10-03 error-handling migration; the original locations below are retained as review context.
 
-[VulkanSwapchainIntegrationTests.cpp](../ZenTest/CommonTest/VulkanSwapchainIntegrationTests.cpp) ignores the `[[nodiscard]]` `RHIStatus` returned by `FinalizeCommandLists` at lines 715 and 1095. These were lines 499 and 766 before `ee20bf99` reformatted the file. Check the result in both tests. The other housekeeping item in the improvement plan, committing the production changes, was done in `45973b11`.
+[VulkanSwapchainIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanSwapchainIntegrationTests.cpp) ignores the `[[nodiscard]]` `RHIStatus` returned by `FinalizeCommandLists` at lines 715 and 1095. These were lines 499 and 766 before `ee20bf99` reformatted the file. Check the result in both tests. The other housekeeping item in the improvement plan, committing the production changes, was done in `45973b11`.
 
 ## 5. Order
 

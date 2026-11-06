@@ -166,7 +166,7 @@ Goal: the RHI's present copy starts from a state RenderCore guarantees, and its 
 Tests:
 
 - RenderCore (fake backend): a graph whose only backbuffer access is a transfer clear, submitted with a viewport, records a final transition to `eColorAttachment` on the graphics queue before handoff. A graph that already ends in color attachment records no extra transition. A graph whose last backbuffer access is on async compute gets a dependency before the transition (`--async-compute=1` path).
-- Integration, real device with validation and `VK_LAYER_VALIDATE_SYNC=1`: present a clear-only graph through a real viewport (extend [VulkanSwapchainIntegrationTests.cpp](../ZenTest/CommonTest/VulkanSwapchainIntegrationTests.cpp)). Expect no layout or synchronization messages, and read back the clear color from the next frame's backbuffer.
+- Integration, real device with validation and `VK_LAYER_VALIDATE_SYNC=1`: present a clear-only graph through a real viewport (extend [VulkanSwapchainIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanSwapchainIntegrationTests.cpp)). Expect no layout or synchronization messages, and read back the clear color from the next frame's backbuffer.
 - Demo smoke: all modes, `--no-ui` and default, `--rhi-thread=0|1`, zero new validation messages.
 
 Exit: tests above pass; the layout-derived helpers are deleted; README presentation section updated.
@@ -208,12 +208,12 @@ Exit: tests above pass; the layout-derived helpers are deleted; README presentat
    Then remove the default argument from `BlockSubmissions` so a new call site cannot omit the cause.
 4. **GPU timing cannot stay pending (RV8).** In `FVulkanCommandListContext::RHIBeginGPUTiming`, if `EnsureRecording()` fails while the result is still `ePending`, publish `RHIGPUTimingStatus::eDiscarded`. This mirrors the base `IRHICommandContext` default, which publishes `eUnsupported`. `RHIEndGPUTiming` needs no change: a begun scope is published by `ResolveGPUTimings` or `DiscardGPUTimings`, and a begin that failed was published here.
 
-Tests (extend [VulkanProductionFailureTests.cpp](../ZenTest/CommonTest/VulkanProductionFailureTests.cpp) with `ScopedVulkanCall`):
+Tests (extend [VulkanProductionFailureTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanProductionFailureTests.cpp) with `ScopedVulkanCall`):
 
 - `vkQueueSubmit` returns `VK_ERROR_OUT_OF_DEVICE_MEMORY` during `CreateViewport`: the result is null, `AreSubmissionsBlocked()` is false, and a following ordinary batch submits and completes. Run in both timeline and fence modes.
 - The same injection during `Resize`: the backend is blocked, and `GetTerminalError().code == eOutOfDeviceMemory` with `operation == "vkQueueSubmit"`.
 - `vkQueueSubmit` returns `VK_ERROR_DEVICE_LOST` during `CreateViewport`: the backend is blocked with `eDeviceLost`.
-- `vkBeginCommandBuffer` fails for the first native buffer after `BeginGPUTiming` was recorded: after the batch is discarded, the result status is `eDiscarded`, never `ePending` (extend [VulkanGPUTimingIntegrationTests.cpp](../ZenTest/CommonTest/VulkanGPUTimingIntegrationTests.cpp)).
+- `vkBeginCommandBuffer` fails for the first native buffer after `BeginGPUTiming` was recorded: after the batch is discarded, the result status is `eDiscarded`, never `ePending` (extend [VulkanGPUTimingIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanGPUTimingIntegrationTests.cpp)).
 - Grep gate: no call to `BlockSubmissions()` without an argument remains.
 
 Exit: tests pass in Debug and Release; README "Recoverable creation and recording failures" updated to say immediate backbuffer submission rejects without blocking.
@@ -254,11 +254,11 @@ Exit: tests pass in Debug and Release; README "Recoverable creation and recordin
 Tests:
 
 - `VulkanRHITest` (CPU-only) covers the pure functions: `IsTextureShapeValid` and the sample/mip rules, `MakeVmaBufferAllocation` for every type, the integer clear conversion, and the clamped anisotropy.
-- `VulkanRHIIntegrationTest` ([VulkanResourceCreationTests.cpp](../ZenTest/CommonTest/VulkanResourceCreationTests.cpp) and the fixture's validation counter):
+- `VulkanRHIIntegrationTest` ([VulkanResourceCreationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanResourceCreationTests.cpp) and the fixture's validation counter):
   - Each invalid description returns null with zero validation messages: storage on sRGB, a cube with width ≠ height, a 1D texture with height > 1, an MSAA texture with mips, a texel view on a buffer without texel usage, a misaligned texel range, `eNone` allocation.
   - The existing valid creation cases are unchanged.
-- [VulkanAttachmentIntegrationTests.cpp](../ZenTest/CommonTest/VulkanAttachmentIntegrationTests.cpp): clear an `R32_UINT` color attachment and an `R32_UINT` texture to `Color(7, 0, 0, 0)` and read back `7`.
-- [VulkanCapabilityIntegrationTests.cpp](../ZenTest/CommonTest/VulkanCapabilityIntegrationTests.cpp): the reported optional features match what was enabled. A cube-array texture is created when supported and rejected when the feature is reported off.
+- [VulkanAttachmentIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanAttachmentIntegrationTests.cpp): clear an `R32_UINT` color attachment and an `R32_UINT` texture to `Color(7, 0, 0, 0)` and read back `7`.
+- [VulkanCapabilityIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanCapabilityIntegrationTests.cpp): the reported optional features match what was enabled. A cube-array texture is created when supported and rejected when the feature is reported off.
 - Full RenderCore and demo smoke runs show no creation regressions: every scene texture and render target still creates.
 
 Exit: tests pass; README "Allocation, features and scalar contracts" and "Recoverable creation" sections updated.
@@ -284,8 +284,8 @@ Tests:
 
 - `VulkanRHIIntegrationTest`: a shader with `layout(set=1, binding=0) uniform texture2D t[];` returns null with zero validation messages. So do a shader with a UBO at set 0 and a shader with two uniform blocks of the same type name at different bindings. Add these shaders under `ZenTest/CommonTest/Shaders`.
 - The corpus test from step 2.
-- [VulkanDescriptorIntegrationTests.cpp](../ZenTest/CommonTest/VulkanDescriptorIntegrationTests.cpp) and [VulkanDescriptorLifetimeTests.cpp](../ZenTest/CommonTest/VulkanDescriptorLifetimeTests.cpp), including the 2,049-dispatch suite, pass unchanged. Add negative cases, each failing at preparation with no `vkUpdateDescriptorSets` call for the rejected set: a texture where a sampler is expected, a null element in a single binding, a misaligned UBO offset, a BLAS where a TLAS is expected. A later valid draw with the same content key must still allocate and write a fresh set.
-- [VulkanBindingIntegrationTests.cpp](../ZenTest/CommonTest/VulkanBindingIntegrationTests.cpp): a compute pipeline that does not use the heap issues no set-0 bind (observe `vkCmdBindDescriptorSets` through the fixture). Heap users are unchanged.
+- [VulkanDescriptorIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanDescriptorIntegrationTests.cpp) and [VulkanDescriptorLifetimeTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanDescriptorLifetimeTests.cpp), including the 2,049-dispatch suite, pass unchanged. Add negative cases, each failing at preparation with no `vkUpdateDescriptorSets` call for the rejected set: a texture where a sampler is expected, a null element in a single binding, a misaligned UBO offset, a BLAS where a TLAS is expected. A later valid draw with the same content key must still allocate and write a fresh set.
+- [VulkanBindingIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanBindingIntegrationTests.cpp): a compute pipeline that does not use the heap issues no set-0 bind (observe `vkCmdBindDescriptorSets` through the fixture). Heap users are unchanged.
 
 Exit: tests pass; README "Global bindless heap" states the set-0 and runtime-array rules.
 
@@ -318,7 +318,7 @@ Exit: tests pass; README "Global bindless heap" states the set-0 and runtime-arr
 
 Tests:
 
-- [RHIThreadingTests.inl](../ZenTest/RenderCoreTest/RHIThreadingTests.inl): 1,000 iterations of `Start(eThreaded)`, then a second thread issuing `DispatchCleanup(++executed)` and `Invoke(no-op)` in a loop while the main thread calls `Stop()` without a finalizer, then joining the second thread. Under strict teardown checks: no abort, `Invoke` never hangs (bounded by a test timeout), and `executed` equals the number of accepted dispatches. A finalizer stop still rejects admissions after the finalizer starts (existing tests).
+- [RHIThreadingTests.inl](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RHIThreadingTests.inl): 1,000 iterations of `Start(eThreaded)`, then a second thread issuing `DispatchCleanup(++executed)` and `Invoke(no-op)` in a loop while the main thread calls `Stop()` without a finalizer, then joining the second thread. Under strict teardown checks: no abort, `Invoke` never hangs (bounded by a test timeout), and `executed` equals the number of accepted dispatches. A finalizer stop still rejects admissions after the finalizer starts (existing tests).
 - `VulkanRHITest`: `DebugUtilsMessengerCallback` with null `pMessageIdName` and `pMessage` logs without aborting. `RHIErrorText(nullptr, "x")` returns `"x"`.
 - `VulkanDebug` with debug utils reported unavailable is a no-op (unit test through `SetObjectName`'s flag check).
 

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 
-from format_active import active_source
+from format_active import SUBPROJECTS, active_source
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / 'build/checks'
@@ -57,12 +57,22 @@ def build(configuration, targets=(), log=None):
         os.unlink(handle.name)
 
 
-def changed_files():
-    """Files modified relative to HEAD plus untracked files, as repository-relative POSIX paths."""
-    tracked = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], cwd=ROOT, text=True).splitlines()
-    untracked = subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard'], cwd=ROOT,
+def repository_changes(folder, base='HEAD'):
+    """Files changed since base plus untracked files, relative to one Git repository."""
+    tracked = subprocess.check_output(['git', 'diff', '--name-only', base], cwd=folder, text=True).splitlines()
+    untracked = subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard'], cwd=folder,
                                         text=True).splitlines()
-    return sorted(name for name in set(tracked + untracked) if (ROOT / name).is_file())
+    return set(tracked + untracked)
+
+
+def changed_files():
+    """Changes relative to HEAD and to each submodule's pin, as repository-relative POSIX paths."""
+    names = repository_changes(ROOT)
+    for subproject in SUBPROJECTS:
+        if (ROOT / subproject / '.git').exists():
+            pin = subprocess.check_output(['git', 'rev-parse', f'HEAD:{subproject}'], cwd=ROOT, text=True).strip()
+            names.update(f'{subproject}/{name}' for name in repository_changes(ROOT / subproject, pin))
+    return sorted(name for name in names if (ROOT / name).is_file())
 
 
 def check_format(files):

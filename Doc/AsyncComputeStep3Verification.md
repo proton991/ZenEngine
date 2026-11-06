@@ -44,7 +44,7 @@ MSVC x64 debug builds passed for `ConfigLoaderTest`, `VulkanRHITest`, `RenderCor
 
 Total: **598 enabled tests passed**. Native integration and all eight demo runs reported zero `VUID-` messages, zero `SYNC-HAZARD` messages, and no memory leaks. Both RHI and RenderCore unit binaries also reported no leaks. The existing external GLI macro-redefinition warning remains.
 
-The 32 new cases in [RDGQueuePreferenceTests.inl](../ZenTest/RenderCoreTest/RDGQueuePreferenceTests.inl) cover both inline and threaded execution:
+The 32 new cases in [RDGQueuePreferenceTests.inl](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RDGQueuePreferenceTests.inl) cover both inline and threaded execution:
 
 - Descriptor copy isolation; default, preferred, and graphics metadata; formatted metrics.
 - Raw and logical color clears, mipmap fallback, and accumulating command restrictions.

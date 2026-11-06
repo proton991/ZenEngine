@@ -111,4 +111,4 @@ The recommendation is a **go for staged SDL integration on Windows and macOS**. 
 
 ## Reproduction
 
-See [the probe README](../ZenTest/SDL3WindowProbe/README.md) for the dependency digests and build commands. Local evaluation logs are in `build/sdl3-evaluation/probe-debug.log` and `build/sdl3-evaluation/probe-release.log`; these are ignored build artifacts. The repository probe remains independent of the production CMake configuration.
+See [the probe README](https://github.com/proton991/ZenTest/blob/main/SDL3WindowProbe/README.md) for the dependency digests and build commands. Local evaluation logs are in `build/sdl3-evaluation/probe-debug.log` and `build/sdl3-evaluation/probe-release.log`; these are ignored build artifacts. The repository probe remains independent of the production CMake configuration.

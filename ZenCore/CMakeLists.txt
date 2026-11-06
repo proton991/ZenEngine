@@ -292,6 +292,47 @@ if(NOT TARGET simdjson)
 endif()
 target_link_libraries(ZenCore PRIVATE simdjson)
 target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
+
+# RenderCoreTest compiles this subset against its fake backend. The list stays here so that an
+# engine refactor can update it without a ZenTest change.
+add_library(ZenRenderCoreTestSources INTERFACE)
+target_sources(ZenRenderCoreTestSources INTERFACE
+    Source/Graphics/RenderCore/V2/DebugVisualization.cpp
+    Source/Memory/Memory.cpp
+    Source/Graphics/RHI/DynamicRHI.cpp
+    Source/Graphics/RHI/RHICommandList.cpp
+    Source/Graphics/RHI/RHIResource.cpp
+    Source/Graphics/RHI/RHICommandListExecutor.cpp
+    Source/Graphics/RHI/RHIGPUFrameTiming.cpp
+    Source/Graphics/RHI/RHIThread.cpp
+    Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    Source/Graphics/RenderCore/V2/SpatialTextureSampling.cpp
+    Source/Graphics/RenderCore/V2/RenderObject.cpp
+    Source/Graphics/RenderCore/V2/FrameBufferRing.cpp
+    Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
+    Source/Graphics/RenderCore/V2/ShaderProgram.cpp
+    Source/Graphics/RenderCore/V2/TextureManager.cpp
+    Source/Graphics/RenderCore/V2/RenderGraph.cpp
+    Source/Graphics/RenderCore/V2/RDGMetrics.cpp
+    Source/Graphics/RenderCore/V2/RDGDebugSnapshot.cpp
+    Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
+    Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
+    Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
+    Source/Graphics/RenderCore/V2/SceneLighting.cpp
+    Source/Graphics/RenderCore/V2/VoxelResourcePlanning.cpp
+    Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
+    Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
+    Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
+    Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
+    Source/Graphics/RenderCore/V2/ScreenProbeGather.cpp
+    Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
+    Source/Graphics/RenderCore/V2/LightFixtureMasks.cpp
+    Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
+    Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
+    Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
+    Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
+    Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
+)
 target_compile_definitions(ZenCore PUBLIC ZEN_DEBUG)
 target_include_directories(ZenCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Include

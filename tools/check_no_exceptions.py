@@ -11,6 +11,8 @@ TOKENS = re.compile(
     r'|\b(?:throw|try|catch|LOG_ERROR_AND_THROW|EXPECT_THROW|ASSERT_THROW|EXPECT_NO_THROW|ASSERT_NO_THROW)\b'
 )
 FORBIDDEN = {"throw", "try", "catch", "LOG_ERROR_AND_THROW", "EXPECT_THROW", "ASSERT_THROW", "EXPECT_NO_THROW", "ASSERT_NO_THROW"}
+# Standalone ZenTest and ZenSample builds put third-party sources in these ignored folders.
+GENERATED_DIRECTORIES = {"build", "out"}
 
 
 def main():
@@ -19,6 +21,8 @@ def main():
     for directory in ("ZenCore", "ZenEditor", "ZenTest", "ZenSample", "ZenUI"):
         for path in sorted((ROOT / directory).rglob("*")):
             if path.suffix not in {".h", ".hpp", ".cpp", ".inl", ".cc", ".cxx"}:
+                continue
+            if GENERATED_DIRECTORIES.intersection(path.relative_to(ROOT).parts):
                 continue
             count += 1
             text = path.read_text(encoding="utf-8-sig")

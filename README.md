@@ -3,9 +3,16 @@
 Samples and tests are independent Git submodules: [ZenSample](https://github.com/proton991/ZenSample)
 and [ZenTest](https://github.com/proton991/ZenTest). Clone with `--recurse-submodules`,
 or run `git submodule update --init --recursive` in an existing checkout.
-`ZEN_BUILD_SAMPLES=OFF` disables examples; `BUILD_TESTING=OFF` disables tests.
-Commit and push changes inside each submodule separately, then commit the updated
-submodule pointers in ZenEngine.
+Every configure fast-forwards both to the latest GitHub `main`, so a recorded submodule
+commit only seeds a new clone. A failed fetch stops configuration. Local work that a
+fast-forward would replace stays in place with a warning, and
+`-DZEN_UPDATE_SUBPROJECTS=OFF` skips the update when offline or building an older commit.
+`ZEN_BUILD_SAMPLES=OFF` disables examples; `BUILD_TESTING=OFF` disables tests and the
+`scene_renderer_demo` viewer, which lives in ZenTest.
+Submodule checkouts start on a detached HEAD, so run `git switch main` inside one before
+committing, then push it separately. ZenEngine uses the new `main` from its next
+configure. Until the recorded commit is updated, `git status` lists the submodule as
+changed, and committing that pointer is optional.
 
 Asset processor tests and validation tools are maintained in the independent
 [ZenAssetProcessor repository](https://github.com/proton991/ZenAssetProcessor). Its optional
@@ -273,7 +280,8 @@ Every preset writes executables to `build/<preset-name>/bin`, including Debug. T
 release preset selects `Release` (`/O2`, `NDEBUG`). In a CMake preset-aware IDE, select the
 matching configure/build presets and `scene_renderer_demo` as the launch target. Configure
 once before using a build preset. `-DBUILD_TESTING=OFF` configures without engine test
-targets or GoogleTest, and `-DZEN_BUILD_RUNTIME_UI=OFF` omits Dear ImGui.
+targets, GoogleTest or `scene_renderer_demo`, and `-DZEN_BUILD_RUNTIME_UI=OFF` omits
+Dear ImGui.
 
 For an automatic Visual Studio environment setup, build and Voxel GI launch, use
 `tools/run_voxel_gi_performance.cmd`. This uses the separate Release performance preset

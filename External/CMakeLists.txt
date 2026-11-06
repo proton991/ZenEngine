@@ -5,17 +5,49 @@ if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
 endif ()
 
+# Build trees share these sources but keep separate download state, so a new tree would
+# otherwise delete and extract every folder again. A marker in each folder names the archive
+# it holds, and the lock stops another tree reading a folder during extraction.
+file(LOCK "${CMAKE_CURRENT_SOURCE_DIR}/.dependencies" DIRECTORY GUARD FILE TIMEOUT 1800)
+set(ZEN_ARCHIVE_MARKER ".zen-archive-sha256")
+
 # Preserve source folder names; build/download state stays in each build tree.
 # Archives are pinned and verified, following the Dear ImGui setup.
 function(zen_declare_dependency NAME FOLDER URL SHA256)
     get_filename_component(REVISION "${URL}" NAME)
     message(STATUS "External dependency ${FOLDER} (${REVISION}): ${URL}")
+    set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${FOLDER}")
+    set(EXTRACTED "")
+    if (EXISTS "${SOURCE_DIR}/${ZEN_ARCHIVE_MARKER}")
+        file(READ "${SOURCE_DIR}/${ZEN_ARCHIVE_MARKER}" EXTRACTED)
+    endif ()
+    if (EXTRACTED STREQUAL SHA256)
+        set(ORIGIN DOWNLOAD_COMMAND "${CMAKE_COMMAND}" -E true)
+    else ()
+        set(ORIGIN URL "${URL}" URL_HASH "SHA256=${SHA256}")
+    endif ()
     FetchContent_Declare(${NAME}
-        URL "${URL}"
-        URL_HASH "SHA256=${SHA256}"
-        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${FOLDER}"
+        ${ORIGIN}
+        SOURCE_DIR "${SOURCE_DIR}"
         BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/${FOLDER}"
         ${ARGN})
+    set_property(GLOBAL APPEND PROPERTY ZEN_ARCHIVE_DEPENDENCIES "${NAME}")
+    set_property(GLOBAL PROPERTY ZEN_ARCHIVE_${NAME} "${SOURCE_DIR}" "${SHA256}")
+endfunction()
+
+# Runs after the last FetchContent_MakeAvailable call, once extraction has finished.
+function(zen_mark_extracted_dependencies)
+    get_property(DEPENDENCIES GLOBAL PROPERTY ZEN_ARCHIVE_DEPENDENCIES)
+    foreach (NAME IN LISTS DEPENDENCIES)
+        get_property(ARCHIVE GLOBAL PROPERTY ZEN_ARCHIVE_${NAME})
+        list(GET ARCHIVE 0 SOURCE_DIR)
+        list(GET ARCHIVE 1 SHA256)
+        FetchContent_GetProperties(${NAME})
+        # glfw stays unpopulated with SDL3, and an override folder belongs to its owner.
+        if (${NAME}_POPULATED AND ${NAME}_SOURCE_DIR STREQUAL SOURCE_DIR)
+            file(CONFIGURE OUTPUT "${SOURCE_DIR}/${ZEN_ARCHIVE_MARKER}" CONTENT "${SHA256}" @ONLY)
+        endif ()
+    endforeach ()
 endfunction()
 
 # SOURCE_SUBDIR skips upstream builds for libraries wrapped by engine targets.
@@ -162,3 +194,5 @@ if (ZEN_BUILD_RUNTIME_UI OR ZEN_BUILD_EDITOR)
         IMGUI_USER_CONFIG="${PROJECT_SOURCE_DIR}/ZenUI/ImGui/Include/ImGui/ImGuiConfig.h")
     target_link_libraries(zen_imgui PRIVATE zen_window_backend)
 endif ()
+
+zen_mark_extracted_dependencies()

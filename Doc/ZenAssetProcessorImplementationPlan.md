@@ -912,8 +912,8 @@ Include the focused [compatibility](../../ZenAssetProcessor/tests/integration/ze
 and [animation-pointer](../../ZenAssetProcessor/tests/integration/zenengine/CommonTest/SceneAnimationPointerTests.cpp)
 fixtures in semantic parity checks.
 Keep GPU/editor behavior in engine integration tests, including
-[EditorRenderingTests](../ZenTest/ZenEditor/EditorRenderingTests.cpp) and
-[SceneModelSwitchTests](../ZenTest/SceneRegression/SceneRenderer/SceneModelSwitchTests.cpp).
+[EditorRenderingTests](https://github.com/proton991/ZenTest/blob/main/ZenEditor/EditorRenderingTests.cpp) and
+[SceneModelSwitchTests](https://github.com/proton991/ZenTest/blob/main/SceneRegression/SceneRenderer/SceneModelSwitchTests.cpp).
 Portable fixtures must have appropriate redistribution rights; large local
 corpora can be referenced through manifests instead of copied into the library.
 

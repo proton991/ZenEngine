@@ -109,3 +109,7 @@ if (WIN32)
   configure_file(App/ZenEditor.rc.in "${CMAKE_CURRENT_BINARY_DIR}/ZenEditor.rc" @ONLY)
   target_sources(zen_editor PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ZenEditor.rc")
 endif ()
+
+# EditorPreviewTest compiles this window into its own executable.
+add_library(ZenEditorPreviewSources INTERFACE)
+target_sources(ZenEditorPreviewSources INTERFACE App/RenderGraphWindow.cpp)

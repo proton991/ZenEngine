@@ -26,7 +26,7 @@ Scope: the active `Graphics/RHI` and `Graphics/VulkanRHI` code, their `RenderCor
 | B2 | `GetTextureFormatPixelSize` has no 8-bit, BGRA or depth entries and returns `0x7fffffff`, so `CalculateTextureSize` produces a meaningless value for most textures. `eR8G8B8UNORM` is declared as `30`, which is `VK_FORMAT_B8G8R8_UNORM`. RenderCore duplicates two partial workaround switches. | [Format.h](../ZenCore/Include/Graphics/Common/Format.h), [VulkanTexture.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanTexture.cpp), [RDGResourceManager.cpp](../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp) `EstimateBytes`, [RDGCopyValidation.h](../ZenCore/Source/Graphics/RenderCore/V2/RDGCopyValidation.h) | 1 |
 | B3 | Debug Printf is enabled whenever the validation layer is present, but its INFO-severity output is not subscribed or logged. VERBOSE is subscribed and then discarded. | [VulkanContext.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanContext.cpp) `PopulateDebugMessengerCreateInfo`, `CreateInstance` | 1 |
 | B4 | Small header bugs: stage-name table order, `RHIShaderStageFlagToString` misses Geometry and pops an empty string, `AddAttachments` assert is off by one, `SetStageSPIRV` never increments its count, transition structs leave enum fields uninitialized, `static` functions defined in headers. | [RHICommon.h](../ZenCore/Include/Graphics/RHI/RHICommon.h), [RHIResource.h](../ZenCore/Include/Graphics/RHI/RHIResource.h) | 1 |
-| B5 | The legacy render-pass path caches framebuffers by a 32-bit layout hash that omits attachment identity and never invalidates them. It is unreachable because dynamic rendering is forced on. `m_imageLayoutCache` is written on every texture barrier and never read. Other unused legacy declarations, stubs and commented-out API remain throughout the RHI. The legacy renderer (`Graphics/Val`, the old RenderCore, the TinyGLTF loader) and its samples are kept behind `ZEN_BUILD_LEGACY` but no longer build against the current RHI. | [VulkanRenderPass.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanRenderPass.cpp), [VulkanTexture.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanTexture.cpp) `UpdateImageLayout`, [ZenTest/CMakeLists.txt](../ZenTest/CMakeLists.txt), inventory in Phase 9 | 9 |
+| B5 | The legacy render-pass path caches framebuffers by a 32-bit layout hash that omits attachment identity and never invalidates them. It is unreachable because dynamic rendering is forced on. `m_imageLayoutCache` is written on every texture barrier and never read. Other unused legacy declarations, stubs and commented-out API remain throughout the RHI. The legacy renderer (`Graphics/Val`, the old RenderCore, the TinyGLTF loader) and its samples are kept behind `ZEN_BUILD_LEGACY` but no longer build against the current RHI. | [VulkanRenderPass.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanRenderPass.cpp), [VulkanTexture.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanTexture.cpp) `UpdateImageLayout`, [ZenTest/CMakeLists.txt](https://github.com/proton991/ZenTest/blob/main/CMakeLists.txt), inventory in Phase 9 | 9 |
 | P1 | Every draw and dispatch captures and releases a bindless epoch, taking two or three mutexes on the render thread, even when the pipeline has no bindless set. The RHI thread takes the bindless mutex again in `Flush()` for every draw. | [RHICommandList.h](../ZenCore/Include/Graphics/RHI/RHICommandList.h) `RHICommandWithBindlessEpoch`, [VulkanDescriptorPool.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanDescriptorPool.cpp) `CaptureEpoch`/`Flush` | 3 |
 | P2 | `RHICommandListBase::Execute` does a `dynamic_cast` per command; every `TO_VK_*` macro is a `dynamic_cast` and several run per draw. | [RHICommandList.cpp](../ZenCore/Source/Graphics/RHI/RHICommandList.cpp), [VulkanTypes.h](../ZenCore/Include/Graphics/VulkanRHI/VulkanTypes.h) | 4 |
 | P3 | `PreDraw`/`PreDispatch` redo descriptor resolution, retention and dynamic-offset sorting on every draw even when nothing changed. | [VulkanDescriptorSetState.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanDescriptorSetState.cpp) `BuildDescriptorSetList`, `AppendDynamicOffsetsForSet` | 4 |
@@ -70,8 +70,8 @@ Exit: baseline numbers and environment recorded in `Doc/RHIImprovementVerificati
 
 ### Phase 1 — Correctness fixes
 
-1. **Transfer context ownership (B1).** Make `GetTransferCommandContext()` return a new context on every call, as `GetCommandContext()` does, and remove `DynamicRHI::m_pTransferContext`. Update the executor wrapper and the fake backend in [RenderCoreTests.cpp](../ZenTest/RenderCoreTest/RenderCoreTests.cpp). Rejected alternative: keeping one shared context behind a `RefCountPtr` would let two command lists share one context's workloads and native recording state.
-   - Test: create and destroy a command list from a transfer context twice within one backend lifetime (extend [VulkanUploadIntegrationTests.cpp](../ZenTest/CommonTest/VulkanUploadIntegrationTests.cpp)).
+1. **Transfer context ownership (B1).** Make `GetTransferCommandContext()` return a new context on every call, as `GetCommandContext()` does, and remove `DynamicRHI::m_pTransferContext`. Update the executor wrapper and the fake backend in [RenderCoreTests.cpp](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RenderCoreTests.cpp). Rejected alternative: keeping one shared context behind a `RefCountPtr` would let two command lists share one context's workloads and native recording state.
+   - Test: create and destroy a command list from a transfer context twice within one backend lifetime (extend [VulkanUploadIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanUploadIntegrationTests.cpp)).
 2. **Format table (B2).**
    - Make `GetTextureFormatPixelSize` cover every `DataFormat` enumerator, and add named `eB8G8R8A8UNORM` / `eB8G8R8A8SRGB` values for the swapchain formats that are currently cast in unnamed. Return `0` for unknown formats instead of `0x7fffffff`.
    - Change `eR8G8B8UNORM` to `23` (`VK_FORMAT_R8G8B8_UNORM`) and confirm the RenderCore tests that use it.
@@ -103,7 +103,7 @@ Exit: affected suites pass; a validation-enabled demo run shows no new messages.
 3. Release captures in `Reset`. Extend `CommandCheckpoint` with the capture count so `RollbackCommands` releases only captures added after the checkpoint. `DetachCommands` moves captures together with the commands they protect.
 4. Correctness argument: a command may reuse an epoch captured earlier by its list. Holding an older epoch only extends protection, because a slot retired at epoch E is reclaimed only after every epoch up to and including E completes. Commands recorded after a retirement do not publish the retired index, per the existing README contract.
 5. Gate `Flush()` with an atomic pending-writes flag, set under the lock when writes are queued and cleared after `WriteDescriptorSetBatch`, so draws with nothing to flush take no lock.
-6. Tests: a list recording N draws performs one capture; a retirement while a list holds a capture defers reclamation until reset or retirement; rollback releases only later captures; a detached batch protects its slots until batch retirement; `ResetBindlessResources` is still rejected while a list holds a capture. Run [VulkanBindlessRetirementIntegrationTests.cpp](../ZenTest/CommonTest/VulkanBindlessRetirementIntegrationTests.cpp), `VulkanBindlessSceneResetTests.inl` and [RHIThreadingTests.inl](../ZenTest/RenderCoreTest/RHIThreadingTests.inl).
+6. Tests: a list recording N draws performs one capture; a retirement while a list holds a capture defers reclamation until reset or retirement; rollback releases only later captures; a detached batch protects its slots until batch retirement; `ResetBindlessResources` is still rejected while a list holds a capture. Run [VulkanBindlessRetirementIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanBindlessRetirementIntegrationTests.cpp), `VulkanBindlessSceneResetTests.inl` and [RHIThreadingTests.inl](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RHIThreadingTests.inl).
 
 Exit: zero bindless lock acquisitions on the render thread in steady-state frames (Phase 0 counter); CPU recording time reduced.
 
@@ -121,7 +121,7 @@ Exit: zero bindless lock acquisitions on the render thread in steady-state frame
 5. **Shader-parameter commands.** Introduce an `RHIShaderParameterView` (spans for value parameters, value bytes, resource parameters and bindless parameters) and change `IRHICommandContext::RHISetShaderParameters` to take it. The recorded command copies the arrays into the command arena with `AllocateCmdData`. `RHIBatchedShaderParameters` stays the RenderCore-facing builder and produces a view. Update the fake contexts in RenderCore tests.
 6. **Small allocations.** Use fixed `MAX_NUM_COLOR_ATTACHMENTS` arrays in `RHIBeginRendering` and `SmallVector` storage in `VulkanPipelineBarrier`.
 
-Exit: [VulkanBindingIntegrationTests.cpp](../ZenTest/CommonTest/VulkanBindingIntegrationTests.cpp), [VulkanRecordingIntegrationTests.cpp](../ZenTest/CommonTest/VulkanRecordingIntegrationTests.cpp), [VulkanDescriptorIntegrationTests.cpp](../ZenTest/CommonTest/VulkanDescriptorIntegrationTests.cpp) and [VulkanDescriptorLifetimeTests.cpp](../ZenTest/CommonTest/VulkanDescriptorLifetimeTests.cpp) pass; RHI execution time per frame is reduced. Optionally add a non-gating benchmark that records 10,000 draws through the inline executor.
+Exit: [VulkanBindingIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanBindingIntegrationTests.cpp), [VulkanRecordingIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanRecordingIntegrationTests.cpp), [VulkanDescriptorIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanDescriptorIntegrationTests.cpp) and [VulkanDescriptorLifetimeTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanDescriptorLifetimeTests.cpp) pass; RHI execution time per frame is reduced. Optionally add a non-gating benchmark that records 10,000 draws through the inline executor.
 
 ### Phase 5 — RHI thread round trips (P4, P5)
 
@@ -129,18 +129,18 @@ Exit: [VulkanBindingIntegrationTests.cpp](../ZenTest/CommonTest/VulkanBindingInt
 2. **Asynchronous final release.** `ReleaseReference` and `IRHICommandContext::OnFinalRelease` use the existing `Dispatch` when called off the RHI thread in threaded mode and run inline otherwise. Do not add job classes, admission results or cancellation; those belong to the deferred error-handling plan.
    - FIFO order keeps destruction after any earlier queued work that used the object. Executor teardown already invokes `DeleteBackend` before `Stop`, so queued releases run first.
    - Shutdown and terminal-failure behavior stay as they are today.
-   - `NotifyResourceDestroyed` now arrives later; confirm RenderCore consumers tolerate the delay ([SceneResourceLifetimeTests.inl](../ZenTest/RenderCoreTest/SceneResourceLifetimeTests.inl)).
+   - `NotifyResourceDestroyed` now arrives later; confirm RenderCore consumers tolerate the delay ([SceneResourceLifetimeTests.inl](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/SceneResourceLifetimeTests.inl)).
 3. **Persistent mapping.** Create `eCPUWrite`/`eCPURead` buffers with `VMA_ALLOCATION_CREATE_MAPPED_BIT`. `Map` returns the mapped pointer without an RHI round trip; `Unmap` becomes a no-op. Map on non-host-visible memory still returns null, as today.
 4. **Read-only queries.** Serve `GetTextureCopyCapabilities` without `Invoke` (`vkGetPhysicalDeviceFormatProperties` is thread-safe), or from a per-format cache filled at initialization. Combine the three `Invoke` calls in `RHICommandListExecutor::WaitForCompletion` into one.
 
-Exit: [RHIThreadingTests.inl](../ZenTest/RenderCoreTest/RHIThreadingTests.inl) inline/threaded parity and [RHIWindowThreadingTests.cpp](../ZenTest/CommonTest/RHIWindowThreadingTests.cpp) pass; `--rhi-thread=1` CPU frame time is compared with the baseline.
+Exit: [RHIThreadingTests.inl](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RHIThreadingTests.inl) inline/threaded parity and [RHIWindowThreadingTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/RHIWindowThreadingTests.cpp) pass; `--rhi-thread=1` CPU frame time is compared with the baseline.
 
 ### Phase 6 — Queue maintenance (P7)
 
 1. In `ProcessPendingWorkloads`, query the timeline counter once and retire every workload at or below it, waiting only when required. Remove `Collect()` from `ReleaseWorkload` and run it once per processing or discard call.
 2. Reset command buffers with flags `0` instead of `RELEASE_RESOURCES`; `FreeUnusedCommandBuffers` already trims buffers idle for 10 seconds.
 
-Exit: [VulkanQueueIntegrationTests.cpp](../ZenTest/CommonTest/VulkanQueueIntegrationTests.cpp) and [VulkanCommandBufferLifetimeTests.cpp](../ZenTest/CommonTest/VulkanCommandBufferLifetimeTests.cpp) pass; both the timeline and fence submission paths are exercised.
+Exit: [VulkanQueueIntegrationTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanQueueIntegrationTests.cpp) and [VulkanCommandBufferLifetimeTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanCommandBufferLifetimeTests.cpp) pass; both the timeline and fence submission paths are exercised.
 
 ### Phase 7 — Descriptor cache (gated by measurement, D1)
 
@@ -150,7 +150,7 @@ Proceed only if Phase 0 counters show slot retirements every frame or steady-sta
 2. In `SetPipeline`, clear only sets whose layout ID differs from the previous pipeline.
 3. Build content keys in a reused scratch key and hash incrementally, removing the per-resolve heap allocations in `BuildContentKey`.
 
-Exit: lower miss and insert counts; [VulkanDescriptorLifetimeTests.cpp](../ZenTest/CommonTest/VulkanDescriptorLifetimeTests.cpp) still passes.
+Exit: lower miss and insert counts; [VulkanDescriptorLifetimeTests.cpp](https://github.com/proton991/ZenTest/blob/main/CommonTest/VulkanDescriptorLifetimeTests.cpp) still passes.
 
 ### Phase 8 — API width and hygiene (D2)
 
@@ -178,13 +178,13 @@ Rules for the whole phase:
    - The old RenderCore: the 10 headers directly in `ZenCore/Include/Graphics/RenderCore/` (`RenderBuffers.h`, `RenderConfig.h`, `RenderContext.h`, `RenderDevice.h`, `RenderFrame.h`, `RenderGraph.h`, `RenderGraphDefinitions.h`, `ResourceCache.h`, `ShaderManager.h`, `TextureManager.h`) and the 5 sources directly in `ZenCore/Source/Graphics/RenderCore/`. `RenderCore/V2` stays.
    - The TinyGLTF loader: `AssetLib/GLTFLoader.h` and `GLTFLoader.cpp`. `FastGLTFLoader` stays.
 3. **Delete legacy samples** (25 tracked files):
-   - `ZenTest/ZenCoreTest`.
-   - `ZenTest/SceneRegression/{HelloTriangle, Gears, PushConstants, SpecializationConstants, Offscreen, ShadowMapping}` and the shared `VulkanRHIDemo/Application.h/.cpp`. `VulkanRHIDemo/SceneRenderer` stays at its current path, because tools and docs refer to it.
-   - `ZenTest/Applications` (`HelloTriangle`, `GLTFViewer`, `SceneGraphDemo`, `Application.h`).
+   - `ZenSamples/ZenCoreTest`.
+   - `ZenSamples/VulkanRHIDemo/{HelloTriangle, Gears, PushConstants, SpecializationConstants, Offscreen, ShadowMapping}` and the shared `VulkanRHIDemo/Application.h/.cpp`. `VulkanRHIDemo/SceneRenderer` stays at its current path, because tools and docs refer to it.
+   - `ZenSamples/Applications` (`HelloTriangle`, `GLTFViewer`, `SceneGraphDemo`, `Application.h`).
 4. **Remove the build plumbing.**
    - Remove the `ZEN_BUILD_LEGACY` option from the root [CMakeLists.txt](../CMakeLists.txt).
    - In [ZenCore/CMakeLists.txt](../ZenCore/CMakeLists.txt), remove the legacy files from `ZEN_CORE_HEADERS`/`ZEN_CORE_SOURCES`, the `if (NOT ZEN_BUILD_LEGACY)` filter block, and the `spirv-cross-glsl`/`tinygltf` link.
-   - In [ZenTest/CMakeLists.txt](../ZenTest/CMakeLists.txt), remove all three `if (ZEN_BUILD_LEGACY)` blocks.
+   - In [ZenTest/CMakeLists.txt](https://github.com/proton991/ZenTest/blob/main/CMakeLists.txt), remove all three `if (ZEN_BUILD_LEGACY)` blocks.
    - In [External/CMakeLists.txt](../External/CMakeLists.txt), remove the SPIRV-Cross and TinyGLTF declarations. Their download folders under `External/` are already ignored by Git.
 5. **Delete shaders used only by the removed samples.** They are compiled into `Data/SpvShaders` by the shader glob, so they currently cost build time.
    - Referenced only by legacy code at `d22e0641`: `GLTFViewer/viewer.{vert,frag}`, `Offscreen/{mirror,phong}.{vert,frag}`, `SGDemo/{main.vert,pbr.frag}`, `ShadowMapping/scene.{vert,frag}`, and in `Data/Shaders/` itself `gbuffer.frag`, `gears.{vert,frag}`, `push_constants.{vert,frag}`, `triangle.vert`, `triangle_fixed.frag`, `uber.{vert,frag}`.
@@ -213,7 +213,7 @@ Candidates found at `d22e0641` (re-confirm after Phases 1–8 and 9.1, which may
 | Unused options and helpers | `RHIOptions::VKUploadCmdBufferSemaphore`, `WaitForFrameCompletion`, `MaxDescriptorSetPerPool` and their fields; `RHISamplerInfo` (duplicate of `RHISamplerCreateInfo`); the `ALLOCA` macros; `VulkanFenceManager::WaitAndReleaseFence`; secondary command-buffer stubs (`VulkanCommandBufferType::eSecondary` is never allocated). |
 | Commented-out code | Old handle-based API and dead blocks in `DynamicRHI.h`, `VulkanRHI.h`, `RHICommon.h`, `RHICommandList.h` (`PRIVATE_ARRAY_DEF`), `VulkanBuffer.cpp`, `VulkanTexture.cpp`, `VulkanPipeline.cpp`, `VulkanViewport.cpp` and `VulkanContext.cpp`. |
 
-Also update [RHI/README.md](../ZenCore/Include/Graphics/RHI/README.md): remove the sentences about deferred legacy render-pass/framebuffer fixes and describe dynamic rendering as the only path. Remove deleted sources from [ZenCore/CMakeLists.txt](../ZenCore/CMakeLists.txt), and from [ZenTest/CMakeLists.txt](../ZenTest/CMakeLists.txt) where test targets compile RHI sources directly.
+Also update [RHI/README.md](../ZenCore/Include/Graphics/RHI/README.md): remove the sentences about deferred legacy render-pass/framebuffer fixes and describe dynamic rendering as the only path. Remove deleted sources from [ZenCore/CMakeLists.txt](../ZenCore/CMakeLists.txt), and from [ZenTest/CMakeLists.txt](https://github.com/proton991/ZenTest/blob/main/CMakeLists.txt) where test targets compile RHI sources directly.
 
 Exit for 9.2: default presets build in Debug and Release with no new warnings; the full final regression in section 6 passes; a usage search finds no references to the deleted names; the verification document lists what was removed in 9.1 and 9.2.
 

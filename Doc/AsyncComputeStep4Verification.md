@@ -40,7 +40,7 @@ MSVC x64 debug builds passed for `ConfigLoaderTest`, `VulkanRHITest`, `RenderCor
 
 Total: **644 enabled tests passed**. Native integration and all eight smoke runs reported zero `VUID-` messages, zero `SYNC-HAZARD` messages, and no memory leaks. RHI and RenderCore unit binaries also reported no leaks. The existing external GLI macro-redefinition warning remains.
 
-The remaining 42 cases in [RDGScheduleTests.inl](../ZenTest/RenderCoreTest/RDGScheduleTests.inl) run in both CPU execution modes and cover:
+The remaining 42 cases in [RDGScheduleTests.inl](https://github.com/proton991/ZenTest/blob/main/RenderCoreTest/RDGScheduleTests.inl) run in both CPU execution modes and cover:
 
 - Acyclic graphics → compute → graphics groups, resource summaries, and boundaries.
 - A shared reset/compute group, independent graphics without a compute wait, and a dependent graphics consumer.

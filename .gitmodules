@@ -1,6 +1,8 @@
 [submodule "ZenSample"]
 	path = ZenSample
 	url = https://github.com/proton991/ZenSample.git
+	branch = main
 [submodule "ZenTest"]
 	path = ZenTest
 	url = https://github.com/proton991/ZenTest.git
+	branch = main

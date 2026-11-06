@@ -7,6 +7,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOTS = ("ZenCore", "ZenTest", "ZenSample", "ZenUI", "Data/Shaders")
+SUBPROJECTS = ("ZenSample", "ZenTest")
 # GLSL is formatted as C++: shared includes plus every glslang stage suffix.
 SOURCE_SUFFIXES = {".h", ".hpp", ".cpp", ".inl", ".glsl", ".vert", ".tesc", ".tese", ".geom", ".frag", ".comp",
                    ".mesh", ".task", ".rgen", ".rint", ".rahit", ".rchit", ".rmiss", ".rcall"}
@@ -30,7 +31,7 @@ def main():
         cwd=ROOT,
     ).decode().split("\0")
     # Submodule files are not enumerated by the parent repository's index.
-    for subproject in ("ZenSample", "ZenTest"):
+    for subproject in SUBPROJECTS:
         if (ROOT / subproject / ".git").exists():
             entries = subprocess.check_output(
                 ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],

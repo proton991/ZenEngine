@@ -77,7 +77,7 @@ cmake --build build/x64-windows-msvc-release `
 - FBX: **21 accepted; 1 expected rejection**. The rejected
   `max_transformed_skin_7500_binary.fbx` explicitly reports unsupported
   dual-quaternion skinning. Its rejection is documented in the
-  [fixture README](../ZenTest/CommonTest/Assets/FBX/README.md) and tested by the
+  [fixture README](https://github.com/proton991/ZenTest/blob/main/CommonTest/Assets/FBX/README.md) and tested by the
   focused suite. It is not counted as successful import support.
 
 The skipped test in both configurations was
