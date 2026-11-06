@@ -1,5 +1,7 @@
 # RenderCore improvement plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: Phases 0–2 implemented 2026-10-03; Phase 3 implemented 2026-10-07 after fresh baseline and interleaved A/B measurements ([verification and remaining validation limits](RenderCoreImprovementVerification.md#phase-3-implementation-and-verification-2026-10-07)). Proposed 2026-10-02, based on `e79660ec` plus the uncommitted RHI section-5 changes described in [RHIDeferredWorkVerification.md](RHIDeferredWorkVerification.md). The findings below describe the code before Phase 1.
 
 Size the deferred G-buffer to the screen, and stop the render graph's transient pool from recreating render targets that every frame uses. Together these remove per-frame texture creation and descriptor misses at every resolution, cut G-buffer memory, and give screen-space algorithms one G-buffer texel per screen pixel. The ray-query lighting work requires that.

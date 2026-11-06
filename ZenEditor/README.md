@@ -35,7 +35,9 @@ The runtime supports `--rhi=inline|threaded`, `--profile=<prefix>` and
 Start-paused submits one scene frame at time zero. Camera navigation matches the
 editor: right-drag with WASDQE, Alt-left-drag orbit, middle-drag pan, wheel dolly
 and Shift for faster movement. Captures exclude presentation and UI.
-Profile output uses `<prefix>.rdg.log` and `<prefix>.summary.json`.
+Profile output uses `<prefix>.rdg.log`, `<prefix>.summary.json`, and a resolved
+`<prefix>.setup.zenrender`. The summary records both render and framebuffer sizes
+and the actual fullscreen state.
 The setup supplies renderer configuration explicitly; ZenApp does not read or
 create the source-tree `engine.cfg`. Full runtime output is written beside the setup
 as a `.log` file. The standalone app has no editor IPC channel. The editor's play
@@ -43,6 +45,36 @@ window maintains its own diagnostics log view; Clear leaves Editor Output intact
 The popup displays scene frame/time, CPU graph statistics and shared GPU memory.
 Per-pass GPU timings remain in the editor and standalone profile output until
 the shared executor can attribute them to individual presentation windows.
+
+ZenApp starts fullscreen by default. `--fullscreen` / `--fullscreen=1` and
+`--windowed` / `--fullscreen=0` override the setup. `--width=N --height=N` select
+the render size and the initial windowed size; fullscreen keeps the native display
+mode. Omit those dimensions to use the setup's **Match play window** policy.
+The [SDL fullscreen operation](https://wiki.libsdl.org/SDL3/SDL_SetWindowFullscreen)
+is synchronized before creating the presentation viewport.
+
+Application performance profiling uses **ZenApp.exe** with a prepared setup and
+explicit startup arguments. Use `--backend=compute|hardware`,
+`--async-compute=0|1`, `--rhi=inline|threaded`, `--vsync=0|1`,
+`--validation=0|1`, `--no-ui`, `--gpu-markers`, and `--disable-rt` as appropriate.
+`--backend` selects GI and sets all feature providers, including direct shadows.
+For example:
+
+```powershell
+.\build\x64-windows-msvc-release\bin\ZenApp.exe --setup=scene.zenrender --fullscreen --width=3840 --height=2160 --backend=compute --async-compute=1 --rhi=threaded --vsync=0 --validation=0 --no-ui --gpu-markers --disable-rt
+python tools/profile_hybrid_gi.py --setup=scene.zenrender --backend=compute --output=build/nsight-zenapp-compute
+python tools/profile_hybrid_gi.py --setup=scene.zenrender --backend=hardware --output=build/nsight-zenapp-hardware
+```
+
+The Nsight helper launches ZenApp directly, saves `application-command.json`, the
+setup and input hashes, and rejects a fullscreen capture whose framebuffer does
+not match the requested resolution. Enable a native 3840 × 2160 display before
+using its default 4K settings. It does not edit `Data/engine.cfg`. Historical
+demo-specific profiling scripts and results are not the application profiling
+workflow; the earlier [4K report](../Doc/ComputeGI/NewSponza4KNsightProfile.md)
+identifies its demo executable explicitly.
+The [ZenApp New Sponza 4K profile](../Doc/ComputeGI/ZenAppNewSponza4KNsightProfile.md)
+records direct 4K captures for both backends and native fullscreen acceptance checks.
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is a separate
 dependency that always follows the latest GitHub `origin/main`, without a commit or
@@ -174,7 +206,10 @@ to the editor; its camera and animation state are retained. Closing the editor
 also closes the play window. A play-window failure restores editor rendering when
 the device remains usable; both windows share the same process failure boundary.
 
-**Rendering > Run settings** controls render size and VSync.
+**Rendering > Run settings** in the sidebar controls **Start fullscreen**, render
+size and VSync. Fullscreen is enabled by default for new ZenApp launches; clear
+the checkbox to launch Play in a window. The setting applies when Play starts.
+Fullscreen uses the display's current native resolution.
 Matching the window is enabled by default and uses the exact framebuffer extent.
 A fixed render size is fitted without stretching, with bars when aspect ratios
 are different. While paused, resizing preserves and fits the last rendered image;
@@ -587,7 +622,7 @@ The offscreen `RenderView` contains borrowed color/depth images and physical ext
 `RendererServer::DispatchRenderWorkloads` requires this view explicitly and passes
 it to scene graph builders. ZenApp supplies an offscreen scene view and composites
 it into the native viewport before drawing its optional UI; paused frames reuse that
-image. The demo can supply `RenderView::FromViewport(*nativeViewport)`, and the editor
+image. Other native clients can supply `RenderView::FromViewport(*nativeViewport)`, and the editor
 supplies `EditorViewport::GetRenderView()`. Scene renderers retain neither a native viewport
 nor an optional target override. The server's native viewport is used separately
 for UI composition and presentation. `GetColorTarget()` and `GetDepthTarget()`
@@ -629,15 +664,15 @@ claim of animated or transparency-aware precise selection.
 ## Verification and diagnostics
 
 ```powershell
-cmake --build build/x64-windows-msvc-debug --target EditorModelTest EditorRenderingTest UIDrawPacketTest UIRenderingTest RuntimeUIIntegrationTest SceneModelSwitchTest
-ctest --test-dir build/x64-windows-msvc-debug -R "EditorModel|EditorRendering|UIDrawPacket|UIRendering|RuntimeUIIntegration|SceneModelSwitch" --output-on-failure
+cmake --build build/x64-windows-msvc-debug --target EditorModelTest EditorRenderingTest UIDrawPacketTest UIRenderingTest RuntimeLaunchTest WindowPlatformTest
+ctest --test-dir build/x64-windows-msvc-debug -R "EditorModel|EditorRendering|UIDrawPacket|UIRendering|RuntimeLaunch|WindowPlatform" --output-on-failure
 ```
 
 Model tests initialize no window, GPU or ImGui. Most rendering tests initialize no window
 or ImGui; play-window tests create native windows. They exercise both RHI modes, including a CPU bounding-box hit that GPU
 surface picking correctly clears, stale results, resize and scene replacement.
 Neutral UI tests render a synthetic triangle and retire registered resources after
-graph declaration. Existing runtime UI and model-switch regression tests remain.
+graph declaration. Runtime launch and native-window tests cover the standalone launch settings and fullscreen lifecycle.
 
 `--smoke-test` runs 40 frames with resize, minimize/restore, hide/show, picks,
 camera/projection changes, layout reset and asset selection. Combine it with `--rhi=inline` or

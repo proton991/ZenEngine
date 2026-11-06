@@ -1,5 +1,7 @@
 # G1 verification — 2026-10-22
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 The sparse brick scene is usable through `voxel_gi_compute_traversal=bricks` and
 `voxel_gi_brick_resolution=64|128|256`, with per-pixel gather and the existing hit-radiance cache.
 Defaults remain triangles and 128 brick cells per axis. The results below predate the G3 screen-probe

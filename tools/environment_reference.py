@@ -505,5 +505,25 @@ def main():
                             bounce=bounce,samples=args.samples,normalization=json.dumps(normalization))
 
 
+def environment_integral(prefix, metadata, normal):
+    """Independent unoccluded Lambert integral: quadrature over the captured cubemap."""
+    size = metadata['environment_cube_size']
+    cube = np.fromfile(str(prefix)+'.environment.bin','<f4').reshape(6,size,size,4)
+    xy = (np.arange(size)+.5)*2/size-1
+    x,y = np.meshgrid(xy,xy)
+    one = np.ones_like(x)
+    directions = np.stack([np.stack(face,axis=-1) for face in
+                           ((one,-y,-x),(-one,-y,x),(x,one,y),(x,-one,-y),(x,-y,one),(-x,-y,-one))])
+    length = np.linalg.norm(directions,axis=-1)
+    directions /= length[...,None]
+    angle = metadata['environment_intensity_rotation_enabled_visible'][1]
+    c,s = np.cos(angle),np.sin(angle)
+    normal = np.array([c*normal[0]-s*normal[2],normal[1],s*normal[0]+c*normal[2]])
+    q = np.array(metadata['environment_orientation'])
+    normal += 2*np.cross(q[:3],np.cross(q[:3],normal)+q[3]*normal)
+    weight = np.maximum(directions@normal,0)*4/(size*size*np.pi*length**3)
+    return np.sum(cube[...,:3]*weight[...,None],axis=(0,1,2))
+
+
 if __name__ == '__main__':
     main()

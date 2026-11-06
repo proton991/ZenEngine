@@ -1,5 +1,7 @@
 # ZenAssetProcessor M4 lossless transport visual verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Date:** 23 October 2026.
 **Result:** All seven direct-source/Zstandard-package pairs and all seven
 frozen-M0 comparisons are pixel-identical: zero differing RGB channels, zero

@@ -1,5 +1,7 @@
 # Hybrid Voxel GI Implementation Plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 2026-10-14 amendment: [Compute triangle visibility](HybridGI/ComputeTriangleVisibility.md) replaces the compute tier's voxel visibility with a software BVH to fix Sponza's stationary floor blocks and match HW RT lighting. It supersedes the D2 limitation and compute shadow-map/cone defaults below. The optimized traversal has targeted quality evidence, measured static-scene speedups and, since 2026-10-15, passes the independent CUDA ground truth; full P8 qualification remains open. Historical voxel-provider measurements do not qualify the current traversal.
 
 Date: 2026-10-01. Updated 2026-10-15. P0–P7 phase exits remain accepted within their recorded device/scope decisions; the new compute implementation has the separate verification scope below. P2/P3/P4e historical closeout is recorded in [P2P4Acceptance.md](HybridGI/P2P4Acceptance.md). The two-tier independent-ground-truth gate closed on 2026-10-15 (RTX 5080). P8 and the final functional report remain open. The historical filename is retained for existing links.

@@ -116,13 +116,20 @@ void RuntimeWindow::Update()
         {
             m_window = CreateNativeWindow(m_settings);
         }
-        m_window->SetOnInput([this](const platform::InputEvent& event) { OnInput(event); });
-        const platform::WindowExtent extent = m_window->GetFramebufferExtent();
-        m_present = m_device.CreateViewport(m_window.Get(), extent.width, extent.height, m_settings.vsync);
-        if (m_present != nullptr && m_compositor.Init(m_device))
+        m_window->Show();
+        bool ready = m_window->SetFullscreen(m_settings.fullscreen);
+        if (ready)
+        {
+            m_window->SetOnInput([this](const platform::InputEvent& event) { OnInput(event); });
+            const platform::WindowExtent extent = m_window->GetFramebufferExtent();
+            m_present = m_device.CreateViewport(m_window.Get(), extent.width, extent.height, m_settings.vsync);
+            ready     = m_present != nullptr && m_compositor.Init(m_device);
+            LOGI("ZenApp presentation: fullscreen={}, framebuffer={}x{}", m_window->IsFullscreen(), extent.width,
+                 extent.height);
+        }
+        if (ready)
         {
             m_clock.ResetWallTime(std::chrono::steady_clock::now());
-            m_window->Show();
             m_window->Focus();
             platform::KeyboardMouseInput::GetInstance().Reset();
             LOGI("ZenApp window opened using the supplied scene and render device");

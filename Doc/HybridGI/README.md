@@ -1,5 +1,7 @@
 # Hybrid GI P0–P3 implementation record
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 Current compute implementation (2026-10-14): [Compute triangle visibility](ComputeTriangleVisibility.md) fixes Sponza's occupied-voxel floor blocks with software triangle queries, shared sampling/material rules and ray shadows. Both backends retain the voxel radiance cache. The new parity tests pass; software traversal is substantially slower and remains outside P8 performance qualification. Earlier dated voxel-provider results below are historical.
 
 Current acceptance (2026-10-13): [P2/P3/P4e closeout](P2P4Acceptance.md) completes the remaining phase gates on the agreed tested scope. All 18 compute convergence views, 15 final flagpole regions and 59 explicit-backend cases pass. Two shader corrections and fresh final regressions are documented there. P0–P7 are accepted within their recorded scope; P8 remains open, including the measured dense-filter cost. Dated implementation sections below are historical.

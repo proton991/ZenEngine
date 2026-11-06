@@ -1,5 +1,7 @@
 # Standalone ZenAssetProcessor implementation plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Status:** Processor implementation is complete for the verified Windows configuration; current development integration passes Debug/Release and focused Vulkan checks. Broader rendering and release gates remain open.
 **Updated:** 5 November 2026.
 **Library location:** [proton991/ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor), a separate Git repository and standalone CMake project; the development checkout is `E:/Dev/ZenAssetProcessor`.

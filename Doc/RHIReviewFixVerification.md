@@ -1,5 +1,7 @@
 # RHI review fix verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Execution date: 2026-10-17. Base revision: `7b49daa05e68f8572af560c30759abb060f392af`.
 The supplied plan was the only untracked file at the start; source and index were clean.
 All entries refer to the current uncommitted implementation. No commits were created,

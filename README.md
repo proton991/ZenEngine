@@ -7,8 +7,8 @@ Every configure fast-forwards both to the latest GitHub `main`, so a recorded su
 commit only seeds a new clone. A failed fetch stops configuration. Local work that a
 fast-forward would replace stays in place with a warning, and
 `-DZEN_UPDATE_SUBPROJECTS=OFF` skips the update when offline or building an older commit.
-`ZEN_BUILD_SAMPLES=OFF` disables examples; `BUILD_TESTING=OFF` disables tests and the
-`scene_renderer_demo` viewer, which lives in ZenTest.
+`ZEN_BUILD_SAMPLES=OFF` disables examples; `BUILD_TESTING=OFF` disables tests.
+`ZEN_BUILD_APP` and `ZEN_BUILD_EDITOR` control the standalone ZenApp and editor targets.
 Submodule checkouts start on a detached HEAD, so run `git switch main` inside one before
 committing, then push it separately. ZenEngine uses the new `main` from its next
 configure. Until the recorded commit is updated, `git status` lists the submodule as
@@ -89,18 +89,18 @@ In the right image, everything outside the sunlit floor is lit only by the bounc
 Deferred PBR view. Advanced materials use the forward HDR path with an opaque-scene refraction
 snapshot.</sub>
 
-### Runtime debug UI
+### Editor and runtime
 
-![Runtime debug UI over the Voxel GI view](Doc/imgs/showcase/runtime_debug_ui.png)
-
-<sub>Model browser, view switching, live GI/voxel resource settings, scene, environment and
-light controls, GPU memory, and on-demand render-graph statistics.</sub>
+[ZenEditor](ZenEditor/README.md) owns scene import, camera and rendering controls.
+**Rendering > Run settings > Start fullscreen** controls the next Play launch and
+is enabled by default. Standalone **ZenApp** loads a prepared `.zenrender`
+setup and provides session diagnostics through its optional overlay.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    App["<b>Applications</b><br/>scene_renderer_demo · test suites · Python verification tools"]
+    App["<b>Applications</b><br/>ZenEditor · ZenApp · test suites · Python tools"]
     UI["<b>ZenUI</b><br/>Dear ImGui runtime debug UI · UI renderer as an RDG overlay"]
     subgraph RC["RenderCore · zen::rc"]
         direction LR
@@ -128,7 +128,7 @@ flowchart TB
     VK ~~~ F
 ```
 
-Everything except ZenUI and the samples lives in the `ZenCore` library
+The shared renderer and engine foundation live in the `ZenCore` library
 (`ZenCore/Include`, `ZenCore/Source`).
 
 ### What each layer provides
@@ -143,8 +143,8 @@ Everything except ZenUI and the samples lives in the `ZenCore` library
 | **RenderGraph** | `RenderCore/V2/RenderGraph/` | Graphics/compute/transfer passes with name-reflected bindings; automatic resource versions, barriers and layout transitions; content guarantees; pass culling; transient pooling and allocation reuse; queue preferences compiled into submission groups with cross-queue waits; imports and deferred extractions; metrics and an independent barrier validator. See [RDG metrics](Doc/RDGMetrics.md). |
 | **RenderDevice** | `RenderCore/V2/` | Frames in flight and frame slots, the per-frame graph, a staging upload queue on async transfer, texture manager, scene resource ownership, GPU-safe resource retirement, and cross-graph submission history. |
 | **Renderers** | `RenderCore/V2/Renderer/` | `RendererServer` (view selection and runtime GI reconfiguration), `SkyboxRenderer` (irradiance, prefiltered environment, BRDF LUT, skybox), `DeferredLightingRenderer` (G-buffer, deferred lighting, forward HDR path with transmission/scattering, tone map, light markers), `SceneShadowRenderer` (point/spot/directional shadow maps shared by lighting and GI), `GeometryVoxelizer`/`ComputeVoxelizer`, `VoxelGIRenderer`. |
-| **ZenUI** | `ZenUI/` | Dear ImGui context and renderer recorded as an RDG overlay, plus the runtime debug UI described in the gallery. Optional via `ZEN_BUILD_RUNTIME_UI`. |
-| **Samples & tools** | `ZenTest/`, `tools/` | `scene_renderer_demo`, unit and Vulkan integration suites, a glTF corpus importer, and Python scripts for corpus rendering, GI quality, voxelization calibration and profiling. |
+| **ZenUI** | `ZenUI/` | Dear ImGui adapter, neutral RDG UI renderer, and ZenApp session diagnostics. The standalone overlay is optional via `ZEN_BUILD_RUNTIME_UI`. |
+| **Samples & tools** | `ZenTest/`, `tools/` | Unit, native-window, editor and Vulkan integration suites; ZenApp Nsight profiling and offline analysis of archived captures. |
 
 ### Anatomy of a Voxel GI frame
 
@@ -219,7 +219,7 @@ flowchart LR
     RT -. "submission serials · completion · errors" .-> MT
 ```
 
-Threaded execution is the default; `--rhi-thread=0` runs the same executor inline.
+Threaded execution is the default; `--rhi=inline` runs the same executor inline.
 `async_compute=auto|off` in `Data/engine.cfg` and `--async-compute=0|1` control async compute
 scheduling.
 Background: [threading plan](Doc/RenderCoreRHIThreadingPlan.md),
@@ -247,8 +247,8 @@ installed. From the repository root:
 
 ```powershell
 cmake --preset x64-windows-msvc-release
-cmake --build --preset x64-windows-msvc-release --target scene_renderer_demo --parallel 8
-./build/x64-windows-msvc-release/bin/scene_renderer_demo.exe
+cmake --build --preset x64-windows-msvc-release --target ZenApp zen_editor --parallel 8
+./build/x64-windows-msvc-release/bin/zen_editor.exe
 ```
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is an independent
@@ -278,60 +278,46 @@ processing settings and **Recook from Source** in the [editor](ZenEditor/README.
 
 Every preset writes executables to `build/<preset-name>/bin`, including Debug. The Windows
 release preset selects `Release` (`/O2`, `NDEBUG`). In a CMake preset-aware IDE, select the
-matching configure/build presets and `scene_renderer_demo` as the launch target. Configure
-once before using a build preset. `-DBUILD_TESTING=OFF` configures without engine test
-targets, GoogleTest or `scene_renderer_demo`, and `-DZEN_BUILD_RUNTIME_UI=OFF` omits
-Dear ImGui.
+matching configure/build presets and `zen_editor` as the interactive launch target.
+Configure once before using a build preset. `-DBUILD_TESTING=OFF` omits engine tests
+and GoogleTest. `-DZEN_BUILD_RUNTIME_UI=OFF` disables the standalone ZenApp overlay;
+ImGui is omitted when the editor is also disabled.
 
-For an automatic Visual Studio environment setup, build and Voxel GI launch, use
-`tools/run_voxel_gi_performance.cmd`. This uses the separate Release performance preset
-described in [VoxelGI performance](Doc/VoxelGIPerformance.md).
+### Configure and launch a scene
 
-### Configure the scene
+ZenApp needs a `.zenrender` setup. ZenEditor does not save one yet: `MakeRuntimeFixture`
+writes a setup for its small test scene, and another scene needs a copy of an existing
+setup edited to point at its processed package and camera. ZenApp reads the package and
+explicit rendering/run settings; it does not modify `Data/engine.cfg`. See the
+[editor workflow](ZenEditor/README.md) for the fixture command and controls.
 
-Copy `Data/engine.example.cfg` to `Data/engine.cfg` and set `model_base_path` (or an
-absolute `default_model_path`). Model paths in `Data/engine.cfg` are resolved relative to
-that file's directory, so the launch working directory does not affect asset lookup. The
-same file selects the voxelizer, voxel resolution, environment map, GI parameters, shadow
-resolution, present mode and lights. Each key is documented inline, and most can also be
-edited live from the debug UI.
+```powershell
+./build/x64-windows-msvc-release/bin/ZenApp.exe --setup=scene.zenrender --fullscreen
+```
 
-The Sponza screenshots above override the default lights (`scene_lighting_override=true`):
-three shadow-casting point lights along the nave, or one roof-height spot light for the
-bounce comparison.
+ZenApp uses right-drag with WASDQE for camera navigation, Alt-left-drag to orbit,
+middle-drag to pan, and the wheel to dolly. Shift speeds movement. Space pauses or
+resumes, F1 toggles the diagnostics overlay, and Escape exits. Editor Play returns
+to the editor when stopped.
 
-### Controls
-
-| Input | Action |
-| --- | --- |
-| **1** / numpad 1 | Voxel GI view (startup default) |
-| **2** / numpad 2 | Voxelization view |
-| **R** | Rebuild the voxel scene |
-| **F1** | Toggle between debug UI interaction and camera control |
-| **W A S D**, **Left Shift / Left Ctrl** | Move, rise/descend |
-| Left mouse drag | Look around |
-| **↑ / ↓** | Double / halve camera speed |
-| **Tab** | Toggle cursor capture |
-| **Esc** | Quit |
-
-Deferred PBR is available from the UI's *View* selector or `--mode=2`. Diagnostic mode IDs
-for automation are `--mode=1` voxelization, `--mode=2` PBR and `--mode=3` Voxel GI.
-
-### Useful command-line options
+### ZenApp startup arguments
 
 | Option | Effect |
 | --- | --- |
-| `--disable-validation` | Disable Vulkan validation (enabled by default) when measuring performance |
-| `--width=N --height=N` | Window size |
-| `--vsync=0\|1`, `--present-mode=…` | Presentation control (`default`, `fifo`, `fifo_relaxed`, `mailbox`, `immediate`) |
-| `--rhi-thread=0\|1`, `--async-compute=0\|1` | Inline vs threaded RHI; async compute scheduling |
-| `--ui` / `--no-ui` | Force the runtime debug UI on or off |
-| `--frames=N --warmup=N --fixed-step` | Deterministic, finite runs |
-| `--capture=frame.ppm` | Write the final frame as an image |
-| `--profile=PREFIX` | CPU/GPU per-pass profile (CSV + JSON), see [Engine profiling](Doc/EngineProfiling.md) |
-| `--gpu-markers`, `--gpu-memory-stats`, `--device-loss-diagnostics` | Debugging aids |
+| `--setup=scene.zenrender` | Required prepared scene, camera and renderer configuration |
+| `--fullscreen[=0\|1]`, `--windowed` | Override fullscreen startup; fullscreen is the default |
+| `--width=N --height=N` | Fixed render size and initial windowed size; fullscreen uses the native display mode |
+| `--backend=compute\|hardware` | GI mode and all feature providers, including direct shadows |
+| `--rhi=inline\|threaded`, `--async-compute=0\|1` | Submission and async-compute policy |
+| `--vsync=0\|1`, `--validation=0\|1` | Presentation and validation overrides |
+| `--frames=N --fixed-step` | Finite run with deterministic animation steps |
+| `--no-ui`, `--gpu-markers`, `--disable-rt` | Profiling controls |
+| `--capture=frame.ppm` | Final scene image without presentation or UI |
+| `--profile=PREFIX` | RDG log, extent summary, and resolved setup |
 
-An unrecognized option prints the complete usage line.
+Use [Engine profiling](Doc/EngineProfiling.md) for the ZenApp Nsight capture workflow.
+Legacy demo runners and their special capture switches have been retired; see
+[the migration record](Doc/ZenAppMigration.md).
 
 ### Dependencies
 
@@ -373,12 +359,13 @@ The standalone `span` dependency was replaced by C++20 `std::span` behind the ex
 | `VulkanRHIIntegrationTest` | 336 | Real-device resources, descriptors, bindless retirement, queues, swapchain, recording, pipelines, GPU timing |
 | `CommonTest` | 108 | glTF import (compatibility, morphs, stress, physical units), animation, containers, allocators, configuration |
 | `VulkanRHITest` | 45 | Backend unit contracts: lifetime tracker, queue selection, synchronization |
-| `SmartPtrTest`, `ConfigLoaderTest`, `RuntimeUIIntegrationTest`, `SceneModelSwitchTest`, `UIDrawPacketTest`, `InputControllerTest`, `ConeVoxelGIIntegrationTest`, … | 90+ | Smart pointers, configuration, UI integration, model switching, input, cone-traced GI end-to-end |
+| `SmartPtrTest`, `ConfigLoaderTest`, `EditorRenderingTest`, `RuntimeLaunchTest`, `WindowPlatformTest`, `UIDrawPacketTest`, `InputControllerTest`, `ConeVoxelGIIntegrationTest`, … | 90+ | Smart pointers, configuration, UI integration, model switching, input, cone-traced GI end-to-end |
 
-GPU suites expect a Vulkan device. Python scripts under `tools/` render the glTF corpus,
-validate voxelization and GI quality against references, and check profiling output. On
-2026-10-01 all 339 variants of the Khronos sample corpus imported and rendered with no
-validation errors ([details](Doc/GLTFSceneImport.md#reproducible-verification)).
+GPU suites expect a Vulkan device. `tools/check_pr.py` builds and runs registered
+Debug/Release CTest suites. `tools/verify_rhi_production.py --smoke --setup=scene.zenrender`
+adds ZenApp startup checks across inline/threaded RHI and async off/on; supply its
+`--build-dir` and `--output` arguments. Python tools retain offline capture analysis
+and direct ZenApp Nsight profiling. Historical image measurements remain in `Doc`.
 
 ## Code review skill
 
@@ -438,13 +425,13 @@ Use $skill-installer to install https://github.com/proton991/ZenEngine/tree/main
 
 Image-based lighting with a separate `SkyboxRenderer` for environment processing.
 
-![scene_renderer_demo with PBR and IBL](Doc/imgs/basic_pbr_ibl.png)
+![Historical renderer with PBR and IBL](Doc/imgs/basic_pbr_ibl.png)
 
 ### M3 · 2025-02-02: scene-graph renderer
 
 Refined VulkanRHI and RenderCore V2, with a scene-graph based renderer and static PBR lighting.
 
-![scene_renderer_demo with static lighting](Doc/imgs/scene_renderer_demo.png)
+![Historical renderer with static lighting](Doc/imgs/scene_renderer_demo.png)
 
 ### M2 · 2024-10-21: VulkanRHI and RenderCore V2
 

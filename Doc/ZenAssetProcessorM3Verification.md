@@ -1,5 +1,7 @@
 # ZenAssetProcessor M3 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Updated:** 23 October 2026.
 **Scope:** The raw v3 package, standalone reader/writer/CLI, engine adapter,
 automatic v3 cache, and explicit v2 compatibility. Compression and texture

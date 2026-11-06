@@ -732,6 +732,7 @@ private:
         if (ImGui::CollapsingHeader("Run settings"))
         {
             runtime::RuntimeWindowSettings& run = context.editor.GetRunSettings();
+            ImGui::Checkbox("Start fullscreen", &run.fullscreen);
             ImGui::Checkbox("Match play window", &run.followWindow);
             ImGui::BeginDisabled(run.followWindow);
             int extent[2] = {static_cast<int>(run.renderWidth), static_cast<int>(run.renderHeight)};

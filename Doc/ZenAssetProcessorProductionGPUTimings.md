@@ -1,5 +1,7 @@
 # Production scene upload GPU timing
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 24 October 2026. The production staging path now has measured GPU intervals on
 the dedicated transfer queue. The campaign completed **80 processes, 160 scene
 publications, 320 staging graphs and 2,420 timed upload nodes**. Every selected

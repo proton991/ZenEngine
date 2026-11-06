@@ -1,5 +1,7 @@
 # P8 close-out — 2026-10-17
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 **P8 is closed with documented shortfalls, by user decision of 2026-10-17.** The per-tier performance targets are not met. The plan permits closing P8 with the shortfall documented and resolved by an explicit preset decision, not a hidden quality reduction ([Definition of done](../HardwareRayQueryEnvironmentLightingPlan.md#definition-of-done), item 6). The user also stopped the final qualification run partway as too long. Everything below states whether it ran on the final build, comes from an earlier build, or was not done.
 
 Final build: Windows/MSVC `x64-windows-msvc-performance`, RTX 5080, driver 617.42. `scene_renderer_demo.exe` SHA-256 `59e32b554b986feb6d8da03161b2273c6bff860681e56c8c5e8d3114d6c6c21f`. Evidence is under `build/p8-closeout/` (ignored, local): `closeout.json` records the executable and every SPIR-V hash, the stages, their commands and logs.

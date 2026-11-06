@@ -13,7 +13,24 @@ from PIL import Image, ImageDraw
 
 from compare_hybrid_gi import compare as compare_shipping, load
 from ground_truth_mitsuba import compare as compare_truth
-from ground_truth_sweep import ENVIRONMENTS, load_dataset
+
+
+ENVIRONMENTS = {
+    'papermill': 'papermill.ktx',
+    'hotel': 'Environments/hotel_room_1k.hdr',
+    'kloppenheim': 'Environments/kloppenheim_06_puresky_1k.hdr',
+    'kloofendal': 'Environments/kloofendal_48d_partly_cloudy_puresky_1k.hdr',
+    'qwantani': 'Environments/qwantani_noon_puresky_2k.hdr',
+    'studio': 'Environments/studio_small_09_1k.hdr',
+    'emptyroom': 'Environments/small_empty_room_1_1k.hdr',
+    'corridor': 'Environments/large_corridor_1k.hdr',
+    'carpentry': 'Environments/carpentry_shop_01_1k.hdr',
+}
+
+
+def load_dataset(folder):
+    path = folder / 'dataset.json'
+    return json.loads(path.read_text()) if path.exists() else dict(views={}, fixture_gates=[])
 
 
 RECTANGLES = ((416, 130, 552, 207), (416, 285, 552, 362), (416, 437, 552, 514))

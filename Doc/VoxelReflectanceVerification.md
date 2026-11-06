@@ -1,5 +1,7 @@
 # V1 averaged diffuse reflectance
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Date: 2026-09-24. **V1 passed.** This extends the [V0 calibration](VoxelizationCalibration.md); it does not change the coverage contract or claim identical weighting to the paper's raster fragments.
 
 The selectable `voxel_reflectance_policy=averaged` accumulates one contribution for each accepted triangle-record/voxel pair. Geometry rasterization uses a single-sample rectangle with the shared-edge fill rule; each projected pixel belongs to one rectangle triangle, then each depth cell is visited once. Compute assigns each projected cell to one lane and visits its depth cells once. Both call the same material/alpha evaluator and accumulator. Repeated triangle records intentionally contribute repeatedly; tessellation changes this weighting.

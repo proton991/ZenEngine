@@ -1,5 +1,7 @@
 # ZenAssetProcessor M0 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Captured:** 22 October 2026, starting 23:34 Asia/Seoul; fresh-build follow-up
 ran from 23:41 through 23:58.
 **Status:** Initial CPU baseline captured; a fresh source snapshot has also been

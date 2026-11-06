@@ -1,5 +1,7 @@
 # RenderCore production fix verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Implementation complete and qualified on 2026-10-19, started 2026-10-18 from `d8a74b2e` on `hybrid-gi`. The governing scope is [RenderCoreProductionFixPlan.md](RenderCoreProductionFixPlan.md), including all phases 0-8 and its invariants. The only open gate is Phase 1's manual two-monitor check. Device-loss recovery remains deferred. The final qualification of the post-review sources is [below](#post-review-qualification); [RenderCoreChecks.md](RenderCoreChecks.md) describes the quick/PR/full check tiers.
 
 ## Progress and remaining gates

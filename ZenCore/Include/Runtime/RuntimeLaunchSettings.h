@@ -17,6 +17,7 @@ struct RuntimeRunSettings
     uint32_t         windowHeight{900};
     uint32_t         renderWidth{1440};
     uint32_t         renderHeight{900};
+    bool             fullscreen{true};
     bool             followWindow{true};
     bool             vsync{true};
     RHIPresentMode   presentMode{RHIPresentMode::eDefault};

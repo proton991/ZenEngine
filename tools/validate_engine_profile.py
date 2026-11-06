@@ -1,4 +1,4 @@
-"""Validate portable scene_renderer_demo profile exports and recompute their summaries."""
+"""Validate archived portable profile exports; does not launch or profile an application."""
 import argparse
 import collections
 import csv

@@ -1,5 +1,7 @@
 # RHI production-readiness verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implementation and local acceptance completed for R1-R6, R9, R12, R15 and R16, 2026-10-02. R7 diagnostics and R8 tooling are implemented, with manual/hardware acceptance still open. R10, R11, R13 and R14 retain their plan gates. This is not a claim that all desktop production certification is complete.
 
 ## Scope and environment

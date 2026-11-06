@@ -96,9 +96,9 @@ elseif ($WhatIfPreference) {
 }
 else {
     $active = @(Get-CimInstance Win32_Process | Where-Object {
-        $_.Name -match '^(python|pythonw|scene_renderer_demo|EditorRenderingTest|ConeVoxelGIIntegrationTest|RayQueryIntegrationTest)\.exe$' -and
+        $_.Name -match '^(python|pythonw|ZenApp|EditorRenderingTest|ConeVoxelGIIntegrationTest|RayQueryIntegrationTest)\.exe$' -and
         ($_.ExecutablePath -like ($buildPrefix + '*') -or
-         $_.CommandLine -match 'capture_hybrid|validate_hybrid|ground_truth_sweep')
+         $_.CommandLine -match 'profile_hybrid_gi|ground_truth')
     })
     if ($active.Count -gt 0) { throw 'Stop running render/capture tests before cleanup. No files were deleted.' }
 

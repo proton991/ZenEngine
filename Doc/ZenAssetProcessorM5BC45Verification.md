@@ -1,5 +1,7 @@
 # M5 BC4/BC5 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Follow-up, 24 October: the [filtered-normal checkpoint](ZenAssetProcessorFilteredNormalVerification.md)
 finds two previously accepted clearcoat maps exceeding the existing angular
 limits after filtering. Both now retain original pixels, and the new BC4/BC5

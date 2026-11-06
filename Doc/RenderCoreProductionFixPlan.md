@@ -1,5 +1,7 @@
 # RenderCore production-readiness fix plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implementation in progress; evidence and remaining gates are recorded in [RenderCoreProductionFixVerification.md](RenderCoreProductionFixVerification.md). The plan was proposed 2026-10-18, based on `d8a74b2e` (branch `hybrid-gi`). Phases 7–8 (native submission count and async-compute overlap) were added the same day after a follow-up analysis of the schedule. Findings and line numbers below describe that baseline commit.
 
 This plan addresses the findings of the 2026-10-18 production-readiness review of `RenderCore/V2`. That review found the correctness hardening thorough: transactional recording with rollback, submission-failure propagation, serial-gated retirement, validated uploads and copies. The release `RenderCoreTest` passed 588 of 588 tests with no leaks. What remains is one cross-layer behavior defect and several costs that grow with content size rather than with the frame's working set. They are invisible on Sponza-class scenes and will matter with production content. A follow-up analysis added two schedule findings. Native queue submissions equal RDG submission groups, and the grouping rule over-splits same-queue work. Async compute is wired correctly but gives no measured overlap in the current GI frame.

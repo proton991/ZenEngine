@@ -1,5 +1,7 @@
 # RenderCore / RHI two-thread plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implemented as the initial two-thread rendering path. Threaded execution is now the
 RenderDevice default, with an inline startup option. See
 [implementation and verification](RenderCoreRHIThreadingVerification.md) for API semantics,

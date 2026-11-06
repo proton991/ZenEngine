@@ -1,5 +1,7 @@
 # Scene import and internal asset implementation plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Status:** Milestones 1–6 are implemented and verified on Windows in Debug and Release. macOS and manual native file-picker interaction remain unverified.
 **Date:** 21 October 2026.
 

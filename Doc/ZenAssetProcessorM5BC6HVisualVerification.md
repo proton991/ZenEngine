@@ -1,5 +1,7 @@
 # M5 BC6H environment verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 23 October 2026. The independent CPU audit passes all 12 inputs and all 90
 decoded face/mip measurements. Source-free read/write preserves every resource
 exactly. BC6H remains explicitly enabled and disabled by default. Native Vulkan

@@ -1,5 +1,7 @@
 # ZenEngine UI integration review and delivery plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Reviewed against the current checkout on 30 September 2026. Source proposal:
 `ZenEngine_UI_Integration_Research_and_Plan.pdf`, revision 0.1. The original PDF
 remains unchanged. Its editor workflow is a useful second track, but the first

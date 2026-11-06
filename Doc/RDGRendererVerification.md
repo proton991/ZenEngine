@@ -1,5 +1,7 @@
 # RDG renderer verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Baseline verified on 2026-09-07 before the implementation phases below. Both renderer modes execute and can be switched in either direction, but the rendering pipeline is not synchronization-clean. The PBR graph's G-buffer producer/consumer setup appears correct in the tested frames. The voxel path has missing initialization and unused GI work, and the shared RDG compiler still has a reader-visibility gap.
 
 Implementation status: phase 1 passed the user's verification after rebuilding. After phase 2, the user reported no Vulkan validation errors but continued RDG `missing_barrier` diagnostics, then authorized phase 3. After phase 3, the user supplied compute-mode diagnostics for redundant initial buffer barriers and the known emissive-input gap, then authorized fixes. The user reported **all ok** after phase 4 and the initial-buffer-barrier correction. The user reported **all ok** after phase 5 and the staging-source correction, then authorized phase 6. Phase 6 is implemented and awaiting the user's build/runtime verification and refreshed live baseline. Geometry-specific runtime coverage has not been separately reported. Historical observations and counts below describe the baseline, not the modified code.

@@ -1,5 +1,7 @@
 # RDG / RenderCore V2 analysis and improvement plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Review date: **2026-09-09**. The analysis below records the pre-implementation snapshot; current implementation status is tracked separately below.
 
 This review describes the current working tree, including its modified and untracked files, rather than only commit `b25bd25`. Its primary scope is `ZenCore/Include/Graphics/RenderCore/V2`, the corresponding source implementation, and the RHI/Vulkan paths that determine whether RDG declarations become correct GPU commands. Source line numbers below refer to this snapshot.

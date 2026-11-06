@@ -40,8 +40,7 @@ shared float brightMass[ZEN_ENVIRONMENT_TILES];
 shared uint  chosen[ZEN_ENVIRONMENT_MAX_SOURCES];
 shared uint  chosenCount;
 // A source tile holds at least this share of the environment, and most of it in texels brighter
-// than eight times the environment's mean radiance (the extraction threshold of
-// tools/prototype_environment_sources.py).
+// than eight times the environment's mean radiance.
 const float SOURCE_SHARE         = 0.05;
 const float SOURCE_CONCENTRATION = 0.5;
 const float BRIGHT_RATIO         = 8.0;

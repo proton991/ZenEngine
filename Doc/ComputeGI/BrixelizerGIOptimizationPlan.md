@@ -1,5 +1,7 @@
 # Brixelizer GI optimization plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 2026-10-28. This plan targets the performance items still open after the final-code profiling in [the profiling record](BrixelizerGIProfiling.md#final-code-nsight-gpu-trace) and [the execution record](BrixelizerGIExecution.md#open-items). It changes no quality gate of [the implementation plan](BrixelizerGIImplementationPlan.md). Every expected effect below is a hypothesis until a matched measurement confirms it.
 
 ## Targets and current gap

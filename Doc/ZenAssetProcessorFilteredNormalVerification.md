@@ -1,5 +1,7 @@
 # Filtered normal-map quality verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 24 October 2026. Normal compression now checks sampled channel values before
 normal reconstruction, in addition to decoded texels. This closes a confirmed
 BC5 filtering gap. ClearCoatTest's new BC4/BC5 package matches raw rendering

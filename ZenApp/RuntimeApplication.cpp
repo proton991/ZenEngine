@@ -18,6 +18,20 @@ namespace zen::runtime
 {
 namespace
 {
+const char* GetRayProviderName(rc::VoxelGISettings::RayProvider provider)
+{
+    const char* name = "auto";
+    if (provider == rc::VoxelGISettings::RayProvider::Voxel)
+    {
+        name = "compute";
+    }
+    else if (provider == rc::VoxelGISettings::RayProvider::Hardware)
+    {
+        name = "hardware";
+    }
+    return name;
+}
+
 class RuntimeApplication final
 {
 public:
@@ -140,12 +154,15 @@ private:
     void DrawUI()
     {
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
-        const HeapVector<RuntimeLogEntry> logs    = m_log->Snapshot();
-        const std::string&                source  = m_setup.sourcePath.empty() ? m_setup.packagePath : m_setup.sourcePath;
-        const uint64_t                    dropped = m_log->GetDropped();
-        if (m_overlay.Draw(*m_session, logs, source, m_options.logPath, false, dropped))
+        if (!m_options.noUI)
         {
-            m_log->Clear();
+            const HeapVector<RuntimeLogEntry> logs    = m_log->Snapshot();
+            const std::string&                source  = m_setup.sourcePath.empty() ? m_setup.packagePath : m_setup.sourcePath;
+            const uint64_t                    dropped = m_log->GetDropped();
+            if (m_overlay.Draw(*m_session, logs, source, m_options.logPath, false, dropped))
+            {
+                m_log->Clear();
+            }
         }
 #endif
     }
@@ -176,6 +193,8 @@ private:
             result = RuntimeExit::Renderer;
             RHIOptions::GetInstance().SetValidationEnabled(m_setup.run.validation);
             RHIOptions::GetInstance().SetGPUMemoryStats(true);
+            RHIOptions::GetInstance().SetGPUProfilerMarkers(m_options.gpuMarkers);
+            RHIOptions::GetInstance().SetRayTracingDisabled(m_options.disableRT);
             RHIOptions::GetInstance().SetPresentMode(m_setup.run.presentMode);
             rc::RenderConfig& config = rc::RenderConfig::GetInstance();
             config.numFrames         = m_setup.run.framesInFlight;
@@ -187,6 +206,7 @@ private:
             settings.windowHeight                    = m_setup.run.windowHeight;
             settings.renderWidth                     = m_setup.run.renderWidth;
             settings.renderHeight                    = m_setup.run.renderHeight;
+            settings.fullscreen                      = m_setup.run.fullscreen;
             settings.followWindow                    = m_setup.run.followWindow;
             settings.vsync                           = m_setup.run.vsync;
             settings.fixedStep                       = m_options.fixedStep;
@@ -233,7 +253,7 @@ private:
             if (valid)
             {
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
-                valid = m_overlay.Initialize(*m_device, *m_session->GetWindow());
+                valid = m_options.noUI || m_overlay.Initialize(*m_device, *m_session->GetWindow());
 #endif
             }
             if (valid)
@@ -254,13 +274,19 @@ private:
         const uint64_t     previousFrame = GetSceneFrame();
         rc::RenderOverlay* overlay       = nullptr;
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
-        overlay = &m_overlay;
+        overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
         bool valid = m_session->Render(overlay);
         if (valid && GetSceneFrame() > previousFrame)
         {
             if (GetSceneFrame() == 1)
             {
+                const rc::RenderView view = m_target->GetView();
+                LOGI("ZenApp render: {}x{}, async-compute={}, RHI={}, ray-provider={}, ray-query={}, diagnostics={}",
+                     view.width, view.height, rc::GetAsyncComputeStatusReason(m_device->GetAsyncComputeStatus()),
+                     m_setup.run.rhiMode == RHIExecutionMode::eThreaded ? "threaded" : "inline",
+                     GetRayProviderName(m_setup.rendering.gi.cone.rayProvider),
+                     m_device->GetGPUInfo().rayQuery.IsUsable() ? "available" : "unavailable", overlay != nullptr);
                 m_device->FlushRHIThread();
                 valid = m_device->PollFrameSubmissions();
                 if (valid && m_options.startPaused)
@@ -302,12 +328,18 @@ private:
 
     bool WriteProfileSummary()
     {
-        const rc::RenderView view = m_target ? m_target->GetView() : rc::RenderView{};
-        std::ofstream        summary(std::filesystem::u8path(m_options.profile + ".summary.json"));
+        const rc::RenderView          view   = m_target ? m_target->GetView() : rc::RenderView{};
+        const platform::NativeWindow* window = m_session ? m_session->GetWindow() : nullptr;
+        const platform::WindowExtent  framebuffer =
+            window != nullptr ? window->GetFramebufferExtent() : platform::WindowExtent{};
+        std::ofstream summary(std::filesystem::u8path(m_options.profile + ".summary.json"));
         summary << "{\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
-                << ",\"width\":" << view.width << ",\"height\":" << view.height << "}\n";
+                << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
+                << ",\"framebufferHeight\":" << framebuffer.height
+                << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false") << "}\n";
         summary.close();
-        return summary.good();
+        return summary.good()
+            && WriteRuntimeLaunchSettings(std::filesystem::u8path(m_options.profile + ".setup.zenrender"), m_setup, m_error);
     }
 
     const RuntimeLaunchSettings&     m_setup;

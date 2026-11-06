@@ -149,6 +149,7 @@ template <class Archive> void Fields(Archive& archive, RuntimeRunSettings& value
     archive.Field("windowHeight", value.windowHeight);
     archive.Field("renderWidth", value.renderWidth);
     archive.Field("renderHeight", value.renderHeight);
+    archive.Field("fullscreen", value.fullscreen, false);
     archive.Field("followWindow", value.followWindow);
     archive.Field("vsync", value.vsync);
     archive.Field("presentMode", value.presentMode);
@@ -184,7 +185,7 @@ class JsonWriter
 public:
     explicit JsonWriter(std::string& output) : m_output(output) {}
 
-    template <class T> void Field(const char* name, T& value)
+    template <class T> void Field(const char* name, T& value, bool = true)
     {
         m_output += m_first ? "" : ",";
         m_first   = false;
@@ -302,7 +303,7 @@ public:
         }
     }
 
-    template <class T> void Field(const char* name, T& value)
+    template <class T> void Field(const char* name, T& value, bool required = true)
     {
         ++m_fields;
         if (m_error.empty())
@@ -318,7 +319,11 @@ public:
                     ++count;
                 }
             }
-            if (count != 1)
+            if (count == 0 && !required)
+            {
+                --m_fields;
+            }
+            else if (count != 1)
             {
                 Fail(path, count == 0 ? "missing field" : "duplicate field");
             }

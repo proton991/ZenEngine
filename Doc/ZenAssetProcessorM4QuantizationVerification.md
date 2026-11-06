@@ -1,5 +1,7 @@
 # Optional M4 position quantization verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Date:** 23 October 2026. The seven-case numerical and preservation checks
 passed at 16 position bits. All source and reference-package GPU captures
 matched the frozen M0 references exactly. The two models with changed positions

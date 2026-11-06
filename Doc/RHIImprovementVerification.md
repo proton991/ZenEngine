@@ -1,5 +1,7 @@
 # RHI improvement verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Executed on 2026-10-01 from `d22e0641`. Phases 0–6, 8 and 9 are implemented. Phase 7 was measured and reverted because it did not satisfy its acceptance gate. The optional small-pool redesign was not attempted. The original untracked improvement plan and the staging area are preserved; no changes were staged or committed. Error/failure handling and the other deferred designs remain outside this change.
 
 The available Windows builds, full suites, renderer matrix and image checks pass. Hardware-dependent and cross-platform checks that could not be exercised are listed below. Performance results include the observed variation; they do not establish a GPU speedup.

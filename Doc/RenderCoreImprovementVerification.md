@@ -1,5 +1,7 @@
 # RenderCore improvement verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: Phases 0–2 implemented 2026-10-03 on top of `329d20be`; Phase 3 implemented 2026-10-07 on top of `8a72369a` and the pre-existing local GI changes. The original P0–P2 evidence below is historical; [the P3 section](#phase-3-implementation-and-verification-2026-10-07) records the current machine, checks, and remaining validation limits. Implements [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) and addresses item 5.5 of [RHIProductionTODO.md](RHIProductionTODO.md#55-per-frame-descriptor-miss).
 
 ## Result

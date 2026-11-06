@@ -1,5 +1,7 @@
 # Brixelizer GI profiling evidence
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 Status, 2026-10-28: final qualification is in progress. The replacement and update paths are implemented, but the GI pass-cost target remains open. The repeated native measurements below supersede the older checkpoint. [Final-code Nsight GPU Trace captures](#final-code-nsight-gpu-trace) of the still camera against the shadow-map baseline, camera motion and dynamic geometry follow them; complete transition traces are still outstanding.
 
 ## Corrected baseline and current native measurements

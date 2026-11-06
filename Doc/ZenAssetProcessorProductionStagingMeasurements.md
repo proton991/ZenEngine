@@ -1,5 +1,7 @@
 # Production scene staging measurements
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 24 October 2026. Production scene publication now reports staging-pool occupancy,
 native upload-buffer allocation lifetimes and CPU load/publication costs. The
 final campaign completed **80 processes and 160 scene publications**, using

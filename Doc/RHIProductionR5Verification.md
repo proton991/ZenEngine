@@ -1,5 +1,7 @@
 # RHI production readiness: R5 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implemented and verified, 2026-10-02. This is the first item in section 8's recommended order in [RHIImprovementPlan.md](RHIImprovementPlan.md). This document records the original R5 delivery. Subsequent items are tracked in [RHIProductionVerification.md](RHIProductionVerification.md).
 
 ## Changes and failure policy

@@ -1,5 +1,7 @@
 # Voxel GI implementation plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implemented step by step on 2026-09-21. The design below records the original plan; the execution notes and [verification report](VoxelGIVerification.md) describe the delivered implementation and actual test coverage.
 
 Repository baseline: `99508992` (`Simplify RenderCore and RHI synchronization`).

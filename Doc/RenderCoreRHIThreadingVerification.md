@@ -1,5 +1,7 @@
 # RenderCore / RHI threading implementation
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 The main thread remains RenderCore and owns window events, scene updates, RDG compilation,
 pass callbacks, and RHI command recording. One dedicated `RHIThread` owns native command
 translation, submission, presentation, and runtime backend operations. This follows the

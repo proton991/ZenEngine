@@ -1,5 +1,7 @@
 # glTF scene import and rendering
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 `asset::ImportScene` dispatches `.gltf` and `.glb` to the private glTF reader and returns an owning canonical `SceneAsset`. `asset::LoadScene` builds a runtime scene through the common runtime builder. Imports are transactional: parser, validation, decompression, texture, or deformation failures leave the previous scene and geometry intact. Unsupported required extensions produce named diagnostics. JSON uses a padded parser buffer, including GLB chunks at page boundaries. Valid integer properties written with decimals or exponents normalize exactly for parser compatibility; authored source JSON and binary chunk offsets are preserved. Windows paths and external resources support UTF-8 filenames.
 
 The target is the supplied `D:/Dev/glTF-Sample-Assets` corpus and its mesh, material, animation, lighting, and visibility features. Gaussian splatting, interactivity graphs, and remaining vendor-specific runtime systems are deferred at the user's request. Named TODOs live beside the extension configuration in `GltfAssetReader.cpp`. Optional extension data and extras remain in `SceneAsset::sourceDocument`; retaining that data does not implement the extension's behavior.

@@ -1,5 +1,7 @@
 # RHI production readiness: R22 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: Implemented, 2026-10-03, in commit `8b59a3d0`. Part of [RHIProductionTODO.md](RHIProductionTODO.md#r22-fixed-bindless-heap-capacity). Based on `ee20bf99`.
 
 ## Result

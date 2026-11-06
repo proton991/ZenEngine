@@ -1,5 +1,7 @@
 # Voxel GI implementation and verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Date: 2026-09-21. Implementation follows [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md), with execution refinements recorded there.
 
 Latest hybrid extension (2026-10-10): [P6 radiance-cache reflections](HybridGI/P6.md) passes the RT glossy-fixture gate on the RTX 5080. It adds closest-hit radiance, independent reflection history, hit-distance camera reprojection, forward/deferred composition and a GGX sampling correction. The compute path is measured with RT disabled; its voxel-geometry errors and below-cutoff noise are recorded. Validation: 576 RenderCore tests, 20 native GI tests, 121 shader variants, and 14 final allocation/settings regressions pass, with clean native fixture validation. P8 retains preset, performance and memory qualification.

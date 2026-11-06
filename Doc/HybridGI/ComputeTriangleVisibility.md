@@ -1,5 +1,7 @@
 # Compute triangle visibility — 2026-10-14
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 Compute now traces the full scene's triangles through a software BVH. This replaces voxel occupancy as the visibility geometry for environment lighting, specular occlusion, the sky cache, ray-hit diffuse bounce, reflections, and direct shadows. Hardware RT uses the same surface origin, alpha-mask evaluation, hit-point reconstruction, sampling budget, and radiance cache. No ray-query or acceleration-structure feature is needed by Compute.
 
 This explicitly supersedes the earlier D2 compute-tier limitation and the October 11 backend description. The user's requested scope was removal of Sponza's fixed floor blocks with near-matching Compute/HW RT output. Earlier voxel-reference acceptance and performance reports remain historical evidence, not qualification of this new traversal.

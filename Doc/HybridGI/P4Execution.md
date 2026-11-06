@@ -1,5 +1,7 @@
 # P4 gap execution, 2026-10-10
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 Current status, 2026-10-13: **P4 is accepted on the agreed tested scope.** The [P2/P3/P4e closeout](P2P4Acceptance.md) completes the current flagpole and explicit-backend image checks and records the final shader fixes. P8, unavailable platforms and far-origin work retain their stated scope. Everything below is the dated October 10 investigation, not the current failure list.
 
 **Historical October 10 status: P4 was not accepted.** This is the implementation and measurement record for [P4Gaps.md](P4Gaps.md). Error limits, the five shipping-gate environments, the nine ground-truth environments, camera matrices, four diffuse rays, 32 history frames and five edge-stopping iterations are unchanged. Failed estimator probes were restored; none is a shipping implementation.
@@ -29,7 +31,7 @@ The final source-group probe (32 quadrature directions, residual proposal, separ
 | Carpentry | 8.85% | 37.00% | 4 |
 | Studio, tracked | 27.83% | 77.33% | 35 |
 
-The reservoir fallback used two fresh candidates and two revalidated previous reservoirs within four visibility queries, with positive proposal support and bounded represented history. It failed all six tested halls, including substantial finite-capture bias and much higher RMS. It is not adopted. Its source snapshots, restoration build and results are in `build/p4-gaps/reuse/`; the reusable explicit-source experiment is [prototype_environment_sources.py](../../tools/prototype_environment_sources.py). No 8-ray or 64-frame-history preset was adopted or claimed performance-qualified.
+The reservoir fallback used two fresh candidates and two revalidated previous reservoirs within four visibility queries, with positive proposal support and bounded represented history. It failed all six tested halls, including substantial finite-capture bias and much higher RMS. It is not adopted. Its source snapshots, restoration build and results are in `build/p4-gaps/reuse/`; the reusable explicit-source experiment is [prototype_environment_sources.py](https://github.com/proton991/ZenEngine/blob/3ea1e7f9a2f74e40bb9fbfcdcbc2f1b2b219f324/tools/prototype_environment_sources.py). No 8-ray or 64-frame-history preset was adopted or claimed performance-qualified.
 
 ## Independent arbitration and precision
 

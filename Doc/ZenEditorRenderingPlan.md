@@ -1,5 +1,7 @@
 # ZenEditor rendering plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Play-window update, 30 October 2026:** follow the current design in the
 [Run, Pause and Quit implementation plan](ZenEditorRunSessionPlan.md). The toolbar
 now moves the existing scene to an in-process play window, pauses/resumes scene
@@ -76,7 +78,7 @@ Relevant implementation references are [RenderSettingsPanel](../ZenEditor/ImGui/
 [SceneShadowRenderer](../ZenCore/Include/Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h),
 [DeferredLightingRenderer](../ZenCore/Include/Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h),
 [EditorViewport](../ZenEditor/Rendering/Include/Editor/Rendering/EditorViewport.h), and
-[RuntimeDebugUI](../ZenUI/Runtime/Include/RuntimeUI/RuntimeDebugUI.h).
+[RuntimeDebugUI](https://github.com/proton991/ZenEngine/blob/3ea1e7f9a2f74e40bb9fbfcdcbc2f1b2b219f324/ZenUI/Runtime/Include/RuntimeUI/RuntimeDebugUI.h).
 The existing runtime debug UI is a behavior reference; ZenEditor must not depend
 on its widgets or the sample application.
 

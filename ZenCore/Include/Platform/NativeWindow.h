@@ -114,6 +114,11 @@ public:
 
     bool IsMaximized() const;
 
+    bool IsFullscreen() const;
+
+    // Borderless fullscreen at the display's current mode. Restores windowed geometry on exit.
+    bool SetFullscreen(bool enabled);
+
     bool IsDecorated() const;
 
     void RequestClose();
@@ -188,5 +193,7 @@ private:
     bool                                    m_resizable{false};
     double                                  m_cursorX{0};
     double                                  m_cursorY{0};
+    WindowPosition                          m_windowedPosition;
+    WindowExtent                            m_windowedExtent;
 };
 } // namespace zen::platform

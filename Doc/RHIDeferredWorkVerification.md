@@ -1,5 +1,7 @@
 # RHI deferred work verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Executed on 2026-10-02 from `e79660ec`, following section 5 of [RHIImprovementPlan.md](RHIImprovementPlan.md). Each item was measured against its gate before any change was kept. Two decisions came from the user before work started: VSync becomes a configurable present mode with FIFO for VSync on (5.8), and 5.3, 5.9 and 5.10 stay unstarted. Nothing was staged or committed.
 
 | Item | Outcome | Evidence |

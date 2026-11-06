@@ -1,5 +1,7 @@
 # BC6H environment integration verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 The standalone environment records, schema, cook path and engine upload
 integration pass their focused checks. Independent HDR quality checks and raster
 reference comparisons also pass. GI repeatability and full desktop visual

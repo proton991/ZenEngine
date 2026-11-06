@@ -1,5 +1,7 @@
 # RHI stall watchdog implementation plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: proposed, 2026-10-01. Based on revision `c9fdebfdba2bc8873066650cc10ff81a9126fe3e` plus the uncommitted message-wait fix described in [Window hang detection](RenderCoreRHIThreadingVerification.md#window-hang-detection). This document defines future work; it does not implement it.
 
 Every wait on the RHI thread is currently unbounded. If an RHI task never returns, for example a Vulkan wait on a fence that is never signaled, the waiting thread blocks forever with no diagnostic. The window stays responsive to Windows, so neither the OS nor the engine reports anything. Add a watchdog to those waits. When a wait exceeds a threshold, it reports what is blocked, how long it has waited, and what the RHI thread is doing. An optional fatal threshold lets automated runs fail instead of hanging.

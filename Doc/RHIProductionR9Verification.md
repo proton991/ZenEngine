@@ -1,5 +1,7 @@
 # RHI production readiness: R9 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: Implemented; internal to RenderCore, 2026-10-02. Part of [section 8](RHIImprovementPlan.md#8-production-readiness-todos).
 
 ## Result

@@ -1,5 +1,7 @@
 # RHI full review
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Review date: 2026-11-05. Source revision: `259a21413d3a8d7aef4e914a15b6500463c924f7`.
 
 This review covers the current RHI interfaces and Vulkan backend, with relevant RenderCore callers and tests. The working tree was clean at the start. The findings below describe behavior at the revision above; their evidence locations refer to that baseline. Following the review, the user authorized fixing all eight findings and recording the corrections in this same document.

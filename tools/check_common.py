@@ -13,11 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / 'build/checks'
 VENV_PYTHON = ROOT / 'build/venv/Scripts/python.exe'
 VS_DEV_CMD = Path('C:/Program Files/Microsoft Visual Studio/18/Professional/Common7/Tools/VsDevCmd.bat')
-QUALIFIED = CHECKS / 'qualified.json'
-SUITES = ['RenderCoreTest', 'VulkanRHITest', 'CommonTest', 'EditorModelTest', 'EditorInputTest', 'UIDrawPacketTest',
-          'VulkanRHIIntegrationTest', 'RayQueryIntegrationTest', 'EditorRenderingTest', 'EditorPreviewTest',
-          'UIRenderingTest', 'RuntimeUIIntegrationTest', 'UIPlatformTest', 'SceneModelSwitchTest',
-          'ConeVoxelGIIntegrationTest']
+
+
+def rtss_running():
+    """RTSS hooks presents by executable name and draws its overlay into the swapchain image."""
+    tasks = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq RTSS.exe', '/NH'], capture_output=True, text=True).stdout \
+        if os.name == 'nt' else ''
+    return 'RTSS.exe' in tasks
 
 
 def stamp():
@@ -93,17 +95,6 @@ def verify_suites(folder, names):
         assert int(row['gtest']['tests']) > 0 and int(row['gtest']['failures']) == 0, name
     print(f'Verified {len(names)} suites in {folder}', flush=True)
     return {name: int(rows[name]['gtest']['tests']) for name in names}
-
-
-def qualified_binary(override=None):
-    """Last binary that passed the full tier, used as the PR tier's image baseline."""
-    if override:
-        return Path(override).resolve()
-    if QUALIFIED.exists():
-        return Path(json.loads(QUALIFIED.read_text())['binary'])
-    fallback = ROOT / 'build/production-fix-phase4/descriptor-minimal-final-binary'
-    print(f'No {QUALIFIED.relative_to(ROOT)}; using {fallback.relative_to(ROOT)} as the image baseline', flush=True)
-    return fallback
 
 
 def write_summary(folder, summary):

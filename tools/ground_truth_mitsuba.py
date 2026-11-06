@@ -745,7 +745,7 @@ def validate_shadow_edge(mi, path):
 
 def validate_fixtures(mi, folder, output, samples, fixture_set='base'):
     """Gate: the ground truth must reproduce the analytic fixtures before it is used (plan P0)."""
-    from validate_hybrid_gi import environment_integral
+    from environment_reference import environment_integral
     from hybrid_gi_fixtures import ALPHA_MATRIX, BRIGHT_EDGES
     names = {'base': ANALYTIC + CONSISTENCY, 'materials': ALPHA_MATRIX,
              'normals': ('normal_map_plane',), 'edges': BRIGHT_EDGES}[fixture_set]
@@ -810,7 +810,7 @@ def main():
     parser.add_argument('--environment-resolution', type=int, default=2048)
     parser.add_argument('--compare', type=Path, nargs='*', default=[],
                         help='Captures of the same view to compare (sky component 1); defaults to the input capture')
-    parser.add_argument('--fixtures', type=Path, help='validate_hybrid_gi.py output folder: validate against analytic fixtures')
+    parser.add_argument('--fixtures', type=Path, help='Archived linear fixture captures to check against analytic references')
     parser.add_argument('--fixture-set', choices=('base', 'materials', 'normals', 'edges'), default='base')
     parser.add_argument('--compare-only', action='store_true', help='Reuse <output>.npz instead of rendering')
     parser.add_argument('--cross-check', type=int, default=256, help='Receivers for the Embree visibility cross-check (0 disables)')

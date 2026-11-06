@@ -20,6 +20,9 @@ struct RuntimeOptions
     bool        fixedStep{false};
     bool        startPaused{false};
     bool        rhiOverride{false};
+    bool        noUI{false};
+    bool        gpuMarkers{false};
+    bool        disableRT{false};
 };
 
 RuntimeExit RunApplication(const RuntimeLaunchSettings& setup, const RuntimeOptions& options);

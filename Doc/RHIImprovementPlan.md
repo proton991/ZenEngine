@@ -1,5 +1,7 @@
 # RHI correctness and performance improvement plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implemented, 2026-10-01, in `c9fdebfd`. Phases 0–6, 8 and 9 are implemented. Phase 7 was measured, failed its gate and was reverted. The optional small-pool comparison (Phase 2, step 4) was not run. Measurements and results are in [RHIImprovementVerification.md](RHIImprovementVerification.md). Section 5 is the guide for the remaining deferred work.
 
 The findings in sections 2–4 come from a static review of the active `Graphics/RHI` and `Graphics/VulkanRHI` code at revision `d22e0641`. Their file references describe that revision; Phase 9 has since deleted some of those files, for example `VulkanRenderPass.cpp`.

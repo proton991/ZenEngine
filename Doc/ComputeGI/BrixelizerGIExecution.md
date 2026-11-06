@@ -1,5 +1,7 @@
 # Brixelizer GI execution evidence
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
+
 2026-10-28. This records the preserved baseline, the native GPU field construction of milestones 1 and 2, its integration as the only Compute GI tracer (milestones 3 to 5), the CUDA qualification of milestone 6, and the milestone 7 profiling summarized in [the profiling record](BrixelizerGIProfiling.md), all against [the implementation plan](BrixelizerGIImplementationPlan.md). The [native experiment](BrixelizerGIFieldExperiment.md) and [numerical study](BrixelizerGIReferenceMathExperiment.md) remain the fixture-level evidence. The milestone 1 and 2 sections below describe checkpoints taken while the CPU BVH still existed; later sections supersede their statements about remaining work. Open items are listed at the end.
 
 ## Milestone 0: reproducible baseline

@@ -1,5 +1,7 @@
 # Async compute: Nsight Graphics verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Captured on 2026-09-20 after the user enabled GPU performance-counter access. **Nsight Graphics now works. The captures verify dedicated compute execution and the intended dependencies, but show no graphics/compute overlap or update-frame speedup in the measured workload.** Async compute remains opt-in. First-load GPU timing and full performance acceptance remain open.
 
 ## Scope and method

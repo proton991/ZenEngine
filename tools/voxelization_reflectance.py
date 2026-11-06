@@ -39,7 +39,7 @@ def mixture_fixture(folder, dimension, variant):
 
 
 def compare_reflectance(prefix, metadata, triangles):
-    from validate_voxelization import candidate_cells, clip_cell, AMBIGUITY, enabled_records
+    from voxelization_reference import candidate_cells, clip_cell, AMBIGUITY, enabled_records
     n = metadata['resolution']
     assert metadata['reflectance_scale'] == SCALE
     material = MaterialOracle(prefix,metadata,triangles) if (prefix.parent/'material-contract.json').exists() else None

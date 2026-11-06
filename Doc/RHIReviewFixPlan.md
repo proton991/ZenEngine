@@ -1,5 +1,7 @@
 # RHI review fix and optimization plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: proposed, 2026-10-17. The findings come from a full static review of the active `Graphics/RHI` and `Graphics/VulkanRHI` code at revision `7b49daa0` (branch `hybrid-gi`). File references describe that revision. Nothing in this plan has been implemented yet. Record execution results in `Doc/RHIReviewFixVerification.md`, created by Phase 0.
 
 The review found no confirmed defect on the render paths the applications use by default. It found four medium issues, seven lower-severity edge cases, seven API or design problems, README drift, and a set of nits. This plan fixes every one of them, adds the optimizations the review identified, and orders the work so that the reachable correctness issues land first. Every performance change is gated by a before/after measurement, as in the [improvement plan](RHIImprovementPlan.md). A change that does not help is reverted.

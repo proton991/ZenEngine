@@ -236,6 +236,22 @@ bool NativeWindow::IsMaximized() const
     return (SDL_GetWindowFlags(WindowBackend::Borrow(*this)) & SDL_WINDOW_MAXIMIZED) != 0;
 }
 
+bool NativeWindow::IsFullscreen() const
+{
+    return (SDL_GetWindowFlags(WindowBackend::Borrow(*this)) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
+bool NativeWindow::SetFullscreen(bool enabled)
+{
+    SDL_Window* window = WindowBackend::Borrow(*this);
+    const bool  valid  = SDL_SetWindowFullscreen(window, enabled) && SDL_SyncWindow(window) && IsFullscreen() == enabled;
+    if (!valid)
+    {
+        LOGE("Could not set fullscreen={}: {}", enabled, SDL_GetError());
+    }
+    return valid;
+}
+
 bool NativeWindow::IsDecorated() const
 {
     return (SDL_GetWindowFlags(WindowBackend::Borrow(*this)) & SDL_WINDOW_BORDERLESS) == 0;

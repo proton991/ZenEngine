@@ -309,6 +309,43 @@ bool NativeWindow::IsMaximized() const
     return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_MAXIMIZED) == GLFW_TRUE;
 }
 
+bool NativeWindow::IsFullscreen() const
+{
+    return glfwGetWindowMonitor(WindowBackend::Borrow(*this)) != nullptr;
+}
+
+bool NativeWindow::SetFullscreen(bool enabled)
+{
+    bool valid = true;
+    if (enabled != IsFullscreen())
+    {
+        GLFWwindow* window = WindowBackend::Borrow(*this);
+        if (enabled)
+        {
+            GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode    = monitor != nullptr ? glfwGetVideoMode(monitor) : nullptr;
+            valid                      = mode != nullptr;
+            if (valid)
+            {
+                m_windowedPosition = GetPosition();
+                m_windowedExtent   = GetExtent2D();
+                glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+            }
+        }
+        else
+        {
+            glfwSetWindowMonitor(window, nullptr, m_windowedPosition.x, m_windowedPosition.y, int(m_windowedExtent.width),
+                                 int(m_windowedExtent.height), GLFW_DONT_CARE);
+        }
+        valid = valid && IsFullscreen() == enabled;
+        if (!valid)
+        {
+            LOGE("Could not set fullscreen={} on the GLFW window", enabled);
+        }
+    }
+    return valid;
+}
+
 bool NativeWindow::IsDecorated() const
 {
     return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_DECORATED) == GLFW_TRUE;

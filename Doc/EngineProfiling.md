@@ -1,5 +1,32 @@
 # Engine profiling
 
+Application profiling uses the standalone **ZenApp** executable with a prepared
+`.zenrender` setup and explicit startup arguments. Use an optimized build and the
+Nsight helper for GPU Trace captures:
+
+```powershell
+python tools/profile_hybrid_gi.py --setup=scene.zenrender --backend=compute --output=build/nsight-compute
+python tools/profile_hybrid_gi.py --setup=scene.zenrender --backend=hardware --output=build/nsight-hardware
+```
+
+The helper defaults to fullscreen 3840×2160, threaded RHI, async compute enabled,
+VSync/validation/UI disabled, a 60-second startup delay, and 30 recorded frames.
+It verifies the actual render and framebuffer extents and saves the exact ZenApp
+command, setup, input hashes, trace, and official exports. A native 4K display is
+required for that fullscreen default. Pass intervals may overlap; do not sum them
+as frame time. See the [4K profile](ComputeGI/ZenAppNewSponza4KNsightProfile.md).
+
+ZenApp's `--profile=PREFIX --frames=N` also writes an RDG log, a summary of scene
+frames/time and actual extents, and the resolved `.setup.zenrender`. It does not
+write the retired demo's portable CSV schema described below. For startup and
+validation controls, see [ZenEditor/ZenApp](../ZenEditor/README.md).
+
+## Historical portable demo exports
+
+The following schema, commands and measurements describe the retired demo. Use
+`tools/validate_engine_profile.py` to analyze archived exports only. The
+[ZenApp migration](ZenAppMigration.md) lists the supported current workflow.
+
 The portable profiler measures CPU frame/recording work, Vulkan GPU elapsed time
 for RDG passes, and a graphics/compute GPU frame interval. It defaults off and does not require a vendor profiler or debug-marker
 extension. The implementation plan is in

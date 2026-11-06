@@ -1,5 +1,7 @@
 # Async compute Step 8 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Historical report: the test results below describe the original step. Later synchronization representations and APIs are superseded where noted in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md); the original measurements are preserved.
 
 Implemented and verified on 2026-09-20. Step 8 completes the scheduled-frame failure and publication review. Stopped before Step 9 for user verification.

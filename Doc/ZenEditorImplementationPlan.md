@@ -1,5 +1,7 @@
 # ZenEditor implementation plan
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 **Roadmap update, 4 October 2026:** follow the
 [ZenEditor rendering plan](ZenEditorRenderingPlan.md) for all new work. It makes
 rendering, lighting, GI, debug outputs and a separate Run window the next priority.

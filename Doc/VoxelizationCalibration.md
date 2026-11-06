@@ -1,5 +1,7 @@
 # Voxelization calibration — V0 implementation record
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Date: 2026-09-23. **V0 passed for the calibrated contract and device below.** This is the V0-stage record; subsequent research is archived in the [retired directional GI plan](DynamicVoxelGIImplementationPlan.md). The calibrated voxelization remains in use by Cone. No DDA provider or RHI ray-tracing support was added by V0. This report certifies boundary voxelization and the explicitly limited material sampling rule, not triangle-accurate visibility or exact alpha-footprint coverage.
 
 ## Corrections
@@ -17,7 +19,7 @@ Owner clearing no longer depends on a non-null triangle buffer. A zero-triangle 
 
 ## Coverage contract and independent oracle
 
-[validate_voxelization.py](../tools/validate_voxelization.py) decodes the actual GPU vertex, index, node, and triangle-record buffers. Double-precision Sutherland–Hodgman clipping against cell boxes is independent of the shader SAT. Automatic normalization is included in captured transforms; comparisons use identical inputs, grid origin, size, resolution, and orientation.
+[validate_voxelization.py](https://github.com/proton991/ZenEngine/blob/3ea1e7f9a2f74e40bb9fbfcdcbc2f1b2b219f324/tools/validate_voxelization.py) decodes the actual GPU vertex, index, node, and triangle-record buffers. Double-precision Sutherland–Hodgman clipping against cell boxes is independent of the shader SAT. Automatic normalization is included in captured transforms; comparisons use identical inputs, grid origin, size, resolution, and orientation.
 
 Opaque occupancy means intersection with **closed cell boxes**, including face/edge/corner touches. The numerical band is `1e-5` grid units: shrunk boxes establish certain cells, expanded boxes establish possible cells. Missing means certain-but-unwritten; extra means written-but-not-possible. Nominal unexpanded differences are reported separately. This band classifies floating-point boundary uncertainty; it does not enlarge GPU occupancy. Lowest triangle record wins ownership. Owner checks account for each candidate's geometric and alpha uncertainty and verify the actual owner's own intersection/visibility.
 

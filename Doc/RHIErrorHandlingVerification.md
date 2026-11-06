@@ -1,5 +1,7 @@
 # RHI error handling verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Status: implemented, 2026-10-03. This completes the no-exception error-handling delivery and R17 option B on top of the existing R1–R6 containment and R23 lifetime work. Unrelated pre-existing changes were preserved.
 
 ## Implemented contracts

@@ -1,5 +1,7 @@
 > Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 # M1 query contract and compute traversal
 
 2026-09-24: **M1 passed** before M2 work. Mode 3 still uses cone GI. No directional irradiance gathering or native RT API was added.

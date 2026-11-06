@@ -1,5 +1,7 @@
 # Async compute — Step 1 verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Historical report: the test results below describe the original step. Later synchronization representations and APIs are superseded where noted in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md); the original measurements are preserved.
 
 Date: 2026-09-20. Scope: **Step 1 — Capability selection and startup controls** in [the implementation plan](AsyncComputeImplementationPlan.md). Stop here for user verification; Step 2 has not started.

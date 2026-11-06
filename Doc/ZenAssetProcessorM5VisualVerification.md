@@ -1,5 +1,7 @@
 # M5 BC7 texture verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 The subsequent [filtered-normal checkpoint](ZenAssetProcessorFilteredNormalVerification.md)
 adds sampler-aware interpolation checks without changing numerical limits.
 Fresh BC7 CPU and exact reference/repeat gates pass; the clearcoat highlight

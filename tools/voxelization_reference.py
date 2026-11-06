@@ -1,25 +1,13 @@
-"""Raw-volume voxelization calibration; outputs stay under build/voxelization-calibration.
-
-Uses double-precision polygon clipping, independent of the production triangle-box SAT.
-The diagnostic's actual GPU vertex/index/node/triangle buffers define the oracle input.
-"""
-
-import argparse
+"""Offline voxel-capture geometry and attribute checks; does not launch an application."""
 import hashlib
-import itertools
 import json
 import math
-import os
 from pathlib import Path
 import struct
-import subprocess
 import zlib
-from voxelization_fixtures import geometry_fixture, material_fixture
 from voxelization_materials import MaterialOracle, compare_gbuffer
-from voxelization_reflectance import compare_reflectance, mixture_fixture
+from voxelization_reflectance import compare_reflectance
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "build/voxelization-calibration"
 EMPTY = 0xffffffff
 AMBIGUITY = 1e-5  # grid units, applied to cell boundaries only
 OPAQUE_CACHE = {}
@@ -348,133 +336,6 @@ def write_slices(prefix, dimension, expected, actual, certain, possible, referen
         Path(str(prefix)+f'.z{z}.png').write_bytes(png)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument('--output', type=Path, default=OUT/'current')
-    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
-    parser.add_argument('--resolution', type=int, choices=(64, 128, 256), default=64)
-    parser.add_argument('--fixture', choices=('analytic', 'geometry', 'materials', 'mixtures'), default='analytic')
-    parser.add_argument('--reflectance-policy', choices=('owner','averaged'), default='owner')
-    parser.add_argument('--reflectance-budget-mb', type=int, default=512)
-    parser.add_argument('--mixture-variant', choices=('base','reverse','duplicate','tessellated'), default='base')
-    parser.add_argument('--model', type=Path, help='Existing glTF scene for paired or opaque geometry comparison')
-    parser.add_argument('--opaque-model', action='store_true', help='Normalize material alpha mode to opaque in a generated copy')
-    parser.add_argument('--capture-only', action='store_true', help='Capture and compare backend bytes, without an independent scene oracle')
-    parser.add_argument('--reverse-order', action='store_true', help='Reverse material-atlas draw/record order')
-    parser.add_argument('--matrix', action='store_true')
-    parser.add_argument('--reference', action='store_true', help='Run the 8x reference occupancy harness')
-    parser.add_argument('--gbuffer', action='store_true', help='Render GBufferSP at matching atlas surface points')
-    parser.add_argument('--lifecycle', action='store_true', help='Capture rebuild, mode switch, move, removal, restore')
-    parser.add_argument('--grid-percent', type=int, default=0, help='Fixed centered calibration cube as percent of normalized unit extent')
-    parser.add_argument('--compare', type=Path, help='Compare an existing analytic capture prefix')
-    args = parser.parse_args()
-    if args.compare:
-        print(json.dumps(compare(args.compare), indent=2))
-        return
-    folder = args.output.resolve()
-    folder.mkdir(parents=True, exist_ok=True)
-    if args.model:
-        fixture=args.model.resolve()
-        assert args.opaque_model or args.capture_only, 'General textured models require --opaque-model or --capture-only'
-        if args.opaque_model:
-            document=json.loads(fixture.read_text(encoding='utf-8'))
-            for collection in ('buffers','images'):
-                for item in document.get(collection,[]):
-                    if 'uri' in item and not item['uri'].startswith('data:'):
-                        item['uri']=os.path.relpath(fixture.parent/item['uri'],folder).replace('\\','/')
-            for material in document.get('materials',[]):
-                material['alphaMode']='OPAQUE'
-            fixture=folder/'opaque-model.gltf'
-            fixture.write_text(json.dumps(document),encoding='utf-8')
-        profile='paired_model' if args.capture_only else 'opaque_model'
-    elif args.fixture == 'mixtures':
-        fixture = mixture_fixture(folder, args.resolution, args.mixture_variant)
-        profile='materials'
-    elif args.fixture == 'materials':
-        fixture = material_fixture(folder, args.resolution, args.reverse_order)
-        profile='materials'
-    else:
-        assert not args.reverse_order, '--reverse-order requires the material fixture'
-        fixture = {'analytic': write_fixture, 'geometry': geometry_fixture}[args.fixture](folder, args.resolution)
-        profile=args.fixture
-    (folder/'calibration-profile.json').write_text(json.dumps(dict(profile=profile,fixture=str(fixture))))
-    config = ROOT/'Data/engine.cfg'
-    original = config.read_bytes()
-    last = original
-    env = os.environ.copy()
-    env.update(VK_LAYER_VALIDATE_SYNC='1', VK_LOADER_LAYERS_DISABLE='~implicit~', DISABLE_RTSS_LAYER='1')
-    results = {}
-    try:
-        modes = itertools.product(('geom', 'comp'), (0, 1), (0, 1)) if args.matrix else \
-            (('geom', 0, 0), ('comp', 0, 0))
-        for backend, thread, queue in modes:
-            tag = f'{backend}-{args.resolution}-thread{thread}-async{queue}'
-            prefix = folder/tag
-            settings = dict(default_model_path=fixture.as_posix(), voxelizer=backend,
-                            voxel_resolution=args.resolution, light_count=0,
-                            environment_lighting='false', skybox_visible='false')
-            settings.update({'dynamic_light.enabled': 'false', 'light_markers.enabled': 'false'})
-            settings.update(voxel_reflectance_policy=args.reflectance_policy,
-                            voxel_reflectance_budget_mb=args.reflectance_budget_mb)
-            assert config.read_bytes() == last, 'Configuration changed externally'
-            last = original + b'\n' + ''.join(f'{k}={v}\n' for k,v in settings.items()).encode()
-            config.write_bytes(last)
-            with Path(str(prefix)+'.log').open('w') as log:
-                command = [str(args.executable.resolve()), '--enable-validation', '--disable-rt', '--frames=2',
-                    '--mode=1', f'--rhi-thread={thread}', f'--async-compute={queue}',
-                    f'--capture-voxels={prefix}']
-                if args.reference:
-                    command.append('--voxel-reference')
-                if args.gbuffer:
-                    command.append('--voxel-gbuffer')
-                if args.lifecycle:
-                    command.append('--voxel-lifecycle')
-                if args.grid_percent:
-                    command.append(f'--voxel-grid-percent={args.grid_percent}')
-                completed = subprocess.run(command, cwd=ROOT, env=env, stdout=log,
-                    stderr=subprocess.STDOUT, timeout=180)
-            text = Path(str(prefix)+'.log').read_text(errors='replace')
-            errors = [line for line in text.splitlines() if '[error]' in line or
-                      'VUID-' in line or 'SYNC-HAZARD' in line]
-            assert completed.returncode == 0 and not errors, f'{tag}: {errors[:3]}; see log'
-            assert json.loads(Path(str(prefix)+'.json').read_text())['reflectance_policy']==args.reflectance_policy
-            results[tag] = dict(captured=True) if args.capture_only else compare(prefix)
-            print(tag, {k: results[tag][k] for k in ('captured','occupied', 'missing', 'extra',
-                   'owner_mismatch', 'bad_attributes') if k in results[tag]}, flush=True)
-            if args.lifecycle:
-                original_volume = Path(str(prefix)+'.voxels.bin').read_bytes()
-                for step, revision in (('rebuild', 2), ('modes', 2), ('moved', 3), ('empty', 4), ('restored', 5)):
-                    step_prefix = Path(str(prefix)+'.'+step)
-                    result = compare(step_prefix)
-                    results[tag+'.'+step] = result
-                    metadata = json.loads(Path(str(step_prefix)+'.json').read_text())
-                    assert metadata['geometry_revision'] == revision, (step, metadata)
-                    volume = Path(str(step_prefix)+'.voxels.bin').read_bytes()
-                    if step in ('rebuild', 'modes', 'restored'):
-                        assert volume == original_volume, f'{tag} {step}: volume not restored exactly'
-                        if args.reflectance_policy == 'averaged':
-                            assert Path(str(step_prefix)+'.reflectance.bin').read_bytes() == Path(str(prefix)+'.reflectance.bin').read_bytes(), f'{tag} {step}: reflectance not restored exactly'
-                    elif step == 'moved':
-                        assert volume != original_volume, f'{tag}: movement did not change volume'
-                    elif step == 'empty':
-                        assert result['occupied'] == 0, f'{tag}: removal left occupied cells'
-                    print(tag+'.'+step, {k: result[k] for k in ('occupied', 'missing', 'extra',
-                          'owner_mismatch', 'bad_attributes')}, flush=True)
-    finally:
-        assert config.read_bytes() == last, 'Configuration changed externally; preserving it'
-        config.write_bytes(original)
-        (folder/'results.json').write_text(json.dumps(results, indent=2))
-        (folder/'config.sha256').write_text(hashlib.sha256(original).hexdigest()+'\n')
-        paths = [path for path in folder.iterdir() if path.suffix in ('.bin', '.gltf')]
-        (folder/'data-hashes.json').write_text(json.dumps(
-            {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}, indent=2))
-    verify_volume_hashes(folder, results)
-    assert all(not any(result.get(k,0) for k in ('missing','extra','owner_mismatch','bad_attributes')) and
-               not result.get('gbuffer',{}).get('failures',0) and
-               not result.get('reflectance',{}).get('failures',0)
-               for result in results.values()), 'Calibration failed; see comparison JSON files'
-
-
 def verify_volume_hashes(folder, results):
     hashes=json.loads((folder/'data-hashes.json').read_text())
     digests={tag+'.voxels.bin':hashes[tag+'.voxels.bin'] for tag in results}
@@ -485,7 +346,3 @@ def verify_volume_hashes(folder, results):
         for suffix in ('.voxels.bin','.reflectance.bin'):
             values={hashes[tag+suffix] for tag in results if tag.partition('.')[2]==step and tag+suffix in hashes}
             assert len(values)<=1, f'Paired {suffix} volumes differ at {step or "initial"}; investigate before accepting'
-
-
-if __name__ == '__main__':
-    main()

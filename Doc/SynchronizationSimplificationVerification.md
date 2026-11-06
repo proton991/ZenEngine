@@ -1,5 +1,7 @@
 # Synchronization simplification verification
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Date: 2026-09-20, with follow-ups through 2026-09-21. Baseline: `7171a23d` on `main`, committed and pushed to `origin/main` before the refactor at the user's request. Scope: the five core phases of [SynchronizationSimplificationPlan.md](SynchronizationSimplificationPlan.md) and the follow-ups documented below.
 
 ## Implemented phases

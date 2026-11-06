@@ -1,5 +1,7 @@
 # RenderCore check tiers
 
+> Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](ZenAppMigration.md).
+
 Choose a tier by what the change can affect. All three write evidence under `build/checks/` (quick, PR) or new `build/production-fix-phase{4,8}/<name>-*` folders (full), and never overwrite earlier evidence. Run them from the repository root on the Windows/MSVC/RTX development host; the PR and full tiers call the local runners in `build/`.
 
 | Tier | Command | Time | Covers |
