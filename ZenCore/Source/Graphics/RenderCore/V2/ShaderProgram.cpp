@@ -1,6 +1,7 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
 #include "Memory/Memory.h"
 #include "Utils/Errors.h"
 #include <algorithm>
@@ -318,6 +319,15 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                             "SceneRenderer/receiver.frag.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverMaskedSP", "SceneRenderer/receiver.vert.spv",
                                             "SceneRenderer/receiver_masked.frag.spv"));
+    if (SupportsIndirectGBufferShaders(pRenderDevice->GetGPUInfo()))
+    {
+        StoreProgram(ZEN_NEW()
+                         HybridGraphicsSP(pRenderDevice, "HybridReceiverIndirectSP", "SceneRenderer/receiver_indirect.vert.spv",
+                                          "SceneRenderer/receiver_indirect.frag.spv"));
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverMaskedIndirectSP",
+                                                "SceneRenderer/receiver_indirect.vert.spv",
+                                                "SceneRenderer/receiver_masked_indirect.frag.spv"));
+    }
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGISP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/hybrid_gi.frag.spv"));
     // Also exports each receiver's exact shadow-map results for resting decals.
@@ -548,6 +558,19 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     }
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferMaskedSP", "SceneRenderer/offscreen.vert.spv",
                                             "SceneRenderer/offscreen_masked.frag.spv"));
+    if (SupportsIndirectGBufferShaders(pRenderDevice->GetGPUInfo()))
+    {
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
+                                                "SceneRenderer/offscreen_indirect.frag.spv"));
+        StoreProgram(ZEN_NEW()
+                         HybridGraphicsSP(pRenderDevice, "GBufferMaskedIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
+                                          "SceneRenderer/offscreen_masked_indirect.frag.spv"));
+    }
+    if (SupportsGBufferCulling(pRenderDevice->GetGPUInfo()))
+    {
+        StoreWarmedComputeProgram(
+            ZEN_NEW() ComputeFileSP(pRenderDevice, "SceneFrustumCullSP", "SceneRenderer/frustum_cull.comp.spv"));
+    }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() DeferredLightingSP(pRenderDevice);

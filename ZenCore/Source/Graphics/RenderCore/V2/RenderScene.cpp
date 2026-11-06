@@ -111,12 +111,14 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
     sg::AABB bounds;
 
     HeapVector<ShadowCaster> shadowCasters;
+    SubMeshWorldBounds       subMeshBounds;
 
-    m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds, shadowCasters);
+    m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds, shadowCasters, subMeshBounds);
 
     if (m_geometryReady)
     {
-        m_shadowCasters = std::move(shadowCasters);
+        m_shadowCasters      = std::move(shadowCasters);
+        m_subMeshWorldBounds = std::move(subMeshBounds);
     }
 
     const asset::Vertex emptyVertex{};

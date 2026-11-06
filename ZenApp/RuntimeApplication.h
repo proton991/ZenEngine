@@ -23,6 +23,7 @@ struct RuntimeOptions
     bool        noUI{false};
     bool        gpuMarkers{false};
     bool        disableRT{false};
+    bool        gpuCulling{true};
 };
 
 RuntimeExit RunApplication(const RuntimeLaunchSettings& setup, const RuntimeOptions& options);

@@ -17,6 +17,7 @@ struct LaunchOverrides
     std::optional<bool>                             vsync;
     std::optional<bool>                             validation;
     std::optional<bool>                             asyncCompute;
+    std::optional<bool>                             gpuCulling;
     std::optional<uint32_t>                         width;
     std::optional<uint32_t>                         height;
     std::optional<rc::VoxelGISettings::RayProvider> backend;
@@ -154,6 +155,10 @@ bool ParseOptions(int              argc,
         {
             ParseToggle(argument, overrides.asyncCompute, error);
         }
+        else if (argument.starts_with("--gpu-culling="))
+        {
+            ParseToggle(argument, overrides.gpuCulling, error);
+        }
         else if (argument == "--backend=compute" || argument == "--backend=hardware")
         {
             overrides.backend = argument == "--backend=compute" ? rc::VoxelGISettings::RayProvider::Voxel
@@ -210,7 +215,7 @@ int RuntimeMain(int argc, char** argv)
         std::cout << "ZenApp --setup=<file.zenrender> [--frames=N] [--capture=scene.ppm] [--profile=prefix]\n"
                      "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
                      "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
-                     "       [--backend=compute|hardware] [--disable-rt] [--gpu-markers] [--no-ui]\n"
+                     "       [--backend=compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
                      "       [--fixed-step] [--start-paused]\n"
                      "Fullscreen defaults on and uses the display's native mode; width/height set the render size.\n"
                      "Space: Pause/Resume. Escape: Quit. Camera controls match the editor.\n";
@@ -229,6 +234,7 @@ int RuntimeMain(int argc, char** argv)
         {
             ApplyOverrides(overrides, setup);
             options.rhiOverride = overrides.rhi.has_value();
+            options.gpuCulling  = overrides.gpuCulling.value_or(true);
             valid               = ValidateRuntimeLaunchSettings(setup, error);
         }
         if (valid)

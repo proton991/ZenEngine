@@ -26,6 +26,7 @@ QUERY_EXTENSIONS = ('VK_KHR_acceleration_structure', 'VK_KHR_ray_query')
 RENDER_STATE = re.compile(r'ZenApp render: (\d+)x(\d+), async-compute=(.+?), RHI=(\w+), ray-provider=(\w+), '
                           r'ray-query=(\w+), diagnostics=(\w+)')
 PRESENTATION_STATE = re.compile(r'ZenApp presentation: fullscreen=(\w+), framebuffer=(\d+)x(\d+)')
+CULLING_STATE = re.compile(r'ZenApp culling: requested=(true|false), path=(\w+), reason=([^\r\n]*)')
 
 
 def fingerprint(path):
@@ -39,11 +40,14 @@ def actual_state(log):
     """The extents and renderer state ZenApp reports for its first frame."""
     render = RENDER_STATE.search(log)
     presentation = PRESENTATION_STATE.search(log)
+    culling = list(CULLING_STATE.finditer(log))
     assert render and presentation, 'ZenApp did not report its render and presentation state'
+    assert culling, 'ZenApp did not report its requested and actual GPU culling path'
     return dict(render_width=int(render[1]), render_height=int(render[2]), async_compute=render[3], rhi=render[4],
                 ray_provider=render[5], ray_query=render[6], diagnostics=render[7] == 'true',
                 fullscreen=presentation[1] == 'true', framebuffer_width=int(presentation[2]),
-                framebuffer_height=int(presentation[3]))
+                framebuffer_height=int(presentation[3]), gpu_culling_requested=culling[0][1] == 'true',
+                gpu_culling_paths=[dict(path=entry[2], reason=entry[3]) for entry in culling])
 
 
 def table(path):
@@ -90,6 +94,8 @@ def main():
     parser.add_argument('--frames', type=int, default=30)
     parser.add_argument('--max-duration-ms', type=int, default=9000)
     parser.add_argument('--async-compute', type=int, choices=(0, 1), default=1)
+    parser.add_argument('--gpu-culling', type=int, choices=(0, 1), default=1,
+                        help='Use compute culling/indirect draws, or force direct draws with 0')
     parser.add_argument('--fullscreen', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--width', type=int, default=3840)
     parser.add_argument('--height', type=int, default=2160)
@@ -118,7 +124,8 @@ def main():
     target_frames = max(30000, args.start_after_ms * 2 + args.frames)
     application = [str(executable), f'--setup={launch_setup}', f'--backend={args.backend}',
                    f'--fullscreen={int(args.fullscreen)}', f'--width={args.width}', f'--height={args.height}',
-                   '--rhi=threaded', f'--async-compute={args.async_compute}', '--vsync=0', '--validation=0',
+                   '--rhi=threaded', f'--async-compute={args.async_compute}', f'--gpu-culling={args.gpu_culling}',
+                   '--vsync=0', '--validation=0',
                    '--fixed-step', '--no-ui', '--gpu-markers', f'--frames={target_frames}']
     if args.backend == 'compute':
         application.append('--disable-rt')
@@ -155,6 +162,7 @@ def main():
     actual = actual_state(log)
     assert (actual['render_width'], actual['render_height']) == (args.width, args.height), 'Requested render extent was not confirmed'
     assert actual['ray_provider'] == args.backend, ('Backend differs from the request', actual)
+    assert actual['gpu_culling_requested'] == bool(args.gpu_culling), ('Culling request differs from the command', actual)
     if args.fullscreen:
         assert actual['fullscreen'] and (actual['framebuffer_width'], actual['framebuffer_height']) == (args.width, args.height), \
             'Fullscreen framebuffer differs from requested resolution; select the correct native display mode'
@@ -162,7 +170,8 @@ def main():
     assert queries == (list(QUERY_EXTENSIONS) if args.backend == 'hardware' else []), queries
     report = summarize(out, args.frames)
     report.update(application='ZenApp', backend=args.backend, clocks=args.clocks, setup=str(source),
-                  start_after_ms=args.start_after_ms, async_compute=args.async_compute, fullscreen=args.fullscreen,
+                  start_after_ms=args.start_after_ms, async_compute=args.async_compute, gpu_culling=args.gpu_culling,
+                  fullscreen=args.fullscreen,
                   width=args.width, height=args.height, actual=actual, rtss_running=overlay,
                   hardware_events=args.hardware_events,
                   multi_pass_metrics=args.multi_pass_metrics, shader_profiler=args.shader_profiler,

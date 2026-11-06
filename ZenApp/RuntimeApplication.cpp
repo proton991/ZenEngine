@@ -3,6 +3,7 @@
 #include "AssetLib/SceneLoader.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "Graphics/RenderCore/V2/SceneRendering.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
@@ -10,6 +11,7 @@
 #include "ZenApp/RuntimeWindow.h"
 #include <fstream>
 #include <algorithm>
+#include <iomanip>
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
 #    include "ZenApp/RuntimeOverlay.h"
 #endif
@@ -216,6 +218,7 @@ private:
             rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_device.Get());
             m_device->Init(nullptr);
             m_device->InitializeRendererServer(&m_setup.rendering);
+            m_device->GetRendererServer()->RequestDeferredLightingRenderer()->SetGPUCullingEnabled(m_options.gpuCulling);
             m_rendering = MakeUnique<rc::SceneRendering>(*m_device);
             m_rendering->InitializeEnvironment(m_setup.defaultEnvironment, m_setup.rendering.environment);
             valid = valid && m_camera.SetState(m_setup.camera)
@@ -279,6 +282,21 @@ private:
         bool valid = m_session->Render(overlay);
         if (valid && GetSceneFrame() > previousFrame)
         {
+            const rc::SceneCullingResult& culling = m_device->GetRendererServer()->GetRenderingStatus().gpuCulling;
+            if (!m_cullingReported || culling.status != m_lastSceneCulling.status)
+            {
+                LOGI("ZenApp culling: requested={}, path={}, reason={}", m_options.gpuCulling,
+                     rc::SceneCullingStatusName(culling.status), rc::SceneCullingFallbackReason(culling.status));
+                m_cullingReported = true;
+            }
+            m_lastSceneCulling = culling;
+            if (!m_options.profile.empty())
+            {
+                m_profile << "scene_frame=" << GetSceneFrame() << " gpu_culling_requested=" << m_options.gpuCulling
+                          << " gpu_culling_path=" << rc::SceneCullingStatusName(culling.status)
+                          << " candidates=" << culling.candidateCount << " uploaded_bytes=" << culling.uploadedBytes
+                          << " fallback=" << std::quoted(rc::SceneCullingFallbackReason(culling.status)) << '\n';
+            }
             if (GetSceneFrame() == 1)
             {
                 const rc::RenderView view = m_target->GetView();
@@ -299,6 +317,7 @@ private:
             if (valid && capture)
             {
                 valid = rc::CaptureSceneFrame(*m_device, m_target->GetView().color, m_options.capture);
+                valid = valid && WriteFrameSummary(m_options.capture + ".json");
             }
         }
         if (!valid)
@@ -326,19 +345,31 @@ private:
         m_profile << rc::RDGMetrics::Format(sample) << '\n';
     }
 
-    bool WriteProfileSummary()
+    bool WriteFrameSummary(const std::string& path)
     {
         const rc::RenderView          view   = m_target ? m_target->GetView() : rc::RenderView{};
         const platform::NativeWindow* window = m_session ? m_session->GetWindow() : nullptr;
         const platform::WindowExtent  framebuffer =
             window != nullptr ? window->GetFramebufferExtent() : platform::WindowExtent{};
-        std::ofstream summary(std::filesystem::u8path(m_options.profile + ".summary.json"));
+        // UI-only or paused submissions must not replace the last scene frame's path.
+        const rc::SceneCullingResult& culling = m_lastSceneCulling;
+        std::ofstream                 summary(std::filesystem::u8path(path));
         summary << "{\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
                 << ",\"framebufferHeight\":" << framebuffer.height
-                << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false") << "}\n";
+                << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false")
+                << ",\"gpuCullingRequested\":" << (m_options.gpuCulling ? "true" : "false")
+                << ",\"gpuCullingPath\":" << std::quoted(rc::SceneCullingStatusName(culling.status))
+                << ",\"gpuCullingFallbackReason\":" << std::quoted(rc::SceneCullingFallbackReason(culling.status))
+                << ",\"gpuCullingCandidates\":" << culling.candidateCount
+                << ",\"gpuCullingUploadedBytes\":" << culling.uploadedBytes << "}\n";
         summary.close();
-        return summary.good()
+        return summary.good();
+    }
+
+    bool WriteProfileSummary()
+    {
+        return WriteFrameSummary(m_options.profile + ".summary.json")
             && WriteRuntimeLaunchSettings(std::filesystem::u8path(m_options.profile + ".setup.zenrender"), m_setup, m_error);
     }
 
@@ -354,6 +385,8 @@ private:
     std::ofstream                    m_profile;
     std::shared_ptr<RuntimeLog>      m_log;
     bool                             m_logReady{false};
+    bool                             m_cullingReported{false};
+    rc::SceneCullingResult           m_lastSceneCulling;
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
     RuntimeOverlay m_overlay;
 #endif

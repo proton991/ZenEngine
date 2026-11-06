@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
@@ -17,6 +18,7 @@
 #include "SceneGraph/Camera.h"
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
 namespace zen::rc
 {
@@ -44,13 +46,25 @@ struct GBufferDrawGroup
     RHIPolygonCullMode             cullMode{RHIPolygonCullMode::eDisabled};
     HeapVector<SceneMeshDraw>      draws;
     HeapVector<HybridReceiverDraw> receivers;
+    HeapVector<sg::AABB>           bounds;
     uint32_t                       pipelineVariant{0};
 };
 
 using GBufferDrawGroups = HeapVector<GBufferDrawGroup>;
 
+NameID GBufferShaderName(bool hybrid, bool masked, bool indirect)
+{
+    const char* const shaders[2][2][2] = {
+        {{"GBufferSP", "GBufferIndirectSP"}, {"GBufferMaskedSP", "GBufferMaskedIndirectSP"}},
+        {{"HybridReceiverSP", "HybridReceiverIndirectSP"}, {"HybridReceiverMaskedSP", "HybridReceiverMaskedIndirectSP"}}};
+    return shaders[hybrid][masked][indirect];
+}
+
 // Opaque before masked, with separate two-sided, mirrored and ordinary pipelines.
-GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRenderer* hybrid, bool preserveDrawOrder)
+GBufferDrawGroups GroupGBufferDraws(const RenderScene&      scene,
+                                    const HybridGIRenderer* hybrid,
+                                    bool                    preserveDrawOrder,
+                                    bool                    indirect = false)
 {
     GBufferDrawGroups groups(preserveDrawOrder ? 0 : 6);
     for (const sg::Node* node : scene.GetRenderableNodes())
@@ -58,9 +72,11 @@ GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRend
         const uint32_t instance = node->GetRenderableIndex();
         if (scene.GetInstanceMask(instance) != 0)
         {
-            const bool mirrored = scene.GetInstanceOrientation(instance) < 0.0f;
-            for (const sg::SubMesh* mesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
+            const bool                      mirrored = scene.GetInstanceOrientation(instance) < 0.0f;
+            const HeapVector<sg::SubMesh*>& meshes   = node->GetComponent<sg::Mesh>()->GetSubMeshes();
+            for (uint32_t subMeshIndex = 0; subMeshIndex < meshes.size(); ++subMeshIndex)
             {
+                const sg::SubMesh*      mesh  = meshes[subMeshIndex];
                 const uint32_t          index = mesh->GetMaterial()->index;
                 const sg::MaterialData& material =
                     index < scene.GetMaterialsData().size() ? scene.GetMaterialsData()[index] : mesh->GetMaterial()->data;
@@ -73,9 +89,8 @@ GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRend
                     const RHIPolygonCullMode cullMode = material.materialProperties.z >= 0.5f ? RHIPolygonCullMode::eDisabled
                                                       : mirrored                              ? RHIPolygonCullMode::eFront
                                                                                               : RHIPolygonCullMode::eBack;
-                    const NameID shader     = masked ? (hybrid != nullptr ? "HybridReceiverMaskedSP" : "GBufferMaskedSP")
-                                                     : (hybrid != nullptr ? "HybridReceiverSP" : "GBufferSP");
-                    uint32_t     groupIndex = (masked ? 3u : 0u) + static_cast<uint32_t>(cullMode);
+                    const NameID             shader   = GBufferShaderName(hybrid != nullptr, masked, indirect);
+                    uint32_t                 groupIndex = (masked ? 3u : 0u) + static_cast<uint32_t>(cullMode);
                     if (preserveDrawOrder)
                     {
                         if (groups.empty() || groups.back().shader != shader || groups.back().cullMode != cullMode)
@@ -88,6 +103,10 @@ GBufferDrawGroups GroupGBufferDraws(const RenderScene& scene, const HybridGIRend
                     group.shader            = shader;
                     group.cullMode          = cullMode;
                     group.draws.push_back({instance, index, mesh->GetIndexCount(), mesh->GetFirstIndex()});
+                    if (indirect)
+                    {
+                        group.bounds.push_back(scene.GetSubMeshWorldBounds(instance, subMeshIndex));
+                    }
                     if (hybrid != nullptr)
                     {
                         group.receivers.push_back(hybrid->ReceiverDraw(instance, index));
@@ -128,16 +147,9 @@ void RecordGBufferGroups(RDGPassCmdEncoder& encoder, const GBufferDrawGroups& gr
         }
     }
 }
-} // namespace
 
-void AddGBufferPass(RenderGraph&            graph,
-                    RDGGraphicsPassDesc     desc,
-                    const RenderScene&      scene,
-                    const HybridGIRenderer* hybrid,
-                    bool                    preserveDrawOrder)
+void DeclareGBufferPipelines(RDGGraphicsPassDesc& desc, GBufferDrawGroups& groups)
 {
-    desc.SetShaderProgramName(hybrid != nullptr ? "HybridReceiverSP" : "GBufferSP");
-    GBufferDrawGroups groups = GroupGBufferDraws(scene, hybrid, preserveDrawOrder);
     for (GBufferDrawGroup& group : groups)
     {
         if (!group.draws.empty()
@@ -159,10 +171,336 @@ void AddGBufferPass(RenderGraph&            graph,
             }
         }
     }
+}
+
+struct GBufferIndirectBatch
+{
+    uint32_t pipelineVariant;
+    uint32_t firstDraw;
+    uint32_t drawCount;
+};
+
+void RecordCulledGBufferDraws(RDGPassCmdEncoder&                      encoder,
+                              const HeapVector<GBufferIndirectBatch>& batches,
+                              RDGBuffer                               arguments,
+                              uint32_t                                maxDrawCount)
+{
+    for (const GBufferIndirectBatch& batch : batches)
+    {
+        encoder.SetPipelineVariant(batch.pipelineVariant);
+        uint32_t first     = batch.firstDraw;
+        uint32_t remaining = batch.drawCount;
+        while (remaining != 0)
+        {
+            const uint32_t count = std::min(remaining, maxDrawCount);
+            encoder.DrawIndexedIndirect(arguments, first * sizeof(DrawIndexedIndirectCommand), count,
+                                        sizeof(DrawIndexedIndirectCommand));
+            first     += count;
+            remaining -= count;
+        }
+    }
+}
+
+HeapVector<GBufferIndirectBatch> BuildIndirectBatches(const GBufferDrawGroups& groups)
+{
+    HeapVector<GBufferIndirectBatch> batches;
+    uint32_t                         first = 0;
+    for (const GBufferDrawGroup& group : groups)
+    {
+        const uint32_t count = static_cast<uint32_t>(group.draws.size());
+        if (count != 0)
+        {
+            batches.push_back({group.pipelineVariant, first, count});
+            first += count;
+        }
+    }
+    return batches;
+}
+
+SceneCullingStatus ValidateCullingDevice(const RHIGPUInfo& gpu)
+{
+    SceneCullingStatus status = SceneCullingStatus::eCulled;
+    if (!SupportsIndirectFirstInstance(gpu))
+    {
+        status = SceneCullingStatus::eUnsupportedFirstInstance;
+    }
+    else if (!SupportsIndirectGBufferShaders(gpu))
+    {
+        status = SceneCullingStatus::eVaryingLimit;
+    }
+    return status;
+}
+
+SceneCullingStatus ValidateCullingResources(uint64_t candidateCount, const RHIGPUInfo& gpu, uint64_t& bytes)
+{
+    SceneCullingStatus status = SceneCullingStatus::eCulled;
+    if (candidateCount == 0)
+    {
+        status = SceneCullingStatus::eEmpty;
+    }
+    else if (ValidateGIStorageBuffer(candidateCount, sizeof(GBufferDrawData), gpu, bytes) != GIResourceStatus::eSuccess)
+    {
+        status = SceneCullingStatus::eBufferLimit;
+    }
+    // Draw records and previous matrices are both 64 bytes. Indirect arguments
+    // are smaller (20 bytes), so the same validation covers all three buffers.
+    static_assert(sizeof(GBufferDrawData) == sizeof(Mat4));
+    static_assert(sizeof(DrawIndexedIndirectCommand) < sizeof(GBufferDrawData));
+    return status;
+}
+
+bool BuildCullingDispatches(uint32_t count, const RHIGPUInfo& gpu, HeapVector<ComputeDispatchChunk>& chunks)
+{
+    bool     valid = true;
+    uint32_t first = 0;
+    while (valid && first < count)
+    {
+        ComputeDispatchChunk chunk;
+        valid = BuildComputeDispatchChunk(first, count - first, ZEN_SCENE_CULL_GROUP_SIZE, gpu, chunk);
+        if (valid)
+        {
+            chunks.push_back(chunk);
+            first += chunk.itemCount;
+        }
+    }
+    return valid;
+}
+
+HeapVector<GBufferDrawData> BuildGBufferDrawRecords(const GBufferDrawGroups& groups,
+                                                    uint32_t                 count,
+                                                    HeapVector<Mat4>&        previousModels)
+{
+    HeapVector<GBufferDrawData> data;
+    data.reserve(count);
+    for (const GBufferDrawGroup& group : groups)
+    {
+        for (uint32_t index = 0; index < group.draws.size(); ++index)
+        {
+            const SceneMeshDraw& draw = group.draws[index];
+            const sg::AABB&      box  = group.bounds[index];
+            data.push_back({Vec4(box.GetMin(), 0.0f), Vec4(box.GetMax(), 0.0f),
+                            glm::uvec4(draw.indexCount, draw.firstIndex, 0, 0),
+                            glm::uvec4(draw.nodeIndex, draw.materialIndex, 0, 0)});
+            if (!group.receivers.empty())
+            {
+                previousModels.push_back(group.receivers[index].previousModel);
+            }
+        }
+    }
+    return data;
+}
+
+template <typename T> bool UploadCullingData(RenderDevice&    device,
+                                             FrameBufferRing& buffer,
+                                             HeapVector<T>&   contents,
+                                             HeapVector<T>&   data,
+                                             uint32_t         bytes,
+                                             NameID           name,
+                                             uint64_t&        uploadedBytes)
+{
+    const bool changed = contents.size() != data.size() || std::memcmp(contents.data(), data.data(), bytes) != 0;
+    if (changed)
+    {
+        buffer.MarkDirty(0, bytes);
+    }
+    const uint64_t previousGeneration = buffer.GetGeneration();
+    const bool     valid              = buffer.Update(device, data.data(), bytes, name);
+    if (valid)
+    {
+        if (changed)
+        {
+            contents = std::move(data);
+        }
+        if (buffer.GetGeneration() != previousGeneration)
+        {
+            uploadedBytes += bytes;
+        }
+    }
+    return valid;
+}
+
+void RecordCullingDispatches(RDGPassCmdEncoder& encoder, const HeapVector<ComputeDispatchChunk>& chunks)
+{
+    for (const ComputeDispatchChunk& chunk : chunks)
+    {
+        const glm::uvec4 range(chunk.firstItem, chunk.itemCount, 0, 0);
+        encoder.SetPushConstants(range);
+        encoder.Dispatch(chunk.groups.x, chunk.groups.y, chunk.groups.z);
+    }
+}
+
+void AddGBufferCullPass(RenderGraph&                     graph,
+                        const RenderScene&               scene,
+                        RHIBuffer*                       drawData,
+                        RDGBuffer                        arguments,
+                        HeapVector<ComputeDispatchChunk> chunks)
+{
+    const sg::CameraUniformData& camera = *reinterpret_cast<const sg::CameraUniformData*>(scene.GetCameraUniformData());
+    const FrustumCullUniformData uniforms{camera.projViewMatrix};
+    RDGComputePassDesc           cull;
+    cull.SetShaderProgramName("SceneFrustumCullSP");
+    cull.SetPassTag("GBufferFrustumCull");
+    // Each chunk writes a disjoint command range and only reads scene metadata.
+    cull.independentDispatches = true;
+    // Do not request async compute: graphics immediately consumes the arguments.
+    cull.BindValue("uFrustumCull", uniforms);
+    cull.BindStorageBuffer("GBufferDrawBuffer", drawData);
+    // All chunks belong to one pass and collectively write every command slot.
+    cull.BindStorageBuffer("IndirectBuffer", arguments, RDGContentGuarantee::eFullWrite);
+    graph.AddComputePass(std::move(cull)).RecordPassCommands([chunks = std::move(chunks)](RDGPassCmdEncoder& encoder) {
+        RecordCullingDispatches(encoder, chunks);
+    });
+}
+} // namespace
+
+void AddGBufferPass(RenderGraph&            graph,
+                    RDGGraphicsPassDesc     desc,
+                    const RenderScene&      scene,
+                    const HybridGIRenderer* hybrid,
+                    bool                    preserveDrawOrder)
+{
+    desc.SetShaderProgramName(GBufferShaderName(hybrid != nullptr, false, false));
+    GBufferDrawGroups groups = GroupGBufferDraws(scene, hybrid, preserveDrawOrder);
+    DeclareGBufferPipelines(desc, groups);
     graph.AddGraphicsPass(std::move(desc))
         .RecordPassCommands([groups = std::move(groups), isHybrid = hybrid != nullptr](RDGPassCmdEncoder& encoder) {
             RecordGBufferGroups(encoder, groups, isHybrid);
         });
+}
+
+SceneCullingResult AddCulledGBufferPass(RenderDevice&           device,
+                                        SceneCullingDrawCache&  cache,
+                                        RenderGraph&            graph,
+                                        RDGGraphicsPassDesc&    desc,
+                                        const RenderScene&      scene,
+                                        const HybridGIRenderer* hybrid,
+                                        bool                    preserveDrawOrder,
+                                        RDGBuffer*              pArguments)
+{
+    const RHIGPUInfo&  gpu = device.GetGPUInfo();
+    SceneCullingResult result;
+    result.status = ValidateCullingDevice(gpu);
+    // Check the device first: the direct path groups draws again for itself.
+    GBufferDrawGroups                groups;
+    uint64_t                         bytes = 0;
+    HeapVector<ComputeDispatchChunk> chunks;
+    if (result.status == SceneCullingStatus::eCulled)
+    {
+        groups                  = GroupGBufferDraws(scene, hybrid, preserveDrawOrder, true);
+        uint64_t candidateCount = 0;
+        for (const GBufferDrawGroup& group : groups)
+        {
+            candidateCount += group.draws.size();
+        }
+        result.status         = ValidateCullingResources(candidateCount, gpu, bytes);
+        result.candidateCount = static_cast<uint32_t>(std::min(candidateCount, uint64_t(UINT32_MAX)));
+    }
+    if (result.status == SceneCullingStatus::eCulled && !BuildCullingDispatches(result.candidateCount, gpu, chunks))
+    {
+        result.status = SceneCullingStatus::eDispatchLimit;
+    }
+    if (result.status == SceneCullingStatus::eCulled)
+    {
+        HeapVector<Mat4>            previousModels;
+        HeapVector<GBufferDrawData> data = BuildGBufferDrawRecords(groups, result.candidateCount, previousModels);
+        bool uploaded = UploadCullingData(device, cache.draws, cache.contents, data, static_cast<uint32_t>(bytes),
+                                          "gbuffer_draw_data", result.uploadedBytes);
+        if (uploaded && hybrid != nullptr)
+        {
+            uploaded = UploadCullingData(device, cache.previousModels, cache.previousModelContents, previousModels,
+                                         static_cast<uint32_t>(bytes), "gbuffer_previous_models", result.uploadedBytes);
+        }
+        if (!uploaded)
+        {
+            result.status = SceneCullingStatus::eUploadFailed;
+        }
+    }
+    RDGBuffer arguments;
+    if (result.status == SceneCullingStatus::eCulled)
+    {
+        RDGBufferDesc bufferDesc;
+        bufferDesc.name = "gbuffer_indirect_arguments";
+        bufferDesc.size = uint64_t(result.candidateCount) * sizeof(DrawIndexedIndirectCommand);
+        bufferDesc.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eIndirectBuffer);
+        arguments = graph.GetResourceManager()->CreateBuffer(bufferDesc);
+        if (!arguments)
+        {
+            result.status = SceneCullingStatus::eAllocationFailed;
+        }
+    }
+    if (result.status == SceneCullingStatus::eCulled)
+    {
+        if (pArguments != nullptr)
+        {
+            *pArguments = arguments;
+        }
+        AddGBufferCullPass(graph, scene, cache.draws.GetBuffer(), arguments, std::move(chunks));
+        desc.SetShaderProgramName(GBufferShaderName(hybrid != nullptr, false, true));
+        desc.BindStorageBuffer("GBufferDrawBuffer", cache.draws.GetBuffer());
+        if (hybrid != nullptr)
+        {
+            desc.BindStorageBuffer("GBufferPreviousModels", cache.previousModels.GetBuffer());
+        }
+        desc.UseIndirectBuffer(arguments);
+        DeclareGBufferPipelines(desc, groups);
+        HeapVector<GBufferIndirectBatch> batches      = BuildIndirectBatches(groups);
+        const uint32_t                   maxDrawCount = gpu.supportMultiDrawIndirect ? gpu.maxDrawIndirectCount : 1;
+        graph.AddGraphicsPass(std::move(desc))
+            .RecordPassCommands([batches = std::move(batches), arguments, maxDrawCount](RDGPassCmdEncoder& encoder) {
+                RecordCulledGBufferDraws(encoder, batches, arguments, maxDrawCount);
+            });
+    }
+    return result;
+}
+
+void SceneCullingDrawCache::Destroy(RenderDevice& device)
+{
+    draws.Destroy(device);
+    previousModels.Destroy(device);
+    contents.clear();
+    previousModelContents.clear();
+}
+
+const char* SceneCullingStatusName(SceneCullingStatus status)
+{
+    const char* name = "not_used";
+    switch (status)
+    {
+        case SceneCullingStatus::eNotUsed: break;
+        case SceneCullingStatus::eDisabled: name = "direct_disabled"; break;
+        case SceneCullingStatus::eEmpty: name = "empty"; break;
+        case SceneCullingStatus::eCulled: name = "gpu_indirect"; break;
+        case SceneCullingStatus::eUnsupportedFirstInstance: name = "direct_unsupported_first_instance"; break;
+        case SceneCullingStatus::eVaryingLimit: name = "direct_varying_limit"; break;
+        case SceneCullingStatus::eBufferLimit: name = "direct_buffer_limit"; break;
+        case SceneCullingStatus::eDispatchLimit: name = "direct_dispatch_limit"; break;
+        case SceneCullingStatus::eUploadFailed: name = "direct_upload_failed"; break;
+        case SceneCullingStatus::eAllocationFailed: name = "direct_allocation_failed"; break;
+    }
+    return name;
+}
+
+const char* SceneCullingFallbackReason(SceneCullingStatus status)
+{
+    const char* reason = "";
+    switch (status)
+    {
+        case SceneCullingStatus::eNotUsed:
+        case SceneCullingStatus::eDisabled:
+        case SceneCullingStatus::eEmpty:
+        case SceneCullingStatus::eCulled: break;
+        case SceneCullingStatus::eUnsupportedFirstInstance:
+            reason = "Indexed indirect first-instance drawing is unavailable.";
+            break;
+        case SceneCullingStatus::eVaryingLimit:
+            reason = "Indirect GBuffer shader interfaces exceed device component limits.";
+            break;
+        case SceneCullingStatus::eBufferLimit: reason = "Culling data exceeds storage-buffer size or alignment limits."; break;
+        case SceneCullingStatus::eDispatchLimit: reason = "Culling workgroups exceed device compute limits."; break;
+        case SceneCullingStatus::eUploadFailed: reason = "Culling metadata allocation or upload failed."; break;
+        case SceneCullingStatus::eAllocationFailed: reason = "Culling argument-buffer declaration failed."; break;
+    }
+    return reason;
 }
 
 namespace
@@ -287,6 +625,7 @@ void DeferredLightingRenderer::Destroy()
     if (m_pRenderDevice != nullptr)
     {
         m_sortedBlendIndices.Destroy(*m_pRenderDevice);
+        m_gbufferDrawData.Destroy(*m_pRenderDevice);
     }
     m_sortedBlendContents.clear();
 }
@@ -406,7 +745,9 @@ void DeferredLightingRenderer::BuildRenderGraph(const RenderView& view, VoxelGIR
 
 void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hybrid)
 {
-    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    const SceneCullingStatus previousCullingStatus = m_gpuCullingStatus.status;
+    m_gpuCullingStatus                             = {};
+    RenderGraph* pRDG                              = m_pRenderDevice->GetCurrentFrameRDG();
 
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
 
@@ -507,7 +848,18 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
 
         offscreen.BindIndexBuffer(m_pScene->GetIndexBuffer());
 
-        AddGBufferPass(*pRDG, std::move(offscreen), *m_pScene, m_hybrid);
+        m_gpuCullingStatus = m_gpuCullingEnabled ? AddCulledGBufferPass(*m_pRenderDevice, m_gbufferDrawData, *pRDG, offscreen,
+                                                                        *m_pScene, m_hybrid)
+                                                 : SceneCullingResult{SceneCullingStatus::eDisabled};
+        if (m_gpuCullingStatus.status != SceneCullingStatus::eCulled)
+        {
+            AddGBufferPass(*pRDG, std::move(offscreen), *m_pScene, m_hybrid);
+        }
+        const char* fallbackReason = SceneCullingFallbackReason(m_gpuCullingStatus.status);
+        if (m_gpuCullingStatus.status != previousCullingStatus && fallbackReason[0] != '\0')
+        {
+            LOGW("GPU culling fell back to direct drawing: {}", fallbackReason);
+        }
     }
 }
 

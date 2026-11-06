@@ -39,15 +39,26 @@ layout(std430, set = 1, binding = 3) readonly buffer UVBuffer
     vec4 uvValues[];
 };
 
+#ifdef GPU_CULLED_DRAW
+#    include "gbuffer_draw.glsl"
+layout(location = 18) flat out uvec2 outDrawIndices;
+#    ifdef HYBRID_RECEIVER
+layout(std430, set = 1, binding = 6) readonly buffer GBufferPreviousModels
+{
+    mat4 gbufferPreviousModels[];
+};
+#    endif
+#else
 layout(push_constant) uniform uNodePushConstant
 {
     uint uNodeIndex;
     uint uMaterialIndex;
-#ifdef HYBRID_RECEIVER
+#    ifdef HYBRID_RECEIVER
     uvec2 reserved;
     mat4  previousModel;
-#endif
+#    endif
 };
+#endif
 
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec4 outColor;
@@ -79,6 +90,15 @@ layout(location = 17) out vec4 outCurrentClip;
 #endif
 void main()
 {
+#ifdef GPU_CULLED_DRAW
+    uvec2 drawIndices    = gbufferDraws[gl_InstanceIndex].indices.xy;
+    uint  uNodeIndex     = drawIndices.x;
+    uint  uMaterialIndex = drawIndices.y;
+    outDrawIndices       = drawIndices;
+#    ifdef HYBRID_RECEIVER
+    mat4 previousModel = gbufferPreviousModels[gl_InstanceIndex];
+#    endif
+#endif
     vec4 locPos  = nodesData[uNodeIndex].modelMatrix * vec4(inPos.xyz, 1.0);
 
     gl_Position  = uProjViewMatrix * vec4(locPos.xyz, 1.0);

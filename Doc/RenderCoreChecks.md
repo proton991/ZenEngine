@@ -23,3 +23,51 @@ The full matrix is 24 cases per build (modes 1-3 x inline/threaded RHI x async o
 Stability, camera-motion and light-change captures render their references in-process after scripted events, so they are cached and replayed as one unit. Entries live in `build/reference-cache/` (override with `ZEN_REFERENCE_CACHE_DIR`); they can be large, and deleting the folder is always safe.
 
 Unattended capture windows ignore the Escape and Tab shortcuts, and closing one fails the run with a logged reason.
+
+## GPU frustum culling and indirect GBuffer draws
+
+The ordinary and hybrid GBuffer paths now generate indexed indirect commands with
+`SceneFrustumCullSP`. The culler tests committed world-space submesh bounds against
+the current camera frustum. Stale or invalid authored bounds (including arbitrary
+vertex edits) conservatively use committed instance bounds. Each candidate submesh retains a command slot; rejected
+candidates receive `instanceCount = 0`. Draw metadata supplies node/material IDs and
+the hybrid previous model through `firstInstance`, with batches retaining the existing
+opaque/masked and face-culling pipeline groups. This phase does not compact commands
+or perform depth-pyramid occlusion culling.
+
+The graphics queue runs the culler immediately before its consumer. RDG declares the
+storage writes and indirect reads. Cached 64-byte draw records use a `FrameBufferRing`;
+matching contents skip uploads and ring rotation. Only hybrid draws allocate the
+separate previous-model buffer. Arguments are transient graph buffers. The workgroup
+size is shared by C++ and GLSL, and dispatch chunks collectively write the argument
+buffer within one pass. Devices without indirect first-instance support or sufficient
+shader-interface components, and scenes exceeding resource limits, retain the direct
+path with an explicit status and logged fallback reason. Batches respect
+the device's maximum indirect draw count; devices without multi-draw issue single
+indirect commands. Forward transparency, shadows, and GI retain their own visibility.
+
+Focused checks (from the repository root, after building `ConeVoxelGIIntegrationTest`):
+
+```powershell
+build/x64-windows-msvc-debug/bin/ConeVoxelGIIntegrationTest.exe --gtest_filter="*SceneFrustumCull*:*CulledGBuffer*:*SubMesh*"
+build/x64-windows-msvc-debug/bin/RenderCoreTest.exe --gtest_filter="*CulledGBufferGraph*"
+```
+
+These native tests validate command contents, conservative frustum boundaries,
+perspective/orthographic cameras, invalid bounds, partial workgroups, empty dispatches,
+and direct-versus-indirect GBuffer output. They read production commands to verify
+rejection and committed motion into view. Renderer tests cover capability fallbacks,
+multiple dispatches, draw-count limits, cached uploads, and shrinking/empty candidate
+lists across frames. The parameterized fixture runs inline/threaded
+RHI with async compute disabled/enabled and turns Vulkan validation errors into failures.
+Application smoke captures must use standalone ZenApp with an explicit `.zenrender`
+setup and command-line overrides, as described in [ZenApp migration](ZenAppMigration.md).
+Correctness checks do not establish a frame-time improvement; profile comparable ZenApp
+runs separately before making a performance claim.
+
+Use `--gpu-culling=0` to force direct GBuffer draws and `--gpu-culling=1` (the default)
+to request compute culling with the same executable and setup. `--capture=frame.ppm`
+also writes `frame.ppm.json`, recording requested and selected paths, fallback reason,
+candidate count, uploaded bytes, and actual extents. Profile logs record this state per
+scene frame; the profile summary records the final frame. The Nsight runner accepts
+`--gpu-culling 0|1` and retains the requested setting and observed path transitions.

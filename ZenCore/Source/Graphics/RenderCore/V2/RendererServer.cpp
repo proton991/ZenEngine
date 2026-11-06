@@ -148,9 +148,10 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
     const bool renderScene =
         drawScene && m_pScene != nullptr && view.color != nullptr && view.depth != nullptr && view.width > 0 && view.height > 0;
 
-    m_frameShadows    = false;
-    m_frameGI         = false;
-    m_frameVisibility = false;
+    m_frameShadows      = false;
+    m_frameGI           = false;
+    m_frameVisibility   = false;
+    m_status.gpuCulling = {};
     if (renderScene)
     {
         m_status.requested  = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
@@ -225,6 +226,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                     // gather starts when its visibility is ready, with fresh temporal history.
                     const bool rayGather = m_pVoxelGI->UsesFieldTraversal() || m_pVoxelGI->UsesHardwareQueries();
                     m_pDeferredLightingRenderer->BuildGBufferGraph(view, rayGather);
+                    m_status.gpuCulling = m_pDeferredLightingRenderer->GetGPUCullingStatus();
 
                     m_pVoxelizer->BuildVoxelizationGraph();
 
@@ -253,6 +255,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                 else
                 {
                     m_pDeferredLightingRenderer->BuildRenderGraph(view);
+                    m_status.gpuCulling = m_pDeferredLightingRenderer->GetGPUCullingStatus();
                 }
 
                 m_debugDescription.available = true;
@@ -384,8 +387,9 @@ void RendererServer::BuildDiagnosticFrame(const RenderView& view)
     if (m_debug.output == DebugOutput::eAlbedo || m_debug.output == DebugOutput::eNormal)
     {
         m_pDeferredLightingRenderer->BuildGBufferGraph(view);
+        m_status.gpuCulling = m_pDeferredLightingRenderer->GetGPUCullingStatus();
 
-        m_debugDescription = m_pDeferredLightingRenderer->BuildDebugView(view, m_debug);
+        m_debugDescription  = m_pDeferredLightingRenderer->BuildDebugView(view, m_debug);
     }
     else if (m_debug.output == DebugOutput::eShadow)
     {

@@ -8,6 +8,32 @@ namespace zen::rc
 {
 namespace
 {
+bool IsFiniteBounds(const sg::AABB& bounds)
+{
+    const Vec3 minimum = bounds.GetMin();
+    const Vec3 maximum = bounds.GetMax();
+    bool       valid   = true;
+    for (uint32_t axis = 0; axis < 3; ++axis)
+    {
+        valid = valid && std::isfinite(minimum[axis]) && std::isfinite(maximum[axis]) && minimum[axis] <= maximum[axis];
+    }
+    return valid;
+}
+
+bool SubMeshBoundsContainVertices(const sg::SubMesh&               mesh,
+                                  const HeapVector<asset::Vertex>& vertices,
+                                  const HeapVector<uint32_t>&      indices)
+{
+    const sg::AABB& bounds = mesh.GetAABB();
+    bool            valid  = IsFiniteBounds(bounds);
+    for (uint32_t index = 0; valid && index < mesh.GetIndexCount(); ++index)
+    {
+        const Vec3 point(vertices[indices[mesh.GetFirstIndex() + index]].pos);
+        valid = glm::all(glm::greaterThanEqual(point, bounds.GetMin())) && glm::all(glm::lessThanEqual(point, bounds.GetMax()));
+    }
+    return valid;
+}
+
 bool FiniteMaterialVector(const Vec4& value)
 {
     bool finite = true;
@@ -60,6 +86,32 @@ uint32_t RenderScene::GetInstanceMask(uint32_t instance) const
 const HeapVector<RenderScene::ShadowCaster>& RenderScene::GetShadowCasters() const
 {
     return m_shadowCasters;
+}
+
+sg::AABB RenderScene::GetSubMeshWorldBounds(uint32_t instance, uint32_t subMeshIndex) const
+{
+    sg::AABB bounds;
+    if (instance < m_subMeshWorldBounds.ranges.size() && subMeshIndex < m_subMeshWorldBounds.ranges[instance].y)
+    {
+        bounds = m_subMeshWorldBounds.bounds[m_subMeshWorldBounds.ranges[instance].x + subMeshIndex];
+    }
+    else if (instance < m_shadowCasters.size())
+    {
+        bounds = m_shadowCasters[instance].bounds;
+    }
+    return bounds;
+}
+
+bool RenderScene::IsSubMeshBoundsValid(const sg::SubMesh& subMesh)
+{
+    // A new entry holds empty bounds, whose answer is already correct: they are never valid.
+    SubMeshBoundsCheck& check = m_subMeshBoundsChecks[&subMesh];
+    if (check.bounds != subMesh.GetAABB())
+    {
+        check.bounds    = subMesh.GetAABB();
+        check.contained = SubMeshBoundsContainVertices(subMesh, m_vertices, m_indices);
+    }
+    return check.contained;
 }
 
 bool RenderScene::SetInstanceClass(uint32_t instance, uint32_t objectClass)
@@ -441,7 +493,8 @@ void RenderScene::BuildMeshVertexIndices()
 
 bool RenderScene::ComputeGeometryBounds(sg::AABB&                 bounds,
                                         sg::AABB                  (&classBounds)[2],
-                                        HeapVector<ShadowCaster>& shadowCasters) const
+                                        HeapVector<ShadowCaster>& shadowCasters,
+                                        SubMeshWorldBounds&       subMeshBounds)
 {
     bool valid     = true;
 
@@ -451,6 +504,14 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB&                 bounds,
 
     shadowCasters                   = m_shadowCasters;
     shadowCasters.resize(m_nodesData.size());
+    subMeshBounds.ranges = HeapVector<glm::uvec2>(m_nodesData.size(), glm::uvec2(0));
+    subMeshBounds.bounds.reserve(m_subMeshWorldBounds.bounds.size());
+    // UpdateVertices can leave authored bounds stale, while animation refreshes them
+    // before this transaction. A failed commit stays dirty, so it checks again.
+    if (m_verticesDirty)
+    {
+        m_subMeshBoundsChecks.clear();
+    }
 
     for (const sg::Node* node : m_pScene->GetRenderableNodes())
     {
@@ -499,6 +560,24 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB&                 bounds,
         if (instance < m_shadowCasters.size() && (shadowChanged || caster.bounds != m_shadowCasters[instance].bounds))
         {
             ++caster.revision;
+        }
+
+        const HeapVector<sg::SubMesh*>& subMeshes = node->GetComponent<sg::Mesh>()->GetSubMeshes();
+        subMeshBounds.ranges[instance] =
+            glm::uvec2(static_cast<uint32_t>(subMeshBounds.bounds.size()), static_cast<uint32_t>(subMeshes.size()));
+        for (const sg::SubMesh* subMesh : subMeshes)
+        {
+            sg::AABB primitiveBounds = caster.bounds;
+            if (mask != 0 && IsSubMeshBoundsValid(*subMesh))
+            {
+                sg::AABB worldBounds = subMesh->GetAABB();
+                worldBounds.Transform(m_nodesData[instance].modelMatrix);
+                if (IsFiniteBounds(worldBounds))
+                {
+                    primitiveBounds = worldBounds;
+                }
+            }
+            subMeshBounds.bounds.push_back(primitiveBounds);
         }
     }
 
@@ -605,12 +684,14 @@ bool RenderScene::CommitGeometryUpdates()
         const HeapVector<glm::uvec4>      triangles =
             m_triangleRecordsDirty ? BuildTriangleRecords(ranges, materialTriangles) : HeapVector<glm::uvec4>();
         const uint32_t triangleCount = m_triangleRecordsDirty ? static_cast<uint32_t>(triangles.size()) : m_voxelTriangleCount;
-        const RHIGPUInfo& gpu           = m_pRenderDevice->GetGPUInfo();
-        uint64_t          nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
-        sg::AABB          bounds;
-        sg::AABB          classBounds[2];
+        const RHIGPUInfo&        gpu = m_pRenderDevice->GetGPUInfo();
+        uint64_t                 nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
+        sg::AABB                 bounds;
+        sg::AABB                 classBounds[2];
         HeapVector<ShadowCaster> shadowCasters;
-        valid = (!m_verticesDirty || RefreshUVCoordinates()) && ComputeGeometryBounds(bounds, classBounds, shadowCasters)
+        SubMeshWorldBounds       subMeshBounds;
+        valid = (!m_verticesDirty || RefreshUVCoordinates())
+             && ComputeGeometryBounds(bounds, classBounds, shadowCasters, subMeshBounds)
              && ValidateGIStorageBuffer(std::max(m_nodesData.size(), size_t(1)), sizeof(sg::NodeData), gpu, nodeBytes)
                     == GIResourceStatus::eSuccess
              && ValidateGIStorageBuffer(triangleCount, sizeof(glm::uvec4), gpu, triangleBytes) == GIResourceStatus::eSuccess
@@ -654,6 +735,7 @@ bool RenderScene::CommitGeometryUpdates()
                 m_classBounds[0]       = classBounds[0];
                 m_classBounds[1]       = classBounds[1];
                 m_shadowCasters        = std::move(shadowCasters);
+                m_subMeshWorldBounds   = std::move(subMeshBounds);
                 std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), uint8_t(0));
                 if (m_verticesDirty)
                 {

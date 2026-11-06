@@ -841,6 +841,9 @@ void VulkanRHI::Init()
     m_gpuInfo.supportMultiDrawIndirect         = m_pDevice->GetPhysicalDeviceFeatures().multiDrawIndirect != VK_FALSE;
 
     m_gpuInfo.supportDrawIndirectFirstInstance = m_pDevice->GetPhysicalDeviceFeatures().drawIndirectFirstInstance != VK_FALSE;
+    m_gpuInfo.maxDrawIndirectCount             = m_pDevice->GetPhysicalDeviceProperties().limits.maxDrawIndirectCount;
+    m_gpuInfo.maxVertexOutputComponents        = m_pDevice->GetPhysicalDeviceProperties().limits.maxVertexOutputComponents;
+    m_gpuInfo.maxFragmentInputComponents       = m_pDevice->GetPhysicalDeviceProperties().limits.maxFragmentInputComponents;
 
     m_gpuInfo.supportTessellationShader        = m_pDevice->GetPhysicalDeviceFeatures().tessellationShader != VK_FALSE;
 

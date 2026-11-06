@@ -19,6 +19,12 @@ its small test scene, and another scene needs a copy of an existing setup edited
 point at its processed package and camera. Startup arguments override run settings
 without editing `engine.cfg`.
 
+`--gpu-culling=0` forces direct GBuffer drawing for comparison or a driver workaround;
+`--gpu-culling=1` requests GPU frustum culling and indirect drawing (the default).
+Profiles and capture JSON sidecars record both the request and the selected path,
+including any fallback reason. The Nsight runner accepts the same option as
+`--gpu-culling 0|1`; use the same executable/setup for both sides of a comparison.
+
 ```powershell
 cmake --build --preset x64-windows-msvc-release --target ZenApp zen_editor --parallel 8
 ./build/x64-windows-msvc-release/bin/ZenApp.exe --setup=scene.zenrender --fullscreen

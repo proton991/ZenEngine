@@ -135,6 +135,11 @@ public:
     // submitted snapshot so skipped or failed frames do not lose previous bounds.
     const HeapVector<ShadowCaster>& GetShadowCasters() const;
 
+    // Committed bounds in Mesh::GetSubMeshes() order. Stale or missing authored
+    // primitive bounds fall back to the committed instance bounds. Staged
+    // transforms/deformation cannot change these until geometry uploads commit.
+    sg::AABB GetSubMeshWorldBounds(uint32_t instance, uint32_t subMeshIndex) const;
+
     // Committed ranges in GetVoxelTriangleBuffer(), indexed by renderable slot.
     // Disabled instances retain their records with mask zero; non-triangle/empty
     // instances have zero count. Material alpha remains a GPU coverage decision.
@@ -297,7 +302,27 @@ private:
 
     bool RefreshUVCoordinates();
 
-    bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2], HeapVector<ShadowCaster>& shadowCasters) const;
+    // Packed so a commit allocates once rather than once per instance.
+    struct SubMeshWorldBounds
+    {
+        HeapVector<sg::AABB>   bounds;
+        HeapVector<glm::uvec2> ranges; // First bound and count, indexed by renderable slot.
+    };
+
+    struct SubMeshBoundsCheck
+    {
+        sg::AABB bounds; // The authored bounds this result examined.
+        bool     contained{false};
+    };
+
+    // Containment depends on vertices and authored bounds, never on poses, so
+    // transform-only commits reuse the result instead of walking the indices.
+    bool IsSubMeshBoundsValid(const sg::SubMesh& subMesh);
+
+    bool ComputeGeometryBounds(sg::AABB&                 bounds,
+                               sg::AABB                  (&classBounds)[2],
+                               HeapVector<ShadowCaster>& shadowCasters,
+                               SubMeshWorldBounds&       subMeshBounds);
 
     HeapVector<glm::uvec4> BuildTriangleRecords(HeapVector<InstanceTriangleRange>& ranges,
                                                 HeapVector<uint32_t>&              materialTriangles) const;
@@ -322,19 +347,21 @@ private:
     HeapVector<LightId>  m_importedLightIds;
     HeapVector<uint32_t> m_indices;
     // Loaded topology is immutable; shared instances reuse one unique vertex list.
-    HashMap<const sg::Mesh*, HeapVector<uint32_t>> m_meshVertexIndices;
-    HeapVector<uint32_t>                           m_instanceClasses;
-    HeapVector<uint32_t>                           m_instanceEnabled;
-    HeapVector<uint32_t>                           m_authoredVisibility;
-    HeapVector<ShadowCaster>                       m_shadowCasters;
-    HeapVector<InstanceTriangleRange>              m_instanceTriangleRanges;
-    HeapVector<uint32_t>                           m_materialTriangleCounts;
-    HeapVector<uint8_t>                            m_dirtyShadowInstances;
-    HeapVector<uint8_t>                            m_dirtyShadowVertices;
-    uint32_t                                       m_dirtyClasses{0};
-    uint32_t                                       m_dirtySurfaceClasses{0};
-    bool                                           m_materialsDirty{false};
-    bool                                           m_verticesDirty{false};
+    HashMap<const sg::Mesh*, HeapVector<uint32_t>>  m_meshVertexIndices;
+    HeapVector<uint32_t>                            m_instanceClasses;
+    HeapVector<uint32_t>                            m_instanceEnabled;
+    HeapVector<uint32_t>                            m_authoredVisibility;
+    HeapVector<ShadowCaster>                        m_shadowCasters;
+    SubMeshWorldBounds                              m_subMeshWorldBounds;
+    HashMap<const sg::SubMesh*, SubMeshBoundsCheck> m_subMeshBoundsChecks;
+    HeapVector<InstanceTriangleRange>               m_instanceTriangleRanges;
+    HeapVector<uint32_t>                            m_materialTriangleCounts;
+    HeapVector<uint8_t>                             m_dirtyShadowInstances;
+    HeapVector<uint8_t>                             m_dirtyShadowVertices;
+    uint32_t                                        m_dirtyClasses{0};
+    uint32_t                                        m_dirtySurfaceClasses{0};
+    bool                                            m_materialsDirty{false};
+    bool                                            m_verticesDirty{false};
     // Triangle indices, material assignments and instance masks; independent of poses.
     bool          m_triangleRecordsDirty{false};
     bool          m_geometryReady{true};

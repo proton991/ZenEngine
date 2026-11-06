@@ -4,6 +4,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
 
 namespace zen::sys
 {
@@ -102,6 +103,16 @@ public:
 
     void SetRenderScene(RenderScene* pRenderScene);
 
+    void SetGPUCullingEnabled(bool enabled)
+    {
+        m_gpuCullingEnabled = enabled;
+    }
+
+    const SceneCullingResult& GetGPUCullingStatus() const
+    {
+        return m_gpuCullingStatus;
+    }
+
 private:
     void PrepareSamplers();
 
@@ -157,7 +168,10 @@ private:
     // The blend triangles' indices in back-to-front order, so each run of triangles from one node
     // and material is a single draw (BuildForwardGraph); uploaded only when the order changes.
     // RendererServer builds one view per frame, so the ring is updated at most once per frame.
-    FrameBufferRing      m_sortedBlendIndices{true};
-    HeapVector<uint32_t> m_sortedBlendContents;
+    FrameBufferRing       m_sortedBlendIndices{true};
+    HeapVector<uint32_t>  m_sortedBlendContents;
+    SceneCullingDrawCache m_gbufferDrawData;
+    SceneCullingResult    m_gpuCullingStatus;
+    bool                  m_gpuCullingEnabled{true};
 };
 } // namespace zen::rc

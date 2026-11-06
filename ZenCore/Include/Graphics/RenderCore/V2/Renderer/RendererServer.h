@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/RenderCore/V2/RenderingSettings.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
 
 namespace zen
 {
@@ -34,9 +35,10 @@ enum class RenderOption : uint32_t
 
 struct RenderingStatus
 {
-    RenderAlgorithm requested{RenderAlgorithm::ePBR};
-    RenderAlgorithm effective{RenderAlgorithm::ePBR};
-    std::string     fallbackReason;
+    RenderAlgorithm    requested{RenderAlgorithm::ePBR};
+    RenderAlgorithm    effective{RenderAlgorithm::ePBR};
+    std::string        fallbackReason;
+    SceneCullingResult gpuCulling;
 };
 
 class RendererServer

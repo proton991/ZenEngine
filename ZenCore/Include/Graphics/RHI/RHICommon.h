@@ -121,6 +121,9 @@ struct RHIGPUInfo
     bool                  supportLogicOp{false};
     bool                  supportMultiDrawIndirect{false};
     bool                  supportDrawIndirectFirstInstance{false};
+    uint32_t              maxDrawIndirectCount{1};
+    uint32_t              maxVertexOutputComponents{64};
+    uint32_t              maxFragmentInputComponents{64};
     bool                  supportTessellationShader{false};
 
     bool   supportFragmentStoresAndAtomics{false};
