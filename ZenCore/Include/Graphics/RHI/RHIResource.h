@@ -384,6 +384,8 @@ struct RHITextureViewCreateInfo
     // Empty selects the format's aspects; combined formats retain depth sampling by default.
     BitField<RHITextureAspectFlagBits> aspect;
     NameID                             tag;
+    // Select an array view even for a single layer (or a single six-layer cube).
+    bool arrayView{false};
 };
 
 class RHITextureView;
@@ -658,6 +660,11 @@ public:
     const RHIShaderResourceDescriptorTable* GetSRDTable() const
     {
         return &m_SRDTable;
+    }
+
+    uint32_t GetPushConstantSize() const
+    {
+        return m_reflection.has_value() ? m_reflection->pushConstants.size : 0;
     }
 
     uint32_t GetSRDCountByType(RHIShaderResourceType type) const

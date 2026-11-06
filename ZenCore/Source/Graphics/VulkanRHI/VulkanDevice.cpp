@@ -350,25 +350,9 @@ void VulkanDevice::Init()
 
         InitVkStruct(m_descriptorIndexingProperties, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES);
 
-        for (UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
-        {
-            if (extension->IsEnabledAndSupported())
-            {
-                extension->BeforePhysicalDeviceProperties(physicalDeviceProperties2);
-            }
-        }
-
         physicalDeviceProperties2.pNext = &m_descriptorIndexingProperties;
 
         vkGetPhysicalDeviceProperties2(m_gpu, &physicalDeviceProperties2);
-
-        for (UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
-        {
-            if (extension->IsEnabledAndSupported())
-            {
-                extension->AfterPhysicalDeviceProperties();
-            }
-        }
     }
 
     // Optional ray-tracing features require the complete enabled dependency chain.
@@ -511,6 +495,8 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     VkPhysicalDeviceFeatures enabledFeatures{};
 
     enabledFeatures.independentBlend               = m_physicalDeviceFeatures.independentBlend;
+
+    enabledFeatures.dualSrcBlend                   = m_physicalDeviceFeatures.dualSrcBlend;
 
     enabledFeatures.geometryShader                 = m_physicalDeviceFeatures.geometryShader;
 

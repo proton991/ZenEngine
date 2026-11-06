@@ -384,7 +384,11 @@ RHITextureView* VulkanTexture::CreateViewOnRHIThread(const RHITextureViewCreateI
     {
         error = "Cube views require a multiple of six array layers";
     }
-    else if (createInfo.type == RHITextureType::eCube && createInfo.arrayLayers > 6
+    else if (createInfo.type == RHITextureType::e3D && createInfo.arrayView)
+    {
+        error = "3D texture views cannot be array views";
+    }
+    else if (createInfo.type == RHITextureType::eCube && (createInfo.arrayView || createInfo.arrayLayers > 6)
              && !GVulkanRHI->QueryGPUInfo().supportImageCubeArray)
     {
         error = "Cube-array views require imageCubeArray";
@@ -566,7 +570,7 @@ void VulkanTextureView::Init()
     }
 
     const VkImageViewCreateInfo imageViewCI =
-        MakeVkImageViewCreateInfo(m_viewInfo.type, m_viewInfo.format, pVkTexture->GetVkImage(), range);
+        MakeVkImageViewCreateInfo(m_viewInfo.type, m_viewInfo.format, pVkTexture->GetVkImage(), range, m_viewInfo.arrayView);
 
     const VkResult result = vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView);
 

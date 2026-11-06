@@ -38,10 +38,6 @@ public:
                      VkBuffer*                 pBuffer,
                      VulkanMemoryAllocation*   pAllocation);
 
-    uint8_t* MapBuffer(const VulkanMemoryAllocation& memAlloc);
-
-    void UnmapBuffer(const VulkanMemoryAllocation& memAlloc);
-
     void FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc);
 
 private:

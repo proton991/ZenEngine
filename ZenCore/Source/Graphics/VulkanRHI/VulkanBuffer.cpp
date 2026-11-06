@@ -336,9 +336,14 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
 
     VERIFY_EXPR(!m_slots.empty());
 
-    VERIFY_EXPR(size <= m_blockSize);
-
     VulkanUniformBufferBlock allocation{};
+
+    if (size > m_blockSize)
+    {
+        GVulkanRHI->SetCreationError(
+            MakeRHIError(RHIErrorCode::eUnsupported, "Allocate packed uniform buffer", __FILE__, __LINE__));
+        LOGE("Packed uniform allocation {} exceeds block capacity {}", size, m_blockSize);
+    }
 
     if (size > 0 && !m_slots.empty() && size <= m_blockSize)
     {
@@ -445,6 +450,8 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::CreateBlock() const
 
         if (block.pMapped == nullptr)
         {
+            GVulkanRHI->SetCreationError(
+                MakeVulkanError(VK_ERROR_MEMORY_MAP_FAILED, "Map packed uniform buffer", __FILE__, __LINE__));
             GVulkanRHI->DestroyBuffer(block.pBuffer);
 
             block = {};

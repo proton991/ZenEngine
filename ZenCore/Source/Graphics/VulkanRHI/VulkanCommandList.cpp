@@ -319,9 +319,7 @@ void FVulkanCommandBuffer::BeginRendering(const VkRenderingInfo* pRenderingInfo)
 {
     vkCmdBeginRenderingKHR(m_vkHandle, pRenderingInfo);
 
-    m_state              = State::eIsInsideRenderPass;
-
-    m_lastRenderingFlags = pRenderingInfo->flags;
+    m_state = State::eIsInsideRenderPass;
 }
 
 void FVulkanCommandBuffer::EndRendering()
@@ -1364,6 +1362,13 @@ VulkanGfxState::~VulkanGfxState()
     m_pDescriptorSetState = nullptr;
 }
 
+void VulkanGfxState::ClearVertexBuffers()
+{
+    m_vertexBuffers.clear();
+
+    m_vertexBufferOffsets.clear();
+}
+
 void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
@@ -1378,7 +1383,8 @@ bool VulkanGfxState::SetShaderParameters(RHIShaderParameterView parameters, uint
 
 bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 {
-    bool ready = m_pCurrentPipeline != nullptr && pContext->EnsureRecording();
+    bool      ready = m_pCurrentPipeline != nullptr && pContext->EnsureRecording();
+    RHIStatus preparation{MakeRHIError(RHIErrorCode::eInvalidArgument, "Prepare shader descriptors", __FILE__, __LINE__)};
 
     if (ready)
     {
@@ -1388,7 +1394,9 @@ bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 
         // Always resolve/retain descriptor pools: cache eviction and a new workload can
         // require work even when the native binding commands themselves are unchanged.
-        ready = m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet, m_dynamicOffsets);
+        preparation =
+            m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet, m_dynamicOffsets);
+        ready = static_cast<bool>(preparation);
 
         if (ready)
         {
@@ -1424,9 +1432,17 @@ bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 
             // Procedural draws declare no vertex inputs. Rebinding a previous draw's
             // cached handles would introduce an undeclared use after their owner retires.
-            const VulkanShader* shader = TO_VK_SHADER(m_pCurrentPipeline->GetShader());
+            const VulkanShader* shader    = TO_VK_SHADER(m_pCurrentPipeline->GetShader());
 
-            if (shader->GetVertexInputStateCreateInfoData()->vertexBindingDescriptionCount != 0)
+            const uint32_t vertexBindings = shader->GetVertexInputStateCreateInfoData()->vertexBindingDescriptionCount;
+
+            if (m_vertexBuffers.size() < vertexBindings)
+            {
+                preparation.error = MakeRHIError(RHIErrorCode::eInvalidArgument, "Bind vertex buffers", __FILE__, __LINE__);
+
+                ready             = false;
+            }
+            else if (vertexBindings != 0)
             {
                 commandBuffer->BindVertexBuffers(m_vertexBuffers, m_vertexBufferOffsets);
             }
@@ -1435,7 +1451,7 @@ bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 
     if (!ready)
     {
-        pContext->LatchError({RHIErrorCode::eInvalidArgument, 0, "Prepare shader descriptors"});
+        pContext->LatchError(preparation.error);
     }
 
     return ready;
@@ -1467,7 +1483,8 @@ bool VulkanComputeState::SetShaderParameters(RHIShaderParameterView parameters, 
 
 bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 {
-    bool ready = m_pCurrentPipeline != nullptr && pContext->EnsureRecording();
+    bool      ready = m_pCurrentPipeline != nullptr && pContext->EnsureRecording();
+    RHIStatus preparation{MakeRHIError(RHIErrorCode::eInvalidArgument, "Prepare shader descriptors", __FILE__, __LINE__)};
 
     if (ready)
     {
@@ -1475,7 +1492,9 @@ bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 
         uint32_t firstSet                   = 0;
 
-        ready = m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet, m_dynamicOffsets);
+        preparation =
+            m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet, m_dynamicOffsets);
+        ready = static_cast<bool>(preparation);
 
         if (ready)
         {
@@ -1485,7 +1504,7 @@ bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 
     if (!ready)
     {
-        pContext->LatchError({RHIErrorCode::eInvalidArgument, 0, "Prepare shader descriptors"});
+        pContext->LatchError(preparation.error);
     }
 
     return ready;
@@ -1523,9 +1542,16 @@ void FVulkanCommandListContext::DiscardRecording()
 {
     VulkanCommandContextBase::DiscardRecording();
 
+    ResetShaderBindings();
+}
+
+void FVulkanCommandListContext::ResetShaderBindings()
+{
     m_pCurrentPipeline = nullptr;
 
     m_pGfxState->SetPipelineState(nullptr);
+
+    m_pGfxState->ClearVertexBuffers();
 
     m_pComputeState->SetPipelineState(nullptr);
 }
@@ -1771,12 +1797,26 @@ void FVulkanCommandListContext::RHISetViewport(uint32_t minX, uint32_t minY, uin
 
 void FVulkanCommandListContext::RHISetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor)
 {
-    m_pGfxState->SetDepthBias(depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor);
+    if (depthBiasClamp != 0.0f && !m_pDevice->GetPhysicalDeviceFeatures().depthBiasClamp)
+    {
+        LatchError(MakeRHIError(RHIErrorCode::eUnsupported, "Set depth bias clamp", __FILE__, __LINE__));
+    }
+    else
+    {
+        m_pGfxState->SetDepthBias(depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor);
+    }
 }
 
 void FVulkanCommandListContext::RHISetLineWidth(float lineWidth)
 {
-    m_pGfxState->SetLineWidth(lineWidth);
+    if (lineWidth != 1.0f && !m_pDevice->GetPhysicalDeviceFeatures().wideLines)
+    {
+        LatchError(MakeRHIError(RHIErrorCode::eUnsupported, "Set wide lines", __FILE__, __LINE__));
+    }
+    else
+    {
+        m_pGfxState->SetLineWidth(lineWidth);
+    }
 }
 
 void FVulkanCommandListContext::RHISetBlendConstants(const Color& blendConstants)
@@ -1913,6 +1953,12 @@ void FVulkanCommandListContext::RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffe
                                                        uint32_t   drawCount,
                                                        uint32_t   stride)
 {
+    const VkPhysicalDeviceFeatures& features = m_pDevice->GetPhysicalDeviceFeatures();
+    if ((drawCount > 1 && !features.multiDrawIndirect)
+        || drawCount > m_pDevice->GetPhysicalDeviceProperties().limits.maxDrawIndirectCount)
+    {
+        LatchError(MakeRHIError(RHIErrorCode::eUnsupported, "Draw indexed indirect count", __FILE__, __LINE__));
+    }
     if (m_pGfxState->PreDraw(this))
     {
         FVulkanCommandBuffer* pCmdBuffer = GetCommandBuffer();
@@ -1952,12 +1998,20 @@ void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, 
 
 void FVulkanCommandListContext::RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset)
 {
-    if (EnsureRecording())
+    const VulkanPipeline* pipeline = pPipeline != nullptr && pPipeline->GetResourceType() == RHIResourceType::ePipeline
+                                       ? TO_VK_PIPELINE(pPipeline)
+                                       : nullptr;
+    const uint32_t        range    = pipeline != nullptr ? pipeline->GetShader()->GetPushConstantSize() : 0;
+    const bool valid = pipeline != nullptr && data.data() != nullptr && !data.empty() && data.size() % 4 == 0 && offset % 4 == 0
+                    && offset <= range && data.size() <= range - offset && pipeline->GetPushConstantsStageFlags() != 0;
+    if (!valid)
     {
-        VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
-
-        vkCmdPushConstants(GetCommandBuffer()->GetVkHandle(), pVkPipeline->GetVkPipelineLayout(),
-                           pVkPipeline->GetPushConstantsStageFlags(), offset, data.size(), data.data());
+        LatchError(MakeRHIError(RHIErrorCode::eInvalidArgument, "Set push constants range", __FILE__, __LINE__));
+    }
+    else if (EnsureRecording())
+    {
+        vkCmdPushConstants(GetCommandBuffer()->GetVkHandle(), pipeline->GetVkPipelineLayout(),
+                           pipeline->GetPushConstantsStageFlags(), offset, static_cast<uint32_t>(data.size()), data.data());
     }
 }
 
@@ -2275,6 +2329,10 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*>          c
             context->SetRecordingTransaction(transaction);
 
             VulkanPlatformCommandList* platform = AcquirePlatformCommandList();
+
+            // Each recorded list owns an independent parameter snapshot. Raw contexts
+            // may keep bindings between calls, but pooled lists must not inherit them.
+            context->ResetShaderBindings();
 
             commands->Execute();
 

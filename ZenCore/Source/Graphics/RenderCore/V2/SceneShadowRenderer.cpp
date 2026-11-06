@@ -82,7 +82,7 @@ bool SceneShadowRenderer::SetResolution(uint32_t resolution)
 
 bool SceneShadowRenderer::Preflight(uint32_t resolution, uint32_t faces) const
 {
-    const bool retained = m_maps != nullptr && resolution == m_resolution && m_maps->GetArrayLayers() == std::max(2u, faces);
+    const bool retained = m_maps != nullptr && resolution == m_resolution && m_maps->GetArrayLayers() == std::max(1u, faces);
 
     const RHIGPUMemoryStats memory = m_device->GetGPUMemoryStats();
 
@@ -222,8 +222,7 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         PrepareLight(sceneData.cameraLight, MaxSceneLights, scene.GetAABB());
     }
 
-    // At least two layers keep the native default view a 2D array, even with one/no light.
-    const uint32_t layers = std::max(2u, static_cast<uint32_t>(m_faces.size()));
+    const uint32_t layers = std::max(1u, static_cast<uint32_t>(m_faces.size()));
 
     const bool fits       = Preflight(m_resolution, static_cast<uint32_t>(m_faces.size()));
 
@@ -236,6 +235,8 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         m_maps          = nullptr;
 
         m_maxDepth      = nullptr;
+        m_mapsView      = nullptr;
+        m_maxDepthView  = nullptr;
 
         m_validContents = false;
     }
@@ -277,6 +278,19 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         m_maxDepth = m_device->CreateTexture(reduced);
     }
 
+    TextureViewFormat view;
+    view.dimension   = TextureDimension::e2D;
+    view.arrayLayers = layers;
+    view.arrayView   = true;
+    if (fits && m_maps != nullptr && m_mapsView == nullptr)
+    {
+        m_mapsView = m_device->CreateTextureView(m_maps, view, "scene_shadow_maps_array");
+    }
+    if (fits && m_maxDepth != nullptr && m_maxDepthView == nullptr)
+    {
+        m_maxDepthView = m_device->CreateTextureView(m_maxDepth, view, "scene_shadow_max_depth_array");
+    }
+
     if (m_depthSampler == nullptr)
     {
         m_depthSampler = m_device->CreateSampler({});
@@ -287,8 +301,8 @@ bool SceneShadowRenderer::Prepare(const RenderScene& scene, bool enabled, bool i
         m_materialSampler = m_device->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
     }
 
-    const bool valid = fits && m_depth != nullptr && m_maps != nullptr && m_maxDepth != nullptr && m_depthSampler != nullptr
-                    && m_materialSampler != nullptr;
+    const bool valid = fits && m_depth != nullptr && m_mapsView != nullptr && m_maxDepthView != nullptr
+                    && m_depthSampler != nullptr && m_materialSampler != nullptr;
 
     if (!valid)
     {
@@ -460,9 +474,9 @@ void SceneShadowRenderer::BuildRenderGraph(const RenderScene& scene)
 
         reduce.SetPassTag("SceneShadowMaxDepth");
 
-        reduce.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_maps->GetDefaultView());
+        reduce.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_mapsView);
 
-        reduce.BindStorageImage("sceneShadowMaxDepth", m_maxDepth->GetDefaultView(),
+        reduce.BindStorageImage("sceneShadowMaxDepth", m_maxDepthView,
                                 complete ? RDGContentGuarantee::eFullWrite : RDGContentGuarantee::eNone);
 
         reduce.BindValue("uShadowReduction", uniforms);
@@ -481,9 +495,9 @@ void SceneShadowRenderer::BindLightingInputs(RDGPassDescBase& pass) const
 {
     pass.BindValue("uSceneShadows", m_uniforms);
 
-    pass.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_maps->GetDefaultView());
+    pass.BindSampledTexture("sceneShadowMaps", m_depthSampler, m_mapsView);
 
-    pass.BindSampledTexture("sceneShadowMaxDepth", m_depthSampler, m_maxDepth->GetDefaultView());
+    pass.BindSampledTexture("sceneShadowMaxDepth", m_depthSampler, m_maxDepthView);
 }
 
 DebugOutputDescription SceneShadowRenderer::BuildDebugView(const RenderScene&    scene,
@@ -527,7 +541,7 @@ DebugOutputDescription SceneShadowRenderer::BuildDebugView(const RenderScene&   
 
                     RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "RenderDebugArraySP", data);
 
-                    pass.BindSampledTexture("sourceImage", m_depthSampler, m_maps->GetDefaultView());
+                    pass.BindSampledTexture("sourceImage", m_depthSampler, m_mapsView);
 
                     AddDebugVisualizationPass(*m_device->GetCurrentFrameRDG(), std::move(pass));
 
@@ -571,6 +585,10 @@ void SceneShadowRenderer::Destroy()
     m_maps          = nullptr;
 
     m_maxDepth      = nullptr;
+
+    m_mapsView      = nullptr;
+
+    m_maxDepthView  = nullptr;
 
     m_validContents = false;
 

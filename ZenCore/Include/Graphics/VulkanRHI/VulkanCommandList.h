@@ -182,7 +182,6 @@ private:
 
     double m_submitTime{0.0f};
 
-    VkRenderingFlags m_lastRenderingFlags{0};
 
     struct GPUTimingScope
     {
@@ -532,6 +531,8 @@ public:
 
     void SetVertexBuffers(uint32_t numVertexBuffers, RHIBuffer* const* ppVertexBuffers, const uint64_t* pOffsets);
 
+    void ClearVertexBuffers();
+
     void SetPipelineState(RHIPipeline* pPipeline);
 
     bool SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0, uint64_t transaction = 0);
@@ -581,7 +582,6 @@ private:
     HeapVector<VkDescriptorSet> m_descriptorSets;
     HeapVector<uint32_t>        m_dynamicOffsets;
     VulkanDescriptorSetState*   m_pDescriptorSetState{nullptr};
-    bool                        m_useAutomaticDescriptorSets{false};
 };
 
 class FVulkanCommandListContext : public IRHICommandContext, public VulkanCommandContextBase
@@ -601,6 +601,8 @@ public:
     void RHIDiscardRecording() override;
 
     void DiscardRecording() override;
+
+    void ResetShaderBindings();
 
     uint64_t RHIGetLastSubmittedSerial() const override
     {

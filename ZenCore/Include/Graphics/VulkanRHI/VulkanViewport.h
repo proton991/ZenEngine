@@ -113,7 +113,7 @@ private:
 
     bool BeginResize(uint32_t width, uint32_t height, VulkanSwapchainRecreateInfo* recreateInfo);
 
-    void FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHIError surfaceError);
+    bool FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHIError surfaceError);
 
     void CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                                         VkImage         dstImage,
@@ -129,7 +129,6 @@ private:
     HeapVector<VkImage> m_swapchainImages;
     VulkanTexture*      m_pColorBackBuffer{nullptr};
     VulkanTexture*      m_pDepthStencilBackBuffer{nullptr};
-    uint64_t            m_presentCount{0};
 
     uint64_t         m_presentSignalGeneration{0};
     bool             m_presentAcquiredFailed{false};

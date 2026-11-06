@@ -39,9 +39,7 @@ void BuildDescriptorPoolSizes(const VulkanDescriptorPoolKey& poolKey, uint32_t m
 
         const RHIShaderResourceType resourceType = static_cast<RHIShaderResourceType>(resourceTypeIdx);
 
-        const VkDescriptorType descriptorType    = resourceType == RHIShaderResourceType::eUniformBuffer
-                                                     ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-                                                     : ShaderResourceTypeToVkDescriptorType(resourceType);
+        const VkDescriptorType descriptorType    = ShaderResourceTypeToVkDescriptorType(resourceType);
 
         if (descriptorType == VK_DESCRIPTOR_TYPE_MAX_ENUM)
         {
@@ -106,6 +104,7 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice* pDevice, const VulkanDe
 
         if (result != VK_SUCCESS)
         {
+            ReportVulkanCreationFailure(result, "vkCreateDescriptorPool", __FILE__, __LINE__);
             LOGE("vkCreateDescriptorPool failed: {}", GetResultString(result));
         }
     }
@@ -125,9 +124,10 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
     }
 }
 
-VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout)
+VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout, VkResult* outResult)
 {
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkResult        result        = VK_ERROR_OUT_OF_POOL_MEMORY;
 
     if (m_vkHandle != VK_NULL_HANDLE && layout != VK_NULL_HANDLE && m_numAllocatedSets < m_maxNumSets)
     {
@@ -142,19 +142,27 @@ VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout)
 
         allocateInfo.pSetLayouts        = &layout;
 
-        const VkResult result           = vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &descriptorSet);
+        result                          = vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &descriptorSet);
 
         if (result == VK_SUCCESS)
         {
             ++m_numAllocatedSets;
             // TODO: record set allocate metrics somewhere
         }
-        else if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL)
+        else
         {
-            LOGE("vkAllocateDescriptorSets failed: {}", GetResultString(result));
-
             descriptorSet = VK_NULL_HANDLE;
+            if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL)
+            {
+                ReportVulkanCreationFailure(result, "vkAllocateDescriptorSets", __FILE__, __LINE__);
+                LOGE("vkAllocateDescriptorSets failed: {}", GetResultString(result));
+            }
         }
+    }
+
+    if (outResult != nullptr)
+    {
+        *outResult = result;
     }
 
     return descriptorSet;
@@ -303,30 +311,33 @@ VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain* p
     VERIFY_EXPR(pChain != nullptr);
 
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-
+    VkResult        result        = VK_SUCCESS;
+    bool            canGrow       = true;
     if (pChain != nullptr)
     {
-        while (pChain->activePoolIdx < pChain->pools.size() && descriptorSet == VK_NULL_HANDLE)
+        while (pChain->activePoolIdx < pChain->pools.size() && descriptorSet == VK_NULL_HANDLE && canGrow)
         {
-            descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout);
-
-            if (descriptorSet == VK_NULL_HANDLE)
+            descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout, &result);
+            canGrow       = result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL;
+            if (canGrow)
             {
                 ++pChain->activePoolIdx;
             }
         }
-
-        if (descriptorSet == VK_NULL_HANDLE)
+        if (descriptorSet == VK_NULL_HANDLE && canGrow)
         {
             PushPoolToChain(pChain);
-
             if (pChain->activePoolIdx < pChain->pools.size())
             {
-                descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout);
+                descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout, &result);
+                if (descriptorSet == VK_NULL_HANDLE
+                    && (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL))
+                {
+                    ReportVulkanCreationFailure(result, "vkAllocateDescriptorSets", __FILE__, __LINE__);
+                }
             }
         }
     }
-
     return descriptorSet;
 }
 
@@ -406,9 +417,7 @@ void VulkanDescriptorSetCache::Destroy()
 
     m_currentFrame       = 0;
 
-    m_entryHighWaterMark = 0;
 
-    m_numSlotRetires     = 0;
 
     m_pPoolManager       = nullptr;
 
@@ -550,9 +559,7 @@ void VulkanDescriptorSetCache::Publish(const ContentKey&                 key,
 
     ++slot.numLiveEntries;
 
-    slot.lastUsedFrame   = m_currentFrame;
-
-    m_entryHighWaterMark = std::max(m_entryHighWaterMark, static_cast<uint64_t>(m_entries.size()));
+    slot.lastUsedFrame = m_currentFrame;
 }
 
 void VulkanDescriptorSetCache::RotateRing()
@@ -608,7 +615,6 @@ void VulkanDescriptorSetCache::RetireOldestSlot()
 
         --m_numLiveSlots;
 
-        ++m_numSlotRetires;
 
         GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().descriptorRetirements);
 
@@ -684,11 +690,6 @@ void VulkanDescriptorSetCache::CompactEntries()
                 break;
             }
         }
-    }
-
-    if (m_entries.size() > m_entryHighWaterMark)
-    {
-        m_entryHighWaterMark = m_entries.size();
     }
 }
 
@@ -793,15 +794,12 @@ void VulkanDescriptorPoolManager2::TickPoolSetContainers()
         ++entry.idleTicks;
     }
 
-    uint32_t numDestroyedContainers = 0;
 
     if (!m_freeContainers.empty() && m_freeContainers[0].idleTicks > kContanierIdleGCThreshold)
     {
         m_freeContainers[0].pContainer->Retire();
 
         m_freeContainers.pop_front();
-
-        numDestroyedContainers++;
     }
 }
 
@@ -1025,7 +1023,7 @@ bool BindlessHeapsFitLimits(const VkPhysicalDeviceDescriptorIndexingProperties& 
         && sampledImageCount <= limits.maxPerStageDescriptorUpdateAfterBindSampledImages
         && samplerCount <= limits.maxDescriptorSetUpdateAfterBindSamplers
         && samplerCount <= limits.maxPerStageDescriptorUpdateAfterBindSamplers
-        && descriptorCount <= limits.maxPerStageUpdateAfterBindResources
+        && sampledImageCount <= limits.maxPerStageUpdateAfterBindResources
         && descriptorCount <= limits.maxUpdateAfterBindDescriptorsInAllPools;
 }
 

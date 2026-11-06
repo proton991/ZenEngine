@@ -339,30 +339,6 @@ bool VulkanMemoryAllocator::AllocBuffer(uint64_t                  size,
     return ready;
 }
 
-uint8_t* VulkanMemoryAllocator::MapBuffer(const VulkanMemoryAllocation& memAlloc)
-{
-    void* pDataPtr        = nullptr;
-
-    const VkResult result = memAlloc.handle != VK_NULL_HANDLE ? vmaMapMemory(m_vmaAllocator, memAlloc.handle, &pDataPtr)
-                                                              : VK_ERROR_MEMORY_MAP_FAILED;
-
-    if (result != VK_SUCCESS)
-    {
-        ReportVulkanDeviceLoss(result, "vmaMapMemory");
-
-        LOGE("Buffer mapping failed: {}", GetResultString(result));
-
-        pDataPtr = nullptr;
-    }
-
-    return static_cast<uint8_t*>(pDataPtr);
-}
-
-void VulkanMemoryAllocator::UnmapBuffer(const VulkanMemoryAllocation& memAlloc)
-{
-    vmaUnmapMemory(m_vmaAllocator, memAlloc.handle);
-}
-
 void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc)
 {
     vmaDestroyBuffer(m_vmaAllocator, buffer, memAlloc.handle);

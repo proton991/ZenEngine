@@ -30,11 +30,11 @@ void VulkanFenceManager::Destroy()
 {
     VERIFY_EXPR(m_usedFences.empty());
 
-    while (!m_freeFences.empty())
+    while (!m_freeFences.Empty())
     {
-        VulkanFence* pFence = m_freeFences.front();
+        VulkanFence* pFence = m_freeFences.Peek();
 
-        m_freeFences.pop();
+        m_freeFences.Pop();
 
         DestroyFence(pFence);
 
@@ -46,11 +46,11 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
 {
     VulkanFence* result{};
 
-    if (!m_freeFences.empty())
+    if (!m_freeFences.Empty())
     {
-        VulkanFence* pFence = m_freeFences.front();
+        VulkanFence* pFence = m_freeFences.Peek();
 
-        m_freeFences.pop();
+        m_freeFences.Pop();
 
         pFence->m_state = createSignaled ? VulkanFence::State::eSignaled : VulkanFence::State::eInitial;
 
@@ -99,7 +99,7 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
         }
     }
 
-    m_freeFences.push(fence);
+    m_freeFences.Push(fence);
 
     fence = nullptr;
 }
@@ -239,14 +239,14 @@ VulkanSemaphore::~VulkanSemaphore()
 void VulkanSemaphoreManager::Destroy()
 {
 #if defined(ZEN_DEBUG)
-    VERIFY_EXPR(m_allocatedSemaphoreCount == m_usedSemaphores.size() + m_freeSemaphores.size());
+    VERIFY_EXPR(m_allocatedSemaphoreCount == m_usedSemaphores.size() + m_freeSemaphores.Size());
 #endif
 
-    while (!m_freeSemaphores.empty())
+    while (!m_freeSemaphores.Empty())
     {
-        VulkanSemaphore* pSem = m_freeSemaphores.front();
+        VulkanSemaphore* pSem = m_freeSemaphores.Peek();
 
-        m_freeSemaphores.pop();
+        m_freeSemaphores.Pop();
 
         ZEN_DELETE(pSem);
     }
@@ -266,11 +266,11 @@ VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
 {
     VulkanSemaphore* result{};
 
-    if (!m_freeSemaphores.empty())
+    if (!m_freeSemaphores.Empty())
     {
-        VulkanSemaphore* pSem = m_freeSemaphores.front();
+        VulkanSemaphore* pSem = m_freeSemaphores.Peek();
 
-        m_freeSemaphores.pop();
+        m_freeSemaphores.Pop();
 
         m_usedSemaphores.push_back(pSem);
 
@@ -337,7 +337,7 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
 
             m_usedSemaphores.erase(it);
 
-            m_freeSemaphores.push(sem);
+            m_freeSemaphores.Push(sem);
 
             sem = nullptr;
         }

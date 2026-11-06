@@ -334,11 +334,12 @@ bool VulkanViewport::BeginResize(uint32_t width, uint32_t height, VulkanSwapchai
     return rebuild;
 }
 
-void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHIError surfaceError)
+bool VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHIError surfaceError)
 {
     ASSERT(GetRHIThread().IsCurrentThread());
 
-    m_recreationError = surfaceError;
+    bool replaceSurface = false;
+    m_recreationError   = surfaceError;
     if (surfaceError.IsFailure())
     {
         GVulkanRHI->SetCreationError(surfaceError);
@@ -347,18 +348,25 @@ void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo, RHI
     {
         DestroySwapchain(nullptr);
 
-        m_suspended = true;
+        m_suspended    = true;
 
-        GVulkanRHI->BlockSubmissions(
-            RHIErrorOr(m_recreationError,
-                       MakeRHIError(RHIErrorCode::eBackendFailure, "Viewport backbuffer recreation", __FILE__, __LINE__)));
+        replaceSurface = !surfaceError.IsFailure() && m_recreationError.nativeCode == VK_ERROR_SURFACE_LOST_KHR
+                      && !GVulkanRHI->AreSubmissionsBlocked();
+        if (!replaceSurface)
+        {
+            GVulkanRHI->BlockSubmissions(
+                RHIErrorOr(m_recreationError,
+                           MakeRHIError(RHIErrorCode::eBackendFailure, "Viewport backbuffer recreation", __FILE__, __LINE__)));
 
-        LOGE("Viewport backbuffer recreation failed");
+            LOGE("Viewport backbuffer recreation failed");
+        }
     }
 
     VERIFY_EXPR(recreateInfo->surface == VK_NULL_HANDLE);
 
     VERIFY_EXPR(recreateInfo->swapchain == VK_NULL_HANDLE);
+
+    return replaceSurface;
 }
 
 bool VulkanViewport::TryAcquireNextImage()
@@ -553,8 +561,6 @@ bool VulkanViewport::PresentInternal(bool deferRecreation)
                 m_pImageAcquiredSemaphore = nullptr;
 
                 m_presentSignalGeneration = 0;
-
-                ++m_presentCount;
             }
         }
 
@@ -608,7 +614,11 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
 
     VulkanSwapchainRecreateInfo recreateInfo;
 
-    if (GetRHIThread().Invoke(&VulkanViewport::BeginResize, this, width, height, &recreateInfo))
+    bool recreate = GetRHIThread().Invoke(&VulkanViewport::BeginResize, this, width, height, &recreateInfo);
+
+    // Surface loss during native reconstruction must return to the window owner. Retry once
+    // immediately; repeated loss remains suspended and pending for the next frame.
+    for (uint32_t attempt = 0; recreate && attempt < 2; ++attempt)
     {
         RHIError surfaceError;
         if (recreateInfo.surface == VK_NULL_HANDLE)
@@ -624,7 +634,7 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
             }
         }
 
-        GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo, surfaceError);
+        recreate = GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo, surfaceError);
     }
 }
 

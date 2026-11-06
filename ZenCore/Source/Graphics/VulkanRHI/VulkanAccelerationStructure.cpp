@@ -6,6 +6,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include <cstring>
+#include <functional>
 
 namespace zen
 {
@@ -177,6 +178,12 @@ VulkanAccelerationStructure* VulkanAccelerationStructure::CreateObject(const RHI
     return result;
 }
 
+VulkanAccelerationStructure::VulkanAccelerationStructure(const RHIAccelerationStructureCreateInfo& info) :
+    RHIAccelerationStructure(info), m_sortedReferences(GetReferencedStructures())
+{
+    std::sort(m_sortedReferences.begin(), m_sortedReferences.end(), std::less<RHIAccelerationStructure*>());
+}
+
 void VulkanAccelerationStructure::Init()
 {
     RHIBufferCreateInfo storage;
@@ -240,12 +247,29 @@ bool VulkanAccelerationStructure::IsUpdateCompatible(const RHIAccelerationStruct
 
 bool VulkanAccelerationStructure::ValidateBuild(const RHIAccelerationStructureBuildInfo& info) const
 {
-    bool valid = info.pDestination == this && info.description.type == GetType() && ValidateDescription(info.description, true)
-              && info.pScratchBuffer != nullptr
-              && info.pScratchBuffer->GetUsageFlags().HasFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    const bool topLevel = GetType() == RHIAccelerationStructureType::eTopLevel;
+    bool       valid    = info.pDestination == this && info.description.type == GetType()
+                       && ValidateDescription(info.description, !topLevel) && info.pScratchBuffer != nullptr
+                       && info.pScratchBuffer->GetUsageFlags().HasFlag(RHIBufferUsageFlagBits::eStorageBuffer);
     if (valid)
     {
-        const RHIAccelerationStructureBuildSizes sizes = GetBuildSizes(info.description);
+        RHIAccelerationStructureBuildSizes sizes;
+        if (topLevel && m_cachedTLASSizes.IsValid() && m_cachedInstanceCount == info.description.instances.size()
+            && m_cachedAllowUpdate == info.description.allowUpdate)
+        {
+            sizes = m_cachedTLASSizes;
+        }
+        else
+        {
+            sizes = GetBuildSizes(info.description);
+            if (topLevel)
+            {
+                // Native TLAS size queries depend on instance count and build flags, not instance contents.
+                m_cachedTLASSizes     = sizes;
+                m_cachedInstanceCount = info.description.instances.size();
+                m_cachedAllowUpdate   = info.description.allowUpdate;
+            }
+        }
         const uint64_t scratchSize = info.pSource == nullptr ? sizes.buildScratchSize : sizes.updateScratchSize;
         const uint64_t address     = info.pScratchBuffer->GetDeviceAddress();
         valid                      = sizes.IsValid() && sizes.storageSize <= GetSize() && address != 0
@@ -259,8 +283,11 @@ bool VulkanAccelerationStructure::ValidateBuild(const RHIAccelerationStructureBu
         }
         for (const RHIAccelerationStructureInstance& instance : info.description.instances)
         {
-            valid &= std::find(GetReferencedStructures().begin(), GetReferencedStructures().end(), instance.pStructure)
-                  != GetReferencedStructures().end();
+            // These immutable dependencies were already validated as native BLASes at creation.
+            // Check membership before dereferencing an input pointer.
+            valid &= std::binary_search(m_sortedReferences.begin(), m_sortedReferences.end(), instance.pStructure,
+                                        std::less<RHIAccelerationStructure*>())
+                  && instance.IsValid();
         }
     }
     return valid;

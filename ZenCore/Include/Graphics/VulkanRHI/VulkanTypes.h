@@ -44,7 +44,8 @@ VkImageViewType ToVkImageViewType(RHITextureType type);
 VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType                    type,
                                                 DataFormat                        format,
                                                 VkImage                           image,
-                                                const RHITextureSubResourceRange& range);
+                                                const RHITextureSubResourceRange& range,
+                                                bool                              arrayView = false);
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<RHITextureUsageFlagBits> flags);
 

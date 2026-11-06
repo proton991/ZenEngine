@@ -352,16 +352,9 @@ void RHICommandList::CopyTexture(RHITexture*                            pSrcText
 
     RetainResource(pDstTexture);
 
-    RHICommandCopyTexture* pCmd    = ALLOC_CMD(RHICommandCopyTexture)(pSrcTexture, pDstTexture);
+    RHICommandCopyTexture* pCmd = ALLOC_CMD(RHICommandCopyTexture)(pSrcTexture, pDstTexture);
 
-    RHITextureCopyRegion* pRegions = AllocateCmdData<RHITextureCopyRegion>(regions.size());
-
-    if (pRegions != nullptr)
-    {
-        std::ranges::copy(regions, pRegions);
-    }
-
-    pCmd->copyRegions = MakeVecView(pRegions, regions.size());
+    pCmd->copyRegions           = CopyCmdData(regions);
 }
 
 void RHICommandList::BlitTexture(RHITexture*                      pSrcTexture,
@@ -373,16 +366,9 @@ void RHICommandList::BlitTexture(RHITexture*                      pSrcTexture,
 
     RetainResource(pDstTexture);
 
-    RHICommandBlitTexture* pCmd    = ALLOC_CMD(RHICommandBlitTexture)(pSrcTexture, pDstTexture, filter);
+    RHICommandBlitTexture* pCmd = ALLOC_CMD(RHICommandBlitTexture)(pSrcTexture, pDstTexture, filter);
 
-    RHITextureBlitRegion* pRegions = AllocateCmdData<RHITextureBlitRegion>(regions.size());
-
-    if (pRegions != nullptr)
-    {
-        std::ranges::copy(regions, pRegions);
-    }
-
-    pCmd->blitRegions = MakeVecView(pRegions, regions.size());
+    pCmd->blitRegions           = CopyCmdData(regions);
 }
 
 void RHICommandList::CopyTextureToBuffer(RHITexture*                            pSrcTex,
@@ -393,16 +379,9 @@ void RHICommandList::CopyTextureToBuffer(RHITexture*                            
 
     RetainResource(pDstBuffer);
 
-    RHICommandCopyTextureToBuffer* pCmd  = ALLOC_CMD(RHICommandCopyTextureToBuffer)(pSrcTex, pDstBuffer);
+    RHICommandCopyTextureToBuffer* pCmd = ALLOC_CMD(RHICommandCopyTextureToBuffer)(pSrcTex, pDstBuffer);
 
-    RHIBufferTextureCopyRegion* pRegions = AllocateCmdData<RHIBufferTextureCopyRegion>(regions.size());
-
-    if (pRegions != nullptr)
-    {
-        std::ranges::copy(regions, pRegions);
-    }
-
-    pCmd->copyRegions = MakeVecView(pRegions, regions.size());
+    pCmd->copyRegions                   = CopyCmdData(regions);
 }
 
 void RHICommandList::CopyBufferToTexture(RHIBuffer*                                   pSrcBuffer,
@@ -413,16 +392,9 @@ void RHICommandList::CopyBufferToTexture(RHIBuffer*                             
 
     RetainResource(pDstTexture);
 
-    RHICommandCopyBufferToTexture* pCmd  = ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture);
+    RHICommandCopyBufferToTexture* pCmd = ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture);
 
-    RHIBufferTextureCopyRegion* pRegions = AllocateCmdData<RHIBufferTextureCopyRegion>(regions.size());
-
-    if (pRegions != nullptr)
-    {
-        std::ranges::copy(regions, pRegions);
-    }
-
-    pCmd->copyRegions = MakeVecView(pRegions, regions.size());
+    pCmd->copyRegions                   = CopyCmdData(regions);
 }
 
 void RHICommandList::ResolveTexture(RHITexture* pSrcTexture,
@@ -548,23 +520,8 @@ void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers, Vec
 
     RHICommandBindVertexBuffers* pCmd = ALLOC_CMD(RHICommandBindVertexBuffers)();
 
-    RHIBuffer** ppVertexBuffers       = AllocateCmdData<RHIBuffer*>(vertexBuffers.size());
-
-    if (ppVertexBuffers != nullptr)
-    {
-        std::ranges::copy(vertexBuffers, ppVertexBuffers);
-    }
-
-    uint64_t* pOffsets = AllocateCmdData<uint64_t>(offsets.size());
-
-    if (pOffsets != nullptr)
-    {
-        std::ranges::copy(offsets, pOffsets);
-    }
-
-    pCmd->vertexBuffers = MakeVecView(ppVertexBuffers, vertexBuffers.size());
-
-    pCmd->offsets       = MakeVecView(pOffsets, offsets.size());
+    pCmd->vertexBuffers               = CopyCmdData(vertexBuffers);
+    pCmd->offsets                     = CopyCmdData(offsets);
 }
 
 void RHICommandList::BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
@@ -613,14 +570,9 @@ void RHICommandList::SetPushConstants(RHIPipeline* pPipeline, const uint8_t* pDa
 
     RHICommandSetPushConstants* pCmd = ALLOC_CMD(RHICommandSetPushConstants)(pPipeline);
 
-    uint8_t* pAllocatedData          = AllocateCmdData<uint8_t>(sizeBytes);
-
-    if (pData != nullptr)
-    {
-        std::memcpy(pAllocatedData, pData, sizeBytes);
-    }
-
-    pCmd->data   = MakeVecView(static_cast<const uint8_t*>(pAllocatedData), sizeBytes);
+    // Preserve an invalid null payload for backend validation; never copy uninitialized arena bytes.
+    pCmd->data   = pData != nullptr ? CopyCmdData(MakeVecView(pData, size_t(sizeBytes)))
+                                    : MakeVecView(static_cast<const uint8_t*>(nullptr), size_t(sizeBytes));
 
     pCmd->offset = offset;
 }
@@ -641,34 +593,11 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageFlagBits> srcStages
         RetainResource(transition.pTexture);
     }
 
-    RHICommandAddTransitions* pCmd          = ALLOC_CMD(RHICommandAddTransitions)(srcStages, dstStages);
+    RHICommandAddTransitions* pCmd = ALLOC_CMD(RHICommandAddTransitions)(srcStages, dstStages);
 
-    RHIMemoryTransition* pMemoryTransitions = AllocateCmdData<RHIMemoryTransition>(memoryTransitions.size());
-
-    if (pMemoryTransitions != nullptr)
-    {
-        std::ranges::copy(memoryTransitions, pMemoryTransitions);
-    }
-
-    RHIBufferTransition* pBufferTransitions = AllocateCmdData<RHIBufferTransition>(bufferTransitions.size());
-
-    if (pBufferTransitions != nullptr)
-    {
-        std::ranges::copy(bufferTransitions, pBufferTransitions);
-    }
-
-    RHITextureTransition* pTextureTransitions = AllocateCmdData<RHITextureTransition>(textureTransitions.size());
-
-    if (pTextureTransitions != nullptr)
-    {
-        std::ranges::copy(textureTransitions, pTextureTransitions);
-    }
-
-    pCmd->memoryTransitions  = MakeVecView(pMemoryTransitions, memoryTransitions.size());
-
-    pCmd->bufferTransitions  = MakeVecView(pBufferTransitions, bufferTransitions.size());
-
-    pCmd->textureTransitions = MakeVecView(pTextureTransitions, textureTransitions.size());
+    pCmd->memoryTransitions        = CopyCmdData(memoryTransitions);
+    pCmd->bufferTransitions        = CopyCmdData(bufferTransitions);
+    pCmd->textureTransitions       = CopyCmdData(textureTransitions);
 }
 
 } // namespace zen

@@ -273,7 +273,7 @@ public:
         return m_radiance != nullptr && m_skyIrradiance != nullptr && m_environmentColumns != nullptr
             && m_environmentRows != nullptr && m_environmentHarmonics != nullptr && m_environmentLuminance != nullptr
             && m_environmentTiles != nullptr && m_environmentSources != nullptr && m_environmentResidualColumns != nullptr
-            && m_environmentResidualRows != nullptr && m_unshadowedMap != nullptr;
+            && m_environmentResidualRows != nullptr && m_unshadowedMapView != nullptr;
     }
 
     RHITexture* GetRadianceTexture() const
@@ -365,6 +365,7 @@ private:
     uint64_t                      m_skyVisibility{0};    // Visibility generation the sky cache was traced with.
     SceneShadowRenderer*          m_shadowMaps{nullptr}; // This frame's shadow maps, which field gathers read.
     RHITexture*                   m_unshadowedMap{nullptr};
+    RHITextureView*               m_unshadowedMapView{nullptr};
     RHISampler*                   m_unshadowedSampler{nullptr};
     uint64_t                      m_recordedSkyVisibility{0};
     bool                          m_hardwareQueries{false};

@@ -175,7 +175,8 @@ VkImageViewType ToVkImageViewType(RHITextureType type)
 VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType                    type,
                                                 DataFormat                        format,
                                                 VkImage                           image,
-                                                const RHITextureSubResourceRange& range)
+                                                const RHITextureSubResourceRange& range,
+                                                bool                              arrayView)
 {
     VkImageViewCreateInfo info{};
 
@@ -185,17 +186,17 @@ VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType                  
 
     info.viewType = ToVkImageViewType(type);
 
-    if (type == RHITextureType::e1D && range.layerCount > 1)
+    if (type == RHITextureType::e1D && (arrayView || range.layerCount > 1))
     {
         info.viewType = VK_IMAGE_VIEW_TYPE_1D_ARRAY;
     }
 
-    if (type == RHITextureType::e2D && range.layerCount > 1)
+    if (type == RHITextureType::e2D && (arrayView || range.layerCount > 1))
     {
         info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     }
 
-    if (type == RHITextureType::eCube && range.layerCount > 6)
+    if (type == RHITextureType::eCube && (arrayView || range.layerCount > 6))
     {
         info.viewType = VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
     }

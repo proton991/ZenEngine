@@ -110,10 +110,6 @@ public:
     static VulkanDeviceExtensionArray GetEnabledExtensions(VulkanDevice* pDevice);
 
 #ifdef VK_KHR_get_physical_device_properties2
-    virtual void BeforePhysicalDeviceProperties(VkPhysicalDeviceProperties2& PhysicalDeviceProperties2) {}
-
-    virtual void AfterPhysicalDeviceProperties() {}
-
     virtual void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& physicalDeviceFeatures2Khr) {}
 
     virtual void AfterPhysicalDeviceFeatures() {}

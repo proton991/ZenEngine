@@ -100,6 +100,7 @@ struct TextureViewFormat
     uint32_t         mipmaps{1};
     uint32_t         baseMipLevel{0};
     uint32_t         baseArrayLayer{0};
+    bool             arrayView{false};
 };
 
 struct TextureSlice

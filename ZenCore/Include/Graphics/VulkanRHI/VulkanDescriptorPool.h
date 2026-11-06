@@ -42,7 +42,7 @@ public:
 
     VulkanDescriptorPool& operator=(const VulkanDescriptorPool&) = delete;
 
-    VkDescriptorSet Allocate(VkDescriptorSetLayout layout);
+    VkDescriptorSet Allocate(VkDescriptorSetLayout layout, VkResult* outResult = nullptr);
 
     void Reset();
 
@@ -214,8 +214,6 @@ private:
     uint64_t m_nextSlotGeneration{0};
     uint64_t m_currentFrame{0};
 
-    uint64_t m_entryHighWaterMark{0};
-    uint64_t m_numSlotRetires{0};
 
     friend class VulkanDescriptorSetState;
 };

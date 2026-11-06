@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics/RHI/RHIShaderParameters.h"
+#include "Graphics/RHI/RHIError.h"
 #include "VulkanDescriptorPool.h"
 
 namespace zen
@@ -15,10 +16,10 @@ public:
 
     bool SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0, uint64_t transaction = 0);
 
-    bool FlushPendingDescriptorWrites(FVulkanCommandListContext*   pContext,
-                                      HeapVector<VkDescriptorSet>& outDescriptorSets,
-                                      uint32_t&                    outFirstSet,
-                                      HeapVector<uint32_t>&        outDynamicOffsets);
+    RHIStatus FlushPendingDescriptorWrites(FVulkanCommandListContext*   pContext,
+                                           HeapVector<VkDescriptorSet>& outDescriptorSets,
+                                           uint32_t&                    outFirstSet,
+                                           HeapVector<uint32_t>&        outDynamicOffsets);
 
     void Reset();
 
@@ -40,9 +41,7 @@ private:
         bool                              dirty{false};
     };
 
-    VkDescriptorSet AcquireSetHandle(uint32_t setIdx, FVulkanCommandListContext* pContext, bool& outNeedsWrite);
-
-    bool ResolveSet(uint32_t setIdx, FVulkanCommandListContext* pContext);
+    RHIStatus ResolveSet(uint32_t setIdx);
 
     bool BuildContentKey(uint32_t setIdx, VulkanDescriptorSetCache::ContentKey& outKey);
 
@@ -56,17 +55,15 @@ private:
 
     void WriteResourceParameter(const RHIShaderResourceParameter& param);
 
-    bool ValidateBindingState(const BindingState& bindingState);
-
     bool ValidateSetState(uint32_t setIdx);
 
 
     void SyncCacheRevision(const VulkanDescriptorSetCache& cache);
 
-    bool BuildDescriptorSetList(FVulkanCommandListContext*   pContext,
-                                HeapVector<VkDescriptorSet>& outDescriptorSets,
-                                uint32_t&                    outFirstSet,
-                                HeapVector<uint32_t>&        outDynamicOffsets);
+    RHIStatus BuildDescriptorSetList(FVulkanCommandListContext*   pContext,
+                                     HeapVector<VkDescriptorSet>& outDescriptorSets,
+                                     uint32_t&                    outFirstSet,
+                                     HeapVector<uint32_t>&        outDynamicOffsets);
 
     void AppendDynamicOffsetsForSet(uint32_t setIdx, HeapVector<uint32_t>& outDynamicOffsets);
 
@@ -81,7 +78,7 @@ private:
 
     void SetPackedValueParameter(uint32_t setIdx, uint32_t bindingIdx, uint32_t byteSize, const uint8_t* pData);
 
-    bool FlushPackedValueBuffers();
+    RHIStatus FlushPackedValueBuffers();
 
     PackedValueBufferState* FindOrAddPackedValueBuffer(uint32_t setIdx, uint32_t bindingIdx);
 

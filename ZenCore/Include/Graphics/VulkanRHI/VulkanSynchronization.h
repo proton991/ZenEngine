@@ -1,10 +1,9 @@
 #pragma once
-#include <queue>
+#include "Templates/Queue.h"
 #include "Templates/SmallVector.h"
 #include "VulkanCommon.h"
 #include "Graphics/RHI/RHIResource.h"
 
-#define VK_WAIT_FENCE_TIME_NS (33 * 1000 * 1000LL)
 
 namespace zen
 {
@@ -76,7 +75,7 @@ private:
 
     VulkanDevice*            m_pDevice{nullptr};
     HeapVector<VulkanFence*> m_usedFences;
-    std::queue<VulkanFence*> m_freeFences;
+    Queue<VulkanFence*>      m_freeFences;
 };
 
 class VulkanSemaphore
@@ -157,7 +156,7 @@ public:
 private:
     VulkanDevice*                m_pDevice{nullptr};
     HeapVector<VulkanSemaphore*> m_usedSemaphores;
-    std::queue<VulkanSemaphore*> m_freeSemaphores;
+    Queue<VulkanSemaphore*>      m_freeSemaphores;
     RHIError                     m_error{};
 #if defined(ZEN_DEBUG)
     uint32_t m_allocatedSemaphoreCount{0};

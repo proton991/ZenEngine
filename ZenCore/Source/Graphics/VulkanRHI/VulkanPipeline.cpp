@@ -395,6 +395,28 @@ void VulkanShader::Init()
 
     if (reflected)
     {
+        for (RHIShaderSpecializationConstant& constant : sgInfo.specializationConstants)
+        {
+            const HashMap<uint32_t, RHIShaderSpecializationValue>::const_iterator overrideValue =
+                m_specializationConstants.find(constant.constantId);
+            if (overrideValue != m_specializationConstants.end())
+            {
+                if (overrideValue->second.type == constant.type)
+                {
+                    constant.bits = overrideValue->second.bits;
+                }
+                else
+                {
+                    LOGE("Shader '{}' specialization constant {} has override type {}, expected {}", m_name.CStr(),
+                         constant.constantId, ToUnderlying(overrideValue->second.type), ToUnderlying(constant.type));
+                    reflected = false;
+                }
+            }
+        }
+    }
+
+    if (reflected)
+    {
         m_SRDTable = sgInfo.SRDTable;
 
         if (m_SRDTable.size() <= kGlobalBindlessHeapIndex)
@@ -412,20 +434,6 @@ void VulkanShader::Init()
                 {
                     m_namedSRDLut.emplace(srd.name, &srd);
                 }
-            }
-        }
-
-        if (!m_specializationConstants.empty())
-        {
-            // set specialization constants
-            for (RHIShaderSpecializationConstant& spc : sgInfo.specializationConstants)
-            {
-                if (!m_specializationConstants.contains(spc.constantId))
-                {
-                    continue;
-                }
-
-                spc.bits = m_specializationConstants.at(spc.constantId).bits;
             }
         }
 
@@ -782,6 +790,30 @@ void VulkanShader::Destroy()
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
+static VkPipelineColorBlendAttachmentState MakeColorBlendAttachment(const RHIGfxPipelineColorBlendState& state, uint32_t index)
+{
+    VkPipelineColorBlendAttachmentState native{};
+    if (state.attachmentsMask.Test(index))
+    {
+        const RHIGfxPipelineColorBlendState::Attachment& attachment = state.attachments[index];
+        native.blendEnable                                          = attachment.enableBlend;
+        native.srcColorBlendFactor                                  = ToVkBlendFactor(attachment.srcColorBlendFactor);
+        native.dstColorBlendFactor                                  = ToVkBlendFactor(attachment.dstColorBlendFactor);
+        native.colorBlendOp                                         = ToVkBlendOp(attachment.colorBlendOp);
+        native.srcAlphaBlendFactor                                  = ToVkBlendFactor(attachment.srcAlphaBlendFactor);
+        native.dstAlphaBlendFactor                                  = ToVkBlendFactor(attachment.dstAlphaBlendFactor);
+        native.alphaBlendOp                                         = ToVkBlendOp(attachment.alphaBlendOp);
+        native.colorWriteMask                                       = attachment.colorWriteMask;
+    }
+    return native;
+}
+
+static bool UsesDualSourceBlend(VkBlendFactor factor)
+{
+    return factor == VK_BLEND_FACTOR_SRC1_COLOR || factor == VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR
+        || factor == VK_BLEND_FACTOR_SRC1_ALPHA || factor == VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
+}
+
 static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
 {
     const RHIRenderingLayout* layout = createInfo.pRenderingLayout;
@@ -792,7 +824,74 @@ static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
 
     if (valid)
     {
-        const VulkanDevice*    device = GVulkanRHI->GetDevice();
+        VulkanDevice*                   device   = GVulkanRHI->GetDevice();
+        const VkPhysicalDeviceFeatures& features = device->GetPhysicalDeviceFeatures();
+        const VulkanShader*             shader   = static_cast<const VulkanShader*>(createInfo.pShader);
+        VkShaderStageFlags              stages   = 0;
+        for (uint32_t stage = 0; stage < shader->GetNumShaderStages(); ++stage)
+        {
+            stages |= shader->GetStageCreateInfoData()[stage].stage;
+        }
+        const VkShaderStageFlags supportedStages =
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        valid &= (stages & VK_SHADER_STAGE_VERTEX_BIT) != 0 && (stages & ~supportedStages) == 0;
+        const RHIGfxPipelineStates&               states        = createInfo.states;
+        const RHIGfxPipelineRasterizationState&   rasterization = states.rasterizationState;
+        const VkPipelineColorBlendAttachmentState first         = MakeColorBlendAttachment(states.colorBlendState, 0);
+        bool                                      independent   = false;
+        bool                                      dualSource    = false;
+        for (uint32_t index = 0; index < layout->numColorRenderTargets; ++index)
+        {
+            const VkPipelineColorBlendAttachmentState current = MakeColorBlendAttachment(states.colorBlendState, index);
+            independent |= current.blendEnable != first.blendEnable || current.srcColorBlendFactor != first.srcColorBlendFactor
+                        || current.dstColorBlendFactor != first.dstColorBlendFactor
+                        || current.colorBlendOp != first.colorBlendOp
+                        || current.srcAlphaBlendFactor != first.srcAlphaBlendFactor
+                        || current.dstAlphaBlendFactor != first.dstAlphaBlendFactor
+                        || current.alphaBlendOp != first.alphaBlendOp || current.colorWriteMask != first.colorWriteMask;
+            dualSource  |= UsesDualSourceBlend(current.srcColorBlendFactor) || UsesDualSourceBlend(current.dstColorBlendFactor)
+                        || UsesDualSourceBlend(current.srcAlphaBlendFactor) || UsesDualSourceBlend(current.dstAlphaBlendFactor);
+        }
+        struct FeatureRequirement
+        {
+            bool        requested;
+            VkBool32    enabled;
+            const char* name;
+        };
+        const FeatureRequirement requirements[] = {
+            {rasterization.wireframe, features.fillModeNonSolid, "fillModeNonSolid"},
+            {rasterization.enableDepthClamp, features.depthClamp, "depthClamp"},
+            {states.depthStencilState.enableDepthBoundsTest, features.depthBounds, "depthBounds"},
+            {states.multiSampleState.enableAlphaToOne, features.alphaToOne, "alphaToOne"},
+            {states.multiSampleState.enableSampleShading, features.sampleRateShading, "sampleRateShading"},
+            {states.colorBlendState.enableLogicOp, features.logicOp, "logicOp"},
+            {rasterization.enableDepthBias && rasterization.depthBiasClamp != 0.0f
+                 && !states.dynamicStates.enabledStates.Test(ToUnderlying(RHIDynamicState::eDepthBias)),
+             features.depthBiasClamp, "depthBiasClamp"},
+            {rasterization.lineWidth != 1.0f
+                 && !states.dynamicStates.enabledStates.Test(ToUnderlying(RHIDynamicState::eLineWidth)),
+             features.wideLines, "wideLines"},
+            {independent, features.independentBlend, "independentBlend"},
+            {dualSource, features.dualSrcBlend, "dualSrcBlend"},
+            {(stages & VK_SHADER_STAGE_GEOMETRY_BIT) != 0
+                 || (states.primitiveType >= RHIDrawPrimitiveType::eLineListWithAdjacency
+                     && states.primitiveType <= RHIDrawPrimitiveType::eTriangleStripWithAdjacency),
+             features.geometryShader, "geometryShader"}};
+        for (const FeatureRequirement& requirement : requirements)
+        {
+            if (requirement.requested && !requirement.enabled)
+            {
+                LOGE("Graphics pipeline '{}' requires disabled feature {}", shader->GetName().CStr(), requirement.name);
+                valid = false;
+            }
+        }
+        const uint32_t dualSourceLimit = device->GetPhysicalDeviceProperties().limits.maxFragmentDualSrcAttachments;
+        if (dualSource && features.dualSrcBlend && layout->numColorRenderTargets > dualSourceLimit)
+        {
+            LOGE("Graphics pipeline '{}' uses dual-source blending with {} color targets; the device allows {}",
+                 shader->GetName().CStr(), layout->numColorRenderTargets, dualSourceLimit);
+            valid = false;
+        }
         const DescriptorCounts fragmentCounts =
             CountStageDescriptors(*createInfo.pShader->GetSRDTable(), RHIShaderStage::eFragment);
         valid &= StageResourcesFitLimits(createInfo.pShader->GetName(), fragmentCounts.ResourceCount(),
@@ -829,7 +928,8 @@ static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
 
     if (!valid)
     {
-        LOGE("Graphics pipeline requires a compatible shader, rendering layout, and supported non-patch topology");
+        LOGE(
+            "Graphics pipeline requires a compatible shader, rendering layout, supported non-patch topology, stages, and enabled features");
     }
 
     return valid;
@@ -1050,25 +1150,9 @@ void VulkanPipeline::InitGraphics(const RHIRenderingLayout& layout)
     // Attachment indices are render-target locations; unmasked targets disable color writes.
     vkCBAttStates.resize(layout.numColorRenderTargets);
 
-    for (uint32_t i : colorBlendState.attachmentsMask)
+    for (uint32_t i = 0; i < layout.numColorRenderTargets; ++i)
     {
-        VERIFY_EXPR(i < vkCBAttStates.size());
-
-        vkCBAttStates[i].blendEnable         = colorBlendState.attachments[i].enableBlend;
-
-        vkCBAttStates[i].srcColorBlendFactor = ToVkBlendFactor(colorBlendState.attachments[i].srcColorBlendFactor);
-
-        vkCBAttStates[i].dstColorBlendFactor = ToVkBlendFactor(colorBlendState.attachments[i].dstColorBlendFactor);
-
-        vkCBAttStates[i].colorBlendOp        = ToVkBlendOp(colorBlendState.attachments[i].colorBlendOp);
-
-        vkCBAttStates[i].srcAlphaBlendFactor = ToVkBlendFactor(colorBlendState.attachments[i].srcAlphaBlendFactor);
-
-        vkCBAttStates[i].dstAlphaBlendFactor = ToVkBlendFactor(colorBlendState.attachments[i].dstAlphaBlendFactor);
-
-        vkCBAttStates[i].alphaBlendOp        = ToVkBlendOp(colorBlendState.attachments[i].alphaBlendOp);
-
-        vkCBAttStates[i].colorWriteMask      = colorBlendState.attachments[i].colorWriteMask;
+        vkCBAttStates[i] = MakeColorBlendAttachment(colorBlendState, i);
     }
 
     VkPipelineColorBlendStateCreateInfo CBStateCI;

@@ -345,7 +345,7 @@ uint32_t CountShadowFaces(const HeapVector<SceneLight>& lights)
 uint64_t EstimateShadowBytes(uint32_t resolution, uint32_t faces)
 {
     // D32 maps plus their R32 deepest-depth reduction over 4x4 blocks.
-    return (uint64_t(resolution) * resolution * 4 + uint64_t(resolution / 4) * (resolution / 4) * 4) * std::max(2u, faces);
+    return (uint64_t(resolution) * resolution * 4 + uint64_t(resolution / 4) * (resolution / 4) * 4) * std::max(1u, faces);
 }
 
 bool ValidateShadowMemory(uint32_t resolution, uint32_t faces, uint64_t availableBytes)

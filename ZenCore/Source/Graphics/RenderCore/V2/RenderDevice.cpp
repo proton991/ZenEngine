@@ -1250,6 +1250,7 @@ RHITextureView* RenderDevice::CreateTextureView(RHITexture* texture, const Textu
 
     info.baseMipLevel   = format.baseMipLevel;
     info.baseArrayLayer = format.baseArrayLayer;
+    info.arrayView      = format.arrayView;
 
     info.tag            = name;
 

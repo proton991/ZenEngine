@@ -392,9 +392,16 @@ bool VoxelGIRenderer::Init()
             unshadowed.width       = 1;
             unshadowed.height      = 1;
             unshadowed.depth       = 1;
-            unshadowed.arrayLayers = 2;
+            unshadowed.arrayLayers = 1;
             m_unshadowedMap        = m_device->CreateTextureSampled(unshadowed, {}, "voxel_unshadowed_map");
-            m_unshadowedSampler    = m_device->CreateSampler({});
+            if (m_unshadowedMap != nullptr)
+            {
+                TextureViewFormat view;
+                view.dimension      = TextureDimension::e2D;
+                view.arrayView      = true;
+                m_unshadowedMapView = m_device->CreateTextureView(m_unshadowedMap, view, "voxel_unshadowed_array");
+            }
+            m_unshadowedSampler = m_device->CreateSampler({});
         }
 
         if (m_skyIrradiance != nullptr)
@@ -1119,8 +1126,8 @@ void VoxelGIRenderer::BindFieldInputs(RDGPassDescBase& pass) const
     {
         static const SceneShadowUniformData unshadowed{};
         pass.BindValue("uSceneShadows", unshadowed);
-        pass.BindSampledTexture("sceneShadowMaps", m_unshadowedSampler, m_unshadowedMap->GetDefaultView());
-        pass.BindSampledTexture("sceneShadowMaxDepth", m_unshadowedSampler, m_unshadowedMap->GetDefaultView());
+        pass.BindSampledTexture("sceneShadowMaps", m_unshadowedSampler, m_unshadowedMapView);
+        pass.BindSampledTexture("sceneShadowMaxDepth", m_unshadowedSampler, m_unshadowedMapView);
     }
 }
 
@@ -1360,7 +1367,8 @@ void VoxelGIRenderer::Destroy()
 
     m_device->DestroyTexture(m_unshadowedMap);
 
-    m_unshadowedMap = nullptr;
+    m_unshadowedMap     = nullptr;
+    m_unshadowedMapView = nullptr;
 
     m_device->DestroyBuffer(m_environmentColumns);
     m_device->DestroyBuffer(m_environmentRows);

@@ -55,28 +55,25 @@ VkImageView GetImageView(RHIResource* pResource, RHITextureUsageFlagBits require
 
 struct DescriptorWriteBatch
 {
-    explicit DescriptorWriteBatch(uint32_t maxDescriptorCount) :
-        writes(maxDescriptorCount),
-        imageInfos(maxDescriptorCount),
-        bufferInfos(maxDescriptorCount),
-        bufferViews(maxDescriptorCount),
-        accelerationInfos(maxDescriptorCount),
-        accelerationStructures(maxDescriptorCount)
-    {}
+    struct Payload
+    {
+        VkDescriptorImageInfo                        image{};
+        VkDescriptorBufferInfo                       buffer{};
+        VkBufferView                                 bufferView{VK_NULL_HANDLE};
+        VkWriteDescriptorSetAccelerationStructureKHR accelerationInfo{};
+        VkAccelerationStructureKHR                   accelerationStructure{VK_NULL_HANDLE};
+    };
 
-    HeapVector<VkWriteDescriptorSet>                         writes;
-    HeapVector<VkDescriptorImageInfo>                        imageInfos;
-    HeapVector<VkDescriptorBufferInfo>                       bufferInfos;
-    HeapVector<VkBufferView>                                 bufferViews;
-    HeapVector<VkWriteDescriptorSetAccelerationStructureKHR> accelerationInfos;
-    HeapVector<VkAccelerationStructureKHR>                   accelerationStructures;
-    uint32_t                                                 numWrites{0};
+    explicit DescriptorWriteBatch(uint32_t maxDescriptorCount) : writes(maxDescriptorCount), payloads(maxDescriptorCount) {}
+
+    HeapVector<VkWriteDescriptorSet> writes;
+    HeapVector<Payload>              payloads;
+    uint32_t                         numWrites{0};
 };
 
 bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
                               uint32_t                        valueRange,
                               VectorView<const uint32_t>      offsets,
-                              VkDescriptorSet                 set,
                               DescriptorWriteBatch*           batch)
 {
     const uint32_t stride = GetResourceStride(binding.type);
@@ -96,7 +93,6 @@ bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
         VkBufferView               view      = VK_NULL_HANDLE;
         VkAccelerationStructureKHR structure = VK_NULL_HANDLE;
         VkWriteDescriptorSet       write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        write.dstSet          = set;
         write.dstBinding      = binding.binding;
         write.dstArrayElement = element;
         write.descriptorCount = 1;
@@ -185,29 +181,30 @@ bool ResolveDescriptorBinding(const RHIShaderResourceBinding& binding,
         if (valid && batch != nullptr)
         {
             const uint32_t slot = batch->numWrites++;
-            VERIFY_EXPR(slot < batch->writes.size() && set != VK_NULL_HANDLE);
-            batch->imageInfos[slot]             = image;
-            batch->bufferInfos[slot]            = bufferInfo;
-            batch->bufferViews[slot]            = view;
-            batch->accelerationStructures[slot] = structure;
+            VERIFY_EXPR(slot < batch->writes.size());
+            DescriptorWriteBatch::Payload& payload = batch->payloads[slot];
+            payload.image                          = image;
+            payload.buffer                         = bufferInfo;
+            payload.bufferView                     = view;
+            payload.accelerationStructure          = structure;
             if (write.pImageInfo != nullptr)
             {
-                write.pImageInfo = &batch->imageInfos[slot];
+                write.pImageInfo = &payload.image;
             }
             if (write.pBufferInfo != nullptr)
             {
-                write.pBufferInfo = &batch->bufferInfos[slot];
+                write.pBufferInfo = &payload.buffer;
             }
             if (write.pTexelBufferView != nullptr)
             {
-                write.pTexelBufferView = &batch->bufferViews[slot];
+                write.pTexelBufferView = &payload.bufferView;
             }
             if (structure != VK_NULL_HANDLE)
             {
-                VkWriteDescriptorSetAccelerationStructureKHR& info = batch->accelerationInfos[slot];
+                VkWriteDescriptorSetAccelerationStructureKHR& info = payload.accelerationInfo;
                 info                            = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
                 info.accelerationStructureCount = 1;
-                info.pAccelerationStructures    = &batch->accelerationStructures[slot];
+                info.pAccelerationStructures    = &payload.accelerationStructure;
                 write.pNext                     = &info;
             }
             batch->writes[slot] = write;
@@ -342,12 +339,14 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
     return m_parametersValid;
 }
 
-bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(FVulkanCommandListContext*   pContext,
-                                                            HeapVector<VkDescriptorSet>& outDescriptorSets,
-                                                            uint32_t&                    outFirstSet,
-                                                            HeapVector<uint32_t>&        outDynamicOffsets)
+RHIStatus VulkanDescriptorSetState::FlushPendingDescriptorWrites(FVulkanCommandListContext*   pContext,
+                                                                 HeapVector<VkDescriptorSet>& outDescriptorSets,
+                                                                 uint32_t&                    outFirstSet,
+                                                                 HeapVector<uint32_t>&        outDynamicOffsets)
 {
-    bool valid = m_parametersValid && pContext != nullptr && m_pPipeline != nullptr;
+    bool      valid = m_parametersValid && pContext != nullptr && m_pPipeline != nullptr;
+    RHIStatus status{valid ? RHIError{}
+                           : MakeRHIError(RHIErrorCode::eInvalidArgument, "Prepare shader descriptors", __FILE__, __LINE__)};
 
     if (valid)
     {
@@ -400,11 +399,13 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(FVulkanCommandListCo
 
             outFirstSet = 0;
 
-            valid       = FlushPackedValueBuffers();
+            status      = FlushPackedValueBuffers();
+            valid       = static_cast<bool>(status);
 
             if (valid)
             {
-                valid = BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet, outDynamicOffsets);
+                status = BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet, outDynamicOffsets);
+                valid  = static_cast<bool>(status);
             }
 
             m_resolvedSets           = outDescriptorSets;
@@ -432,7 +433,7 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(FVulkanCommandListCo
         m_lastWorkloadGeneration = 0;
     }
 
-    return valid;
+    return status;
 }
 
 void VulkanDescriptorSetState::Reset()
@@ -458,112 +459,93 @@ void VulkanDescriptorSetState::Reset()
     m_resolvedOffsets.clear();
 }
 
-VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t                   setIdx,
-                                                           FVulkanCommandListContext* pContext,
-                                                           bool&                      outNeedsWrite)
+RHIStatus VulkanDescriptorSetState::ResolveSet(uint32_t setIdx)
 {
-    VkDescriptorSet descriptorSet  = VK_NULL_HANDLE;
+    RHIStatus status{MakeRHIError(RHIErrorCode::eInvalidArgument, "Prepare shader descriptors", __FILE__, __LINE__)};
 
-    outNeedsWrite                  = false;
-
-    m_setStates[setIdx].pContainer = nullptr;
-
-    if (m_pPipeline != nullptr)
+    if (ValidateSetState(setIdx))
     {
-        VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
-
-        if (setIdx == kGlobalBindlessHeapIndex && pShader->HasGlobalBindlessSet())
+        SetState&     setState = m_setStates[setIdx];
+        VulkanShader* shader   = TO_VK_SHADER(m_pPipeline->GetShader());
+        setState.pContainer    = nullptr;
+        if (setIdx == kGlobalBindlessHeapIndex && shader->HasGlobalBindlessSet())
         {
-            outNeedsWrite = false;
-
-            descriptorSet = GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessSet();
+            setState.vkSet = GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessSet();
+            if (setState.vkSet != VK_NULL_HANDLE)
+            {
+                status = {};
+            }
         }
         else
         {
-            VERIFY_EXPR(setIdx != kGlobalBindlessHeapIndex || pShader->HasGlobalBindlessSet());
-            VulkanDescriptorSetCache::ContentKey contentKey{};
-
-            VulkanDescriptorSetCache* pCache = GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
-
-            if (pCache != nullptr && BuildContentKey(setIdx, contentKey))
+            VulkanDescriptorSetCache::ContentKey key{};
+            VulkanDescriptorSetCache*            cache = GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+            if (cache != nullptr && BuildContentKey(setIdx, key))
             {
-                descriptorSet = pCache->Find(contentKey, m_setStates[setIdx].pContainer);
-
-                if (descriptorSet != VK_NULL_HANDLE)
+                setState.vkSet                 = cache->Find(key, setState.pContainer);
+                const bool needsWrite          = setState.vkSet == VK_NULL_HANDLE;
+                uint32_t   maxDescriptorWrites = 0;
+                if (needsWrite)
                 {
-                    outNeedsWrite = false;
-                }
-                else
-                {
-                    descriptorSet =
-                        pCache->Allocate(pShader->GetDescriptorPoolKey(setIdx), pShader->GetDescriptorSetLayoutHandle(setIdx),
-                                         m_setStates[setIdx].pContainer);
-
-                    outNeedsWrite = true;
-                }
-            }
-        }
-    }
-
-    return descriptorSet;
-}
-
-bool VulkanDescriptorSetState::ResolveSet(uint32_t setIdx, FVulkanCommandListContext* pContext)
-{
-    bool resolved = false;
-
-    if (setIdx < m_setStates.size() && ValidateSetState(setIdx))
-    {
-        SetState& setState = m_setStates[setIdx];
-
-        if (setState.dirty || setState.vkSet == VK_NULL_HANDLE)
-        {
-            bool needsWrite = false;
-
-            setState.vkSet  = AcquireSetHandle(setIdx, pContext, needsWrite);
-
-            if (setState.vkSet != VK_NULL_HANDLE && needsWrite)
-            {
-                uint32_t maxDescriptorWrites = 0;
-                for (const BindingState& binding : setState.bindings)
-                {
-                    maxDescriptorWrites +=
-                        static_cast<uint32_t>(binding.srb.resources.size()) / GetResourceStride(binding.srb.type);
+                    for (const BindingState& binding : setState.bindings)
+                    {
+                        maxDescriptorWrites +=
+                            static_cast<uint32_t>(binding.srb.resources.size()) / GetResourceStride(binding.srb.type);
+                    }
                 }
                 DescriptorWriteBatch writeBatch(maxDescriptorWrites);
                 bool                 valid = true;
                 for (const BindingState& binding : setState.bindings)
                 {
+                    // Offsets are absent from the content key, so cache hits still need
+                    // validation. Misses retain the same resolution as native writes.
                     valid = valid
-                         && ResolveDescriptorBinding(binding.srb, binding.valueRange, binding.dynamicOffsets, setState.vkSet,
-                                                     &writeBatch);
+                         && ResolveDescriptorBinding(binding.srb, binding.valueRange, binding.dynamicOffsets,
+                                                     needsWrite ? &writeBatch : nullptr);
                 }
-                VulkanDescriptorSetCache::ContentKey key{};
-                valid = valid && BuildContentKey(setIdx, key);
                 if (valid)
                 {
-                    if (writeBatch.numWrites > 0)
+                    status = {};
+                    if (needsWrite)
                     {
-                        vkUpdateDescriptorSets(GVulkanRHI->GetVkDevice(), writeBatch.numWrites, writeBatch.writes.data(), 0,
-                                               nullptr);
+                        GVulkanRHI->SetCreationError({});
+                        setState.vkSet = cache->Allocate(shader->GetDescriptorPoolKey(setIdx),
+                                                         shader->GetDescriptorSetLayoutHandle(setIdx), setState.pContainer);
+                        if (setState.vkSet != VK_NULL_HANDLE)
+                        {
+                            for (uint32_t i = 0; i < writeBatch.numWrites; ++i)
+                            {
+                                writeBatch.writes[i].dstSet = setState.vkSet;
+                            }
+                            if (writeBatch.numWrites > 0)
+                            {
+                                vkUpdateDescriptorSets(GVulkanRHI->GetVkDevice(), writeBatch.numWrites,
+                                                       writeBatch.writes.data(), 0, nullptr);
+                            }
+                            cache->Publish(key, setState.vkSet, setState.pContainer);
+                        }
+                        else
+                        {
+                            status.error = RHIErrorOr(
+                                GVulkanRHI->GetLastCreationError(),
+                                MakeRHIError(RHIErrorCode::eBackendFailure, "Allocate shader descriptors", __FILE__, __LINE__));
+                        }
                     }
-                    GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache()->Publish(key, setState.vkSet,
-                                                                                        setState.pContainer);
                 }
                 else
                 {
-                    setState.vkSet      = VK_NULL_HANDLE;
-                    setState.pContainer = nullptr;
+                    LOGE("Invalid Vulkan descriptor binding resources");
                 }
             }
         }
-
-        resolved       = setState.vkSet != VK_NULL_HANDLE;
-
-        setState.dirty = false;
+        if (!status)
+        {
+            setState.vkSet      = VK_NULL_HANDLE;
+            setState.pContainer = nullptr;
+        }
+        setState.dirty = !static_cast<bool>(status);
     }
-
-    return resolved;
+    return status;
 }
 
 bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx, VulkanDescriptorSetCache::ContentKey& outKey)
@@ -743,17 +725,6 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
     }
 }
 
-bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& binding)
-{
-    const bool valid =
-        ResolveDescriptorBinding(binding.srb, binding.valueRange, binding.dynamicOffsets, VK_NULL_HANDLE, nullptr);
-    if (!valid)
-    {
-        LOGE("Invalid Vulkan descriptor binding resources");
-    }
-    return valid;
-}
-
 bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
 {
     VulkanShader* shader = m_pPipeline != nullptr ? TO_VK_SHADER(m_pPipeline->GetShader()) : nullptr;
@@ -770,8 +741,6 @@ bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
 
             valid                                         &= descriptor != nullptr && descriptor->type == binding.srb.type
                                                           && binding.srb.resources.size() / GetResourceStride(binding.srb.type) <= descriptor->arraySize;
-
-            valid                                         &= ValidateBindingState(binding);
         }
 
         for (RHIShaderResourceDescriptor const& descriptor : (*shader->GetSRDTable())[setIdx])
@@ -804,14 +773,17 @@ void VulkanDescriptorSetState::SyncCacheRevision(const VulkanDescriptorSetCache&
     }
 }
 
-bool VulkanDescriptorSetState::BuildDescriptorSetList(FVulkanCommandListContext*   pContext,
-                                                      HeapVector<VkDescriptorSet>& outDescriptorSets,
-                                                      uint32_t&                    outFirstSet,
-                                                      HeapVector<uint32_t>&        outDynamicOffsets)
+RHIStatus VulkanDescriptorSetState::BuildDescriptorSetList(FVulkanCommandListContext*   pContext,
+                                                           HeapVector<VkDescriptorSet>& outDescriptorSets,
+                                                           uint32_t&                    outFirstSet,
+                                                           HeapVector<uint32_t>&        outDynamicOffsets)
 {
-    VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
+    VulkanShader* pShader     = TO_VK_SHADER(m_pPipeline->GetShader());
 
-    bool allSetsResolved  = pShader != nullptr;
+    bool      allSetsResolved = pShader != nullptr;
+    RHIStatus status{allSetsResolved
+                         ? RHIError{}
+                         : MakeRHIError(RHIErrorCode::eInvalidArgument, "Prepare shader descriptors", __FILE__, __LINE__)};
 
     if (pShader != nullptr)
     {
@@ -869,7 +841,11 @@ bool VulkanDescriptorSetState::BuildDescriptorSetList(FVulkanCommandListContext*
 
                 const bool needResolve = setState.dirty || setState.vkSet == VK_NULL_HANDLE;
 
-                if (needResolve && !ResolveSet(i, pContext))
+                if (needResolve)
+                {
+                    status = ResolveSet(i);
+                }
+                if (!status)
                 {
                     LOGE("[VulkanRHI][VulkanDescriptorSetState]: ResolveSet failed!");
 
@@ -909,7 +885,7 @@ bool VulkanDescriptorSetState::BuildDescriptorSetList(FVulkanCommandListContext*
         }
     }
 
-    return allSetsResolved;
+    return status;
 }
 
 void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx, HeapVector<uint32_t>& outDynamicOffsets)
@@ -966,11 +942,13 @@ void VulkanDescriptorSetState::SetPackedValueParameter(uint32_t       setIdx,
     }
 }
 
-bool VulkanDescriptorSetState::FlushPackedValueBuffers()
+RHIStatus VulkanDescriptorSetState::FlushPackedValueBuffers()
 {
     VulkanUniformBufferAllocator* pAllocator = GVulkanRHI->GetUniformBufferAllocator();
 
-    bool valid                               = pAllocator != nullptr;
+    RHIStatus status{pAllocator != nullptr
+                         ? RHIError{}
+                         : MakeRHIError(RHIErrorCode::eBackendFailure, "Allocate packed uniform buffer", __FILE__, __LINE__)};
 
     if (pAllocator != nullptr)
     {
@@ -1001,11 +979,14 @@ bool VulkanDescriptorSetState::FlushPackedValueBuffers()
 
             if (bufferState.dirty && bufferState.blockSize > 0)
             {
+                GVulkanRHI->SetCreationError({});
                 VulkanUniformBufferBlock block = pAllocator->Alloc(bufferState.blockSize);
 
                 if (!block.IsValid())
                 {
-                    valid = false;
+                    status.error = RHIErrorOr(
+                        GVulkanRHI->GetLastCreationError(),
+                        MakeRHIError(RHIErrorCode::eOutOfDeviceMemory, "Allocate packed uniform buffer", __FILE__, __LINE__));
 
                     break;
                 }
@@ -1041,7 +1022,7 @@ bool VulkanDescriptorSetState::FlushPackedValueBuffers()
         }
     }
 
-    return valid;
+    return status;
 }
 
 VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::FindOrAddPackedValueBuffer(uint32_t setIdx,

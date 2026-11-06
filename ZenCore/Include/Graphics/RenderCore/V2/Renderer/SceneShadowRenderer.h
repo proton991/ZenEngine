@@ -67,6 +67,8 @@ private:
     RHITexture*                           m_depth{nullptr};
     RHITexture*                           m_maps{nullptr};
     RHITexture*                           m_maxDepth{nullptr}; // Deepest depth per 4x4 block of each layer.
+    RHITextureView*                       m_mapsView{nullptr};
+    RHITextureView*                       m_maxDepthView{nullptr};
     RHISampler*                           m_depthSampler{nullptr};
     RHISampler*                           m_materialSampler{nullptr};
     uint32_t                              m_resolution{1024};

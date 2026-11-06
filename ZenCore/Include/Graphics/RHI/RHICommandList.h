@@ -390,31 +390,23 @@ public:
         return result;
     }
 
-    template <typename T> VectorView<const T> CopyCmdData(VectorView<const T> source)
+    template <typename T> VectorView<std::remove_const_t<T>> CopyCmdData(VectorView<T> source)
     {
         static_assert(std::is_trivially_copyable_v<T>);
 
-        T* storage = AllocateCmdData<T>(source.size());
+        std::remove_const_t<T>* storage = AllocateCmdData<std::remove_const_t<T>>(source.size());
 
         if (!source.empty())
         {
             std::memcpy(storage, source.data(), source.size() * sizeof(T));
         }
 
-        return MakeVecView(static_cast<const T*>(storage), source.size());
+        return MakeVecView(storage, source.size());
     }
 
     IRHICommandContext* GetContext() const
     {
         return m_pGraphicsContext != nullptr ? m_pGraphicsContext : m_pComputeContext;
-    }
-
-    void WaitUntilCompleted()
-    {
-        if (IRHICommandContext* pContext = GetContext())
-        {
-            GetRHIThread().Invoke(&IRHICommandContext::RHIWaitUntilCompleted, pContext);
-        }
     }
 
     uint64_t CaptureBindlessEpoch();
