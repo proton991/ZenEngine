@@ -260,9 +260,67 @@ These items stay open:
 | Surface retry has no backoff | `VulkanViewport::Resize` | A surface stays lost. Interactive apps retry every frame without stopping. |
 | Views are not checked against the shader's array dimension | `RHIShaderResourceDescriptor` | A single-layer default view is bound to a `sampler2DArray`. The RHI reports nothing. |
 | Oversized packed uniforms pass shader creation | `VulkanUniformBufferAllocator::Alloc` | A GPU's `maxUniformBufferRange` exceeds the packed block size. The failure appears at first draw. |
-| Bindless heap accepts array-typed 2D views | `GetBindlessHeapType` | No current caller does this. |
 | RDG views cannot request `arrayView` | `RDGResourceManager::MaterializeView` | No current pass needs this. |
 
 After these two fixes, all listed suites passed on the same RTX 5080: 1636 in Debug and 1637 in Release, with 9 skips per configuration and zero Vulkan VUID or synchronization-hazard errors. The three new tests are `RecordedListCannotInheritVertexBuffers`, `DualSourceBlendingReadsTheSecondFragmentOutput` and `DualSourceBlendingIsEnabledWithinItsColorTargetLimit`.
 
 No hardware acceleration-structure comparison has been run, so the frame-time effect of this work is unmeasured. `tools/benchmark_voxel_gi.py --backend hardware --workload dynamic` is the check to run.
+
+### Bindless array-view support
+
+The previously open bindless array-view item is fixed and extended to support arrays. `VulkanTextureView` records the native `VkImageViewType` used at successful creation. `GetBindlessHeapType` routes non-array 2D/cube views and array 2D/cube views to distinct bindings in the same set 0. Existing bindings 0 (2D), 1 (cube) and 2 (sampler) retain their numbers; bindings 3 and 4 add 2D arrays and cube arrays. Default requested capacities are respectively 2048, 64, 128, 256 and 64; the device-limit fitting described below can reduce them. Each binding has its own slot indices, references, generations and retirement state.
+
+Direct registration automatically selects the correct heap, including explicit one-layer 2D arrays, explicit single-cube arrays and default views spanning multiple layers/cubes. A non-array slice of a larger image still selects the non-array heap. Shader-parameter preflight checks the requested set, binding and resource type against the native view before retaining resources, claiming slots or queuing writes for any parameter in the batch. Multisampled views are rejected because these heaps use non-multisampled shader declarations.
+
+The shared CPU/GLSL binding constants describe all five bindings. `Common/bindless_heap.glsl` exposes `SamplerHeap2DArray` under `ZEN_BINDLESS_2D_ARRAY` and `SamplerHeapCubeArray` under `ZEN_BINDLESS_CUBE_ARRAY`. Reflection validates global heap declarations against their dimension, array shape and sample count. Cube-array shaders are rejected before native object creation if `imageCubeArray` is unavailable; the extra shared-layout binding does not require that optional feature. All four image heaps count toward descriptor pool capacity and device/shader limits. Ordinary array descriptors are unaffected.
+
+Regressions in [VulkanBindlessRetirementIntegrationTests.cpp](../ZenTest/CommonTest/VulkanBindlessRetirementIntegrationTests.cpp), [ShaderReflectionTests.cpp](../ZenTest/CommonTest/ShaderReflectionTests.cpp) and [VulkanShaderLayoutTests.cpp](../ZenTest/CommonTest/VulkanShaderLayoutTests.cpp) cover native sampling/readback, independent bindings, retained resource lifetimes, transactional registration, incompatible shader parameters/declarations and aggregate capacity limits. The disabled cube-array feature test verifies rejection before native shader creation. Both array types ran on the GPU, including explicit single-element array views and non-array slices.
+
+MSVC Debug and Release builds succeeded. Final validation on Windows x64 / NVIDIA GeForce RTX 5080:
+
+| Suite | Debug passed | Release passed | Skipped per configuration |
+| --- | ---: | ---: | ---: |
+| CommonTest | 50 | 50 | 0 |
+| RenderCoreTest | 771 | 771 | 0 |
+| VulkanRHITest | 77 | 77 | 0 |
+| VulkanRHIIntegrationTest | 489 | 490 | 5 |
+| Total | 1387 | 1388 | 5 |
+
+Final runs have zero Vulkan VUID or synchronization-hazard errors. Counts use the clean runs after fixing test setup for transaction-owned registrations and expanding an existing oversized-capacity fixture to all five heaps. Native runs used synchronization validation and the existing RTSS-excluded executable alias. Logs/build outputs are under `build/rhi-fixes-20261106/`, with final aggregate results in `bindless-array-extension-verification.json`. All changed C++/shader files pass targeted clang-format checks; the no-exceptions check passes across 544 owned C++ files, and root/nested whitespace checks pass. Independent source reviews found no further defect in this change. This work does not close the separate ordinary-descriptor dimension-validation or production acceptance items.
+
+### Bindless slot counts fit device limits
+
+The original numeric checks prevented oversized allocations by rejecting GPUs whose limits could not hold the requested counts. Requests are now upper bounds: device selection and heap initialization use the same `FitBindlessHeapCapacities` calculation to reduce them where needed. All four image heaps share the minimum of the layout sampled-image, per-stage sampled-image and per-stage resource limits. Samplers fit both their layout and per-stage limits. Both budgets keep 256 descriptors free (`kBindlessOrdinaryDescriptorReserve`) for ordinary descriptors and color attachments. The five heaps then fit the total update-after-bind pool budget. Counts that already fit remain unchanged. Each reduction reserves one slot per heap and distributes the remaining capacity proportionally, using 64-bit arithmetic and deterministic rounding without increasing any request. Devices unable to hold those minimum slots remain unsupported. These budgets follow the [Vulkan descriptor-indexing limits](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceDescriptorIndexingProperties.html).
+
+Native layout creation now first queries `vkGetDescriptorSetLayoutSupport` with the exact five bindings and flags. The numeric checks alone cannot prove that a combined descriptor set satisfies implementation-dependent size/alignment restrictions. A rejected query stops startup with an error before any layout, pool or set exists. See the [Vulkan layout-support contract](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDescriptorSetLayoutSupport.html).
+
+`QueryGPUInfo().bindlessHeapCapacities` remains the authoritative allocation/bounds contract, and a live heap does not resize when options change. Existing shader and pipeline checks still combine the actual heap sizes with ordinary descriptors and color attachments, so a pipeline that needs more than the reserve is rejected on a device whose heaps were reduced to a limit.
+
+Seven CPU regressions exercise all six numeric limits, exact-fit preservation, deterministic proportional reduction, minimum slots, invalid zero requests, unchanged output on failure, aliased output and `UINT32_MAX` inputs. Native regressions lower the engine's cached limit report and verify the counts actually passed to layout/pool creation; this simulates a constrained GPU rather than claiming a run on such hardware. They also verify oversized requests remain selectable without changing live capacities, impossible minima reject device initialization, and an unsupported native layout stops startup. The existing beyond-default sampling test now uses the fitted capacities.
+
+The first full Debug integration run exited with access violation `0xC0000005` during `VulkanGPUTimingIntegrationTest.UnclosedNativeBuffersInvalidateFrameBoundaries` teardown, without a Vulkan validation error. Its last log was the VMA leak report, which precedes allocator/device destruction; no stack identifies the exact failing call. The same test passed in isolation and in the subsequent full run. Source review found no confirmed connection to the changed capacity or layout-support code. The original crash remains unexplained and is retained as a validation limitation, not treated as a fixed defect. The initial log is `debug-bindless-device-limits-vulkan/VulkanRHIIntegrationTest.log` under the artifact directory above.
+
+MSVC Debug and Release builds passed on the RTX 5080. Final suite results: CommonTest 50/50, RenderCoreTest 771/771, VulkanRHITest 84/84 and VulkanRHIIntegrationTest 491/492 (Debug/Release), totaling 1396/1397 passed with five existing skips per configuration and no Vulkan VUID or synchronization-hazard errors. All new tests ran in both configurations. Targeted clang-format and root/nested whitespace checks passed; the no-exceptions check passed across 544 owned C++ files. Aggregate results, including the initial crash limitation, are saved in `build/rhi-fixes-20261106/bindless-device-limits-verification.json`.
+
+### Review of the bindless changes
+
+A review of the two sections above found 10 items. All are resolved except landing: the ZenCore and ZenTest changes must be committed together.
+
+- **Heap reserve:** the fit used to fill each limit completely, but every pipeline layout also holds ordinary descriptors and color attachments. On the RTX 5080, requesting more slots than the device allows left shaders failing with `exceeds combined layout sampled images: 1048592`. Each limit now keeps 256 descriptors free; the engine's largest shader stage uses 61 resources, plus up to 8 color attachments. `FittedHeapsLeaveRoomForOrdinaryDescriptorsAndColorTargets` runs on the real GPU and fails with the reserve set to zero.
+- **Unsupported layout:** a rejected `vkGetDescriptorSetLayoutSupport` query now stops startup with an error. It used to continue with no global layout, so every shader failed later.
+- **Cube-array budget:** a device without `imageCubeArray` requests one slot for that unusable heap, leaving the budget to the others.
+- **Cleanups:** preflight and shader validation now call `GetBindlessHeapResourceType`, `bufferOffset` is checked once, the heap type is passed into `CanRegisterLocked`, and the post-fit limit check is a verification.
+
+All 15 suites below passed on the RTX 5080: 1863 in Debug and 1864 in Release, with 9 skips per configuration and zero Vulkan VUID or synchronization-hazard errors. They are CommonTest, RenderCoreTest, VulkanRHITest, VulkanRHIIntegrationTest, RayQueryIntegrationTest, ConeVoxelGIIntegrationTest, EditorModelTest, EditorInputTest, EditorRenderingTest, EditorPreviewTest, UIRenderingTest, UIDrawPacketTest, RuntimeUIIntegrationTest, SceneModelSwitchTest and RuntimeLaunchTest. The earlier access violation did not recur in these runs or in 120 isolated repeats of that test, so it remains unexplained.
+
+The hardware comparison below measures all of the RHI review work against `36053f3e`, the commit before it. Each column is the mean of three interleaved New Sponza runs with `tools/benchmark_voxel_gi.py --backend hardware --workload dynamic --profile` at 1920x1080, measuring 1200 frames after 120 warmup frames. All 199 compiled shaders were byte-identical.
+
+| Metric (ms) | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Mean frame | 36.45 | 36.51 | +0.06 |
+| Median frame | 34.56 | 34.55 | -0.00 |
+| P95 frame | 45.23 | 45.40 | +0.17 |
+| Mean GPU frame | 31.76 | 31.77 | +0.01 |
+| Mean CPU submission | 0.098 | 0.098 | 0.00 |
+
+The mean-frame change is within run-to-run noise: individual baseline runs ranged from 36.27 to 36.61 ms. A separate 300-frame hardware run with validation enabled reported no errors. Results are under `build/rhi-bindless-review-20261106/`.

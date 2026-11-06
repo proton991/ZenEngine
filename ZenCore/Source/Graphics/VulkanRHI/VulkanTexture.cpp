@@ -574,6 +574,8 @@ void VulkanTextureView::Init()
 
     const VkResult result = vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView);
 
+    m_vkImageViewType     = result == VK_SUCCESS ? imageViewCI.viewType : VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+
     if (result != VK_SUCCESS)
     {
         m_vkImageView = VK_NULL_HANDLE;

@@ -203,14 +203,20 @@ std::string VulkanDevice::GetUnsupportedReason(VkPhysicalDevice gpu)
 
         vkGetPhysicalDeviceProperties2(gpu, &properties2);
 
-        const RHIBindlessHeapCapacities& capacities = RHIOptions::GetInstance().BindlessHeapCapacities();
+        VkPhysicalDeviceFeatures coreFeatures{};
 
-        if (!BindlessHeapsFitLimits(limits, capacities))
+        vkGetPhysicalDeviceFeatures(gpu, &coreFeatures);
+
+        const RHIBindlessHeapCapacities capacities = GetBindlessHeapRequest(coreFeatures.imageCubeArray == VK_TRUE);
+        RHIBindlessHeapCapacities       fitted     = kNoBindlessHeaps;
+
+        if (!FitBindlessHeapCapacities(limits, capacities, fitted))
         {
             reason = fmt::format(
-                "Descriptor indexing limits cannot hold the bindless heaps ({} 2D textures, {} cube textures, {} samplers)",
+                "Descriptor indexing limits cannot fit the bindless heap requests with at least one slot per heap ({} 2D textures, {} cube textures, {} samplers, {} 2D arrays, {} cube arrays)",
                 capacities.Get(RHIBindlessHeapType::eTexture2D), capacities.Get(RHIBindlessHeapType::eTextureCube),
-                capacities.Get(RHIBindlessHeapType::eSampler));
+                capacities.Get(RHIBindlessHeapType::eSampler), capacities.Get(RHIBindlessHeapType::eTexture2DArray),
+                capacities.Get(RHIBindlessHeapType::eTextureCubeArray));
         }
     }
 

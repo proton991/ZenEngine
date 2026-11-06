@@ -378,6 +378,33 @@ inline bool ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     {
         srd.blockSize = reflBinding.block.size;
     }
+
+    if (srd.bindless && srd.set == kGlobalBindlessHeapIndex && srd.type == RHIShaderResourceType::eTexture)
+    {
+        SpvDim   expectedDimension = SpvDimMax;
+        uint32_t expectedArrayed   = 0;
+        switch (srd.binding)
+        {
+            case ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D: expectedDimension = SpvDim2D; break;
+            case ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBE: expectedDimension = SpvDimCube; break;
+            case ZEN_BINDLESS_HEAP_BINDING_TEXTURE2DARRAY:
+                expectedDimension = SpvDim2D;
+                expectedArrayed   = 1;
+                break;
+            case ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBEARRAY:
+                expectedDimension = SpvDimCube;
+                expectedArrayed   = 1;
+                break;
+            default: break;
+        }
+        if (reflBinding.image.dim != expectedDimension || reflBinding.image.arrayed != expectedArrayed
+            || reflBinding.image.ms != 0)
+        {
+            LOGE("Global texture heap binding {} has an incompatible image dimension, array shape, or sample count",
+                 srd.binding);
+            srd.type = RHIShaderResourceType::eMax;
+        }
+    }
     return srd.type != RHIShaderResourceType::eMax;
 }
 

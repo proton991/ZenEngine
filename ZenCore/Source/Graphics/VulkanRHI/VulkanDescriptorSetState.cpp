@@ -300,11 +300,6 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
 
     const VectorView<const RHIShaderResourceParameter> bindless = parameters.GetBindlessParams();
 
-    for (const RHIShaderResourceParameter& parameter : bindless)
-    {
-        valid &= parameter.bufferOffset == 0;
-    }
-
     if (valid && !bindless.empty())
     {
         valid = manager->CanRegisterBindlessResources(bindless, recordedEpoch, transaction);

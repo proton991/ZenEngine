@@ -171,8 +171,8 @@ public:
         return m_presentMode;
     }
 
-    // Read when the backend initializes. Every heap needs at least one slot. Device selection
-    // rejects GPUs whose descriptor-indexing limits cannot hold the requested heaps.
+    // Read when the backend initializes. Every heap needs at least one slot. Requested counts
+    // are upper bounds; QueryGPUInfo reports the capacities fitted to the selected device.
     bool SetBindlessHeapCapacities(const RHIBindlessHeapCapacities& capacities)
     {
         bool valid = true;

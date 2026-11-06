@@ -43,12 +43,9 @@ bool ValidateShaderLayout(const RHIShaderGroupInfo& info, uint32_t maxDescriptor
                 rule = "runtime arrays are supported only in the global heap";
             }
             else if (descriptor.set == kGlobalBindlessHeapIndex
-                     && !(descriptor.bindless
-                          && ((descriptor.type == RHIShaderResourceType::eTexture
-                               && (descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D
-                                   || descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBE))
-                              || (descriptor.type == RHIShaderResourceType::eSampler
-                                  && descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_SAMPLER))))
+                     && (!descriptor.bindless || descriptor.binding >= ToUnderlying(RHIBindlessHeapType::eMax)
+                         || descriptor.type
+                                != GetBindlessHeapResourceType(static_cast<RHIBindlessHeapType>(descriptor.binding))))
             {
                 rule = "set 0 is reserved for the global heap bindings";
             }
@@ -391,6 +388,19 @@ void VulkanShader::Init()
         sgInfo.name = m_name;
 
         reflected   = ValidateShaderLayout(sgInfo, maxDescriptorSets);
+    }
+
+    if (reflected && sgInfo.SRDTable.size() > kGlobalBindlessHeapIndex
+        && GVulkanRHI->GetDevice()->GetPhysicalDeviceFeatures().imageCubeArray != VK_TRUE)
+    {
+        for (const RHIShaderResourceDescriptor& descriptor : sgInfo.SRDTable[kGlobalBindlessHeapIndex])
+        {
+            if (descriptor.binding == ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBEARRAY)
+            {
+                LOGE("Shader '{}' requests the cube-array heap, which requires imageCubeArray", m_name.CStr());
+                reflected = false;
+            }
+        }
     }
 
     if (reflected)

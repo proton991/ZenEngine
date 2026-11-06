@@ -40,28 +40,31 @@ template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noex
 
 enum class RHIBindlessHeapType : uint8_t
 {
-    eTexture2D   = 0,
-    eTextureCube = 1,
-    eSampler     = 2,
-    eMax         = 3
+    eTexture2D        = 0,
+    eTextureCube      = 1,
+    eSampler          = 2,
+    eTexture2DArray   = 3,
+    eTextureCubeArray = 4,
+    eMax              = 5
 };
 
-// Slot counts of the global bindless heaps. Shaders declare the heaps as runtime-sized
-// arrays, so the backend can create them with any counts its descriptor limits allow.
+// Slot counts of the global bindless heaps. Options request upper bounds; GPU info reports
+// the actual device-fitted counts. Shader runtime arrays need no recompilation when counts change.
 struct RHIBindlessHeapCapacities
 {
-    // 2D textures, cube textures, then samplers: 108 glTF filter/wrap combinations plus engine samplers.
-    std::array<uint32_t, ToUnderlying(RHIBindlessHeapType::eMax)> slots{2048, 64, 128};
+    // Binding order: 2D, cube, sampler (108 glTF combinations plus engine samplers), 2D array, cube array.
+    std::array<uint32_t, ToUnderlying(RHIBindlessHeapType::eMax)> slots{2048, 64, 128, 256, 64};
 
     uint32_t Get(RHIBindlessHeapType heapType) const
     {
         return heapType < RHIBindlessHeapType::eMax ? slots[ToUnderlying(heapType)] : 0;
     }
 
-    // 64 bits cannot wrap for any pair of 32-bit heap counts.
+    // Accumulate all image heaps without overflowing 32-bit descriptor counts.
     uint64_t GetImageSlots() const
     {
-        return uint64_t(Get(RHIBindlessHeapType::eTexture2D)) + Get(RHIBindlessHeapType::eTextureCube);
+        return uint64_t(Get(RHIBindlessHeapType::eTexture2D)) + Get(RHIBindlessHeapType::eTextureCube)
+             + Get(RHIBindlessHeapType::eTexture2DArray) + Get(RHIBindlessHeapType::eTextureCubeArray);
     }
 
     void Set(RHIBindlessHeapType heapType, uint32_t count)
@@ -345,6 +348,8 @@ struct RHIShaderResourceBinding
 static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D == ToUnderlying(RHIBindlessHeapType::eTexture2D));
 static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBE == ToUnderlying(RHIBindlessHeapType::eTextureCube));
 static_assert(ZEN_BINDLESS_HEAP_BINDING_SAMPLER == ToUnderlying(RHIBindlessHeapType::eSampler));
+static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURE2DARRAY == ToUnderlying(RHIBindlessHeapType::eTexture2DArray));
+static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBEARRAY == ToUnderlying(RHIBindlessHeapType::eTextureCubeArray));
 
 inline constexpr RHIShaderResourceType GetBindlessHeapResourceType(RHIBindlessHeapType heapType)
 {
@@ -353,7 +358,9 @@ inline constexpr RHIShaderResourceType GetBindlessHeapResourceType(RHIBindlessHe
     switch (heapType)
     {
         case RHIBindlessHeapType::eTexture2D:
-        case RHIBindlessHeapType::eTextureCube: resourceType = RHIShaderResourceType::eTexture; break;
+        case RHIBindlessHeapType::eTextureCube:
+        case RHIBindlessHeapType::eTexture2DArray:
+        case RHIBindlessHeapType::eTextureCubeArray: resourceType = RHIShaderResourceType::eTexture; break;
         case RHIBindlessHeapType::eSampler: resourceType = RHIShaderResourceType::eSampler; break;
         case RHIBindlessHeapType::eMax: break;
     }

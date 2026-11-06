@@ -927,7 +927,9 @@ VkDescriptorType GetBindlessDescriptorType(RHIBindlessHeapType heapType)
     switch (heapType)
     {
         case RHIBindlessHeapType::eTexture2D:
-        case RHIBindlessHeapType::eTextureCube: descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; break;
+        case RHIBindlessHeapType::eTextureCube:
+        case RHIBindlessHeapType::eTexture2DArray:
+        case RHIBindlessHeapType::eTextureCubeArray: descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; break;
         case RHIBindlessHeapType::eSampler: descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; break;
         case RHIBindlessHeapType::eMax: break;
     }
@@ -969,15 +971,15 @@ RHIBindlessHeapType GetBindlessHeapType(const RHIResource* pResource)
                 break;
             }
 
-            const RHITextureType texType = view->GetTextureType();
+            const VkImageViewType viewType = view->GetVkImageViewType();
 
-            if (texType == RHITextureType::e2D)
+            switch (viewType)
             {
-                heapType = RHIBindlessHeapType::eTexture2D;
-            }
-            else if (texType == RHITextureType::eCube)
-            {
-                heapType = RHIBindlessHeapType::eTextureCube;
+                case VK_IMAGE_VIEW_TYPE_2D: heapType = RHIBindlessHeapType::eTexture2D; break;
+                case VK_IMAGE_VIEW_TYPE_CUBE: heapType = RHIBindlessHeapType::eTextureCube; break;
+                case VK_IMAGE_VIEW_TYPE_2D_ARRAY: heapType = RHIBindlessHeapType::eTexture2DArray; break;
+                case VK_IMAGE_VIEW_TYPE_CUBE_ARRAY: heapType = RHIBindlessHeapType::eTextureCubeArray; break;
+                default: break;
             }
 
             break;
@@ -999,11 +1001,12 @@ bool IsValidBindlessResource(const RHIResource* pResource, RHIBindlessHeapType h
 
         valid                         = pSampler != nullptr && pSampler->GetVkSampler() != VK_NULL_HANDLE;
     }
-    else if (heapType == RHIBindlessHeapType::eTexture2D || heapType == RHIBindlessHeapType::eTextureCube)
+    else if (GetBindlessDescriptorType(heapType) == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
     {
         const VulkanTextureView* pTextureView = GetBindlessTextureView(pResource);
 
         valid                                 = pTextureView != nullptr && pTextureView->GetVkImageView() != VK_NULL_HANDLE
+                                             && pTextureView->GetTexture()->GetBaseInfo().samples == SampleCount::e1
                                              && pTextureView->GetTexture()->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eSampled);
     }
 
@@ -1027,22 +1030,110 @@ bool BindlessHeapsFitLimits(const VkPhysicalDeviceDescriptorIndexingProperties& 
         && descriptorCount <= limits.maxUpdateAfterBindDescriptorsInAllPools;
 }
 
-bool SupportsBindlessDescriptorHeaps(VulkanDevice* pDevice, const RHIBindlessHeapCapacities& capacities)
+namespace
 {
-    return pDevice != nullptr && pDevice->GetExtensionFlags().hasDescriptorIndexing != 0
-        && BindlessHeapsFitLimits(pDevice->GetDescriptorIndexingProperties(), capacities);
+void ReduceBindlessHeapCapacities(RHIBindlessHeapCapacities& capacities, uint32_t budget, bool imagesOnly)
+{
+    const RHIBindlessHeapCapacities requested = capacities;
+    const uint32_t                  heapCount = imagesOnly ? kBindlessHeapCount - 1 : kBindlessHeapCount;
+    const uint64_t total = capacities.GetImageSlots() + (imagesOnly ? 0 : capacities.Get(RHIBindlessHeapType::eSampler));
+    if (total > budget)
+    {
+        const uint64_t requestedExtras = total - heapCount;
+        const uint64_t availableExtras = budget - heapCount;
+        uint64_t       remaining       = availableExtras;
+        for (uint32_t index = 0; index < kBindlessHeapCount; ++index)
+        {
+            const RHIBindlessHeapType heap = static_cast<RHIBindlessHeapType>(index);
+            if (!imagesOnly || heap != RHIBindlessHeapType::eSampler)
+            {
+                // Both factors fit 32 bits, so their product fits 64 bits.
+                const uint64_t extras = (uint64_t(requested.Get(heap) - 1) * availableExtras) / requestedExtras;
+                capacities.Set(heap, 1 + static_cast<uint32_t>(extras));
+                remaining -= extras;
+            }
+        }
+        // Flooring loses fewer than heapCount slots. Distribute them in binding order.
+        for (uint32_t index = 0; remaining != 0 && index < kBindlessHeapCount; ++index)
+        {
+            const RHIBindlessHeapType heap = static_cast<RHIBindlessHeapType>(index);
+            if ((!imagesOnly || heap != RHIBindlessHeapType::eSampler) && capacities.Get(heap) < requested.Get(heap))
+            {
+                capacities.Set(heap, capacities.Get(heap) + 1);
+                --remaining;
+            }
+        }
+        VERIFY_EXPR(remaining == 0);
+    }
+}
+} // namespace
+
+RHIBindlessHeapCapacities GetBindlessHeapRequest(bool imageCubeArray)
+{
+    RHIBindlessHeapCapacities request = RHIOptions::GetInstance().BindlessHeapCapacities();
+
+    if (!imageCubeArray)
+    {
+        request.Set(RHIBindlessHeapType::eTextureCubeArray, 1);
+    }
+
+    return request;
+}
+
+bool FitBindlessHeapCapacities(const VkPhysicalDeviceDescriptorIndexingProperties& limits,
+                               const RHIBindlessHeapCapacities&                    requested,
+                               RHIBindlessHeapCapacities&                          outCapacities)
+{
+    const uint32_t imageLimit =
+        std::min({limits.maxDescriptorSetUpdateAfterBindSampledImages, limits.maxPerStageDescriptorUpdateAfterBindSampledImages,
+                  limits.maxPerStageUpdateAfterBindResources});
+    const uint32_t samplerLimit =
+        std::min(limits.maxDescriptorSetUpdateAfterBindSamplers, limits.maxPerStageDescriptorUpdateAfterBindSamplers);
+    // Ordinary sets use their own pools, so the update-after-bind pool budget needs no reserve.
+    bool valid = imageLimit >= kBindlessOrdinaryDescriptorReserve + kBindlessHeapCount - 1
+              && samplerLimit >= kBindlessOrdinaryDescriptorReserve + 1
+              && limits.maxUpdateAfterBindDescriptorsInAllPools >= kBindlessHeapCount;
+    for (uint32_t count : requested.slots)
+    {
+        valid = valid && count != 0;
+    }
+    if (valid)
+    {
+        RHIBindlessHeapCapacities fitted = requested;
+        ReduceBindlessHeapCapacities(fitted, imageLimit - kBindlessOrdinaryDescriptorReserve, true);
+        fitted.Set(RHIBindlessHeapType::eSampler,
+                   std::min(fitted.Get(RHIBindlessHeapType::eSampler), samplerLimit - kBindlessOrdinaryDescriptorReserve));
+        ReduceBindlessHeapCapacities(fitted, limits.maxUpdateAfterBindDescriptorsInAllPools, false);
+        VERIFY_EXPR(BindlessHeapsFitLimits(limits, fitted));
+        outCapacities = fitted;
+    }
+    return valid;
 }
 
 void VulkanBindlessDescriptorPoolManager::Init()
 {
-    m_pDevice                                   = GVulkanRHI->GetDevice();
+    m_pDevice                              = GVulkanRHI->GetDevice();
 
-    const RHIBindlessHeapCapacities& capacities = RHIOptions::GetInstance().BindlessHeapCapacities();
+    const bool                      usable = m_pDevice != nullptr && m_pDevice->GetExtensionFlags().hasDescriptorIndexing != 0;
+    const RHIBindlessHeapCapacities capacities =
+        GetBindlessHeapRequest(usable && m_pDevice->GetPhysicalDeviceFeatures().imageCubeArray == VK_TRUE);
+    RHIBindlessHeapCapacities fitted = kNoBindlessHeaps;
 
-    if (SupportsBindlessDescriptorHeaps(m_pDevice, capacities))
+    if (usable && FitBindlessHeapCapacities(m_pDevice->GetDescriptorIndexingProperties(), capacities, fitted))
     {
         // Later option changes must not resize the live heaps.
-        m_capacities = capacities;
+        m_capacities = fitted;
+
+        if (fitted.slots != capacities.slots)
+        {
+            LOGI(
+                "Bindless heap requests reduced to device limits: 2D {} -> {}, cube {} -> {}, sampler {} -> {}, 2D array {} -> {}, cube array {} -> {}",
+                capacities.Get(RHIBindlessHeapType::eTexture2D), fitted.Get(RHIBindlessHeapType::eTexture2D),
+                capacities.Get(RHIBindlessHeapType::eTextureCube), fitted.Get(RHIBindlessHeapType::eTextureCube),
+                capacities.Get(RHIBindlessHeapType::eSampler), fitted.Get(RHIBindlessHeapType::eSampler),
+                capacities.Get(RHIBindlessHeapType::eTexture2DArray), fitted.Get(RHIBindlessHeapType::eTexture2DArray),
+                capacities.Get(RHIBindlessHeapType::eTextureCubeArray), fitted.Get(RHIBindlessHeapType::eTextureCubeArray));
+        }
 
         CreateGlobalBindlessDescriptorSet();
 
@@ -1063,8 +1154,10 @@ void VulkanBindlessDescriptorPoolManager::Init()
                 m_heapAllocCount[heapIdx] = 0;
             }
 
-            LOGI("Bindless heaps: {} 2D textures, {} cube textures, {} samplers", GetCapacity(RHIBindlessHeapType::eTexture2D),
-                 GetCapacity(RHIBindlessHeapType::eTextureCube), GetCapacity(RHIBindlessHeapType::eSampler));
+            LOGI("Bindless heaps: {} 2D textures, {} cube textures, {} samplers, {} 2D arrays, {} cube arrays",
+                 GetCapacity(RHIBindlessHeapType::eTexture2D), GetCapacity(RHIBindlessHeapType::eTextureCube),
+                 GetCapacity(RHIBindlessHeapType::eSampler), GetCapacity(RHIBindlessHeapType::eTexture2DArray),
+                 GetCapacity(RHIBindlessHeapType::eTextureCubeArray));
         }
         else
         {
@@ -1349,13 +1442,16 @@ bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(VectorVie
         {
             const RHIShaderResourceParameter& parameter = parameters[i];
 
-            valid = CanRegisterLocked(parameter.pResource, parameter.arrayIndex, recordedEpoch, transaction);
+            const RHIBindlessHeapType heap =
+                parameter.pResource != nullptr ? GetBindlessHeapType(parameter.pResource) : RHIBindlessHeapType::eMax;
+            valid = heap != RHIBindlessHeapType::eMax && parameter.set == kGlobalBindlessHeapIndex
+                 && parameter.binding == ToUnderlying(heap) && parameter.resourceType == GetBindlessHeapResourceType(heap)
+                 && parameter.pAuxResource == nullptr && parameter.bufferOffset == 0
+                 && CanRegisterLocked(heap, parameter.pResource, parameter.arrayIndex, recordedEpoch, transaction);
 
             if (valid)
             {
-                const uint64_t heap = ToUnderlying(GetBindlessHeapType(parameter.pResource));
-
-                claims.push_back({(heap << 32) | parameter.arrayIndex, parameter.pResource});
+                claims.push_back({(uint64_t(ToUnderlying(heap)) << 32) | parameter.arrayIndex, parameter.pResource});
             }
         }
     }
@@ -1371,33 +1467,25 @@ bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(VectorVie
     return valid;
 }
 
-bool VulkanBindlessDescriptorPoolManager::CanRegisterLocked(const RHIResource* resource,
-                                                            uint32_t           slotIndex,
-                                                            uint64_t           recordedEpoch,
-                                                            uint64_t           transaction)
+bool VulkanBindlessDescriptorPoolManager::CanRegisterLocked(RHIBindlessHeapType heap,
+                                                            const RHIResource*  resource,
+                                                            uint32_t            slotIndex,
+                                                            uint64_t            recordedEpoch,
+                                                            uint64_t            transaction)
 {
-    bool valid = resource != nullptr && m_vkSet != VK_NULL_HANDLE;
+    bool valid = m_vkSet != VK_NULL_HANDLE && IsValidBindlessResource(resource, heap) && slotIndex < GetCapacity(heap);
 
     if (valid)
     {
-        const RHIBindlessHeapType heap = GetBindlessHeapType(resource);
+        const BindlessSlotState& slot = m_slotStates[ToUnderlying(heap)][slotIndex];
 
-        const uint32_t capacity        = GetCapacity(heap);
+        const bool earlierRecording   = recordedEpoch != 0 && recordedEpoch <= slot.retiredEpoch
+                                     && std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch)
+                                     && GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
 
-        valid = heap != RHIBindlessHeapType::eMax && IsValidBindlessResource(resource, heap) && slotIndex < capacity;
-
-        if (valid)
-        {
-            const BindlessSlotState& slot = m_slotStates[ToUnderlying(heap)][slotIndex];
-
-            const bool earlierRecording   = recordedEpoch != 0 && recordedEpoch <= slot.retiredEpoch
-                                         && std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch)
-                                         && GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
-
-            valid                         = slot.pResource == nullptr
-                                         || (slot.resourceId == resource->GetStableId() && (slot.retiredEpoch == 0 || earlierRecording)
-                                             && (slot.transaction == 0 || slot.transaction == transaction));
-        }
+        valid                         = slot.pResource == nullptr
+                                     || (slot.resourceId == resource->GetStableId() && (slot.retiredEpoch == 0 || earlierRecording)
+                                         && (slot.transaction == 0 || slot.transaction == transaction));
     }
 
     return valid;
@@ -1677,7 +1765,15 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
 
     layoutCI.pBindings    = bindings;
 
-    VkResult result       = vkCreateDescriptorSetLayout(m_pDevice->GetVkHandle(), &layoutCI, nullptr, &m_vkLayout);
+    VkDescriptorSetLayoutSupport support{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT};
+
+    vkGetDescriptorSetLayoutSupport(m_pDevice->GetVkHandle(), &layoutCI, &support);
+
+    // Device selection cannot ask before the device exists, and no shader can be created
+    // without this layout, so continuing would only fail later and less clearly.
+    VERIFY_EXPR_MSG(support.supported == VK_TRUE, "The Vulkan device does not support the global bindless layout");
+
+    VkResult result = vkCreateDescriptorSetLayout(m_pDevice->GetVkHandle(), &layoutCI, nullptr, &m_vkLayout);
 
     if (result != VK_SUCCESS)
     {
@@ -1687,8 +1783,7 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
     if (result == VK_SUCCESS)
     {
         const VkDescriptorPoolSize poolSizes[] = {
-            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-             GetCapacity(RHIBindlessHeapType::eTexture2D) + GetCapacity(RHIBindlessHeapType::eTextureCube)},
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, static_cast<uint32_t>(m_capacities.GetImageSlots())},
             {VK_DESCRIPTOR_TYPE_SAMPLER, GetCapacity(RHIBindlessHeapType::eSampler)}};
 
         VkDescriptorPoolCreateInfo poolCI{};

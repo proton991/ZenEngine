@@ -143,6 +143,11 @@ public:
         return m_vkImageView;
     }
 
+    VkImageViewType GetVkImageViewType() const
+    {
+        return m_vkImageViewType;
+    }
+
 protected:
     void Init() override;
 
@@ -153,6 +158,7 @@ private:
         RHITextureView(pTexture, createInfo)
     {}
 
-    VkImageView m_vkImageView{VK_NULL_HANDLE};
+    VkImageView     m_vkImageView{VK_NULL_HANDLE};
+    VkImageViewType m_vkImageViewType{VK_IMAGE_VIEW_TYPE_MAX_ENUM};
 };
 } // namespace zen
