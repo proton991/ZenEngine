@@ -622,24 +622,6 @@ void RecordForwardDraws(RDGPassCmdEncoder&               encoder,
     }
 }
 
-struct ForwardDrawDepth
-{
-    SceneMeshDraw draw;
-    float         depth;
-    bool          sorted{false};  // A blend triangle, drawn from the sorted index copy when it uploads.
-    uint32_t      sortedFirst{0}; // Its first index in that copy.
-};
-
-bool SortForwardDepth(const ForwardDrawDepth& left, const ForwardDrawDepth& right)
-{
-    return left.depth < right.depth;
-}
-
-bool IsTranslucent(const sg::MaterialData& material)
-{
-    return material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend) || material.sheenColorTransmission.w > 0.0f;
-}
-
 RHIDrawPrimitiveType ForwardTopology(sg::MeshTopology topology)
 {
     RHIDrawPrimitiveType result = RHIDrawPrimitiveType::eTriangleList;
@@ -708,7 +690,7 @@ void DeferredLightingRenderer::Destroy()
         m_sortedBlendIndices.Destroy(*m_pRenderDevice);
         m_gbufferDrawData.Destroy(*m_pRenderDevice);
     }
-    m_sortedBlendContents.clear();
+    m_forwardDraws.Clear();
 }
 
 void DeferredLightingRenderer::SetRenderScene(RenderScene* scene)
@@ -1211,7 +1193,7 @@ bool DeferredLightingRenderer::ShadesOpaqueDeferred() const
 
     for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
     {
-        result = result && (material.materialProperties.w <= 0.5f || IsTranslucent(material));
+        result = result && (material.materialProperties.w <= 0.5f || IsForwardTranslucent(material));
     }
 
     return result;
@@ -1223,7 +1205,7 @@ bool DeferredLightingRenderer::UsesForwardMaterials() const
 
     for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
     {
-        result = result || material.materialProperties.w > 0.5f || IsTranslucent(material);
+        result = result || material.materialProperties.w > 0.5f || IsForwardTranslucent(material);
     }
 
     for (const SceneMeshDraw& draw : SnapshotSceneDraws(*m_pScene, GI_ALL, false))
@@ -1362,107 +1344,23 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     fullscreenState.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eAlways);
 
-    HeapVector<SceneMeshDraw> opaqueDraws[3];
-
-    HeapVector<ForwardDrawDepth> translucentDepths;
-
-    const Mat4 cameraView = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData())->view;
-
-    for (sg::Node* node : m_pScene->GetRenderableNodes())
-    {
-        if (m_pScene->GetInstanceMask(node->GetRenderableIndex()) != 0)
-        {
-            for (sg::SubMesh* mesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
-            {
-                const SceneMeshDraw draw{node->GetRenderableIndex(),
-                                         mesh->GetMaterial()->index,
-                                         mesh->GetIndexCount(),
-                                         mesh->GetFirstIndex(),
-                                         0,
-                                         mesh->topology};
-
-                const sg::MaterialData& material = m_pScene->GetMaterialsData()[draw.materialIndex];
-
-                if (IsTranslucent(material))
-                {
-                    const Mat4 modelView = cameraView * m_pScene->GetInstanceTransform(draw.nodeIndex);
-
-                    if (material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend)
-                        && draw.topology == sg::MeshTopology::Triangles)
-                    {
-                        const HeapVector<uint32_t>& indices       = m_pScene->GetIndices();
-
-                        const HeapVector<asset::Vertex>& vertices = m_pScene->GetVertices();
-
-                        for (uint32_t index = 0; index + 2 < draw.indexCount; index += 3)
-                        {
-                            Vec3 center(0.0f);
-
-                            for (uint32_t corner = 0; corner < 3; ++corner)
-                            {
-                                center += Vec3(vertices[indices[draw.firstIndex + index + corner]].pos);
-                            }
-
-                            const Vec4 viewCenter   = modelView * Vec4(center / 3.0f, 1.0f);
-
-                            SceneMeshDraw triangle  = draw;
-
-                            triangle.firstIndex    += index;
-
-                            triangle.indexCount     = 3;
-
-                            translucentDepths.push_back({triangle, viewCenter.z, true});
-                        }
-                    }
-                    else
-                    {
-                        const Vec4 center = modelView * Vec4(mesh->GetAABB().GetCenter(), 1.0f);
-
-                        translucentDepths.push_back({draw, center.z});
-                    }
-                }
-                else
-                {
-                    opaqueDraws[static_cast<uint32_t>(draw.topology)].push_back(draw);
-                }
-            }
-        }
-    }
-
-    std::stable_sort(translucentDepths.begin(), translucentDepths.end(), SortForwardDepth);
-
-    // Blend triangles are sorted one by one, which made each its own draw (New Sponza's decals:
-    // 8,140 of the frame's 8,546 draws, each too small to fill the GPU). Their indices are copied in
-    // sorted order instead, and each run from one node and material draws at once; a draw blends
-    // its primitives in order, so the image is unchanged. Without the copy they draw one by one.
-    HeapVector<uint32_t> sortedIndices;
-
-    for (ForwardDrawDepth& entry : translucentDepths)
-    {
-        if (entry.sorted)
-        {
-            entry.sortedFirst = static_cast<uint32_t>(sortedIndices.size());
-
-            for (uint32_t corner = 0; corner < 3; ++corner)
-            {
-                sortedIndices.push_back(m_pScene->GetIndices()[entry.draw.firstIndex + corner]);
-            }
-        }
-    }
-
-    const uint32_t sortedBytes = static_cast<uint32_t>(sortedIndices.size() * sizeof(uint32_t));
-
-    if (sortedIndices.size() != m_sortedBlendContents.size()
-        || !std::equal(sortedIndices.begin(), sortedIndices.end(), m_sortedBlendContents.begin()))
+    const Mat4 cameraView             = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData())->view;
+    m_forwardDraws.Update(*m_pScene, cameraView);
+    const HeapVector<SceneMeshDraw>      noDraws;
+    const HeapVector<SceneMeshDraw>*     opaqueDraws[3]    = {&m_forwardDraws.opaque[0], &m_forwardDraws.opaque[1],
+                                                              &m_forwardDraws.opaque[2]};
+    const HeapVector<ForwardSortedDraw>& translucentDepths = m_forwardDraws.translucent;
+    const HeapVector<uint32_t>&          sortedIndices     = m_forwardDraws.indices;
+    const uint32_t                       sortedBytes       = static_cast<uint32_t>(sortedIndices.size() * sizeof(uint32_t));
+    if (m_forwardDraws.indicesChanged)
     {
         m_sortedBlendIndices.MarkDirty(0, sortedBytes);
-
-        m_sortedBlendContents = sortedIndices;
     }
-
+    // Retry a declined upload on a cache hit; its ring retains dirty ranges until it succeeds.
     const bool sortedReady =
         !sortedIndices.empty()
         && m_sortedBlendIndices.Update(*m_pRenderDevice, sortedIndices.data(), sortedBytes, "forward_sorted_blend_indices");
+    const bool cachedRuns = sortedReady || !m_forwardDraws.hasBlend;
 
     // Hybrid receivers already rasterized every opaque triangle. Prefilling their depth lets
     // the forward passes reject hidden fragments early instead of shading each layer, unless a
@@ -1477,7 +1375,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     bool prefilled            = deferredOpaque || (m_hybrid != nullptr && gbuffer);
 
-    for (const SceneMeshDraw& draw : opaqueDraws[triangles])
+    for (const SceneMeshDraw& draw : *opaqueDraws[triangles])
     {
         const sg::MaterialData& material = m_pScene->GetMaterialsData()[draw.materialIndex];
 
@@ -1487,7 +1385,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     if (deferredOpaque)
     {
-        opaqueDraws[triangles].clear();
+        opaqueDraws[triangles] = &noDraws;
     }
 
     RHIGfxPipelineStates depthState = fullscreenState;
@@ -1523,12 +1421,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     // Only blend triangles can rest on a deferred receiver and take its shadow-ray results
     // (forward_material.glsl). Without one, deferred lighting does not export them.
-    bool restingLayers = false;
-
-    for (const ForwardDrawDepth& entry : translucentDepths)
-    {
-        restingLayers = restingLayers || entry.sorted;
-    }
+    const bool restingLayers = m_forwardDraws.hasBlend;
 
     // Lighting captures keep evaluating every shadow-map light in the layer itself.
     const bool shareRays = (rayShadows || (hybrid && !capture)) && deferredOpaque && restingLayers;
@@ -1556,7 +1449,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
     {
         for (uint32_t topology = 0; topology < 3; ++topology)
         {
-            if (!opaqueDraws[topology].empty())
+            if (!opaqueDraws[topology]->empty())
             {
                 RHIGfxPipelineStates state{};
 
@@ -1625,7 +1518,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
                 graph->AddGraphicsPass(std::move(source))
                     .RecordPassCommands(
-                        [draws = opaqueDraws[topology]](RDGPassCmdEncoder& encoder) { RecordForwardDraws(encoder, draws); });
+                        [draws = *opaqueDraws[topology]](RDGPassCmdEncoder& encoder) { RecordForwardDraws(encoder, draws); });
             }
         }
     }
@@ -1676,61 +1569,44 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             }
         }
 
-        uint32_t first = 0;
-
-        bool pending   = stage < 3 ? !opaqueDraws[stage].empty() : !translucentDepths.empty();
-
+        uint32_t first   = 0;
+        bool     pending = stage < 3 ? !opaqueDraws[stage]->empty() : !translucentDepths.empty();
         while (pending)
         {
             HeapVector<SceneMeshDraw> draws;
-
-            const sg::MeshTopology topology =
-                stage < 3 ? static_cast<sg::MeshTopology>(stage) : translucentDepths[first].draw.topology;
-
-            const bool writeDepth =
+            const ForwardDrawBatch*   batch    = stage == 3 && cachedRuns ? &m_forwardDraws.batches[first] : nullptr;
+            const sg::MeshTopology    topology = stage < 3        ? static_cast<sg::MeshTopology>(stage)
+                                               : batch != nullptr ? batch->topology
+                                                                  : translucentDepths[first].draw.topology;
+            const bool                writeDepth =
                 stage < 3
-                || m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
-                       != static_cast<float>(sg::AlphaMode::Blend);
-
-            // Blend triangle groups hold only per-triangle entries (see the sorted index copy).
-            const bool sortedRun = stage == 3 && sortedReady && translucentDepths[first].sorted;
-
+                || (batch != nullptr
+                        ? batch->writeDepth
+                        : m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
+                              != static_cast<float>(sg::AlphaMode::Blend));
+            const bool sortedRun = batch != nullptr && batch->sorted;
             if (stage < 3)
             {
-                draws   = opaqueDraws[stage];
-
+                draws   = *opaqueDraws[stage];
                 pending = false;
+            }
+            else if (batch != nullptr)
+            {
+                draws = HeapVector<SceneMeshDraw>(m_forwardDraws.draws.data() + batch->firstDraw, batch->drawCount);
+                ++first;
+                pending = first < m_forwardDraws.batches.size();
             }
             else
             {
+                // An unavailable sorted index buffer keeps the original per-triangle draw order.
                 while (first < translucentDepths.size() && translucentDepths[first].draw.topology == topology
                        && (m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
                            != static_cast<float>(sg::AlphaMode::Blend))
                               == writeDepth)
                 {
-                    SceneMeshDraw draw = translucentDepths[first].draw;
-
-                    VERIFY_EXPR(!sortedRun || translucentDepths[first].sorted);
-
-                    if (sortedRun)
-                    {
-                        draw.firstIndex = translucentDepths[first].sortedFirst;
-                    }
-
-                    if (sortedRun && !draws.empty() && draws.back().nodeIndex == draw.nodeIndex
-                        && draws.back().materialIndex == draw.materialIndex
-                        && draws.back().firstIndex + draws.back().indexCount == draw.firstIndex)
-                    {
-                        draws.back().indexCount += draw.indexCount;
-                    }
-                    else
-                    {
-                        draws.push_back(draw);
-                    }
-
+                    draws.push_back(translucentDepths[first].draw);
                     ++first;
                 }
-
                 pending = first < translucentDepths.size();
             }
 

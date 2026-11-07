@@ -185,6 +185,12 @@ private:
             m_error                          = loaded.error;
             m_loaded                         = std::move(loaded.scene);
             valid                            = m_loaded && m_loaded->scene->GetRenderableCount() > 0;
+            if (valid)
+            {
+                LOGI("ZenApp scene: vertices={}, indices={}, renderable_nodes={}, submitted_lights={}",
+                     m_loaded->vertices.size(), m_loaded->indices.size(), m_loaded->scene->GetRenderableCount(),
+                     m_loaded->scene->GetComponents<sg::Light>().size());
+            }
         }
         if (m_loaded && !valid)
         {

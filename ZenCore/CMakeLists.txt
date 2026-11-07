@@ -182,6 +182,7 @@ set(ZEN_CORE_SOURCES
     Source/AssetLib/AssetPaths.h
     Source/AssetLib/AssetHash.cpp
     Source/AssetLib/SceneLoader.cpp
+    Source/AssetLib/SceneAssembly.cpp
     Source/AssetLib/SceneImporter.cpp
     Source/AssetLib/SceneModelCatalog.cpp
 
@@ -206,6 +207,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
     Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
+    Source/Graphics/RenderCore/V2/ForwardDrawCache.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/VoxelRenderer.cpp
@@ -330,6 +332,7 @@ target_sources(ZenRenderCoreTestSources INTERFACE
     Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
     Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
+    Source/Graphics/RenderCore/V2/ForwardDrawCache.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
 )

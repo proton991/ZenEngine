@@ -1907,6 +1907,11 @@ RHIBuffer* RenderDevice::CreateBuffer(const RHIBufferCreateInfo& info)
     return m_pRHIExecutor->CreateBuffer(info);
 }
 
+uint64_t RenderDevice::GetBufferAllocationSize(const RHIBufferCreateInfo& info)
+{
+    return m_pRHIExecutor->GetBufferAllocationSize(info);
+}
+
 RHIQueueCopyCapabilities RenderDevice::GetQueueCopyCapabilities(RHICommandContextType queue)
 {
     return GDynamicRHI != nullptr ? GDynamicRHI->GetQueueCopyCapabilities(queue) : RHIQueueCopyCapabilities{};

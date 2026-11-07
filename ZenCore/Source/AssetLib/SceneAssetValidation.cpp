@@ -39,7 +39,8 @@ bool ValidateReferences(const SceneAsset& asset)
     }
     for (const ImageAsset& image : asset.images)
     {
-        valid &= image.pixels && image.pixels->width > 0 && image.pixels->height > 0 && !image.pixels->bytes.empty();
+        valid &=
+            image.pixels && image.pixels->width > 0 && image.pixels->height > 0 && !GetImageBaseBytes(*image.pixels).empty();
     }
     for (const MaterialAsset& material : asset.materials)
     {
@@ -234,9 +235,9 @@ bool ValidImages(const SceneAsset& asset)
         const zenasset::PixelFormat format = ImageStorageFormat(pixels.format);
         uint64_t                    bytes  = 0;
         valid &= zenasset::GetImageArrayLevelByteSize(format, pixels.width, pixels.height, pixels.arrayLayers, bytes)
-              && bytes == pixels.bytes.size() && (pixels.arrayLayers == 1 || !pixels.mips.empty())
+              && bytes == GetImageBaseBytes(pixels).size() && (pixels.arrayLayers == 1 || !pixels.mips.empty())
               && pixels.mips.size() <= MipCount(pixels.width, pixels.height)
-              && (pixels.mips.empty()
+              && (pixels.mips.empty() || pixels.bytes.empty()
                   || std::equal(pixels.mips[0].begin(), pixels.mips[0].end(), pixels.bytes.begin(), pixels.bytes.end()));
         for (size_t level = 0; valid && level < pixels.mips.size(); ++level)
         {

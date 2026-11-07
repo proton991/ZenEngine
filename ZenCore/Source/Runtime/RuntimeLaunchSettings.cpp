@@ -1,4 +1,5 @@
 #include "Runtime/RuntimeLaunchSettings.h"
+#include "AssetLib/SceneLoader.h"
 #include "Math/Finite.h"
 #include <simdjson.h>
 #include <atomic>
@@ -485,7 +486,7 @@ bool ValidateRuntimeLaunchSettings(const RuntimeLaunchSettings& settings, std::s
     {
         error = "Unsupported runtime setup version.";
     }
-    else if (!AbsolutePath(settings.packagePath) || std::filesystem::u8path(settings.packagePath).extension() != ".zenasset"
+    else if (!AbsolutePath(settings.packagePath) || asset::FindSceneLoadFormat(settings.packagePath) == nullptr
              || !AbsolutePath(settings.configurationDirectory))
     {
         error = "Setup needs absolute package/configuration paths.";

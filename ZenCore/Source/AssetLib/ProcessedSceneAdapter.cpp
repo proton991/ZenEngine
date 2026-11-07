@@ -790,7 +790,15 @@ private:
         Copy(target.width, source.width);
         Copy(target.height, source.height);
         Copy(target.format, source.format);
-        Copy(target.bytes, source.bytes);
+        if (!source.mips.empty() && !source.bytes.empty()
+            && !std::equal(source.mips[0].begin(), source.mips[0].end(), source.bytes.begin(), source.bytes.end()))
+        {
+            Fail(SceneImportStatus::InvalidData, "Processed image has mismatched base and mip-zero storage");
+        }
+        if (source.mips.empty())
+        {
+            Copy(target.bytes, zenasset::GetImageBaseBytes(source));
+        }
         Copy(target.mips, source.mips);
         Copy(target.arrayLayers, source.arrayLayers);
     }

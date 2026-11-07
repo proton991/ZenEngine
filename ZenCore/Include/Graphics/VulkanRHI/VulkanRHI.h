@@ -146,6 +146,8 @@ public:
 
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
 
+    uint64_t GetBufferAllocationSize(const RHIBufferCreateInfo& createInfo) final;
+
     void DestroyBuffer(RHIBuffer* pBuffer) final;
 
     RHIStatus FinalizeCommandLists(VectorView<RHICommandList*>          cmdLists,

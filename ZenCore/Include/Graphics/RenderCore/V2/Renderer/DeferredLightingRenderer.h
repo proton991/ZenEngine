@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
+#include "Graphics/RenderCore/V2/Renderer/ForwardDrawCache.h"
 
 namespace zen::sys
 {
@@ -169,7 +170,7 @@ private:
     // and material is a single draw (BuildForwardGraph); uploaded only when the order changes.
     // RendererServer builds one view per frame, so the ring is updated at most once per frame.
     FrameBufferRing       m_sortedBlendIndices{true};
-    HeapVector<uint32_t>  m_sortedBlendContents;
+    ForwardDrawCache      m_forwardDraws;
     SceneCullingDrawCache m_gbufferDrawData;
     SceneCullingResult    m_gpuCullingStatus;
     bool                  m_gpuCullingEnabled{true};

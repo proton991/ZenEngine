@@ -15,3 +15,8 @@
 - Supply the scene/camera/render configuration using `--setup=<file.zenrender>` and use ZenApp startup arguments for run overrides. Do not temporarily edit `Data/engine.cfg` for profiling.
 - Retain the executable identity, exact argument list, setup and input hashes with the capture. Record actual framebuffer and render extents, fullscreen state, backend and async-compute state.
 - Use `tools/profile_hybrid_gi.py` for Nsight Graphics GPU Trace captures. Historical demo captures are demo measurements and must not be presented as ZenApp results.
+
+# ZenAssetProcessor submodule workflow
+
+- Make ZenAssetProcessor changes in the standalone repository at `E:\Dev\ZenAssetProcessor`, then commit and push from that repository.
+- ZenEngine's `ZenAssetProcessor/` directory consumes published commits only. Fetch and update its submodule revision; do not edit files or copy unpublished changes into it.

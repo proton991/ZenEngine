@@ -9,9 +9,66 @@
 
 namespace zen
 {
+namespace
+{
+bool ValidBufferCreateInfo(const RHIBufferCreateInfo& info)
+{
+    return info.allocateType > RHIBufferAllocateType::eNone && info.allocateType < RHIBufferAllocateType::eMax && info.size > 0
+        && !info.usageFlags.IsEmpty()
+        && (!info.usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress)
+            || GVulkanRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress);
+}
+
+template <class Operation>
+void WithBufferCreateInfo(uint64_t size, BitField<RHIBufferUsageFlagBits> usage, Operation&& operation)
+{
+    VkBufferCreateInfo info;
+    InitVkStruct(info, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
+    info.size                  = static_cast<VkDeviceSize>(size);
+    info.usage                 = usage;
+    const VulkanDevice* device = GVulkanRHI->GetDevice();
+    AllocateWithQueueSharing(info, device->GetGfxQueue()->GetFamilyIndex(), device->GetComputeQueue()->GetFamilyIndex(),
+                             device->GetTransferQueue()->GetFamilyIndex(),
+                             (info.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) != 0,
+                             [&info, &operation] { operation(info); });
+}
+
+uint64_t QueryBufferAllocationSize(const VkBufferCreateInfo& info)
+{
+    uint64_t       size   = 0;
+    VkBuffer       buffer = VK_NULL_HANDLE;
+    const VkDevice device = GVulkanRHI->GetVkDevice();
+    const VkResult result = vkCreateBuffer(device, &info, nullptr, &buffer);
+    if (result == VK_SUCCESS)
+    {
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(device, buffer, &requirements);
+        size = requirements.size;
+        vkDestroyBuffer(device, buffer, nullptr);
+    }
+    else
+    {
+        ReportVulkanCreationFailure(result, "vkCreateBuffer allocation size query", __FILE__, __LINE__);
+        LOGE("Buffer allocation size query failed: {}", GetResultString(result));
+    }
+    return size;
+}
+} // namespace
+
 RHIBuffer* VulkanRHI::CreateBuffer(const RHIBufferCreateInfo& createInfo)
 {
     return GVulkanRHI->GetResourceFactory()->CreateBuffer(createInfo);
+}
+
+uint64_t VulkanRHI::GetBufferAllocationSize(const RHIBufferCreateInfo& createInfo)
+{
+    uint64_t size = 0;
+    if (!AreSubmissionsBlocked() && ValidBufferCreateInfo(createInfo))
+    {
+        WithBufferCreateInfo(createInfo.size, createInfo.usageFlags,
+                             [&size](const VkBufferCreateInfo& info) { size = QueryBufferAllocationSize(info); });
+    }
+    return size;
 }
 
 void VulkanRHI::DestroyBuffer(RHIBuffer* pBuffer)
@@ -30,10 +87,7 @@ VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 {
     VulkanBuffer* pBuffer = nullptr;
 
-    if (createInfo.allocateType > RHIBufferAllocateType::eNone && createInfo.allocateType < RHIBufferAllocateType::eMax
-        && createInfo.size > 0 && !createInfo.usageFlags.IsEmpty()
-        && (!createInfo.usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress)
-            || GVulkanRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress))
+    if (ValidBufferCreateInfo(createInfo))
     {
         pBuffer = VersatileResource::AllocMem<VulkanBuffer>(GVulkanRHI->GetResourceAllocator());
 
@@ -58,27 +112,9 @@ VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 
 void VulkanBuffer::Init()
 {
-    VkBufferCreateInfo bufferCI;
-
-    InitVkStruct(bufferCI, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
-
-    bufferCI.size                      = static_cast<VkDeviceSize>(m_requiredSize);
-
-    bufferCI.sharingMode               = VK_SHARING_MODE_EXCLUSIVE;
-
-    bufferCI.usage                     = m_usageFlags;
-
-    const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
-
-    const uint32_t computeQueueFamily  = GVulkanRHI->GetDevice()->GetComputeQueue()->GetFamilyIndex();
-
-    const uint32_t transferQueueFamily = GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
-
-    AllocateWithQueueSharing(
-        bufferCI, graphicsQueueFamily, computeQueueFamily, transferQueueFamily,
-        (bufferCI.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) != 0, [this, &bufferCI] {
-            GVkMemAllocator->AllocBuffer(m_requiredSize, &bufferCI, m_allocateType, &m_vkBuffer, &m_memAlloc);
-        });
+    WithBufferCreateInfo(m_requiredSize, m_usageFlags, [this](const VkBufferCreateInfo& info) {
+        GVkMemAllocator->AllocBuffer(m_requiredSize, &info, m_allocateType, &m_vkBuffer, &m_memAlloc);
+    });
     if (m_vkBuffer != VK_NULL_HANDLE && m_usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress))
     {
         VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};

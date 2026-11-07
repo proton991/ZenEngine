@@ -33,11 +33,19 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     m_vertices       = HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
 
-    m_bindVertices   = m_pScene->GetAssetData().bindVertices.empty() ? m_vertices : m_pScene->GetAssetData().bindVertices;
-
-    if (!sg::ApplySceneDeformations(*m_pScene, MakeVecView(m_bindVertices), m_vertices))
+    // Static scenes already supply their final vertices. Retaining another bind
+    // copy and reapplying an empty deformation list duplicates large assemblies.
+    if (!m_pScene->GetAssetData().deformations.empty())
     {
-        VERIFY_EXPR_MSG_F(false, "Invalid scene deformation payload");
+        m_bindVertices = m_pScene->GetAssetData().bindVertices.empty() ? m_vertices : m_pScene->GetAssetData().bindVertices;
+        if (!sg::ApplySceneDeformations(*m_pScene, MakeVecView(m_bindVertices), m_vertices))
+        {
+            VERIFY_EXPR_MSG_F(false, "Invalid scene deformation payload");
+        }
+    }
+    else
+    {
+        m_pScene->UpdateAABB();
     }
 
     for (const SceneLight& light : BuildSceneLights(*m_pScene))
@@ -475,13 +483,13 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
     if (valid && m_animation >= 0)
     {
-        const zen::HeapVector<sg::SceneCamera*> cameras = m_pScene->GetComponents<sg::SceneCamera>();
+        const sg::SceneCamera* selectedCamera = m_pScene->GetSelectedCamera();
 
         sg::SceneCamera previousCamera("animation snapshot");
 
-        if (!cameras.empty())
+        if (selectedCamera != nullptr)
         {
-            const sg::SceneCamera& camera = *cameras.front();
+            const sg::SceneCamera& camera = *selectedCamera;
 
             previousCamera.worldMatrix    = camera.worldMatrix;
 
@@ -610,9 +618,9 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
                 valid &= UpdateMaterial(material->index, material->data);
             }
 
-            if (!cameras.empty() && m_pCamera != nullptr)
+            if (selectedCamera != nullptr && m_pCamera != nullptr)
             {
-                const sg::SceneCamera& camera = *cameras.front();
+                const sg::SceneCamera& camera = *selectedCamera;
 
                 if (camera.worldMatrix != previousCamera.worldMatrix || camera.aspect != previousCamera.aspect
                     || camera.verticalFov != previousCamera.verticalFov || camera.nearPlane != previousCamera.nearPlane

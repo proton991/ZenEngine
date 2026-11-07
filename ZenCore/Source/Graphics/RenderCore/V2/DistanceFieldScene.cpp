@@ -114,11 +114,10 @@ uint32_t SamplerCoverageFlags(const RHISamplerCreateInfo& sampler)
     return (sampler.magFilter == RHISamplerFilter::eLinear ? 1u : 0u) | (supported ? 2u : 0u);
 }
 
-RHIBuffer* CreateFieldBuffer(RenderDevice&                    device,
-                             uint64_t                         bytes,
-                             NameID                           name,
-                             bool                             readback        = false,
-                             BitField<RHIBufferUsageFlagBits> additionalUsage = {})
+RHIBufferCreateInfo FieldBufferInfo(uint64_t                         bytes,
+                                    NameID                           name,
+                                    bool                             readback,
+                                    BitField<RHIBufferUsageFlagBits> additionalUsage)
 {
     RHIBufferCreateInfo info;
     info.usageFlags   = additionalUsage;
@@ -130,7 +129,99 @@ RHIBuffer* CreateFieldBuffer(RenderDevice&                    device,
     {
         info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
     }
-    return device.CreateBuffer(info);
+    return info;
+}
+
+RHIBuffer* CreateFieldBuffer(RenderDevice&                    device,
+                             uint64_t                         bytes,
+                             NameID                           name,
+                             bool                             readback        = false,
+                             BitField<RHIBufferUsageFlagBits> additionalUsage = {})
+{
+    return device.CreateBuffer(FieldBufferInfo(bytes, name, readback, additionalUsage));
+}
+
+// A native size only depends on its create info, so repeated and deferred Starts skip the
+// blocking query. The bound stops free-memory-driven capacities from growing the list.
+constexpr size_t kMaxFieldAllocationSizes = 1024;
+
+uint64_t FieldAllocationBytes(RenderDevice&                    device,
+                              HeapVector<FieldAllocationSize>& sizes,
+                              uint64_t                         bytes,
+                              bool&                            valid,
+                              bool                             readback        = false,
+                              BitField<RHIBufferUsageFlagBits> additionalUsage = {})
+{
+    uint64_t allocation = 0;
+    if (valid)
+    {
+        const RHIBufferCreateInfo info  = FieldBufferInfo(bytes, {}, readback, additionalUsage);
+        const int64_t             usage = info.usageFlags;
+        for (const FieldAllocationSize& size : sizes)
+        {
+            allocation = size.bytes == bytes && size.usage == usage ? size.allocation : allocation;
+        }
+        if (allocation == 0)
+        {
+            allocation = device.GetBufferAllocationSize(info);
+            if (allocation != 0)
+            {
+                if (sizes.size() >= kMaxFieldAllocationSizes)
+                {
+                    sizes.clear();
+                }
+                sizes.push_back({bytes, usage, allocation});
+            }
+        }
+        valid = allocation >= bytes && allocation != 0;
+    }
+    return allocation;
+}
+
+struct FieldCapacities
+{
+    uint32_t references;
+    uint32_t jobs;
+    uint32_t coverage;
+};
+
+FieldCapacities ScaleFieldCapacities(const DistanceFieldSceneSettings& settings,
+                                     const RHIGPUInfo&                 gpu,
+                                     double                            references,
+                                     double                            jobs,
+                                     uint64_t                          coverage,
+                                     double                            scale)
+{
+    FieldCapacities capacities;
+    capacities.references =
+        static_cast<uint32_t>(std::min(std::max(references * scale, double(settings.referenceCapacity)),
+                                       double(std::min<uint64_t>(StorageElements(gpu, sizeof(uint32_t)), UINT32_MAX))));
+    capacities.jobs =
+        static_cast<uint32_t>(std::min(std::max(jobs * scale, double(settings.jobCapacity)),
+                                       double(std::min<uint64_t>(StorageElements(gpu, sizeof(glm::uvec4)), UINT32_MAX))));
+    capacities.coverage = static_cast<uint32_t>(
+        std::min(std::max(double(coverage) * scale, 1.0),
+                 double(std::min<uint64_t>(StorageElements(gpu, ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t)),
+                                           ZEN_FIELD_MAX_TRIANGLE_BATCH))));
+    return capacities;
+}
+
+uint64_t FieldCapacityBytes(RenderDevice&                    device,
+                            HeapVector<FieldAllocationSize>& sizes,
+                            uint64_t                         cells,
+                            const FieldCapacities&           capacities,
+                            bool&                            valid)
+{
+    uint64_t bytes = 0;
+    for (uint64_t size :
+         {uint64_t(capacities.references) * sizeof(uint32_t), uint64_t(capacities.jobs) * sizeof(glm::uvec4),
+          uint64_t(capacities.coverage) * ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t),
+          uint64_t(capacities.coverage) * sizeof(uint32_t), ActiveEntries(cells, capacities.references) * sizeof(glm::uvec2),
+          SplitSlots(capacities.references) * ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t)})
+    {
+        bytes += FieldAllocationBytes(device, sizes, size, valid);
+    }
+    return bytes;
 }
 
 void DispatchField(RenderGraph& graph, RDGComputePassDesc&& pass, uint32_t groups)
@@ -1237,9 +1328,9 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     m_lastSubmittedGraphs    = 0;
     m_failureDetails         = {};
     // Costs and the frame around them differ between generations: measure again from a single cycle.
-    m_cyclesPerFrame = 1;
-    m_baselineFrames = 0;
-    m_baselineUs     = 0;
+    m_cyclesPerFrame          = 1;
+    m_baselineFrames          = 0;
+    m_baselineUs              = 0;
     const uint32_t side       = local ? m_settings.localCellsPerAxis : m_settings.cellsPerAxis;
     const uint32_t atlasSide  = local ? m_settings.localAtlasTexelsPerAxis : m_settings.atlasTexelsPerAxis;
     const uint64_t cells      = uint64_t(side) * side * side;
@@ -1298,7 +1389,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
             "triangle record and index buffers", valid, failed);
     const uint64_t samplerBytes = (scene.GetSceneSamplers().size() + 3) * sizeof(uint32_t);
     const uint64_t persistent   = atlasBytes + (cells + HierarchyWords(side)) * sizeof(uint32_t);
-    const AABB     sceneBounds = local ? LocalAuthority(m_localCore) : scene.GetAABB();
+    const AABB     sceneBounds  = local ? LocalAuthority(m_localCore) : scene.GetAABB();
     // A scene without triangles has no occluder to cover: any unit volume certifies empty space.
     const AABB bounds  = scene.GetVoxelTriangleCount() == 0 && !local ? AABB(Vec3(-0.5f), Vec3(0.5f)) : sceneBounds;
     const Vec3 center  = bounds.GetCenter();
@@ -1403,17 +1494,39 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         coverageTriangles += materials[material].surfaceProperties.y != 0.0f ? materialTriangles[material] : 0;
     }
     coverageTriangles = std::max<uint64_t>(std::min<uint64_t>(coverageTriangles, selectedTriangles), 1);
-    // Workspace bytes that do not depend on the capacities, and per reference: its entry plus, per
-    // chunk of a dense cell, an emit entry and a split slot.
-    const uint64_t cellWorkspaceBytes =
-        cells * (3 * sizeof(uint32_t) + sizeof(glm::uvec2)) + ((cells + 255) / 256) * sizeof(uint32_t)
-        + (ZEN_FIELD_STATUS_WORDS * (kStatusSlots + 1) + ZEN_FIELD_INDIRECT_WORDS) * sizeof(uint32_t)
-        + 2 * capacity * sizeof(uint32_t);
+    // Native allocation extents, not descriptor-offset alignment, determine the budget. Fixed
+    // workspace buffers and snapshots are charged before deriving the six capacity buffers.
+    bool           allocationSizesValid = valid;
+    const uint64_t rangeBytes           = std::max<uint64_t>(ranges.size(), 1) * sizeof(glm::uvec4);
+    const uint64_t rangeEstimate =
+        FieldAllocationBytes(*m_device, m_allocationSizes, rangeBytes, allocationSizesValid, false,
+                             BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+    uint64_t cellWorkspaceBytes =
+        3 * FieldAllocationBytes(*m_device, m_allocationSizes, cells * sizeof(uint32_t), allocationSizesValid)
+        + 2 * FieldAllocationBytes(*m_device, m_allocationSizes, capacity * sizeof(uint32_t), allocationSizesValid)
+        + FieldAllocationBytes(*m_device, m_allocationSizes, ((cells + 255) / 256) * sizeof(uint32_t), allocationSizesValid)
+        + FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_COUNTER_WORDS * sizeof(uint32_t), allocationSizesValid)
+        + FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_CONTROL_WORDS * sizeof(uint32_t), allocationSizesValid)
+        + FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_INDIRECT_WORDS * sizeof(uint32_t), allocationSizesValid,
+                               false, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer))
+        + kStatusSlots
+              * FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_STATUS_WORDS * sizeof(uint32_t),
+                                     allocationSizesValid, true);
+    uint64_t geometryEstimate = reuseGeometry ? m_geometry->bytes : 0;
+    if (!reuseGeometry)
+    {
+        for (uint64_t bytes : snapshotSizes)
+        {
+            geometryEstimate += FieldAllocationBytes(*m_device, m_allocationSizes, bytes, allocationSizesValid);
+        }
+        geometryEstimate += FieldAllocationBytes(*m_device, m_allocationSizes, samplerBytes, allocationSizesValid, false,
+                                                 BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+    }
+    // Per reference: its entry plus, per chunk of a dense cell, an emit entry and a split slot.
     const double referenceBytes =
         sizeof(uint32_t)
         + double(sizeof(glm::uvec2) + ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t)) / ZEN_FIELD_EMIT_CHUNK_REFERENCES;
     const uint64_t coverageSlotBytes = (ZEN_FIELD_COVERAGE_STATE_WORDS + 1) * sizeof(uint32_t);
-    const uint64_t geometryEstimate  = snapshotBytes + samplerBytes;
     const bool     retiredWorkspace  = m_workspace && m_device->IsResourceRetired(m_workspace->retirement);
     uint32_t       jobCapacity       = m_settings.jobCapacity;
     uint32_t       referenceCapacity = m_settings.referenceCapacity;
@@ -1422,29 +1535,65 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     bool     memoryLimited = false;
     // A retired workspace that is too small is released before its replacement is created, so its
     // bytes count as free while sizing the replacement.
-    const uint64_t reclaimable = retiredWorkspace ? m_workspace->bytes : 0;
-    const uint64_t available   = m_settings.deriveCapacities ? FreeDeviceMemory(*m_device) : UINT64_MAX;
+    const uint64_t  reclaimable = retiredWorkspace ? m_workspace->bytes : 0;
+    const uint64_t  available   = m_settings.deriveCapacities ? FreeDeviceMemory(*m_device) : UINT64_MAX;
+    FieldCapacities capacities{referenceCapacity, jobCapacity, coverageSlots};
+    uint64_t        capacityBytes = 0;
     if (m_settings.deriveCapacities)
     {
-        const double share  = available == UINT64_MAX ? double(m_settings.scratchBudgetBytes)
-                                                      : m_settings.deviceMemoryShare * double(available + reclaimable);
-        const double budget = share - double(reuseGeometry ? 0 : geometryEstimate) - double(cellWorkspaceBytes);
-        const double wanted =
+        const uint64_t share      = available == UINT64_MAX
+                                      ? m_settings.scratchBudgetBytes
+                                      : static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + reclaimable));
+        const uint64_t fixedBytes = (reuseGeometry ? 0 : geometryEstimate) + cellWorkspaceBytes + rangeEstimate;
+        const uint64_t capacityBudget = share > fixedBytes ? share - fixedBytes : 0;
+        const double   budget         = double(capacityBudget) - double(cells * sizeof(glm::uvec2));
+        const double   wanted =
             referenceDemand * referenceBytes + jobDemand * sizeof(glm::uvec4) + double(coverageTriangles) * coverageSlotBytes;
         // Short of memory, every capacity shrinks by the same factor, so batches stay balanced.
         const double scale = wanted > budget ? std::max(budget, 0.0) / wanted : 1.0;
         memoryLimited      = scale < 1.0;
-        referenceCapacity =
-            static_cast<uint32_t>(std::min(std::max(referenceDemand * scale, double(m_settings.referenceCapacity)),
-                                           double(std::min<uint64_t>(StorageElements(gpu, sizeof(uint32_t)), UINT32_MAX))));
-        jobCapacity =
-            static_cast<uint32_t>(std::min(std::max(jobDemand * scale, double(m_settings.jobCapacity)),
-                                           double(std::min<uint64_t>(StorageElements(gpu, sizeof(glm::uvec4)), UINT32_MAX))));
-        coverageSlots = static_cast<uint32_t>(
-            std::min(std::max(double(coverageTriangles) * scale, 1.0),
-                     double(std::min<uint64_t>(StorageElements(gpu, ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t)),
-                                               ZEN_FIELD_MAX_TRIANGLE_BATCH))));
+        capacities         = ScaleFieldCapacities(m_settings, gpu, referenceDemand, jobDemand, coverageTriangles, scale);
+        capacityBytes      = FieldCapacityBytes(*m_device, m_allocationSizes, cells, capacities, allocationSizesValid);
+        if (allocationSizesValid && capacityBytes > capacityBudget)
+        {
+            // The proportional payload estimate can fill the budget exactly; native padding and
+            // minimum capacities still have to fit. Search the scale using allocation requirements
+            // before creating resources. An unaffordable minimum remains an explicit budget failure.
+            double lower  = 0.0;
+            double upper  = scale;
+            capacities    = ScaleFieldCapacities(m_settings, gpu, referenceDemand, jobDemand, coverageTriangles, lower);
+            capacityBytes = FieldCapacityBytes(*m_device, m_allocationSizes, cells, capacities, allocationSizesValid);
+            const bool minimumFits = capacityBytes <= capacityBudget;
+            for (uint32_t step = 0; allocationSizesValid && minimumFits && step < 32; ++step)
+            {
+                const double          middle = (lower + upper) * 0.5;
+                const FieldCapacities candidate =
+                    ScaleFieldCapacities(m_settings, gpu, referenceDemand, jobDemand, coverageTriangles, middle);
+                const uint64_t candidateBytes =
+                    FieldCapacityBytes(*m_device, m_allocationSizes, cells, candidate, allocationSizesValid);
+                if (candidateBytes <= capacityBudget)
+                {
+                    lower         = middle;
+                    capacities    = candidate;
+                    capacityBytes = candidateBytes;
+                }
+                else
+                {
+                    upper = middle;
+                }
+            }
+            memoryLimited = true;
+        }
+        referenceCapacity = capacities.references;
+        jobCapacity       = capacities.jobs;
+        coverageSlots     = capacities.coverage;
     }
+    else
+    {
+        capacityBytes = FieldCapacityBytes(*m_device, m_allocationSizes, cells, capacities, allocationSizesValid);
+    }
+    Require(allocationSizesValid, "buffer allocation requirements unavailable", valid, failed);
+    uint64_t workspaceEstimate = cellWorkspaceBytes + capacityBytes;
     // A workspace already sized to the memory budget is kept for another generation that is also
     // short of memory: replacing it would only follow small changes in free memory.
     const bool fits = m_workspace && m_workspace->cells >= cells && m_workspace->bricks >= capacity
@@ -1462,6 +1611,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         jobCapacity       = m_workspace->jobCapacity;
         referenceCapacity = m_workspace->referenceCapacity;
         coverageSlots     = m_workspace->coverageSlots;
+        workspaceEstimate = m_workspace->bytes;
     }
     // Scratch already allocated is part of the device's usage; a released workspace's is free again.
     const uint64_t released = m_workspace ? 0 : reclaimable;
@@ -1472,18 +1622,16 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     const uint64_t coverageBytes = uint64_t(coverageSlots) * ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t);
     const uint64_t activeBytes   = ActiveEntries(cells, referenceCapacity) * sizeof(glm::uvec2);
     const uint64_t splitBytes    = SplitSlots(referenceCapacity) * ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t);
-    const uint64_t workspaceEstimate =
-        cellWorkspaceBytes - cells * sizeof(glm::uvec2) + activeBytes + splitBytes + uint64_t(jobCapacity) * sizeof(glm::uvec4)
-        + uint64_t(referenceCapacity) * sizeof(uint32_t) + coverageBytes + uint64_t(coverageSlots) * sizeof(uint32_t);
-    const uint64_t scratch      = geometryEstimate + workspaceEstimate;
-    uint64_t       checkedBytes = 0;
+    const uint64_t scratch       = geometryEstimate + workspaceEstimate + rangeEstimate;
+    uint64_t       checkedBytes  = 0;
     for (uint64_t bytes : {snapshotBytes, uint64_t(jobCapacity) * sizeof(glm::uvec4),
-                           uint64_t(referenceCapacity) * sizeof(uint32_t), activeBytes, splitBytes, coverageBytes})
+                           uint64_t(referenceCapacity) * sizeof(uint32_t), activeBytes, splitBytes, coverageBytes, rangeBytes})
     {
         Require(ValidateGIStorageBuffer(bytes, 1, gpu, checkedBytes) == GIResourceStatus::eSuccess,
                 "device storage-buffer range", valid, failed);
     }
-    const uint64_t newScratch = (reuseGeometry ? 0 : geometryEstimate) + (reuseWorkspace ? 0 : workspaceEstimate);
+    const uint64_t newScratch =
+        (reuseGeometry ? 0 : geometryEstimate) + (reuseWorkspace ? 0 : workspaceEstimate) + rangeEstimate;
     if (!valid || persistent > m_settings.persistentBudgetBytes || scratch > m_scratchBudget)
     {
         LOGE(
@@ -1521,7 +1669,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         generation.local       = local;
         generation.partial     = partial;
         generation.dirty       = dirty;
-        generation.request = m_localRequest;
+        generation.request     = m_localRequest;
         if (!reuseGeometry)
         {
             m_geometry = MakeShared<GeometrySnapshot>();
@@ -1554,7 +1702,6 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         {
             ranges.push_back(glm::uvec4(0));
         }
-        const uint64_t rangeBytes = ranges.size() * sizeof(glm::uvec4);
         generation.ranges = CreateFieldBuffer(*m_device, rangeBytes, "field_instance_ranges", false,
                                               BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
         valid             = valid && generation.ranges != nullptr
@@ -1658,7 +1805,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
                 CreateFieldBuffer(*m_device, uint64_t(referenceCapacity) * sizeof(uint32_t), "field_references");
             generation.workspace->active    = CreateFieldBuffer(*m_device, activeBytes, "field_active");
             generation.workspace->emitSplit = CreateFieldBuffer(*m_device, splitBytes, "field_emit_split");
-            generation.workspace->scan   = CreateFieldBuffer(*m_device, ((cells + 255) / 256) * sizeof(uint32_t), "field_scan");
+            generation.workspace->scan = CreateFieldBuffer(*m_device, ((cells + 255) / 256) * sizeof(uint32_t), "field_scan");
         }
         for (BuildWorkspace::StatusSlot& slot : generation.workspace->status)
         {
@@ -1913,7 +2060,7 @@ void DistanceFieldScene::RecordBuild(Generation& generation)
     const uint32_t cycles            = NextCycleCount();
     m_recordedCycles                 = cycles;
     generation.build.triangleRange.y = m_batchCap;
-    uint32_t previousPhase = ZEN_FIELD_PHASE_FAILED;
+    uint32_t previousPhase           = ZEN_FIELD_PHASE_FAILED;
     for (uint32_t cycle = 0; cycle < cycles; ++cycle)
     {
         for (uint32_t phase = firstPhase; phase <= ZEN_FIELD_PHASE_HIERARCHY; ++phase)
@@ -2281,11 +2428,11 @@ void DistanceFieldScene::Destroy()
         ReleaseGeometry(m_geometry, false);
         ReleaseWorkspace(m_workspace, false);
         m_retired.clear();
-        m_recordedCycles  = 0;
-        m_state           = State::Pending;
-        m_recorded        = false;
-        m_failedScene     = 0;
-        m_failedRevision  = 0;
+        m_recordedCycles = 0;
+        m_state          = State::Pending;
+        m_recorded       = false;
+        m_failedScene    = 0;
+        m_failedRevision = 0;
     }
 }
 } // namespace zen::rc

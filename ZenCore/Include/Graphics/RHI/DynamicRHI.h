@@ -183,7 +183,14 @@ public:
 
     virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
 
-    virtual void DestroyBuffer(RHIBuffer* pBuffer)                         = 0;
+    // Native buffer allocation extent, including resource padding, without allocating buffer memory.
+    // Zero means unsupported or failure. Excludes allocator pool commitment and driver-private memory.
+    virtual uint64_t GetBufferAllocationSize(const RHIBufferCreateInfo&)
+    {
+        return 0;
+    }
+
+    virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
 
     // Input lists remain alive through FlushAllGPUCommands. Backends preserve marked
     // group boundaries and publish each list's accepted serial before releasing outputs.

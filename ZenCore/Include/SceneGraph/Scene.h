@@ -41,6 +41,29 @@ public:
         return m_assetData;
     }
 
+    const SceneCamera* GetSelectedCamera() const
+    {
+        const SceneCamera* selected = nullptr;
+        if (m_assetData.explicitCameraSelection)
+        {
+            for (const UniquePtr<Node>& node : m_nodes)
+            {
+                if (m_assetData.preferredCameraNode >= 0
+                    && node->GetIndex() == static_cast<uint32_t>(m_assetData.preferredCameraNode)
+                    && node->HasComponent<SceneCamera>())
+                {
+                    selected = node->GetComponent<SceneCamera>();
+                    break;
+                }
+            }
+        }
+        else if (HasComponent(typeid(SceneCamera)))
+        {
+            selected = static_cast<const SceneCamera*>(m_components.at(typeid(SceneCamera)).front().Get());
+        }
+        return selected;
+    }
+
     HeapVector<Node*>& GetRenderableNodes()
     {
         return m_renderableNodes;

@@ -1419,6 +1419,12 @@ void RHICommandListExecutor::DestroyBuffer(RHIBuffer* buffer)
     GetRHIThread().Invoke(&DynamicRHI::DestroyBuffer, m_backend, buffer);
 }
 
+uint64_t RHICommandListExecutor::GetBufferAllocationSize(const RHIBufferCreateInfo& info)
+{
+    RHIResult<uint64_t> result = GetRHIThread().InvokeChecked(&DynamicRHI::GetBufferAllocationSize, m_backend, std::cref(info));
+    return result ? result.GetValue() : 0;
+}
+
 IRHICommandContext* RHICommandListExecutor::GetCommandContext(RHICommandContextType type)
 {
     RHIResult<IRHICommandContext*> result = GetRHIThread().InvokeChecked(&DynamicRHI::GetCommandContext, m_backend, type);

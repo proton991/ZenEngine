@@ -75,6 +75,7 @@ template <class Target, class Source> Target ConvertMetadata(const Source& sourc
     }
     return target;
 }
+} // namespace
 
 zenasset::SceneReadLimits ProcessedLimits(const SceneAssetReadLimits& source)
 {
@@ -92,7 +93,6 @@ zenasset::SceneReadLimits ProcessedLimits(const SceneAssetReadLimits& source)
     limits.maxRuntimeGeometryBytes = source.maxRuntimeGeometryBytes;
     return limits;
 }
-} // namespace
 
 SceneImportStatus AdaptProcessedStatus(zenasset::StatusCode status)
 {

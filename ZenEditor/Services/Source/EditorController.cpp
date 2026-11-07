@@ -473,6 +473,16 @@ bool EditorController::PublishScene(UniquePtr<LoadedScene> candidate, std::strin
 
         FrameAll();
 
+        if (loaded.scene->GetAssetData().explicitCameraSelection)
+        {
+            const sg::SceneCamera* selectedCamera = loaded.scene->GetSelectedCamera();
+            if (selectedCamera != nullptr)
+            {
+                m_camera.GetCamera().SetupFromSceneCamera(*selectedCamera, m_camera.GetCamera().GetAspect());
+                m_camera.SynchronizeFromCamera();
+            }
+        }
+
         LOGI("Editor opened {}", path);
     }
     else

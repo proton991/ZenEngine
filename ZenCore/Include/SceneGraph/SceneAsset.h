@@ -79,5 +79,7 @@ struct SceneAssetData
     HeapVector<VertexAttributeAsset>          extraVertexAttributes;
     HeapVector<ImageBasedLightAsset>          imageBasedLights;
     int32_t                                   imageBasedLight{-1};
+    int32_t                                   preferredCameraNode{-1};
+    bool                                      explicitCameraSelection{false};
 };
 } // namespace zen::sg

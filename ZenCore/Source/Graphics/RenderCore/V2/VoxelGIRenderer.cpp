@@ -763,16 +763,20 @@ DistanceFieldSceneSettings VoxelGIRenderer::BuildFieldSettings() const
     // of stutter are acceptable for the fewest batches. Job, reference and coverage capacities come
     // from each generation's triangles and half of the free device memory, aiming at one batch per
     // generation; each heavy phase dispatches all of its pending work at once. The triangle batch
-    // cap starts at 65,536 on a device's first build and then follows the 250 ms frame budget. The
-    // 320-texel atlas still holds the same 64,000 distance bricks.
+    // cap starts at 65,536 on a device's first build and then follows the 250 ms frame budget.
+    // Each cell can own one 8^3 brick. Reserve that full capacity so dense scenes cannot exhaust
+    // the atlas before construction finishes; the persistent allocation budget still applies.
     DistanceFieldSceneSettings settings;
     settings.cellsPerAxis                      = m_settings.fieldResolution;
-    settings.atlasTexelsPerAxis                = 320;
+    settings.atlasTexelsPerAxis                = settings.cellsPerAxis * 8;
     settings.triangleBatchSize                 = 65536;
     settings.maxCyclesPerFrame                 = 64;
     settings.throughputFrameBudgetMicroseconds = 250000.0;
     settings.referencesPerCell                 = ZEN_FIELD_MAX_CELL_REFS;
     settings.deriveCapacities                  = true;
+    // Two full 64^3 fields plus all 32 local slots and one temporary local build need about
+    // 398 MiB. Keep the published field available during refresh; this cap does not preallocate.
+    settings.persistentBudgetBytes = 512ull * 1024 * 1024;
     return settings;
 }
 

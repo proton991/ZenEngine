@@ -318,6 +318,8 @@ public:
 
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& info) override;
 
+    uint64_t GetBufferAllocationSize(const RHIBufferCreateInfo& info) override;
+
     void DestroyBuffer(RHIBuffer* buffer) override;
 
     IRHICommandContext* GetCommandContext(RHICommandContextType type) override;

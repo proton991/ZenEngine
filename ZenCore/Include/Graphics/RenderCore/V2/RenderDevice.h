@@ -163,6 +163,8 @@ public:
     // The caller owns the initial resource reference; no persistent device owner.
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& info);
 
+    uint64_t GetBufferAllocationSize(const RHIBufferCreateInfo& info);
+
     RHITexture* CreateTexture(const RHITextureCreateInfo& info);
 
     RHICompletionSet GetSubmittedSerials() const;

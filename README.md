@@ -96,6 +96,16 @@ snapshot.</sub>
 is enabled by default. Standalone **ZenApp** loads a prepared `.zenrender`
 setup and provides session diagnostics through its optional overlay.
 
+The editor defaults to hardware ray tracing for GI when the device supports ray
+queries, with Compute GI as the fallback. Explicit rendering choices and saved
+ZenApp setups retain their selected providers.
+
+Prepared scenes may be individual `.zenasset` packages or native `.zenscene`
+assemblies. Assemblies load referenced model packages sequentially, preserve their
+placements and light policies, and share geometry between repeated instances.
+The editor opens either format; ZenApp accepts either in a `.zenrender` setup's
+`packagePath`. See [assembly integration and Sponza verification](Doc/SceneAssemblyIntegration.md).
+
 ## Architecture
 
 ```mermaid

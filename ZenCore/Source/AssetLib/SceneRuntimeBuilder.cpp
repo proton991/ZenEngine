@@ -246,7 +246,7 @@ void BuildCameraAndLight(const SceneAsset& asset, const NodeAsset& source, sg::N
         node.AddComponent(camera.Get());
         scene.AddComponent(std::move(camera));
     }
-    if (source.light.IsValid())
+    if (source.light.IsValid() && source.submitLight)
     {
         const LightAsset&    definition = asset.lights[source.light.value];
         UniquePtr<sg::Light> light      = MakeUnique<sg::Light>(definition.name);
@@ -420,30 +420,46 @@ SceneLoadResult BuildValidatedSceneRuntime(const SharedPtr<const SceneAsset, Mul
         data.morphPrimitives     = asset->morphPrimitives;
         data.vertexTexCoords     = asset->vertexTexCoords;
         data.vertexTexCoords.resize(asset->vertices.size());
-        data.vertexTexCoordSets    = asset->vertexTexCoordSets;
-        data.bindVertices          = asset->vertices;
-        data.materialVariants      = asset->materialVariants;
-        data.variantPrimitives     = asset->variantPrimitives;
-        data.extraVertexAttributes = asset->extraVertexAttributes;
-        data.imageBasedLights      = asset->imageBasedLights;
-        data.imageBasedLight       = asset->imageBasedLight;
+        data.vertexTexCoordSets      = asset->vertexTexCoordSets;
+        data.bindVertices            = asset->vertices;
+        data.materialVariants        = asset->materialVariants;
+        data.variantPrimitives       = asset->variantPrimitives;
+        data.extraVertexAttributes   = asset->extraVertexAttributes;
+        data.imageBasedLights        = asset->imageBasedLights;
+        data.imageBasedLight         = asset->imageBasedLight;
+        data.preferredCameraNode     = asset->preferredCameraNode;
+        data.explicitCameraSelection = asset->explicitCameraSelection;
         BuildImagesAndMaterials(*asset, *loaded->scene);
         BuildMeshes(*asset, *loaded->scene);
         BuildNodes(*asset, *loaded, control);
-        data.bindVertexTexCoords = data.vertexTexCoords;
+        const bool deformed = !data.deformations.empty();
+        if (deformed)
+        {
+            data.bindVertexTexCoords = data.vertexTexCoords;
+        }
         if (control != nullptr && control->IsCancelled())
         {
             SetSceneImportFailure(result, SceneImportStatus::Cancelled, asset->sourcePath, "Scene build cancelled");
         }
-        else if (!sg::ApplySceneDeformations(*loaded->scene,
-                                             VectorView<const Vertex>(data.bindVertices.data(), data.bindVertices.size()),
-                                             loaded->vertices))
+        else if (deformed
+                 && !sg::ApplySceneDeformations(*loaded->scene,
+                                                VectorView<const Vertex>(data.bindVertices.data(), data.bindVertices.size()),
+                                                loaded->vertices))
         {
             SetSceneImportFailure(result, SceneImportStatus::InvalidData, asset->sourcePath,
                                   "Failed to apply initial skin or morph deformation");
         }
         else
         {
+            if (!deformed)
+            {
+                // A static scene has no pose to rebuild, so its bind data is the final vertex stream.
+                loaded->vertices = std::move(data.bindVertices);
+                if (asset->vertexTexCoords.empty())
+                {
+                    data.vertexTexCoords = HeapVector<VertexTextureCoordinates>();
+                }
+            }
             loaded->scene->UpdateAABB();
             if (control != nullptr && control->IsCancelled())
             {

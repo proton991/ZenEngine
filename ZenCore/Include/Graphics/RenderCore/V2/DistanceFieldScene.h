@@ -15,6 +15,13 @@ namespace zen::rc
 class RenderDevice;
 class RenderScene;
 
+struct FieldAllocationSize
+{
+    uint64_t bytes;
+    int64_t  usage;
+    uint64_t allocation;
+};
+
 // Matches distance_field_common.glsl. This initial builder has one fixed world level.
 struct DistanceFieldSceneUniform
 {
@@ -65,9 +72,9 @@ struct DistanceFieldSceneSettings
     // the fixed capacities above, which become floors: jobs, references and coverage slots aim to
     // take every selected triangle in one batch, and scale down together to fit deviceMemoryShare
     // of the free device-local memory, which replaces scratchBudgetBytes.
-    bool     deriveCapacities{false};
-    double   deviceMemoryShare{0.5};
-    float    hitTolerance{0.25f / 7.0f}; // Brick units; requires scene/feature qualification.
+    bool   deriveCapacities{false};
+    double deviceMemoryShare{0.5};
+    float  hitTolerance{0.25f / 7.0f}; // Brick units; requires scene/feature qualification.
     // Local detail volumes (SetLocalVolumes): cells per axis and atlas texels per slot side.
     uint32_t localCellsPerAxis{32};
     uint32_t localAtlasTexelsPerAxis{160};
@@ -242,6 +249,7 @@ private:
     State                             m_state{State::Pending};
     const char*                       m_failureReason{""};
     uint64_t                          m_nextGeneration{1};
+    HeapVector<FieldAllocationSize>   m_allocationSizes;
     uint64_t                          m_lastSnapshotBytes{0};
     uint64_t                          m_lastSubmittedGraphs{0};
     uint32_t                          m_lastAllocatedBricks{0};
@@ -276,8 +284,8 @@ private:
     uint64_t                   m_scratchBudget{0}; // Scratch budget of the latest Start.
     uint32_t                   m_dispatchLimits[ZEN_FIELD_PHASE_COMPLETE]{}; // Throughput work per dispatch.
     uint32_t                   m_recordedCycles{0};                          // Cycles in this frame's graph, until it executes.
-    uint32_t                   m_baselineFrames{0};  // Frames of this generation measured at one cycle.
-    double                     m_baselineUs{0};      // Frame interval with one cycle per frame.
+    uint32_t                   m_baselineFrames{0};                          // Frames of this generation measured at one cycle.
+    double                     m_baselineUs{0};                              // Frame interval with one cycle per frame.
     double                     m_frameIntervalUs{0}; // Smoothed interval between BuildRenderGraph calls.
 
     std::chrono::steady_clock::time_point m_lastFrame{};

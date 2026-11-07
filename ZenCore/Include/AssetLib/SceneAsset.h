@@ -32,6 +32,8 @@ struct NodeAsset
     bool                   hoverable{true};
     // An instancing parent can carry mesh/weight state without drawing itself.
     bool renderMesh{true};
+    // Assembly submission policy; authored light definitions and references remain intact.
+    bool submitLight{true};
 };
 
 struct MeshPrimitiveAsset
@@ -127,6 +129,9 @@ struct SceneAsset
     HeapVector<VertexAttributeAsset>          extraVertexAttributes;
     HeapVector<ImageBasedLightAsset>          imageBasedLights;
     int32_t                                   imageBasedLight{-1};
+    // Runtime assembly selection identifies an instantiated node, not a shared camera definition.
+    int32_t preferredCameraNode{-1};
+    bool    explicitCameraSelection{false};
 };
 
 // Checks canonical references, payloads and bounded runtime geometry expansion.

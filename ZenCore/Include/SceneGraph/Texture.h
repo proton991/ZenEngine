@@ -57,8 +57,13 @@ public:
 
     VectorView<const uint8_t> GetBytes() const
     {
-        return !bytesData.empty() || !pixels ? VectorView<const uint8_t>(bytesData.data(), bytesData.size())
-                                             : VectorView<const uint8_t>(pixels->bytes.data(), pixels->bytes.size());
+        VectorView<const uint8_t> result(bytesData.data(), bytesData.size());
+        if (bytesData.empty() && pixels)
+        {
+            const HeapVector<uint8_t>& base = asset::GetImageBaseBytes(*pixels);
+            result                          = VectorView<const uint8_t>(base.data(), base.size());
+        }
+        return result;
     }
 
     const HeapVector<HeapVector<uint8_t>>& GetMipBytes() const

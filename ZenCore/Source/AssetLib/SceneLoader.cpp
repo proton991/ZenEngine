@@ -3,6 +3,7 @@
 #include "AssetLib/SceneAssetIO.h"
 #include "AssetLib/SceneLoadCompletion.h"
 #include "AssetLib/SceneRuntimeBuilderInternal.h"
+#include "AssetLib/SceneAssembly.h"
 #include "ZenAsset/Format/Version.h"
 #include <algorithm>
 #include <cmath>
@@ -16,6 +17,9 @@ static HeapVector<SceneFormatDescriptor> LoadFormats()
     static constexpr std::string_view extensions[]{".zenasset"};
     formats.push_back(
         {"zenasset", "ZenEngine scenes", VectorView<const std::string_view>(extensions), zenasset::PackageSchemaVersion});
+    static constexpr std::string_view assemblyExtensions[]{".zenscene"};
+    formats.push_back({"zenscene", "ZenEngine assemblies", VectorView<const std::string_view>(assemblyExtensions),
+                       zenasset::PackageSchemaVersion});
     return formats;
 }
 
@@ -71,13 +75,14 @@ SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, ui
     }
     else if (format != nullptr)
     {
-        imported = ReadSceneAssetFile(request.path, {}, request.control.Get());
+        imported = format->id == "zenscene" ? ReadSceneAssemblyAsset(request.path, {}, request.control.Get())
+                                            : ReadSceneAssetFile(request.path, {}, request.control.Get());
     }
     else
     {
         SetSceneImportFailure(
             imported, SceneImportStatus::UnsupportedFormat, request.path,
-            "Runtime loading requires a .zenasset package; source processing is available through AssetTools");
+            "Runtime loading requires a .zenasset package or .zenscene assembly; source processing is available through AssetTools");
     }
     return CompleteSceneLoad(request, std::move(imported), false);
 }

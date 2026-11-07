@@ -44,14 +44,21 @@ struct SamplerAsset : SamplerParameters
 // View format and sampling are separate, so one image can serve color/data roles.
 struct ImagePixels
 {
-    uint32_t                        width{0};
-    uint32_t                        height{0};
-    Format                          format{Format::R8G8B8A8_UNORM};
+    uint32_t width{0};
+    uint32_t height{0};
+    Format   format{Format::R8G8B8A8_UNORM};
+    // Base-only storage when mips is empty. Explicit chains own level zero in
+    // mips[0]; an identical legacy duplicate in bytes is accepted on input.
     HeapVector<uint8_t>             bytes;
     HeapVector<HeapVector<uint8_t>> mips;
     // Each explicit mip stores complete consecutive layers. Arrays require mips.
     uint32_t arrayLayers{1};
 };
+
+inline const HeapVector<uint8_t>& GetImageBaseBytes(const ImagePixels& pixels)
+{
+    return pixels.mips.empty() ? pixels.bytes : pixels.mips[0];
+}
 
 struct ImageAsset
 {

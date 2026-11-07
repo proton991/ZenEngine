@@ -54,6 +54,13 @@ template <class Archive> void Fields(Archive& ar, typename Archive::template Val
 
 template <class Archive> void Fields(Archive& ar, typename Archive::template Value<NodeAsset>& v)
 {
+    if constexpr (!Archive::Reading)
+    {
+        if (!v.submitLight)
+        {
+            ar.Fail(SceneImportStatus::UnsupportedFeature, "Assembly light policy requires a .zenscene assembly");
+        }
+    }
     ar(v.name, v.parent, v.children, v.translation, v.rotation, v.scale, v.baseMatrix, v.matrixTransform, v.mesh, v.materials,
        v.skin, v.camera, v.light, v.morphWeights, v.morphWeightsSource, v.visible, v.selectable, v.hoverable, v.renderMesh);
 }
@@ -197,7 +204,15 @@ template <class Archive> void Fields(Archive& ar, typename Archive::template Val
             ar.Fail(SceneImportStatus::UnsupportedFeature, "Legacy v2 cannot store array pages; use processed v3");
         }
     }
-    ar(v.width, v.height, v.format, v.bytes, v.mips);
+    if constexpr (Archive::Reading)
+    {
+        ar(v.width, v.height, v.format, v.bytes, v.mips);
+    }
+    else
+    {
+        // Legacy v2 readers require a duplicate base alongside explicit mips.
+        ar(v.width, v.height, v.format, GetImageBaseBytes(v), v.mips);
+    }
 }
 
 template <class Archive> void Fields(Archive& ar, typename Archive::template Value<SceneImportSettings>& v)
@@ -727,6 +742,13 @@ template <class Archive> void AssetSection(Archive&                             
                                            typename Archive::template Value<SceneAssetFileMetadata>& metadata,
                                            uint32_t                                                  section)
 {
+    if constexpr (!Archive::Reading)
+    {
+        if (asset.explicitCameraSelection || asset.preferredCameraNode >= 0)
+        {
+            ar.Fail(SceneImportStatus::UnsupportedFeature, "Assembly camera selection requires a .zenscene assembly");
+        }
+    }
     switch (section)
     {
         // Section zero stays small so cache lookups can inspect it cheaply.
