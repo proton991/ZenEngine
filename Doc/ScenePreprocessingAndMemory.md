@@ -65,9 +65,10 @@ can use more than 5 GB while importing large source models.
   source and destination buffers while preserving node/resource IDs and
   draw-order ties. Only models read ahead of their manifest turn wait.
 - Runtime-only source imports and source-cache hits now pass the same mutable
-  geometry ownership handoff as native loads. Default runtime glTF imports validate
-  textures with two workers and retain immutable encoded bytes, resolving decoded
-  pixels only for a bounded lease. External images are read on those workers rather
+  geometry ownership handoff as native loads. Default runtime glTF imports decode
+  and validate at most two textures at once while mesh processing keeps the whole
+  worker pool. They retain immutable encoded bytes, resolving decoded pixels only
+  for a bounded lease. External images are read by those decodes rather
   than also retaining a parser-wide encoded copy. Runtime source loads await their
   own cache publication, release imported storage, then reopen the package with
   deferred image descriptors before graphics preparation. Canonical tool imports
@@ -188,17 +189,20 @@ command; it does not substitute another executable for ZenApp.
 
 Processor changes were committed and pushed from `E:/Dev/ZenAssetProcessor`:
 `8cc3758` (deferred images), `9e9fa33` (direct mesh decoding), and `4692910`
-(bit-identical static UV compaction). ZenEngine's submodule consumes `b1bc7c4`
-on processor `main`, which also retains encoded glTF images and adds optional
-compiler and resource-write progress events. It has no local processor edits.
+(bit-identical static UV compaction). ZenEngine's submodule consumes `a5d4506`
+on processor `main`. Its ancestors retain encoded glTF images and add optional
+compiler and resource-write progress events; `a5d4506` adds a glTF image decode
+limit that is separate from the worker count. The submodule has no local
+processor edits.
 
 A later review pass resolves each deferred image once per scene load, releases
 an exclusive lease level by level while copying it, makes textures mutable only
 for mixed view formats, and frees an unfinished distance field build after a
 switch to HW RT. It also fixes `HeapVector::push_back` of one of its own elements
 during growth. Debug CTest passes all 25 suites; logs are under
-`build/review-fixes-20261107b/`. Runtime source imports still cap the whole
-importer at two workers until the processor can bound image decodes separately.
+`build/review-fixes-20261107b/`. Runtime source imports first capped the whole
+importer at two workers; they now keep every worker and limit only concurrent
+image decodes to two (`SceneImportContext::maxConcurrentImageDecodes`).
 
 ## GI and editor follow-up
 
@@ -289,7 +293,8 @@ could still own the imported scene. Native-package-only checks had missed this p
 
 The processor changes in published commits `7a74c1e` and `b1bc7c4` add opt-in
 encoded image ownership and bounded external-image reads. Default runtime glTF
-opens enable it with at most two import workers. Each decoded lease is released
+opens enable it, decoding at most two images at once (`a5d4506`) while meshes use
+every import worker. Each decoded lease is released
 after use; the immutable encoded bytes do not borrow a mutable source file.
 Runtime opens await only their own cache write and reopen its deferred native
 images before preparing graphics resources. Tests compare every decoded pixel

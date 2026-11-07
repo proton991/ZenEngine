@@ -22,9 +22,10 @@ while ZenApp's explicit setup camera overrides the initial pose. Assemblies do
 not select a camera or environment implicitly by model order. Saving assembly
 policies into a legacy single-model package is rejected instead of losing them.
 
-The asset processor submodule pins published commit `b1bc7c4`, which includes
+The asset processor submodule pins published commit `a5d4506`, which includes
 the native assembly reader, image schema 3, deferred image leases and direct mesh
-decoding, bounded external glTF image reads, and resource-write progress. See [preprocessing and memory](ScenePreprocessingAndMemory.md) for the
+decoding, bounded external glTF image reads, resource-write progress and a glTF
+image decode limit. See [preprocessing and memory](ScenePreprocessingAndMemory.md) for the
 current loading path and measurements. Processor development
 belongs in the standalone `E:\Dev\ZenAssetProcessor` repository; ZenEngine
 consumes its published commits through the submodule. Mipped images
