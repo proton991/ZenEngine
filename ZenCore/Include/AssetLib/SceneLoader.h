@@ -24,8 +24,8 @@ struct LoadedScene
 struct SceneLoadResult : SceneImportReport
 {
     UniquePtr<LoadedScene> scene;
-    // The canonical asset the scene was built from. Holders that keep only the
-    // scene release the asset's geometry; image storage stays shared.
+    // The canonical asset, when retainCanonicalAsset was requested. Runtime-only
+    // loads can move static geometry into the scene; image descriptors stay shared.
     SharedPtr<const SceneAsset, MultiThreadCounter> asset;
     bool                                            cacheHit{false};
 };

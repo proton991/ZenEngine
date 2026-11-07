@@ -49,7 +49,7 @@ layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer
 };
 layout(std430, set = 1, binding = 3) readonly buffer UVBuffer
 {
-    vec4 uvValues[];
+    vec2 uvValues[];
 };
 
 layout(push_constant) uniform uNodePushConstant

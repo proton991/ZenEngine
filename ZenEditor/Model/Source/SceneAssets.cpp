@@ -104,6 +104,22 @@ const uint8_t* GetLevelZero(const sg::Texture& texture, size_t& size)
     return bytes.data();
 }
 
+zenasset::PixelFormat PreviewPixelFormat(asset::Format source)
+{
+    zenasset::PixelFormat format = zenasset::PixelFormat::Undefined;
+    switch (source)
+    {
+        case asset::Format::R8G8B8A8_UNORM: format = zenasset::PixelFormat::RGBA8Unorm; break;
+        case asset::Format::R8G8B8A8_SRGB: format = zenasset::PixelFormat::RGBA8Srgb; break;
+        case asset::Format::BC4_UNORM_BLOCK: format = zenasset::PixelFormat::BC4Unorm; break;
+        case asset::Format::BC5_UNORM_BLOCK: format = zenasset::PixelFormat::BC5Unorm; break;
+        case asset::Format::BC7_UNORM_BLOCK: format = zenasset::PixelFormat::BC7Unorm; break;
+        case asset::Format::BC7_SRGB_BLOCK: format = zenasset::PixelFormat::BC7Srgb; break;
+        default: break;
+    }
+    return format;
+}
+
 bool MakeDecodedTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePreview& preview)
 {
     const asset::ImageRegion               region  = texture.GetAtlasRegion();
@@ -131,17 +147,7 @@ bool MakeDecodedTexturePreview(const sg::Texture& texture, uint32_t maxSize, Tex
         bytes                                 = layer.data();
         size                                  = layer.size();
     }
-    zenasset::PixelFormat format = zenasset::PixelFormat::Undefined;
-    switch (texture.format)
-    {
-        case asset::Format::R8G8B8A8_UNORM: format = zenasset::PixelFormat::RGBA8Unorm; break;
-        case asset::Format::R8G8B8A8_SRGB: format = zenasset::PixelFormat::RGBA8Srgb; break;
-        case asset::Format::BC4_UNORM_BLOCK: format = zenasset::PixelFormat::BC4Unorm; break;
-        case asset::Format::BC5_UNORM_BLOCK: format = zenasset::PixelFormat::BC5Unorm; break;
-        case asset::Format::BC7_UNORM_BLOCK: format = zenasset::PixelFormat::BC7Unorm; break;
-        case asset::Format::BC7_SRGB_BLOCK: format = zenasset::PixelFormat::BC7Srgb; break;
-        default: break;
-    }
+    const zenasset::PixelFormat           format = PreviewPixelFormat(texture.format);
     const zenasset::TextureInterpretation interpretation =
         texture.interpretation == asset::TextureInterpretation::Default ? zenasset::TextureInterpretation::Default
         : texture.interpretation == asset::TextureInterpretation::NormalXYPositiveZ
@@ -169,7 +175,7 @@ bool MakeDecodedTexturePreview(const sg::Texture& texture, uint32_t maxSize, Tex
 }
 } // namespace
 
-bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePreview& preview)
+static bool MakeResidentTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePreview& preview)
 {
     size_t size          = 0;
 
@@ -241,6 +247,25 @@ bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePre
         valid = MakeDecodedTexturePreview(texture, maxSize, preview);
     }
 
+    return valid;
+}
+
+bool MakeTexturePreview(const sg::Texture& texture, uint32_t maxSize, TexturePreview& preview)
+{
+    bool valid = false;
+    if (texture.UsesSharedPixels() && texture.pixels->payloadSource)
+    {
+        SharedPtr<const asset::ImagePixels, MultiThreadCounter> lease;
+        if (asset::ResolveImagePixels(texture.pixels, lease))
+        {
+            const sg::Texture resident(texture, std::move(lease));
+            valid = MakeResidentTexturePreview(resident, maxSize, preview);
+        }
+    }
+    else
+    {
+        valid = MakeResidentTexturePreview(texture, maxSize, preview);
+    }
     return valid;
 }
 
@@ -639,16 +664,33 @@ SceneAssetInspection SceneAssetIndex::Inspect(SceneAssetId id) const
 
         GetLevelZero(texture, size);
 
-        // Without authored levels, upload generates the complete chain from level zero.
-        result.mipLevels = texture.GetMipBytes().empty()
-                             ? uint32_t(std::floor(std::log2(float(std::max(1u, std::max(texture.width, texture.height)))))) + 1
-                             : uint32_t(texture.GetMipBytes().size());
+        zenasset::PixelFormatInfo info;
+        zenasset::GetPixelFormatInfo(PreviewPixelFormat(texture.format), info);
+        // Raw base-only images generate mips; compressed payloads require authored levels.
+        result.mipLevels =
+            texture.GetMipBytes().empty()
+                ? (info.compressed
+                       ? 1
+                       : uint32_t(std::floor(std::log2(float(std::max(1u, std::max(texture.width, texture.height)))))) + 1)
+                : uint32_t(texture.GetMipBytes().size());
 
-        result.bytes     = size;
+        result.bytes = size;
 
         for (size_t level = 1; level < texture.GetMipBytes().size(); ++level)
         {
             result.bytes += texture.GetLayerMipBytes(static_cast<uint32_t>(level)).size();
+        }
+        if (texture.UsesSharedPixels() && texture.pixels->payloadSource)
+        {
+            for (uint32_t level = 0; level < std::max(size_t(1), texture.GetMipBytes().size()); ++level)
+            {
+                uint64_t bytes = 0;
+                if (zenasset::GetImageLevelByteSize(PreviewPixelFormat(texture.format), std::max(1u, texture.width >> level),
+                                                    std::max(1u, texture.height >> level), bytes))
+                {
+                    result.bytes += bytes;
+                }
+            }
         }
 
         result.sampler = texture.samplerIndex;

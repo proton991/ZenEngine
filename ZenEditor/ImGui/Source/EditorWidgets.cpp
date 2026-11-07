@@ -40,9 +40,11 @@ std::string GetInspectionTargetName(const EditorScene& scene, InspectionTarget t
     return target.node.generation != 0 ? scene.GetNodeDisplayName(target.node) : scene.GetAssets().Describe(target.asset).name;
 }
 
-void DrawClippedText(const char* text, ImVec2 extent, ImU32 color)
+void DrawClippedText(const char* text, ImVec2 extent, ImU32 color, bool rightAligned)
 {
-    const ImVec2 start = ImGui::GetCursorScreenPos();
+    const ImVec2 start     = ImGui::GetCursorScreenPos();
+    const float  textWidth = ImGui::CalcTextSize(text).x;
+    const float  textX     = start.x + (rightAligned ? std::max(0.0f, extent.x - textWidth) : 0.0f);
 
     ImGui::Dummy(extent);
 
@@ -50,11 +52,11 @@ void DrawClippedText(const char* text, ImVec2 extent, ImU32 color)
 
     draw.PushClipRect(start, ImVec2(start.x + extent.x, start.y + extent.y), true);
 
-    draw.AddText(ImVec2(start.x, start.y + 0.5f * (extent.y - ImGui::GetTextLineHeight())), color, text);
+    draw.AddText(ImVec2(textX, start.y + 0.5f * (extent.y - ImGui::GetTextLineHeight())), color, text);
 
     draw.PopClipRect();
 
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::CalcTextSize(text).x > extent.x)
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && textWidth > extent.x)
     {
         ImGui::SetTooltip("%s", text);
     }

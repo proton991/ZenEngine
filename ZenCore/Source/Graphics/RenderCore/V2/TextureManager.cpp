@@ -26,6 +26,52 @@ struct SceneImagePage
     HashMap<uint64_t, RHITextureView*> views;
 };
 
+struct SceneImageUse
+{
+    uint32_t      group{0};
+    asset::Format format{asset::Format::UNDEFINED};
+    bool          mixedFormats{false};
+};
+
+// Orders textures so the views of one shared image are adjacent, keeping first-use order,
+// and records whether an image is viewed with more than one format.
+void GroupSceneImages(const HeapVector<sg::Texture*>&                    textures,
+                      HeapVector<uint32_t>&                              order,
+                      HashMap<const asset::ImagePixels*, SceneImageUse>& uses)
+{
+    HeapVector<uint32_t> groups(textures.size());
+    uint32_t             next = 0;
+    for (uint32_t index = 0; index < textures.size(); ++index)
+    {
+        const sg::Texture& texture = *textures[index];
+        if (texture.UsesSharedPixels())
+        {
+            const HashMap<const asset::ImagePixels*, SceneImageUse>::iterator use = uses.find(texture.pixels.Get());
+            if (use == uses.end())
+            {
+                uses[texture.pixels.Get()] = {next, texture.format, false};
+                groups[index]              = next++;
+            }
+            else
+            {
+                use->second.mixedFormats = use->second.mixedFormats || use->second.format != texture.format;
+                groups[index]            = use->second.group;
+            }
+        }
+        else
+        {
+            groups[index] = next++;
+        }
+    }
+    order.resize(textures.size());
+    for (uint32_t index = 0; index < textures.size(); ++index)
+    {
+        order[index] = index;
+    }
+    std::stable_sort(order.begin(), order.end(),
+                     [&groups](uint32_t left, uint32_t right) { return groups[left] < groups[right]; });
+}
+
 bool ValidSceneAtlasRegion(const sg::Texture& texture, const sg::Scene& scene, const RHIGPUInfo& gpu)
 {
     const asset::ImageRegion region = texture.GetAtlasRegion();
@@ -58,26 +104,24 @@ bool ValidSceneTexturePayload(const sg::Texture& texture, uint32_t& payloadSize)
 {
     const DataFormat format     = static_cast<DataFormat>(texture.format);
     const uint32_t   layers     = texture.GetArrayLayers();
-    const bool       page       = layers > 1 || texture.GetAtlasRegion() != asset::ImageRegion{};
     bool             valid      = format == DataFormat::eR8G8B8A8UNORM || format == DataFormat::eR8G8B8A8SRGB
                                || format == DataFormat::eBC7UNORMBlock || format == DataFormat::eBC7SRGBBlock
                                || format == DataFormat::eBC4UNORMBlock || format == DataFormat::eBC5UNORMBlock;
     uint64_t         levelBytes = 0;
     payloadSize                 = 0;
-    valid =
-        valid && layers > 0 && texture.GetArrayLayer() < layers && (layers == 1 || !texture.GetMipBytes().empty())
-        && (!page
-            || (texture.UsesSharedPixels() && texture.width == texture.pixels->width && texture.height == texture.pixels->height
-                && AreTextureColorViewFormatsCompatible(format, static_cast<DataFormat>(texture.pixels->format))))
-        && texture.interpretation <= asset::TextureInterpretation::NormalXYPositiveZ
-        && ((texture.interpretation == asset::TextureInterpretation::NormalXYPositiveZ)
-            == (format == DataFormat::eBC5UNORMBlock))
-        && GetTextureFormatLevelSize(format, texture.width, texture.height, 1, levelBytes) && levelBytes <= UINT32_MAX / layers
-        && levelBytes * layers == texture.GetBytes().size()
-        && texture.GetMipBytes().size() <= RHITexture::CalculateTextureMipLevels(texture.width, texture.height)
-        && (texture.GetMipBytes().empty()
-            || std::equal(texture.GetMipBytes()[0].begin(), texture.GetMipBytes()[0].end(), texture.GetBytes().begin(),
-                          texture.GetBytes().end()));
+    valid = valid && layers > 0 && texture.GetArrayLayer() < layers && (layers == 1 || !texture.GetMipBytes().empty())
+         && (!texture.UsesSharedPixels()
+             || (texture.width == texture.pixels->width && texture.height == texture.pixels->height
+                 && AreTextureColorViewFormatsCompatible(format, static_cast<DataFormat>(texture.pixels->format))))
+         && texture.interpretation <= asset::TextureInterpretation::NormalXYPositiveZ
+         && ((texture.interpretation == asset::TextureInterpretation::NormalXYPositiveZ)
+             == (format == DataFormat::eBC5UNORMBlock))
+         && GetTextureFormatLevelSize(format, texture.width, texture.height, 1, levelBytes) && levelBytes <= UINT32_MAX / layers
+         && levelBytes * layers == texture.GetBytes().size()
+         && texture.GetMipBytes().size() <= RHITexture::CalculateTextureMipLevels(texture.width, texture.height)
+         && (texture.GetMipBytes().empty()
+             || std::equal(texture.GetMipBytes()[0].begin(), texture.GetMipBytes()[0].end(), texture.GetBytes().begin(),
+                           texture.GetBytes().end()));
     if (valid && texture.GetMipBytes().empty())
     {
         payloadSize = static_cast<uint32_t>(levelBytes * layers);
@@ -393,10 +437,41 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
     }
     else
     {
-        HashMap<const asset::ImagePixels*, SceneImagePage> pages;
-        for (const sg::Texture* pSgTexture : pScene->GetComponents<sg::Texture>())
+        const HeapVector<sg::Texture*>&                   textures = pScene->GetComponents<sg::Texture>();
+        HeapVector<uint32_t>                              order;
+        HashMap<const asset::ImagePixels*, SceneImageUse> uses;
+        GroupSceneImages(textures, order, uses);
+        HashMap<const asset::ImagePixels*, HashMap<uint32_t, SceneImagePage>> images;
+        const size_t                                                          first = outTextures.size();
+        outTextures.resize(first + textures.size());
+        SharedPtr<const asset::ImagePixels, MultiThreadCounter> lease;
+        const asset::ImagePixels*                               leased   = nullptr;
+        bool                                                    resolved = true;
+        for (uint32_t textureIndex : order)
         {
-            TextureFormat texFormat{};
+            const sg::Texture*        source   = textures[textureIndex];
+            const asset::ImagePixels* image    = source->UsesSharedPixels() ? source->pixels.Get() : nullptr;
+            const bool                deferred = image != nullptr && image->payloadSource;
+            if (image != leased)
+            {
+                // Views of one image are adjacent: resolve a deferred payload once and release it
+                // before the next image, so at most one decoded image stays resident.
+                lease.Reset();
+                leased   = image;
+                resolved = true;
+                if (deferred)
+                {
+                    std::string failure;
+                    resolved = asset::ResolveImagePixels(source->pixels, lease, &failure);
+                    if (!resolved)
+                    {
+                        LOGE("Cannot read texture '{}': {}", source->GetName(), failure);
+                    }
+                }
+            }
+            const sg::Texture  resident(*source, lease);
+            const sg::Texture* pSgTexture = deferred ? &resident : source;
+            TextureFormat      texFormat{};
 
             // Both format enums use Vulkan values. Preserve linear material data and sRGB color.
             texFormat.format      = static_cast<DataFormat>(pSgTexture->format);
@@ -412,9 +487,9 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
             texFormat.depth       = 1;
 
             texFormat.arrayLayers = pSgTexture->GetArrayLayers();
-            const bool sharedPage = texFormat.arrayLayers > 1 || pSgTexture->GetAtlasRegion() != asset::ImageRegion{};
+            // Authored levels share one texture across its views; only a second view format needs mutability.
             texFormat.mutableFormat =
-                sharedPage
+                pSgTexture->UsesSharedPixels() && !pSgTexture->GetMipBytes().empty() && uses[image].mixedFormats
                 && (texFormat.format == DataFormat::eR8G8B8A8UNORM || texFormat.format == DataFormat::eR8G8B8A8SRGB
                     || texFormat.format == DataFormat::eBC7UNORMBlock || texFormat.format == DataFormat::eBC7SRGBBlock);
 
@@ -425,14 +500,18 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
                     : static_cast<uint32_t>(pSgTexture->GetMipBytes().size());
 
             uint32_t                  payloadSize = 0;
-            const bool                payloadFits = ValidSceneTexturePayload(*pSgTexture, payloadSize)
+            const bool                payloadFits = resolved && ValidSceneTexturePayload(*pSgTexture, payloadSize)
                                                  && ValidSceneAtlasRegion(*pSgTexture, *pScene, m_pRenderDevice->GetGPUInfo());
-            const asset::ImagePixels* owner       = payloadFits && sharedPage ? pSgTexture->pixels.Get() : nullptr;
-            const HashMap<const asset::ImagePixels*, SceneImagePage>::iterator page  = pages.find(owner);
-            const bool                                                         fresh = page == pages.end();
-            RHITexture*     pTexture                                                 = fresh ? nullptr : page->second.texture;
-            RHITextureView* view                                                     = nullptr;
-            const uint64_t  viewKey = (uint64_t(pSgTexture->GetArrayLayer()) << 32) | uint32_t(texFormat.format);
+            const asset::ImagePixels* owner       = payloadFits ? image : nullptr;
+            // Generated mip values depend on the color interpretation. Authored
+            // levels can share storage across compatible linear/sRGB views.
+            const uint32_t                     storageKey = pSgTexture->GetMipBytes().empty() ? uint32_t(texFormat.format) : 0;
+            HashMap<uint32_t, SceneImagePage>& pages      = images[owner];
+            const HashMap<uint32_t, SceneImagePage>::iterator page     = pages.find(storageKey);
+            const bool                                        fresh    = page == pages.end();
+            RHITexture*                                       pTexture = fresh ? nullptr : page->second.texture;
+            RHITextureView*                                   view     = nullptr;
+            const uint64_t viewKey = (uint64_t(pSgTexture->GetArrayLayer()) << 32) | uint32_t(texFormat.format);
             if (payloadFits)
             {
                 if (fresh)
@@ -470,12 +549,12 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
                     }
                 }
             }
-            else if (pSgTexture->GetAtlasRegion() != asset::ImageRegion{})
+            else if (resolved && pSgTexture->GetAtlasRegion() != asset::ImageRegion{})
             {
                 LOGE("Scene texture '{}' has an invalid spatial region, sampler or unsupported sampling precision",
                      pSgTexture->GetName());
             }
-            else
+            else if (resolved)
             {
                 LOGE(
                     "Scene texture '{}' has an unsupported format/array view, invalid mip payload or exceeds the upload size limit",
@@ -538,11 +617,11 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITe
             }
             if (view != nullptr && owner != nullptr)
             {
-                SceneImagePage& stored = pages[owner];
+                SceneImagePage& stored = pages[storageKey];
                 stored.texture         = pTexture;
                 stored.views.try_emplace(viewKey, view);
             }
-            outTextures.push_back(view);
+            outTextures[first + textureIndex] = view;
         }
     }
 }

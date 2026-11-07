@@ -1,5 +1,13 @@
 # Brixelizer GI execution evidence
 
+> **2026-11-07 policy update:** the historical warm-switch policy below has been
+> replaced. Hardware-only GI no longer builds or refreshes an unused Compute
+> distance field. Previously built fields remain available for a warm switch;
+> an unfinished build is dropped and its scratch freed. Selecting Compute
+> refreshes the field against committed edits. Background construction
+> now targets 16 ms CPU frames, at most four cycles per frame, and 1 GiB scratch.
+> Resolution and coverage are unchanged. See [the current measurements](../ScenePreprocessingAndMemory.md#gi-and-editor-follow-up).
+
 > Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
 
 2026-10-28. This records the preserved baseline, the native GPU field construction of milestones 1 and 2, its integration as the only Compute GI tracer (milestones 3 to 5), the CUDA qualification of milestone 6, and the milestone 7 profiling summarized in [the profiling record](BrixelizerGIProfiling.md), all against [the implementation plan](BrixelizerGIImplementationPlan.md). The [native experiment](BrixelizerGIFieldExperiment.md) and [numerical study](BrixelizerGIReferenceMathExperiment.md) remain the fixture-level evidence. The milestone 1 and 2 sections below describe checkpoints taken while the CPU BVH still existed; later sections supersede their statements about remaining work. Open items are listed at the end.

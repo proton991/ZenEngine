@@ -14,6 +14,30 @@ struct ModelOffsets
     uint32_t vertex, index, mesh, material, image, texture, sampler, camera, light, environment;
 };
 
+// A model read ahead of its manifest turn: its geometry is already appended at vertex/index.
+struct AssemblyModelResources
+{
+    SharedPtr<const SceneAsset, MultiThreadCounter> asset;
+    HeapVector<SceneImportDiagnostic>               diagnostics;
+    HeapVector<uint32_t>                            slots;
+    uint32_t                                        vertex{0};
+    uint32_t                                        index{0};
+    bool                                            ready{false};
+};
+
+struct LargerModelGeometry
+{
+    const zenasset::SceneAssembly& assembly;
+
+    bool operator()(uint32_t left, uint32_t right) const
+    {
+        const zenasset::AssemblyCounts& a = assembly.models[left].counts;
+        const zenasset::AssemblyCounts& b = assembly.models[right].counts;
+        return a.vertices * sizeof(zenasset::Vertex) + a.indices * sizeof(uint32_t)
+             > b.vertices * sizeof(zenasset::Vertex) + b.indices * sizeof(uint32_t);
+    }
+};
+
 template <class Tag> AssetId<Tag> OffsetId(AssetId<Tag> id, uint32_t offset)
 {
     if (id.IsValid())
@@ -192,7 +216,7 @@ void RemapMaterialUVs(MaterialAsset& material, const HeapVector<uint32_t>& slots
 }
 
 bool AppendGeometry(SceneAsset&                 target,
-                    const SceneAsset&           source,
+                    const zenasset::Scene&      source,
                     const ModelOffsets&         offsets,
                     const HeapVector<uint32_t>& slots,
                     bool                        keepCoordinates,
@@ -207,18 +231,20 @@ bool AppendGeometry(SceneAsset&                 target,
         }
         if (valid)
         {
-            target.vertices.push_back(source.vertices[index]);
+            target.vertices.push_back(AdaptProcessedVertex(source.vertices[index]));
             VertexTextureCoordinates coordinates;
             coordinates.resize(target.vertexTexCoordSets.size());
             for (uint32_t slot = 0; slot < std::min(size_t(2), slots.size()); ++slot)
             {
-                coordinates[slots[slot]] = slot == 0 ? source.vertices[index].uv0 : source.vertices[index].uv1;
+                const zenasset::Vec2 uv  = slot == 0 ? source.vertices[index].uv0 : source.vertices[index].uv1;
+                coordinates[slots[slot]] = Vec2(uv.x, uv.y);
             }
             if (!source.vertexTexCoords.empty())
             {
                 for (uint32_t slot = 0; slot < std::min(slots.size(), source.vertexTexCoords[index].size()); ++slot)
                 {
-                    coordinates[slots[slot]] = source.vertexTexCoords[index][slot];
+                    const zenasset::Vec2 uv  = source.vertexTexCoords[index][slot];
+                    coordinates[slots[slot]] = Vec2(uv.x, uv.y);
                 }
             }
             target.vertices.back().uv0 = !coordinates.empty() ? coordinates[0] : Vec2(0);
@@ -460,6 +486,44 @@ NodeId AppendInstance(SceneAsset&                       target,
     return NodeId{rootIndex};
 }
 
+// Appends one staged model's resources and instances in manifest order, then releases them.
+void ComposeModel(SceneAsset&                        target,
+                  AssemblyModelResources&            staged,
+                  const zenasset::SceneAssembly&     assembly,
+                  uint32_t                           modelIndex,
+                  HeapVector<SceneImportDiagnostic>& diagnostics)
+{
+    if (staged.asset)
+    {
+        const zenasset::AssemblyModel& model  = assembly.models[modelIndex];
+        const SceneAsset&              source = *staged.asset;
+        const ModelOffsets             offsets{staged.vertex,
+                                               staged.index,
+                                               static_cast<uint32_t>(target.meshes.size()),
+                                               static_cast<uint32_t>(target.materials.size()),
+                                               static_cast<uint32_t>(target.images.size()),
+                                               static_cast<uint32_t>(target.textures.size()),
+                                               static_cast<uint32_t>(target.samplers.size()),
+                                               static_cast<uint32_t>(target.cameras.size()),
+                                               static_cast<uint32_t>(target.lights.size()),
+                                               static_cast<uint32_t>(target.imageBasedLights.size())};
+        AppendModelResources(target, source, offsets, staged.slots, model.key + "/");
+        for (uint32_t instanceIndex = 0; instanceIndex < assembly.instances.size(); ++instanceIndex)
+        {
+            const zenasset::AssemblyInstance& instance = assembly.instances[instanceIndex];
+            if (instance.model == model.key)
+            {
+                target.roots[instanceIndex] = AppendInstance(target, source, offsets, instance, assembly);
+            }
+        }
+        for (SceneImportDiagnostic& diagnostic : staged.diagnostics)
+        {
+            diagnostics.push_back(std::move(diagnostic));
+        }
+    }
+    staged = AssemblyModelResources{};
+}
+
 zenasset::Status ReadModel(const std::string&               path,
                            const zenasset::AssemblyModel&   model,
                            const zenasset::SceneReadLimits& limits,
@@ -474,7 +538,7 @@ zenasset::Status ReadModel(const std::string&               path,
     }
     if (status.Succeeded())
     {
-        result = zenasset::ReadScene(*package.package, limits, &cancellation);
+        result = zenasset::ReadSceneDeferredImages(package.package, limits, &cancellation);
         status = result.status;
     }
     if (status.Succeeded())
@@ -492,11 +556,16 @@ zenasset::Status ReadModel(const std::string&               path,
 }
 } // namespace
 
-SceneImportResult ReadSceneAssemblyAsset(const std::string&          path,
-                                         const SceneAssetReadLimits& limits,
-                                         SceneImportControl*         control)
+SceneImportResult ReadSceneAssemblyAsset(const std::string&                         path,
+                                         const SceneAssetReadLimits&                limits,
+                                         SceneImportControl*                        control,
+                                         SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
 {
-    SceneImportResult                 result;
+    SceneImportResult result;
+    if (runtimeOwner != nullptr)
+    {
+        runtimeOwner->Reset();
+    }
     const zenasset::Cancellation      cancellation(&ProcessedOperationCancelled, control);
     const zenasset::SceneReadLimits   readLimits = ProcessedLimits(limits);
     HeapVector<SceneImportDiagnostic> modelDiagnostics;
@@ -527,46 +596,51 @@ SceneImportResult ReadSceneAssemblyAsset(const std::string&          path,
     {
         const zenasset::SceneAssembly& assembly = *loaded.assembly;
         combined->roots.resize(assembly.instances.size());
-        const std::filesystem::path directory = std::filesystem::u8path(path).parent_path();
-        for (const zenasset::AssemblyModel& model : assembly.models)
+        const std::filesystem::path        directory = std::filesystem::u8path(path).parent_path();
+        HeapVector<AssemblyModelResources> resources(assembly.models.size());
+        HeapVector<uint32_t>               readOrder;
+        for (uint32_t index = 0; index < assembly.models.size(); ++index)
         {
-            if (status.Succeeded() && UsesModel(assembly, model.key))
+            if (UsesModel(assembly, assembly.models[index].key))
+            {
+                readOrder.push_back(index);
+            }
+            else
+            {
+                resources[index].ready = true;
+            }
+        }
+        // Decode large models before the destination fills up. Keep resource/node
+        // composition in manifest order so IDs and draw-order ties stay stable.
+        if (readOrder.size() > 1)
+        {
+            std::stable_sort(readOrder.begin(), readOrder.end(), LargerModelGeometry{assembly});
+        }
+        uint32_t composed = 0;
+        for (uint32_t modelIndex : readOrder)
+        {
+            const zenasset::AssemblyModel& model  = assembly.models[modelIndex];
+            AssemblyModelResources&        staged = resources[modelIndex];
+            if (status.Succeeded())
             {
                 zenasset::SceneReadResult native;
                 status = ReadModel(PathToUtf8(directory / std::filesystem::u8path(model.path)), model, readLimits, cancellation,
                                    native);
                 if (status.Succeeded())
                 {
-                    AppendModelDiagnostics(modelDiagnostics, native.metadata, model.key);
-                    SceneImportResult adapted = AdaptProcessedScene(*native.scene, control, limits.maxRuntimeGeometryBytes);
-                    native.scene.reset();
+                    AppendModelDiagnostics(staged.diagnostics, native.metadata, model.key);
+                    SceneImportResult adapted = AdaptProcessedSceneResources(*native.scene, control);
                     if (adapted.asset)
                     {
-                        const SceneAsset&          source = *adapted.asset;
-                        const ModelOffsets         offsets{static_cast<uint32_t>(combined->vertices.size()),
-                                                           static_cast<uint32_t>(combined->indices.size()),
-                                                           static_cast<uint32_t>(combined->meshes.size()),
-                                                           static_cast<uint32_t>(combined->materials.size()),
-                                                           static_cast<uint32_t>(combined->images.size()),
-                                                           static_cast<uint32_t>(combined->textures.size()),
-                                                           static_cast<uint32_t>(combined->samplers.size()),
-                                                           static_cast<uint32_t>(combined->cameras.size()),
-                                                           static_cast<uint32_t>(combined->lights.size()),
-                                                           static_cast<uint32_t>(combined->imageBasedLights.size())};
-                        const HeapVector<uint32_t> slots = MapUVSets(source, *combined);
-                        if (AppendGeometry(*combined, source, offsets, slots, KeepsVertexTexCoords(*combined, assembly),
-                                           control))
+                        staged.vertex = static_cast<uint32_t>(combined->vertices.size());
+                        staged.index  = static_cast<uint32_t>(combined->indices.size());
+                        staged.slots  = MapUVSets(*adapted.asset, *combined);
+                        const ModelOffsets offsets{staged.vertex, staged.index};
+                        if (AppendGeometry(*combined, *native.scene, offsets, staged.slots,
+                                           KeepsVertexTexCoords(*combined, assembly), control))
                         {
-                            AppendModelResources(*combined, source, offsets, slots, model.key + "/");
-                            for (uint32_t instanceIndex = 0; instanceIndex < assembly.instances.size(); ++instanceIndex)
-                            {
-                                const zenasset::AssemblyInstance& instance = assembly.instances[instanceIndex];
-                                if (instance.model == model.key)
-                                {
-                                    combined->roots[instanceIndex] =
-                                        AppendInstance(*combined, source, offsets, instance, assembly);
-                                }
-                            }
+                            staged.asset = std::move(adapted.asset);
+                            staged.ready = true;
                         }
                         else
                         {
@@ -578,6 +652,17 @@ SceneImportResult ReadSceneAssemblyAsset(const std::string&          path,
                         result = std::move(adapted);
                         status = {zenasset::StatusCode::InvalidData, "Failed to adapt assembly model"};
                     }
+                }
+            }
+            // Compose every model whose manifest predecessors are composed, so resources read
+            // ahead of their turn are retained only until then.
+            while (status.Succeeded() && composed < resources.size() && resources[composed].ready)
+            {
+                ComposeModel(*combined, resources[composed], assembly, composed, modelDiagnostics);
+                ++composed;
+                if (Cancelled(control))
+                {
+                    status = {zenasset::StatusCode::Cancelled, "Assembly composition cancelled"};
                 }
             }
         }
@@ -598,7 +683,11 @@ SceneImportResult ReadSceneAssemblyAsset(const std::string&          path,
     }
     if (status.Succeeded())
     {
-        result.asset       = combined;
+        result.asset = combined;
+        if (runtimeOwner != nullptr)
+        {
+            *runtimeOwner = combined;
+        }
         result.status      = SceneImportStatus::Success;
         result.diagnostics = std::move(modelDiagnostics);
     }

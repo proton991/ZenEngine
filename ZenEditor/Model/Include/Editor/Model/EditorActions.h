@@ -66,6 +66,7 @@ std::string FormatShortcut(EditorShortcut shortcut);
 namespace actions
 {
 inline constexpr const char* Open             = "file.open";
+inline constexpr const char* Preprocess       = "file.preprocess";
 inline constexpr const char* Recook           = "scene.recook";
 inline constexpr const char* Save             = "file.save";
 inline constexpr const char* Exit             = "file.exit";

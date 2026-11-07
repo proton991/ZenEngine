@@ -172,7 +172,7 @@ bool EditorViewport::SetEnvironmentLighting(float intensity, float rotationDegre
     return m_sceneRendering.SetEnvironmentLighting(intensity, rotationDegrees, lighting, skybox);
 }
 
-bool EditorViewport::PrepareScene(const LoadedScene& candidate, std::string& error)
+bool EditorViewport::PrepareScene(LoadedScene& candidate, std::string& error)
 {
     return m_sceneRendering.PrepareScene(candidate, m_camera.GetCamera(), error);
 }
@@ -283,7 +283,14 @@ bool EditorViewport::Resize(uint32_t width, uint32_t height, bool quantize)
         height = std::min(8192u, (height + 7u) & ~7u);
     }
 
-    return m_target.Resize(width, height);
+    const uint32_t previousWidth  = m_target.GetView().width;
+    const uint32_t previousHeight = m_target.GetView().height;
+    const bool     resized        = m_target.Resize(width, height);
+    if (resized && (previousWidth != m_target.GetView().width || previousHeight != m_target.GetView().height))
+    {
+        LOGI("Editor scene render extent: {}x{}", m_target.GetView().width, m_target.GetView().height);
+    }
+    return resized;
 }
 
 const rc::RenderView& EditorViewport::GetRenderView() const
@@ -319,6 +326,7 @@ EditorRenderSnapshot EditorViewport::GetSnapshot() const
                                                                      : "GI inactive"};
     snapshot.giSelectionReason = server.GetGISelectionReason();
     snapshot.preparingGI       = server.IsPreparingGI();
+    snapshot.refiningGI        = server.IsRefiningGI();
     snapshot.gpuTimingsEnabled = m_gpuTimingsEnabled;
     if (m_gpuTimingsEnabled)
     {

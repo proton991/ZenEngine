@@ -30,6 +30,9 @@ struct SceneData
     std::string          envTextureName;
     // Empty honors a glTF-authored environment, then envTextureName.
     std::string environmentOverride;
+    // Optional transfer from an unpublished LoadedScene. Raw-pointer callers keep copy semantics.
+    HeapVector<asset::Vertex>* ownedVertices{nullptr};
+    HeapVector<uint32_t>*      ownedIndices{nullptr};
     // other scene data
 };
 
@@ -331,7 +334,7 @@ private:
 
     HeapVector<asset::Vertex> m_bindVertices;
 
-    HeapVector<Vec4> m_uvCoordinates;
+    HeapVector<Vec2> m_uvCoordinates;
 
     FrameBufferRing m_vertexBuffers;
     FrameBufferRing m_uvBuffers;

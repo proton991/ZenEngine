@@ -5,7 +5,10 @@ Open action, and ZenApp's `.zenrender` `packagePath`. Runtime loading links the
 native Reader; it does not import the original glTF files. Keep the assembly and
 its relative `models/` directory together when moving them.
 
-Models are decoded sequentially. Their geometry, materials and textures are
+Models are decoded sequentially, largest geometry first, to reduce overlap between
+decoded source buffers and the growing destination. Each model's resources are
+composed in manifest order as soon as every earlier model is composed, preserving
+resource IDs, instance order and draw-order ties. Vertex/index offsets reflect the physical loading order. Geometry, materials and textures are
 appended once and shared by repeated instances. Placement roots retain authored
 transforms; the combined scene is normalized once. Composition remaps absolute
 indices, resource IDs, UV slots, skins, morphs, variants and animation targets.
@@ -19,8 +22,10 @@ while ZenApp's explicit setup camera overrides the initial pose. Assemblies do
 not select a camera or environment implicitly by model order. Saving assembly
 policies into a legacy single-model package is rejected instead of losing them.
 
-The asset processor submodule pins published commit `187e29e`, which includes
-the native assembly reader and image schema 3 changes. Processor development
+The asset processor submodule pins published commit `b1bc7c4`, which includes
+the native assembly reader, image schema 3, deferred image leases and direct mesh
+decoding, bounded external glTF image reads, and resource-write progress. See [preprocessing and memory](ScenePreprocessingAndMemory.md) for the
+current loading path and measurements. Processor development
 belongs in the standalone `E:\Dev\ZenAssetProcessor` repository; ZenEngine
 consumes its published commits through the submodule. Mipped images
 retain their base level once. Older image representations still load. Static

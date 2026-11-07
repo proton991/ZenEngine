@@ -1541,9 +1541,12 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     uint64_t        capacityBytes = 0;
     if (m_settings.deriveCapacities)
     {
-        const uint64_t share      = available == UINT64_MAX
+        const uint64_t headroom   = available == UINT64_MAX
                                       ? m_settings.scratchBudgetBytes
                                       : static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + reclaimable));
+        const uint64_t retained   = GetScratchBytes() - reclaimable;
+        const uint64_t remaining  = m_settings.scratchBudgetBytes > retained ? m_settings.scratchBudgetBytes - retained : 0;
+        const uint64_t share      = std::min(headroom, remaining);
         const uint64_t fixedBytes = (reuseGeometry ? 0 : geometryEstimate) + cellWorkspaceBytes + rangeEstimate;
         const uint64_t capacityBudget = share > fixedBytes ? share - fixedBytes : 0;
         const double   budget         = double(capacityBudget) - double(cells * sizeof(glm::uvec2));
@@ -1618,7 +1621,8 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     m_scratchBudget =
         !m_settings.deriveCapacities || available == UINT64_MAX
             ? m_settings.scratchBudgetBytes
-            : GetScratchBytes() + static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + released));
+            : std::min(m_settings.scratchBudgetBytes,
+                       GetScratchBytes() + static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + released)));
     const uint64_t coverageBytes = uint64_t(coverageSlots) * ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t);
     const uint64_t activeBytes   = ActiveEntries(cells, referenceCapacity) * sizeof(glm::uvec2);
     const uint64_t splitBytes    = SplitSlots(referenceCapacity) * ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t);
@@ -2380,6 +2384,28 @@ void DistanceFieldScene::OnRenderGraphExecuted(RenderFrameResult result)
     }
     m_recordedCycles = 0;
     m_recorded       = false;
+}
+
+void DistanceFieldScene::Suspend()
+{
+    // A recorded build or copy still owes its OnRenderGraphExecuted; the next idle frame retries.
+    if (!m_recorded && !m_copyRecorded)
+    {
+        if (m_pending && m_pending->local && m_buildingSlot >= 0)
+        {
+            m_slots[m_buildingSlot].queued = true;
+        }
+        if (m_local && m_copySlot >= 0)
+        {
+            m_slots[m_copySlot].queued = true;
+        }
+        Retire(m_pending);
+        Retire(m_local);
+        m_buildingSlot = -1;
+        m_copySlot     = -1;
+        RetireSharedInputs();
+        Poll();
+    }
 }
 
 bool DistanceFieldScene::BindTraceInputs(RDGPassDescBase& pass) const

@@ -34,7 +34,12 @@ target_include_directories(ZenEditorRender PUBLIC Rendering/Include)
 target_link_libraries(ZenEditorRender PUBLIC ZenEditorModel)
 
 # Transactions that span the model and render services, and the core actions.
-add_library(ZenEditorServices STATIC Services/Source/EditorController.cpp)
+add_library(ZenEditorServices STATIC Services/Source/EditorController.cpp Services/Source/AssetPreprocessor.cpp)
+if (NOT TARGET ZenAsset::Compiler)
+  message(FATAL_ERROR "ZenEditor preprocessing requires the ZenAsset Compiler component")
+endif ()
+target_compile_definitions(ZenEditorServices PRIVATE ZEN_ASSET_COMPILER_PATH="$<TARGET_FILE:ZenAsset::Compiler>")
+add_dependencies(ZenEditorServices ZenAsset::Compiler)
 target_include_directories(ZenEditorServices PUBLIC Services/Include)
 target_link_libraries(ZenEditorServices PUBLIC ZenEditorRender ZenAppRuntime)
 
@@ -71,6 +76,7 @@ add_library(ZenEditorUI STATIC
   ImGui/Source/SceneViewOverlays.cpp
   ImGui/Source/LightMoveWidget.cpp
   ImGui/Source/Panels/AssetsPanel.cpp
+  ImGui/Source/Panels/PreprocessPanel.cpp
   ImGui/Source/Panels/CameraSettingsPanel.cpp
   ImGui/Source/Panels/HierarchyPanel.cpp
   ImGui/Source/Panels/InspectorPanel.cpp
@@ -79,6 +85,7 @@ add_library(ZenEditorUI STATIC
   ImGui/Source/Panels/ScenePanel.cpp)
 target_include_directories(ZenEditorUI PUBLIC ImGui/Include PRIVATE ImGui/Source)
 FetchContent_GetProperties(zen_imgui SOURCE_DIR ZEN_EDITOR_IMGUI_SOURCE_DIR)
+target_sources(ZenEditorUI PRIVATE "${ZEN_EDITOR_IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp")
 target_compile_definitions(ZenEditorUI PRIVATE ZEN_EDITOR_FONT_PATH="${ZEN_EDITOR_IMGUI_SOURCE_DIR}/misc/fonts/Roboto-Medium.ttf")
 target_link_libraries(ZenEditorUI PUBLIC ZenEditorServices ZenEditorPlatform ZenImGui)
 

@@ -23,6 +23,7 @@ struct EditorRenderSnapshot
     std::string                    rayQueryReason;
     std::string                    giSelectionReason;
     bool                           preparingGI{false}; // RendererServer::IsPreparingGI.
+    bool                           refiningGI{false};  // Published field still has pending updates/local volumes.
     bool                           gpuTimingsEnabled{false};
     HeapVector<rc::RDGNodeMetrics> giPassTimings;
 };
@@ -52,7 +53,7 @@ public:
     // the per-scene resources. Rendering the current scene between prepare and commit is
     // allowed. A failed preparation/commit leaves it active; discard the pending scene
     // before releasing the candidate's CPU data.
-    bool PrepareScene(const LoadedScene& candidate, std::string& error);
+    bool PrepareScene(LoadedScene& candidate, std::string& error);
 
     bool CommitScene(std::string& error);
 

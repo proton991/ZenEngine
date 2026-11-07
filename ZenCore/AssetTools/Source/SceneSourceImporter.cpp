@@ -4,6 +4,7 @@
 #include "ProcessedSourceImport.h"
 #include "ZenAsset/Processor/Import.h"
 #include "ZenAsset/Processor/Cook.h"
+#include <algorithm>
 #include <memory>
 
 namespace zen::asset
@@ -96,6 +97,14 @@ ProcessedSourceResult ImportProcessedSource(const SceneImportRequest& request, c
     {
         sourceContext.workerCount = static_cast<uint32_t>(context.processing->GetSize());
     }
+    sourceContext.retainEncodedGltfImages =
+        !request.retainCanonicalAsset && !zenasset::HasProcessingOperations(request.processing);
+    if (sourceContext.retainEncodedGltfImages)
+    {
+        // Large source textures must not all become resident during a runtime open.
+        // Bound concurrent validation decodes as well as the retained image storage.
+        sourceContext.workerCount = sourceContext.workerCount == 0 ? 2u : std::min(sourceContext.workerCount, 2u);
+    }
     zenasset::SceneImportResult imported;
     zenasset::SceneCookResult   cooked;
     if (validation.Succeeded())
@@ -113,7 +122,8 @@ ProcessedSourceResult ImportProcessedSource(const SceneImportRequest& request, c
             cooked = zenasset::CookScene(imported.asset, options, &cancellation);
             if (cooked.status.Succeeded() && cooked.scene)
             {
-                result = AdaptProcessedScene(*cooked.scene, request.control.Get());
+                result = AdaptProcessedScene(*cooked.scene, request.control.Get(), 16ull * 1024 * 1024 * 1024,
+                                             request.retainCanonicalAsset ? nullptr : &output.runtimeOwner);
             }
             else
             {

@@ -63,8 +63,10 @@ SceneLoadResult LoadScene(const std::string& path, ThreadPool<void, uint32_t>* p
 
 SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, uint32_t>*)
 {
-    const SceneFormatDescriptor* format = FindSceneLoadFormat(request.path);
-    SceneImportResult            imported;
+    const SceneFormatDescriptor*               format = FindSceneLoadFormat(request.path);
+    SceneImportResult                          imported;
+    SharedPtr<SceneAsset, MultiThreadCounter>  runtimeOwner;
+    SharedPtr<SceneAsset, MultiThreadCounter>* handoff = request.retainCanonicalAsset ? nullptr : &runtimeOwner;
     if (request.control && request.control->IsCancelled())
     {
         SetSceneImportFailure(imported, SceneImportStatus::Cancelled, request.path, "Scene load cancelled");
@@ -75,8 +77,8 @@ SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, ui
     }
     else if (format != nullptr)
     {
-        imported = format->id == "zenscene" ? ReadSceneAssemblyAsset(request.path, {}, request.control.Get())
-                                            : ReadSceneAssetFile(request.path, {}, request.control.Get());
+        imported = format->id == "zenscene" ? ReadSceneAssemblyAsset(request.path, {}, request.control.Get(), handoff)
+                                            : ReadSceneAssetFile(request.path, {}, request.control.Get(), handoff);
     }
     else
     {
@@ -84,18 +86,29 @@ SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, ui
             imported, SceneImportStatus::UnsupportedFormat, request.path,
             "Runtime loading requires a .zenasset package or .zenscene assembly; source processing is available through AssetTools");
     }
-    return CompleteSceneLoad(request, std::move(imported), false);
+    return CompleteSceneLoad(request, std::move(imported), false, std::move(runtimeOwner));
 }
 
-SceneLoadResult CompleteSceneLoad(const SceneImportRequest& request, SceneImportResult imported, bool cacheHit)
+SceneLoadResult CompleteSceneLoad(const SceneImportRequest&                 request,
+                                  SceneImportResult                         imported,
+                                  bool                                      cacheHit,
+                                  SharedPtr<SceneAsset, MultiThreadCounter> runtimeOwner)
 {
     SceneLoadResult result;
     if (imported.asset)
     {
         // ImportScene and the internal reader validate before returning an asset.
-        result = BuildValidatedSceneRuntime(imported.asset, request.control.Get());
+        if (runtimeOwner)
+        {
+            imported.asset.Reset();
+            result = BuildConsumedSceneRuntime(std::move(runtimeOwner), request.control.Get());
+        }
+        else
+        {
+            result = BuildValidatedSceneRuntime(imported.asset, request.control.Get());
+        }
         // Failed and cancelled builds return neither a scene nor its asset.
-        if (result.scene)
+        if (result.scene && request.retainCanonicalAsset)
         {
             result.asset = std::move(imported.asset);
         }

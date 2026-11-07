@@ -177,7 +177,7 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
         }
         ImGui::TextWrapped(
             "Compute traces a GPU-built distance field for GI and uses shadow maps for direct shadows. HW RT uses the GPU's ray-tracing hardware. Per-pass choices below can override this.");
-        // The scene view reports Compute GI preparation (DrawGIPreparationStatus); its
+        // The scene view reports Compute GI preparation (GetGILightingStatus); its
         // provider reason says nothing about HW RT availability.
         if (!compute && std::strcmp(reason, "field_preparing") != 0)
         {
@@ -286,41 +286,20 @@ bool DrawGIGatherControls(rc::VoxelGISettings& settings)
     return changed;
 }
 
-const char* GetGIPreparationStatus(bool preparing, bool hardwareReady)
+const char* GetGILightingStatus(GILightingState state, bool hardwareReady)
 {
-    return !preparing    ? nullptr
-         : hardwareReady ? "Preparing Compute GI. HW RT stays active until it is ready."
-                         : "GI preview active. Refining lighting in the background.";
+    const char* text = nullptr;
+    switch (state)
+    {
+        case GILightingState::Preparing:
+            text = hardwareReady ? "GI active (HW RT). Preparing Compute GI..." : "Preparing GI...";
+            break;
+        case GILightingState::Refining: text = "GI active. Refining lighting..."; break;
+        case GILightingState::Ready: text = "GI ready"; break;
+        case GILightingState::Unavailable: text = "GI unavailable. Check Rendering for details."; break;
+        case GILightingState::Inactive: break;
+    }
+    return text;
 }
 
-bool DrawGIPreparationStatus(ImDrawList& draw,
-                             bool        preparing,
-                             bool        hardwareReady,
-                             ImVec2      viewMin,
-                             ImVec2      viewMax,
-                             float       rightInset)
-{
-    const char* text  = GetGIPreparationStatus(preparing, hardwareReady);
-    bool        drawn = text != nullptr;
-    if (drawn)
-    {
-        const float  font    = ImGui::GetFontSize();
-        const float  padding = font * 0.6f;
-        const float  margin  = font * 0.75f;
-        const float  wrap    = viewMax.x - viewMin.x - 2 * (rightInset + margin + padding);
-        const ImVec2 size    = ImGui::CalcTextSize(text, nullptr, false, std::max(wrap, 1.0f));
-        const ImVec2 start(viewMin.x + (viewMax.x - viewMin.x - size.x) * 0.5f - padding, viewMin.y + margin);
-        const ImVec2 end(start.x + size.x + 2 * padding, start.y + size.y + 2 * padding);
-        drawn = wrap >= font * 8 && end.y + margin <= viewMax.y;
-        if (drawn)
-        {
-            const float corner = font * 0.35f;
-            draw.AddRectFilled(start, end, ImGui::GetColorU32(ImGuiCol_WindowBg, 0.85f), corner);
-            draw.AddRect(start, end, ImGui::GetColorU32(ImGuiCol_Border), corner);
-            draw.AddText(ImGui::GetFont(), font, ImVec2(start.x + padding, start.y + padding),
-                         ImGui::GetColorU32(ImGuiCol_Text), text, nullptr, wrap);
-        }
-    }
-    return drawn;
-}
 } // namespace zen::ui

@@ -759,24 +759,21 @@ HeapVector<AABB> VoxelGIRenderer::BuildLocalFieldVolumes() const
 
 DistanceFieldSceneSettings VoxelGIRenderer::BuildFieldSettings() const
 {
-    // Every build, including local volumes and edits, favors GPU throughput over frame time: seconds
-    // of stutter are acceptable for the fewest batches. Job, reference and coverage capacities come
-    // from each generation's triangles and half of the free device memory, aiming at one batch per
-    // generation; each heavy phase dispatches all of its pending work at once. The triangle batch
-    // cap starts at 65,536 on a device's first build and then follows the 250 ms frame budget.
-    // Each cell can own one 8^3 brick. Reserve that full capacity so dense scenes cannot exhaust
-    // the atlas before construction finishes; the persistent allocation budget still applies.
+    // Construction shares the GPU with interactive rendering. Bound both temporary memory and
+    // graph size; the adaptive triangle quota targets a 16 ms frame instead of throughput stalls.
+    // Capacity changes only batching, never the final field resolution or coverage quality.
     DistanceFieldSceneSettings settings;
     settings.cellsPerAxis                      = m_settings.fieldResolution;
     settings.atlasTexelsPerAxis                = settings.cellsPerAxis * 8;
     settings.triangleBatchSize                 = 65536;
-    settings.maxCyclesPerFrame                 = 64;
-    settings.throughputFrameBudgetMicroseconds = 250000.0;
+    settings.maxCyclesPerFrame                 = 4;
+    settings.throughputFrameBudgetMicroseconds = 16000.0;
     settings.referencesPerCell                 = ZEN_FIELD_MAX_CELL_REFS;
     settings.deriveCapacities                  = true;
     // Two full 64^3 fields plus all 32 local slots and one temporary local build need about
     // 398 MiB. Keep the published field available during refresh; this cap does not preallocate.
     settings.persistentBudgetBytes = 512ull * 1024 * 1024;
+    settings.scratchBudgetBytes    = 1024ull * 1024 * 1024;
     return settings;
 }
 
@@ -785,16 +782,6 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
     bool ready = IsInitialized() && m_scene != nullptr;
     if (ready)
     {
-        if (!m_field || m_fieldResolution != m_settings.fieldResolution)
-        {
-            if (m_field)
-            {
-                m_field->Destroy();
-            }
-            m_field           = MakeUnique<DistanceFieldScene>(m_device, BuildFieldSettings());
-            m_fieldResolution = m_settings.fieldResolution;
-            ++m_fieldSerial;
-        }
         const bool     previousHardware = m_hardwareQueries;
         const uint32_t previousMask     = m_hardwareFeatureMask;
         const char*    previousReason   = m_providerReason;
@@ -805,16 +792,34 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
         m_hardwareQueries =
             (requestedMask != 0 || previousHardware)
             && m_rayQuery.BuildRenderGraph(*m_scene, uint64_t(m_settings.accelerationStructureBudgetMB) * 1024 * 1024);
-        m_hardwareFeatureMask = m_hardwareQueries ? requestedMask : 0;
-        // The field stays current whenever GI renders, also while HW RT traces every feature, so a
-        // switch to Compute needs no rebuild. Construction is bounded per frame and published only
-        // after its submissions complete.
-        m_field->SetLocalVolumes(BuildLocalFieldVolumes());
-        const DistanceFieldScene::State state = m_field->BuildRenderGraph(*m_scene);
-        m_fieldRecorded                       = true;
-        const bool compute                    = ComputeFeatureMask(m_hardwareFeatureMask) != 0;
-        m_fieldActive                         = compute && state == DistanceFieldScene::State::Ready;
-        m_preparingField                      = compute && state == DistanceFieldScene::State::Pending;
+        m_hardwareFeatureMask             = m_hardwareQueries ? requestedMask : 0;
+        const bool                compute = ComputeFeatureMask(m_hardwareFeatureMask) != 0;
+        DistanceFieldScene::State state   = DistanceFieldScene::State::Pending;
+        if (compute)
+        {
+            if (!m_field || m_fieldResolution != m_settings.fieldResolution)
+            {
+                if (m_field)
+                {
+                    m_field->Destroy();
+                }
+                m_field           = MakeUnique<DistanceFieldScene>(m_device, BuildFieldSettings());
+                m_fieldResolution = m_settings.fieldResolution;
+                ++m_fieldSerial;
+            }
+            m_field->SetLocalVolumes(BuildLocalFieldVolumes());
+            state           = m_field->BuildRenderGraph(*m_scene);
+            m_fieldRecorded = true;
+        }
+        else if (m_field)
+        {
+            // An unfinished build would otherwise hold its construction scratch while unused.
+            m_field->Suspend();
+        }
+        // Hardware-only frames do not build an unused field. Retain an existing published field
+        // for a warm switch; the Compute path refreshes it against committed edits when selected.
+        m_fieldActive    = compute && state == DistanceFieldScene::State::Ready;
+        m_preparingField = compute && state == DistanceFieldScene::State::Pending;
         if (compute && !m_fieldActive && m_hardwareQueries)
         {
             // HW RT traces every feature while the field is prepared, or after it failed.

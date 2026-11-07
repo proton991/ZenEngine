@@ -42,9 +42,12 @@ struct SceneAssetFileResult : SceneImportResult
 // Standalone CPU asset I/O. The reader never invokes a source importer or image
 // decoder. The writer replaces the destination only after a complete, flushed
 // temporary file has been closed successfully.
-SceneAssetFileResult ReadSceneAssetFile(const std::string&          path,
-                                        const SceneAssetReadLimits& limits  = {},
-                                        SceneImportControl*         control = nullptr);
+// runtimeOwner is an unpublished mutable handoff for the runtime loader. Drop
+// result.asset before consuming it; ordinary tools leave this null.
+SceneAssetFileResult ReadSceneAssetFile(const std::string&                         path,
+                                        const SceneAssetReadLimits&                limits       = {},
+                                        SceneImportControl*                        control      = nullptr,
+                                        SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner = nullptr);
 // Bounded metadata inspection for cache lookup. It does not validate payloads;
 // callers must use the full reader before accepting any runtime asset.
 SceneAssetFileResult ReadSceneAssetMetadata(const std::string& path, SceneImportControl* control = nullptr);

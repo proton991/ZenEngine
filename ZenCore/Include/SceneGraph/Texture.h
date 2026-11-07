@@ -15,6 +15,22 @@ public:
 
     Texture(std::string name) : Component(std::move(name)) {}
 
+    // A temporary view keeps an image lease alive only while pixels are consumed.
+    Texture(const Texture& source, SharedPtr<const asset::ImagePixels, MultiThreadCounter> resident) :
+        Component(source.GetName()),
+        pixels(std::move(resident)),
+        index(source.index),
+        linearSourceIndex(source.linearSourceIndex),
+        samplerIndex(source.samplerIndex),
+        width(source.width),
+        height(source.height),
+        format(source.format),
+        interpretation(source.interpretation),
+        arrayLayer(source.arrayLayer),
+        atlasRegion(source.atlasRegion),
+        flatNormal(source.flatNormal)
+    {}
+
     Texture(std::string name,
             // props
             uint32_t      index,

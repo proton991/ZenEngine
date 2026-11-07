@@ -11,7 +11,7 @@ layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer
 };
 layout(std430, set = 1, binding = 3) readonly buffer UVBuffer
 {
-    vec4 uvValues[];
+    vec2 uvValues[];
 };
 #else
 layout(std140, set = 6, binding = 3) readonly buffer MaterialBuffer
@@ -20,7 +20,7 @@ layout(std140, set = 6, binding = 3) readonly buffer MaterialBuffer
 };
 layout(std430, set = 6, binding = 4) readonly buffer UVBuffer
 {
-    vec4 uvValues[];
+    vec2 uvValues[];
 };
 #endif
 // A few ULPs cover surface transform arithmetic. No whole instance is ignored.

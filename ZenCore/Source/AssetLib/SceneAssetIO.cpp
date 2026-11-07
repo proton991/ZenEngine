@@ -289,7 +289,15 @@ template <class Archive> void Fields(Archive& ar, typename Archive::template Val
         }
         else
         {
-            ar(*v.pixels);
+            SharedPtr<const ImagePixels, MultiThreadCounter> resident;
+            if (ResolveImagePixels(v.pixels, resident))
+            {
+                ar(*resident);
+            }
+            else
+            {
+                ar.Fail(SceneImportStatus::IOError, "Failed to resolve image for serialization");
+            }
         }
     }
 }
@@ -1109,10 +1117,11 @@ uint32_t PackageVersion(const std::string& path)
     return version;
 }
 
-SceneAssetFileResult ReadPackageFile(const std::string&          path,
-                                     const SceneAssetReadLimits& limits,
-                                     SceneImportControl*         control,
-                                     bool                        metadataOnly)
+SceneAssetFileResult ReadPackageFile(const std::string&                         path,
+                                     const SceneAssetReadLimits&                limits,
+                                     SceneImportControl*                        control,
+                                     bool                                       metadataOnly,
+                                     SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner = nullptr)
 {
     SceneAssetFileResult result;
     if (control != nullptr && control->IsCancelled())
@@ -1127,22 +1136,27 @@ SceneAssetFileResult ReadPackageFile(const std::string&          path,
     else
     {
         result = PackageVersion(path) == zenasset::PackageSchemaVersion
-                   ? ReadProcessedSceneFile(path, limits, control, metadataOnly)
+                   ? ReadProcessedSceneFile(path, limits, control, metadataOnly, runtimeOwner)
                    : ReadAssetFile(path, limits, control, metadataOnly);
     }
     return result;
 }
 } // namespace
 
-SceneAssetFileResult ReadSceneAssetFile(const std::string&          path,
-                                        const SceneAssetReadLimits& limits,
-                                        SceneImportControl*         control)
+SceneAssetFileResult ReadSceneAssetFile(const std::string&                         path,
+                                        const SceneAssetReadLimits&                limits,
+                                        SceneImportControl*                        control,
+                                        SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
 {
+    if (runtimeOwner != nullptr)
+    {
+        runtimeOwner->Reset();
+    }
     if (control != nullptr)
     {
         control->SetFileProgress({0, 1, true});
     }
-    SceneAssetFileResult result = ReadPackageFile(path, limits, control, false);
+    SceneAssetFileResult result = ReadPackageFile(path, limits, control, false, runtimeOwner);
     if (control != nullptr && result.status == SceneImportStatus::Success && result.asset)
     {
         control->SetFileProgress({1, 1, true});

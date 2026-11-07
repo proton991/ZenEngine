@@ -171,6 +171,7 @@ public:
     // Opens the platform file picker without blocking the frame loop. Returns false when
     // the backend has no picker or a picker is already open.
     bool ShowOpenFileDialog(const FileDialogFilter& filter, const std::string& defaultFolder);
+    bool ShowOpenFolderDialog(const std::string& defaultFolder);
 
     // Returns true once per finished picker; an empty path means it was cancelled.
     bool TakeFileDialogResult(std::string& path);

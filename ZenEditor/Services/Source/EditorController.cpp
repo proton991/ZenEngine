@@ -84,6 +84,7 @@ bool EditorController::Init()
 
 void EditorController::Destroy()
 {
+    m_preprocessor.Cancel();
     m_playSession.Shutdown();
     CancelSceneLoad();
     m_sceneLoader.Reset();
@@ -502,6 +503,8 @@ bool EditorController::Load(const std::string& path)
 asset::SceneImportRequest EditorController::MakeLoadRequest(std::string path) const
 {
     asset::SceneImportRequest request{std::move(path)};
+    // Editor opens are runtime-only: the viewport consumes the geometry and leases images.
+    request.retainCanonicalAsset = false;
     ApplySceneProcessingSettings(m_sourceProcessing.draft, request);
     return request;
 }
@@ -764,8 +767,9 @@ bool EditorController::UpdateSceneLoad()
         }
         case SceneLoadStage::Reading:
         {
-            m_loadState.importStage  = m_loadControl->GetStage();
-            m_loadState.fileProgress = m_loadControl->GetFileProgress();
+            m_loadState.importStage   = m_loadControl->GetStage();
+            m_loadState.fileProgress  = m_loadControl->GetFileProgress();
+            m_loadState.cacheProgress = m_loadControl->GetCacheProgress();
             if (m_loadResult.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
                 asset::SceneLoadResult result = m_loadResult.get();

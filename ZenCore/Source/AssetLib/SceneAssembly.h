@@ -3,7 +3,8 @@
 
 namespace zen::asset
 {
-SceneImportResult ReadSceneAssemblyAsset(const std::string&          path,
-                                         const SceneAssetReadLimits& limits,
-                                         SceneImportControl*         control);
+SceneImportResult ReadSceneAssemblyAsset(const std::string&                         path,
+                                         const SceneAssetReadLimits&                limits,
+                                         SceneImportControl*                        control,
+                                         SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner = nullptr);
 }

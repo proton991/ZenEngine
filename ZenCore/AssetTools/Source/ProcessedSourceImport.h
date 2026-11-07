@@ -11,8 +11,9 @@ namespace zen::asset
 {
 struct ProcessedSourceResult
 {
-    SceneImportResult                      imported;
-    std::shared_ptr<const zenasset::Scene> processed;
+    SceneImportResult                         imported;
+    std::shared_ptr<const zenasset::Scene>    processed;
+    SharedPtr<SceneAsset, MultiThreadCounter> runtimeOwner;
 };
 // Apply source processing policy before either cache lookup or source parsing.
 zenasset::Status ValidateSourceProcessing(const SceneImportRequest& request);

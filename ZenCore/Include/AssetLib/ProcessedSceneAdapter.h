@@ -13,7 +13,10 @@ namespace zen::asset
 // image views and array-layer storage are supported. The GPU texture loader
 // exposes logical layers through texture-owned views of shared native pages.
 // The source may be released afterward.
+// runtimeOwner optionally retains a mutable handoff for exclusive runtime
+// construction; discard the immutable result before consuming its geometry.
 SceneImportResult AdaptProcessedScene(const zenasset::Scene&    source,
-                                      const SceneImportControl* control                 = nullptr,
-                                      uint64_t                  maxRuntimeGeometryBytes = 16ull * 1024 * 1024 * 1024);
+                                      const SceneImportControl* control                       = nullptr,
+                                      uint64_t                  maxRuntimeGeometryBytes       = 16ull * 1024 * 1024 * 1024,
+                                      SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner = nullptr);
 } // namespace zen::asset

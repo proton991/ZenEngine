@@ -15,6 +15,7 @@ UniquePtr<EditorPanel> CreateRenderSettingsPanel();
 UniquePtr<EditorPanel> CreateCameraSettingsPanel();
 
 UniquePtr<EditorPanel> CreateAssetsPanel();
+UniquePtr<EditorPanel> CreatePreprocessPanel();
 
 UniquePtr<EditorPanel> CreateOutputPanel();
 } // namespace zen::editor

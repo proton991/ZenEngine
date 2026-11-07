@@ -13,7 +13,8 @@ public:
     explicit SceneRendering(RenderDevice& device);
     void InitializeEnvironment(std::string defaultTexture, const EnvironmentSettings& environment);
     void Destroy();
-    bool PrepareScene(const asset::LoadedScene& candidate, sg::Camera& camera, std::string& error);
+    // Consumes candidate CPU geometry; failure discards the candidate GPU scene and preserves the active scene.
+    bool PrepareScene(asset::LoadedScene& candidate, sg::Camera& camera, std::string& error);
     bool CommitScene(std::string& error);
     void DiscardScene();
     bool SetEnvironmentTexture(const std::string& path, std::string& error);

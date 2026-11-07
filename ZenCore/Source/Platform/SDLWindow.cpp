@@ -104,6 +104,23 @@ FileDialogState& GetFileDialogState()
     return state;
 }
 
+bool BeginFileDialog(const NativeWindow* owner, const FileDialogFilter* filter)
+{
+    FileDialogState&                  state = GetFileDialogState();
+    const std::lock_guard<std::mutex> lock(state.mutex);
+    const bool                        started = !state.open;
+    if (started)
+    {
+        state.open     = true;
+        state.finished = false;
+        state.owner    = owner;
+        state.name     = filter != nullptr ? filter->name : "";
+        state.pattern  = filter != nullptr ? filter->pattern : "";
+        state.filter   = {state.name.c_str(), state.pattern.c_str()};
+    }
+    return started;
+}
+
 void SDLCALL OnFileDialog(void* userdata, const char* const* files, int)
 {
     FileDialogState& state = *static_cast<FileDialogState*>(userdata);
@@ -399,28 +416,7 @@ bool NativeWindow::ShowOpenFileDialog(const FileDialogFilter& filter, const std:
 
     FileDialogState& state = GetFileDialogState();
 
-    bool started           = false;
-
-    {
-        const std::lock_guard<std::mutex> lock(state.mutex);
-
-        started = !state.open;
-
-        if (started)
-        {
-            state.open     = true;
-
-            state.finished = false;
-
-            state.owner    = this;
-
-            state.name     = filter.name;
-
-            state.pattern  = filter.pattern;
-
-            state.filter   = {state.name.c_str(), state.pattern.c_str()};
-        }
-    }
+    const bool started     = BeginFileDialog(this, &filter);
 
     // The callback may run before this call returns, so the lock is not held here.
     if (started)
@@ -429,6 +425,18 @@ bool NativeWindow::ShowOpenFileDialog(const FileDialogFilter& filter, const std:
                                defaultFolder.empty() ? nullptr : defaultFolder.c_str(), false);
     }
 
+    return started;
+}
+
+bool NativeWindow::ShowOpenFolderDialog(const std::string& defaultFolder)
+{
+    SDL_Window* window  = WindowBackend::Borrow(*this);
+    const bool  started = BeginFileDialog(this, nullptr);
+    if (started)
+    {
+        SDL_ShowOpenFolderDialog(&OnFileDialog, &GetFileDialogState(), window,
+                                 defaultFolder.empty() ? nullptr : defaultFolder.c_str(), false);
+    }
     return started;
 }
 

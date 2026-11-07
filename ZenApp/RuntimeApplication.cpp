@@ -12,6 +12,7 @@
 #include <fstream>
 #include <algorithm>
 #include <iomanip>
+#include <chrono>
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
 #    include "ZenApp/RuntimeOverlay.h"
 #endif
@@ -181,10 +182,11 @@ private:
         if (valid)
         {
             asset::SceneImportRequest request{m_setup.packagePath};
-            asset::SceneLoadResult    loaded = asset::LoadScene(request);
-            m_error                          = loaded.error;
-            m_loaded                         = std::move(loaded.scene);
-            valid                            = m_loaded && m_loaded->scene->GetRenderableCount() > 0;
+            request.retainCanonicalAsset  = false;
+            asset::SceneLoadResult loaded = asset::LoadScene(request);
+            m_error                       = loaded.error;
+            m_loaded                      = std::move(loaded.scene);
+            valid                         = m_loaded && m_loaded->scene->GetRenderableCount() > 0;
             if (valid)
             {
                 LOGI("ZenApp scene: vertices={}, indices={}, renderable_nodes={}, submitted_lights={}",
@@ -280,8 +282,9 @@ private:
 
     bool Frame()
     {
-        const uint64_t     previousFrame = GetSceneFrame();
-        rc::RenderOverlay* overlay       = nullptr;
+        const std::chrono::steady_clock::time_point frameStart    = std::chrono::steady_clock::now();
+        const uint64_t                              previousFrame = GetSceneFrame();
+        rc::RenderOverlay*                          overlay       = nullptr;
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
@@ -298,10 +301,17 @@ private:
             m_lastSceneCulling = culling;
             if (!m_options.profile.empty())
             {
+                const rc::RendererServer& server = *m_device->GetRendererServer();
+                const RHIGPUMemoryStats   memory = m_device->GetGPUMemoryStats();
+                const double              frameMilliseconds =
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count();
                 m_profile << "scene_frame=" << GetSceneFrame() << " gpu_culling_requested=" << m_options.gpuCulling
                           << " gpu_culling_path=" << rc::SceneCullingStatusName(culling.status)
                           << " candidates=" << culling.candidateCount << " uploaded_bytes=" << culling.uploadedBytes
-                          << " fallback=" << std::quoted(rc::SceneCullingFallbackReason(culling.status)) << '\n';
+                          << " fallback=" << std::quoted(rc::SceneCullingFallbackReason(culling.status))
+                          << " frame_cpu_ms=" << frameMilliseconds << " gi_preparing=" << server.IsPreparingGI()
+                          << " gi_refining=" << server.IsRefiningGI() << " gpu_allocated_bytes=" << memory.deviceLocalBytes
+                          << " gpu_peak_allocated_bytes=" << memory.peakDeviceLocalBytes << '\n';
             }
             if (GetSceneFrame() == 1)
             {

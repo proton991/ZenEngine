@@ -444,6 +444,24 @@ public:
                     m_fileDialog = FileDialogTarget::Environment;
                 }
             }
+            else if (m_controller->GetPreprocessor().browseRequested)
+            {
+                m_controller->GetPreprocessor().browseRequested = false;
+                if (m_window->ShowOpenFileDialog({"Source models", "gltf;glb;fbx;obj"},
+                                                 GetDialogFolder(m_controller->GetPreferences().recentFiles)))
+                {
+                    m_fileDialog = FileDialogTarget::Preprocess;
+                }
+            }
+            else if (m_controller->GetPreprocessor().browseOutputRequested)
+            {
+                AssetPreprocessor& build    = m_controller->GetPreprocessor();
+                build.browseOutputRequested = false;
+                if (m_window->ShowOpenFolderDialog(build.outputDirectory))
+                {
+                    m_fileDialog = FileDialogTarget::PreprocessOutput;
+                }
+            }
         }
 
         std::string path;
@@ -459,6 +477,14 @@ public:
                 else if (m_fileDialog == FileDialogTarget::Scene)
                 {
                     m_controller->RequestLoad(path);
+                }
+                else if (m_fileDialog == FileDialogTarget::Preprocess)
+                {
+                    m_controller->GetPreprocessor().AddSource(path);
+                }
+                else if (m_fileDialog == FileDialogTarget::PreprocessOutput)
+                {
+                    m_controller->GetPreprocessor().outputDirectory = path;
                 }
             }
 
@@ -541,6 +567,7 @@ public:
         }
 
         ProcessFileDialog();
+        m_controller->GetPreprocessor().Poll();
 
         if (!m_exitRequested && valid)
         {
@@ -785,6 +812,8 @@ private:
     {
         None,
         Scene,
+        Preprocess,
+        PreprocessOutput,
         Environment
     };
 

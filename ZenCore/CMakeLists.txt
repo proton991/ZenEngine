@@ -171,6 +171,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/DebugVisualization.cpp
     Source/Graphics/RenderCore/V2/RenderingSettings.cpp
     Source/AssetLib/TextureLoader.cpp
+    Source/AssetLib/ImageAsset.cpp
     Source/AssetLib/SurfaceGeometry.cpp
     Source/AssetLib/SceneRuntimeBuilder.cpp
     Source/AssetLib/ProcessedSceneAdapter.cpp
@@ -299,6 +300,7 @@ target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
 # engine refactor can update it without a ZenTest change.
 add_library(ZenRenderCoreTestSources INTERFACE)
 target_sources(ZenRenderCoreTestSources INTERFACE
+    Source/AssetLib/ImageAsset.cpp
     Source/Graphics/RenderCore/V2/DebugVisualization.cpp
     Source/Memory/Memory.cpp
     Source/Graphics/RHI/DynamicRHI.cpp

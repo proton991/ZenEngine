@@ -42,6 +42,7 @@ struct SamplerAsset : SamplerParameters
 
 // Pixel storage is immutable after processing and shared by runtime instances.
 // View format and sampling are separate, so one image can serve color/data roles.
+class ImagePayloadSource;
 struct ImagePixels
 {
     uint32_t width{0};
@@ -53,7 +54,21 @@ struct ImagePixels
     HeapVector<HeapVector<uint8_t>> mips;
     // Each explicit mip stores complete consecutive layers. Arrays require mips.
     uint32_t arrayLayers{1};
+    // Native packages retain descriptors, not decoded CPU pixels. Acquire a
+    // temporary resident lease for uploads, export or editor previews.
+    SharedPtr<const ImagePayloadSource, MultiThreadCounter> payloadSource;
 };
+
+class ImagePayloadSource
+{
+public:
+    virtual ~ImagePayloadSource()                                                                         = default;
+    virtual bool Read(SharedPtr<const ImagePixels, MultiThreadCounter>& pixels, std::string& error) const = 0;
+};
+
+bool ResolveImagePixels(const SharedPtr<const ImagePixels, MultiThreadCounter>& pixels,
+                        SharedPtr<const ImagePixels, MultiThreadCounter>&       resolved,
+                        std::string*                                            error = nullptr);
 
 inline const HeapVector<uint8_t>& GetImageBaseBytes(const ImagePixels& pixels)
 {

@@ -71,7 +71,7 @@ struct DistanceFieldSceneSettings
     // Size each workspace from its generation's triangles and the device's free memory instead of
     // the fixed capacities above, which become floors: jobs, references and coverage slots aim to
     // take every selected triangle in one batch, and scale down together to fit deviceMemoryShare
-    // of the free device-local memory, which replaces scratchBudgetBytes.
+    // of the free device-local memory, capped by scratchBudgetBytes.
     bool   deriveCapacities{false};
     double deviceMemoryShare{0.5};
     float  hitTolerance{0.25f / 7.0f}; // Brick units; requires scene/feature qualification.
@@ -138,7 +138,11 @@ public:
     // recorded graph requires the callback.
     State BuildRenderGraph(RenderScene& scene);
     void  OnRenderGraphExecuted(RenderFrameResult result);
-    bool  BindTraceInputs(RDGPassDescBase& pass) const;
+    // Call on frames that do not build the field, outside a recorded build. Drops any scene or
+    // local build in flight and frees construction scratch once its submitted GPU work retires.
+    // The published field and local volumes stay available; BuildRenderGraph restarts dropped work.
+    void Suspend();
+    bool BindTraceInputs(RDGPassDescBase& pass) const;
     // Whether the published generation matches the scene's committed geometry, with no stale region.
     bool IsCurrent(const RenderScene& scene) const;
     // Stale regions of the published generation, refreshed by BuildRenderGraph.

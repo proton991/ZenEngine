@@ -31,7 +31,8 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     m_sceneUnitScale = m_pScene->GetAssetData().unitScale;
 
-    m_vertices       = HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
+    m_vertices = sceneData.ownedVertices != nullptr ? std::move(*sceneData.ownedVertices)
+                                                    : HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
 
     // Static scenes already supply their final vertices. Retaining another bind
     // copy and reapplying an empty deformation list duplicates large assemblies.
@@ -53,7 +54,8 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
         m_importedLightIds.push_back(m_lights.Add(light));
     }
 
-    m_indices = HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
+    m_indices = sceneData.ownedIndices != nullptr ? std::move(*sceneData.ownedIndices)
+                                                  : HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
 
     BuildMeshVertexIndices();
 
@@ -83,15 +85,15 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
         uvStride = std::max(uvStride, sets.size());
     }
 
-    m_uvCoordinates      = HeapVector<Vec4>(1 + m_vertices.size() * uvStride, Vec4(0));
+    m_uvCoordinates      = HeapVector<Vec2>(1 + m_vertices.size() * uvStride, Vec2(0));
 
     m_uvCoordinates[0].x = static_cast<float>(uvStride);
 
     for (size_t vertex = 0; vertex < m_vertices.size(); ++vertex)
     {
-        m_uvCoordinates[1 + vertex * uvStride] = Vec4(m_vertices[vertex].uv0, 0, 0);
+        m_uvCoordinates[1 + vertex * uvStride] = m_vertices[vertex].uv0;
 
-        m_uvCoordinates[2 + vertex * uvStride] = Vec4(m_vertices[vertex].uv1, 0, 0);
+        m_uvCoordinates[2 + vertex * uvStride] = m_vertices[vertex].uv1;
 
         if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
         {
@@ -99,12 +101,12 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
             for (size_t set = 0; set < sets.size(); ++set)
             {
-                m_uvCoordinates[1 + vertex * uvStride + set] = Vec4(sets[set], 0, 0);
+                m_uvCoordinates[1 + vertex * uvStride + set] = sets[set];
             }
         }
     }
 
-    m_uvBuffers.Update(*m_pRenderDevice, m_uvCoordinates.data(), static_cast<uint32_t>(sizeof(Vec4) * m_uvCoordinates.size()),
+    m_uvBuffers.Update(*m_pRenderDevice, m_uvCoordinates.data(), static_cast<uint32_t>(sizeof(Vec2) * m_uvCoordinates.size()),
                        "scene_uv_coordinates");
 
     m_nodesData.reserve(m_pScene->GetRenderableCount());
@@ -583,11 +585,11 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
 
                     if (offset < m_uvCoordinates.size() && Vec2(m_uvCoordinates[offset]) != coordinates[vertex][set])
                     {
-                        m_uvCoordinates[offset]       = Vec4(coordinates[vertex][set], 0, 0);
+                        m_uvCoordinates[offset]       = coordinates[vertex][set];
 
                         m_dirtyShadowVertices[vertex] = 1;
 
-                        m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec4)), sizeof(Vec4));
+                        m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec2)), sizeof(Vec2));
 
                         m_verticesDirty        = true;
 

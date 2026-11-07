@@ -294,6 +294,11 @@ bool NativeWindow::TakeFileDialogResult(std::string&)
 
     return false;
 }
+bool NativeWindow::ShowOpenFolderDialog(const std::string&)
+{
+    CheckThreadOwnership();
+    return false;
+}
 bool NativeWindow::IsFocused() const
 {
     return glfwGetWindowAttrib(WindowBackend::Borrow(*this), GLFW_FOCUSED) == GLFW_TRUE;

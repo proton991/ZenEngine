@@ -68,6 +68,12 @@ struct SceneImportFileProgress
     bool     totalKnown{false};
 };
 
+struct SceneImportCacheProgress
+{
+    uint64_t completedResources{0};
+    uint64_t totalResources{0};
+};
+
 // One control per request. Cancellation is cooperative between stages and jobs;
 // a source parser or image codec already executing must finish before teardown.
 class SceneImportControl
@@ -105,11 +111,24 @@ public:
         m_fileProgress = progress;
     }
 
+    SceneImportCacheProgress GetCacheProgress() const
+    {
+        const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
+        return m_cacheProgress;
+    }
+
+    void SetCacheProgress(SceneImportCacheProgress progress)
+    {
+        const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
+        m_cacheProgress = progress;
+    }
+
 private:
     std::atomic<bool>             m_cancelled{false};
     std::atomic<SceneImportStage> m_stage{SceneImportStage::Queued};
     mutable std::mutex            m_fileProgressMutex;
     SceneImportFileProgress       m_fileProgress;
+    SceneImportCacheProgress      m_cacheProgress;
 };
 
 struct SceneImportSettings
@@ -143,9 +162,13 @@ struct SceneImportRequest
     zenasset::ProcessingSettings processing;
     std::string                  profile{"reference"};
     // Source tools bypass a cache hit and await this job's atomic publication.
-    // Normal opens keep background publication. This scheduling intent is not
+    // Canonical tool opens keep background publication. Runtime-only opens await
+    // publication and reload deferred images before publishing the scene. This intent is not
     // part of content identity. Cancellation after publication cannot undo it.
     bool forceRecook{false};
+    // Native runtime hosts can transfer geometry instead of keeping a second
+    // canonical asset. Tools retain the historical owning result by default.
+    bool retainCanonicalAsset{true};
 };
 
 struct SceneImportContext

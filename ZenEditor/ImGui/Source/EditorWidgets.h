@@ -24,7 +24,7 @@ std::string GetInspectionTargetName(const EditorScene& scene, InspectionTarget t
 
 // Reserves extent and draws one line of text vertically centered in it, clipped at its
 // right edge. Hovering clipped text shows all of it, also in disabled sections.
-void DrawClippedText(const char* text, ImVec2 extent, ImU32 color);
+void DrawClippedText(const char* text, ImVec2 extent, ImU32 color, bool rightAligned = false);
 
 // Starts a property row: the label in a left column and the next widget filling the
 // rest, or the label above the widget in narrow panels. Returns the widget's label,

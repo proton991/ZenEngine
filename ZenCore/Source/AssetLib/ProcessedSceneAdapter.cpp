@@ -1,5 +1,6 @@
 #include "AssetLib/ProcessedSceneAdapter.h"
 #include "ProcessedAnimationAdapter.h"
+#include "ProcessedSceneIO.h"
 #include "ZenAsset/Format/Scene.h"
 #include <algorithm>
 #include <type_traits>
@@ -8,6 +9,56 @@ namespace zen::asset
 {
 namespace
 {
+class ProcessedImageSource final : public ImagePayloadSource
+{
+public:
+    ProcessedImageSource(std::shared_ptr<const zenasset::ImagePixels> pixels, Format format) :
+        m_pixels(std::move(pixels)), m_format(format)
+    {}
+
+    bool Read(SharedPtr<const ImagePixels, MultiThreadCounter>& pixels, std::string& error) const override
+    {
+        std::shared_ptr<const zenasset::ImagePixels> native;
+        const zenasset::Status                       status = zenasset::ResolveImagePixels(m_pixels, native);
+        pixels.Reset();
+        error = status.message;
+        if (status.Succeeded())
+        {
+            // A lease nobody else holds is released level by level as it is copied, so CPU memory
+            // peaks near one image plus its largest level instead of two whole images.
+            const std::shared_ptr<zenasset::ImagePixels> exclusive =
+                native.use_count() == 1 ? std::const_pointer_cast<zenasset::ImagePixels>(native) : nullptr;
+            SharedPtr<ImagePixels, MultiThreadCounter> resident = MakeShared<ImagePixels, MultiThreadCounter>();
+            resident->width                                     = native->width;
+            resident->height                                    = native->height;
+            resident->format                                    = m_format;
+            resident->arrayLayers                               = native->arrayLayers;
+            CopyLevel(resident->bytes, exclusive ? &exclusive->bytes : nullptr, native->bytes);
+            resident->mips.resize(native->mips.size());
+            for (size_t level = 0; level < native->mips.size(); ++level)
+            {
+                CopyLevel(resident->mips[level], exclusive ? &exclusive->mips[level] : nullptr, native->mips[level]);
+            }
+            pixels = std::move(resident);
+        }
+        return status.Succeeded();
+    }
+
+private:
+    static void CopyLevel(HeapVector<uint8_t>& target, std::vector<uint8_t>* release, const std::vector<uint8_t>& source)
+    {
+        target.resize_for_overwrite(source.size());
+        std::copy(source.begin(), source.end(), target.begin());
+        if (release != nullptr)
+        {
+            std::vector<uint8_t>().swap(*release);
+        }
+    }
+
+    std::shared_ptr<const zenasset::ImagePixels> m_pixels;
+    Format                                       m_format;
+};
+
 class SceneAdapter
 {
 public:
@@ -17,8 +68,9 @@ public:
         m_result.status = SceneImportStatus::Success;
     }
 
-    void Run(uint64_t maxRuntimeGeometryBytes)
+    void Run(uint64_t maxRuntimeGeometryBytes, SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner, bool geometry = true)
     {
+        m_geometry = geometry;
         if (Active())
         {
             CheckImages();
@@ -27,7 +79,7 @@ public:
         {
             SharedPtr<SceneAsset, MultiThreadCounter> asset = MakeShared<SceneAsset, MultiThreadCounter>();
             Copy(*asset, m_source);
-            if (Active())
+            if (Active() && m_geometry)
             {
                 std::string failure;
                 if (!ValidateSceneAsset(*asset, maxRuntimeGeometryBytes, &failure))
@@ -37,6 +89,10 @@ public:
             }
             if (Active())
             {
+                if (runtimeOwner != nullptr)
+                {
+                    *runtimeOwner = asset;
+                }
                 m_result.asset = std::move(asset);
             }
         }
@@ -217,6 +273,10 @@ private:
         {
             SharedPtr<ImagePixels, MultiThreadCounter> pixels = MakeShared<ImagePixels, MultiThreadCounter>();
             Copy(*pixels, *source.pixels);
+            if (source.pixels->payloadSource)
+            {
+                pixels->payloadSource = MakeShared<ProcessedImageSource, MultiThreadCounter>(source.pixels, pixels->format);
+            }
             if (Active())
             {
                 target.pixels = std::move(pixels);
@@ -448,14 +508,7 @@ private:
 
     void Copy(Vertex& target, const zenasset::Vertex& source)
     {
-        Copy(target.pos, source.pos);
-        Copy(target.normal, source.normal);
-        Copy(target.tangent, source.tangent);
-        Copy(target.uv0, source.uv0);
-        Copy(target.uv1, source.uv1);
-        Copy(target.joint0, source.joint0);
-        Copy(target.weight0, source.weight0);
-        Copy(target.color, source.color);
+        target = AdaptProcessedVertex(source);
     }
 
     void Copy(CameraParameters& target, const zenasset::CameraParameters& source)
@@ -648,9 +701,12 @@ private:
         Copy(target.nodes, source.nodes);
         Copy(target.roots, source.roots);
         Copy(target.meshes, source.meshes);
-        Copy(target.vertices, source.vertices);
-        Copy(target.indices, source.indices);
-        Copy(target.vertexTexCoords, source.vertexTexCoords);
+        if (m_geometry)
+        {
+            Copy(target.vertices, source.vertices);
+            Copy(target.indices, source.indices);
+            Copy(target.vertexTexCoords, source.vertexTexCoords);
+        }
         Copy(target.vertexTexCoordSets, source.vertexTexCoordSets);
         Copy(target.materials, source.materials);
         Copy(target.images, source.images);
@@ -866,16 +922,44 @@ private:
     const zenasset::Scene&    m_source;
     const SceneImportControl* m_control;
     SceneImportResult&        m_result;
+    bool                      m_geometry{true};
 };
 } // namespace
 
-SceneImportResult AdaptProcessedScene(const zenasset::Scene&    source,
-                                      const SceneImportControl* control,
-                                      uint64_t                  maxRuntimeGeometryBytes)
+Vertex AdaptProcessedVertex(const zenasset::Vertex& source)
+{
+    Vertex target;
+    target.pos     = Vec4(source.pos.x, source.pos.y, source.pos.z, source.pos.w);
+    target.normal  = Vec4(source.normal.x, source.normal.y, source.normal.z, source.normal.w);
+    target.tangent = Vec4(source.tangent.x, source.tangent.y, source.tangent.z, source.tangent.w);
+    target.uv0     = Vec2(source.uv0.x, source.uv0.y);
+    target.uv1     = Vec2(source.uv1.x, source.uv1.y);
+    target.joint0  = Vec4(source.joint0.x, source.joint0.y, source.joint0.z, source.joint0.w);
+    target.weight0 = Vec4(source.weight0.x, source.weight0.y, source.weight0.z, source.weight0.w);
+    target.color   = Vec4(source.color.x, source.color.y, source.color.z, source.color.w);
+    return target;
+}
+
+SceneImportResult AdaptProcessedSceneResources(const zenasset::Scene& source, const SceneImportControl* control)
 {
     SceneImportResult result;
     SceneAdapter      adapter(source, control, result);
-    adapter.Run(maxRuntimeGeometryBytes);
+    adapter.Run(0, nullptr, false);
+    return result;
+}
+
+SceneImportResult AdaptProcessedScene(const zenasset::Scene&                     source,
+                                      const SceneImportControl*                  control,
+                                      uint64_t                                   maxRuntimeGeometryBytes,
+                                      SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
+{
+    SceneImportResult result;
+    SceneAdapter      adapter(source, control, result);
+    if (runtimeOwner != nullptr)
+    {
+        runtimeOwner->Reset();
+    }
+    adapter.Run(maxRuntimeGeometryBytes, runtimeOwner);
     return result;
 }
 

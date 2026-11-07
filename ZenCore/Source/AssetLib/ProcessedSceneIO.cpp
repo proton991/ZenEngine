@@ -142,10 +142,11 @@ SceneAssetFileMetadata AdaptProcessedMetadata(const zenasset::BuildMetadata& sou
     return ConvertMetadata<SceneAssetFileMetadata>(source);
 }
 
-SceneAssetFileResult ReadProcessedSceneFile(const std::string&          path,
-                                            const SceneAssetReadLimits& limits,
-                                            SceneImportControl*         control,
-                                            bool                        metadataOnly)
+SceneAssetFileResult ReadProcessedSceneFile(const std::string&                         path,
+                                            const SceneAssetReadLimits&                limits,
+                                            SceneImportControl*                        control,
+                                            bool                                       metadataOnly,
+                                            SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
 {
     SceneAssetFileResult            result;
     const zenasset::Cancellation    cancellation(&ProcessedOperationCancelled, control);
@@ -164,12 +165,12 @@ SceneAssetFileResult ReadProcessedSceneFile(const std::string&          path,
     }
     else
     {
-        const zenasset::SceneReadResult loaded = zenasset::ReadScene(path, readLimits, &cancellation);
+        const zenasset::SceneReadResult loaded = zenasset::ReadSceneDeferredImages(path, readLimits, &cancellation);
         status                                 = loaded.status;
         if (status.Succeeded() && loaded.scene)
         {
             static_cast<SceneImportResult&>(result) =
-                AdaptProcessedScene(*loaded.scene, control, limits.maxRuntimeGeometryBytes);
+                AdaptProcessedScene(*loaded.scene, control, limits.maxRuntimeGeometryBytes, runtimeOwner);
             result.metadata = AdaptProcessedMetadata(loaded.metadata);
         }
         else if (status.Succeeded())

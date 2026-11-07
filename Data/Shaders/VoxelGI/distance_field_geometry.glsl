@@ -17,7 +17,7 @@ layout(std140, set = 6, binding = 3) readonly buffer MaterialBuffer
 };
 layout(std430, set = 6, binding = 4) readonly buffer UVBuffer
 {
-    vec4 uvValues[];
+    vec2 uvValues[];
 };
 
 void FieldTriangleVertices(uint triangle, out vec3 alpha, out vec3 a, out vec3 b, out vec3 c)

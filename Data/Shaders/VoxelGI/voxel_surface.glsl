@@ -9,7 +9,7 @@ vec2 inBindingUV[22];
 #include "voxel_geometry.glsl"
 layout(std430, set = VOXEL_GEOMETRY_SET, binding = 5) readonly buffer UVBuffer
 {
-    vec4 uvValues[];
+    vec2 uvValues[];
 };
 layout(std140, set = 3, binding = 3) readonly buffer MaterialBuffer
 {

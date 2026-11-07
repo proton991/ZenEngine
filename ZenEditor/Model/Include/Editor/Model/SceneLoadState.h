@@ -20,12 +20,13 @@ enum class SceneLoadStage
 // counts distinct input files, independently of cooking and graphics preparation.
 struct SceneLoadState
 {
-    SceneLoadStage                 stage{SceneLoadStage::Idle};
-    std::string                    path;
-    asset::SceneImportStage        importStage{asset::SceneImportStage::Queued};
-    bool                           cancelRequested{false};
-    bool                           recook{false};
-    asset::SceneImportFileProgress fileProgress;
+    SceneLoadStage                  stage{SceneLoadStage::Idle};
+    std::string                     path;
+    asset::SceneImportStage         importStage{asset::SceneImportStage::Queued};
+    bool                            cancelRequested{false};
+    bool                            recook{false};
+    asset::SceneImportFileProgress  fileProgress;
+    asset::SceneImportCacheProgress cacheProgress;
 
     bool IsActive() const
     {

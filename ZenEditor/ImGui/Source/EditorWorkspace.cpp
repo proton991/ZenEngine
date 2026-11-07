@@ -180,6 +180,8 @@ void EditorWorkspace::Initialize(EditorContext& context)
     }
 
     context.editor.GetActions().Register({actions::ResetLayout, "Reset Layout", {}, "", nullptr, [this]() { ResetLayout(); }});
+    context.editor.GetActions().Register(
+        {actions::Preprocess, "Preprocess Models...", {}, "", nullptr, [this]() { SetPanelVisible("Preprocess", true); }});
 
     std::error_code error;
 
@@ -364,7 +366,8 @@ void EditorWorkspace::UpdateNativeMenus(EditorContext& context)
         file.label    = "File";
 
         file.children = {MakeActionMenuItem(registry, actions::Open, blocked), std::move(recent), separator,
-                         MakeActionMenuItem(registry, actions::Save, blocked)};
+                         MakeActionMenuItem(registry, actions::Save, blocked),
+                         MakeActionMenuItem(registry, actions::Preprocess, blocked)};
 
         EditorMenuItem edit;
 
@@ -540,6 +543,7 @@ void EditorWorkspace::DrawMenus(EditorContext& context)
                 ImGui::Separator();
 
                 DrawActionMenuItem(registry, actions::Save);
+                DrawActionMenuItem(registry, actions::Preprocess);
 
                 ImGui::Separator();
 

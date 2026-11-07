@@ -57,7 +57,7 @@ std::string RenderScene::GetResourceError(const RHIGPUInfo& gpu, const sg::Scene
     const BufferSize buffers[] = {
         {"vertices", std::max(vertices, uint64_t(1)), sizeof(asset::Vertex), false},
         {"indices", std::max(indices, uint64_t(1)), sizeof(uint32_t), false},
-        {"texture coordinates", uvCount, sizeof(Vec4), true},
+        {"texture coordinates", uvCount, sizeof(Vec2), true},
         {"nodes", std::max(uint64_t(scene.GetRenderableCount()), uint64_t(1)), sizeof(sg::NodeData), true},
         {"materials", std::max(uint64_t(scene.GetComponents<sg::Material>().size()), uint64_t(1)), sizeof(sg::MaterialData),
          true},

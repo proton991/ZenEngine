@@ -70,9 +70,11 @@ SceneLoadResult LoadSourceScene(const SceneImportRequest& request, ThreadPool<vo
     }
     else
     {
-        bool              cacheHit = false;
-        SceneImportResult imported = ImportSceneWithCache(request, SceneImportContext{processing}, cacheHit);
-        result                     = CompleteSceneLoad(request, std::move(imported), cacheHit);
+        bool                                      cacheHit = false;
+        SharedPtr<SceneAsset, MultiThreadCounter> runtimeOwner;
+        SceneImportResult imported = ImportSceneWithCache(request, SceneImportContext{processing}, cacheHit,
+                                                          request.retainCanonicalAsset ? nullptr : &runtimeOwner);
+        result                     = CompleteSceneLoad(request, std::move(imported), cacheHit, std::move(runtimeOwner));
     }
     return result;
 }

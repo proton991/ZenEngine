@@ -205,8 +205,17 @@ zenasset::Status BeforeCachePublication(void* user)
     return CheckPublicationInputs(*inputs.metadata, *inputs.control, false);
 }
 
-// Normal opens publish after loading. Explicit recooks await only their own
-// publication on the source worker. Shutdown cancels pending writes.
+// Canonical tool opens publish after loading. Runtime loads and explicit recooks
+// await only their own publication. Shutdown cancels pending writes.
+void TrackCacheResources(void* user, uint64_t completed, uint64_t total)
+{
+    SceneImportControl* control = static_cast<SceneImportControl*>(user);
+    if (control != nullptr)
+    {
+        control->SetCacheProgress({completed, total});
+    }
+}
+
 class CacheWriter
 {
 public:
@@ -242,8 +251,9 @@ public:
 private:
     SceneImportReport Run(const CachePublication& publication)
     {
-        SceneAssetFileMetadata metadata = publication.metadata;
-        PublicationControl     control{&m_shutdown, publication.control.Get()};
+        const std::chrono::steady_clock::time_point started  = std::chrono::steady_clock::now();
+        SceneAssetFileMetadata                      metadata = publication.metadata;
+        PublicationControl                          control{&m_shutdown, publication.control.Get()};
         // Hash the revisions consumed by the importer before serialization.
         const zenasset::Status freshness = CheckPublicationInputs(metadata, control, true);
         const bool             current   = freshness.Succeeded();
@@ -257,11 +267,14 @@ private:
             const std::filesystem::path path = std::filesystem::u8path(publication.path);
             std::filesystem::create_directories(path.parent_path(), error);
             zenasset::SceneWriteOptions options;
-            options.metadata                   = MakeProcessedMetadata(metadata);
-            options.limits.maxStringBytes      = SceneAssetReadLimits{}.maxStringBytes;
-            options.compression.transport      = zenasset::TransportCodec::Zstandard;
-            options.compression.zstandardLevel = 12;
+            options.metadata              = MakeProcessedMetadata(metadata);
+            options.limits.maxStringBytes = SceneAssetReadLimits{}.maxStringBytes;
+            options.compression.transport = zenasset::TransportCodec::Zstandard;
+            // Interactive caches prioritize first-open latency. Compression is lossless.
+            options.compression.zstandardLevel = 3;
             options.compression.meshoptimizer  = true;
+            options.progressUser               = publication.control.Get();
+            options.resourceProgress           = &TrackCacheResources;
             PublicationInputs publicationInputs{&metadata, &control};
             if (publication.forceRecook)
             {
@@ -277,6 +290,8 @@ private:
             if (written.status == SceneImportStatus::Success)
             {
                 EvictCaches(path.parent_path(), publication.budget, path);
+                LOGI("Scene cache published: {} ({:.3f} s)", publication.path,
+                     std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
             }
         }
         LockAuto lock(&m_mutex);
@@ -309,9 +324,16 @@ private:
 };
 } // namespace
 
-SceneImportResult ImportSceneWithCache(const SceneImportRequest& request, const SceneImportContext& context, bool& cacheHit)
+SceneImportResult ImportSceneWithCache(const SceneImportRequest&                  request,
+                                       const SceneImportContext&                  context,
+                                       bool&                                      cacheHit,
+                                       SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
 {
     SceneImportResult result;
+    if (runtimeOwner != nullptr)
+    {
+        runtimeOwner->Reset();
+    }
     cacheHit                            = false;
     const SceneFormatDescriptor* format = FindSceneImportFormat(request.path);
     SceneAssetFileMetadata       lookup;
@@ -355,13 +377,14 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest& request, const 
                 && header.metadata.cacheKey == CacheKey(header.metadata)
                 && InputsCurrent(header.metadata.inputs, request.control.Get(), context.processing))
             {
-                SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, {}, request.control.Get());
+                SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, {}, request.control.Get(), runtimeOwner);
                 if (cached.asset && cached.metadata.cacheKey == header.metadata.cacheKey)
                 {
                     result                 = std::move(static_cast<SceneImportResult&>(cached));
                     result.format          = std::string(format->id);
                     result.importerVersion = format->importerVersion;
                     cacheHit               = true;
+                    LOGI("Scene source cache hit: {}", request.path);
                     // Eviction removes the least recently used files first.
                     std::error_code touchError;
                     std::filesystem::last_write_time(std::filesystem::u8path(cachePath),
@@ -372,8 +395,13 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest& request, const 
     }
     if (validation.Succeeded() && !cacheHit)
     {
+        LOGI("Scene source import: {}", request.path);
         ProcessedSourceResult imported = ImportProcessedSource(request, context);
         result                         = std::move(imported.imported);
+        if (runtimeOwner != nullptr)
+        {
+            *runtimeOwner = std::move(imported.runtimeOwner);
+        }
         if (result.asset && !cachePath.empty() && (!request.control || !request.control->IsCancelled()))
         {
             SceneAssetFileMetadata metadata  = lookup;
@@ -383,18 +411,31 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest& request, const 
             {
                 metadata.inputs.push_back(dependency);
             }
-            metadata.diagnostics = result.diagnostics;
-            if (request.forceRecook && request.control)
+            metadata.diagnostics   = result.diagnostics;
+            const bool runtimeLoad = runtimeOwner != nullptr;
+            if ((request.forceRecook || runtimeLoad) && request.control)
             {
                 request.control->SetStage(SceneImportStage::SavingCache);
             }
             std::future<SceneImportReport> publication =
                 CacheWriter::Get().Publish({cachePath, std::move(metadata), std::move(imported.processed),
                                             request.cacheBudgetBytes, request.control, request.forceRecook});
-            if (request.forceRecook)
+            if (request.forceRecook || runtimeLoad)
             {
                 const SceneImportReport written = publication.get();
-                if (written.status != SceneImportStatus::Success)
+                if (written.status == SceneImportStatus::Success && runtimeLoad)
+                {
+                    // Release source image leases and importer geometry before reading the
+                    // cache. Runtime scenes retain package descriptors, not the full source
+                    // texture set or the background writer's imported scene.
+                    result = {};
+                    runtimeOwner->Reset();
+                    SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, {}, request.control.Get(), runtimeOwner);
+                    result                      = std::move(static_cast<SceneImportResult&>(cached));
+                    result.format               = std::string(format->id);
+                    result.importerVersion      = format->importerVersion;
+                }
+                else if (written.status != SceneImportStatus::Success && request.forceRecook)
                 {
                     SetSceneImportFailure(result, written.status, request.path, written.error);
                     for (const SceneImportDiagnostic& diagnostic : written.diagnostics)
@@ -414,6 +455,10 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest& request, const 
     {
         SetSceneImportFailure(result, SceneImportStatus::Cancelled, request.path, "Scene load cancelled");
         cacheHit = false;
+    }
+    if (!result.asset && runtimeOwner != nullptr)
+    {
+        runtimeOwner->Reset();
     }
     return result;
 }

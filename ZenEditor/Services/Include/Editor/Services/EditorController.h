@@ -1,5 +1,6 @@
 #pragma once
 #include "AssetTools/SceneTools.h"
+#include "Editor/Services/AssetPreprocessor.h"
 #include "Editor/Model/EditorActions.h"
 #include "Editor/Model/EditorPreferences.h"
 #include "Editor/Model/InspectorNavigation.h"
@@ -33,6 +34,11 @@ public:
     void Destroy();
 
     const EditorScene& GetScene() const;
+
+    AssetPreprocessor& GetPreprocessor()
+    {
+        return m_preprocessor;
+    }
 
     EditorSelection& GetSelection();
 
@@ -177,6 +183,7 @@ private:
     rc::RenderDevice&              m_device;
     runtime::RuntimeWindowSettings m_runSettings;
     EditorScene                    m_scene;
+    AssetPreprocessor              m_preprocessor;
     EditorSelection                m_selection;
     InspectorNavigation            m_inspector;
     EditorCamera                   m_camera;

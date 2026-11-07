@@ -71,6 +71,7 @@ HeapVector<UniquePtr<EditorPanel>> CreateEditorPanels()
     panels.push_back(CreateCameraSettingsPanel());
 
     panels.push_back(CreateAssetsPanel());
+    panels.push_back(CreatePreprocessPanel());
 
     panels.push_back(CreateOutputPanel());
 

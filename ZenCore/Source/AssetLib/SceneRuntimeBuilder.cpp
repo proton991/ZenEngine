@@ -144,6 +144,33 @@ bool HasDeformation(const SceneAsset& asset, const NodeAsset& node)
     return result;
 }
 
+// Whether BuildNodes can deform any node: a reachable render mesh with a drawable primitive.
+// It may overestimate, never underestimate, because a consumed scene keeps no bind copy.
+bool DeformsReachableNode(const SceneAsset& asset)
+{
+    bool               deforming = false;
+    HeapVector<NodeId> pending(asset.roots.data(), asset.roots.size());
+    while (!pending.empty() && !deforming)
+    {
+        const NodeAsset& node = asset.nodes[pending.back().value];
+        pending.pop_back();
+        bool drawable = false;
+        if (node.renderMesh && node.mesh.IsValid())
+        {
+            for (const MeshPrimitiveAsset& primitive : asset.meshes[node.mesh.value].primitives)
+            {
+                drawable = drawable || primitive.vertexCount > 0;
+            }
+        }
+        deforming = drawable && HasDeformation(asset, node);
+        for (NodeId child : node.children)
+        {
+            pending.push_back(child);
+        }
+    }
+    return deforming;
+}
+
 void BuildInstanceMesh(const SceneAsset& asset,
                        const NodeAsset&  sourceNode,
                        sg::Node&         node,
@@ -394,8 +421,7 @@ SceneLoadResult BuildSceneRuntime(SharedPtr<const SceneAsset, MultiThreadCounter
     return result;
 }
 
-SceneLoadResult BuildValidatedSceneRuntime(const SharedPtr<const SceneAsset, MultiThreadCounter>& asset,
-                                           SceneImportControl*                                    control)
+static SceneLoadResult BuildSceneRuntimeImpl(const SceneAsset* asset, SceneImportControl* control, SceneAsset* consuming)
 {
     SceneLoadResult result;
     if (control != nullptr && control->IsCancelled())
@@ -408,20 +434,36 @@ SceneLoadResult BuildValidatedSceneRuntime(const SharedPtr<const SceneAsset, Mul
         {
             control->SetStage(SceneImportStage::BuildingScene);
         }
-        UniquePtr<LoadedScene> loaded = MakeUnique<LoadedScene>();
-        loaded->path                  = asset->sourcePath;
-        loaded->indices               = asset->indices;
-        loaded->scene                 = MakeUnique<sg::Scene>();
+        UniquePtr<LoadedScene> loaded    = MakeUnique<LoadedScene>();
+        const bool             deforming = DeformsReachableNode(*asset);
+        const bool             transfer  = consuming != nullptr && !deforming;
+        // Read before a transfer moves the asset's coordinates away.
+        const bool authoredCoordinates = !asset->vertexTexCoords.empty();
+        loaded->path                   = asset->sourcePath;
+        if (!transfer)
+        {
+            loaded->indices = asset->indices;
+        }
+        loaded->scene = MakeUnique<sg::Scene>();
         loaded->scene->SetName(asset->name);
         sg::SceneAssetData& data = loaded->scene->GetAssetData();
         data.source              = DescribeSource(*asset);
         data.skins               = asset->skins;
         data.animations          = asset->animations;
         data.morphPrimitives     = asset->morphPrimitives;
-        data.vertexTexCoords     = asset->vertexTexCoords;
-        data.vertexTexCoords.resize(asset->vertices.size());
-        data.vertexTexCoordSets      = asset->vertexTexCoordSets;
-        data.bindVertices            = asset->vertices;
+        if (!transfer)
+        {
+            data.vertexTexCoords = asset->vertexTexCoords;
+        }
+        if (deforming)
+        {
+            data.vertexTexCoords.resize(asset->vertices.size());
+        }
+        data.vertexTexCoordSets = asset->vertexTexCoordSets;
+        if (!transfer)
+        {
+            data.bindVertices = asset->vertices;
+        }
         data.materialVariants        = asset->materialVariants;
         data.variantPrimitives       = asset->variantPrimitives;
         data.extraVertexAttributes   = asset->extraVertexAttributes;
@@ -454,9 +496,15 @@ SceneLoadResult BuildValidatedSceneRuntime(const SharedPtr<const SceneAsset, Mul
             if (!deformed)
             {
                 // A static scene has no pose to rebuild, so its bind data is the final vertex stream.
-                loaded->vertices = std::move(data.bindVertices);
-                if (asset->vertexTexCoords.empty())
+                loaded->vertices = transfer ? std::move(consuming->vertices) : std::move(data.bindVertices);
+                if (transfer)
                 {
+                    loaded->indices      = std::move(consuming->indices);
+                    data.vertexTexCoords = std::move(consuming->vertexTexCoords);
+                }
+                if (!authoredCoordinates)
+                {
+                    // Static scenes keep no per-vertex rows unless the asset authored them.
                     data.vertexTexCoords = HeapVector<VertexTextureCoordinates>();
                 }
             }
@@ -471,6 +519,27 @@ SceneLoadResult BuildValidatedSceneRuntime(const SharedPtr<const SceneAsset, Mul
                 result.status = SceneImportStatus::Success;
             }
         }
+    }
+    return result;
+}
+
+SceneLoadResult BuildValidatedSceneRuntime(const SharedPtr<const SceneAsset, MultiThreadCounter>& asset,
+                                           SceneImportControl*                                    control)
+{
+    return BuildSceneRuntimeImpl(asset.Get(), control, nullptr);
+}
+
+SceneLoadResult BuildConsumedSceneRuntime(SharedPtr<SceneAsset, MultiThreadCounter> asset, SceneImportControl* control)
+{
+    SceneLoadResult result;
+    if (asset && asset.Unique())
+    {
+        result = BuildSceneRuntimeImpl(asset.Get(), control, asset.Get());
+    }
+    else
+    {
+        SetSceneImportFailure(result, SceneImportStatus::InvalidRequest, "",
+                              "Runtime consumption requires exclusive ownership");
     }
     return result;
 }

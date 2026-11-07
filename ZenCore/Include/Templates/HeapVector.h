@@ -348,8 +348,19 @@ public:
 
     template <typename... Args> T& emplace_back(Args&&... args)
     {
-        ensure_capacity_for_one();
-        T* pElem = new (&m_pData[m_size]) T(std::forward<Args>(args)...);
+        T* pElem = nullptr;
+        if (m_size < m_capacity)
+        {
+            pElem = new (&m_pData[m_size]) T(std::forward<Args>(args)...);
+        }
+        else
+        {
+            // Arguments may refer to an element of this vector, as in v.push_back(v[0]):
+            // construct the value before growth releases the old storage.
+            T value(std::forward<Args>(args)...);
+            ensure_capacity_for_one();
+            pElem = new (&m_pData[m_size]) T(std::move(value));
+        }
         ++m_size;
 
         return *pElem;

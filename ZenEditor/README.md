@@ -10,6 +10,44 @@ rendering; Quit Play returns it to the editor. Rendering preset files belong to 
 
 ![Running maximized ZenEditor](../Doc/imgs/zeneditor-sdl3.png)
 
+## Preprocess models
+
+Open **File → Preprocess Models…** to prepare one or several glTF, GLB, FBX or OBJ
+files. Add sources with **Browse model…** or a model path, choose an output folder
+with **Browse folder…** (or enter its path), enter a scene name, then choose
+**Preprocess models**. **Open processed scene** loads
+the result after the compiler succeeds. The dockable page also appears in the
+Panels menu.
+
+The compiler runs in a separate process, with a progress bar, current build stage,
+cancellation and a compiler log on the page. Progress follows completed build
+milestones; it is not an estimate of remaining time. **Import workers** sets the
+maximum CPU threads used within one model's import. Hover it for details. Models
+are processed sequentially. Imported lights are preserved; their runtime controls
+belong in **Rendering**, not the preprocessing page.
+
+Outputs are a `.zenscene` assembly and reusable `.zenasset` files
+in `models/`; keep them together. Models retain their authored coordinates.
+Unchanged jobs reuse their previously published packages.
+
+Default processing preserves pixels and full-precision geometry, using lossless
+storage and vertex-fetch optimization. Optional texture compression applies the
+processor's BC quality checks and retains original pixels when they fail. This
+option is lossy and is not required for the runtime memory improvements.
+
+Native loading now uses temporary CPU image leases and transfers static geometry
+ownership. Existing native packages need no recook. See the
+[memory measurements and limits](../Doc/ScenePreprocessingAndMemory.md).
+
+When GI is selected, the scene view reports **Preparing GI…**, **GI active.
+Refining lighting…**, or **GI ready** beside the FPS and frame time in the right-aligned toolbar readout
+above the scene image, without an extra status row.
+Long messages are clipped with a tooltip in narrow docks. Renderer fallback reports
+that GI is unavailable instead of claiming it is ready. Hardware-only GI does not
+build the unused Compute distance field, and switching to it frees an unfinished
+build's temporary storage. Compute preparation uses bounded batches
+and a 1 GiB temporary field budget without reducing field resolution or coverage.
+
 ## Build and launch
 
 From a Visual Studio developer terminal on Windows:
@@ -77,13 +115,11 @@ The [ZenApp New Sponza 4K profile](../Doc/ComputeGI/ZenAppNewSponza4KNsightProfi
 records direct 4K captures for both backends and native fullscreen acceptance checks.
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is a separate
-dependency that always follows the latest GitHub `origin/main`, without a commit or
-release pin. Configure/reconfigure updates the checkout in
-`External/ZenAssetProcessor`, which every build tree shares; the
-[build instructions](../README.md#build) describe how it behaves.
-Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty local checkout path to develop
-against that source instead. Existing build trees with the old sibling path
-cached need `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub.
+dependency consumed through the root `ZenAssetProcessor/` submodule. Make changes
+in its standalone repository, commit and push them there, then update the engine's
+submodule to the published revision. `ZEN_UPDATE_SUBPROJECTS` controls updates
+during configuration. `ZEN_ASSET_PROCESSOR_SOURCE_DIR` optionally selects another
+checkout; leave it empty to use the submodule.
 
 For a Release build, use `x64-windows-msvc-release` in both commands. To consume an
 installed library, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=`,
@@ -450,13 +486,14 @@ paths are also accepted.
 Opening a scene shows a modal progress bar for reading data, preparing graphics
 resources and publishing the scene. CPU import runs on an engine worker so the
 window keeps repainting; GPU preparation and publication run on the engine thread,
-after their operation has been displayed. The bar shows **processed files / total
-files × 100**, with the counts beside the percentage. It displays “Discovering
-files...” until dependency discovery establishes the total. Each distinct model,
-external buffer and texture file counts once; embedded data belongs to its
-containing file, and a cached `.zenasset` counts as one file. The percentage measures
-input-file processing, so it can reach 100% while cooking or graphics preparation
-continues; the operation text identifies that remaining work. Failed loads keep the previous scene and show a
+after their operation has been displayed. While files are read, the bar shows
+**processed files / total files × 100**, with the counts beside the percentage.
+Each distinct model, external buffer and texture file counts once; embedded data
+belongs to its containing file, and a cached `.zenasset` counts as one file. Before
+dependency discovery establishes the total, after every file is processed, and during
+graphics preparation and publication, the bar animates and names the current
+operation instead of showing a percentage. Saving a cooked cache counts saved
+resources. Failed loads keep the previous scene and show a
 dismissible error. Startup scenes, File/Open and recent files use this same flow.
 
 Assets lists the open scene's meshes, materials, textures and animations, with

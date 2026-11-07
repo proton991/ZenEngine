@@ -85,7 +85,7 @@ bool SceneRendering::SetEnvironmentLighting(float intensity, float rotationDegre
     return valid;
 }
 
-bool SceneRendering::PrepareScene(const asset::LoadedScene& candidate, sg::Camera& camera, std::string& error)
+bool SceneRendering::PrepareScene(asset::LoadedScene& candidate, sg::Camera& camera, std::string& error)
 {
     DiscardScene();
 
@@ -115,6 +115,8 @@ bool SceneRendering::PrepareScene(const asset::LoadedScene& candidate, sg::Camer
         data.envTextureName      = m_defaultEnvironment;
 
         data.environmentOverride = m_environment.texturePath;
+        data.ownedVertices       = &candidate.vertices;
+        data.ownedIndices        = &candidate.indices;
 
         m_pendingScene           = MakeUnique<rc::RenderScene>(&m_device, data);
 

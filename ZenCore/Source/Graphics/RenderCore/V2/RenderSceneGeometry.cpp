@@ -664,9 +664,9 @@ bool RenderScene::RefreshUVCoordinates()
             const size_t offset = 1 + vertex * stride + set;
             if (Vec2(m_uvCoordinates[offset]) != uv)
             {
-                m_uvCoordinates[offset]       = Vec4(uv, 0, 0);
+                m_uvCoordinates[offset]       = uv;
                 m_dirtyShadowVertices[vertex] = 1;
-                m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec4)), sizeof(Vec4));
+                m_uvBuffers.MarkDirty(static_cast<uint32_t>(offset * sizeof(Vec2)), sizeof(Vec2));
             }
         }
     }
@@ -700,7 +700,7 @@ bool RenderScene::CommitGeometryUpdates()
              && ValidateGIStorageBuffer(std::max(m_materialsData.size(), size_t(1)), sizeof(sg::MaterialData), gpu,
                                         materialBytes)
                     == GIResourceStatus::eSuccess
-             && ValidateGIStorageBuffer(m_uvCoordinates.size(), sizeof(Vec4), gpu, uvBytes) == GIResourceStatus::eSuccess;
+             && ValidateGIStorageBuffer(m_uvCoordinates.size(), sizeof(Vec2), gpu, uvBytes) == GIResourceStatus::eSuccess;
         if (valid)
         {
             RHIBuffer* records = !m_triangleRecordsDirty ? m_pVoxelTriangleBuffer

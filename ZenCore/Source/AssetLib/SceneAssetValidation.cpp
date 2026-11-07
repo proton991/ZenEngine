@@ -39,8 +39,8 @@ bool ValidateReferences(const SceneAsset& asset)
     }
     for (const ImageAsset& image : asset.images)
     {
-        valid &=
-            image.pixels && image.pixels->width > 0 && image.pixels->height > 0 && !GetImageBaseBytes(*image.pixels).empty();
+        valid &= image.pixels && image.pixels->width > 0 && image.pixels->height > 0
+              && (image.pixels->payloadSource || !GetImageBaseBytes(*image.pixels).empty());
     }
     for (const MaterialAsset& material : asset.materials)
     {
@@ -231,11 +231,16 @@ bool ValidImages(const SceneAsset& asset)
     bool valid = true;
     for (const ImageAsset& image : asset.images)
     {
-        const ImagePixels&          pixels = *image.pixels;
-        const zenasset::PixelFormat format = ImageStorageFormat(pixels.format);
-        uint64_t                    bytes  = 0;
+        // Native readers already checked the payload. Keep graph validation
+        // resident-free; the next lease rechecks file integrity before use.
+        const ImagePixels&          pixels   = *image.pixels;
+        const bool                  deferred = bool(pixels.payloadSource);
+        const zenasset::PixelFormat format   = ImageStorageFormat(pixels.format);
+        uint64_t                    bytes    = 0;
         valid &= zenasset::GetImageArrayLevelByteSize(format, pixels.width, pixels.height, pixels.arrayLayers, bytes)
-              && bytes == GetImageBaseBytes(pixels).size() && (pixels.arrayLayers == 1 || !pixels.mips.empty())
+              && (deferred ? pixels.bytes.empty() && GetImageBaseBytes(pixels).empty()
+                           : bytes == GetImageBaseBytes(pixels).size())
+              && (pixels.arrayLayers == 1 || !pixels.mips.empty())
               && pixels.mips.size() <= MipCount(pixels.width, pixels.height)
               && (pixels.mips.empty() || pixels.bytes.empty()
                   || std::equal(pixels.mips[0].begin(), pixels.mips[0].end(), pixels.bytes.begin(), pixels.bytes.end()));
@@ -243,7 +248,7 @@ bool ValidImages(const SceneAsset& asset)
         {
             valid &= zenasset::GetImageArrayLevelByteSize(format, std::max(1u, pixels.width >> level),
                                                           std::max(1u, pixels.height >> level), pixels.arrayLayers, bytes)
-                  && bytes == pixels.mips[level].size();
+                  && (deferred ? pixels.mips[level].empty() : bytes == pixels.mips[level].size());
         }
     }
     for (const TextureAsset& texture : asset.textures)

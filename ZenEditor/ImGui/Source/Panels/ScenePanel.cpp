@@ -159,22 +159,41 @@ private:
         }
         ImGui::EndDisabled();
 
-        const RHIGPUMemoryStats& memory = GetRenderSnapshot(context).memory;
+        const EditorRenderSnapshot& snapshot = GetRenderSnapshot(context);
+        const RHIGPUMemoryStats&    memory   = snapshot.memory;
 
         const std::string usage =
             memory.available ? fmt::format("GPU {:.0f} MiB", memory.deviceLocalBytes / (1024.0 * 1024.0)) : "GPU memory n/a";
 
+        const char* giStatus = nullptr;
+        if (!frozen && context.editor.GetViewport().HasScene() && snapshot.requestedMode == rc::RenderOption::eVoxelGI)
+        {
+            const ui::GILightingState lighting = snapshot.renderedMode != rc::RenderOption::eVoxelGI
+                                                   ? ui::GILightingState::Unavailable
+                                               : snapshot.preparingGI ? ui::GILightingState::Preparing
+                                               : snapshot.refiningGI  ? ui::GILightingState::Refining
+                                                                      : ui::GILightingState::Ready;
+            giStatus                           = ui::GetGILightingStatus(lighting, snapshot.hardwareQueries);
+        }
+        const std::string lighting = giStatus != nullptr ? fmt::format("  |  {}", giStatus) : "";
         const std::string profile =
             frozen ? fmt::format("Scene detached  |  {}  |  Vulkan", usage)
-                   : fmt::format("{:.1f} FPS  |  {:.2f} ms  |  {}  |  Vulkan",
-                                 context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, usage);
+                   : fmt::format("{:.1f} FPS  |  {:.2f} ms{}  |  {}  |  Vulkan",
+                                 context.frameMs > 0 ? 1000.0f / context.frameMs : 0, context.frameMs, lighting, usage);
 
         // Reserve a stable field: changing digit counts must never reflow the toolbar
         // and resize the render target (or cancel a drag through a new camera aspect).
         // Rare longer readings are clipped, with the full text in a tooltip.
-        const float profileWidth = ImGui::CalcTextSize("0000.0 FPS  |  000.00 ms  |  GPU 00000 MiB  |  Vulkan").x;
+        float profileWidth = ImGui::CalcTextSize("0000.0 FPS  |  000.00 ms  |  GPU 00000 MiB  |  Vulkan").x;
+        if (giStatus != nullptr)
+        {
+            // Reserve the longest status so preparation/readiness cannot reflow the toolbar.
+            profileWidth += ImGui::CalcTextSize("  |  ").x
+                          + std::max(ImGui::CalcTextSize(ui::GetGILightingStatus(ui::GILightingState::Preparing, true)).x,
+                                     ImGui::CalcTextSize(ui::GetGILightingStatus(ui::GILightingState::Unavailable, false)).x);
+        }
 
-        const float profileX     = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - profileWidth;
+        const float profileX = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - profileWidth;
 
         // Keep the readout beside the controls when it fits; narrow panels wrap it below.
         if (profileX >= ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetStyle().ItemSpacing.x)
@@ -183,7 +202,7 @@ private:
         }
 
         DrawClippedText(profile.c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), ImGui::GetFrameHeight()),
-                        ImGui::GetColorU32(ImGuiCol_TextDisabled));
+                        ImGui::GetColorU32(ImGuiCol_TextDisabled), true);
 
         bool         drewScene    = false;
         const ImVec2 statusOrigin = ImGui::GetCursorScreenPos();
@@ -276,17 +295,6 @@ private:
                 {
                     DrawSceneControlsHint(context.editor.GetActions(), origin, end);
                 }
-
-                // Centered between equal insets that clear the orientation sphere.
-                ImVec2      sphereCenter;
-                float       sphereRadius = 0;
-                const float sphereInset =
-                    GetViewSphereCenter(origin, end, sphereCenter, sphereRadius) ? 2 * (end.x - sphereCenter.x) : 0.0f;
-
-                const EditorRenderSnapshot& snapshot = GetRenderSnapshot(context);
-
-                ui::DrawGIPreparationStatus(*ImGui::GetWindowDrawList(), !frozen && snapshot.preparingGI,
-                                            snapshot.hardwareQueries, origin, end, sphereInset);
 
                 rc::RenderingSettings draft = context.editor.GetRenderingState().GetDraft();
                 if (m_lightMove.Draw(draft.lights, context.editor.GetCamera(), context.editor.GetScene().GetGeneration(),

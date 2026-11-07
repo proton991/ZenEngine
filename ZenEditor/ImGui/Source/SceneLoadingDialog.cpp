@@ -84,7 +84,33 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
 
                 float progress    = 0;
                 char  overlay[96] = "Discovering files...";
-                if (state.fileProgress.totalKnown && state.fileProgress.totalFiles != 0)
+                if (state.stage == SceneLoadStage::Reading && state.importStage == asset::SceneImportStage::SavingCache)
+                {
+                    const uint64_t total     = state.cacheProgress.totalResources;
+                    const uint64_t completed = std::min(state.cacheProgress.completedResources, total);
+                    progress = total != 0 ? static_cast<float>(static_cast<double>(completed) / static_cast<double>(total))
+                                          : -static_cast<float>(ImGui::GetTime());
+                    if (total == 0)
+                    {
+                        std::snprintf(overlay, sizeof(overlay), "Preparing cache...");
+                    }
+                    else if (completed == total)
+                    {
+                        std::snprintf(overlay, sizeof(overlay), "Finalizing cache...");
+                    }
+                    else
+                    {
+                        std::snprintf(overlay, sizeof(overlay), "%llu / %llu resources saved",
+                                      static_cast<unsigned long long>(completed), static_cast<unsigned long long>(total));
+                    }
+                }
+                else if (state.stage != SceneLoadStage::Reading || !state.fileProgress.totalKnown
+                         || state.fileProgress.processedFiles == state.fileProgress.totalFiles)
+                {
+                    progress = state.stage == SceneLoadStage::Complete ? 1.0f : -static_cast<float>(ImGui::GetTime());
+                    std::snprintf(overlay, sizeof(overlay), "%s", state.stage == SceneLoadStage::Complete ? "Complete" : label);
+                }
+                else if (state.fileProgress.totalFiles != 0)
                 {
                     const uint64_t processed = std::min(state.fileProgress.processedFiles, state.fileProgress.totalFiles);
                     const double fraction = static_cast<double>(processed) / static_cast<double>(state.fileProgress.totalFiles);
