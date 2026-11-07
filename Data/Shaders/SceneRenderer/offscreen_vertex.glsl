@@ -41,8 +41,15 @@ layout(std430, set = 1, binding = 3) readonly buffer UVBuffer
 
 #ifdef GPU_CULLED_DRAW
 #    include "gbuffer_draw.glsl"
-layout(location = 18) flat out uvec2 outDrawIndices;
+// Every indirect batch uses one material, keeping texture selection uniform
+// across both shader stages while the instance selects only its node.
+layout(push_constant) uniform uMaterialPushConstant
+{
+    layout(offset = 0) uint uMaterialIndex;
+};
 #    ifdef HYBRID_RECEIVER
+// Only receivers output their node, past the 64 components every device guarantees.
+layout(location = 18) flat out uint outNodeIndex;
 layout(std430, set = 1, binding = 6) readonly buffer GBufferPreviousModels
 {
     mat4 gbufferPreviousModels[];
@@ -91,11 +98,9 @@ layout(location = 17) out vec4 outCurrentClip;
 void main()
 {
 #ifdef GPU_CULLED_DRAW
-    uvec2 drawIndices    = gbufferDraws[gl_InstanceIndex].indices.xy;
-    uint  uNodeIndex     = drawIndices.x;
-    uint  uMaterialIndex = drawIndices.y;
-    outDrawIndices       = drawIndices;
+    uint uNodeIndex = gbufferDraws[gl_InstanceIndex].indices.x;
 #    ifdef HYBRID_RECEIVER
+    outNodeIndex       = uNodeIndex;
     mat4 previousModel = gbufferPreviousModels[gl_InstanceIndex];
 #    endif
 #endif

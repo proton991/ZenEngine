@@ -45,6 +45,7 @@ public:
     void                   Prepare(const RenderView& view, RenderScene& scene);
     void                   BindReceiverInputs(RDGPassDescBase& pass) const;
     HybridReceiverDraw     ReceiverDraw(uint32_t node, uint32_t material) const;
+    Mat4                   PreviousModel(uint32_t node) const;
     bool                   BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI);
     void                   BindLightingInputs(RDGPassDescBase& pass) const;
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection) const;

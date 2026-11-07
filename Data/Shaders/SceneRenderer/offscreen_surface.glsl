@@ -17,7 +17,13 @@ layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer
     Material materialData[];
 };
 #ifdef GPU_CULLED_DRAW
-layout(location = 18) flat in uvec2 inDrawIndices;
+layout(push_constant) uniform uMaterialPushConstant
+{
+    layout(offset = 0) uint uMaterialIndex;
+};
+#    ifdef HYBRID_RECEIVER
+layout(location = 18) flat in uint inNodeIndex;
+#    endif
 #else
 layout(push_constant) uniform Constants
 {
@@ -29,9 +35,8 @@ layout(push_constant) uniform Constants
 
 void main()
 {
-#ifdef GPU_CULLED_DRAW
-    uint uNodeIndex     = inDrawIndices.x;
-    uint uMaterialIndex = inDrawIndices.y;
+#if defined(GPU_CULLED_DRAW) && defined(HYBRID_RECEIVER)
+    uint uNodeIndex = inNodeIndex;
 #endif
     Material material = materialData[uMaterialIndex];
     vec3     normal   = SurfaceNormal(material);

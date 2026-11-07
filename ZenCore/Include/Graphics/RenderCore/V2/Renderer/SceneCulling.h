@@ -19,7 +19,7 @@ struct GBufferDrawData
     Vec4       boundsMin{0.0f};
     Vec4       boundsMax{0.0f};
     glm::uvec4 geometry{0}; // index count, first index, reserved
-    glm::uvec4 indices{0};  // node, material, reserved
+    glm::uvec4 indices{0};  // node, reserved. Materials are per batch.
 };
 static_assert(sizeof(GBufferDrawData) == 64);
 
@@ -53,23 +53,42 @@ struct SceneCullingResult
 const char* SceneCullingStatusName(SceneCullingStatus status);
 const char* SceneCullingFallbackReason(SceneCullingStatus status);
 
-inline bool SupportsIndirectFirstInstance(const RHIGPUInfo& gpu)
+inline bool SupportsGBufferCulling(const RHIGPUInfo& gpu)
 {
     return gpu.supportDrawIndirectFirstInstance && gpu.maxDrawIndirectCount != 0;
 }
 
-// Gate shader-module creation as well as draw selection: native validation can
-// reject oversized interfaces before any graphics pipeline is requested.
-inline bool SupportsIndirectGBufferShaders(const RHIGPUInfo& gpu)
+// Only hybrid receivers need a varying beyond the guaranteed 64 components. Gate shader-module
+// creation as well as draw selection: native validation can reject oversized interfaces
+// before any graphics pipeline is requested.
+inline bool SupportsHybridGBufferCulling(const RHIGPUInfo& gpu)
 {
-    return gpu.maxVertexOutputComponents >= ZEN_SCENE_CULL_VARYING_COMPONENTS
+    return SupportsGBufferCulling(gpu) && gpu.maxVertexOutputComponents >= ZEN_SCENE_CULL_VARYING_COMPONENTS
         && gpu.maxFragmentInputComponents >= ZEN_SCENE_CULL_VARYING_COMPONENTS;
 }
 
-inline bool SupportsGBufferCulling(const RHIGPUInfo& gpu)
+// A contiguous command range sharing one pipeline and material.
+struct SceneCullingBatch
 {
-    return SupportsIndirectFirstInstance(gpu) && SupportsIndirectGBufferShaders(gpu);
-}
+    NameID             shader;
+    RHIPolygonCullMode cullMode{RHIPolygonCullMode::eDisabled};
+    uint32_t           materialIndex{0};
+    uint32_t           firstDraw{0};
+    uint32_t           drawCount{0};
+};
+
+// Committed scene state that candidates, their order and their batches depend on.
+struct SceneCullingDrawKey
+{
+    uint64_t scene{0};
+    uint64_t geometryRevision{0};
+    uint64_t surfaceRevision{0};
+    uint64_t renderables{0};
+    bool     hybrid{false};
+    bool     preserveDrawOrder{false};
+
+    bool operator==(const SceneCullingDrawKey&) const = default;
+};
 
 struct SceneCullingDrawCache
 {
@@ -78,11 +97,17 @@ struct SceneCullingDrawCache
     // Ordinary frames neither allocate nor upload previous-model matrices.
     FrameBufferRing  previousModels;
     HeapVector<Mat4> previousModelContents;
+    // Valid for key. A matching key skips grouping, record building and the draw upload.
+    HeapVector<SceneCullingBatch> batches;
+    SceneCullingDrawKey           key;
 
     void Destroy(RenderDevice& device);
 };
 
 // On success consumes desc and records the compute producer and graphics consumer.
+// Indirect draws batch by pipeline and material, with one material push constant per batch.
+// Materials keep their order of first use, so a material's later draws move up to its first
+// one; preserveDrawOrder keeps direct order and batches only consecutive compatible draws.
 // Unsupported capabilities/limits or failed preparation leave desc for direct drawing.
 // Call once per frame after BeginFrame, before consumers, like other FrameBufferRings.
 // pArguments optionally receives the transient argument buffer, valid only in this graph.

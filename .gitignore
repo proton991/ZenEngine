@@ -12,6 +12,8 @@ Data/SpvShaders
 Data/engine.cfg
 # Dear ImGui writes window layout here when an app runs from the repository root.
 /imgui.ini
+# Nsight Graphics writes its shader microcode here when launched from the repository root.
+/ucode.elf
 .DS_Store
 __pycache__/
 

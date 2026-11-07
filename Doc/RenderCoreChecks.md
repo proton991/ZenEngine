@@ -30,18 +30,27 @@ The ordinary and hybrid GBuffer paths now generate indexed indirect commands wit
 `SceneFrustumCullSP`. The culler tests committed world-space submesh bounds against
 the current camera frustum. Stale or invalid authored bounds (including arbitrary
 vertex edits) conservatively use committed instance bounds. Each candidate submesh retains a command slot; rejected
-candidates receive `instanceCount = 0`. Draw metadata supplies node/material IDs and
-the hybrid previous model through `firstInstance`, with batches retaining the existing
-opaque/masked and face-culling pipeline groups. This phase does not compact commands
-or perform depth-pyramid occlusion culling.
+candidates receive `instanceCount = 0`. `firstInstance` selects each draw's node and hybrid
+previous model. The material index is a push constant set once per batch, not per-draw
+data: a varying index cost the shaders their uniform path and made `OffScreen` about 10%
+slower. Batches therefore split the existing opaque/masked and face-culling pipeline groups
+by material.
+
+Within a pipeline group, materials keep their order of first use, so a material's later
+draws move up to its first draw. Direct drawing keeps authored order. The two paths can
+therefore differ in overdraw and in which exactly coplanar surface of different materials
+wins the `eLess` depth test. This phase does not compact commands or perform
+depth-pyramid occlusion culling.
 
 The graphics queue runs the culler immediately before its consumer. RDG declares the
-storage writes and indirect reads. Cached 64-byte draw records use a `FrameBufferRing`;
-matching contents skip uploads and ring rotation. Only hybrid draws allocate the
-separate previous-model buffer. Arguments are transient graph buffers. The workgroup
-size is shared by C++ and GLSL, and dispatch chunks collectively write the argument
-buffer within one pass. Devices without indirect first-instance support or sufficient
-shader-interface components, and scenes exceeding resource limits, retain the direct
+storage writes and indirect reads. Cached 64-byte draw records use a `FrameBufferRing`.
+Records and batches rebuild only when the scene, its geometry or surface revision, its
+renderable count, or the draw mode changes; matching contents also skip uploads and ring
+rotation. Only hybrid draws allocate the separate previous-model buffer, which is checked
+every frame. Arguments are transient graph buffers. The workgroup size is shared by C++ and
+GLSL, and dispatch chunks collectively write the argument buffer within one pass. Devices
+without indirect first-instance support, hybrid receivers on devices with too few
+shader-interface components, and scenes exceeding resource limits retain the direct
 path with an explicit status and logged fallback reason. Batches respect
 the device's maximum indirect draw count; devices without multi-draw issue single
 indirect commands. Forward transparency, shadows, and GI retain their own visibility.

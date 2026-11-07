@@ -104,8 +104,13 @@ HybridReceiverDraw HybridGIRenderer::ReceiverDraw(uint32_t node, uint32_t materi
 {
     HybridReceiverDraw result;
     result.indices       = glm::uvec4(node, material, 0, 0);
-    result.previousModel = m_valid && node < m_previousModels.size() ? m_previousModels[node] : m_recordedModels[node];
+    result.previousModel = PreviousModel(node);
     return result;
+}
+
+Mat4 HybridGIRenderer::PreviousModel(uint32_t node) const
+{
+    return m_valid && node < m_previousModels.size() ? m_previousModels[node] : m_recordedModels[node];
 }
 
 bool HybridGIRenderer::PrepareHistory(uint32_t width,
@@ -383,10 +388,10 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const glm::uvec4 reuseData(
             unchangedReceivers && m_previousSettings.filter && m_previousSettings.referenceSamples == 0 ? 1u : 0u,
             unchangedReceivers ? 1u : 0u, skyLight ? 1u : 0u, 0u);
-        m_recordedSettings       = settings;
-        m_recordedVisibility     = visibility;
-        m_uniforms.sampling = glm::uvec4(m_frame, probes ? 64u : (reference ? settings.referenceSamples : settings.samples),
-                                         settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
+        m_recordedSettings   = settings;
+        m_recordedVisibility = visibility;
+        m_uniforms.sampling  = glm::uvec4(m_frame, probes ? 64u : (reference ? settings.referenceSamples : settings.samples),
+                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
         // A guide from a successful frame can survive geometry, opacity and sampling-setting resets.
         // Provider changes use different visibility geometry and must relearn the proposal.
         // A reset reason alone cannot make a fresh or failed-frame guide safe to read.

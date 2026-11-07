@@ -319,7 +319,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                             "SceneRenderer/receiver.frag.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverMaskedSP", "SceneRenderer/receiver.vert.spv",
                                             "SceneRenderer/receiver_masked.frag.spv"));
-    if (SupportsIndirectGBufferShaders(pRenderDevice->GetGPUInfo()))
+    if (SupportsHybridGBufferCulling(pRenderDevice->GetGPUInfo()))
     {
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "HybridReceiverIndirectSP", "SceneRenderer/receiver_indirect.vert.spv",
@@ -558,16 +558,13 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     }
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferMaskedSP", "SceneRenderer/offscreen.vert.spv",
                                             "SceneRenderer/offscreen_masked.frag.spv"));
-    if (SupportsIndirectGBufferShaders(pRenderDevice->GetGPUInfo()))
+    if (SupportsGBufferCulling(pRenderDevice->GetGPUInfo()))
     {
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
                                                 "SceneRenderer/offscreen_indirect.frag.spv"));
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "GBufferMaskedIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
                                           "SceneRenderer/offscreen_masked_indirect.frag.spv"));
-    }
-    if (SupportsGBufferCulling(pRenderDevice->GetGPUInfo()))
-    {
         StoreWarmedComputeProgram(
             ZEN_NEW() ComputeFileSP(pRenderDevice, "SceneFrustumCullSP", "SceneRenderer/frustum_cull.comp.spv"));
     }
