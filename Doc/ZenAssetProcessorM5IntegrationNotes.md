@@ -26,7 +26,7 @@ material or atlas policy. `ReadScene` validates and owns the stored result; it
 must not rerun cooking or silently select a quality profile. A future atlas
 pass belongs inside this cooking sequence before final mip generation/encoding.
 
-The concrete engine boundary is `AssetTools/Source/SceneSourceImporter.cpp`,
+The concrete engine boundary is `ZenCore/AssetTools/Source/SceneSourceImporter.cpp`,
 `ProcessedSourceImport.h`, and `SceneAssetCache.cpp`. Replace the retained
 imported scene there with the cooked owner before both adaptation and cache
 publication. Extend cache settings/build metadata together; a direct desktop

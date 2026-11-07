@@ -44,7 +44,7 @@ add_subdirectory(External)
 include(External/ZenAssetProcessor.cmake)
 add_subdirectory(ZenCore)
 if(ZEN_BUILD_ASSET_TOOLS)
-  add_subdirectory(AssetTools)
+  add_subdirectory(ZenCore/AssetTools)
 endif()
 # Libraries before their consumers: the applications link the UI.
 if (ZEN_BUILD_RUNTIME_UI OR ZEN_BUILD_EDITOR)

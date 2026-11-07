@@ -48,7 +48,7 @@ request or disabled-cache request with force-recook intent fails explicitly.
 
 - `SceneImporter.h`: appended engine-only cooking/saving stages and force-recook
   intent; standalone progress enums and processing records are unchanged.
-- `AssetTools/Source/SceneAssetCache.cpp`: per-job publication result, forced hit
+- `ZenCore/AssetTools/Source/SceneAssetCache.cpp`: per-job publication result, forced hit
   bypass, existing asynchronous normal path, explicit publication diagnostics.
 - `SceneSourceImporter.cpp` and `SceneTools.cpp`: request validation, cook-stage
   reporting, and stored-package routing.

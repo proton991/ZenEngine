@@ -161,7 +161,7 @@ processing and automatic caching now point to their migrated implementations.
 | [Source dispatch](../ZenCore/Source/AssetLib/SceneImporter.cpp), glTF/FBX conversion, image decoding | Move to processor backends; parser types stay private. |
 | [Shared processing](../../ZenAssetProcessor/src/Processing/SceneAssetProcessing.cpp) | Preserve current cleanup and validation, then add separately controlled optimization passes. |
 | [Serialization](../ZenCore/Source/AssetLib/SceneAssetIO.cpp) and [validation](../ZenCore/Source/AssetLib/SceneAssetValidation.cpp) | Reuse applicable contracts and algorithms in shared format/reader code; specify the new wire schema independently of C++ layouts. |
-| [Automatic cache](../AssetTools/Source/SceneAssetCache.cpp) | Move source processing and publication policy to tooling; retain explicit package loading in runtime code. |
+| [Automatic cache](../ZenCore/AssetTools/Source/SceneAssetCache.cpp) | Move source processing and publication policy to tooling; retain explicit package loading in runtime code. |
 | [Runtime builder](../ZenCore/Source/AssetLib/SceneRuntimeBuilder.cpp) | Remains in ZenEngine and consumes adapted package data. |
 | [Texture upload](../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp) | Extend for compressed blocks, complete mip chains, and device-format checks. |
 | [Editor previews](../ZenEditor/Model/Source/SceneAssets.cpp) | Add a defined thumbnail/decode path for compressed images. |

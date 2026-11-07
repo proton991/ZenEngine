@@ -3,7 +3,7 @@
 Samples and tests are independent Git submodules: [ZenSample](https://github.com/proton991/ZenSample)
 and [ZenTest](https://github.com/proton991/ZenTest). Clone with `--recurse-submodules`,
 or run `git submodule update --init --recursive` in an existing checkout.
-Every configure fast-forwards both to the latest GitHub `main`, so a recorded submodule
+Every configure fast-forwards these subprojects and ZenAssetProcessor to the latest GitHub `main`, so a recorded submodule
 commit only seeds a new clone. A failed fetch stops configuration. Local work that a
 fast-forward would replace stays in place with a warning, and
 `-DZEN_UPDATE_SUBPROJECTS=OFF` skips the update when offline or building an older commit.
@@ -252,26 +252,24 @@ cmake --build --preset x64-windows-msvc-release --target ZenApp zen_editor --par
 ```
 
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is an independent
-library, and the engine always follows the latest GitHub `origin/main`, without a
-commit or release pin. Every configure/reconfigure fetches
-`git@github.com:proton991/ZenAssetProcessor.git` into `External/ZenAssetProcessor`,
-alongside the other external dependencies. All build trees share that checkout and
-keep their build files in `<build-directory>/External/ZenAssetProcessor`, so a
-configure in one tree updates the source for every tree. An ordinary incremental
-build does not check the remote.
+library checked out as the root-level `ZenAssetProcessor` Git submodule, like
+`ZenSample` and `ZenTest`. Run `git submodule update --init --recursive` after cloning.
+Configuration fast-forwards it to GitHub `main`, using the same shared update
+policy as the other two subprojects. Set `ZEN_UPDATE_SUBPROJECTS=OFF` to retain
+the checked-out revision for offline or pinned builds.
+Processor build files live in `<build-directory>/ZenAssetProcessor`.
 
-GitHub SSH authentication and network access are required for this default mode. A
-failed fetch stops configuration and leaves the checkout unchanged. Configuration
-also stops if the checkout has local changes, so do not develop in it.
+Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to use a different local checkout. Clear old
+cached overrides with `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to use the submodule.
+To use an installed package, set `ZEN_ASSET_PROCESSOR_USE_INSTALLED=ON` and
+`CMAKE_PREFIX_PATH=<installation-prefix>`. The installed-package option defaults
+to `OFF`. Commit processor changes in its repository, then commit the updated
+submodule pointer in ZenEngine.
 
-Set `ZEN_ASSET_PROCESSOR_SOURCE_DIR` to a nonempty path to develop against a local
-checkout or to configure offline; CMake does not fetch in that mode. Existing build
-trees that cached the previous sibling-checkout default need
-`-DZEN_ASSET_PROCESSOR_SOURCE_DIR=` to switch to GitHub. To use an installed
-package, pass `-DZEN_ASSET_PROCESSOR_SOURCE_DIR=`,
-`-DZEN_ASSET_PROCESSOR_USE_INSTALLED=ON` and
-`-DCMAKE_PREFIX_PATH=<installation-prefix>`; the installed-package option defaults
-to `OFF`. Set it back to `OFF` when returning to GitHub consumption.
+Engine-specific source integration lives in `ZenCore/AssetTools`, with its own
+public include root and separate `ZenEngineAssetTools` target. Existing
+`AssetTools/SceneTools.h` includes remain valid.
+
 Source import/cooking belongs to `ZenEngineAssetTools`, while `ZenCore` uses the
 reader for `.zenasset` loading. Build target `zen_editor` to use source import,
 processing settings and **Recook from Source** in the [editor](ZenEditor/README.md).

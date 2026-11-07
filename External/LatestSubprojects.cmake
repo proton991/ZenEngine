@@ -1,7 +1,8 @@
-# ZenSample and ZenTest follow GitHub main, so a submodule's recorded commit only seeds a new clone.
-option(ZEN_UPDATE_SUBPROJECTS "Fetch the latest ZenSample and ZenTest during configuration" ON)
+include_guard(GLOBAL)
+# Root subprojects follow GitHub main unless updates are disabled.
+option(ZEN_UPDATE_SUBPROJECTS "Fetch the latest root subprojects during configuration" ON)
 
-function(zen_add_latest_subproject NAME OPTION)
+function(zen_update_subproject NAME OPTION)
     set(CHECKOUT "${CMAKE_CURRENT_SOURCE_DIR}/${NAME}")
     if(NOT EXISTS "${CHECKOUT}/CMakeLists.txt")
         message(FATAL_ERROR "Initialize ${NAME} with git submodule update --init --recursive, or disable ${OPTION}")
@@ -22,5 +23,9 @@ function(zen_add_latest_subproject NAME OPTION)
         endif()
         file(LOCK "${LOCK}" DIRECTORY RELEASE)
     endif()
+endfunction()
+
+function(zen_add_latest_subproject NAME OPTION)
+    zen_update_subproject(${NAME} ${OPTION})
     add_subdirectory(${NAME})
 endfunction()

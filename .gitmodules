@@ -6,3 +6,7 @@
 	path = ZenTest
 	url = https://github.com/proton991/ZenTest.git
 	branch = main
+[submodule "ZenAssetProcessor"]
+	path = ZenAssetProcessor
+	url = https://github.com/proton991/ZenAssetProcessor.git
+	branch = main
