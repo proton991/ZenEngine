@@ -67,6 +67,17 @@ An update requires a previously recorded compatible build with update enabled. I
 
 Stage/access flags, buffer creation flags, AS types and instance flags retain their Vulkan numeric values. Vulkan performs native packing inside its backend.
 
+Optional four-state opacity micromaps use `VK_KHR_opacity_micromap`, including its
+device-address-command, synchronization2 and extended-dynamic-state feature chain.
+They are AS resources with immutable BLAS dependencies; a TLAS shader binding declares
+reads recursively through those dependencies. Micromap builds copy their usage arrays
+at both recording boundaries. State and triangle-record buffers require AS-input usage
+and shader-read access at the AS-build stage. BLAS micromap indices additionally require
+transfer-source usage and transfer-read access at that stage. Micromaps are built, never
+updated in place. BLAS refits must keep the same micromap and index mapping. Ray-query
+shader modules using them require the KHR micromap execution mode and SPIR-V 1.4 or later;
+ordinary ray-query modules remain available on devices without this capability.
+
 ## Vulkan queue sharing
 
 RHI-created buffers and textures permit use on both graphics and async-compute queue families. Resources with transfer-source or transfer-destination usage also permit the transfer family. Creation uses concurrent sharing across distinct families, or exclusive sharing when every permitted queue belongs to the same family. Texture views inherit the base image's sharing. This policy does not apply to native swapchain images or externally created Vulkan resources.

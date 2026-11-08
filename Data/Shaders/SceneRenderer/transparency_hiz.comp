@@ -1,0 +1,33 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(r32f, set = 1, binding = 0) uniform readonly image2D sourceDepth;
+layout(r32f, set = 1, binding = 1) uniform writeonly image2D targetDepth;
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size  = imageSize(targetDepth);
+    if (all(lessThan(pixel, size)))
+    {
+        float depth      = 0.0;
+        ivec2 sourceSize = imageSize(sourceDepth);
+        ivec2 begin      = pixel * 2;
+        // A final odd row/column belongs to the last destination texel.
+        ivec2 end = min(begin + 2, sourceSize);
+        if (pixel.x == size.x - 1)
+        {
+            end.x = sourceSize.x;
+        }
+        if (pixel.y == size.y - 1)
+        {
+            end.y = sourceSize.y;
+        }
+        for (int y = begin.y; y < end.y; ++y)
+        {
+            for (int x = begin.x; x < end.x; ++x)
+            {
+                depth = max(depth, imageLoad(sourceDepth, ivec2(x, y)).r);
+            }
+        }
+        imageStore(targetDepth, pixel, vec4(depth));
+    }
+}

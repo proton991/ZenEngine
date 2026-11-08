@@ -29,6 +29,10 @@ struct NativeBuild
     HeapVector<VkAccelerationStructureGeometryKHR>       geometries;
     HeapVector<VkAccelerationStructureBuildRangeInfoKHR> ranges;
     HeapVector<uint32_t>                                 counts;
+    HeapVector<VkAccelerationStructureTrianglesOpacityMicromapKHR> opacity;
+    HeapVector<VkMicromapUsageKHR>                                 usages;
+    VkAccelerationStructureGeometryMicromapDataKHR                 micromap{
+        VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_MICROMAP_DATA_KHR};
 
     explicit NativeBuild(const RHIAccelerationStructureBuildDesc& desc, bool addresses, uint64_t instanceAddress = 0)
     {
@@ -46,8 +50,28 @@ struct NativeBuild
             counts.push_back(static_cast<uint32_t>(desc.instances.size()));
             ranges.push_back({static_cast<uint32_t>(desc.instances.size()), 0, 0, 0});
         }
+        else if (desc.type == RHIAccelerationStructureType::eOpacityMicromap)
+        {
+            for (const RHIOpacityMicromapUsage& usage : desc.micromap.usages)
+            {
+                usages.push_back({usage.count, usage.subdivisionLevel, VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR});
+            }
+            micromap.usageCountsCount    = static_cast<uint32_t>(usages.size());
+            micromap.pUsageCounts        = usages.data();
+            micromap.triangleArrayStride = sizeof(VkMicromapTriangleKHR);
+            if (addresses)
+            {
+                micromap.data          = desc.micromap.pDataBuffer->GetDeviceAddress() + desc.micromap.dataOffset;
+                micromap.triangleArray = desc.micromap.pTriangleBuffer->GetDeviceAddress() + desc.micromap.triangleOffset;
+            }
+            VkAccelerationStructureGeometryKHR geometry{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+            geometry.geometryType = VK_GEOMETRY_TYPE_MICROMAP_KHR;
+            geometry.pNext        = &micromap;
+            geometries.push_back(geometry);
+        }
         else
         {
+            opacity.reserve(desc.geometries.size());
             for (const RHIAccelerationStructureGeometry& source : desc.geometries)
             {
                 VkAccelerationStructureGeometryKHR geometry{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
@@ -63,6 +87,20 @@ struct NativeBuild
                 {
                     triangles.vertexData.deviceAddress = source.pVertexBuffer->GetDeviceAddress() + source.vertexOffset;
                     triangles.indexData.deviceAddress  = source.pIndexBuffer->GetDeviceAddress() + source.indexOffset;
+                }
+                if (source.pOpacityMicromap != nullptr)
+                {
+                    VkAccelerationStructureTrianglesOpacityMicromapKHR mapping{
+                        VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_KHR};
+                    mapping.micromap    = static_cast<VulkanAccelerationStructure*>(source.pOpacityMicromap)->GetVkHandle();
+                    mapping.indexType   = VK_INDEX_TYPE_UINT32;
+                    mapping.indexStride = sizeof(uint32_t);
+                    if (addresses)
+                    {
+                        mapping.indexBuffer = source.pOpacityIndexBuffer->GetDeviceAddress() + source.opacityIndexOffset;
+                    }
+                    opacity.push_back(mapping);
+                    triangles.pNext = &opacity.back();
                 }
                 geometries.push_back(geometry);
                 counts.push_back(source.indexCount / 3);
@@ -108,6 +146,24 @@ bool VulkanAccelerationStructure::ValidateDescription(const RHIAccelerationStruc
             }
         }
     }
+    else if (desc.type == RHIAccelerationStructureType::eOpacityMicromap)
+    {
+        valid &= capabilities.opacityMicromap && !desc.allowUpdate && desc.geometries.empty() && desc.instances.empty()
+              && !desc.micromap.usages.empty() && desc.micromap.usages.size() <= UINT32_MAX && desc.micromap.dataSize > 0;
+        uint64_t triangles = 0;
+        for (const RHIOpacityMicromapUsage& usage : desc.micromap.usages)
+        {
+            triangles += usage.count;
+            valid     &= usage.count != 0 && usage.subdivisionLevel <= capabilities.maxOpacitySubdivisionLevel;
+        }
+        valid &= triangles > 0 && triangles <= UINT32_MAX && triangles <= capabilities.maxMicromapTriangles;
+        if (requireBuffers && valid)
+        {
+            valid = ValidInput(desc.micromap.pDataBuffer, desc.micromap.dataOffset, desc.micromap.dataSize, 256)
+                 && ValidInput(desc.micromap.pTriangleBuffer, desc.micromap.triangleOffset,
+                               triangles * sizeof(VkMicromapTriangleKHR), 4);
+        }
+    }
     else
     {
         valid               &= desc.type == RHIAccelerationStructureType::eBottomLevel && !desc.geometries.empty()
@@ -119,6 +175,22 @@ bool VulkanAccelerationStructure::ValidateDescription(const RHIAccelerationStruc
                        && geometry.vertexStride >= 12 && geometry.vertexStride % 4 == 0 && geometry.indexCount % 3 == 0
                        && (geometry.indexFormat == DataFormat::eR16UInt || geometry.indexFormat == DataFormat::eR32UInt);
             primitives += geometry.indexCount / 3;
+            if (geometry.pOpacityMicromap != nullptr)
+            {
+                const VulkanAccelerationStructure* micromap =
+                    dynamic_cast<const VulkanAccelerationStructure*>(geometry.pOpacityMicromap);
+                valid &= capabilities.opacityMicromap && micromap != nullptr
+                      && micromap->GetType() == RHIAccelerationStructureType::eOpacityMicromap;
+                if (requireBuffers && valid)
+                {
+                    valid = ValidInput(geometry.pOpacityIndexBuffer, geometry.opacityIndexOffset,
+                                       uint64_t(geometry.indexCount / 3) * sizeof(uint32_t), 4);
+                }
+            }
+            else
+            {
+                valid &= geometry.pOpacityIndexBuffer == nullptr && geometry.opacityIndexOffset == 0;
+            }
             if (requireBuffers && valid)
             {
                 const uint32_t indexSize  = geometry.indexFormat == DataFormat::eR16UInt ? 2 : 4;
@@ -140,8 +212,9 @@ RHIAccelerationStructureBuildSizes VulkanAccelerationStructure::GetBuildSizes(co
     {
         NativeBuild                              build(desc, false);
         VkAccelerationStructureBuildSizesInfoKHR sizes{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
-        vkGetAccelerationStructureBuildSizesKHR(GVulkanRHI->GetVkDevice(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-                                                &build.info, build.counts.data(), &sizes);
+        vkGetAccelerationStructureBuildSizesKHR(
+            GVulkanRHI->GetVkDevice(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build.info,
+            desc.type == RHIAccelerationStructureType::eOpacityMicromap ? nullptr : build.counts.data(), &sizes);
         result = {sizes.accelerationStructureSize, sizes.buildScratchSize, sizes.updateScratchSize};
         if (desc.type == RHIAccelerationStructureType::eTopLevel)
         {
@@ -156,13 +229,17 @@ VulkanAccelerationStructure* VulkanAccelerationStructure::CreateObject(const RHI
     VulkanAccelerationStructure* result = nullptr;
     bool                         valid =
         GVulkanRHI->QueryGPUInfo().rayQuery.IsUsable() && info.size > 0
-        && (info.type == RHIAccelerationStructureType::eBottomLevel || info.type == RHIAccelerationStructureType::eTopLevel);
+        && (info.type == RHIAccelerationStructureType::eBottomLevel || info.type == RHIAccelerationStructureType::eTopLevel
+            || (info.type == RHIAccelerationStructureType::eOpacityMicromap
+                && GVulkanRHI->QueryGPUInfo().rayQuery.opacityMicromap));
     for (RHIAccelerationStructure* dependency : info.referencedStructures)
     {
-        const VulkanAccelerationStructure* native = dynamic_cast<const VulkanAccelerationStructure*>(dependency);
-        valid &= info.type == RHIAccelerationStructureType::eTopLevel && dependency != nullptr
-              && dependency->GetType() == RHIAccelerationStructureType::eBottomLevel && native != nullptr
-              && native->GetDeviceAddress() != 0;
+        const VulkanAccelerationStructure* native  = dynamic_cast<const VulkanAccelerationStructure*>(dependency);
+        valid                                     &= dependency != nullptr && native != nullptr
+                                                  && ((info.type == RHIAccelerationStructureType::eTopLevel
+                                                       && dependency->GetType() == RHIAccelerationStructureType::eBottomLevel && native->GetDeviceAddress() != 0)
+                                                      || (info.type == RHIAccelerationStructureType::eBottomLevel
+                                                          && dependency->GetType() == RHIAccelerationStructureType::eOpacityMicromap));
     }
     if (valid)
     {
@@ -195,22 +272,38 @@ void VulkanAccelerationStructure::Init()
     if (m_pStorageBuffer != nullptr)
     {
         VkAccelerationStructureCreateInfoKHR info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
-        info.buffer           = static_cast<VulkanBuffer*>(m_pStorageBuffer)->GetVkBuffer();
-        info.size             = GetSize();
-        info.type             = static_cast<VkAccelerationStructureTypeKHR>(GetType());
-        const VkResult result = vkCreateAccelerationStructureKHR(GVulkanRHI->GetVkDevice(), &info, nullptr, &m_vkHandle);
+        info.buffer     = static_cast<VulkanBuffer*>(m_pStorageBuffer)->GetVkBuffer();
+        info.size       = GetSize();
+        info.type       = static_cast<VkAccelerationStructureTypeKHR>(GetType());
+        VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+        if (GetType() == RHIAccelerationStructureType::eOpacityMicromap)
+        {
+            VkAccelerationStructureCreateInfo2KHR micromap{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_2_KHR};
+            micromap.type         = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR;
+            micromap.addressRange = {m_pStorageBuffer->GetDeviceAddress(), GetSize()};
+            result = vkCreateAccelerationStructure2KHR(GVulkanRHI->GetVkDevice(), &micromap, nullptr, &m_vkHandle);
+        }
+        else
+        {
+            result = vkCreateAccelerationStructureKHR(GVulkanRHI->GetVkDevice(), &info, nullptr, &m_vkHandle);
+        }
         if (result == VK_SUCCESS)
         {
             VkAccelerationStructureDeviceAddressInfoKHR address{
                 VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR};
             address.accelerationStructure = m_vkHandle;
-            m_deviceAddress               = vkGetAccelerationStructureDeviceAddressKHR(GVulkanRHI->GetVkDevice(), &address);
+            m_deviceAddress               = GetType() == RHIAccelerationStructureType::eOpacityMicromap
+                                              ? m_pStorageBuffer->GetDeviceAddress()
+                                              : vkGetAccelerationStructureDeviceAddressKHR(GVulkanRHI->GetVkDevice(), &address);
         }
         else
         {
-            m_vkHandle = VK_NULL_HANDLE;
-            ReportVulkanDeviceLoss(result, "vkCreateAccelerationStructureKHR");
-            LOGE("vkCreateAccelerationStructureKHR failed: {}", GetResultString(result));
+            m_vkHandle            = VK_NULL_HANDLE;
+            const char* operation = GetType() == RHIAccelerationStructureType::eOpacityMicromap
+                                      ? "vkCreateAccelerationStructure2KHR"
+                                      : "vkCreateAccelerationStructureKHR";
+            ReportVulkanDeviceLoss(result, operation);
+            LOGE("{} failed: {}", operation, GetResultString(result));
         }
     }
 }
@@ -237,10 +330,13 @@ bool VulkanAccelerationStructure::IsUpdateCompatible(const RHIAccelerationStruct
     {
         const RHIAccelerationStructureGeometry& prior = m_geometries[i];
         const RHIAccelerationStructureGeometry& next  = desc.geometries[i];
-        compatible &= prior.vertexFormat == next.vertexFormat && prior.vertexCount == next.vertexCount
-                   && prior.indexFormat == next.indexFormat && prior.indexCount == next.indexCount
-                   && prior.opaque == next.opaque && prior.indexOffset == next.indexOffset && next.pIndexBuffer != nullptr
-                   && m_indexIdentities[i] == next.pIndexBuffer->GetStableId();
+        compatible &=
+            prior.pOpacityMicromap == next.pOpacityMicromap && prior.pOpacityIndexBuffer == next.pOpacityIndexBuffer
+            && (next.pOpacityIndexBuffer == nullptr || m_opacityIndexIdentities[i] == next.pOpacityIndexBuffer->GetStableId())
+            && prior.opacityIndexOffset == next.opacityIndexOffset && prior.vertexFormat == next.vertexFormat
+            && prior.vertexCount == next.vertexCount && prior.indexFormat == next.indexFormat
+            && prior.indexCount == next.indexCount && prior.opaque == next.opaque && prior.indexOffset == next.indexOffset
+            && next.pIndexBuffer != nullptr && m_indexIdentities[i] == next.pIndexBuffer->GetStableId();
     }
     return compatible;
 }
@@ -289,6 +385,14 @@ bool VulkanAccelerationStructure::ValidateBuild(const RHIAccelerationStructureBu
                                         std::less<RHIAccelerationStructure*>())
                   && instance.IsValid();
         }
+        for (const RHIAccelerationStructureGeometry& geometry : info.description.geometries)
+        {
+            if (geometry.pOpacityMicromap != nullptr)
+            {
+                valid &= std::binary_search(m_sortedReferences.begin(), m_sortedReferences.end(), geometry.pOpacityMicromap,
+                                            std::less<RHIAccelerationStructure*>());
+            }
+        }
     }
     return valid;
 }
@@ -317,7 +421,8 @@ void VulkanAccelerationStructure::RecordBuild(VkCommandBuffer                   
         build.info.mode                     = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
         build.info.srcAccelerationStructure = static_cast<VulkanAccelerationStructure*>(info.pSource)->GetVkHandle();
     }
-    const VkAccelerationStructureBuildRangeInfoKHR* ranges = build.ranges.data();
+    const VkAccelerationStructureBuildRangeInfoKHR* ranges =
+        GetType() == RHIAccelerationStructureType::eOpacityMicromap ? nullptr : build.ranges.data();
     vkCmdBuildAccelerationStructuresKHR(commandBuffer, 1, &build.info, &ranges);
     m_buildRecorded = true;
     m_allowUpdate   = info.description.allowUpdate;
@@ -325,9 +430,12 @@ void VulkanAccelerationStructure::RecordBuild(VkCommandBuffer                   
     m_geometries.resize(info.description.geometries.size());
     std::ranges::copy(info.description.geometries, m_geometries.begin());
     m_indexIdentities.clear();
+    m_opacityIndexIdentities.clear();
     for (const RHIAccelerationStructureGeometry& geometry : info.description.geometries)
     {
         m_indexIdentities.push_back(geometry.pIndexBuffer->GetStableId());
+        m_opacityIndexIdentities.push_back(geometry.pOpacityIndexBuffer != nullptr ? geometry.pOpacityIndexBuffer->GetStableId()
+                                                                                   : 0);
     }
 }
 
@@ -374,10 +482,14 @@ void FVulkanCommandListContext::RHIBuildAccelerationStructure(const RHIAccelerat
             RecordResource(destination);
             RecordResource(info.pSource);
             RecordResource(info.pScratchBuffer);
+            RecordResource(info.description.micromap.pDataBuffer);
+            RecordResource(info.description.micromap.pTriangleBuffer);
             for (const RHIAccelerationStructureGeometry& geometry : info.description.geometries)
             {
                 RecordResource(geometry.pVertexBuffer);
                 RecordResource(geometry.pIndexBuffer);
+                RecordResource(geometry.pOpacityIndexBuffer);
+                RecordResource(geometry.pOpacityMicromap);
             }
             destination->RecordBuild(GetCommandBuffer()->GetVkHandle(), info, instances ? instances->GetDeviceAddress() : 0);
         }

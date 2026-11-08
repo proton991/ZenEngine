@@ -370,6 +370,7 @@ void VulkanDevice::Init()
     m_extensionFlags.hasRaytracingPipeline &= m_extensionFlags.hasAccelerationStructure;
 
     m_extensionFlags.hasRayQuery           &= m_extensionFlags.hasAccelerationStructure;
+    m_extensionFlags.hasOpacityMicromap    &= m_extensionFlags.hasRayQuery;
 
     for (const UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
     {
@@ -377,7 +378,8 @@ void VulkanDevice::Init()
 
         if ((name == NameID(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) && !m_extensionFlags.hasAccelerationStructure)
             || (name == NameID(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) && !m_extensionFlags.hasRaytracingPipeline)
-            || (name == NameID(VK_KHR_RAY_QUERY_EXTENSION_NAME) && !m_extensionFlags.hasRayQuery))
+            || (name == NameID(VK_KHR_RAY_QUERY_EXTENSION_NAME) && !m_extensionFlags.hasRayQuery)
+            || (name == NameID(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME) && !m_extensionFlags.hasOpacityMicromap))
         {
             extension->SetSupport(false);
         }

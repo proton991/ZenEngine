@@ -260,6 +260,18 @@ bool ValidImages(const SceneAsset& asset)
                   == (texture.format == Format::BC5_UNORM_BLOCK));
         valid &= zenasset::ArePixelFormatsViewCompatible(ImageStorageFormat(asset.images[texture.image.value].pixels->format),
                                                          ImageStorageFormat(texture.format));
+        const ImagePixels& pixels = *asset.images[texture.image.value].pixels;
+        valid           &= texture.alphaMips.empty() || texture.alphaMips.size() == std::max(size_t(1), pixels.mips.size());
+        uint32_t width   = texture.atlasRegion == ImageRegion{} ? pixels.width : texture.atlasRegion.width;
+        uint32_t height  = texture.atlasRegion == ImageRegion{} ? pixels.height : texture.atlasRegion.height;
+        for (const AlphaMipStatistics& mip : texture.alphaMips)
+        {
+            valid  &= mip.texels == uint64_t(width) * height && mip.zeroTexels <= mip.texels
+                   && mip.oneTexels <= mip.texels - mip.zeroTexels && mip.zeroCells <= mip.texels
+                   && mip.oneCells <= mip.texels - mip.zeroCells;
+            width   = std::max(1u, width / 2);
+            height  = std::max(1u, height / 2);
+        }
     }
     for (const SamplerAsset& sampler : asset.samplers)
     {

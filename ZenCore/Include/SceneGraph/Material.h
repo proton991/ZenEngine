@@ -46,7 +46,8 @@ struct MaterialData
     MaterialTextureData featureTextures[static_cast<uint32_t>(MaterialFeatureTexture::Count)]{};
     // Positive-Z XY normal encoding for base and clearcoat; remaining components are reserved.
     glm::uvec4 normalEncoding{0};
-    // Filled by RenderScene: subtexel divisions, qualified SpatialTextureRounding, then reserved components.
+    // Filled by RenderScene: subtexel divisions, qualified SpatialTextureRounding,
+    // opaque-core cutoff (zero disables the split), reserved.
     Vec4 textureSampling{1, 0, 0, 0};
 };
 

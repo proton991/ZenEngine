@@ -1,6 +1,7 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_ray_query : require
+#include "../Common/opacity_micromap.glsl"
 #define HYBRID_COUNT_RAYS
 #define GI_COUNT_RAY_SLOT 3
 #define HYBRID_HARDWARE_PROVIDER

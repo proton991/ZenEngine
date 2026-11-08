@@ -1,7 +1,38 @@
 #include "AssetLib/ImageAsset.h"
+#include "ZenAsset/Reader/Image.h"
 
 namespace zen::asset
 {
+bool AnalyzeImageAlpha(Format                    format,
+                       uint32_t                  width,
+                       uint32_t                  height,
+                       VectorView<const uint8_t> bytes,
+                       const ImageRegion&        region,
+                       AlphaMipStatistics&       statistics,
+                       std::string&              error)
+{
+    zenasset::PixelFormat native = zenasset::PixelFormat::Undefined;
+    switch (format)
+    {
+        case Format::R8G8B8A8_UNORM: native = zenasset::PixelFormat::RGBA8Unorm; break;
+        case Format::R8G8B8A8_SRGB: native = zenasset::PixelFormat::RGBA8Srgb; break;
+        case Format::BC7_UNORM_BLOCK: native = zenasset::PixelFormat::BC7Unorm; break;
+        case Format::BC7_SRGB_BLOCK: native = zenasset::PixelFormat::BC7Srgb; break;
+        default: break;
+    }
+    const zenasset::ImageMipView               mip{native,
+                                                   width,
+                                                   height,
+                                                   std::as_bytes(std::span(bytes.data(), bytes.size())),
+                                                   zenasset::TextureInterpretation::Default,
+                                                   {region.x, region.y, region.width, region.height}};
+    const zenasset::ImageAlphaStatisticsResult result = zenasset::AnalyzeImageAlpha(mip);
+    const zenasset::AlphaMipStatistics&        value  = result.statistics;
+    statistics = {value.texels, value.zeroTexels, value.oneTexels, value.zeroCells, value.oneCells};
+    error      = result.status.message;
+    return result.status.Succeeded();
+}
+
 bool ResolveImagePixels(const SharedPtr<const ImagePixels, MultiThreadCounter>& pixels,
                         SharedPtr<const ImagePixels, MultiThreadCounter>&       resolved,
                         std::string*                                            error)

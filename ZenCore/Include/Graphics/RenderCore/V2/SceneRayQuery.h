@@ -4,6 +4,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
 #include "Graphics/RenderCore/V2/RenderFrameState.h"
+#include "Graphics/RenderCore/V2/SceneOpacityMicromap.h"
 
 namespace zen::sg
 {
@@ -63,6 +64,7 @@ private:
     {
         const sg::Mesh*                              mesh{nullptr};
         HeapVector<RHIAccelerationStructureGeometry> geometries;
+        HeapVector<SharedPtr<SceneOpacityMicromap>>  micromaps;
         RHIAccelerationStructureBuildSizes           sizes;
         RHIAccelerationStructure*                    structure{nullptr};
         uint32_t                                     metadataOffset{0};

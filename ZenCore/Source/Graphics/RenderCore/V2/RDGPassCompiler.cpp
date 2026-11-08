@@ -1196,6 +1196,23 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
                                        RHIAccessMode::eRead)
                  && DeclareBuildBuffer(geometry.pIndexBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
                                        RHIAccessMode::eRead);
+            if (geometry.pOpacityMicromap != nullptr)
+            {
+                const HeapVector<RHIAccelerationStructure*>& references = info.pDestination->GetReferencedStructures();
+                valid                                                   = valid
+                                                                       && Check(std::find(references.begin(), references.end(), geometry.pOpacityMicromap) != references.end(),
+                                                                                RDGErrorCode::eBinding, "Missing retained opacity micromap dependency")
+                                                                       && DeclareBuildBuffer(geometry.pOpacityIndexBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
+                                                                                             RHIAccessMode::eRead);
+            }
+        }
+        if (info.description.type == RHIAccelerationStructureType::eOpacityMicromap)
+        {
+            valid = valid
+                 && DeclareBuildBuffer(info.description.micromap.pDataBuffer,
+                                       RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIAccessMode::eRead)
+                 && DeclareBuildBuffer(info.description.micromap.pTriangleBuffer,
+                                       RHIBufferUsageFlagBits::eAccelerationStructureInput, RHIAccessMode::eRead);
         }
         if (valid)
         {
@@ -1203,13 +1220,16 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
             std::ranges::copy(info.description.geometries, geometries.begin());
             HeapVector<RHIAccelerationStructureInstance> instances(info.description.instances.size());
             std::ranges::copy(info.description.instances, instances.begin());
-            m_ops.push_back(
-                [info, geometries = std::move(geometries), instances = std::move(instances)](RDGPassCmdEncoder& encoder) {
-                    RHIAccelerationStructureBuildInfo owned = info;
-                    owned.description.geometries            = MakeVecView(geometries.data(), geometries.size());
-                    owned.description.instances             = MakeVecView(instances.data(), instances.size());
-                    encoder.BuildAccelerationStructure(owned);
-                });
+            HeapVector<RHIOpacityMicromapUsage> usages(info.description.micromap.usages.size());
+            std::ranges::copy(info.description.micromap.usages, usages.begin());
+            m_ops.push_back([info, geometries = std::move(geometries), instances = std::move(instances),
+                             usages = std::move(usages)](RDGPassCmdEncoder& encoder) {
+                RHIAccelerationStructureBuildInfo owned = info;
+                owned.description.geometries            = MakeVecView(geometries.data(), geometries.size());
+                owned.description.instances             = MakeVecView(instances.data(), instances.size());
+                owned.description.micromap.usages       = MakeVecView(usages.data(), usages.size());
+                encoder.BuildAccelerationStructure(owned);
+            });
         }
     }
     return *this;

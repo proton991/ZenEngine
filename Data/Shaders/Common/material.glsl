@@ -2,7 +2,7 @@
 #define ZEN_MATERIAL_GLSL
 #include "bindless_heap.glsl"
 #if defined(MATERIAL_BINDING_UV) && !defined(MATERIAL_BINDING_UV_VALUE)
-#    define MATERIAL_BINDING_UV_VALUE(slot) inBindingUV[slot]
+#    define MATERIAL_BINDING_UV_VALUE(slot, uvSet) inBindingUV[slot]
 #endif
 struct TextureTransform
 {
@@ -47,7 +47,7 @@ struct Material
     vec4                volumeScatterColorRetroreflection;
     MaterialTextureData featureTextures[17];
     uvec4               normalEncoding;
-    vec4                textureSampling;
+    vec4                textureSampling; // Subtexel sampling xy, renderer opaque-core cutoff z.
 };
 vec3 MaterialNormalVector(vec3 sampled, uint encoding, float scale)
 {
@@ -67,7 +67,7 @@ vec2 MaterialTransformedUV(Material material, int slot, int uvSet, vec2 uv0, vec
 {
     vec3 uv = vec3(MaterialUV(uvSet, uv0, uv1), 1.0);
 #ifdef MATERIAL_BINDING_UV
-    uv = vec3(MATERIAL_BINDING_UV_VALUE(slot), 1.0);
+    uv = vec3(MATERIAL_BINDING_UV_VALUE(slot, uvSet), 1.0);
 #endif
     return vec2(dot(material.textureTransforms[slot].row0.xyz, uv), dot(material.textureTransforms[slot].row1.xyz, uv));
 }
@@ -168,7 +168,7 @@ vec4 MaterialFeatureTexture(Material material, int slot, vec2 uv0, vec2 uv1)
     }
     vec3 uv = vec3(MaterialUV(int(binding.properties.y), uv0, uv1), 1.0);
 #ifdef MATERIAL_BINDING_UV
-    uv = vec3(MATERIAL_BINDING_UV_VALUE(slot + 5), 1.0);
+    uv = vec3(MATERIAL_BINDING_UV_VALUE(slot + 5, int(binding.properties.y)), 1.0);
 #endif
     vec2 transformed = vec2(dot(binding.transform.row0.xyz, uv), dot(binding.transform.row1.xyz, uv));
     return MaterialBindingTexture(index, binding.transform, material.textureSampling.xy, transformed);

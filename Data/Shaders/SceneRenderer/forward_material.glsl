@@ -6,6 +6,8 @@
 #    include "../ShadowMapping/scene_shadows.glsl"
 #    include "../VoxelGI/gi_ray_totals.glsl"
 #endif
+// ForwardDrawCache selects this only when every omitted lobe is disabled.
+layout(constant_id = 0) const bool basicForwardMaterial = false;
 layout(set = 1, binding = 0) uniform uCameraData
 {
     mat4 uProjViewMatrix;
@@ -37,14 +39,24 @@ layout(set = 3, binding = 6) uniform sampler2D scatterLightingMap;
 layout(set = 3, binding = 7) uniform sampler2D scatterPositionMap;
 layout(push_constant) uniform Constants
 {
+#ifdef GPU_FORWARD_DRAW
+    uint unusedNodeIndex;
+    uint unusedMaterialIndex;
+#else
     uint uNodeIndex;
     uint uMaterialIndex;
+#endif
     uint uTopology;
 #ifdef LIGHTING_CAPTURE
     uint  padding;
     uvec2 captureExtent;
 #endif
 };
+#ifdef GPU_FORWARD_DRAW
+layout(location = 16) flat in uvec2 inForwardIdentity;
+#    define uNodeIndex     inForwardIdentity.x
+#    define uMaterialIndex inForwardIdentity.y
+#endif
 #ifdef LIGHTING_CAPTURE
 #    include "Graphics/Shared/LightingCapture.h"
 layout(set = 4, binding = 2, std430) buffer LightingCapture
@@ -200,7 +212,23 @@ void main()
     uint     topology      = uTopology & 3u;
     bool     displayLinear = (uTopology & 4u) != 0u;
     Material material      = materialData[uMaterialIndex];
-    vec3     N             = SurfaceNormal(material);
+    if (basicForwardMaterial)
+    {
+        // Make absent features compile-time constants so the driver can remove their
+        // texture reads, lighting loops and live registers from this permutation.
+        material.surfaceProperties.w               = 0.0;
+        material.clearcoatSheenSpecular.x          = 0.0;
+        material.sheenColorTransmission            = vec4(0.0);
+        material.volumeIridescence.z               = 0.0;
+        material.iridescenceAnisotropy.z           = 0.0;
+        material.diffuseTransmissionColorFactor.w  = 0.0;
+        material.volumeScatterColorRetroreflection = vec4(0.0);
+        for (int slot = 4; slot < 17; ++slot)
+        {
+            material.featureTextures[slot].properties.x = -1.0;
+        }
+    }
+    vec3 N = SurfaceNormal(material);
 #ifdef VOXEL_GI
     vec3 shadowNormal = GeometricNormal(material);
 #    if defined(HARDWARE_SHADOWS)
@@ -211,12 +239,13 @@ void main()
     bool backface = material.materialProperties.z > 0.5 && !(gl_FrontFacing == (inOrientation >= 0.0));
     // Missing mesh tangents use the normal texture's authored tangent space.
     vec2 tangentUV    = material.normalTexIndex >= 0 ? MaterialTransformedUV(material, 2, material.normalTexSet, inUV, inUV1)
-                                                     : MaterialBindingUV(0);
+                                                     : MaterialBindingUV(0, material.bcTexSet);
     mat3 basis        = SurfaceBasis(N, tangentUV, true, backface);
     MaterialSurface s = ReadMaterialSurface(material);
     s.modelScale      = nodesData[uNodeIndex].surfaceScale.xyz;
     // Fully transparent blended texels leave the target unchanged; skip their lighting.
     if (!MaterialVisible(material, s.baseColor.a) || (material.surfaceProperties.y == 2.0 && s.baseColor.a <= 0.0)
+        || (topology == 2u && material.textureSampling.z > 0.0 && s.baseColor.a >= material.textureSampling.z)
         || (topology == 2 && (material.materialProperties.z < 0.5 || material.volumeIridescence.x > 0.0)
             && !(gl_FrontFacing == (inOrientation >= 0.0))))
     {
@@ -259,7 +288,12 @@ void main()
         }
         if (diffuse)
         {
-            receiverVisibility = texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0).rg;
+            // A split fringe reuses shadows only from its own core. Keep the existing
+            // receiver-independent GI support and ordinary decal shadow policy.
+            bool sameNode      = texelFetch(hybridSurface, ivec2(gl_FragCoord.xy), 0).g / 2u == uNodeIndex + 1u;
+            receiverVisibility = material.textureSampling.z <= 0.0 || sameNode
+                                   ? texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0).rg
+                                   : uvec2(0);
             vec3 escaped       = indirect ? texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb : irradiance;
             irradiance         = indirect ? irradiance + escaped : irradiance;
 #        ifdef LIGHTING_CAPTURE
@@ -348,7 +382,9 @@ void main()
             vec3  direct   = SurfaceDirect(s, N, coatN, T, B, V, L) * radiance;
 #ifdef VOXEL_GI
             // Visibility only scales a nonzero contribution, as the deferred pass skips lights behind it.
-            if (any(greaterThan(direct, vec3(0.0))))
+            // Shadow visibility is not used by derivatives. Helper lanes only
+            // support neighboring material samples and never contribute color.
+            if (!gl_HelperInvocation && any(greaterThan(direct, vec3(0.0))))
             {
                 bool traced  = i < int(sceneUbo.lightInfo.x) && ((receiverVisibility.x >> uint(i)) & 1u) != 0u;
                 direct      *= traced ? float((receiverVisibility.y >> uint(i)) & 1u)

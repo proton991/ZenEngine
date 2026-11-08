@@ -323,6 +323,7 @@ bool SceneRendering::ApplyRenderingSettings(const rc::RenderingSettings& setting
             }
 
             valid = valid && m_scene->SetCameraLight(settings.cameraLight);
+            valid = valid && m_scene->SetTransparencySettings(settings.transparency);
 
             if (valid && rc::CameraLightShadowFaces(settings.cameraLight) != rc::CameraLightShadowFaces(m_cameraLight))
             {

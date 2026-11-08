@@ -3675,16 +3675,25 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
         m_resourceManager.Retain(binding.pStructure);
         HeapVector<RHIAccelerationStructure*> structures;
         structures.push_back(binding.pStructure);
-        for (RHIAccelerationStructure* dependency : binding.pStructure->GetReferencedStructures())
+        for (size_t index = 0; index < structures.size(); ++index)
         {
-            structures.push_back(dependency);
+            for (RHIAccelerationStructure* dependency : structures[index]->GetReferencedStructures())
+            {
+                structures.push_back(dependency);
+            }
         }
-        for (RHIAccelerationStructure* structure : structures)
+        // Dependencies descend from TLAS to BLAS to micromap. Flattening and
+        // sorting avoids a linear membership search for each mesh in each pass.
+        std::sort(structures.begin(), structures.end(), std::less<RHIAccelerationStructure*>());
+        for (size_t index = 0; index < structures.size(); ++index)
         {
-            valid = valid
-                 && DeclareAccelerationStructureAccessForPass(
-                        node, m_resourceManager.ImportAccelerationStructureAllocation(structure), RHIAccessMode::eRead,
-                        ShaderPipelineStages(descriptor->stageFlags), RDGContentEffect::eRead);
+            if (index == 0 || structures[index] != structures[index - 1])
+            {
+                valid = valid
+                     && DeclareAccelerationStructureAccessForPass(
+                            node, m_resourceManager.ImportAccelerationStructureAllocation(structures[index]),
+                            RHIAccessMode::eRead, ShaderPipelineStages(descriptor->stageFlags), RDGContentEffect::eRead);
+            }
         }
     }
 

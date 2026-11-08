@@ -854,13 +854,20 @@ void VulkanRHI::Init()
     m_gpuInfo.storageBufferAlignment           = limits.minStorageBufferOffsetAlignment;
 
     m_gpuInfo.maxComputeWorkGroupInvocations   = limits.maxComputeWorkGroupInvocations;
+    m_gpuInfo.maxComputeSharedMemorySize       = limits.maxComputeSharedMemorySize;
+    VkPhysicalDeviceSubgroupProperties subgroup{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
+    VkPhysicalDeviceProperties2        subgroupProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+    subgroupProperties.pNext = &subgroup;
+    vkGetPhysicalDeviceProperties2(m_pDevice->GetPhysicalDeviceHandle(), &subgroupProperties);
+    m_gpuInfo.supportComputeSubgroupBallot = (subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0
+                                          && (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0;
 
-    m_gpuInfo.maxBoundDescriptorSets           = limits.maxBoundDescriptorSets;
+    m_gpuInfo.maxBoundDescriptorSets       = limits.maxBoundDescriptorSets;
 
-    m_gpuInfo.maxStorageBufferRange            = limits.maxStorageBufferRange;
+    m_gpuInfo.maxStorageBufferRange        = limits.maxStorageBufferRange;
 
-    m_gpuInfo.maxColorAttachments              = limits.maxColorAttachments;
-    m_gpuInfo.subTexelPrecisionBits            = limits.subTexelPrecisionBits;
+    m_gpuInfo.maxColorAttachments          = limits.maxColorAttachments;
+    m_gpuInfo.subTexelPrecisionBits        = limits.subTexelPrecisionBits;
 
     for (uint32_t axis = 0; axis < 3; ++axis)
     {
@@ -874,6 +881,7 @@ void VulkanRHI::Init()
     rayQuery.bufferDeviceAddress           = extensions.hasBufferDeviceAddress != 0;
     rayQuery.accelerationStructure         = extensions.hasAccelerationStructure != 0;
     rayQuery.rayQuery                      = extensions.hasRayQuery != 0;
+    rayQuery.opacityMicromap               = extensions.hasOpacityMicromap != 0;
     rayQuery.graphicsBuild                 = GetQueueCopyCapabilities(RHICommandContextType::eGraphics).compute;
     if (rayQuery.accelerationStructure)
     {
@@ -890,6 +898,17 @@ void VulkanRHI::Init()
         vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), VK_FORMAT_R32G32B32_SFLOAT, &formats);
         rayQuery.triangleFloat3 =
             (formats.bufferFeatures & VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR) != 0;
+    }
+
+    if (rayQuery.opacityMicromap)
+    {
+        VkPhysicalDeviceOpacityMicromapPropertiesKHR micromap{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_PROPERTIES_KHR};
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties.pNext = &micromap;
+        vkGetPhysicalDeviceProperties2(m_pDevice->GetPhysicalDeviceHandle(), &properties);
+        rayQuery.maxOpacitySubdivisionLevel = micromap.maxOpacity4StateSubdivisionLevel;
+        rayQuery.maxMicromapTriangles       = micromap.maxMicromapTriangles;
     }
 
     GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(), m_pDevice->GetVkHandle(),

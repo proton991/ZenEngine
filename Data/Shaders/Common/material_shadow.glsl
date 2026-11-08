@@ -10,7 +10,11 @@ float MaterialShadowCoverage(Material material,
                              vec3     lightVector,
                              vec3     modelScale)
 {
-    float alpha        = material.surfaceProperties.y == 2.0 ? clamp(albedo.a, 0.0, 1.0) : 1.0;
+    float alpha = material.surfaceProperties.y == 2.0 ? clamp(albedo.a, 0.0, 1.0) : 1.0;
+    if (material.textureSampling.z > 0.0 && alpha >= material.textureSampling.z)
+    {
+        alpha = 1.0;
+    }
     float transmission = material.sheenColorTransmission.w * MaterialFeatureTexture(material, 9, uv0, uv1).r;
     if (transmission > 0.0)
     {

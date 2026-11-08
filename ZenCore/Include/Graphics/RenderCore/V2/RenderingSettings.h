@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/SceneLighting.h"
 #include "Graphics/RenderCore/V2/VoxelGISettings.h"
+#include "Graphics/RenderCore/V2/TransparencySettings.h"
 #include <string>
 
 namespace zen::rc
@@ -75,6 +76,7 @@ struct RenderingSettings
     CameraLightSettings        cameraLight;
     EnvironmentSettings        environment;
     VoxelGIRuntimeSettings     gi;
+    TransparencySettings       transparency;
     DebugSelection             debug;
     bool                       lightMarkers{false};
     float                      lightMarkerSize{0.02f};

@@ -1,0 +1,60 @@
+#version 450
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Parameters
+{
+    uint count;
+    uint groups;
+};
+layout(std430, set = 1, binding = 0) readonly buffer ForwardDepthKeys
+{
+    uvec2 depthKeys[];
+};
+layout(std430, set = 1, binding = 1) writeonly buffer ForwardSortedIndices
+{
+    uint sortedIndices[];
+};
+layout(std430, set = 1, binding = 2) writeonly buffer ForwardArguments
+{
+    uint arguments[];
+};
+layout(std430, set = 1, binding = 3) readonly buffer ForwardLocalRanks
+{
+    uvec2 ranks[];
+};
+layout(std430, set = 1, binding = 4) readonly buffer ForwardBlockOffsets
+{
+    uint offsets[];
+};
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint total = offsets[groups];
+    if (index < count)
+    {
+        if (ranks[index].y != 0u)
+        {
+            uint triangle    = depthKeys[index].y;
+            uint destination = offsets[gl_WorkGroupID.x] + ranks[index].x;
+            for (uint corner = 0u; corner < 3u; ++corner)
+            {
+                sortedIndices[destination * 3u + corner] = triangle * 3u + corner;
+            }
+        }
+        // Define the unused tail too. No destination above can overlap it.
+        if (index >= total)
+        {
+            for (uint corner = 0u; corner < 3u; ++corner)
+            {
+                sortedIndices[index * 3u + corner] = 0u;
+            }
+        }
+    }
+    if (index == 0u)
+    {
+        arguments[0] = total * 3u;
+        arguments[1] = 1u;
+        arguments[2] = 0u;
+        arguments[3] = 0u;
+        arguments[4] = 0u;
+    }
+}

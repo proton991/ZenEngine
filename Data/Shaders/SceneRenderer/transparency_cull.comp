@@ -1,0 +1,78 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../Common/frustum_bounds.glsl"
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Parameters
+{
+    uint count;
+};
+layout(set = 1, binding = 0) uniform ForwardCullView
+{
+    mat4 projectionView;
+};
+struct ClusterBounds
+{
+    vec4 minimum;
+    vec4 maximum;
+};
+layout(std430, set = 1, binding = 1) readonly buffer ForwardClusters
+{
+    ClusterBounds clusters[];
+};
+layout(std430, set = 1, binding = 2) writeonly buffer ForwardClusterVisibility
+{
+    uint visibility[];
+};
+layout(set = 1, binding = 3) uniform sampler2D opaqueHiZ;
+
+bool ClusterVisible(ClusterBounds bounds)
+{
+    bool visible = true;
+    vec3 minimum = bounds.minimum.xyz;
+    vec3 maximum = bounds.maximum.xyz;
+    bool valid   = all(lessThanEqual(minimum, maximum)) && !any(isnan(minimum)) && !any(isnan(maximum)) && !any(isinf(minimum))
+                && !any(isinf(maximum));
+    if (valid)
+    {
+        visible           = IntersectsFrustum(minimum, maximum, projectionView);
+        vec3 projectedMin = vec3(1e30);
+        vec3 projectedMax = vec3(-1e30);
+        bool projectable  = true;
+        for (uint corner = 0u; corner < 8u; ++corner)
+        {
+            vec3 position  = mix(minimum, maximum, bvec3((corner & 1u) != 0u, (corner & 2u) != 0u, (corner & 4u) != 0u));
+            vec4 clip      = projectionView * vec4(position, 1.0);
+            projectable    = projectable && clip.w > 1e-5 && clip.z >= 0.0 && !any(isnan(clip)) && !any(isinf(clip));
+            vec3 projected = clip.xyz / max(clip.w, 1e-5);
+            projectedMin   = min(projectedMin, projected);
+            projectedMax   = max(projectedMax, projected);
+        }
+        if (visible && projectable)
+        {
+            ivec2 size = textureSize(opaqueHiZ, 0);
+            // Include a pixel of rasterization/transform roundoff on every edge.
+            ivec2 low =
+                clamp(ivec2(floor(clamp(projectedMin.xy * 0.5 + 0.5, vec2(0), vec2(1)) * vec2(size))) - 1, ivec2(0), size - 1);
+            ivec2 high =
+                clamp(ivec2(ceil(clamp(projectedMax.xy * 0.5 + 0.5, vec2(0), vec2(1)) * vec2(size))) + 1, ivec2(0), size - 1);
+            int   span     = max(high.x - low.x + 1, high.y - low.y + 1);
+            int   level    = min(int(ceil(log2(float(max(span, 1))))), textureQueryLevels(opaqueHiZ) - 1);
+            ivec2 last     = textureSize(opaqueHiZ, level) - 1;
+            low            = min(low >> level, last);
+            high           = min(high >> level, last);
+            float furthest = max(max(texelFetch(opaqueHiZ, low, level).r, texelFetch(opaqueHiZ, high, level).r),
+                                 max(texelFetch(opaqueHiZ, ivec2(low.x, high.y), level).r,
+                                     texelFetch(opaqueHiZ, ivec2(high.x, low.y), level).r));
+            visible        = !(projectedMin.z > furthest + 1e-5);
+        }
+    }
+    return visible;
+}
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < count)
+    {
+        visibility[index] = ClusterVisible(clusters[index]) ? 1u : 0u;
+    }
+}

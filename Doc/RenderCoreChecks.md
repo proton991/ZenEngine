@@ -74,9 +74,23 @@ setup and command-line overrides, as described in [ZenApp migration](ZenAppMigra
 Correctness checks do not establish a frame-time improvement; profile comparable ZenApp
 runs separately before making a performance claim.
 
-Use `--gpu-culling=0` to force direct GBuffer draws and `--gpu-culling=1` (the default)
-to request compute culling with the same executable and setup. `--capture=frame.ppm`
-also writes `frame.ppm.json`, recording requested and selected paths, fallback reason,
+Use `--gpu-culling=0` to force direct GBuffer draws and CPU transparency ordering.
+`--gpu-culling=1` (the default) also requests exact GPU ordering and cluster frustum/Hi-Z
+culling for eligible basic BLEND scenes; unsupported devices/material combinations
+retain CPU ordering. Compare with the same executable and setup. `--capture=frame.ppm`
+also writes `frame.ppm.json`, recording the GBuffer requested and selected paths, fallback reason,
 candidate count, uploaded bytes, and actual extents. Profile logs record this state per
 scene frame; the profile summary records the final frame. The Nsight runner accepts
 `--gpu-culling 0|1` and retains the requested setting and observed path transitions.
+
+
+## Transparency ordering and cluster culling
+
+The targeted ConeVoxelGIIntegrationTest cases `ForwardDepthSort*`, `ForwardClusters*`,
+`ForwardDrawCache*`, `EquivalentBlendNodes*`, `PackedMaterialUVs*`, and `OpaqueCore*`
+cover stable GPU ordering, conservative odd-sized Hi-Z, CPU/GPU raster parity and
+core/fringe classification. Keep `CulledGBuffer*` and `SceneFrustum*` in the run when
+changing the shared frustum predicate. These parameterized tests exercise inline/
+threaded submission with async compute disabled/enabled. See
+[the transparency execution record](TransparencyOptimizationProgress20261108.md)
+for standalone ZenApp image and performance evidence.

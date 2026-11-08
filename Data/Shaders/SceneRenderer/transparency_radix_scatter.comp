@@ -1,0 +1,74 @@
+#version 450
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+// The caller requires compute subgroup ballots. Rank first by input block, then
+// subgroup, then lane, so equal keys retain their original triangle order.
+layout(local_size_x = 256) in;
+layout(push_constant) uniform SortParameters
+{
+    uvec4 config; // Key count, block count, digit shift, reserved.
+};
+layout(std430, set = 1, binding = 0) readonly buffer SortInput
+{
+    uvec2 inputKeys[];
+};
+layout(std430, set = 1, binding = 1) writeonly buffer SortOutput
+{
+    uvec2 outputKeys[];
+};
+layout(std430, set = 1, binding = 2) readonly buffer SortOffsets
+{
+    uint blockOffsets[];
+};
+// A subgroup can contain as few as one invocation. Avoid assuming a vendor's
+// warp size when reserving the per-subgroup histogram.
+shared uint subgroupCounts[16 * 256];
+shared uint activeCounts[256];
+void        main()
+{
+    // Vulkan does not relate subgroup lanes to LocalInvocationIndex, and a
+    // subgroup can have inactive lanes. Assign a dense input range from the
+    // actual active mask instead of relying on either ordering assumption.
+    uvec4 activeVotes = subgroupBallot(true);
+    if (subgroupElect())
+    {
+        activeCounts[gl_SubgroupID] = subgroupBallotBitCount(activeVotes);
+    }
+    barrier();
+    uint lane = subgroupBallotExclusiveBitCount(activeVotes);
+    for (uint subgroup = 0u; subgroup < gl_SubgroupID; ++subgroup)
+    {
+        lane += activeCounts[subgroup];
+    }
+    uint  index = gl_WorkGroupID.x * 256u + lane;
+    bool  valid = index < config.x;
+    uvec2 key   = valid ? inputKeys[index] : uvec2(0);
+    uint  digit = (key.x >> config.z) & 15u;
+    uint  rank  = 0u;
+    for (uint bucket = 0u; bucket < 16u; ++bucket)
+    {
+        uvec4 votes = subgroupBallot(valid && digit == bucket);
+        if (digit == bucket)
+        {
+            rank = subgroupBallotExclusiveBitCount(votes);
+        }
+        if (subgroupElect())
+        {
+            subgroupCounts[bucket * 256u + gl_SubgroupID] = subgroupBallotBitCount(votes);
+        }
+    }
+    barrier();
+    if (valid)
+    {
+        for (uint subgroup = 0u; subgroup < gl_SubgroupID; ++subgroup)
+        {
+            rank += subgroupCounts[digit * 256u + subgroup];
+        }
+        uint destination = blockOffsets[digit * config.y + gl_WorkGroupID.x] + rank;
+        for (uint bucket = 0u; bucket < digit; ++bucket)
+        {
+            destination += blockOffsets[16u * config.y + bucket];
+        }
+        outputKeys[destination] = key;
+    }
+}

@@ -1,0 +1,55 @@
+#version 450
+// Exclusive scan of up to 8192 block totals per channel. The caller gates the
+// 32 KiB shared-memory requirement and pads the scan length to a power of two.
+layout(local_size_x = 256) in;
+layout(push_constant) uniform ScanParameters
+{
+    uvec4 config; // Blocks per channel, padded scan length, channel count, reserved.
+};
+layout(std430, set = 1, binding = 0) readonly buffer ScanInput
+{
+    uint blockTotals[];
+};
+layout(std430, set = 1, binding = 1) writeonly buffer ScanOutput
+{
+    uint blockOffsets[]; // Channel-major offsets, followed by one total per channel.
+};
+shared uint prefix[8192];
+void        main()
+{
+    uint lane    = gl_LocalInvocationIndex;
+    uint channel = gl_WorkGroupID.x;
+    for (uint index = lane; index < config.y; index += 256u)
+    {
+        prefix[index] = index < config.x ? blockTotals[channel * config.x + index] : 0u;
+    }
+    barrier();
+    for (uint stride = 1u; stride < config.y; stride *= 2u)
+    {
+        for (uint right = (lane + 1u) * stride * 2u - 1u; right < config.y; right += 256u * stride * 2u)
+        {
+            prefix[right] += prefix[right - stride];
+        }
+        barrier();
+    }
+    if (lane == 0u)
+    {
+        blockOffsets[config.z * config.x + channel] = prefix[config.y - 1u];
+        prefix[config.y - 1u]                       = 0u;
+    }
+    barrier();
+    for (uint stride = config.y / 2u; stride != 0u; stride /= 2u)
+    {
+        for (uint right = (lane + 1u) * stride * 2u - 1u; right < config.y; right += 256u * stride * 2u)
+        {
+            uint left               = prefix[right - stride];
+            prefix[right - stride]  = prefix[right];
+            prefix[right]          += left;
+        }
+        barrier();
+    }
+    for (uint index = lane; index < config.x; index += 256u)
+    {
+        blockOffsets[channel * config.x + index] = prefix[index];
+    }
+}

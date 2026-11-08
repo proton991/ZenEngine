@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "SceneGraph/Scene.h"
 #include "SceneLighting.h"
+#include "TransparencySettings.h"
 #include "AssetLib/Types.h"
 #include "Graphics/Shared/VoxelGI.h"
 
@@ -95,6 +96,10 @@ public:
 
     // Scene storage buffers are the newest generation of their FrameBufferRing.
     RHIBuffer* GetUVBuffer() const;
+    uint32_t   GetUVSetCount() const;
+    Vec2       GetVertexUV(uint32_t vertex, uint32_t set) const;
+    // Immutable base-level pixels of the logical texture view, resolved only on demand.
+    bool GetTextureContentHash(uint32_t texture, uint64_t& hash);
 
     const Mat4& GetInstanceTransform(uint32_t instance) const
     {
@@ -117,6 +122,7 @@ public:
 
     // Update factors/UV selection or refer to an already loaded scene texture.
     bool UpdateMaterial(uint32_t material, const sg::MaterialData& data);
+    bool SetTransparencySettings(const TransparencySettings& settings);
 
     // Explicit renderer-world bounds; voxelizers make this box cubic and add one cell of padding.
     bool SetVoxelBounds(const sg::AABB& bounds);
@@ -296,6 +302,9 @@ public:
     }
 
 private:
+    void RefreshTransparency();
+    bool IsNearlyBinaryTexture(uint32_t texture, const sg::TextureTransformData& transform);
+
     void UpdateAuthoredEnvironment();
 
 
@@ -401,10 +410,14 @@ private:
     uint32_t   m_voxelTriangleCount{0};
 
     // Borrowed views; scene destruction retires each unique base image once.
-    HeapVector<RHITextureView*> m_sceneTextures;
-    HeapVector<RHISampler*>     m_sceneSamplers;
-    std::string                 m_envTextureName;
-    std::string                 m_environmentOverride;
+    HeapVector<RHITextureView*>                              m_sceneTextures;
+    HeapVector<RHISampler*>                                  m_sceneSamplers;
+    HashMap<uint32_t, uint64_t>                              m_textureContentHashes;
+    HashMap<uint32_t, HeapVector<asset::AlphaMipStatistics>> m_textureAlphaStatistics;
+    TransparencySettings                                     m_transparency;
+    bool                                                     m_transparencyDirty{true};
+    std::string                                              m_envTextureName;
+    std::string                                              m_environmentOverride;
     // Preprocessing jobs retain this address until execution or cancellation.
     UniquePtr<EnvTexture> m_envTexture{MakeUnique<EnvTexture>()};
     RHITexture*           m_pDefaultBaseColorTexture{nullptr};

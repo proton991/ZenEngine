@@ -859,6 +859,11 @@ private:
         Copy(target.arrayLayers, source.arrayLayers);
     }
 
+    void Copy(AlphaMipStatistics& target, const zenasset::AlphaMipStatistics& source)
+    {
+        target = {source.texels, source.zeroTexels, source.oneTexels, source.zeroCells, source.oneCells};
+    }
+
     void Copy(TextureAsset& target, const zenasset::TextureAsset& source)
     {
         Copy(target.name, source.name);
@@ -870,6 +875,7 @@ private:
         Copy(target.interpretation, source.interpretation);
         Copy(target.arrayLayer, source.arrayLayer);
         target.atlasRegion = {source.atlasRegion.x, source.atlasRegion.y, source.atlasRegion.width, source.atlasRegion.height};
+        Copy(target.alphaMips, source.alphaMips);
     }
 
     void Copy(AnimationTarget& target, const zenasset::AnimationTarget& source)

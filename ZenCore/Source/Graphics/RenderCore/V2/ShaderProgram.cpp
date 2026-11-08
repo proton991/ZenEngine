@@ -2,14 +2,72 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
+#include "Graphics/RenderCore/V2/Renderer/ForwardDepthSort.h"
+#include "Graphics/RenderCore/V2/Renderer/ForwardGPUDraws.h"
+#include "ZenOpacityMicromapShaders.h"
 #include "Memory/Memory.h"
 #include "Utils/Errors.h"
 #include <algorithm>
 
 namespace zen::rc
 {
+NameID MaterialUVShaderName(NameID name, uint32_t uvSetCount)
+{
+    std::string specialized(name.CStr());
+    if (uvSetCount == 2u)
+    {
+        specialized.insert(specialized.size() - 2u, "UV2");
+    }
+    return NameID(specialized);
+}
+
 namespace
 {
+bool HasOpacityMicromapVariant(const std::string& path)
+{
+    bool found = false;
+    for (const char* candidate : kOpacityMicromapShaderFiles)
+    {
+        if (path == candidate)
+        {
+            found = true;
+            break;
+        }
+    }
+    return found;
+}
+
+void StoreMaterialUVPrograms(ShaderProgramManager&                                  manager,
+                             RenderDevice*                                          device,
+                             NameID                                                 name,
+                             const char*                                            vertex,
+                             const char*                                            fragment,
+                             const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {})
+{
+    manager.StoreProgram(ZEN_NEW() HybridGraphicsSP(device, name, vertex, fragment, constants));
+    HashMap<uint32_t, RHIShaderSpecializationValue> compactConstants(constants);
+    compactConstants.emplace(7u, uint32_t(2));
+    manager.StoreProgram(ZEN_NEW()
+                             HybridGraphicsSP(device, MaterialUVShaderName(name, 2u), vertex, fragment, compactConstants));
+}
+
+void StoreForwardMaterialPrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* fragment)
+{
+    StoreMaterialUVPrograms(manager, device, name, "SceneRenderer/offscreen.vert.spv", fragment);
+    std::string basicName(name);
+    basicName.insert(basicName.size() - 2u, "Basic");
+    const HashMap<uint32_t, RHIShaderSpecializationValue> constants{{0u, true}};
+    StoreMaterialUVPrograms(manager, device, NameID(basicName), "SceneRenderer/offscreen.vert.spv", fragment, constants);
+    if (SupportsForwardGPUDraws(device->GetGPUInfo(), 1))
+    {
+        basicName.insert(basicName.size() - 2u, "GPU");
+        std::string gpuFragment(fragment);
+        gpuFragment.insert(gpuFragment.size() - 4u, ".gpu");
+        StoreMaterialUVPrograms(manager, device, NameID(basicName), "SceneRenderer/offscreen_forward_gpu.vert.spv",
+                                gpuFragment.c_str(), constants);
+    }
+}
+
 // Both names use one SPIR-V module. The capture specialization reserves the
 // larger exact accumulator only when that pipeline is selected.
 void StoreGuideTracePrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* path)
@@ -108,6 +166,16 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
         RHIShaderCreateInfo info{};
 
         std::ranges::copy(m_stageSources, info.spirvFileName);
+        if (GDynamicRHI->QueryGPUInfo().rayQuery.opacityMicromap)
+        {
+            for (std::string& source : info.spirvFileName)
+            {
+                if (HasOpacityMicromapVariant(source))
+                {
+                    source.insert(source.size() - 4u, ".omm");
+                }
+            }
+        }
 
         info.stageFlags              = m_stageFlags;
 
@@ -270,6 +338,23 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
          volumeGroupSize.z, pRenderDevice->GetGPUInfo().maxComputeWorkGroupInvocations);
 
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureFrameSP", "SceneRenderer/capture_frame.comp.spv"));
+    if (SupportsForwardDepthSort(pRenderDevice->GetGPUInfo(), 1))
+    {
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "ForwardHiZCopySP", "SceneRenderer/transparency_hiz_copy.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ForwardHiZSP", "SceneRenderer/transparency_hiz.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ForwardCullSP", "SceneRenderer/transparency_cull.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ForwardPrefixSP", "SceneRenderer/transparency_prefix.comp.spv"));
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "ForwardDepthKeysSP", "SceneRenderer/transparency_depth_keys.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ForwardEmitSP", "SceneRenderer/transparency_emit.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ForwardSortHistogramSP",
+                                             "SceneRenderer/transparency_radix_histogram.comp.spv"));
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "ForwardSortScanSP", "SceneRenderer/transparency_scan_groups.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ForwardSortScatterSP",
+                                             "SceneRenderer/transparency_radix_scatter.comp.spv"));
+    }
 
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "CaptureVoxelVolumeSP", "VoxelGI/capture_volume.comp.spv", volumeConstants));
@@ -315,26 +400,23 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     }
 
     StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice));
-    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverSP", "SceneRenderer/receiver.vert.spv",
-                                            "SceneRenderer/receiver.frag.spv"));
-    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverMaskedSP", "SceneRenderer/receiver.vert.spv",
-                                            "SceneRenderer/receiver_masked.frag.spv"));
+    StoreMaterialUVPrograms(*this, pRenderDevice, "HybridReceiverSP", "SceneRenderer/receiver.vert.spv",
+                            "SceneRenderer/receiver.frag.spv");
+    StoreMaterialUVPrograms(*this, pRenderDevice, "HybridReceiverMaskedSP", "SceneRenderer/receiver.vert.spv",
+                            "SceneRenderer/receiver_masked.frag.spv");
     if (SupportsHybridGBufferCulling(pRenderDevice->GetGPUInfo()))
     {
-        StoreProgram(ZEN_NEW()
-                         HybridGraphicsSP(pRenderDevice, "HybridReceiverIndirectSP", "SceneRenderer/receiver_indirect.vert.spv",
-                                          "SceneRenderer/receiver_indirect.frag.spv"));
-        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "HybridReceiverMaskedIndirectSP",
-                                                "SceneRenderer/receiver_indirect.vert.spv",
-                                                "SceneRenderer/receiver_masked_indirect.frag.spv"));
+        StoreMaterialUVPrograms(*this, pRenderDevice, "HybridReceiverIndirectSP", "SceneRenderer/receiver_indirect.vert.spv",
+                                "SceneRenderer/receiver_indirect.frag.spv");
+        StoreMaterialUVPrograms(*this, pRenderDevice, "HybridReceiverMaskedIndirectSP",
+                                "SceneRenderer/receiver_indirect.vert.spv", "SceneRenderer/receiver_masked_indirect.frag.spv");
     }
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGISP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/hybrid_gi.frag.spv"));
     // Also exports each receiver's exact shadow-map results for resting decals.
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGIVisibilitySP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/hybrid_gi_visibility.frag.spv"));
-    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHybridGISP", "SceneRenderer/offscreen.vert.spv",
-                                            "SceneRenderer/forward_material_hybrid.frag.spv"));
+    StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHybridGISP", "SceneRenderer/forward_material_hybrid.frag.spv");
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardBackgroundDepthSP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/forward_background_depth.frag.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv",
@@ -426,8 +508,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsVisibilitySP",
                                                 "SceneRenderer/deferred.vert.spv",
                                                 "SceneRenderer/hybrid_gi_shadows_visibility.frag.spv"));
-        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHardwareShadowsSP", "SceneRenderer/offscreen.vert.spv",
-                                                "SceneRenderer/forward_material_shadows.frag.spv"));
+        StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsSP",
+                                     "SceneRenderer/forward_material_shadows.frag.spv");
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "ForwardScatterHardwareShadowsSP", "SceneRenderer/offscreen.vert.spv",
                                           "SceneRenderer/forward_scatter_shadows.frag.spv"));
@@ -439,18 +521,16 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCaptureVisibilitySP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_capture_visibility.frag.spv"));
-            StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHardwareShadowsCaptureSP",
-                                                    "SceneRenderer/offscreen.vert.spv",
-                                                    "SceneRenderer/forward_material_shadows_capture.frag.spv"));
+            StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsCaptureSP",
+                                         "SceneRenderer/forward_material_shadows_capture.frag.spv");
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCountsSP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_counts.frag.spv"));
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCountsVisibilitySP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_counts_visibility.frag.spv"));
-            StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHardwareShadowsCountsSP",
-                                                    "SceneRenderer/offscreen.vert.spv",
-                                                    "SceneRenderer/forward_material_shadows_counts.frag.spv"));
+            StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsCountsSP",
+                                         "SceneRenderer/forward_material_shadows_counts.frag.spv");
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardScatterHardwareShadowsCountsSP",
                                                     "SceneRenderer/offscreen.vert.spv",
                                                     "SceneRenderer/forward_scatter_shadows_counts.frag.spv"));
@@ -481,8 +561,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(ZEN_NEW() DeferredLightingSP(pRenderDevice, true));
 
         StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice, true));
-        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardHybridGICaptureSP", "SceneRenderer/offscreen.vert.spv",
-                                                "SceneRenderer/forward_material_hybrid_capture.frag.spv"));
+        StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHybridGICaptureSP",
+                                     "SceneRenderer/forward_material_hybrid_capture.frag.spv");
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGICaptureSP", "SceneRenderer/deferred.vert.spv",
                                                 "SceneRenderer/hybrid_gi_capture.frag.spv"));
 
@@ -512,9 +592,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 
     StoreProgram(ZEN_NEW() LightBallSP(pRenderDevice));
 
-    StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice));
+    StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardMaterialSP", "SceneRenderer/forward_material.frag.spv");
 
-    StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice, true));
+    StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardMaterialVoxelGISP",
+                                 "SceneRenderer/forward_material_voxel.frag.spv");
 
     StoreProgram(ZEN_NEW() ForwardFullscreenSP(pRenderDevice, false));
 
@@ -551,20 +632,16 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(
         ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelResolveSurfaceSP", "VoxelGI/resolve_surface.comp.spv", volumeConstants));
 
-    {
-        ShaderProgram* pShaderProgram = ZEN_NEW() GBufferSP(pRenderDevice);
-
-        StoreProgram(pShaderProgram);
-    }
-    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferMaskedSP", "SceneRenderer/offscreen.vert.spv",
-                                            "SceneRenderer/offscreen_masked.frag.spv"));
+    StoreMaterialUVPrograms(*this, pRenderDevice, "GBufferSP", "SceneRenderer/offscreen.vert.spv",
+                            "SceneRenderer/offscreen.frag.spv");
+    StoreMaterialUVPrograms(*this, pRenderDevice, "GBufferMaskedSP", "SceneRenderer/offscreen.vert.spv",
+                            "SceneRenderer/offscreen_masked.frag.spv");
     if (SupportsGBufferCulling(pRenderDevice->GetGPUInfo()))
     {
-        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GBufferIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
-                                                "SceneRenderer/offscreen_indirect.frag.spv"));
-        StoreProgram(ZEN_NEW()
-                         HybridGraphicsSP(pRenderDevice, "GBufferMaskedIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
-                                          "SceneRenderer/offscreen_masked_indirect.frag.spv"));
+        StoreMaterialUVPrograms(*this, pRenderDevice, "GBufferIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
+                                "SceneRenderer/offscreen_indirect.frag.spv");
+        StoreMaterialUVPrograms(*this, pRenderDevice, "GBufferMaskedIndirectSP", "SceneRenderer/offscreen_indirect.vert.spv",
+                                "SceneRenderer/offscreen_masked_indirect.frag.spv");
         StoreWarmedComputeProgram(
             ZEN_NEW() ComputeFileSP(pRenderDevice, "SceneFrustumCullSP", "SceneRenderer/frustum_cull.comp.spv"));
     }

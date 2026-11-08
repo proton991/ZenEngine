@@ -107,13 +107,6 @@ uint64_t FreeDeviceMemory(const RenderDevice& device)
     return available;
 }
 
-uint32_t SamplerCoverageFlags(const RHISamplerCreateInfo& sampler)
-{
-    const bool supported = sampler.minLod == 0.0f && sampler.lodBias == 0.0f && sampler.maxLod >= 0.0f && !sampler.useAnisotropy
-                        && !sampler.enableCompare && !sampler.unnormalizedUVW;
-    return (sampler.magFilter == RHISamplerFilter::eLinear ? 1u : 0u) | (supported ? 2u : 0u);
-}
-
 RHIBufferCreateInfo FieldBufferInfo(uint64_t                         bytes,
                                     NameID                           name,
                                     bool                             readback,

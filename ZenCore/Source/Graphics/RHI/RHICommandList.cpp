@@ -308,6 +308,8 @@ void RHICommandList::BuildAccelerationStructure(const RHIAccelerationStructureBu
     RetainResource(info.pDestination);
     RetainResource(info.pSource);
     RetainResource(info.pScratchBuffer);
+    RetainResource(info.description.micromap.pDataBuffer);
+    RetainResource(info.description.micromap.pTriangleBuffer);
     RHICommandBuildAccelerationStructure* command    = ALLOC_CMD(RHICommandBuildAccelerationStructure)(info);
     const size_t                          count      = info.description.geometries.size();
     RHIAccelerationStructureGeometry*     geometries = AllocateCmdData<RHIAccelerationStructureGeometry>(count);
@@ -316,6 +318,8 @@ void RHICommandList::BuildAccelerationStructure(const RHIAccelerationStructureBu
         geometries[i] = info.description.geometries[i];
         RetainResource(geometries[i].pVertexBuffer);
         RetainResource(geometries[i].pIndexBuffer);
+        RetainResource(geometries[i].pOpacityIndexBuffer);
+        RetainResource(geometries[i].pOpacityMicromap);
     }
     command->info.description.geometries            = MakeVecView(geometries, count);
     const size_t                      instanceCount = info.description.instances.size();
@@ -326,6 +330,13 @@ void RHICommandList::BuildAccelerationStructure(const RHIAccelerationStructureBu
         RetainResource(instances[i].pStructure);
     }
     command->info.description.instances = MakeVecView(instances, instanceCount);
+    const size_t             usageCount = info.description.micromap.usages.size();
+    RHIOpacityMicromapUsage* usages     = AllocateCmdData<RHIOpacityMicromapUsage>(usageCount);
+    for (size_t i = 0; i < usageCount; ++i)
+    {
+        usages[i] = info.description.micromap.usages[i];
+    }
+    command->info.description.micromap.usages = MakeVecView(usages, usageCount);
 }
 
 void RHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region)

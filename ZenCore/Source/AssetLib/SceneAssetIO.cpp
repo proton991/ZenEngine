@@ -186,10 +186,12 @@ template <class Archive> void Fields(Archive& ar, typename Archive::template Val
 {
     if constexpr (!Archive::Reading)
     {
-        if (v.interpretation != TextureInterpretation::Default || v.arrayLayer != 0 || v.atlasRegion != ImageRegion{})
+        if (v.interpretation != TextureInterpretation::Default || v.arrayLayer != 0 || v.atlasRegion != ImageRegion{}
+            || !v.alphaMips.empty())
         {
-            ar.Fail(SceneImportStatus::UnsupportedFeature,
-                    "Legacy v2 cannot store texture interpretation, array layers or spatial regions; use processed v3");
+            ar.Fail(
+                SceneImportStatus::UnsupportedFeature,
+                "Legacy v2 cannot store texture interpretation, array layers, spatial regions or alpha statistics; use processed v3");
         }
     }
     ar(v.name, v.image, v.sampler, v.linearSource, v.format, v.flatNormal);

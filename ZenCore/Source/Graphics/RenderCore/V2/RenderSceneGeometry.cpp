@@ -269,8 +269,12 @@ bool RenderScene::UpdateVertices(uint32_t first, VectorView<const asset::Vertex>
 
 bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sourceData)
 {
-    sg::MaterialData data            = sourceData;
-    data.textureSampling             = m_pRenderDevice->GetTextureSamplingParameters();
+    sg::MaterialData data = sourceData;
+    data.textureSampling  = m_pRenderDevice->GetTextureSamplingParameters();
+    if (material < m_materialsData.size())
+    {
+        data.textureSampling.z = m_materialsData[material].textureSampling.z;
+    }
 
     const double attenuationDistance = static_cast<double>(data.volumeIridescence.y) * m_sceneUnitScale;
 
@@ -605,6 +609,22 @@ RHIBuffer* RenderScene::GetUVBuffer() const
     return m_uvBuffers.GetBuffer();
 }
 
+uint32_t RenderScene::GetUVSetCount() const
+{
+    return m_uvCoordinates.empty() ? 0u : static_cast<uint32_t>(m_uvCoordinates[0].x);
+}
+
+Vec2 RenderScene::GetVertexUV(uint32_t vertex, uint32_t set) const
+{
+    const uint32_t stride = GetUVSetCount();
+    Vec2           uv(0);
+    if (vertex < m_vertices.size() && set < stride)
+    {
+        uv = m_uvCoordinates[1 + size_t(vertex) * stride + set];
+    }
+    return uv;
+}
+
 RHIBuffer* RenderScene::GetNodesDataSSBO() const
 {
     return m_nodeBuffers.GetBuffer();
@@ -676,6 +696,10 @@ bool RenderScene::RefreshUVCoordinates()
 bool RenderScene::CommitGeometryUpdates()
 {
     bool valid = m_geometryReady && !m_pRenderDevice->AreSubmissionsBlocked();
+    if (valid && (m_transparencyDirty || m_materialsDirty || m_verticesDirty || m_triangleRecordsDirty))
+    {
+        RefreshTransparency();
+    }
     if (valid && (m_dirtyClasses != 0 || m_verticesDirty || m_materialsDirty || m_triangleRecordsDirty))
     {
         const bool                        geometryChanged = m_dirtyClasses != 0 || m_verticesDirty || m_triangleRecordsDirty;

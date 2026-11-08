@@ -55,6 +55,7 @@ private:
     uint32_t                                     m_instanceCount{0};
     HeapVector<RHIAccelerationStructureGeometry> m_geometries;
     HeapVector<uint64_t>                         m_indexIdentities;
+    HeapVector<uint64_t>                         m_opacityIndexIdentities;
     HeapVector<RHIAccelerationStructure*>        m_sortedReferences;
     mutable RHIAccelerationStructureBuildSizes   m_cachedTLASSizes;
     mutable size_t                               m_cachedInstanceCount{0};

@@ -7,6 +7,9 @@ namespace zen::rc
 {
 class RenderDevice;
 
+// Both stages of the material pipeline use the same UV interface specialization.
+NameID MaterialUVShaderName(NameID name, uint32_t uvSetCount);
+
 // refactor: move to RenderScene, create sg::Light
 struct Attenuation
 {
@@ -136,11 +139,16 @@ public:
 class HybridGraphicsSP : public ShaderProgram
 {
 public:
-    HybridGraphicsSP(RenderDevice* device, NameID name, const char* vertex, const char* fragment) : ShaderProgram(device, name)
+    HybridGraphicsSP(RenderDevice*                                          device,
+                     NameID                                                 name,
+                     const char*                                            vertex,
+                     const char*                                            fragment,
+                     const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
+        ShaderProgram(device, name)
     {
         AddShaderStage(RHIShaderStage::eVertex, vertex);
         AddShaderStage(RHIShaderStage::eFragment, fragment);
-        Init();
+        Init(specializationConstants);
     }
 };
 
@@ -170,19 +178,6 @@ public:
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment,
                        capture ? "SceneRenderer/deferred_capture.frag.spv" : "SceneRenderer/deferred.frag.spv");
-        Init();
-    }
-};
-
-class ForwardMaterialSP : public ShaderProgram
-{
-public:
-    explicit ForwardMaterialSP(RenderDevice* device, bool voxelGI = false) :
-        ShaderProgram(device, voxelGI ? "ForwardMaterialVoxelGISP" : "ForwardMaterialSP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment,
-                       voxelGI ? "SceneRenderer/forward_material_voxel.frag.spv" : "SceneRenderer/forward_material.frag.spv");
         Init();
     }
 };

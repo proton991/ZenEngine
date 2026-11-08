@@ -34,6 +34,8 @@ struct ForwardDrawBatch
     sg::MeshTopology topology{sg::MeshTopology::Triangles};
     bool             writeDepth{false};
     bool             sorted{false};
+    bool             basicPBR{false};
+    bool             splitCore{false};
 };
 
 struct ForwardSceneKey
@@ -53,12 +55,16 @@ struct ForwardDrawKey : ForwardSceneKey
     bool operator==(const ForwardDrawKey&) const = default;
 };
 
+bool NeedsForwardDepthOrder(const ForwardDrawKey& previous, const ForwardDrawKey& next);
+
 // Classification, node merging and triangle centers depend on committed geometry and
 // materials; only depth order depends on the camera view, and neither on lighting or
-// projection. A view change therefore reorders the prepared items without rebuilding them.
+// projection. A viewing-direction change reorders the prepared items without rebuilding
+// them; translation/roll and rotations below 0.05 degrees reuse the last order.
 // Preserve original per-triangle entries for the failed-index-upload fallback.
 struct ForwardDrawCache
 {
+    ForwardSceneKey               preparedKey;
     ForwardDrawKey                key;
     HeapVector<SceneMeshDraw>     opaque[3];
     HeapVector<ForwardDrawItem>   items;
@@ -73,8 +79,11 @@ struct ForwardDrawCache
 
     // True means the view order was rebuilt; false reuses the previous draw snapshot.
     bool Update(const RenderScene& scene, const Mat4& view);
+    bool Prepare(const RenderScene& scene);
     void Clear();
 };
 
 bool IsForwardTranslucent(const sg::MaterialData& material);
+bool IsBasicForwardMaterial(const sg::MaterialData& material);
+bool SupportsDeferredOpaque(const HeapVector<sg::MaterialData>& materials);
 } // namespace zen::rc

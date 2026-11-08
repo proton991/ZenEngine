@@ -7,8 +7,9 @@ namespace zen
 {
 enum class RHIAccelerationStructureType : uint32_t
 {
-    eTopLevel    = 0,
-    eBottomLevel = 1
+    eTopLevel        = 0,
+    eBottomLevel     = 1,
+    eOpacityMicromap = 1000623000
 };
 
 enum class RHIAccelerationStructureInstanceFlagBits : uint32_t
@@ -40,16 +41,38 @@ struct RHIAccelerationStructureInstance
 // vertexOffset, and indexOffset points at the first index in this geometry.
 struct RHIAccelerationStructureGeometry
 {
-    RHIBuffer* pVertexBuffer{nullptr};
-    RHIBuffer* pIndexBuffer{nullptr};
-    uint64_t   vertexOffset{0};
-    uint64_t   indexOffset{0};
-    uint32_t   vertexStride{0};
-    uint32_t   vertexCount{0};
-    uint32_t   indexCount{0};
-    DataFormat vertexFormat{DataFormat::eR32G32B32SFloat};
-    DataFormat indexFormat{DataFormat::eR32UInt};
-    bool       opaque{true};
+    RHIBuffer*                pVertexBuffer{nullptr};
+    RHIBuffer*                pIndexBuffer{nullptr};
+    uint64_t                  vertexOffset{0};
+    uint64_t                  indexOffset{0};
+    uint32_t                  vertexStride{0};
+    uint32_t                  vertexCount{0};
+    uint32_t                  indexCount{0};
+    DataFormat                vertexFormat{DataFormat::eR32G32B32SFloat};
+    DataFormat                indexFormat{DataFormat::eR32UInt};
+    bool                      opaque{true};
+    RHIAccelerationStructure* pOpacityMicromap{nullptr};
+    RHIBuffer*                pOpacityIndexBuffer{nullptr}; // One signed 32-bit micromap index per triangle.
+    uint64_t                  opacityIndexOffset{0};
+};
+
+// Four-state opacity: transparent, opaque, unknown-transparent, unknown-opaque.
+// A triangle record is uint32 dataOffset, uint16 subdivisionLevel, uint16 format (2).
+// Packed two-bit states use the Vulkan/DXR barycentric space-filling-curve order.
+struct RHIOpacityMicromapUsage
+{
+    uint32_t count{0};
+    uint32_t subdivisionLevel{0};
+};
+
+struct RHIOpacityMicromapBuild
+{
+    RHIBuffer*                                pDataBuffer{nullptr};
+    RHIBuffer*                                pTriangleBuffer{nullptr};
+    uint64_t                                  dataOffset{0};
+    uint64_t                                  dataSize{0};
+    uint64_t                                  triangleOffset{0};
+    VectorView<const RHIOpacityMicromapUsage> usages;
 };
 
 struct RHIAccelerationStructureBuildDesc
@@ -59,6 +82,7 @@ struct RHIAccelerationStructureBuildDesc
     // Size queries use the count; builds additionally require valid BLAS references.
     VectorView<const RHIAccelerationStructureInstance> instances;
     bool                                               allowUpdate{false};
+    RHIOpacityMicromapBuild                            micromap;
 };
 
 struct RHIAccelerationStructureBuildSizes

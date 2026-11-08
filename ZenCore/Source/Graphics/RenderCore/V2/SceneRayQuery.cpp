@@ -19,7 +19,8 @@ bool SameGeometry(VectorView<const RHIAccelerationStructureGeometry> first,
     {
         same = first[i].vertexCount == second[i].vertexCount && first[i].vertexStride == second[i].vertexStride
             && first[i].indexCount == second[i].indexCount && first[i].indexOffset == second[i].indexOffset
-            && first[i].opaque == second[i].opaque;
+            && first[i].opaque == second[i].opaque && first[i].pOpacityMicromap == second[i].pOpacityMicromap
+            && first[i].pOpacityIndexBuffer == second[i].pOpacityIndexBuffer;
     }
     return same;
 }
@@ -93,8 +94,9 @@ uint64_t SceneRayQuery::GetMemoryBytes() const
 {
     // Cached TLASes retain their immutable BLAS dependencies even when the current
     // scene no longer contains those meshes. Count those allocations too, once.
-    SmallVector<RHIAccelerationStructure*, 64> structures;
-    uint64_t                                   bytes = m_scratchBytes + m_pendingInstanceBytes;
+    SmallVector<RHIAccelerationStructure*, 64>   structures;
+    SmallVector<const SceneOpacityMicromap*, 64> micromaps;
+    uint64_t                                     bytes = m_scratchBytes + m_pendingInstanceBytes;
     for (uint32_t i = 0; i < RenderFrameState::kMaxFramesInFlight + 2; ++i)
     {
         const Generation& generation = i == 0 ? m_active : i == 1 ? m_pending : m_cached[i - 2];
@@ -105,17 +107,31 @@ uint64_t SceneRayQuery::GetMemoryBytes() const
         if (generation.tlas != nullptr)
         {
             structures.push_back(generation.tlas);
-            for (RHIAccelerationStructure* dependency : generation.tlas->GetReferencedStructures())
-            {
-                structures.push_back(dependency);
-            }
         }
         for (const MeshBuild& mesh : generation.meshes)
         {
+            for (const SharedPtr<SceneOpacityMicromap>& micromap : mesh.micromaps)
+            {
+                if (micromap && std::find(micromaps.begin(), micromaps.end(), micromap.Get()) == micromaps.end())
+                {
+                    micromaps.push_back(micromap.Get());
+                    bytes += micromap->GetBufferBytes();
+                    structures.push_back(micromap->GetStructure());
+                }
+            }
             if (mesh.structure != nullptr)
             {
                 structures.push_back(mesh.structure);
             }
+        }
+    }
+    // The RHI dependency types form three acyclic levels: TLAS, BLAS, micromap.
+    // Flatten before sorting so large TLASes do not require quadratic membership scans.
+    for (size_t i = 0; i < structures.size(); ++i)
+    {
+        for (RHIAccelerationStructure* dependency : structures[i]->GetReferencedStructures())
+        {
+            structures.push_back(dependency);
         }
     }
     std::sort(structures.begin(), structures.end(), std::less<RHIAccelerationStructure*>());
@@ -238,8 +254,17 @@ bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& me
         if (!present && scene.GetInstanceMask(node->GetRenderableIndex()) != 0)
         {
             MeshBuild build;
-            build.mesh           = mesh;
-            build.metadataOffset = static_cast<uint32_t>(metadata.size());
+            build.mesh                      = mesh;
+            build.metadataOffset            = static_cast<uint32_t>(metadata.size());
+            const MeshBuild* coverageSource = nullptr;
+            for (const MeshBuild& candidate : m_active.meshes)
+            {
+                if (candidate.mesh == mesh && m_active.indexIdentity == scene.GetIndexBuffer()->GetStableId())
+                {
+                    coverageSource = &candidate;
+                    break;
+                }
+            }
             bool primitivesValid = true;
             for (const sg::SubMesh* primitive : mesh->GetSubMeshes())
             {
@@ -259,6 +284,26 @@ bool SceneRayQuery::PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& me
                     geometry.opaque =
                         material >= scene.GetMaterialsData().size()
                         || scene.GetMaterialsData()[material].surfaceProperties.y == static_cast<float>(sg::AlphaMode::Opaque);
+                    SharedPtr<SceneOpacityMicromap> previousMicromap;
+                    const size_t                    geometryIndex = build.geometries.size();
+                    if (coverageSource != nullptr && geometryIndex < coverageSource->geometries.size()
+                        && coverageSource->geometries[geometryIndex].indexOffset == geometry.indexOffset
+                        && coverageSource->geometries[geometryIndex].indexCount == geometry.indexCount)
+                    {
+                        previousMicromap = coverageSource->micromaps[geometryIndex];
+                    }
+                    const bool sameCoverage = m_active.vertexIdentity == scene.GetVertexBuffer()->GetStableId()
+                                           && m_active.vertexGeneration == scene.GetVertexGeneration()
+                                           && m_active.surfaceRevision == scene.GetSurfaceRevision();
+                    SharedPtr<SceneOpacityMicromap> micromap =
+                        previousMicromap && sameCoverage && !geometry.opaque
+                            ? previousMicromap
+                            : SceneOpacityMicromap::Prepare(m_device, scene, geometry, material, previousMicromap);
+                    if (micromap)
+                    {
+                        micromap->Attach(geometry);
+                    }
+                    build.micromaps.push_back(std::move(micromap));
                     build.geometries.push_back(geometry);
                     metadata.push_back({primitive->GetFirstIndex(), material, geometry.indexCount / 3, 0});
                     primitivesValid &= geometry.indexCount % 3 == 0 && primitive->GetFirstIndex() <= scene.GetIndices().size()
@@ -408,6 +453,13 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     uint64_t newStructureBytes                          = 0;
     for (const MeshBuild& mesh : m_pending.meshes)
     {
+        for (const SharedPtr<SceneOpacityMicromap>& micromap : mesh.micromaps)
+        {
+            if (micromap)
+            {
+                scratchSize = std::max(scratchSize, micromap->GetScratchBytes());
+            }
+        }
         newStructureBytes += mesh.structure == nullptr ? mesh.sizes.storageSize : 0;
         if (mesh.needsBuild)
         {
@@ -464,10 +516,19 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
         {
             if (mesh.structure == nullptr)
             {
+                HeapVector<RHIAccelerationStructure*> micromaps;
+                for (const SharedPtr<SceneOpacityMicromap>& micromap : mesh.micromaps)
+                {
+                    if (micromap)
+                    {
+                        micromaps.push_back(micromap->GetStructure());
+                    }
+                }
                 RHIAccelerationStructureCreateInfo info;
-                info.size      = mesh.sizes.storageSize;
-                info.tag       = "scene_blas";
-                mesh.structure = GDynamicRHI->CreateAccelerationStructure(info);
+                info.size                 = mesh.sizes.storageSize;
+                info.tag                  = "scene_blas";
+                info.referencedStructures = MakeVecView(micromaps);
+                mesh.structure            = GDynamicRHI->CreateAccelerationStructure(info);
             }
             valid &= mesh.structure != nullptr;
             references.push_back(mesh.structure);
@@ -542,6 +603,13 @@ void SceneRayQuery::RecordBuilds(RenderScene& scene)
     info.description.allowUpdate = true;
     for (const MeshBuild& mesh : m_pending.meshes)
     {
+        for (const SharedPtr<SceneOpacityMicromap>& micromap : mesh.micromaps)
+        {
+            if (micromap)
+            {
+                micromap->Record(scene, m_scratch, info.scratchOffset);
+            }
+        }
         m_statistics.built   += mesh.needsBuild && !mesh.update ? 1 : 0;
         m_statistics.updated += mesh.update ? 1 : 0;
         m_statistics.reused  += mesh.needsBuild ? 0 : 1;
@@ -579,6 +647,16 @@ bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
         m_scene = &scene;
     }
     m_statistics = {};
+    for (const MeshBuild& mesh : m_active.meshes)
+    {
+        for (const SharedPtr<SceneOpacityMicromap>& micromap : mesh.micromaps)
+        {
+            if (micromap)
+            {
+                micromap->PollCache();
+            }
+        }
+    }
     for (size_t i = m_retired.size(); i > 0; --i)
     {
         if (m_device->IsResourceRetired(m_retired[i - 1].retirement))
@@ -655,6 +733,16 @@ void SceneRayQuery::OnRenderGraphExecuted(RenderFrameResult result)
 
     if (m_recorded)
     {
+        for (const MeshBuild& mesh : m_pending.meshes)
+        {
+            for (const SharedPtr<SceneOpacityMicromap>& micromap : mesh.micromaps)
+            {
+                if (micromap)
+                {
+                    micromap->OnExecuted(result);
+                }
+            }
+        }
         if (result != RenderFrameResult::eDeclined && m_pendingInstanceBytes != 0)
         {
             m_retired.push_back({m_pendingInstanceBytes, m_device->CaptureResourceRetirement()});

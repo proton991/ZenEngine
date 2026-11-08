@@ -50,7 +50,7 @@ void main()
     float coverage = material.surfaceProperties.w > 0.5
                        ? material.diffuseFactor.a * inColor.a * MaterialFeatureTexture(material, 2, inUV, inUV1).a
                        : albedo.a;
-    if (!MaterialVisible(material, coverage))
+    if (!MaterialVisible(material, coverage) || (material.surfaceProperties.y == 2.0 && coverage < material.textureSampling.z))
     {
         discard;
     }

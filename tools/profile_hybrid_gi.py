@@ -55,7 +55,12 @@ def table(path):
 
 
 def summarize(folder, frames):
-    base = folder / 'BASE'
+    # Nsight appends _UNLOCKED when clocks are left unaltered. Discover the
+    # exported tables instead of guessing from the requested clock mode.
+    exports = sorted(path.parent for path in folder.glob('*/FRAME.xls'))
+    if len(exports) != 1:
+        raise ValueError(f'Expected exactly one GPU Trace table export in {folder}, found {exports}')
+    base = exports[0]
     rows = table(base / 'FRAME.xls')
     assert len(rows) == 1 and rows[0][0] == 'GPU frame time', rows[:1]
     samples = [float(v) for v in rows[0][1:]]
@@ -78,7 +83,7 @@ def summarize(folder, frames):
                      mean_ms=statistics.mean(recorded) if recorded else 0.0)
     ordered = sorted(samples)
     repro = {row[0]: row[1] for row in table(base / 'REPRO_INFO.xls') if len(row) >= 2}
-    return dict(frames=frames, median_ms=statistics.median(samples), mean_ms=statistics.mean(samples),
+    return dict(export_directory=base.name, frames=frames, median_ms=statistics.median(samples), mean_ms=statistics.mean(samples),
                 p95_ms=ordered[int(.95 * (frames - 1))], max_ms=ordered[-1], samples_ms=samples,
                 passes=dict(sorted(passes.items(), key=lambda item: -item[1]['median_ms'])), capture_info=repro)
 

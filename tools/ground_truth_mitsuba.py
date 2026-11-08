@@ -64,7 +64,7 @@ def setup_mitsuba(backend='cuda'):
     return mi
 
 
-def load_gltf_primitives(path):
+def load_gltf_primitives(path, material_inputs=False):
     """Primitives in the renderer's normalized world space: positions, normals, alpha UVs, faces, material."""
     path = Path(path)
     doc = json.loads(path.read_text(encoding='utf-8'))
@@ -142,10 +142,13 @@ def load_gltf_primitives(path):
                 texture = pbr.get('baseColorTexture')
                 uv = np.zeros((len(positions), 2))
                 vertex_alpha = np.ones(len(positions))
-                if masked:
+                vertex_color = None
+                if masked or material_inputs:
                     if 'COLOR_0' in attributes:
                         colors = accessor(attributes['COLOR_0'])
                         vertex_alpha = colors[:, 3] if colors.shape[1] == 4 else vertex_alpha
+                        if material_inputs:
+                            vertex_color = colors[:, :3]
                     if texture:
                         transform = texture.get('extensions', {}).get('KHR_texture_transform', {})
                         channel = transform.get('texCoord', texture.get('texCoord', 0))
@@ -158,6 +161,8 @@ def load_gltf_primitives(path):
                                        cutoff=material.get('alphaCutoff', 0.5) if material.get('alphaMode') == 'MASK' else 0.5,
                                        receiver=receiver, vertex_alpha=vertex_alpha,
                                        alpha=pbr.get('baseColorFactor', [1, 1, 1, 1])[3], texture=texture))
+                if material_inputs:
+                    primitives[-1]['vertex_color'] = vertex_color
         for child in node.get('children', []):
             visit(child, world)
 
@@ -252,9 +257,15 @@ def build_scene(mi, primitives, alpha_image, environment, resolution=2048):
         params['vertex_texcoords'] = mi.Float(p['uv'].astype(np.float32).ravel())
         params['faces'] = mi.UInt32(p['faces'].ravel())
         params.update()
-        mesh.add_attribute(MASK_ATTRIBUTE, 1, mi.Float(scale.astype(np.float32)))
-        mesh.add_attribute(PRIMITIVE_ATTRIBUTE, 1, mi.Float(np.full(len(p['positions']), index, np.float32)))
-        mesh.add_attribute(RECEIVER_ATTRIBUTE, 1, mi.Float(np.full(len(p['positions']), float(p.get('receiver', True)), np.float32)))
+        # The installed Mitsuba API takes a host Sequence[float] here. Passing a
+        # CUDA Float array reads it back one scalar at a time on large meshes.
+        mesh.add_attribute(MASK_ATTRIBUTE, 1, scale.astype(np.float32))
+        mesh.add_attribute(PRIMITIVE_ATTRIBUTE, 1, np.full(len(p['positions']), index, np.float32))
+        mesh.add_attribute(RECEIVER_ATTRIBUTE, 1, np.full(len(p['positions']), float(p.get('receiver', True)), np.float32))
+        if p.get('vertex_color') is not None:
+            mesh.add_attribute('vertex_color', 3, p['vertex_color'].astype(np.float32).ravel())
+        elif 'vertex_color' in p:
+            mesh.add_attribute('vertex_color', 3, np.ones(len(p['positions']) * 3, np.float32))
         shapes[f'primitive_{index}'] = mesh
     shapes['type'] = 'scene'
     scene = mi.load_dict(shapes)

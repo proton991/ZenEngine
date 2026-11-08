@@ -8,6 +8,15 @@
 
 namespace zen::rc
 {
+// Coverage bounds sample explicit LOD zero. Unsupported samplers keep the
+// ordinary candidate test; bit zero selects linear magnification filtering.
+inline uint32_t SamplerCoverageFlags(const RHISamplerCreateInfo& sampler)
+{
+    const bool supported = sampler.minLod == 0.0f && sampler.lodBias == 0.0f && sampler.maxLod >= 0.0f && !sampler.useAnisotropy
+                        && !sampler.enableCompare && !sampler.unnormalizedUVW;
+    return (sampler.magFilter == RHISamplerFilter::eLinear ? 1u : 0u) | (supported ? 2u : 0u);
+}
+
 struct SceneMeshDraw
 {
     uint32_t nodeIndex;

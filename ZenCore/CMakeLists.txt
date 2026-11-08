@@ -209,6 +209,9 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     Source/Graphics/RenderCore/V2/ForwardDrawCache.cpp
+    Source/Graphics/RenderCore/V2/ForwardDepthSort.cpp
+    Source/Graphics/RenderCore/V2/ForwardGPUDraws.cpp
+    Source/Graphics/RenderCore/V2/ForwardClusterCulling.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/VoxelRenderer.cpp
@@ -217,6 +220,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
     Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
+    Source/Graphics/RenderCore/V2/SceneOpacityMicromap.cpp
     Source/Graphics/RenderCore/V2/LightFixtureMasks.cpp
     Source/Graphics/RenderCore/V2/ScreenProbeGather.cpp
     Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
@@ -330,11 +334,15 @@ target_sources(ZenRenderCoreTestSources INTERFACE
     Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
     Source/Graphics/RenderCore/V2/ScreenProbeGather.cpp
     Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
+    Source/Graphics/RenderCore/V2/SceneOpacityMicromap.cpp
     Source/Graphics/RenderCore/V2/LightFixtureMasks.cpp
     Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
     Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     Source/Graphics/RenderCore/V2/ForwardDrawCache.cpp
+    Source/Graphics/RenderCore/V2/ForwardDepthSort.cpp
+    Source/Graphics/RenderCore/V2/ForwardGPUDraws.cpp
+    Source/Graphics/RenderCore/V2/ForwardClusterCulling.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
 )
@@ -373,22 +381,55 @@ file(GLOB_RECURSE ZEN_SHADER_FILES CONFIGURE_DEPENDS
 
 message(STATUS "Spv Shader path: ${SHADER_SPV_PATH}")
 
+set(ZEN_MICROMAP_SHADER_PATHS "")
 foreach (GLSL ${ZEN_SHADER_FILES})
     get_filename_component(FILE_NAME ${GLSL} NAME)
     get_filename_component(FILE_PATH ${GLSL} DIRECTORY)
     file(RELATIVE_PATH RELATIVE_FILE_PATH ${SHADER_SRC_PATH} ${FILE_PATH})
-    set(SPIRV "${SHADER_SPV_PATH}/${RELATIVE_FILE_PATH}/${FILE_NAME}.spv")
-    message(STATUS "Compiling shader ${GLSL} -> ${SPIRV}")
-    add_custom_command(
-        OUTPUT ${SPIRV}
-        COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V ${GLSL} -o ${SPIRV}
-                -I${PROJECT_SOURCE_DIR}/ZenCore/Include
-                --depfile ${SPIRV}.d
-        DEPENDS ${GLSL}
-        DEPFILE ${SPIRV}.d
-        VERBATIM)
-    list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+    file(READ "${GLSL}" SHADER_SOURCE)
+    set(SHADER_VARIANTS base)
+    if(SHADER_SOURCE MATCHES "include \"forward_material.glsl\"")
+        list(APPEND SHADER_VARIANTS gpu)
+    endif()
+    foreach(VARIANT ${SHADER_VARIANTS})
+        set(VARIANT_SUFFIX "")
+        set(VARIANT_DEFINITIONS "")
+        if(VARIANT STREQUAL "gpu")
+            set(VARIANT_SUFFIX ".gpu")
+            set(VARIANT_DEFINITIONS -DGPU_FORWARD_DRAW=1)
+        endif()
+        set(SPIRV "${SHADER_SPV_PATH}/${RELATIVE_FILE_PATH}/${FILE_NAME}${VARIANT_SUFFIX}.spv")
+        set(SPIRV_TARGET spirv1.3)
+        if(FILE_NAME MATCHES "^ray_query_micromap_.*\\.comp$")
+            set(SPIRV_TARGET spirv1.4)
+        endif()
+        add_custom_command(
+            OUTPUT ${SPIRV}
+            COMMAND ${GLSL_VALIDATOR} --target-env ${SPIRV_TARGET} -V ${VARIANT_DEFINITIONS} ${GLSL} -o ${SPIRV}
+                    -I${PROJECT_SOURCE_DIR}/ZenCore/Include --depfile ${SPIRV}.d
+            DEPENDS ${GLSL}
+            DEPFILE ${SPIRV}.d
+            VERBATIM)
+        list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+        if(SHADER_SOURCE MATCHES "GL_EXT_ray_query" AND NOT SHADER_SOURCE MATCHES "gl_EnableOpacityMicromapEXT")
+            set(MICROMAP_SPIRV "${SHADER_SPV_PATH}/${RELATIVE_FILE_PATH}/${FILE_NAME}${VARIANT_SUFFIX}.omm.spv")
+            add_custom_command(
+                OUTPUT ${MICROMAP_SPIRV}
+                COMMAND ${GLSL_VALIDATOR} --target-env spirv1.4 -V -DZEN_OPACITY_MICROMAP=1 ${VARIANT_DEFINITIONS} ${GLSL} -o ${MICROMAP_SPIRV}
+                        -I${PROJECT_SOURCE_DIR}/ZenCore/Include --depfile ${MICROMAP_SPIRV}.d
+                DEPENDS ${GLSL}
+                DEPFILE ${MICROMAP_SPIRV}.d
+                VERBATIM)
+            list(APPEND SPIRV_BINARY_FILES ${MICROMAP_SPIRV})
+            string(APPEND ZEN_MICROMAP_SHADER_PATHS "    \"${RELATIVE_FILE_PATH}/${FILE_NAME}${VARIANT_SUFFIX}.spv\",\n")
+        endif()
+    endforeach()
 endforeach (GLSL)
+
+# Keep runtime module selection tied to the variants actually produced by this build.
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ZenOpacityMicromapShaders.h" CONTENT
+    "#pragma once\nnamespace zen::rc\n{\ninline constexpr const char* kOpacityMicromapShaderFiles[] = {\n${ZEN_MICROMAP_SHADER_PATHS}};\n}\n")
+target_include_directories(ZenCore PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
 add_custom_target(
     SpvShaders

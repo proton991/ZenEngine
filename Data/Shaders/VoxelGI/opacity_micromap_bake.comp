@@ -1,0 +1,111 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "../Common/material.glsl"
+bool coverageValid = true;
+#define MATERIAL_COVERAGE_FAILURE() coverageValid = false
+#include "../Common/material_coverage_bounds.glsl"
+#undef MATERIAL_COVERAGE_FAILURE
+
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, set = 1, binding = 0) readonly buffer MicromapTriangles
+{
+    vec4 corners[]; // Three UV/vertex-alpha records per distinct opacity pattern.
+};
+layout(std140, set = 1, binding = 1) readonly buffer MaterialBuffer
+{
+    Material materials[];
+};
+layout(std430, set = 1, binding = 2) buffer MicromapStates
+{
+    uint states[];
+};
+layout(push_constant) uniform MicromapParameters
+{
+    uint materialIndex;
+    uint subdivisionLevel;
+    uint patternCount;
+    uint samplerFlags;
+    uint subTexelPrecisionBits;
+};
+
+// The standardized barycentric space-filling curve interleaves two parity masks.
+// Use interior points, so grid-edge ownership cannot affect the selected subtriangle.
+uint MicromapIndex(vec2 interior, uint level)
+{
+    vec2  scaled = interior * float(1u << level);
+    uvec2 cell   = uvec2(scaled);
+    uint  third  = ~(cell.x + cell.y);
+    if (fract(scaled.x) + fract(scaled.y) >= 1.0)
+    {
+        --third;
+    }
+    uint low        = ~(cell.x ^ third) & ((1u << level) - 1u);
+    uint transition = (cell.x ^ cell.y) & low;
+    uint parity     = transition;
+    for (uint shift = 1u; shift <= 16u; shift <<= 1u)
+    {
+        parity ^= parity >> shift;
+    }
+    uint high  = ((parity ^ cell.x) & ~low) | transition;
+    uint index = 0u;
+    for (uint bit = 0u; bit < level; ++bit)
+    {
+        index |= ((low >> bit) & 1u) << (2u * bit);
+        index |= ((high >> bit) & 1u) << (2u * bit + 1u);
+    }
+    return index;
+}
+
+void BakePatch(MaterialCoverageInput inputData, uint pattern, vec2 a, vec2 b, vec2 c)
+{
+    coverageValid = inputData.textureIndex < 0 || ((samplerFlags & 2u) != 0u && subTexelPrecisionBits > 0u);
+    vec2 bounds   = MaterialCoverageBounds(inputData, a, b, c);
+    // Unknown states preserve the original candidate shader. No two-state override.
+    uint state = coverageValid && bounds.y < inputData.cutoff ? 0u : coverageValid && bounds.x >= inputData.cutoff ? 1u : 2u;
+    if (state == 2u && coverageValid && MaterialCoveredAt(inputData, (a + b + c) / 3.0))
+    {
+        state = 3u;
+    }
+    uint index = MicromapIndex((a + b + c) / 3.0, subdivisionLevel);
+    uint words = ((1u << (2u * subdivisionLevel)) + 15u) / 16u;
+    atomicOr(states[pattern * words + index / 16u], state << (2u * (index & 15u)));
+}
+
+void main()
+{
+    uvec2 cell    = gl_GlobalInvocationID.xy;
+    uint  pattern = gl_GlobalInvocationID.z;
+    uint  edge    = 1u << subdivisionLevel;
+    if (pattern < patternCount && cell.x + cell.y < edge)
+    {
+        Material              material = materials[materialIndex];
+        bool                  specular = material.surfaceProperties.w > 0.5;
+        MaterialCoverageInput inputData;
+        inputData.vertexAlpha = vec3(corners[pattern * 3u].z, corners[pattern * 3u + 1u].z, corners[pattern * 3u + 2u].z);
+        for (uint corner = 0u; corner < 3u; ++corner)
+        {
+            inputData.vertexUV[corner] = corners[pattern * 3u + corner].xy;
+        }
+        inputData.factor        = specular ? material.diffuseFactor.a : material.baseColorFactor.a;
+        inputData.cutoff        = material.surfaceProperties.y == 1.0 ? material.surfaceProperties.x : 0.5;
+        inputData.textureIndex  = specular ? int(material.featureTextures[2].properties.x) : material.bcTexIndex;
+        inputData.transform     = specular ? material.featureTextures[2].transform : material.textureTransforms[0];
+        inputData.sampling      = material.textureSampling.xy;
+        inputData.samplerIndex  = uint(max(inputData.transform.row0.w, 0.0));
+        inputData.linearFilter  = (samplerFlags & 1u) != 0u;
+        inputData.fractionError = 1.0 / float(1u << min(subTexelPrecisionBits, 20u));
+        vec2 rawMagnitude       = max(abs(inputData.vertexUV[0]), max(abs(inputData.vertexUV[1]), abs(inputData.vertexUV[2])));
+        vec2 linearMagnitude =
+            vec2(dot(abs(inputData.transform.row0.xy), rawMagnitude), dot(abs(inputData.transform.row1.xy), rawMagnitude));
+        vec2 affineMagnitude        = linearMagnitude + abs(vec2(inputData.transform.row0.z, inputData.transform.row1.z));
+        inputData.uvArithmeticError = 32.0 * 1.1920929e-7 * (linearMagnitude + affineMagnitude);
+        vec2 lower                  = vec2(cell) / float(edge);
+        vec2 dx                     = vec2(1.0 / float(edge), 0);
+        vec2 dy                     = dx.yx;
+        BakePatch(inputData, pattern, lower, lower + dx, lower + dy);
+        if (cell.x + cell.y + 1u < edge)
+        {
+            BakePatch(inputData, pattern, lower + dx, lower + dx + dy, lower + dy);
+        }
+    }
+}

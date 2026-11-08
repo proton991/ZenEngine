@@ -1,0 +1,12 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0) uniform sampler2D sourceDepth;
+layout(r32f, set = 1, binding = 1) uniform writeonly image2D targetDepth;
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (all(lessThan(pixel, imageSize(targetDepth))))
+    {
+        imageStore(targetDepth, pixel, vec4(texelFetch(sourceDepth, pixel, 0).r));
+    }
+}

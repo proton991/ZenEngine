@@ -4,6 +4,12 @@
 
 namespace zen::rc
 {
+bool ValidateTransparencySettings(const TransparencySettings& settings)
+{
+    return settings.coreMode <= TransparencyCoreMode::eForce && std::isfinite(settings.coreCutoff) && settings.coreCutoff > 0.0f
+        && settings.coreCutoff <= 1.0f;
+}
+
 bool ValidateRenderingSettings(const RenderingSettings& settings, std::string& error)
 {
     error.clear();
@@ -11,6 +17,10 @@ bool ValidateRenderingSettings(const RenderingSettings& settings, std::string& e
     if (settings.algorithm > RenderAlgorithm::eVoxelGI || !ValidateVoxelGIRuntimeSettings(settings.gi))
     {
         error = "Invalid algorithm or GI settings. Grid sizes are 64, 128 or 256; shadow maps are 128 to 2048.";
+    }
+    else if (!ValidateTransparencySettings(settings.transparency))
+    {
+        error = "Invalid transparency mode or core cutoff (must be greater than zero and at most one).";
     }
     else if (!std::isfinite(settings.environment.intensity) || settings.environment.intensity < 0.0f
              || !std::isfinite(settings.environment.rotationDegrees))

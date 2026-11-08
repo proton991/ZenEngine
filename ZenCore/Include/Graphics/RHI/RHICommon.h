@@ -87,6 +87,9 @@ struct RHIRayQueryCapabilities
     uint64_t maxGeometries{0};
     uint64_t maxPrimitives{0};
     uint64_t maxInstances{0};
+    bool     opacityMicromap{false};
+    uint32_t maxOpacitySubdivisionLevel{0};
+    uint64_t maxMicromapTriangles{0};
 
     bool IsUsable() const
     {
@@ -131,6 +134,8 @@ struct RHIGPUInfo
     size_t storageBufferAlignment{0};
     // Conservative defaults; the backend supplies the physical device limits.
     uint32_t maxComputeWorkGroupInvocations{128};
+    uint32_t maxComputeSharedMemorySize{16384};
+    bool     supportComputeSubgroupBallot{false};
     // Every logical descriptor-set index must be below this backend limit (Vulkan guarantees at least 4).
     uint32_t                maxBoundDescriptorSets{4};
     std::array<uint32_t, 3> maxComputeWorkGroupSize{128, 128, 64};

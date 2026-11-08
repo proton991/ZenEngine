@@ -1,0 +1,48 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "transparency_draw.glsl"
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Parameters
+{
+    uint count;
+};
+layout(std430, set = 1, binding = 0) readonly buffer ForwardDepthKeys
+{
+    uvec2 depthKeys[];
+};
+layout(std430, set = 1, binding = 1) readonly buffer ForwardClusterVisibility
+{
+    uint visibility[];
+};
+layout(std430, set = 1, binding = 2) writeonly buffer ForwardLocalRanks
+{
+    uvec2 ranks[];
+};
+layout(std430, set = 1, binding = 3) writeonly buffer ForwardBlockTotals
+{
+    uint totals[];
+};
+shared uint prefix[256];
+void        main()
+{
+    uint index   = gl_GlobalInvocationID.x;
+    uint lane    = gl_LocalInvocationIndex;
+    uint visible = index < count ? visibility[forwardTriangles[depthKeys[index].y].identity.w] : 0u;
+    prefix[lane] = visible;
+    barrier();
+    for (uint stride = 1u; stride < 256u; stride *= 2u)
+    {
+        uint preceding = lane >= stride ? prefix[lane - stride] : 0u;
+        barrier();
+        prefix[lane] += preceding;
+        barrier();
+    }
+    if (index < count)
+    {
+        ranks[index] = uvec2(prefix[lane] - visible, visible);
+    }
+    if (lane == 255u)
+    {
+        totals[gl_WorkGroupID.x] = prefix[lane];
+    }
+}

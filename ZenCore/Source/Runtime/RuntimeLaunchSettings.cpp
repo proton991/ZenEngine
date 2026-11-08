@@ -117,6 +117,12 @@ template <class Archive> void Fields(Archive& archive, rc::VoxelGIRuntimeSetting
     archive.Field("shadowMapResolution", value.shadowMapResolution);
 }
 
+template <class Archive> void Fields(Archive& archive, rc::TransparencySettings& value)
+{
+    archive.Field("coreMode", value.coreMode);
+    archive.Field("coreCutoff", value.coreCutoff);
+}
+
 template <class Archive> void Fields(Archive& archive, rc::RenderingSettings& value)
 {
     archive.Field("scenePath", value.scenePath);
@@ -127,6 +133,7 @@ template <class Archive> void Fields(Archive& archive, rc::RenderingSettings& va
     archive.Field("cameraLight", value.cameraLight);
     archive.Field("environment", value.environment);
     archive.Field("gi", value.gi);
+    archive.Field("transparency", value.transparency, false);
     archive.Field("debug", value.debug);
     archive.Field("lightMarkers", value.lightMarkers);
     archive.Field("lightMarkerSize", value.lightMarkerSize);

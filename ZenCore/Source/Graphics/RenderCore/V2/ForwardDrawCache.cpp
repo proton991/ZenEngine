@@ -107,14 +107,15 @@ void PrepareForwardDraws(ForwardDrawCache& cache, const RenderScene& scene)
                 else if (material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend)
                          && draw.topology == sg::MeshTopology::Triangles)
                 {
-                    // Only BLEND triangles ignore node identity in forward receiver matching.
+                    // Ordinary BLEND triangles ignore node identity in forward receiver matching.
                     // Equal complete node records preserve position, normals, orientation and thickness.
-                    if (!preparedBlendNode)
+                    // Split materials retain their identity to reuse only their own core's shadows.
+                    if (material.textureSampling.z <= 0.0f && !preparedBlendNode)
                     {
                         blendNode         = BlendNode(*node, representatives);
                         preparedBlendNode = true;
                     }
-                    draw.nodeIndex = blendNode;
+                    draw.nodeIndex = material.textureSampling.z > 0.0f ? instance : blendNode;
                     for (uint32_t index = 0; index + 2 < draw.indexCount; index += 3)
                     {
                         ForwardDrawItem item{draw};
@@ -145,15 +146,26 @@ void BuildForwardBatches(ForwardDrawCache& cache, const RenderScene& scene)
 {
     cache.draws.clear();
     cache.batches.clear();
+    HeapVector<uint8_t> basicMaterials;
+    basicMaterials.reserve(scene.GetMaterialsData().size());
+    for (const sg::MaterialData& material : scene.GetMaterialsData())
+    {
+        basicMaterials.push_back(IsBasicForwardMaterial(material) ? 1 : 0);
+    }
     for (const ForwardSortedDraw& entry : cache.translucent)
     {
         SceneMeshDraw draw = entry.draw;
         const bool    writeDepth =
             scene.GetMaterialsData()[draw.materialIndex].surfaceProperties.y != static_cast<float>(sg::AlphaMode::Blend);
+        const bool basicPBR  = basicMaterials[draw.materialIndex] != 0;
+        const bool splitCore = draw.topology == sg::MeshTopology::Triangles
+                            && scene.GetMaterialsData()[draw.materialIndex].textureSampling.z > 0.0f;
         if (cache.batches.empty() || cache.batches.back().topology != draw.topology
-            || cache.batches.back().writeDepth != writeDepth || cache.batches.back().sorted != entry.sorted)
+            || cache.batches.back().writeDepth != writeDepth || cache.batches.back().sorted != entry.sorted
+            || cache.batches.back().basicPBR != basicPBR || cache.batches.back().splitCore != splitCore)
         {
-            cache.batches.push_back({static_cast<uint32_t>(cache.draws.size()), 0, draw.topology, writeDepth, entry.sorted});
+            cache.batches.push_back(
+                {static_cast<uint32_t>(cache.draws.size()), 0, draw.topology, writeDepth, entry.sorted, basicPBR, splitCore});
         }
         ForwardDrawBatch& batch = cache.batches.back();
         if (entry.sorted)
@@ -223,28 +235,71 @@ bool IsForwardTranslucent(const sg::MaterialData& material)
     return material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend) || material.sheenColorTransmission.w > 0.0f;
 }
 
+bool IsBasicForwardMaterial(const sg::MaterialData& material)
+{
+    // Validate the coefficients too: runtime MaterialData edits can leave the
+    // authored feature flag unchanged. Never specialize away an active lobe.
+    return material.materialProperties.w <= 0.5f && material.surfaceProperties.w <= 0.5f
+        && material.clearcoatSheenSpecular.x == 0.0f && material.sheenColorTransmission == Vec4(0.0f)
+        && material.volumeIridescence.z == 0.0f && material.iridescenceAnisotropy.z == 0.0f
+        && material.diffuseTransmissionColorFactor.w == 0.0f && material.volumeScatterColorRetroreflection.w == 0.0f;
+}
+
+bool SupportsDeferredOpaque(const HeapVector<sg::MaterialData>& materials)
+{
+    bool supported = true;
+    for (const sg::MaterialData& material : materials)
+    {
+        supported = supported && (material.materialProperties.w <= 0.5f || IsForwardTranslucent(material));
+    }
+    return supported;
+}
+
+bool NeedsForwardDepthOrder(const ForwardDrawKey& previous, const ForwardDrawKey& next)
+{
+    // Translation adds the same depth to every item, and camera roll does not
+    // change depth. Only compare the viewing direction. Anchor the tolerance to
+    // the last sort so a sequence of small rotations cannot keep stale order.
+    constexpr float directionTolerance = 0.0008726646f; // 0.05 degrees for a rigid view.
+    const Vec3      directionDelta(next.view[0][2] - previous.view[0][2], next.view[1][2] - previous.view[1][2],
+                                   next.view[2][2] - previous.view[2][2]);
+    return static_cast<const ForwardSceneKey&>(previous) != next
+        || !(glm::dot(directionDelta, directionDelta) <= directionTolerance * directionTolerance);
+}
+
 bool ForwardDrawCache::Update(const RenderScene& scene, const Mat4& view)
 {
     const ForwardDrawKey next{
         {scene.GetIdentity(), scene.GetGeometryRevision(), scene.GetSurfaceRevision(), scene.GetRenderableNodes().size()},
         view};
-    const bool rebuild = key != next;
+    const bool rebuild = NeedsForwardDepthOrder(key, next);
     indicesChanged     = false;
     if (rebuild)
     {
-        if (static_cast<const ForwardSceneKey&>(key) != static_cast<const ForwardSceneKey&>(next))
-        {
-            PrepareForwardDraws(*this, scene);
-        }
+        Prepare(scene);
         OrderForwardDraws(*this, scene, view);
         key = next;
     }
     return rebuild;
 }
 
+bool ForwardDrawCache::Prepare(const RenderScene& scene)
+{
+    const ForwardSceneKey next{scene.GetIdentity(), scene.GetGeometryRevision(), scene.GetSurfaceRevision(),
+                               scene.GetRenderableNodes().size()};
+    const bool            changed = preparedKey != next;
+    if (changed)
+    {
+        PrepareForwardDraws(*this, scene);
+        preparedKey = next;
+    }
+    return changed;
+}
+
 void ForwardDrawCache::Clear()
 {
-    key = {};
+    key         = {};
+    preparedKey = {};
     for (HeapVector<SceneMeshDraw>& topology : opaque)
     {
         topology.clear();

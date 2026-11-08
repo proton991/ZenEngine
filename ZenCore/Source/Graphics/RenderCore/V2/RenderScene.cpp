@@ -160,6 +160,7 @@ bool RenderScene::Init()
     {
         LoadSceneMaterials();
         LoadSceneTextures();
+        RefreshTransparency();
         PrepareBuffers();
         valid = HasRequiredResources();
     }
@@ -188,6 +189,9 @@ void RenderScene::LoadSceneMaterials()
 
 void RenderScene::LoadSceneTextures()
 {
+    m_textureContentHashes.clear();
+    m_textureAlphaStatistics.clear();
+    m_transparencyDirty = true;
     for (const sg::Sampler* source : m_pScene->GetComponents<sg::Sampler>())
     {
         RHISamplerCreateInfo info = RHISamplerCreateInfo::CreateLinearRepeat();

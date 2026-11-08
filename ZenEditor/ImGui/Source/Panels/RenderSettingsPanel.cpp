@@ -364,6 +364,28 @@ private:
         }
     }
 
+    void DrawTransparency(EditorController& editor)
+    {
+        if (ImGui::CollapsingHeader("Transparency"))
+        {
+            ImGui::BeginDisabled(!editor.GetViewport().HasScene() || editor.GetLoadState().IsActive());
+            rc::RenderingSettings draft   = editor.GetRenderingState().GetDraft();
+            const char*           modes[] = {"Automatic", "Disabled", "Force"};
+            int                   mode    = static_cast<int>(draft.transparency.coreMode);
+            bool                  changed = ImGui::Combo(PropertyLabel("Opaque core").c_str(), &mode, modes, 3);
+            draft.transparency.coreMode   = static_cast<rc::TransparencyCoreMode>(mode);
+            changed |=
+                ImGui::SliderFloat(PropertyLabel("Core cutoff").c_str(), &draft.transparency.coreCutoff, 0.5f, 1.0f, "%.3f");
+            DrawHint(
+                "Automatic uses known opacity statistics across accessible mips. Force also splits partial-alpha textures; lighting can change.");
+            if (changed)
+            {
+                editor.StageRenderingSettings(draft);
+            }
+            ImGui::EndDisabled();
+        }
+    }
+
     void DrawGI(EditorController& editor, const EditorRenderSnapshot& snapshot)
     {
         rc::RenderingSettings draft           = editor.GetRenderingState().GetDraft();
@@ -845,6 +867,8 @@ private:
         DrawLights(editor);
 
         DrawEnvironment(context);
+
+        DrawTransparency(editor);
 
         DrawGI(editor, snapshot);
 

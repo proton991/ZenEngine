@@ -1,7 +1,21 @@
 
 #include "../Common/bindless_heap.glsl"
 #include "../Common/material.glsl"
+#include "../Common/material_uv_layout.glsl"
 
+#ifdef GPU_FORWARD_DRAW
+#    include "../Common/scene_vertex.glsl"
+#    include "transparency_draw.glsl"
+layout(std430, set = 1, binding = 6) readonly buffer ForwardVertices
+{
+    Vertex forwardVertices[];
+};
+layout(std430, set = 1, binding = 7) readonly buffer ForwardSourceIndices
+{
+    uint forwardSourceIndices[];
+};
+layout(location = 16) flat out uvec2 outForwardIdentity;
+#else
 layout(location = 0) in vec4 inPos;
 layout(location = 1) in vec4 inNormal;
 layout(location = 2) in vec4 inTangent;
@@ -10,6 +24,7 @@ layout(location = 4) in vec2 inUV1;
 layout(location = 5) in vec4 inJoint0;
 layout(location = 6) in vec4 inWeight0;
 layout(location = 7) in vec4 inColor;
+#endif
 
 layout(set = 1, binding = 0) uniform uCameraData
 {
@@ -55,7 +70,7 @@ layout(std430, set = 1, binding = 6) readonly buffer GBufferPreviousModels
     mat4 gbufferPreviousModels[];
 };
 #    endif
-#else
+#elif !defined(GPU_FORWARD_DRAW)
 layout(push_constant) uniform uNodePushConstant
 {
     uint uNodeIndex;
@@ -72,7 +87,7 @@ layout(location = 1) out vec4 outColor;
 layout(location = 2) out vec3 outWorldPos;
 layout(location = 3) out vec4 outTangent;
 layout(location = 4) flat out float outOrientation;
-layout(location = 5) out vec4 outPackedBindingUV[11];
+layout(location = 5) out vec4 outPackedBindingUV[materialUVVectorCount];
 out gl_PerVertex
 {
     vec4  gl_Position;
@@ -97,6 +112,20 @@ layout(location = 17) out vec4 outCurrentClip;
 #endif
 void main()
 {
+#ifdef GPU_FORWARD_DRAW
+    ForwardTriangle triangle       = forwardTriangles[uint(gl_VertexIndex) / 3u];
+    uint            vertexIndex    = forwardSourceIndices[triangle.identity.z + uint(gl_VertexIndex) % 3u];
+    Vertex          vertex         = forwardVertices[vertexIndex];
+    vec4            inPos          = vertex.position;
+    vec4            inNormal       = vertex.normal;
+    vec4            inTangent      = vertex.tangent;
+    vec4            inColor        = vertex.color;
+    uint            uNodeIndex     = triangle.identity.x;
+    uint            uMaterialIndex = triangle.identity.y;
+    outForwardIdentity             = triangle.identity.xy;
+#else
+    uint vertexIndex = uint(gl_VertexIndex);
+#endif
 #ifdef GPU_CULLED_DRAW
     uint uNodeIndex = gbufferDraws[gl_InstanceIndex].indices.x;
 #    ifdef HYBRID_RECEIVER
@@ -132,10 +161,12 @@ void main()
     int      sets[5] =
         int[5](material.bcTexSet, material.mrTexSet, material.normalTexSet, material.aoTexSet, material.emissiveTexSet);
     uint stride = uint(uvValues[0].x);
-    for (int slot = 0; slot < 22; ++slot)
+    for (int slot = 0; slot < int(materialUVVectorCount * 2u); ++slot)
     {
-        uint set         = uint(max(slot < 5 ? sets[slot] : int(material.featureTextures[slot - 5].properties.y), 0));
-        vec2 coordinates = stride > set ? uvValues[1 + uint(gl_VertexIndex) * stride + set].xy : vec2(0.0);
+        uint set         = materialUVSetCount != 0u
+                             ? uint(slot)
+                             : uint(max(slot < 5 ? sets[slot] : int(material.featureTextures[slot - 5].properties.y), 0));
+        vec2 coordinates = stride > set ? uvValues[1 + vertexIndex * stride + set].xy : vec2(0.0);
         if ((slot & 1) == 0)
         {
             outPackedBindingUV[slot / 2].xy = coordinates;

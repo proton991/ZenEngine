@@ -1,0 +1,35 @@
+#version 450
+// Stable radix sorting uses one histogram per consecutive 256-key input block.
+layout(local_size_x = 256) in;
+layout(push_constant) uniform SortParameters
+{
+    uvec4 config; // Key count, block count, digit shift, reserved.
+};
+layout(std430, set = 1, binding = 0) readonly buffer SortInput
+{
+    uvec2 inputKeys[]; // Sortable float depth, original triangle index.
+};
+layout(std430, set = 1, binding = 1) writeonly buffer SortHistogram
+{
+    uint histogram[]; // Digit-major blocks, consumed by transparency_scan_groups.
+};
+shared uint counts[16];
+void        main()
+{
+    uint lane = gl_LocalInvocationIndex;
+    if (lane < 16u)
+    {
+        counts[lane] = 0u;
+    }
+    barrier();
+    uint index = gl_WorkGroupID.x * 256u + lane;
+    if (index < config.x)
+    {
+        atomicAdd(counts[(inputKeys[index].x >> config.z) & 15u], 1u);
+    }
+    barrier();
+    if (lane < 16u)
+    {
+        histogram[lane * config.y + gl_WorkGroupID.x] = counts[lane];
+    }
+}

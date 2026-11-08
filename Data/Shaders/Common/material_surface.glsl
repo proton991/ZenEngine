@@ -5,7 +5,8 @@ layout(location = 1) in vec4 inColor;
 layout(location = 2) in vec3 inWorldPos;
 layout(location = 3) in vec4 inTangent;
 layout(location = 4) flat in float inOrientation;
-layout(location = 5) in vec4 inPackedBindingUV[11];
+#include "material_uv_layout.glsl"
+layout(location = 5) in vec4 inPackedBindingUV[materialUVVectorCount];
 #include "material_binding_uv.glsl"
 #define inUV  MaterialBindingUV(0)
 #define inUV1 MaterialBindingUV(1)

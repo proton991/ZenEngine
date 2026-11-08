@@ -448,6 +448,52 @@ private:
     VkPhysicalDeviceRayQueryFeaturesKHR m_rayQueryFeature;
 };
 
+// The KHR micromap API reuses acceleration-structure resources and build barriers.
+// Its device-address creation entry point requires the following feature chain.
+class VulkanOpacityMicromapExtension : public VulkanDeviceExtension
+{
+public:
+    explicit VulkanOpacityMicromapExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        AddToPNext(features, m_micromap);
+        AddToPNext(features, m_address);
+        AddToPNext(features, m_synchronization);
+        AddToPNext(features, m_dynamic);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        const bool supported = m_micromap.micromap && m_address.deviceAddressCommands && m_synchronization.synchronization2
+                            && m_dynamic.extendedDynamicState;
+        SetSupport(supported);
+        m_pDevice->GetExtensionFlags().hasOpacityMicromap = supported;
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(info, m_micromap);
+            AddToPNext(info, m_address);
+            AddToPNext(info, m_synchronization);
+            AddToPNext(info, m_dynamic);
+        }
+    }
+
+private:
+    VkPhysicalDeviceOpacityMicromapFeaturesKHR m_micromap{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_FEATURES_KHR};
+    VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR m_address{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_ADDRESS_COMMANDS_FEATURES_KHR};
+    VkPhysicalDeviceSynchronization2FeaturesKHR m_synchronization{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR};
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT m_dynamic{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT};
+};
+
 static int FindExtensionIndex(NameID extensionName, const HeapVector<VkExtensionProperties>& supported)
 {
     int index = -1;
@@ -675,6 +721,17 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDeviceFaultExtension)
 
     const HeapVector<VkExtensionProperties> supported = GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
+
+    if (FindExtensionIndex(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME, supported) >= 0
+        && FindExtensionIndex(VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME, supported) >= 0
+        && FindExtensionIndex(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME, supported) >= 0
+        && FindExtensionIndex(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, supported) >= 0)
+    {
+        ADD_ADVANCED_DEVICE_EXTENSION(VulkanOpacityMicromapExtension)
+        ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME)
+        ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
+        ADD_SIMPLE_DEVICE_EXTENSION(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME)
+    }
 
     // Enabling either extension guarantees one timestamp domain across submissions and queues.
     // Whole-frame timing needs this guarantee without querying any host-clock calibration.

@@ -98,16 +98,36 @@ struct ImageRegion
     bool     operator==(const ImageRegion&) const = default;
 };
 
+struct AlphaMipStatistics
+{
+    uint64_t texels{0};
+    uint64_t zeroTexels{0};
+    uint64_t oneTexels{0};
+    uint64_t zeroCells{0};
+    uint64_t oneCells{0};
+    bool     operator==(const AlphaMipStatistics&) const = default;
+};
+
+// Analyze a resident logical mip without retaining decoded image storage.
+bool AnalyzeImageAlpha(Format                    format,
+                       uint32_t                  width,
+                       uint32_t                  height,
+                       VectorView<const uint8_t> bytes,
+                       const ImageRegion&        region,
+                       AlphaMipStatistics&       statistics,
+                       std::string&              error);
+
 struct TextureAsset
 {
-    std::string           name;
-    ImageId               image;
-    SamplerId             sampler;
-    TextureId             linearSource;
-    Format                format{Format::R8G8B8A8_UNORM};
-    bool                  flatNormal{false};
-    TextureInterpretation interpretation{TextureInterpretation::Default};
-    uint32_t              arrayLayer{0};
-    ImageRegion           atlasRegion;
+    std::string                    name;
+    ImageId                        image;
+    SamplerId                      sampler;
+    TextureId                      linearSource;
+    Format                         format{Format::R8G8B8A8_UNORM};
+    bool                           flatNormal{false};
+    TextureInterpretation          interpretation{TextureInterpretation::Default};
+    uint32_t                       arrayLayer{0};
+    ImageRegion                    atlasRegion;
+    HeapVector<AlphaMipStatistics> alphaMips;
 };
 } // namespace zen::asset

@@ -21,6 +21,7 @@ struct DeviceExtensionFlags
     uint32_t hasAccelerationStructure    : 1;
     uint32_t hasRaytracingPipeline       : 1;
     uint32_t hasRayQuery                 : 1;
+    uint32_t hasOpacityMicromap          : 1;
     uint32_t hasDescriptorIndexing       : 1;
     uint32_t hasTimelineSemaphore        : 1;
     uint32_t hasHostQueryReset           : 1;

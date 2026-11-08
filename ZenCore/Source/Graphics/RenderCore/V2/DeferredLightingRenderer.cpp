@@ -73,12 +73,12 @@ void GroupDrawsByFirstMaterialUse(GBufferDrawGroup& group)
                      });
 }
 
-NameID GBufferShaderName(bool hybrid, bool masked, bool indirect)
+NameID GBufferShaderName(bool hybrid, bool masked, bool indirect, uint32_t uvSetCount)
 {
     const char* const shaders[2][2][2] = {
         {{"GBufferSP", "GBufferIndirectSP"}, {"GBufferMaskedSP", "GBufferMaskedIndirectSP"}},
         {{"HybridReceiverSP", "HybridReceiverIndirectSP"}, {"HybridReceiverMaskedSP", "HybridReceiverMaskedIndirectSP"}}};
-    return shaders[hybrid][masked][indirect];
+    return MaterialUVShaderName(shaders[hybrid][masked][indirect], uvSetCount);
 }
 
 // Opaque before masked, with separate two-sided, mirrored and ordinary pipelines.
@@ -101,17 +101,18 @@ GBufferDrawGroups GroupGBufferDraws(const RenderScene&      scene,
                 const uint32_t          index = mesh->GetMaterial()->index;
                 const sg::MaterialData& material =
                     index < scene.GetMaterialsData().size() ? scene.GetMaterialsData()[index] : mesh->GetMaterial()->data;
-                const bool forwardOnly = material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend)
+                const bool core        = material.textureSampling.z > 0.0f;
+                const bool forwardOnly = (material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend) && !core)
                                       || material.sheenColorTransmission.w > 0.0f
                                       || (hybrid != nullptr && material.diffuseTransmissionColorFactor.w > 0.0f);
                 if (mesh->topology == sg::MeshTopology::Triangles && !forwardOnly)
                 {
-                    const bool               masked   = material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Mask);
+                    const bool masked = core || material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Mask);
                     const RHIPolygonCullMode cullMode = material.materialProperties.z >= 0.5f ? RHIPolygonCullMode::eDisabled
                                                       : mirrored                              ? RHIPolygonCullMode::eFront
                                                                                               : RHIPolygonCullMode::eBack;
-                    const NameID             shader   = GBufferShaderName(hybrid != nullptr, masked, indirect);
-                    uint32_t                 groupIndex = (masked ? 3u : 0u) + static_cast<uint32_t>(cullMode);
+                    const NameID shader     = GBufferShaderName(hybrid != nullptr, masked, indirect, scene.GetUVSetCount());
+                    uint32_t     groupIndex = (masked ? 3u : 0u) + static_cast<uint32_t>(cullMode);
                     if (preserveDrawOrder)
                     {
                         if (groups.empty() || groups.back().shader != shader || groups.back().cullMode != cullMode)
@@ -422,7 +423,7 @@ void AddGBufferPass(RenderGraph&            graph,
                     const HybridGIRenderer* hybrid,
                     bool                    preserveDrawOrder)
 {
-    desc.SetShaderProgramName(GBufferShaderName(hybrid != nullptr, false, false));
+    desc.SetShaderProgramName(GBufferShaderName(hybrid != nullptr, false, false, scene.GetUVSetCount()));
     GBufferDrawGroups groups = GroupGBufferDraws(scene, hybrid, preserveDrawOrder);
     DeclareGBufferPipelines(desc, groups);
     graph.AddGraphicsPass(std::move(desc))
@@ -515,7 +516,7 @@ SceneCullingResult AddCulledGBufferPass(RenderDevice&           device,
             *pArguments = arguments;
         }
         AddGBufferCullPass(graph, scene, cache.draws.GetBuffer(), arguments, std::move(chunks));
-        desc.SetShaderProgramName(GBufferShaderName(hybrid != nullptr, false, true));
+        desc.SetShaderProgramName(GBufferShaderName(hybrid != nullptr, false, true, scene.GetUVSetCount()));
         desc.BindStorageBuffer("GBufferDrawBuffer", cache.draws.GetBuffer());
         if (hybrid != nullptr)
         {
@@ -593,6 +594,24 @@ struct ForwardPushConstants
     uint32_t topology;
 };
 
+void SetForwardConstants(RDGPassCmdEncoder& encoder, const ForwardPushConstants& constants, glm::uvec2 captureExtent)
+{
+    if (captureExtent.x != 0)
+    {
+        struct CaptureConstants
+        {
+            ForwardPushConstants draw;
+            uint32_t             padding;
+            glm::uvec2           extent;
+        };
+        encoder.SetPushConstants(CaptureConstants{constants, 0, captureExtent});
+    }
+    else
+    {
+        encoder.SetPushConstants(constants);
+    }
+}
+
 void RecordForwardDraws(RDGPassCmdEncoder&               encoder,
                         const HeapVector<SceneMeshDraw>& draws,
                         bool                             displayLinear = false,
@@ -603,21 +622,7 @@ void RecordForwardDraws(RDGPassCmdEncoder&               encoder,
         const ForwardPushConstants constants{draw.nodeIndex, draw.materialIndex,
                                              static_cast<uint32_t>(draw.topology) | (displayLinear ? 4u : 0u)};
 
-        if (captureExtent.x != 0)
-        {
-            struct CaptureConstants
-            {
-                ForwardPushConstants draw;
-                uint32_t             padding;
-                glm::uvec2           extent;
-            };
-            const CaptureConstants capture{constants, 0, captureExtent};
-            encoder.SetPushConstants(capture);
-        }
-        else
-        {
-            encoder.SetPushConstants(constants);
-        }
+        SetForwardConstants(encoder, constants, captureExtent);
         encoder.DrawIndexed(draw.indexCount, 1, draw.firstIndex, 0, 0);
     }
 }
@@ -688,6 +693,7 @@ void DeferredLightingRenderer::Destroy()
     if (m_pRenderDevice != nullptr)
     {
         m_sortedBlendIndices.Destroy(*m_pRenderDevice);
+        m_forwardGPUDraws.Destroy(*m_pRenderDevice);
         m_gbufferDrawData.Destroy(*m_pRenderDevice);
     }
     m_forwardDraws.Clear();
@@ -704,6 +710,7 @@ void DeferredLightingRenderer::SetRenderScene(RenderScene* scene)
 
 void DeferredLightingRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
+    m_forwardGPUDraws.OnExecuted(result == RenderFrameResult::eSubmitted);
     if (m_hybrid != nullptr)
     {
         m_hybrid->OnRenderGraphExecuted(result);
@@ -1189,14 +1196,7 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
 
 bool DeferredLightingRenderer::ShadesOpaqueDeferred() const
 {
-    bool result = true;
-
-    for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
-    {
-        result = result && (material.materialProperties.w <= 0.5f || IsForwardTranslucent(material));
-    }
-
-    return result;
+    return SupportsDeferredOpaque(m_pScene->GetMaterialsData());
 }
 
 bool DeferredLightingRenderer::UsesForwardMaterials() const
@@ -1344,21 +1344,27 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     fullscreenState.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eAlways);
 
-    const Mat4 cameraView             = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData())->view;
-    m_forwardDraws.Update(*m_pScene, cameraView);
+    const Mat4             cameraView = reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData())->view;
+    const ForwardGPUResult gpuForward =
+        m_gpuCullingEnabled ? m_forwardGPUDraws.Build(*m_pRenderDevice, *graph, *m_pScene, m_forwardDraws, cameraView)
+                            : ForwardGPUResult{};
+    if (!gpuForward)
+    {
+        m_forwardDraws.Update(*m_pScene, cameraView);
+    }
     const HeapVector<SceneMeshDraw>      noDraws;
     const HeapVector<SceneMeshDraw>*     opaqueDraws[3]    = {&m_forwardDraws.opaque[0], &m_forwardDraws.opaque[1],
                                                               &m_forwardDraws.opaque[2]};
     const HeapVector<ForwardSortedDraw>& translucentDepths = m_forwardDraws.translucent;
     const HeapVector<uint32_t>&          sortedIndices     = m_forwardDraws.indices;
     const uint32_t                       sortedBytes       = static_cast<uint32_t>(sortedIndices.size() * sizeof(uint32_t));
-    if (m_forwardDraws.indicesChanged)
+    if (!gpuForward && m_forwardDraws.indicesChanged)
     {
         m_sortedBlendIndices.MarkDirty(0, sortedBytes);
     }
     // Retry a declined upload on a cache hit; its ring retains dirty ranges until it succeeds.
     const bool sortedReady =
-        !sortedIndices.empty()
+        !gpuForward && !sortedIndices.empty()
         && m_sortedBlendIndices.Update(*m_pRenderDevice, sortedIndices.data(), sortedBytes, "forward_sorted_blend_indices");
     const bool cachedRuns = sortedReady || !m_forwardDraws.hasBlend;
 
@@ -1569,23 +1575,49 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             }
         }
 
-        uint32_t first   = 0;
-        bool     pending = stage < 3 ? !opaqueDraws[stage]->empty() : !translucentDepths.empty();
+        uint32_t   first  = 0;
+        const bool gpuRun = stage == 3 && bool(gpuForward);
+        if (gpuRun)
+        {
+            const sg::CameraUniformData& camera =
+                *reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
+            m_forwardGPUDraws.Emit(*m_pRenderDevice, *graph, gpuForward, view.GetDepthTarget(), width, height,
+                                   camera.projViewMatrix);
+        }
+        bool pending = stage < 3 ? !opaqueDraws[stage]->empty() : gpuRun || !translucentDepths.empty();
         while (pending)
         {
             HeapVector<SceneMeshDraw> draws;
-            const ForwardDrawBatch*   batch    = stage == 3 && cachedRuns ? &m_forwardDraws.batches[first] : nullptr;
+            const ForwardDrawBatch*   batch    = stage == 3 && !gpuRun && cachedRuns ? &m_forwardDraws.batches[first] : nullptr;
             const sg::MeshTopology    topology = stage < 3        ? static_cast<sg::MeshTopology>(stage)
+                                               : gpuRun           ? sg::MeshTopology::Triangles
                                                : batch != nullptr ? batch->topology
                                                                   : translucentDepths[first].draw.topology;
             const bool                writeDepth =
                 stage < 3
-                || (batch != nullptr
-                        ? batch->writeDepth
-                        : m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
-                              != static_cast<float>(sg::AlphaMode::Blend));
+                || (!gpuRun
+                    && (batch != nullptr
+                            ? batch->writeDepth
+                            : m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
+                                  != static_cast<float>(sg::AlphaMode::Blend)));
             const bool sortedRun = batch != nullptr && batch->sorted;
-            if (stage < 3)
+            const bool splitCore =
+                stage == 3 && topology == sg::MeshTopology::Triangles
+                && (gpuRun ? gpuForward.splitCore
+                    : batch != nullptr
+                        ? batch->splitCore
+                        : m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].textureSampling.z > 0.0f);
+            const bool basicPBR =
+                stage == 3
+                && (gpuRun
+                    || (batch != nullptr ? batch->basicPBR
+                                         : IsBasicForwardMaterial(
+                                               m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex])));
+            if (gpuRun)
+            {
+                pending = false;
+            }
+            else if (stage < 3)
             {
                 draws   = *opaqueDraws[stage];
                 pending = false;
@@ -1599,10 +1631,16 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             else
             {
                 // An unavailable sorted index buffer keeps the original per-triangle draw order.
-                while (first < translucentDepths.size() && translucentDepths[first].draw.topology == topology
-                       && (m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
-                           != static_cast<float>(sg::AlphaMode::Blend))
-                              == writeDepth)
+                while (
+                    first < translucentDepths.size() && translucentDepths[first].draw.topology == topology
+                    && (m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].surfaceProperties.y
+                        != static_cast<float>(sg::AlphaMode::Blend))
+                           == writeDepth
+                    && IsBasicForwardMaterial(m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex])
+                           == basicPBR
+                    && (topology == sg::MeshTopology::Triangles
+                        && m_pScene->GetMaterialsData()[translucentDepths[first].draw.materialIndex].textureSampling.z > 0.0f)
+                           == splitCore)
                 {
                     draws.push_back(translucentDepths[first].draw);
                     ++first;
@@ -1617,7 +1655,8 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             state.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
 
             state.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(
-                true, writeDepth && (!prefilled || stage != triangles), RHIDepthCompareOperator::eLessOrEqual);
+                true, writeDepth && (!prefilled || stage != triangles),
+                splitCore ? RHIDepthCompareOperator::eLess : RHIDepthCompareOperator::eLessOrEqual);
 
             state.colorBlendState.AddAttachment();
 
@@ -1640,11 +1679,14 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             RDGGraphicsPassDesc forward;
 
-            forward.SetShaderProgramName(voxelGI == nullptr ? "ForwardMaterialSP" : "ForwardMaterialVoxelGISP");
+            forward.SetShaderProgramName(voxelGI == nullptr
+                                             ? (basicPBR ? "ForwardMaterialBasicSP" : "ForwardMaterialSP")
+                                             : (basicPBR ? "ForwardMaterialVoxelGIBasicSP" : "ForwardMaterialVoxelGISP"));
 
             if (hybrid)
             {
-                forward.SetShaderProgramName(capture ? "ForwardHybridGICaptureSP" : "ForwardHybridGISP");
+                forward.SetShaderProgramName(capture ? (basicPBR ? "ForwardHybridGICaptureBasicSP" : "ForwardHybridGICaptureSP")
+                                                     : (basicPBR ? "ForwardHybridGIBasicSP" : "ForwardHybridGISP"));
                 if (capture)
                 {
                     forward.BindStorageBuffer("LightingCapture", m_captureOutput);
@@ -1658,14 +1700,23 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             if (rayShadows)
             {
                 const bool counts = !capture && voxelGI->CountsRays();
-                forward.SetShaderProgramName(capture  ? "ForwardHardwareShadowsCaptureSP"
-                                             : counts ? "ForwardHardwareShadowsCountsSP"
-                                                      : "ForwardHardwareShadowsSP");
+                forward.SetShaderProgramName(
+                    capture  ? (basicPBR ? "ForwardHardwareShadowsCaptureBasicSP" : "ForwardHardwareShadowsCaptureSP")
+                    : counts ? (basicPBR ? "ForwardHardwareShadowsCountsBasicSP" : "ForwardHardwareShadowsCountsSP")
+                             : (basicPBR ? "ForwardHardwareShadowsBasicSP" : "ForwardHardwareShadowsSP"));
                 if (counts)
                 {
                     voxelGI->BindRayTotals(forward);
                 }
             }
+
+            if (gpuRun)
+            {
+                std::string name(forward.shaderProgramName.CStr());
+                name.insert(name.size() - 2u, "GPU");
+                forward.SetShaderProgramName(NameID(name));
+            }
+            forward.SetShaderProgramName(MaterialUVShaderName(forward.shaderProgramName, m_pScene->GetUVSetCount()));
 
             forward.SetPassTag(stage < 3 ? "ForwardOpaque" : "ForwardTranslucent");
 
@@ -1703,9 +1754,19 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             BindSceneTextureArray(forward, m_pColorSampler, m_pScene->GetSceneTextureViews(), m_pScene->GetSceneSamplers());
 
-            forward.BindVertexBuffer(m_pScene->GetVertexBuffer());
-
-            forward.BindIndexBuffer(sortedRun ? m_sortedBlendIndices.GetBuffer() : m_pScene->GetIndexBuffer());
+            if (gpuRun)
+            {
+                forward.BindStorageBuffer("ForwardTriangles", m_forwardGPUDraws.GetTriangles());
+                forward.BindStorageBuffer("ForwardVertices", m_pScene->GetVertexBuffer());
+                forward.BindStorageBuffer("ForwardSourceIndices", m_pScene->GetIndexBuffer());
+                forward.BindIndexBuffer(gpuForward.indices);
+                forward.UseIndirectBuffer(gpuForward.arguments);
+            }
+            else
+            {
+                forward.BindVertexBuffer(m_pScene->GetVertexBuffer());
+                forward.BindIndexBuffer(sortedRun ? m_sortedBlendIndices.GetBuffer() : m_pScene->GetIndexBuffer());
+            }
 
             if (voxelGI != nullptr)
             {
@@ -1714,11 +1775,24 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 voxelGI->BindShadowInputs(forward, shadows, true);
             }
 
-            graph->AddGraphicsPass(std::move(forward))
-                .RecordPassCommands(
-                    [draws, captureExtent, displayLinear = stage == 3 && displayTransparency](RDGPassCmdEncoder& encoder) {
-                        RecordForwardDraws(encoder, draws, displayLinear, captureExtent);
-                    });
+            if (gpuRun)
+            {
+                graph->AddGraphicsPass(std::move(forward))
+                    .RecordPassCommands(
+                        [arguments = gpuForward.arguments, captureExtent, displayTransparency](RDGPassCmdEncoder& encoder) {
+                            const ForwardPushConstants constants{0, 0, 2u | (displayTransparency ? 4u : 0u)};
+                            SetForwardConstants(encoder, constants, captureExtent);
+                            encoder.DrawIndexedIndirect(arguments, 0, 1, 20);
+                        });
+            }
+            else
+            {
+                graph->AddGraphicsPass(std::move(forward))
+                    .RecordPassCommands(
+                        [draws, captureExtent, displayLinear = stage == 3 && displayTransparency](RDGPassCmdEncoder& encoder) {
+                            RecordForwardDraws(encoder, draws, displayLinear, captureExtent);
+                        });
+            }
         }
     }
 

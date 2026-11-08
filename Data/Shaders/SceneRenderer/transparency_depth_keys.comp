@@ -1,0 +1,31 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "transparency_draw.glsl"
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Parameters
+{
+    uint count;
+};
+layout(std430, set = 1, binding = 0) readonly buffer ForwardDepthRows
+{
+    vec4 depthRows[];
+};
+layout(std430, set = 1, binding = 1) writeonly buffer ForwardDepthKeys
+{
+    uvec2 depthKeys[];
+};
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < count)
+    {
+        ForwardTriangle triangle = forwardTriangles[index];
+        vec4            row      = depthRows[triangle.identity.x];
+        // Match GLM's pairwise matrix-vector additions; no fused multiply-add.
+        precise vec4  terms = row * vec4(triangle.center.xyz, 1.0);
+        precise float depth = (terms.x + terms.y) + (terms.z + terms.w);
+        uint          bits  = floatBitsToUint(depth + 0.0);
+        uint          key   = (bits & 0x80000000u) != 0u ? ~bits : bits | 0x80000000u;
+        depthKeys[index]    = uvec2(key, index);
+    }
+}

@@ -28,6 +28,7 @@ public:
         interpretation(source.interpretation),
         arrayLayer(source.arrayLayer),
         atlasRegion(source.atlasRegion),
+        alphaMips(source.alphaMips),
         flatNormal(source.flatNormal)
     {}
 
@@ -64,6 +65,7 @@ public:
         bytesData         = std::move(info.data);
         pixels.Reset();
         mipBytes.clear();
+        alphaMips.clear();
     }
 
     TypeId GetTypeId() const override
@@ -137,14 +139,15 @@ public:
 
     uint32_t index{0};
     // Importer-generated linear view of another texture in this scene; authored textures have no source.
-    uint32_t                     linearSourceIndex{UINT32_MAX};
-    int                          samplerIndex{-1};
-    uint32_t                     width{0};
-    uint32_t                     height{0};
-    asset::Format                format{asset::Format::UNDEFINED};
-    asset::TextureInterpretation interpretation{asset::TextureInterpretation::Default};
-    uint32_t                     arrayLayer{0};
-    asset::ImageRegion           atlasRegion;
+    uint32_t                              linearSourceIndex{UINT32_MAX};
+    int                                   samplerIndex{-1};
+    uint32_t                              width{0};
+    uint32_t                              height{0};
+    asset::Format                         format{asset::Format::UNDEFINED};
+    asset::TextureInterpretation          interpretation{asset::TextureInterpretation::Default};
+    uint32_t                              arrayLayer{0};
+    asset::ImageRegion                    atlasRegion;
+    HeapVector<asset::AlphaMipStatistics> alphaMips;
     // byte data no mipmaps
     std::vector<uint8_t> bytesData;
     // Authored image levels, including level zero; empty means generate from bytesData.
