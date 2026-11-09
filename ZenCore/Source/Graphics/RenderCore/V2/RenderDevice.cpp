@@ -154,13 +154,7 @@ void RenderDevice::Init(RHIViewport* viewport)
 
     m_frameRDG                  = MakeUnique<RenderGraph>("frame_rdg");
 
-    // Each frame slot alternates between its own transient set, so the working set spans
-    // every slot; keeping it pooled avoids recreating render targets and their descriptors.
-    RDGPoolConfig framePool;
-
-    framePool.steadyBuilds = m_numFrames;
-
-    VERIFY_EXPR_MSG(m_frameRDG->GetResourceManager()->SetPoolConfig(framePool), "Failed to configure the frame graph pool");
+    VERIFY_EXPR_MSG(ConfigureFrameGraphPool(m_numFrames), "Failed to configure the frame graph pool");
 
     m_pMainViewport = viewport;
 
@@ -1822,6 +1816,62 @@ void RenderDevice::NextFrame()
     }
 }
 
+bool RenderDevice::ConfigureFrameGraphPool(uint32_t framesInFlight)
+{
+    // Each frame in flight alternates between its own transient set, so the working set spans
+    // those frames; keeping it pooled avoids recreating render targets and their descriptors.
+    RDGPoolConfig framePool;
+
+    framePool.steadyBuilds = framesInFlight;
+
+    return m_frameRDG->GetResourceManager()->SetPoolConfig(framePool);
+}
+
+bool RenderDevice::WaitForFrameSlot(RenderFrameSlot frameSlot)
+{
+    RenderFrame& frame = m_frames[ToIndex(frameSlot)];
+
+    frame.retirement.Resolve();
+
+    if (frame.submission.IsValid() || !frame.retirement.pending.empty())
+    {
+        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+        if (frame.submission.IsValid())
+        {
+            frame.submission.Wait();
+        }
+
+        frame.retirement.Wait();
+
+        // Confirm this slot's results without waiting for newer frames or uploads.
+        PollFrameSubmissions(false);
+
+        m_frameSubmissionWaitNS +=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
+    }
+
+    bool ready = !AreSubmissionsBlocked() && frame.retirement.Resolve();
+
+    for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
+    {
+        const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
+
+        const uint64_t serial             = frame.retirement.requiredSerials.Get(queue);
+
+        if (ready && GDynamicRHI->QueryLastCompletedSerial(queue) < serial && !GDynamicRHI->WaitForCompletion(queue, serial))
+        {
+            LOGE("RenderDevice: frame slot {} cannot reuse queue {} serial {}", ToIndex(frameSlot), uint32_t(queue), serial);
+
+            m_frameWaitFailed = true;
+
+            ready             = false;
+        }
+    }
+
+    return ready && !AreSubmissionsBlocked();
+}
+
 void RenderDevice::BeginFrame()
 {
     PollFrameSubmissions(false);
@@ -1830,48 +1880,30 @@ void RenderDevice::BeginFrame()
     {
         const RenderFrameSlot slot = GRenderFrameState.GetFrameSlot();
 
-        RenderFrame& frame         = m_frames[ToIndex(slot)];
+        bool ready                 = WaitForFrameSlot(slot);
 
-        frame.retirement.Resolve();
-
-        if (frame.submission.IsValid() || !frame.retirement.pending.empty())
+        // Each frame slot keeps its own transient render-target set, so device memory holds one
+        // set per frame in flight (about 1.9 GB per set at 4K). Under device-memory pressure the
+        // oldest other frame is also retired before this one is built: its set returns to the
+        // graph pool and one set is trimmed, which avoids paging the rest of the working set.
+        // GPU-bound throughput is unchanged, since the CPU then waits only for work that precedes
+        // the frame the GPU is executing. The mode stays on to avoid oscillating at the threshold.
+        if (ready && m_numFrames >= 3 && m_frameRDG && !m_memoryLimitedFrames && GetGPUMemoryStats().IsUnderPressure())
         {
-            const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+            // A frame now reuses the set of the frame two builds earlier, and the unused set
+            // ages out of the steady working set so trimming can release it.
+            m_memoryLimitedFrames = ConfigureFrameGraphPool(m_numFrames - 1);
 
-            if (frame.submission.IsValid())
+            if (m_memoryLimitedFrames)
             {
-                frame.submission.Wait();
-            }
-
-            frame.retirement.Wait();
-
-            // Confirm this slot's results without waiting for newer frames or uploads.
-            PollFrameSubmissions(false);
-
-            m_frameSubmissionWaitNS +=
-                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
-        }
-
-        bool ready = !AreSubmissionsBlocked() && frame.retirement.Resolve();
-
-        for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
-        {
-            const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
-
-            const uint64_t serial             = frame.retirement.requiredSerials.Get(queue);
-
-            if (ready && GDynamicRHI->QueryLastCompletedSerial(queue) < serial
-                && !GDynamicRHI->WaitForCompletion(queue, serial))
-            {
-                LOGE("RenderDevice: frame slot {} cannot reuse queue {} serial {}", ToIndex(slot), uint32_t(queue), serial);
-
-                m_frameWaitFailed = true;
-
-                ready             = false;
+                LOGW("RenderDevice: device memory is under pressure; keeping {} frames in flight", m_numFrames - 1);
             }
         }
 
-        ready = ready && !AreSubmissionsBlocked();
+        if (ready && m_memoryLimitedFrames)
+        {
+            ready = WaitForFrameSlot(static_cast<RenderFrameSlot>((ToIndex(slot) + 1) % m_numFrames));
+        }
 
         if (ready)
         {
@@ -1888,7 +1920,8 @@ void RenderDevice::BeginFrame()
             // exported and active resources keep their existing serial protection.
             // The working set of every frame slot stays pooled: evicting it would only rebuild
             // the same targets next frame while the retired copies still await their serials.
-            if (m_frameRDG && GetGPUMemoryStats().IsUnderPressure())
+            // Memory-limited frames keep trimming until the unused set has been released.
+            if (m_frameRDG && (m_memoryLimitedFrames || GetGPUMemoryStats().IsUnderPressure()))
             {
                 m_frameRDG->GetResourceManager()->TrimIdlePoolEntries();
             }

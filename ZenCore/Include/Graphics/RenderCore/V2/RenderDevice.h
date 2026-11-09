@@ -425,6 +425,11 @@ private:
 
     void ProcessPendingFreeResources(RenderFrameSlot frameSlot, bool ignoreCompletionGate = false);
 
+    // Waits for the GPU work and retirement of the frame that last used this slot.
+    bool WaitForFrameSlot(RenderFrameSlot frameSlot);
+
+    bool ConfigureFrameGraphPool(uint32_t framesInFlight);
+
     void StampOutgoingFrameSerials();
 
     bool IsViewportResource(const RHIResource* resource) const;
@@ -581,6 +586,8 @@ private:
     bool m_frameActive{false};
     bool m_frameWaitFailed{false};
     bool m_submissionBlocked{false};
+    // Set on the first device-memory pressure; frames then keep one fewer frame in flight.
+    bool m_memoryLimitedFrames{false};
 
     friend class RDGPassCompiler;
 };
