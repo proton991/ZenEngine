@@ -1,8 +1,10 @@
 #include "hybrid_guides.glsl"
 #include "hybrid_sampling.glsl"
 #include "hybrid_provider.glsl"
-#define HIT_LIGHT_CACHE
-#include "hit_radiance.glsl"
+#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
+#    define HIT_LIGHT_CACHE
+#    include "hit_radiance.glsl"
+#endif
 #include "environment_sampling.glsl"
 #include "hybrid_sky_guide.glsl"
 #if defined(HYBRID_TRACE_HALF)
@@ -36,11 +38,14 @@ layout(set = 1, binding = 9, rgba16f) uniform writeonly image2D rawSpecular;
 layout(set = 1, binding = 17, rg32f) uniform writeonly image2D rawReflection;
 layout(set = 1, binding = 18, rgba16f) uniform writeonly image2D rawReflectionPrevious;
 #endif
+#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
 layout(set = 1, binding = 13) uniform sampler3D hitRadiance;
 layout(set = 1, binding = 14) uniform sampler3D hitNormal;
 // Base radiance level from before this frame's injection, and the bounce this frame's rays read from
 // it (meaningful only when the cache changed; hybrid_temporal.comp).
 layout(set = 1, binding = 15) uniform sampler3D hitRadiancePrevious;
+#endif
+#include "ray_hit_lighting.glsl"
 layout(set = 1, binding = 23) uniform sampler2D previousSkyMoments;
 layout(set = 1, binding = 27) uniform sampler2D previousHistoryLength;
 layout(std140, set = 1, binding = 28) uniform uHybridReuseData
@@ -203,7 +208,7 @@ HybridRayResult TraceFeature(uint feature, vec3 position, vec3 normal, vec3 dire
     issuedRayFeature = feature == SKY_PROVIDER ? 0u : feature == SPECULAR_PROVIDER ? 1u : feature == BOUNCE_PROVIDER ? 2u : 3u;
 #endif
     // A HW-only variant has no Compute provider: a feature it does not trace has no result.
-    HybridRayResult result = HybridRayResult(false, position, vec3(0), ivec3(-1), false);
+    HybridRayResult result = MakeHybridRayResult(false, position, vec3(0), ivec3(-1), false);
 #ifdef HYBRID_HARDWARE_PROVIDER
     if (FeatureHardware(feature))
     {
@@ -635,7 +640,7 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
         pdf                          = share.x * guided + share.y * residual + share.z * max(dot(n, w), 0.0) / HYBRID_PI;
         bool            inDomain     = pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0;
         bool            sharedBounce = FeatureHardware(SKY_PROVIDER) == FeatureHardware(BOUNCE_PROVIDER);
-        HybridRayResult hit          = HybridRayResult(false, position, vec3(0), ivec3(-1), true);
+        HybridRayResult hit          = MakeHybridRayResult(false, position, vec3(0), ivec3(-1), true);
         if (inDomain)
         {
             hit = TraceFeature(SKY_PROVIDER, position, ng, w, hybrid.bounce.x != 0u && sharedBounce);
@@ -651,16 +656,22 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
         if (inDomain && hit.hit && hybrid.bounce.x != 0u)
         {
             bool  rejected;
-            float weight  = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
-            vec3  value   = HitRadiance(hitRadiance, hitNormal, hit, w, false, rejected) * weight;
+            float weight = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
+#ifdef HYBRID_COUNT_RAYS
+            issuedRayFeature = 2u;
+#endif
+            uint hitSeed  = HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(sequence * diffuseSamples + i) ^ seed ^ 0xb01ce123u);
+            vec3 value    = TraceHitRadiance(hit, w, hitSeed, rejected) * weight;
             bounce.rgb   += value;
             bounce.a     += rejected ? 1.0 : 0.0;
             // The same hit in the previous cache: these correlated lookups measure the change
             // with little noise when lighting changes a little.
+#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
             if (hybrid.bounce.w != 0u)
             {
                 previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected) * weight;
             }
+#endif
         }
         if (escaped)
         {
@@ -700,7 +711,7 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
             float           pdf;
             vec2            u      = HybridSkySample(uvec2(p), sequence * sourceRays + j, seed + 0x8000u + k * 0x1000u);
             vec3            w      = SampleEnvironmentTile(environmentSourceTiles[k], u, pdf);
-            HybridRayResult source = HybridRayResult(true, position, vec3(0), ivec3(-1), true);
+            HybridRayResult source = MakeHybridRayResult(true, position, vec3(0), ivec3(-1), true);
             if (pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0)
             {
                 source       = TraceFeature(SKY_PROVIDER, position, ng, w, false);
@@ -709,7 +720,7 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
             if (source.valid && !source.hit)
             {
                 vec3 radiance  = textureLod(coneEnvironmentMap, EnvironmentDirection(w), 0).rgb;
-                sourceSky      += radiance * max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(sourceRays)) * scale;
+                sourceSky     += radiance * max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(sourceRays)) * scale;
                 uint  face;
                 vec2  uv, st;
                 uvec2 cell;
@@ -770,14 +781,21 @@ void TraceSpecular(ivec2      p,
                     bool rejected;
                     // Store the unconditional hit integral C=(1-S)*H. Averaging conditional H
                     // separately from the hit fraction would multiply two noisy estimates.
-                    specular.rgb += HitRadiance(hitRadiance, hitNormal, hit, w, false, rejected);
+#    ifdef HYBRID_COUNT_RAYS
+                    issuedRayFeature = 3u;
+#    endif
+                    uint hitSeed =
+                        HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(hybrid.sampling.x * specularSamples + i) ^ 0x5eec1234u);
+                    specular.rgb += TraceHitRadiance(hit, w, hitSeed, rejected);
                     reflection.y += rejected ? 1.0 : 0.0;
                     reflection.x += length(hit.position - position);
                     hitCount     += 1.0;
+#    if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
                     if (hybrid.reflection.w != 0u)
                     {
                         reflectionPrevious += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected);
                     }
+#    endif
                 }
             }
         }

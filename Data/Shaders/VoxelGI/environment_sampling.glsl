@@ -2,23 +2,26 @@
 #define ZEN_ENVIRONMENT_SAMPLING
 #include "environment_distribution.glsl"
 #include "hybrid_sampling.glsl"
-layout(std430, set = 3, binding = 13) readonly buffer EnvironmentColumns
+#ifndef ENVIRONMENT_SAMPLING_SET
+#    define ENVIRONMENT_SAMPLING_SET 3
+#endif
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 13) readonly buffer EnvironmentColumns
 {
     float environmentColumns[];
 };
-layout(std430, set = 3, binding = 14) readonly buffer EnvironmentRows
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 14) readonly buffer EnvironmentRows
 {
     float environmentRows[];
 };
-layout(std430, set = 3, binding = 15) readonly buffer EnvironmentLuminance
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 15) readonly buffer EnvironmentLuminance
 {
     float environmentLuminance[];
 };
-layout(std430, set = 3, binding = 16) readonly buffer EnvironmentTiles
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 16) readonly buffer EnvironmentTiles
 {
     float environmentTiles[];
 };
-layout(std430, set = 3, binding = 17) readonly buffer EnvironmentSources
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 17) readonly buffer EnvironmentSources
 {
     uint  environmentSourceCount;
     uint  environmentSourceTiles[ZEN_ENVIRONMENT_MAX_SOURCES];
@@ -26,11 +29,11 @@ layout(std430, set = 3, binding = 17) readonly buffer EnvironmentSources
 };
 // The same row and column prefix sums with the source tiles removed: the residual environment is
 // drawn exactly like the full one, keeping the sampler's two-dimensional stratification.
-layout(std430, set = 3, binding = 18) readonly buffer EnvironmentResidualColumns
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 18) readonly buffer EnvironmentResidualColumns
 {
     float environmentResidualColumns[];
 };
-layout(std430, set = 3, binding = 19) readonly buffer EnvironmentResidualRows
+layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 19) readonly buffer EnvironmentResidualRows
 {
     float environmentResidualRows[];
 };

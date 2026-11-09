@@ -23,7 +23,7 @@ bool DrawGIPresetControls(rc::VoxelGIRuntimeSettings& settings, const char* sele
         ImGui::EndCombo();
     }
     ImGui::TextWrapped(
-        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. All gather through screen probes; GI rays not on HW RT trace the distance field.");
+        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. Low and Medium default to screen probes; High and Ultra default to per-pixel rays. Gather can be changed under GI tracing.");
     ImGui::TextWrapped("Selection: %s. GI tracing can override the preset preference.", selectionReason);
     return changed;
 }
@@ -140,6 +140,10 @@ void SetGIRayTracing(rc::VoxelGISettings& settings, bool hardware)
     // Preserve feature enables and the explicit shadow-map choice; Compute shadows use maps.
     settings.rayProvider = hardware ? Provider::Hardware : Provider::Voxel;
     settings.featureProviders.fill(settings.rayProvider);
+    if (hardware)
+    {
+        settings.gather = rc::VoxelGISettings::Gather::Pixel;
+    }
 }
 
 bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason)
@@ -188,8 +192,7 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
             else
             {
                 ImGui::TextWrapped(
-                    "HW RT is unavailable (%s). Passes set to HW RT use Compute for GI and shadow maps for direct shadows.",
-                    reason);
+                    "HW RT is unavailable (%s). Passes selected as HW RT do not switch to Compute automatically.", reason);
             }
         }
 
@@ -210,9 +213,8 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
                 ImGui::TextDisabled("%s", kGIPassRows[index].rays);
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                const char* preview = current == GITracer::HardwareRT && !hardwareReady
-                                        ? (pass == GIPass::Shadows ? "Shadow maps (HW RT unavailable)" : "HW RT (unavailable)")
-                                        : TracerName(current);
+                const char* preview =
+                    current == GITracer::HardwareRT && !hardwareReady ? "HW RT (unavailable)" : TracerName(current);
                 if (ImGui::BeginCombo("##tracer", preview))
                 {
                     for (uint32_t option = 0; option <= static_cast<uint32_t>(GITracer::Off); ++option)
@@ -231,9 +233,11 @@ bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareRea
             ImGui::EndTable();
         }
 
+        changed |= DrawGIGatherControls(settings);
+
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("The distance field is approximate: surfaces lie within about half a sample spacing.");
-        ImGui::TextDisabled("Probe placement, filtering, denoising and voxel light injection always run on Compute.");
+        ImGui::TextDisabled("Probe placement and reconstruction, filtering and denoising run on Compute.");
         ImGui::TextDisabled("Direct shadows use shadow maps without HW RT.");
         if (tracers[static_cast<size_t>(GIPass::Diffuse)] == GITracer::Off
             || tracers[static_cast<size_t>(GIPass::Specular)] == GITracer::Off)
@@ -267,7 +271,7 @@ bool DrawGIGatherControls(rc::VoxelGISettings& settings)
         settings.gather = static_cast<rc::VoxelGISettings::Gather>(gather);
         changed         = true;
     }
-    if (settings.gather == rc::VoxelGISettings::Gather::Probes)
+    if (settings.UsesScreenProbes())
     {
         const char* spacingChoices[] = {"8 pixels", "16 pixels"};
         int         spacing          = settings.probeSpacing == 8 ? 0 : 1;
@@ -281,8 +285,9 @@ bool DrawGIGatherControls(rc::VoxelGISettings& settings)
     }
     else
     {
-        ImGui::TextWrapped("Every pixel traces its own rays, at several times the cost of screen probes.");
+        ImGui::TextWrapped("Every pixel traces its own rays.");
     }
+    ImGui::TextWrapped("Shared by diffuse and specular GI. Rays use each pass's selected tracer with either gather method.");
     return changed;
 }
 
@@ -292,7 +297,7 @@ const char* GetGILightingStatus(GILightingState state, bool hardwareReady)
     switch (state)
     {
         case GILightingState::Preparing:
-            text = hardwareReady ? "GI active (HW RT). Preparing Compute GI..." : "Preparing GI...";
+            text = hardwareReady ? "HW RT passes active. Preparing Compute GI..." : "Preparing GI...";
             break;
         case GILightingState::Refining: text = "GI active. Refining lighting..."; break;
         case GILightingState::Ready: text = "GI ready"; break;

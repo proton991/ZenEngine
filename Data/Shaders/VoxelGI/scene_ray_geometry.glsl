@@ -51,6 +51,20 @@ vec3 RaySurfacePosition(uvec4 triangle, vec2 barycentric)
     return (nodesData[triangle.y].modelMatrix * vec4(local, 1)).xyz;
 }
 
+vec2 RaySurfaceUV(uvec4 triangle, vec3 weights, int set)
+{
+    uint stride = uint(uvValues[0].x);
+    vec2 uv     = vec2(0);
+    if (uint(max(set, 0)) < stride)
+    {
+        for (uint corner = 0u; corner < 3u; ++corner)
+        {
+            uv += weights[corner] * uvValues[1u + indices[triangle.x + corner] * stride + uint(max(set, 0))];
+        }
+    }
+    return uv;
+}
+
 // Only mask and blend geometry is non-opaque in the BLAS. Both faces of single-sided
 // surfaces block: raster back-face culling is view-dependent, and ignoring back
 // faces would admit sky into closed single-sided shells.
@@ -62,18 +76,13 @@ bool RayCandidateAccepted(uvec4 triangle, vec2 barycentric)
     {
         vec3  weights            = vec3(1.0 - barycentric.x - barycentric.y, barycentric);
         bool  specularGlossiness = material.surfaceProperties.w > 0.5;
-        uint  set    = uint(max(specularGlossiness ? int(material.featureTextures[2].properties.y) : material.bcTexSet, 0));
-        uint  stride = uint(uvValues[0].x);
-        vec2  uv     = vec2(0);
-        float alpha  = 0.0;
+        uint  set   = uint(max(specularGlossiness ? int(material.featureTextures[2].properties.y) : material.bcTexSet, 0));
+        vec2  uv    = RaySurfaceUV(triangle, weights, int(set));
+        float alpha = 0.0;
         for (uint corner = 0u; corner < 3u; ++corner)
         {
-            uint vertex = indices[triangle.x + corner];
-            if (set < stride)
-            {
-                uv += weights[corner] * uvValues[1u + vertex * stride + set].xy;
-            }
-            alpha += weights[corner] * vertices[vertex].color.a;
+            uint vertex  = indices[triangle.x + corner];
+            alpha       += weights[corner] * vertices[vertex].color.a;
         }
         // Ray hits have neither the current fragment's interpolated UVs nor its derivatives.
         // Always apply the hit's transform and level-zero alpha, including in fragment shaders.

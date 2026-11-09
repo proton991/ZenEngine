@@ -3,7 +3,6 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
-#include "Graphics/RenderCore/V2/LightFixtureMasks.h"
 #include "Graphics/RenderCore/V2/DistanceFieldScene.h"
 #include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
@@ -84,7 +83,7 @@ struct VoxelGISettings
     DiffuseResolution diffuseResolution{DiffuseResolution::Full};
     enum class Reflections : uint32_t
     {
-        Auto, // Radiance-cache reflections with either traversal backend.
+        Auto, // Reflected hit lighting: actual surfaces with HW RT, cached shading with Compute.
         Off,
         On
     };
@@ -93,15 +92,18 @@ struct VoxelGISettings
     // sparse distance field covering every committed occluder (DistanceFieldScene). Cells per
     // axis: 32 or 64 (the builder's limit), each holding 8x8x8 distance samples over the scene bounds.
     uint32_t fieldResolution{64};
-    // Diffuse and specular estimation: per-pixel stochastic rays with a full-resolution filter,
-    // or screen probes (ScreenProbeGather) with half-resolution specular rays.
-    // Reference accumulation and ray-count captures use per-pixel gather for diagnostics.
+    // Diffuse/specular estimation uses pixels or screen probes with half-resolution specular rays.
+    // Either gather preserves each feature's selected tracer. Reference and ray-count captures use pixels.
     enum class Gather : uint32_t
     {
         Pixel,
         Probes
     };
-    Gather   gather{Gather::Pixel};
+    Gather gather{Gather::Pixel};
+    bool   UsesScreenProbes() const
+    {
+        return gather == Gather::Probes;
+    }
     uint32_t probeSpacing{16}; // Screen-probe tile side in pixels: 8 or 16.
     float    indirectIntensity{1.0f};
     float    coneAngleDegrees{60.0f};
@@ -131,7 +133,7 @@ struct VoxelGIUniformData
     Vec4 cone;
     Vec4 limits;
     Vec4 lighting{1.0f, 1.0f, 1.0f, 0.0f}; // Analytic, environment, emissive contributions; ray-hit bounce enabled.
-    Vec4 indirect{1.0f, 0.0f, 0.0f, 0.0f}; // Indirect diffuse enabled; reserved.
+    Vec4 indirect{1.0f, 0.0f, 0.0f, 0.0f}; // Diffuse enabled, HW feature mask, forward ray samples, frame bits.
 };
 static_assert(sizeof(VoxelGIUniformData) == 96);
 
@@ -200,6 +202,12 @@ public:
     {
         return m_hardwareFeatureMask;
     }
+    // HW-only transport shades actual hits without voxel lighting, with either gather method.
+    bool UsesVoxelLighting() const
+    {
+        const uint32_t lighting = 9u | (m_settings.specularOcclusion ? 2u : 0u) | (UsesReflections() ? 16u : 0u);
+        return (m_hardwareFeatureMask & lighting) != lighting;
+    }
     // An enabled feature resolves to Compute while the distance field is still being built.
     bool IsPreparingField() const
     {
@@ -245,7 +253,8 @@ public:
     // The resolved bounce source; valid once BuildRayQueryGraph has selected the provider.
     bool UsesRayBounce() const
     {
-        return m_settings.bounceSource != VoxelGISettings::BounceSource::Cone;
+        return UsesHardwareQueries(VoxelGISettings::Feature::Bounce)
+            || m_settings.bounceSource != VoxelGISettings::BounceSource::Cone;
     }
     // Resolved reflection enablement; reflections need the specular-occlusion rays they reuse.
     bool UsesReflections() const
@@ -355,7 +364,6 @@ private:
     uint32_t ComputeFeatureMask(uint32_t hardwareMask) const;
 
     SceneRayQuery                 m_rayQuery;
-    LightFixtureMasks             m_fixtureMasks; // Ray-traced shadows skip rays a lamp's own fixture blocks.
     UniquePtr<DistanceFieldScene> m_field;
     uint32_t                      m_fieldResolution{0};
     uint64_t                      m_fieldSerial{0};       // Distinguishes generations of recreated or reset owners.
@@ -375,6 +383,11 @@ private:
     RenderScene*                  m_scene{nullptr};
     VoxelizerBase*                m_voxelizer{nullptr};
     RHITexture*                   m_radiance{nullptr};
+    RHITexture*                   m_emptyLighting{nullptr}; // Valid unused legacy texture bindings in HW-only shaders.
+    bool                          m_emptyLightingInitialized{false};
+    bool                          m_recordedEmptyLighting{false};
+    bool                          m_recordedEnvironmentDistribution{false};
+    uint32_t                      m_frame{0};
     // Base-level hit history normally; alternate full mip chain with previous-frame radiance enabled.
     RHITexture*                 m_previousRadiance{nullptr};
     HeapVector<RHITextureView*> m_previousRadianceMips;

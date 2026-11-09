@@ -59,7 +59,8 @@ void main()
                 {
                     bool rejected;
                     // RGB is the unconditional hit integral (1-S)*H; misses contribute zero.
-                    specular.rgb = HitRadiance(hitRadiance, hitNormal, hit, direction, false, rejected);
+                    uint hitSeed = HybridHash(HybridMorton(uvec2(selected)) ^ HybridHash(hybrid.sampling.x) ^ 0x5eec1234u);
+                    specular.rgb = TraceHitRadiance(hit, direction, hitSeed, rejected);
                     guide.z      = length(hit.position - position);
                     guide.w      = rejected ? 1.0 : 0.0;
                 }

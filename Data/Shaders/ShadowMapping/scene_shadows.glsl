@@ -3,11 +3,6 @@
 #include "../Common/scene_lighting.glsl"
 #if defined(HARDWARE_SHADOWS)
 #    include "../VoxelGI/hybrid_provider.glsl"
-#    include "../VoxelGI/light_fixture_mask.glsl"
-// Per local light: how far every sampled ray of a direction travels before meeting geometry
-// (LightFixtureMasks; light_fixture_mask_build.comp).
-layout(set = 4, binding = 29) uniform sampler2DArray lightFixtureMask;
-
 float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
 {
     SceneLight light      = lightIndex == MAX_SCENE_LIGHTS ? sceneUbo.cameraLight : sceneUbo.lights[lightIndex];
@@ -19,39 +14,7 @@ float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
         vec3  incoming = EvaluateLight(light, position, direction, distanceToLight);
         if (any(greaterThan(incoming, vec3(0))))
         {
-            // Offset toward the ray's hemisphere, also for diffuse-transmission receivers.
-            vec3 origin = HybridTraceOrigin(position, dot(normal, direction) >= 0.0 ? normal : -normal, 0.0);
-            if (int(light.directionType.w) != 0)
-            {
-                // Segment visibility is symmetric, so trace from the light. A fixture around the
-                // light (bulb, lantern glass) then ends the any-hit traversal at once instead of
-                // after crossing the scene from the receiver (New Sponza: 98% of lamp rays).
-                // The offset origin keeps the receiver itself beyond the segment's end; exclude
-                // that endpoint, without dropping a finite interval before it.
-                vec3 delta      = origin - light.positionRange.xyz;
-                distanceToLight = length(delta);
-                direction       = delta / max(distanceToLight, 1e-20);
-                distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
-                if (distanceToLight > 0.0)
-                {
-                    // Beyond the fixture mask's distance, every sampled ray of this direction already
-                    // met geometry: the segment is occluded without a ray. The camera light has no mask.
-                    bool  enclosed = false;
-                    int   face;
-                    ivec2 texel = LightFixtureMaskTexel(delta, face);
-                    if (lightIndex != MAX_SCENE_LIGHTS)
-                    {
-                        float shell = texelFetch(lightFixtureMask, ivec3(texel, lightIndex * 6 + face), 0).r;
-                        enclosed    = distanceToLight > shell * 1.01 + 1e-4;
-                    }
-                    visibility =
-                        enclosed || HybridTraceRay(0, light.positionRange.xyz, direction, distanceToLight).hit ? 0.0 : 1.0;
-                }
-            }
-            else if (distanceToLight > 0.0)
-            {
-                visibility = HybridTraceRay(0, origin, direction, distanceToLight).hit ? 0.0 : 1.0;
-            }
+            visibility = HardwareLightVisibility(position, normal, light);
         }
     }
     return visibility;

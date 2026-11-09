@@ -2,16 +2,21 @@
 #define ZEN_PROBE_RAY
 #include "probe_common.glsl"
 #include "hybrid_provider.glsl"
-#define HIT_LIGHT_CACHE
-#include "hit_radiance.glsl"
+#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
+#    define HIT_LIGHT_CACHE
+#    include "hit_radiance.glsl"
+#endif
 
 // Keep the shared VoxelGIRenderer ray/hit binding contract even when this gather does not
 // sample opacity or the previous radiance cache itself.
 layout(set = 1, binding = 6) uniform sampler3D voxelOpacity;
 layout(set = 1, binding = 7) uniform samplerCube coneEnvironmentMap;
+#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
 layout(set = 1, binding = 13) uniform sampler3D hitRadiance;
 layout(set = 1, binding = 14) uniform sampler3D hitNormal;
 layout(set = 1, binding = 15) uniform sampler3D hitRadiancePrevious;
+#endif
+#include "ray_hit_lighting.glsl"
 
 // VoxelGISettings::Feature, shared with the per-pixel gather's provider mask.
 const uint SKY_PROVIDER        = 1u;
@@ -27,7 +32,7 @@ bool ProbeFeatureHardware(uint feature)
 HybridRayResult ProbeTraceFeature(uint feature, vec3 position, vec3 normal, vec3 direction, bool closest)
 {
     // A HW-only variant has no Compute provider: a feature it does not trace has no result.
-    HybridRayResult result = HybridRayResult(false, position, vec3(0), ivec3(-1), false);
+    HybridRayResult result = MakeHybridRayResult(false, position, vec3(0), ivec3(-1), false);
 #ifdef HYBRID_HARDWARE_PROVIDER
     if (ProbeFeatureHardware(feature))
     {

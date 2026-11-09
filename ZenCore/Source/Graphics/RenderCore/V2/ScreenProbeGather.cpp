@@ -510,6 +510,10 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     specularTrace.SetPassTag("ProbeSpecularTrace");
     BindInputs(specularTrace, sampler, uniforms, scene);
     BindTraceInputs(specularTrace, voxelGI, hardware);
+    if (hardware)
+    {
+        voxelGI.BindEnvironmentSamplingInputs(specularTrace);
+    }
     specularTrace.BindStorageImage("rawProbeSpecular", specular, RDGContentGuarantee::eFullWrite);
     specularTrace.BindStorageImage("rawProbeSpecularGuide", specularGuide, RDGContentGuarantee::eFullWrite);
     specularTrace.BindStorageImage("rawProbeSpecularSurface", specularSurface, RDGContentGuarantee::eFullWrite);

@@ -88,11 +88,14 @@ void ProbeIntegratePixel(ivec2 pixel, ProbeReceiver receiver, out vec4 rawSky, o
     sum.bounce /= max(sum.weight, 1e-8);
     if (receiver.valid)
     {
-        // Contact occlusion closer than a probe tile, applied to probe-reconstructed diffuse light.
-        // Bright sources have receiver visibility already and are added afterwards.
-        float contact   = ProbeContactVisibility(pixel, receiver.position, receiver.geometric, footprint);
-        sum.sky        *= contact;
-        sum.bounce.rgb *= contact;
+        // HW lighting keeps RT visibility: screen-space contact darkening would add a second,
+        // untraced occluder to it. Retain the existing approximation for Compute features.
+        if ((hybrid.provider.z & 9u) != 9u)
+        {
+            float contact   = ProbeContactVisibility(pixel, receiver.position, receiver.geometric, footprint);
+            sum.sky        *= (hybrid.provider.z & 1u) == 0u ? contact : 1.0;
+            sum.bounce.rgb *= (hybrid.provider.z & 8u) == 0u ? contact : 1.0;
+        }
     }
     // Alpha -1 is missing data, distinct from a valid fully occluded sample. A missing source
     // sample only skips the source history (probe_pixel_temporal.glsl); the probe residual

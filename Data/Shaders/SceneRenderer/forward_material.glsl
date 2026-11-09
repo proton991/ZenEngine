@@ -6,6 +6,10 @@
 #    include "../ShadowMapping/scene_shadows.glsl"
 #    include "../VoxelGI/gi_ray_totals.glsl"
 #endif
+#ifdef HYBRID_HARDWARE_PROVIDER
+#    include "../VoxelGI/hybrid_provider.glsl"
+#    include "../VoxelGI/hardware_receiver_lighting.glsl"
+#endif
 // ForwardDrawCache selects this only when every omitted lobe is disabled.
 layout(constant_id = 0) const bool basicForwardMaterial = false;
 layout(set = 1, binding = 0) uniform uCameraData
@@ -14,7 +18,7 @@ layout(set = 1, binding = 0) uniform uCameraData
     mat4 uProjMatrix;
     mat4 uViewMatrix;
 };
-#if !defined(HARDWARE_SHADOWS)
+#if !defined(HYBRID_HARDWARE_PROVIDER)
 struct NodeData
 {
     mat4 modelMatrix;
@@ -231,7 +235,7 @@ void main()
     vec3 N = SurfaceNormal(material);
 #ifdef VOXEL_GI
     vec3 shadowNormal = GeometricNormal(material);
-#    if defined(HARDWARE_SHADOWS)
+#    if defined(HYBRID_HARDWARE_PROVIDER)
     shadowNormal = TriangleNormal(shadowNormal);
 #    endif
 #endif
@@ -275,18 +279,35 @@ void main()
 #    ifdef HYBRID_GI
         // Helper lanes only feed derivatives. Along edges their quads straddle other receivers,
         // and tracing the voxel fallback for them would stall every warp on those edges.
-        bool receiverLayer = topology == 2u && s.transmission == 0.0 && s.diffuseTransmission == 0.0;
-        bool reconstructed = gl_HelperInvocation
-                          || (receiverLayer && material.surfaceProperties.y != 2.0
-                              && HybridReceiverMatches(uNodeIndex, gl_FrontFacing == (inOrientation >= 0.0)));
-        bool diffuse =
-            reconstructed || (receiverLayer && material.surfaceProperties.y == 2.0 && HybridReceiverSupports(shadowNormal));
+        bool receiverLayer   = topology == 2u && s.transmission == 0.0 && s.diffuseTransmission == 0.0;
+        bool reconstructed   = gl_HelperInvocation
+                            || (receiverLayer && material.surfaceProperties.y != 2.0
+                                && HybridReceiverMatches(uNodeIndex, gl_FrontFacing == (inOrientation >= 0.0)));
+        bool hardwareDiffuse = (uint(gi.indirect.y) & 9u) == 9u;
+        bool diffuse         = reconstructed
+                            || (!hardwareDiffuse && receiverLayer && material.surfaceProperties.y == 2.0
+                                && HybridReceiverSupports(shadowNormal));
+        vec3 tracedSky = vec3(0), tracedBounce = vec3(0);
+#        ifdef HYBRID_HARDWARE_PROVIDER
+        if (!reconstructed && hardwareDiffuse && gi.indirect.x > 0.5)
+        {
+            HardwareReceiverDiffuse(inWorldPos, N, shadowNormal, uvec2(gl_FragCoord.xy), tracedSky, tracedBounce);
+        }
+#        endif
         // Indirect diffuse off (GI tracing panel) keeps the unoccluded environment, as without GI.
         bool indirect = gi.indirect.x > 0.5;
         if (indirect)
         {
             irradiance = diffuse && gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
+                       : hardwareDiffuse                ? tracedBounce + tracedSky
                                                         : DiffuseVoxelLighting(inWorldPos, N, !diffuse);
+#        ifdef LIGHTING_CAPTURE
+            if (!diffuse && hardwareDiffuse)
+            {
+                captureDiffuseEscaped = tracedSky;
+                captureDiffuseBounced = tracedBounce;
+            }
+#        endif
         }
         if (diffuse)
         {
@@ -308,6 +329,14 @@ void main()
             hybridSpecularVisibility = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).a;
             hybridReflectedRadiance  = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).rgb;
         }
+#        ifdef HYBRID_HARDWARE_PROVIDER
+        else if ((uint(gi.indirect.y) & 18u) != 0u)
+        {
+            vec4 specular = HardwareReceiverSpecular(inWorldPos, N, shadowNormal, V, s.roughness, uvec2(gl_FragCoord.xy));
+            hybridSpecularVisibility = specular.a;
+            hybridReflectedRadiance  = specular.rgb;
+        }
+#        endif
 #    else
         irradiance = gi.indirect.x > 0.5 ? DiffuseVoxelLighting(inWorldPos, N) : irradiance;
 #    endif

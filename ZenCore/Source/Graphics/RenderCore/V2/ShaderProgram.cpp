@@ -513,6 +513,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                 "SceneRenderer/hybrid_gi_shadows_visibility.frag.spv"));
         StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsSP",
                                      "SceneRenderer/forward_material_shadows.frag.spv");
+        StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareLightingSP",
+                                     "SceneRenderer/forward_material_rt_lighting.frag.spv");
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "ForwardScatterHardwareShadowsSP", "SceneRenderer/offscreen.vert.spv",
                                           "SceneRenderer/forward_scatter_shadows.frag.spv"));
@@ -526,6 +528,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                     "SceneRenderer/hybrid_gi_shadows_capture_visibility.frag.spv"));
             StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsCaptureSP",
                                          "SceneRenderer/forward_material_shadows_capture.frag.spv");
+            StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareLightingCaptureSP",
+                                         "SceneRenderer/forward_material_rt_lighting_capture.frag.spv");
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCountsSP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_counts.frag.spv"));
@@ -534,6 +538,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                     "SceneRenderer/hybrid_gi_shadows_counts_visibility.frag.spv"));
             StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsCountsSP",
                                          "SceneRenderer/forward_material_shadows_counts.frag.spv");
+            StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareLightingCountsSP",
+                                         "SceneRenderer/forward_material_rt_lighting_counts.frag.spv");
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardScatterHardwareShadowsCountsSP",
                                                     "SceneRenderer/offscreen.vert.spv",
                                                     "SceneRenderer/forward_scatter_shadows_counts.frag.spv"));

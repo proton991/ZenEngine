@@ -20,8 +20,8 @@ bool ApplyVoxelGIPreset(VoxelGIPreset preset, VoxelGIRuntimeSettings& settings)
                                   : preset == VoxelGIPreset::Medium ? VoxelGISettings::RayProvider::Auto
                                                                     : VoxelGISettings::RayProvider::Hardware;
         // GI without HW RT traces the distance field, including the sky cache; direct shadows use maps.
-        settings.cone.fieldResolution  = 64;
-        settings.cone.gather           = VoxelGISettings::Gather::Probes;
+        settings.cone.fieldResolution = 64;
+        settings.cone.gather = preset >= VoxelGIPreset::High ? VoxelGISettings::Gather::Pixel : VoxelGISettings::Gather::Probes;
         settings.cone.probeSpacing     = 16;
         settings.cone.samples          = 4;
         settings.cone.adaptiveSampling = true;
@@ -41,12 +41,14 @@ bool ApplyVoxelGIPreset(VoxelGIPreset preset, VoxelGIRuntimeSettings& settings)
 
 VoxelGIPreset GetVoxelGIPreset(const VoxelGIRuntimeSettings& settings)
 {
-    const VoxelGISettings& cone   = settings.cone;
-    VoxelGIPreset          preset = VoxelGIPreset::Custom;
+    const VoxelGISettings&        cone   = settings.cone;
+    VoxelGIPreset                 preset = VoxelGIPreset::Custom;
+    const VoxelGISettings::Gather gather =
+        settings.resolution >= 128 ? VoxelGISettings::Gather::Pixel : VoxelGISettings::Gather::Probes;
     if (cone.samples == 4 && cone.adaptiveSampling && cone.referenceSamples == 0 && cone.historyFrames == 32 && cone.temporal
         && cone.filter && cone.indirectDiffuse && cone.specularOcclusion && cone.shadows && cone.rtShadows
         && cone.bounceSource == VoxelGISettings::BounceSource::Auto && settings.shadowMapResolution == 1024
-        && cone.fieldResolution == 64 && cone.gather == VoxelGISettings::Gather::Probes && cone.probeSpacing == 16)
+        && cone.fieldResolution == 64 && cone.gather == gather && cone.probeSpacing == 16)
     {
         if (settings.resolution == 64 && cone.reflections == VoxelGISettings::Reflections::Off)
         {

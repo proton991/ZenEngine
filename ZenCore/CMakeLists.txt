@@ -303,7 +303,10 @@ target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
 # RenderCoreTest compiles this subset against its fake backend. The list stays here so that an
 # engine refactor can update it without a ZenTest change.
 add_library(ZenRenderCoreTestSources INTERFACE)
+target_link_libraries(ZenRenderCoreTestSources INTERFACE ZenAsset::Reader zen_asset_kernels)
+target_include_directories(ZenRenderCoreTestSources INTERFACE "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 target_sources(ZenRenderCoreTestSources INTERFACE
+    Source/AssetLib/AssetHash.cpp
     Source/AssetLib/ImageAsset.cpp
     Source/Graphics/RenderCore/V2/DebugVisualization.cpp
     Source/Memory/Memory.cpp
@@ -327,6 +330,7 @@ target_sources(ZenRenderCoreTestSources INTERFACE
     Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
     Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
     Source/Graphics/RenderCore/V2/SceneLighting.cpp
+    Source/Graphics/RenderCore/V2/RenderingSettings.cpp
     Source/Graphics/RenderCore/V2/VoxelResourcePlanning.cpp
     Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp

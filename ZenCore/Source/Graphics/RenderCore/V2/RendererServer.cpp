@@ -228,7 +228,10 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                     m_pDeferredLightingRenderer->BuildGBufferGraph(view, rayGather);
                     m_status.gpuCulling = m_pDeferredLightingRenderer->GetGPUCullingStatus();
 
-                    m_pVoxelizer->BuildVoxelizationGraph();
+                    if (m_pVoxelGI->UsesVoxelLighting())
+                    {
+                        m_pVoxelizer->BuildVoxelizationGraph();
+                    }
 
                     if (!shadowMaps)
                     {

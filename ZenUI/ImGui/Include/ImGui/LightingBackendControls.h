@@ -30,6 +30,7 @@ GITracer GetGIPassTracer(const rc::VoxelGISettings& settings, GIPass pass);
 void SetGIPassTracer(rc::VoxelGISettings& settings, GIPass pass, GITracer tracer);
 // Sets GI to HW RT or its current Compute tracer; global Compute defaults direct shadows to maps.
 // Existing feature enables and explicit shadow-map choices are preserved.
+// HW RT defaults to per-pixel gather; the user can then explicitly select screen probes.
 void SetGIRayTracing(rc::VoxelGISettings& settings, bool hardware);
 
 // Shared by the editor and runtime panel so tracing selection has the same semantics.

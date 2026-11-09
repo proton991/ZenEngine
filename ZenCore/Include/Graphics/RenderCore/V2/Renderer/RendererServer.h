@@ -130,7 +130,7 @@ public:
         return m_renderOption;
     }
 
-    // The requested GI renders on HW RT or PBR until the scene's distance field, built on the GPU in
+    // Compute uses its coarse voxel preview until the scene's distance field, built on the GPU in
     // bounded per-frame work, is ready (VoxelGIRenderer::IsPreparingField).
     bool IsPreparingGI() const;
 

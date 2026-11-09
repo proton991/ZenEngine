@@ -23,7 +23,7 @@ void main()
     vec3            positions[6] = vec3[6](vec3(1.75, 1.5, 1.5), vec3(1.75, 1.5, 1.5), vec3(2.9, 1.5, 1.5), vec3(2.9, 1.5, 1.5),
                                            vec3(1.25, 1.5, 1.5), vec3(1.99, 2.5, 1.5));
     vec3            normal       = i == 4u ? vec3(-1, 0, 0) : vec3(1, 0, 0);
-    HybridRayResult hit          = HybridRayResult(true, positions[i], normal, ivec3(floor(positions[i])), true);
+    HybridRayResult hit          = MakeHybridRayResult(true, positions[i], normal, ivec3(floor(positions[i])), true);
     bool            rejected;
     vec3            value = HitRadiance(radiance, normals, hit, -normal, i == 1u, rejected);
     // Alpha: 1 for a rejected lookup.

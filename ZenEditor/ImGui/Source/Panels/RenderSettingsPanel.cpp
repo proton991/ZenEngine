@@ -410,10 +410,6 @@ private:
 
             rc::VoxelGISettings& cone = settings.cone;
 
-            ImGui::SeparatorText("Gather");
-
-            changed |= ui::DrawGIGatherControls(cone);
-
             ImGui::SeparatorText("Indirect lighting");
 
             changed |= ImGui::SliderFloat(PropertyLabel("Indirect intensity").c_str(), &cone.indirectIntensity, 0.0f, 10.0f);

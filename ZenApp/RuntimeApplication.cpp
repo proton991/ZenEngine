@@ -8,6 +8,7 @@
 #include "Graphics/RenderCore/V2/SceneRendering.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/Shared/LightingCapture.h"
 #include "Platform/NativeWindow.h"
 #include "ZenApp/RuntimeWindow.h"
@@ -536,6 +537,14 @@ private:
                      m_setup.run.rhiMode == RHIExecutionMode::eThreaded ? "threaded" : "inline",
                      GetRayProviderName(m_setup.rendering.gi.cone.rayProvider),
                      m_device->GetGPUInfo().rayQuery.IsUsable() ? "available" : "unavailable", overlay != nullptr);
+                const rc::RendererServer&   server = *m_device->GetRendererServer();
+                const rc::HybridGIRenderer* hybrid = server.RequestDeferredLightingRenderer()->GetHybridGI();
+                const rc::VoxelGIRenderer*  gi     = server.RequestVoxelGI();
+                LOGI("ZenApp GI: gather={}, hardware-mask={}, field-traversal={}, voxel-lighting={}",
+                     hybrid != nullptr && hybrid->IsHistoryValid() ? (hybrid->UsesScreenProbes() ? "probes" : "pixel")
+                                                                   : "inactive",
+                     gi != nullptr ? gi->GetHardwareFeatureMask() : 0u, gi != nullptr && gi->UsesFieldTraversal(),
+                     gi != nullptr && gi->UsesVoxelLighting());
                 m_device->FlushRHIThread();
                 valid = m_device->PollFrameSubmissions();
                 if (valid && m_options.startPaused)
@@ -587,12 +596,20 @@ private:
             window != nullptr ? window->GetFramebufferExtent() : platform::WindowExtent{};
         // UI-only or paused submissions must not replace the last scene frame's path.
         const rc::SceneCullingResult& culling = m_lastSceneCulling;
+        const rc::RendererServer&     server  = *m_device->GetRendererServer();
+        const rc::HybridGIRenderer*   hybrid  = server.RequestDeferredLightingRenderer()->GetHybridGI();
+        const rc::VoxelGIRenderer*    gi      = server.RequestVoxelGI();
         std::ofstream                 summary(std::filesystem::u8path(path));
         summary << "{\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
                 << ",\"framebufferHeight\":" << framebuffer.height
                 << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false")
-                << ",\"backend\":" << std::quoted(GetRayProviderName(m_setup.rendering.gi.cone.rayProvider))
+                << ",\"backend\":" << std::quoted(GetRayProviderName(m_setup.rendering.gi.cone.rayProvider)) << ",\"gather\":"
+                << std::quoted(hybrid != nullptr && hybrid->IsHistoryValid() ? (hybrid->UsesScreenProbes() ? "probes" : "pixel")
+                                                                             : "inactive")
+                << ",\"hardwareFeatureMask\":" << (gi != nullptr ? gi->GetHardwareFeatureMask() : 0u)
+                << ",\"fieldTraversal\":" << (gi != nullptr && gi->UsesFieldTraversal() ? "true" : "false")
+                << ",\"voxelLighting\":" << (gi != nullptr && gi->UsesVoxelLighting() ? "true" : "false")
                 << ",\"asyncCompute\":" << std::quoted(rc::GetAsyncComputeStatusReason(m_device->GetAsyncComputeStatus()))
                 << ",\"lightingComponents\":" << ZEN_LIGHTING_CAPTURE_COMPONENTS
                 << ",\"hybridComponents\":" << ZEN_HYBRID_CAPTURE_COMPONENTS

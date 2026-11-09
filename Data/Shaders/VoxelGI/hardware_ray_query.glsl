@@ -37,14 +37,13 @@ struct HardwareRayHit
     uint            material;
     vec2            barycentrics;
     uvec2           generation;
-    // Raster facing of the hit (node orientation included). Every face occludes;
-    // hit-radiance consumers use this to reject back-facing lookups.
+    // Facing before orienting the geometric normal against the incoming ray. Every face occludes.
     bool frontFacing;
 };
 HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance, bool closest)
 {
     HardwareRayHit result;
-    result.ray      = HybridRayResult(false, origin, vec3(0), ivec3(-1), true);
+    result.ray      = MakeHybridRayResult(false, origin, vec3(0), ivec3(-1), true);
     result.instance = result.primitive = result.material = 0xffffffffu;
     result.barycentrics                                  = vec2(0);
     result.generation                                    = rayScene.generation.xy;
@@ -94,12 +93,14 @@ HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance,
             result.primitive = rayQueryGetIntersectionPrimitiveIndexEXT(query, true);
             uvec4 triangle =
                 RayTriangle(result.instance, rayQueryGetIntersectionGeometryIndexEXT(query, true), result.primitive);
-            result.material     = triangle.z;
-            result.barycentrics = rayQueryGetIntersectionBarycentricsEXT(query, true);
-            result.ray.hit      = true;
-            result.ray.position = RaySurfacePosition(triangle, result.barycentrics);
-            result.ray.normal   = RayGeometricNormal(triangle);
-            result.frontFacing  = dot(result.ray.normal, direction) < 0.0;
+            result.material         = triangle.z;
+            result.barycentrics     = rayQueryGetIntersectionBarycentricsEXT(query, true);
+            result.ray.triangle     = triangle;
+            result.ray.barycentrics = result.barycentrics;
+            result.ray.hit          = true;
+            result.ray.position     = RaySurfacePosition(triangle, result.barycentrics);
+            result.ray.normal       = RayGeometricNormal(triangle);
+            result.frontFacing      = dot(result.ray.normal, direction) < 0.0;
             if (!result.frontFacing)
             {
                 result.ray.normal = -result.ray.normal;
@@ -112,5 +113,23 @@ HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance,
 HybridRayResult HardwareTraceRay(vec3 origin, vec3 direction, float maximumDistance, bool closest)
 {
     return HardwareQuery(origin, direction, maximumDistance, closest).ray;
+}
+// Exact finite-segment visibility, shared by primary and secondary shading. Local rays start
+// at the light so an enclosing fixture terminates traversal without an approximate cached mask.
+float HardwareLightVisibility(vec3 position, vec3 normal, SceneLight light)
+{
+    vec3  direction;
+    float distanceToLight;
+    EvaluateLight(light, position, direction, distanceToLight);
+    vec3 origin = HybridTraceOrigin(position, dot(normal, direction) >= 0.0 ? normal : -normal, 0.0);
+    if (int(light.directionType.w) != 0)
+    {
+        vec3 delta      = origin - light.positionRange.xyz;
+        distanceToLight = length(delta);
+        direction       = delta / max(distanceToLight, 1e-20);
+        distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
+        origin          = light.positionRange.xyz;
+    }
+    return distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit ? 0.0 : 1.0;
 }
 #endif

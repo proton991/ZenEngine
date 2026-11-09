@@ -66,13 +66,13 @@ vec3 ProbeEnvironment(vec3 direction)
 }
 
 // A shading hit's bounce: RGB hit radiance, alpha one for a rejected lookup.
-vec4 ProbeBounce(HybridRayResult hit, vec3 direction)
+vec4 ProbeBounce(HybridRayResult hit, vec3 direction, uint seed)
 {
     vec4 bounce = vec4(0);
     if (hit.hit)
     {
         bool rejected;
-        bounce.rgb = HitRadiance(hitRadiance, hitNormal, hit, direction, false, rejected);
+        bounce.rgb = TraceHitRadiance(hit, direction, seed, rejected);
         bounce.a   = rejected ? 1.0 : 0.0;
     }
     return bounce;
@@ -147,7 +147,7 @@ void main()
             bool            source;
             vec3            direction = ProbeRayDirection(probeChosen.screen, normal, lane, batch, pdf, source);
             bool            inDomain  = dot(normal, direction) > 0.0 && pdf > 0.0;
-            HybridRayResult skyHit    = HybridRayResult(false, origin, vec3(0), ivec3(-1), true);
+            HybridRayResult skyHit    = MakeHybridRayResult(false, origin, vec3(0), ivec3(-1), true);
             if (inDomain)
             {
                 skyHit = ProbeTraceFeature(SKY_PROVIDER, origin, normal, direction, hybrid.bounce.x != 0u && sharedProvider);
@@ -163,7 +163,9 @@ void main()
                 // visibility in alpha, but do not count their radiance in the probes as well.
                 sky = vec4(source ? vec3(0) : ProbeEnvironment(direction), 1);
             }
-            vec4  bounce    = hybrid.bounce.x != 0u ? ProbeBounce(bounceHit, direction) : vec4(0);
+            uint  hitSeed   = HybridHash(HybridMorton(uvec2(probeChosen.screen.xy)) ^ HybridHash(hybrid.sampling.x)
+                                         ^ HybridHash(lane + 64u * batch) ^ 0xb01ce123u);
+            vec4  bounce    = hybrid.bounce.x != 0u ? ProbeBounce(bounceHit, direction, hitSeed) : vec4(0);
             float weight    = inDomain ? 1.0 / (64.0 * pdf) : 0.0;
             vec4  basis     = ProbeSHBasis(direction) * weight;
             float cosine    = weight * max(dot(direction, normal), 0.0) / HYBRID_PI;

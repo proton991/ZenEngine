@@ -274,8 +274,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
     }
     const bool reference     = settings.referenceSamples != 0;
     const bool searchEnabled = settings.filter && !reference;
-    // Reference accumulation and instrumented ray counts retain the pixel estimator.
-    const bool probes = settings.gather == VoxelGISettings::Gather::Probes && !reference && !countRequested;
+    // Gather is independent of the tracer. Reference and ray-count diagnostics retain the pixel estimator.
+    const bool probes = settings.UsesScreenProbes() && !reference && !countRequested;
     if (countValid && m_prepared && m_extent != glm::uvec2(view.width, view.height))
     {
         // The receiver pass has already captured this frame's vertices.
@@ -344,9 +344,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         {
             InvalidateHistory("settings");
         }
-        // Field preparation can trace HW RT without changing the requested settings, and a published
-        // field generation changes Compute visibility. Histories and the visibility guide must follow
-        // the representation actually traced.
+        // Backend availability and a published field generation can change the traced representation
+        // without changing the requested settings. Histories and the visibility guide follow it.
         if (m_previousHardwareMask != hardwareMask || m_previousVisibility != visibility)
         {
             InvalidateHistory("provider_changed");
@@ -366,20 +365,32 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const bool missingPrevious = radianceSteps != 0 && !voxelGI.HasPreviousRadiance();
         const bool radianceReset =
             settings.indirectIntensity != m_previousSettings.indirectIntensity || radianceSteps > 1 || missingPrevious;
-        const bool bounceReset     = rays != m_previousRayBounce || radianceReset;
-        const bool reflectionReset = reflections != m_previousReflections || radianceReset;
+        const bool hardwareBounce     = (hardwareMask & 8u) != 0;
+        const bool hardwareReflection = (hardwareMask & 16u) != 0;
+        // Traced hit lighting has no previous-frame cache to measure a correlated lighting delta.
+        // Restart only those hit histories when lights or secondary-surface materials change.
+        const bool tracedLightingChanged = m_lighting != m_scene->GetLightingRevision()
+                                        || m_surface != m_scene->GetSurfaceRevision()
+                                        || settings.analyticLighting != m_previousSettings.analyticLighting
+                                        || settings.emissiveLighting != m_previousSettings.emissiveLighting
+                                        || settings.shadows != m_previousSettings.shadows;
+        const bool bounceReset = rays != m_previousRayBounce || radianceReset || (hardwareBounce && tracedLightingChanged);
+        const bool reflectionReset =
+            reflections != m_previousReflections || radianceReset || (hardwareReflection && tracedLightingChanged);
         if (bounceReset || reflectionReset || radianceSteps != 0)
         {
             m_bounceResponsiveFrames = 8;
         }
         m_uniforms.bounce =
             glm::uvec4(rays ? 1u : 0u, m_valid && !bounceReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
-                       radianceSteps == 1 && !missingPrevious ? 1u : 0u);
+                       radianceSteps == 1 && !missingPrevious && !hardwareBounce ? 1u : 0u);
         m_uniforms.reflection =
             glm::uvec4(reflections ? 1u : 0u, m_valid && !reflectionReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
-                       radianceSteps == 1 && !missingPrevious ? 1u : 0u);
-        // Sky, specular occlusion, ray bounce and reflections share this dispatch.
-        const bool hardwareTrace = (hardwareMask & 27u) != 0;
+                       radianceSteps == 1 && !missingPrevious && !hardwareReflection ? 1u : 0u);
+        // With only HW shadows/cache selected during cold Compute preparation, the HW-only
+        // variant writes unavailable GI observations without tracing those Compute features.
+        // Field publication then starts the selected pixel/probe estimator with fresh history.
+        const bool hardwareTrace = (hardwareMask & 27u) != 0 || (!field && voxelGI.UsesHardwareQueries());
         // Only geometry-dependent weights survive an unchanged receiver image.
         // Lighting and guide values are always read from this frame's inputs.
         const bool unchangedReceivers = m_valid && m_recordedProjectionView == m_uniforms.previousProjectionView
@@ -870,6 +881,7 @@ void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_geometry                        = m_scene->GetGeometryRevision();
         m_surface                         = m_scene->GetSurfaceRevision();
         m_environment                     = m_scene->GetEnvironmentRevision();
+        m_lighting                        = m_scene->GetLightingRevision();
         m_radianceGeneration              = m_recordedRadianceGeneration;
         m_previousSettings                = m_recordedSettings;
         m_previousRayBounce               = m_uniforms.bounce.x != 0;

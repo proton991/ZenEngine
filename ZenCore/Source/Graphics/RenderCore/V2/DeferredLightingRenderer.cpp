@@ -1309,6 +1309,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     // Ray-shadowed and hybrid forward layers read the deferred receivers' exact shadow results.
     const bool rayShadows         = voxelGI != nullptr && voxelGI->UsesRayShadows();
+    const bool hardwareTransport  = voxelGI != nullptr && (voxelGI->GetHardwareFeatureMask() & 27u) != 0u;
 
     const bool hybrid             = m_hybrid != nullptr && m_hybrid->IsActive();
 
@@ -1697,6 +1698,19 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             {
                 forward.BindSampledTexture("receiverLightVisibility", m_pDepthSampler, lightVisibility);
             }
+            if (hardwareTransport && !rayShadows)
+            {
+                const bool counts = !capture && voxelGI->CountsRays();
+                forward.SetShaderProgramName(
+                    capture  ? (basicPBR ? "ForwardHardwareLightingCaptureBasicSP" : "ForwardHardwareLightingCaptureSP")
+                    : counts ? (basicPBR ? "ForwardHardwareLightingCountsBasicSP" : "ForwardHardwareLightingCountsSP")
+                             : (basicPBR ? "ForwardHardwareLightingBasicSP" : "ForwardHardwareLightingSP"));
+                voxelGI->GetSceneRayQuery().BindInputs(forward, *m_pScene, true);
+                if (counts)
+                {
+                    voxelGI->BindRayTotals(forward);
+                }
+            }
             if (rayShadows)
             {
                 const bool counts = !capture && voxelGI->CountsRays();
@@ -1773,6 +1787,10 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 voxelGI->BindLightingInputs(forward);
 
                 voxelGI->BindShadowInputs(forward, shadows, true);
+                if (hardwareTransport || rayShadows)
+                {
+                    voxelGI->BindEnvironmentSamplingInputs(forward);
+                }
             }
 
             if (gpuRun)

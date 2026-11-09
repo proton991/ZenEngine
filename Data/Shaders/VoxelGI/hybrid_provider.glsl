@@ -11,7 +11,14 @@ struct HybridRayResult
     // A completed observation: a hit or a covered miss. Only a valid miss contributes unoccluded
     // light; an invalid result has neither a surface nor a visibility contribution.
     bool valid;
+    // Exact HW surface identity, retained through shared sky/bounce queries. Field hits have none.
+    uvec4 triangle;
+    vec2  barycentrics;
 };
+HybridRayResult MakeHybridRayResult(bool hit, vec3 position, vec3 normal, ivec3 cell, bool valid)
+{
+    return HybridRayResult(hit, position, normal, cell, valid, uvec4(0xffffffffu), vec2(0));
+}
 #ifdef HYBRID_FIELD_TRAVERSAL
 // Compute features trace the GPU-built sparse distance field (DistanceFieldScene), with finer local
 // volumes around lights, whose lanterns let light out through openings the scene field closes.
@@ -59,8 +66,9 @@ HybridRayResult FieldTraceRay(vec3 origin, vec3 direction, float maximumDistance
     issuedFieldWork.z += uint(trace.status == DISTANCE_FIELD_TRACE_UNAVAILABLE);
 #    endif
     bool hit = trace.status == DISTANCE_FIELD_HIT;
-    return HybridRayResult(hit, hit ? trace.position : origin, hit ? trace.normal : vec3(0),
-                           hit ? HybridCacheCell(trace.position) : ivec3(-1), trace.status != DISTANCE_FIELD_TRACE_UNAVAILABLE);
+    return MakeHybridRayResult(hit, hit ? trace.position : origin, hit ? trace.normal : vec3(0),
+                               hit ? HybridCacheCell(trace.position) : ivec3(-1),
+                               trace.status != DISTANCE_FIELD_TRACE_UNAVAILABLE);
 }
 
 float FieldLightVisibility(HybridRayResult hit, vec3 lightPosition)
@@ -107,7 +115,7 @@ vec3 ComputeTraceOrigin(vec3 position, vec3 normal)
 // Slab entry also handles rays starting outside the voxel volume.
 HybridRayResult VoxelTraceRay(sampler3D occupancy, vec3 origin, vec3 direction, float maximumDistance)
 {
-    HybridRayResult result = HybridRayResult(false, origin, vec3(0), ivec3(-1), true);
+    HybridRayResult result = MakeHybridRayResult(false, origin, vec3(0), ivec3(-1), true);
     vec3            p      = (origin - gi.gridMinVoxelSize.xyz) / gi.gridMinVoxelSize.w;
     float           enter = 0.0, leave = maximumDistance / gi.gridMinVoxelSize.w;
     // An occupied origin blocks visibility, but has no entered face. Do not
@@ -155,7 +163,7 @@ HybridRayResult VoxelTraceRay(sampler3D occupancy, vec3 origin, vec3 direction, 
             }
             if (texelFetch(occupancy, cell, 0).a > 0.5)
             {
-                result = HybridRayResult(true, origin + direction * distance * gi.gridMinVoxelSize.w, normal, cell, true);
+                result = MakeHybridRayResult(true, origin + direction * distance * gi.gridMinVoxelSize.w, normal, cell, true);
                 break;
             }
             int axis      = next.x < next.y ? 0 : 1;
