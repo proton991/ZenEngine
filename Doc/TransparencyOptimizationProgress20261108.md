@@ -34,6 +34,9 @@ and unaltered clocks. Each capture retains the executable and shader hashes, exa
 application/Nsight argument arrays, setup copy/hash, package hash, actual runtime state,
 original `.ngfx-gputrace`, and original table exports. Shared model and environment
 hashes are in [scene-inputs.json](../build/transparency-20261108/scene-inputs.json).
+The `.ngfx-gputrace` files and raw GI captures were deleted in an 8 November build
+cleanup; the table exports, summaries and hashes remain, and the deleted paths are listed
+in `build/cleanup-20261108`.
 RTSS was running; the launcher supplies its existing layer-disable environment overrides.
 Closing RTSS from this session was attempted before the UV captures, but Windows
 denied access to the process. This remains a limitation of the performance evidence.
@@ -583,3 +586,83 @@ targeted ordering/culling/raster run passes 44 cases and all 17 launch tests pas
 no validation errors or leaks. A validated ZenApp center capture
 (`review-fix-smoke`) is byte-identical to `gpu-final-smoke`. Synchronization validation,
 which would report the original access mismatch, was not enabled.
+
+## GI-only lighting-volume gate
+
+The Phase 5 spatial gate moved both shadow visibility and diffuse GI into the proposed
+grid, so it could not show which one failed. A second temporary probe moves only the
+forward voxel-GI fallback of BLEND layers to the same 1/8-screen x 64-log-depth grid.
+Like the first probe, it evaluates the eight trilinear cell centers directly, using each
+fragment's own normal. Shadow visibility stays per fragment. It is an image-quality
+probe, not a volume implementation or a performance measurement. RTSS was closed, no
+other session was using the checkout, and the production shader and ZenApp were
+restored and rebuilt afterward. Evidence, including the exact patch and runtime state,
+is in `volume-gi-gate` (script `prototype_volume_gi.py`).
+
+| Center view against automatic mode | Shadows + GI in volume | GI only in volume |
+|---|---:|---:|
+| Changed pixels | 572,989 (19.21%) | 471,196 (15.80%) |
+| Pixels over 1/255 | 314,191 | 197,652 |
+| Pixels over 4/255 | 133,437 | 59,486 |
+| Maximum / mean, 8-bit | 104 / 0.489 | 26 / 0.202 |
+| p99, 8-bit | 10 | 5 |
+
+The GI-only difference is smooth and spread over the whole canopy. The sharp speckles
+of the combined probe were shadow-visibility errors. It still changes 4.5 times as many
+pixels by more than 4/255 as the rejected 64-triangle cluster ordering (13,188), so it
+does not pass the image gate used so far. The other ten views were not captured,
+because the center view already decides that.
+
+The comparison is against the current voxel fallback, which is itself biased: at the 39
+core receivers its RMS error against Mitsuba was about four times the probe result's.
+This gate therefore shows that the volume changes the image, not that it is less
+accurate. The cost case is also weaker than expected. At this resolution the grid has
+295 x 158 x 64 = 2,982,880 cells, about one per screen pixel, against 5.44 M leaf
+fragments in this view. A dense volume with six cones per cell would remove at most
+about half of the forward cone work. A larger saving needs sparse cells (only those
+covered by blended fragments) or updates spread over several frames, both of which add
+further approximation.
+
+### Mitsuba check of the GI-only volume
+
+The gate above measured change, not error. This check scores both estimates against an
+independent reference at the same leaf points.
+
+A temporary ZenApp capture forced the opaque core at a 0.5 cutoff, so the visible leaf
+layer becomes a G-buffer receiver with a known position and shading normal. At every 8th
+pixel the capture shader evaluated, from the same voxel radiance, the forward fallback
+(`DiffuseVoxelLighting` at the point) and the GI-only volume (the eight cell centers of
+the grid above, with the point's own normal). It also recorded the probe reconstruction
+for context. The shader rebuilds cell positions with the hybrid inverse view-projection,
+which places points 0.002759 units along -z from their stored positions at every pixel
+(maximum deviation 4e-6). It corrects each cell by that constant shift. Its view depth
+matches the true depth to 0.0004%. A Mitsuba 3.9.1 `cuda_ad_rgb` ray cast onto each
+point's own triangle identified 11,097 of the 46,610 points as `LeafSpring`, and 2,000 of
+those were drawn with a fixed seed. Mitsuba then traced one-bounce diffuse transport at
+those points with 4,096 samples each, using the reference model of `core-reference-v3`.
+Sources and ZenApp were restored afterward. Evidence is in `volume-gi-reference`
+(`capture_volume_reference.py`, `reference_volume.py`).
+
+| Linear irradiance / pi, 2,000 leaf points | Mean | Signed bias | RMS error | Relative RMS |
+|---|---:|---:|---:|---:|
+| Mitsuba reference | 0.00497 | — | — | — |
+| Forward voxel fallback (current) | 0.01349 | +0.00852 | 0.02663 | 5.35 |
+| GI-only volume | 0.01242 | +0.00744 | 0.02181 | 4.38 |
+| Deferred probes (context only) | 0.00313 | -0.00184 | 0.00430 | 0.87 |
+
+Reference noise RMS is 0.00065. The volume is closer to the reference than the fallback
+at 58.3% of points, and its RMS error is 18% lower. The image change measured by the gate
+is therefore not a loss of accuracy. Both voxel estimates, however, are about 2.5 times
+too bright on leaves, with errors five times the reference mean. The probe result, which
+traces hardware rays, has one-fifth of their error. The 39-receiver check found the same
+fallback bias (+0.00825).
+
+So the volume's spatial discretization is not what limits translucent GI quality here;
+the voxel cone source is. If a translucency GI volume is built, filling its cells with
+hardware rays as the probes do, rather than voxel cones, would address cost and accuracy
+together.
+
+Limits: only the front-most leaf layer with filtered alpha of at least 0.5 is sampled;
+deeper canopy layers are not. The probe evaluates each cell with the point's own normal,
+which overstates the angular resolution of a stored volume. The reference has one bounce,
+source textures and captured shading normals.
