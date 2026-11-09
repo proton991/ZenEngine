@@ -64,9 +64,13 @@ def ggx_directions(n, view, roughness, count):
 
 
 class Environment:
-    def __init__(self, constant=(1, 1, 1), cube=None, rotation=0, orientation=(0, 0, 0, 1), intensity=1):
+    def __init__(self, constant=(1, 1, 1), cube=None, rotation=0, orientation=(0, 0, 0, 1), intensity=1,
+                 equirect=None):
+        if cube is not None and equirect is not None:
+            raise ValueError('Choose either a cube or an equirectangular source')
         self.constant = np.asarray(constant, dtype=float)
         self.cube = cube
+        self.equirect = equirect
         self.rotation, self.orientation, self.intensity = rotation, np.asarray(orientation), intensity
         self.probabilities = None
 
@@ -94,6 +98,19 @@ class Environment:
 
     def sample(self, directions):
         d = self.local_directions(directions)
+        if self.equirect is not None:
+            height, width = self.equirect.shape[:2]
+            uv = np.c_[np.arctan2(d[:, 2], d[:, 0]) / (2*np.pi) + .5,
+                       np.arccos(np.clip(d[:, 1], -1, 1)) / np.pi]
+            pixel = uv * [width, height] - .5
+            low = np.floor(pixel).astype(int)
+            f = pixel - low
+            result = np.zeros((len(d), 3))
+            for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+                weight = (f[:, 0] if dx else 1-f[:, 0]) * (f[:, 1] if dy else 1-f[:, 1])
+                result += self.equirect[np.clip(low[:, 1]+dy, 0, height-1),
+                                       (low[:, 0]+dx) % width, :3] * weight[:, None]
+            return result * self.intensity
         if self.cube is None:
             return np.broadcast_to(self.constant*self.intensity, d.shape).copy()
         faces, uv = self.coordinates(d)

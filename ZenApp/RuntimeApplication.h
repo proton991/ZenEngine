@@ -1,5 +1,6 @@
 #pragma once
 #include "Runtime/RuntimeLaunchSettings.h"
+#include "GroundTruthBatch.h"
 
 namespace zen::runtime
 {
@@ -13,17 +14,20 @@ enum class RuntimeExit : int
 
 struct RuntimeOptions
 {
-    uint64_t    frames{0};
-    std::string capture;
-    std::string profile;
-    std::string logPath;
-    bool        fixedStep{false};
-    bool        startPaused{false};
-    bool        rhiOverride{false};
-    bool        noUI{false};
-    bool        gpuMarkers{false};
-    bool        disableRT{false};
-    bool        gpuCulling{true};
+    std::string                  groundTruth;
+    std::string                  output;
+    HeapVector<GroundTruthFrame> batch;
+    uint64_t                     frames{0};
+    std::string                  capture;
+    std::string                  profile;
+    std::string                  logPath;
+    bool                         fixedStep{false};
+    bool                         startPaused{false};
+    bool                         rhiOverride{false};
+    bool                         noUI{false};
+    bool                         gpuMarkers{false};
+    bool                         disableRT{false};
+    bool                         gpuCulling{true};
 };
 
 RuntimeExit RunApplication(const RuntimeLaunchSettings& setup, const RuntimeOptions& options);

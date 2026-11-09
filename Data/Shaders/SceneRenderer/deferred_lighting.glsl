@@ -150,6 +150,9 @@ void main()
 
     // ---------- Direct Lighting ----------
     vec3 Lo = vec3(0.0);
+#ifdef LIGHTING_CAPTURE
+    vec3 directIrradiance = vec3(0.0);
+#endif
 #ifdef RECEIVER_LIGHT_VISIBILITY
     uvec2 lightVisibility = uvec2(0);
 #endif
@@ -192,6 +195,9 @@ void main()
         }
 #endif
         Lo += (kD * diffuse + specular) * radiance * NdotL * visibility;
+#ifdef LIGHTING_CAPTURE
+        directIrradiance += radiance * NdotL * visibility / PI;
+#endif
     }
 #ifdef RECEIVER_LIGHT_VISIBILITY
     outLightVisibility = lightVisibility;
@@ -250,12 +256,17 @@ void main()
         components[index + 2] = vec4(kD * diffuseIBL * ao, 1);
         components[index + 3] = vec4(specularIBL * ao, 1);
         components[index + 4] = vec4(emissive, 1);
+        components[index + 7] = vec4(directIrradiance, 1);
 #    ifdef VOXEL_GI
         components[index + 5] = vec4(kD * (captureDiffuseEscaped * albedo) * ao, 1);
         components[index + 6] = vec4(kD * (captureDiffuseBounced * albedo) * ao, 1);
+        components[index + 8] = vec4(captureDiffuseEscaped, 1);
+        components[index + 9] = vec4(captureDiffuseBounced, 1);
 #    else
         components[index + 5] = vec4(kD * diffuseIBL * ao, 1);
         components[index + 6] = vec4(0, 0, 0, 1);
+        components[index + 8] = vec4(irradiance, 1);
+        components[index + 9] = vec4(0, 0, 0, 1);
 #    endif
     }
 #endif

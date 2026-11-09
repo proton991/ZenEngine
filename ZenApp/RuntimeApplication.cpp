@@ -7,12 +7,16 @@
 #include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "Graphics/RenderCore/V2/SceneRendering.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
+#include "Graphics/Shared/LightingCapture.h"
 #include "Platform/NativeWindow.h"
 #include "ZenApp/RuntimeWindow.h"
 #include <fstream>
 #include <algorithm>
 #include <iomanip>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
 #    include "ZenApp/RuntimeOverlay.h"
 #endif
@@ -54,6 +58,10 @@ public:
         if (m_device)
         {
             m_device->WaitForPreviousFrames();
+            for (RHIBuffer* buffer : m_captureBuffers)
+            {
+                m_device->DestroyBuffer(buffer);
+            }
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
             m_overlay.Destroy();
 #endif
@@ -81,12 +89,12 @@ public:
         RuntimeExit                 result = Initialize();
         bool                        valid  = result == RuntimeExit::Success;
         const std::function<void()> redraw = [this, &valid]() {
-            if (valid && m_session && !m_session->IsClosing() && (m_options.frames == 0 || GetSceneFrame() < m_options.frames))
+            if (valid && m_session && !m_session->IsClosing() && KeepRunning())
             {
                 valid = RenderIteration();
             }
         };
-        while (valid && m_session && !m_session->IsClosing() && (m_options.frames == 0 || GetSceneFrame() < m_options.frames))
+        while (valid && m_session && !m_session->IsClosing() && KeepRunning())
         {
             platform::NativeWindow& window = *m_session->GetWindow();
             window.Update(false, redraw);
@@ -101,7 +109,7 @@ public:
                 platform::NativeWindow::WaitEvents(1.0 / 15.0, redraw);
             }
         }
-        if (result == RuntimeExit::Success && !valid)
+        if (result == RuntimeExit::Success && (!valid || (!m_options.batch.empty() && !m_batchDone)))
         {
             result = RuntimeExit::Renderer;
         }
@@ -127,6 +135,171 @@ public:
     }
 
 private:
+    bool KeepRunning() const
+    {
+        return m_options.batch.empty() ? (m_options.frames == 0 || GetSceneFrame() < m_options.frames) : !m_batchDone;
+    }
+
+    bool CreateCaptureBuffers()
+    {
+        const uint32_t strides[] = {ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL, ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL};
+        bool           valid     = true;
+        for (uint32_t index = 0; index < 4 && valid; ++index)
+        {
+            RHIBufferCreateInfo info;
+            info.size         = uint64_t(m_setup.run.renderWidth) * m_setup.run.renderHeight * strides[index / 2];
+            info.allocateType = index % 2 == 0 ? RHIBufferAllocateType::eGPU : RHIBufferAllocateType::eCPURead;
+            info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer,
+                                     RHIBufferUsageFlagBits::eTransferDstBuffer);
+            m_captureBuffers[index] = m_device->CreateBuffer(info);
+            valid                   = m_captureBuffers[index] != nullptr;
+        }
+        return valid;
+    }
+
+    bool ReadCaptureBuffer(uint32_t index, HeapVector<Vec4>& values)
+    {
+        RHIBuffer*     buffer = m_captureBuffers[index];
+        const uint8_t* data   = buffer->Map();
+        bool           valid  = data != nullptr;
+        if (valid)
+        {
+            const size_t stride = index == 1 ? ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL : ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL;
+            const size_t bytes  = size_t(m_setup.run.renderWidth) * m_setup.run.renderHeight * stride;
+            values.resize(bytes / sizeof(Vec4));
+            std::memcpy(values.data(), data, bytes);
+            buffer->Unmap();
+        }
+        return valid;
+    }
+
+    static bool WriteCaptureFile(const std::string& path, const HeapVector<Vec4>& values)
+    {
+        std::ofstream output(std::filesystem::u8path(path), std::ios::binary);
+        output.write(reinterpret_cast<const char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(Vec4)));
+        output.close();
+        return output.good();
+    }
+
+    // Why the capture just submitted cannot be used, or nullptr.
+    const char* BatchCaptureFailure(const rc::DeferredLightingRenderer& renderer)
+    {
+        const bool                  submitted = m_device->PollFrameSubmissions();
+        const rc::HybridGIRenderer* hybrid    = renderer.GetHybridGI();
+        return !submitted                                         ? "the frame submission failed"
+             : !renderer.WasLightingCaptureRecorded()             ? "the lighting capture was not recorded"
+             : hybrid == nullptr || !hybrid->WasCaptureRecorded() ? "the hybrid GI capture was not recorded"
+             : !hybrid->IsHistoryValid()                          ? "the hybrid GI history is invalid"
+                                                                  : nullptr;
+    }
+
+    // Root-mean-square change of D_direct, D_sky and D_bounce since the previous capture.
+    bool BatchCaptureConverged(const HeapVector<Vec4>& values, const GroundTruthFrame& frame, double (&rms)[3]) const
+    {
+        size_t count = 0;
+        for (size_t pixel = 0; !m_previousLighting.empty() && pixel < values.size(); pixel += ZEN_LIGHTING_CAPTURE_COMPONENTS)
+        {
+            if (values[pixel + 7].w > 0 && m_previousLighting[pixel + 7].w > 0)
+            {
+                ++count;
+                for (uint32_t term = 0; term < 3; ++term)
+                {
+                    const Vec3 difference  = Vec3(values[pixel + 7 + term] - m_previousLighting[pixel + 7 + term]);
+                    rms[term]             += glm::dot(difference, difference);
+                }
+            }
+        }
+        bool converged = count > 0;
+        for (uint32_t term = 0; term < 3; ++term)
+        {
+            rms[term] = count == 0 ? 0 : std::sqrt(rms[term] / (3.0 * count));
+            converged = converged && std::isfinite(rms[term]) && rms[term] <= std::max(1e-7, frame.noiseRms[term]);
+        }
+        return converged;
+    }
+
+    // Only the converged capture pair is published; earlier stability checks stay in memory.
+    bool WriteBatchFrame(const GroundTruthFrame& frame, const HeapVector<Vec4>& lighting, const double (&rms)[3])
+    {
+        const std::string prefix = m_options.output + "/" + frame.id;
+        HeapVector<Vec4>  hybrid;
+        bool valid = ReadCaptureBuffer(3, hybrid) && WriteCaptureFile(prefix + ".lighting.bin", lighting)
+                  && WriteCaptureFile(prefix + ".hybrid.bin", hybrid)
+                  && WriteCaptureFile(prefix + ".previous.lighting.bin", m_previousLighting)
+                  && WriteFrameSummary(prefix + ".json")
+                  && CaptureGroundTruthEnvironment(*m_device, m_rendering->GetScene()->GetEnvTexture().pPrefiltered,
+                                                   prefix + ".environment.bin")
+                  && WriteRuntimeLaunchSettings(std::filesystem::u8path(prefix + ".zenrender"), m_setup, m_error);
+        if (valid)
+        {
+            std::ofstream convergence(std::filesystem::u8path(prefix + ".convergence.json"));
+            convergence << "{\"settledFrames\":" << GetSceneFrame() - m_batchStart << ",\"rms\":[" << rms[0] << ',' << rms[1]
+                        << ',' << rms[2] << "]}\n";
+            convergence.close();
+            valid = convergence.good();
+        }
+        if (!valid && m_error.empty())
+        {
+            m_error = "Could not write the ground-truth capture of " + frame.id + " to " + m_options.output;
+        }
+        return valid;
+    }
+
+    bool StartBatchFrame(rc::DeferredLightingRenderer& renderer)
+    {
+        m_setup = m_options.batch[m_batchIndex].setup;
+        // Reloading an unchanged environment would drain the GPU and rebuild its sampling data.
+        const bool sameEnvironment = m_setup.rendering.environment.texturePath == m_rendering->GetEnvironment().texturePath;
+        const bool valid =
+            m_camera.SetState(m_setup.camera)
+            && (sameEnvironment || m_rendering->SetEnvironmentTexture(m_setup.rendering.environment.texturePath, m_error))
+            && m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);
+        if (!valid && m_error.empty())
+        {
+            m_error = "Could not apply the ground-truth setup of " + m_options.batch[m_batchIndex].id;
+        }
+        renderer.GetHybridGI()->InvalidateHistory("ground_truth_frame");
+        m_batchStart = GetSceneFrame();
+        m_batchBegin = GetSceneFrame();
+        m_previousLighting.clear();
+        return valid;
+    }
+
+    bool FinishBatchCapture()
+    {
+        m_device->WaitForPreviousFrames();
+        rc::DeferredLightingRenderer& renderer = *m_device->GetRendererServer()->RequestDeferredLightingRenderer();
+        const GroundTruthFrame&       frame    = m_options.batch[m_batchIndex];
+        const char*                   failure  = BatchCaptureFailure(renderer);
+        HeapVector<Vec4>              values;
+        double                        rms[3]{};
+        bool                          valid = failure == nullptr && ReadCaptureBuffer(1, values);
+        if (!valid)
+        {
+            m_error = "Ground-truth capture of " + frame.id
+                    + " failed: " + (failure != nullptr ? failure : "the lighting readback could not be mapped");
+        }
+        else if (BatchCaptureConverged(values, frame, rms))
+        {
+            valid = WriteBatchFrame(frame, values, rms);
+            ++m_batchIndex;
+            m_batchDone = m_batchIndex == m_options.batch.size();
+            valid       = valid && (m_batchDone || StartBatchFrame(renderer));
+        }
+        else
+        {
+            valid              = GetSceneFrame() - m_batchStart < std::max(uint64_t(512), m_options.frames * 4);
+            m_previousLighting = std::move(values);
+            if (!valid)
+            {
+                m_error = "Ground-truth GI did not converge below the reference noise: " + frame.id;
+            }
+        }
+        renderer.SetLightingCapture(nullptr, nullptr);
+        renderer.SetHybridCapture(nullptr, nullptr);
+        return valid;
+    }
+
     bool RenderIteration()
     {
         platform::NativeWindow& window = *m_session->GetWindow();
@@ -178,7 +351,11 @@ private:
                  m_setup.run.rhiMode == RHIExecutionMode::eThreaded ? "threaded" : "inline");
         }
         RuntimeExit result = m_logReady ? RuntimeExit::Package : RuntimeExit::Setup;
-        bool        valid  = m_logReady;
+        bool        valid  = m_logReady && (m_options.batch.empty() || !IsRTSSLoaded());
+        if (m_logReady && !valid)
+        {
+            m_error = "Ground-truth capture refuses to run while RTSS is loaded";
+        }
         if (valid)
         {
             asset::SceneImportRequest request{m_setup.packagePath};
@@ -269,6 +446,10 @@ private:
             }
             if (valid)
             {
+                valid = m_options.batch.empty() || CreateCaptureBuffers();
+            }
+            if (valid)
+            {
                 LOGI("ZenApp loaded {}. Space: Pause/Resume; Escape: Quit; F1: diagnostics.", m_setup.packagePath);
                 result = RuntimeExit::Success;
             }
@@ -285,12 +466,46 @@ private:
         const std::chrono::steady_clock::time_point frameStart    = std::chrono::steady_clock::now();
         const uint64_t                              previousFrame = GetSceneFrame();
         rc::RenderOverlay*                          overlay       = nullptr;
+        bool                                        captureTerms  = false;
+        if (!m_options.batch.empty())
+        {
+            m_session->SetInputCapture(true, true);
+            const rc::RendererServer& server = *m_device->GetRendererServer();
+            if (server.IsPreparingGI() || server.IsRefiningGI())
+            {
+                m_batchStart = previousFrame;
+                m_previousLighting.clear();
+            }
+            const uint64_t frame = previousFrame + 1 - m_batchStart;
+            captureTerms         = frame >= m_options.frames - 16 && (frame - (m_options.frames - 16)) % 16 == 0;
+            if (captureTerms)
+            {
+                rc::DeferredLightingRenderer& renderer = *m_device->GetRendererServer()->RequestDeferredLightingRenderer();
+                renderer.SetLightingCapture(m_captureBuffers[0], m_captureBuffers[1]);
+                renderer.SetHybridCapture(m_captureBuffers[2], m_captureBuffers[3]);
+            }
+        }
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
         bool valid = m_session->Render(overlay);
+        if (!m_options.batch.empty() && GetSceneFrame() - m_batchBegin > 4096)
+        {
+            // Preparation, refinement and convergence share this budget.
+            m_error = "Ground-truth frame " + m_options.batch[m_batchIndex].id + " did not settle within 4096 frames";
+            valid   = false;
+        }
         if (valid && GetSceneFrame() > previousFrame)
         {
+            if (captureTerms)
+            {
+                valid = !IsRTSSLoaded();
+                if (!valid)
+                {
+                    m_error = "Ground-truth capture refuses to run while RTSS is loaded";
+                }
+                valid = valid && FinishBatchCapture();
+            }
             const rc::SceneCullingResult& culling = m_device->GetRendererServer()->GetRenderingStatus().gpuCulling;
             if (!m_cullingReported || culling.status != m_lastSceneCulling.status)
             {
@@ -338,7 +553,10 @@ private:
         }
         if (!valid)
         {
-            m_error = "Runtime scene rendering or capture failed";
+            if (m_error.empty())
+            {
+                m_error = "Runtime scene rendering or capture failed";
+            }
         }
         return valid;
     }
@@ -374,6 +592,11 @@ private:
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
                 << ",\"framebufferHeight\":" << framebuffer.height
                 << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false")
+                << ",\"backend\":" << std::quoted(GetRayProviderName(m_setup.rendering.gi.cone.rayProvider))
+                << ",\"asyncCompute\":" << std::quoted(rc::GetAsyncComputeStatusReason(m_device->GetAsyncComputeStatus()))
+                << ",\"lightingComponents\":" << ZEN_LIGHTING_CAPTURE_COMPONENTS
+                << ",\"hybridComponents\":" << ZEN_HYBRID_CAPTURE_COMPONENTS
+                << ",\"environmentCubeSize\":" << m_rendering->GetScene()->GetEnvTexture().pPrefiltered->GetWidth()
                 << ",\"gpuCullingRequested\":" << (m_options.gpuCulling ? "true" : "false")
                 << ",\"gpuCullingPath\":" << std::quoted(rc::SceneCullingStatusName(culling.status))
                 << ",\"gpuCullingFallbackReason\":" << std::quoted(rc::SceneCullingFallbackReason(culling.status))
@@ -389,7 +612,7 @@ private:
             && WriteRuntimeLaunchSettings(std::filesystem::u8path(m_options.profile + ".setup.zenrender"), m_setup, m_error);
     }
 
-    const RuntimeLaunchSettings&     m_setup;
+    RuntimeLaunchSettings            m_setup;
     const RuntimeOptions&            m_options;
     UniquePtr<rc::RenderDevice>      m_device;
     UniquePtr<asset::LoadedScene>    m_loaded;
@@ -403,6 +626,12 @@ private:
     bool                             m_logReady{false};
     bool                             m_cullingReported{false};
     rc::SceneCullingResult           m_lastSceneCulling;
+    RHIBuffer*                       m_captureBuffers[4]{};
+    HeapVector<Vec4>                 m_previousLighting;
+    size_t                           m_batchIndex{0};
+    uint64_t                         m_batchStart{0};
+    uint64_t                         m_batchBegin{0};
+    bool                             m_batchDone{false};
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
     RuntimeOverlay m_overlay;
 #endif

@@ -267,6 +267,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         || (m_rayCountOutput != nullptr && m_rayCountReadback != nullptr && m_rayCountOutput->GetRequiredSize() == countBytes
             && m_rayCountReadback->GetRequiredSize() == countBytes);
     m_rayCountsRecorded = false;
+    m_captureRecorded   = false;
     if (!countValid)
     {
         LOGE("Hybrid ray-count capture requires two correctly sized buffers");
@@ -778,7 +779,9 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             m_rawSky      = rawSky;
             m_rawSpecular = rawSpecular;
         }
-        m_recorded = true;
+        // Both gathers add the capture pass whenever the two buffers are supplied.
+        m_captureRecorded = m_captureOutput != nullptr && m_captureReadback != nullptr;
+        m_recorded        = true;
     }
     return m_recorded;
 }
@@ -843,6 +846,7 @@ void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
 {
     const bool succeeded = result == RenderFrameResult::eSubmitted;
     m_probeGather.OnRenderGraphExecuted(result);
+    m_captureRecorded = m_captureRecorded && m_recorded && succeeded;
 
     if (m_recorded && succeeded)
     {

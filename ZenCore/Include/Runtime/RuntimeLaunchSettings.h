@@ -13,6 +13,7 @@ inline constexpr size_t   MaxRuntimeSetupBytes = 1024 * 1024;
 
 struct RuntimeRunSettings
 {
+    bool             operator==(const RuntimeRunSettings&) const = default;
     uint32_t         windowWidth{1440};
     uint32_t         windowHeight{900};
     uint32_t         renderWidth{1440};

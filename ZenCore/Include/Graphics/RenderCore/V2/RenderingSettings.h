@@ -79,6 +79,7 @@ struct RenderingSettings
     TransparencySettings       transparency;
     DebugSelection             debug;
     bool                       lightMarkers{false};
+    bool                       normalMaps{true};
     float                      lightMarkerSize{0.02f};
 };
 

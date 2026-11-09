@@ -136,6 +136,7 @@ template <class Archive> void Fields(Archive& archive, rc::RenderingSettings& va
     archive.Field("transparency", value.transparency, false);
     archive.Field("debug", value.debug);
     archive.Field("lightMarkers", value.lightMarkers);
+    archive.Field("normalMaps", value.normalMaps, false);
     archive.Field("lightMarkerSize", value.lightMarkerSize);
 }
 

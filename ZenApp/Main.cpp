@@ -5,6 +5,7 @@
 #include <iostream>
 #include <optional>
 #include <limits>
+#include <algorithm>
 
 namespace zen::runtime
 {
@@ -114,6 +115,14 @@ bool ParseOptions(int              argc,
         {
             ParseUnsigned(argument, options.frames, std::numeric_limits<uint64_t>::max(), error);
         }
+        else if (argument.starts_with("--ground-truth="))
+        {
+            options.groundTruth = argument.substr(15);
+        }
+        else if (argument.starts_with("--output="))
+        {
+            options.output = argument.substr(9);
+        }
         else if (argument.starts_with("--width=") || argument.starts_with("--height="))
         {
             uint64_t value = 0;
@@ -189,6 +198,30 @@ bool ParseOptions(int              argc,
             error = "Unknown or incomplete argument: " + std::string(argument);
         }
     }
+    if (error.empty() && !options.groundTruth.empty())
+    {
+        if (!path.empty() || options.output.empty() || options.startPaused || options.disableRT || !options.capture.empty()
+            || !options.profile.empty() || overrides.rhi || overrides.fullscreen || overrides.vsync || overrides.validation
+            || overrides.asyncCompute || overrides.gpuCulling || overrides.width || overrides.height || overrides.backend)
+        {
+            error = "--ground-truth requires --output and uses the dataset's setup values without run overrides";
+        }
+        else if (ReadGroundTruthBatch(options.groundTruth, options.batch, error))
+        {
+            path           = options.groundTruth + "/frames/" + options.batch.front().id + "/scene.zenrender";
+            options.frames = std::max(uint64_t(128), options.frames);
+            for (const GroundTruthFrame& frame : options.batch)
+            {
+                options.frames = std::max(options.frames, uint64_t(frame.setup.rendering.gi.cone.historyFrames) + 32);
+            }
+            options.fixedStep = true;
+            options.noUI      = true;
+            if (options.frames > 4096)
+            {
+                error = "Ground-truth --frames must not exceed 4096";
+            }
+        }
+    }
     if (error.empty() && path.empty())
     {
         error = "Specify --setup=<file.zenrender>";
@@ -217,6 +250,7 @@ int RuntimeMain(int argc, char** argv)
                      "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
                      "       [--backend=compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
                      "       [--fixed-step] [--start-paused]\n"
+                     "ZenApp --ground-truth=<dataset-directory> --output=<new-run-directory> [--frames=128]\n"
                      "Fullscreen defaults on and uses the display's native mode; width/height set the render size.\n"
                      "Space: Pause/Resume. Escape: Quit. Camera controls match the editor.\n";
         result = RuntimeExit::Success;
@@ -241,14 +275,25 @@ int RuntimeMain(int argc, char** argv)
         {
             const std::u8string log = std::filesystem::u8path(path).replace_extension(".log").u8string();
             options.logPath.assign(reinterpret_cast<const char*>(log.data()), log.size());
-            valid = zen::platform::ConfigLoader::SetExplicitSource(setup.engineConfiguration, setup.configurationDirectory);
+            if (!options.batch.empty())
+            {
+                std::error_code code;
+                valid           = std::filesystem::create_directory(std::filesystem::u8path(options.output), code) && !code;
+                options.logPath = options.output + "/ZenApp.log";
+                if (!valid)
+                {
+                    error = "Ground-truth output must be a new directory with an existing parent";
+                }
+            }
+            valid = valid
+                 && zen::platform::ConfigLoader::SetExplicitSource(setup.engineConfiguration, setup.configurationDirectory);
             if (valid)
             {
                 result = RunApplication(setup, options);
             }
             else
             {
-                error = "Runtime configuration was initialized before its launch setup";
+                error = error.empty() ? "Runtime configuration was initialized before its launch setup" : error;
             }
         }
         if (!valid)

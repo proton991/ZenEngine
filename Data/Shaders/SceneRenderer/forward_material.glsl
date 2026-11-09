@@ -255,7 +255,9 @@ void main()
     vec3  color = s.baseColor.rgb;
 #ifdef LIGHTING_CAPTURE
     vec3 capturedDirect = vec3(0), capturedDiffuse = vec3(0), capturedSpecular = vec3(0), capturedEmission = color;
-    vec3 capturedSky = vec3(0), capturedBounce = vec3(0);
+    vec3 capturedSky = vec3(0), capturedBounce = vec3(0), capturedDirectIrradiance = vec3(0);
+    captureDiffuseEscaped = vec3(0);
+    captureDiffuseBounced = vec3(0);
 #endif
     if (material.materialProperties.y < 0.5 && (topology == 2 || dot(inNormal, inNormal) > 1e-12))
     {
@@ -377,24 +379,32 @@ void main()
         {
             vec3  L;
             float distanceToLight;
-            vec3  radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i],
-                                           inWorldPos, L, distanceToLight);
-            vec3  direct   = SurfaceDirect(s, N, coatN, T, B, V, L) * radiance;
+            vec3  radiance   = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i],
+                                             inWorldPos, L, distanceToLight);
+            vec3  direct     = SurfaceDirect(s, N, coatN, T, B, V, L) * radiance;
+            float visibility = 1.0;
+            bool  lit        = any(greaterThan(direct, vec3(0.0)));
+#ifdef LIGHTING_CAPTURE
+            // The material-free direct term also needs visibility where the material reflects nothing.
+            lit = lit || dot(N, L) > 0.0;
+#endif
 #ifdef VOXEL_GI
             // Visibility only scales a nonzero contribution, as the deferred pass skips lights behind it.
             // Shadow visibility is not used by derivatives. Helper lanes only
             // support neighboring material samples and never contribute color.
-            if (!gl_HelperInvocation && any(greaterThan(direct, vec3(0.0))))
+            if (!gl_HelperInvocation && lit)
             {
-                bool traced  = i < int(sceneUbo.lightInfo.x) && ((receiverVisibility.x >> uint(i)) & 1u) != 0u;
-                direct      *= traced ? float((receiverVisibility.y >> uint(i)) & 1u)
-                                      : SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos,
-                                                             shadowNormal);
+                bool traced = i < int(sceneUbo.lightInfo.x) && ((receiverVisibility.x >> uint(i)) & 1u) != 0u;
+                visibility  = traced ? float((receiverVisibility.y >> uint(i)) & 1u)
+                                     : SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, inWorldPos,
+                                                            shadowNormal);
             }
 #endif
-            color += direct;
+            direct *= visibility;
+            color  += direct;
 #ifdef LIGHTING_CAPTURE
-            capturedDirect += direct;
+            capturedDirect           += direct;
+            capturedDirectIrradiance += radiance * max(dot(N, L), 0.0) * visibility / M_PI;
 #endif
         }
         if (max(max(s.multiscatterColor.r, s.multiscatterColor.g), s.multiscatterColor.b) > 0.0 && s.diffuseTransmission > 0.0)
@@ -430,6 +440,10 @@ void main()
         components[index + 4] = vec4(capturedEmission, 1);
         components[index + 5] = vec4(capturedSky, 1);
         components[index + 6] = vec4(capturedBounce, 1);
+        // Unmaterialed terms, as deferred_lighting.glsl records them.
+        components[index + 7] = vec4(capturedDirectIrradiance, 1);
+        components[index + 8] = vec4(captureDiffuseEscaped, 1);
+        components[index + 9] = vec4(captureDiffuseBounced, 1);
     }
 #endif
     // Unlit base colors are display-referred. Encode the inverse tone curve so

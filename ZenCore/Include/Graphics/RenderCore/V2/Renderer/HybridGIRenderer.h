@@ -65,6 +65,12 @@ public:
     {
         m_captureOutput   = output;
         m_captureReadback = readback;
+        m_captureRecorded = false;
+    }
+    // Whether the last submitted frame wrote and read back the hybrid capture.
+    bool WasCaptureRecorded() const
+    {
+        return m_captureRecorded;
     }
     // Diagnostic variants only. The caller retains both buffers through GPU completion.
     static uint64_t GetRayCountCaptureBytes(uint32_t width, uint32_t height);
@@ -149,6 +155,7 @@ private:
     RHISampler*       m_sampler{nullptr};
     RHIBuffer*        m_captureOutput{nullptr};
     RHIBuffer*        m_captureReadback{nullptr};
+    bool              m_captureRecorded{false};
     RHIBuffer*        m_rayCountOutput{nullptr};
     RHIBuffer*        m_rayCountReadback{nullptr};
     bool              m_rayCountsRecorded{false};

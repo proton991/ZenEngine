@@ -377,6 +377,10 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
         valid               = (data.normalEncoding[slot] == 1) == xyNormal;
     }
 
+    if (valid)
+    {
+        StoreNormalMapBindings(material, sourceData, data);
+    }
     if (valid && std::memcmp(&m_materialsData[material], &data, sizeof(data)) != 0)
     {
         const sg::MaterialData& previous = m_materialsData[material];

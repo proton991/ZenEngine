@@ -93,6 +93,7 @@ public:
     bool AdvanceAnimation(float elapsedSeconds);
 
     bool SetMaterialVariant(int32_t variant);
+    void SetNormalMapsEnabled(bool enabled);
 
     // Scene storage buffers are the newest generation of their FrameBufferRing.
     RHIBuffer* GetUVBuffer() const;
@@ -302,6 +303,19 @@ public:
     }
 
 private:
+    bool m_normalMapsEnabled{true};
+    // The base and clearcoat normal textures of each material's last source data. Uploaded data
+    // drops them while normal maps are disabled; UpdateMaterial callers need not be scene materials.
+    struct NormalMapBindings
+    {
+        int32_t base{-1};
+        float   clearcoat{-1};
+    };
+    HeapVector<NormalMapBindings> m_normalMapBindings;
+    // Records the source bindings and applies the normal-map setting. Every write of uploaded
+    // material data from source data goes through here.
+    void StoreNormalMapBindings(size_t material, const sg::MaterialData& source, sg::MaterialData& uploaded);
+    void ApplyNormalMapBindings(size_t material, sg::MaterialData& uploaded) const;
     void RefreshTransparency();
     bool IsNearlyBinaryTexture(uint32_t texture, const sg::TextureTransformData& transform);
 

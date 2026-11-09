@@ -172,12 +172,15 @@ void RenderScene::LoadSceneMaterials()
     const zen::HeapVector<sg::Material*> sgMaterials = m_pScene->GetComponents<sg::Material>();
 
     m_materialsData.clear();
+    m_normalMapBindings.clear();
 
     m_materialsData.reserve(sgMaterials.size());
+    m_normalMapBindings.resize(sgMaterials.size());
 
     for (const sg::Material* pMat : sgMaterials)
     {
         m_materialsData.emplace_back(pMat->data);
+        StoreNormalMapBindings(m_materialsData.size() - 1, pMat->data, m_materialsData.back());
         m_materialsData.back().textureSampling = m_pRenderDevice->GetTextureSamplingParameters();
 
         const double attenuationDistance       = static_cast<double>(pMat->data.volumeIridescence.y) * m_sceneUnitScale;
@@ -663,6 +666,34 @@ bool RenderScene::SetMaterialVariant(int32_t variant)
     }
 
     return valid;
+}
+
+void RenderScene::StoreNormalMapBindings(size_t material, const sg::MaterialData& source, sg::MaterialData& uploaded)
+{
+    m_normalMapBindings[material] = {source.normalTexIndex, source.featureTextures[6].properties.x};
+    ApplyNormalMapBindings(material, uploaded);
+}
+
+void RenderScene::ApplyNormalMapBindings(size_t material, sg::MaterialData& uploaded) const
+{
+    uploaded.normalTexIndex                  = m_normalMapsEnabled ? m_normalMapBindings[material].base : -1;
+    uploaded.featureTextures[6].properties.x = m_normalMapsEnabled ? m_normalMapBindings[material].clearcoat : -1.0f;
+}
+
+void RenderScene::SetNormalMapsEnabled(bool enabled)
+{
+    if (m_normalMapsEnabled != enabled)
+    {
+        m_normalMapsEnabled = enabled;
+        for (size_t index = 0; index < m_materialsData.size(); ++index)
+        {
+            ApplyNormalMapBindings(index, m_materialsData[index]);
+        }
+        m_materialsDirty = true;
+        m_materialBuffers.MarkDirty(0, static_cast<uint32_t>(m_materialsData.size() * sizeof(sg::MaterialData)));
+        m_dirtyClasses        |= GI_ALL;
+        m_dirtySurfaceClasses |= GI_ALL;
+    }
 }
 
 const sg::Camera* RenderScene::GetCamera() const

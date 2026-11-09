@@ -64,6 +64,17 @@ def setup_mitsuba(backend='cuda'):
     return mi
 
 
+def texture_uv(texture, attributes, accessor, count):
+    """A texture binding's coordinates after KHR_texture_transform; zeros without a texture."""
+    if not texture:
+        return np.zeros((count, 2))
+    transform = texture.get('extensions', {}).get('KHR_texture_transform', {})
+    channel = transform.get('texCoord', texture.get('texCoord', 0))
+    uv = accessor(attributes[f'TEXCOORD_{channel}'])
+    c, s = np.cos(transform.get('rotation', 0)), np.sin(transform.get('rotation', 0))
+    return (uv * transform.get('scale', [1, 1])) @ np.array([[c, s], [-s, c]]) + transform.get('offset', [0, 0])
+
+
 def load_gltf_primitives(path, material_inputs=False):
     """Primitives in the renderer's normalized world space: positions, normals, alpha UVs, faces, material."""
     path = Path(path)
@@ -149,12 +160,7 @@ def load_gltf_primitives(path, material_inputs=False):
                         vertex_alpha = colors[:, 3] if colors.shape[1] == 4 else vertex_alpha
                         if material_inputs:
                             vertex_color = colors[:, :3]
-                    if texture:
-                        transform = texture.get('extensions', {}).get('KHR_texture_transform', {})
-                        channel = transform.get('texCoord', texture.get('texCoord', 0))
-                        uv = accessor(attributes[f'TEXCOORD_{channel}'])
-                        c, s = np.cos(transform.get('rotation', 0)), np.sin(transform.get('rotation', 0))
-                        uv = (uv * transform.get('scale', [1, 1])) @ np.array([[c, s], [-s, c]]) + transform.get('offset', [0, 0])
+                    uv = texture_uv(texture, attributes, accessor, len(positions))
                 primitives.append(dict(positions=positions, normals=normals, uv=uv, faces=faces,
                                        material=-1 if material_index is None else material_index,
                                        double_sided=bool(material.get('doubleSided', False)), masked=masked,
@@ -163,6 +169,8 @@ def load_gltf_primitives(path, material_inputs=False):
                                        alpha=pbr.get('baseColorFactor', [1, 1, 1, 1])[3], texture=texture))
                 if material_inputs:
                     primitives[-1]['vertex_color'] = vertex_color
+                    primitives[-1]['metal_uv'] = texture_uv(pbr.get('metallicRoughnessTexture'), attributes, accessor,
+                                                            len(positions))
         for child in node.get('children', []):
             visit(child, world)
 
@@ -266,6 +274,9 @@ def build_scene(mi, primitives, alpha_image, environment, resolution=2048):
             mesh.add_attribute('vertex_color', 3, p['vertex_color'].astype(np.float32).ravel())
         elif 'vertex_color' in p:
             mesh.add_attribute('vertex_color', 3, np.ones(len(p['positions']) * 3, np.float32))
+        if 'metal_uv' in p:
+            mesh.add_attribute('vertex_metal_uv', 3,
+                               np.c_[p['metal_uv'], np.zeros(len(p['positions']))].astype(np.float32).ravel())
         shapes[f'primitive_{index}'] = mesh
     shapes['type'] = 'scene'
     scene = mi.load_dict(shapes)
@@ -325,7 +336,7 @@ def camera_rays(metadata, capture):
     return eye, directions.reshape(height, width, 3)
 
 
-def primary_hits(mi, dr, scene, eye, directions, max_layers=64, origins=None):
+def primary_hits(mi, dr, scene, eye, directions, max_layers=64, origins=None, return_interaction=False):
     """Receiver-equivalent primary hits: skip culled back faces, masked texels and non-receiver layers."""
     count = len(directions)
     origin = (mi.Point3f(*[mi.Float(np.full(count, c, np.float32)) for c in eye]) if origins is None else
@@ -354,7 +365,8 @@ def primary_hits(mi, dr, scene, eye, directions, max_layers=64, origins=None):
     n_s = dr.select(toward, si.sh_frame.n, -si.sh_frame.n)
     valid = np.array(si.is_valid())
     primitive = np.array(si.shape.eval_attribute_1(PRIMITIVE_ATTRIBUTE, si, si.is_valid())).round().astype(np.int32)
-    return valid, np.array(si.p).T, np.array(n_g).T, np.array(n_s).T, primitive
+    result = valid, np.array(si.p).T, np.array(n_g).T, np.array(n_s).T, primitive
+    return (*result, si) if return_interaction else result
 
 
 def continue_ray(mi, interaction, direction):
