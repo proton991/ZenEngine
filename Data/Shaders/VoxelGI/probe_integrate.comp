@@ -2,7 +2,8 @@
 #extension GL_GOOGLE_include_directive : require
 #include "probe_integrate.glsl"
 layout(local_size_x = 8, local_size_y = 8) in;
-layout(set = 7, binding = 4, rgba16f) uniform writeonly image2D probeRawSky;
+// Float32: the residual is recovered by subtracting the source sky, which is often much brighter.
+layout(set = 7, binding = 4, rgba32f) uniform writeonly image2D probeRawSky;
 layout(set = 7, binding = 5, rgba16f) uniform writeonly image2D probeRawBounce;
 
 void main()

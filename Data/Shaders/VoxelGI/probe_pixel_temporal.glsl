@@ -3,7 +3,8 @@
 #    include "probe_integrate.glsl"
 #    include "probe_specular_resolve.glsl"
 
-// Preserve the rgba16f store/load boundary of the separate reconstruction passes.
+// Preserve the rgba16f store/load boundary of the separate reconstruction passes. Raw sky is
+// rgba32f there (probe_integrate.comp), so only bounce and specular are rounded.
 vec4 ProbeRoundToHalf(vec4 value)
 {
     return vec4(unpackHalf2x16(packHalf2x16(value.xy)), unpackHalf2x16(packHalf2x16(value.zw)));
@@ -11,6 +12,7 @@ vec4 ProbeRoundToHalf(vec4 value)
 #endif
 layout(local_size_x = 8, local_size_y = 8) in;
 #ifndef PROBE_FUSED_RECONSTRUCTION
+layout(set = 7, binding = 30) uniform sampler2D probeSourceSky;
 layout(set = 7, binding = 4) uniform sampler2D probeRawSky;
 layout(set = 7, binding = 5) uniform sampler2D probeRawBounce;
 layout(set = 7, binding = 8) uniform sampler2D probeRawSpecular;
@@ -21,12 +23,17 @@ layout(set = 7, binding = 11) uniform sampler2D previousProbeSpecular;
 layout(set = 7, binding = 12) uniform sampler2D previousProbePosition;
 layout(set = 7, binding = 13) uniform usampler2D previousProbeSurface;
 layout(set = 7, binding = 14) uniform sampler2D previousProbeNormalRoughness;
-layout(set = 7, binding = 15, rgba16f) uniform writeonly image2D nextProbeSky;
+// Float32: the residual history is the stored sky minus the source history, and a half-float
+// sum loses most of the residual's precision on receivers lit by a much brighter source.
+layout(set = 7, binding = 15, rgba32f) uniform writeonly image2D nextProbeSky;
 layout(set = 7, binding = 16, rgba16f) uniform writeonly image2D nextProbeBounce;
 layout(set = 7, binding = 17, rgba16f) uniform writeonly image2D nextProbeSpecular;
 layout(set = 7, binding = 18, rgba32f) uniform writeonly image2D nextProbePosition;
 layout(set = 7, binding = 19, rg32ui) uniform writeonly uimage2D nextProbeSurface;
 layout(set = 7, binding = 20, rgba16f) uniform writeonly image2D nextProbeNormalRoughness;
+layout(set = 7, binding = 31) uniform sampler2D previousProbeSourceSky;
+// Float32 avoids half-float EMA stagnation when a 1/64 update is smaller than one stored ULP.
+layout(set = 7, binding = 32, rgba32f) uniform writeonly image2D nextProbeSourceSky;
 
 void main()
 {
@@ -34,6 +41,7 @@ void main()
     if (HybridInView(pixel))
     {
         vec4          sky                    = vec4(0);
+        vec4          sourceSky              = vec4(0);
         vec4          bounce                 = vec4(0);
         vec4          specular               = vec4(0, 0, 0, 1);
         vec4          positionHistory        = vec4(0);
@@ -51,7 +59,6 @@ void main()
             // Reconstruct before fetching history so its accumulators are not live across the gather.
 #ifdef PROBE_FUSED_RECONSTRUCTION
             ProbeIntegratePixel(pixel, receiver, sky, bounce);
-            sky      = ProbeRoundToHalf(sky);
             bounce   = ProbeRoundToHalf(bounce);
             specular = ProbeRoundToHalf(ProbeResolveSpecular(pixel, receiver));
 #else
@@ -59,12 +66,19 @@ void main()
             bounce   = texelFetch(probeRawBounce, pixel, 0);
             specular = texelFetch(probeRawSpecular, pixel, 0);
 #endif
-            vec4  motion        = texelFetch(receiverMotion, pixel, 0);
-            vec2  previousPixel = vec2(pixel) + motion.xy * 0.5 * vec2(textureSize(receiverDepth, 0));
-            ivec2 base          = ivec2(floor(previousPixel));
-            vec2  fraction      = fract(previousPixel);
+            // The public sky texture includes sources. Accumulate its probe residual separately
+            // so two source rays can use a longer history without lengthening bounce/contact reuse.
+            vec4 rawSource       = texelFetch(probeSourceSky, pixel, 0);
+            bool sourceSample    = rawSource.a >= 0.0;
+            sourceSky            = sourceSample ? vec4(rawSource.rgb, 1) : vec4(0);
+            sky.rgb             -= rawSource.rgb;
+            vec4  motion         = texelFetch(receiverMotion, pixel, 0);
+            vec2  previousPixel  = vec2(pixel) + motion.xy * 0.5 * vec2(textureSize(receiverDepth, 0));
+            ivec2 base           = ivec2(floor(previousPixel));
+            vec2  fraction       = fract(previousPixel);
             vec4  oldSky = vec4(0), oldBounce = vec4(0), oldSpecular = vec4(0);
-            float diffuseWeight = 0.0, specularWeight = 0.0;
+            vec4  oldSourceSky  = vec4(0);
+            float diffuseWeight = 0.0, specularWeight = 0.0, sourceWeight = 0.0;
             float oldSkyLength = 0.0, oldSpecularLength = 0.0;
             bool  historyValid = probe.grid.w != 0u && hybrid.sampling.w != 0u && hybrid.rejection.z > 0.0 && motion.z > 0.0;
             if (historyValid)
@@ -89,7 +103,13 @@ void main()
                             {
                                 float weight =
                                     (x == 0 ? 1.0 - fraction.x : fraction.x) * (y == 0 ? 1.0 - fraction.y : fraction.y);
-                                oldSky            += texelFetch(previousProbeSky, previous, 0) * weight;
+                                vec4 previousSource = texelFetch(previousProbeSourceSky, previous, 0);
+                                oldSky += (texelFetch(previousProbeSky, previous, 0) - vec4(previousSource.rgb, 0)) * weight;
+                                // Neighbours without source history (length zero) store no source
+                                // radiance; averaging them in would darken the reused source.
+                                float sourceShare  = previousSource.a > 0.0 ? weight : 0.0;
+                                oldSourceSky      += previousSource * sourceShare;
+                                sourceWeight      += sourceShare;
                                 oldBounce         += texelFetch(previousProbeBounce, previous, 0) * weight;
                                 oldSkyLength      += oldPosition.w * weight;
                                 diffuseWeight     += weight;
@@ -126,8 +146,16 @@ void main()
             {
                 oldSky    /= diffuseWeight;
                 oldBounce /= diffuseWeight;
-                skyLength  = min(oldSkyLength / diffuseWeight + (diffuseSample ? 1.0 : 0.0), diffuseLimit);
-                sky        = diffuseSample ? mix(oldSky, sky, 1.0 / skyLength) : oldSky;
+                if (sourceWeight >= 0.01)
+                {
+                    oldSourceSky       /= sourceWeight;
+                    float sourceLimit   = max(1.0, min(probe.parameters.y, probe.parameters.z > 0.5 ? 2.0 : 64.0));
+                    float sourceLength  = min(oldSourceSky.a + (sourceSample ? 1.0 : 0.0), sourceLimit);
+                    sourceSky = vec4(sourceSample ? mix(oldSourceSky.rgb, sourceSky.rgb, 1.0 / sourceLength) : oldSourceSky.rgb,
+                                     sourceLength);
+                }
+                skyLength = min(oldSkyLength / diffuseWeight + (diffuseSample ? 1.0 : 0.0), diffuseLimit);
+                sky       = diffuseSample ? mix(oldSky, sky, 1.0 / skyLength) : oldSky;
                 if (!diffuseSample && hybrid.bounce.x != 0u && hybrid.bounce.y != 0u)
                 {
                     bounce = oldBounce;
@@ -178,13 +206,14 @@ void main()
             {
                 specular.rgb = vec3(0);
             }
-            sky                    = vec4(max(sky.rgb, vec3(0)), clamp(sky.a, 0.0, 1.0));
+            sky                    = vec4(max(sky.rgb + sourceSky.rgb, vec3(0)), clamp(sky.a, 0.0, 1.0));
             bounce.rgb             = max(bounce.rgb, vec3(0));
             specular               = vec4(max(specular.rgb, vec3(0)), clamp(specular.a, 0.0, 1.0));
             positionHistory        = vec4(position, skyLength);
             normalRoughnessHistory = vec4(EncodeGBufferNormal(normal), roughness, specularLength);
         }
         imageStore(nextProbeSky, pixel, sky);
+        imageStore(nextProbeSourceSky, pixel, sourceSky);
         imageStore(nextProbeBounce, pixel, bounce);
         imageStore(nextProbeSpecular, pixel, specular);
         imageStore(nextProbePosition, pixel, positionHistory);

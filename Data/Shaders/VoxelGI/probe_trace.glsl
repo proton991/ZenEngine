@@ -1,5 +1,6 @@
 #include "probe_common.glsl"
 #include "probe_ray.glsl"
+#include "environment_sampling.glsl"
 layout(local_size_x = 64) in;
 // Uniform placements (probe_place.comp), then the frame's adaptive ones (probe_adaptive.comp).
 layout(std430, set = 7, binding = 21) readonly buffer ProbePlacements
@@ -77,6 +78,36 @@ vec4 ProbeBounce(HybridRayResult hit, vec3 direction)
     return bounce;
 }
 
+// Split the existing 64-ray budget between residual-environment importance sampling and a
+// uniform hemisphere. The uniform share retains support for bounce, visibility
+// and every SH coefficient, including grazing directions. Both proposals use the
+// same mixture PDF; environment directions below the hemisphere contribute zero.
+vec3 ProbeRayDirection(vec4 screen, vec3 normal, uint lane, uint batch, out float pdf, out bool source)
+{
+    bool  importance  = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y > 0.0
+                     && environmentResidualRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS] > 0.0;
+    uint  sampleIndex = importance ? lane % 32u : lane;
+    vec2  jitter      = HybridSample(uvec2(screen.xy), hybrid.sampling.x, 0x48454d49u + lane + 64u * batch);
+    vec2  u           = (vec2(sampleIndex & 7u, sampleIndex >> 3u) + jitter) / vec2(8.0, importance ? 4.0 : 8.0);
+    vec3  direction;
+    float environmentPDF = 0.0;
+    if (importance && lane < 32u)
+    {
+        direction = SampleEnvironmentDistribution(u, true, environmentPDF);
+        source    = false;
+    }
+    else
+    {
+        float sine     = sqrt(max(1.0 - u.y * u.y, 0.0));
+        float phi      = 2.0 * HYBRID_PI * u.x;
+        direction      = HybridBasis(normal) * vec3(sine * cos(phi), sine * sin(phi), u.y);
+        environmentPDF = EnvironmentResidualPDF(direction, source);
+    }
+    float uniformPDF = dot(normal, direction) > 0.0 ? 1.0 / (2.0 * HYBRID_PI) : 0.0;
+    pdf              = importance ? 0.5 * (environmentPDF + uniformPDF) : uniformPDF;
+    return direction;
+}
+
 void main()
 {
     uint lane = gl_LocalInvocationIndex;
@@ -111,23 +142,31 @@ void main()
         }
         for (uint batch = 0u; batch < batches; ++batch)
         {
-            vec4            sky       = vec4(0);
-            vec3            direction = ProbeRayDirection(probeChosen.screen, normal, lane, batch);
-            HybridRayResult skyHit =
-                ProbeTraceFeature(SKY_PROVIDER, origin, normal, direction, hybrid.bounce.x != 0u && sharedProvider);
+            vec4            sky = vec4(0);
+            float           pdf;
+            bool            source;
+            vec3            direction = ProbeRayDirection(probeChosen.screen, normal, lane, batch, pdf, source);
+            bool            inDomain  = dot(normal, direction) > 0.0 && pdf > 0.0;
+            HybridRayResult skyHit    = HybridRayResult(false, origin, vec3(0), ivec3(-1), true);
+            if (inDomain)
+            {
+                skyHit = ProbeTraceFeature(SKY_PROVIDER, origin, normal, direction, hybrid.bounce.x != 0u && sharedProvider);
+            }
             HybridRayResult bounceHit = skyHit;
-            if (hybrid.bounce.x != 0u && !sharedProvider)
+            if (inDomain && hybrid.bounce.x != 0u && !sharedProvider)
             {
                 bounceHit = ProbeTraceFeature(BOUNCE_PROVIDER, origin, normal, direction, true);
             }
-            if (skyHit.valid && !skyHit.hit)
+            if (inDomain && skyHit.valid && !skyHit.hit)
             {
-                sky = vec4(ProbeEnvironment(direction), 1);
+                // Source tiles have per-pixel visibility (ProbeSkySources). Keep full-hemisphere
+                // visibility in alpha, but do not count their radiance in the probes as well.
+                sky = vec4(source ? vec3(0) : ProbeEnvironment(direction), 1);
             }
-            vec4 bounce = hybrid.bounce.x != 0u ? ProbeBounce(bounceHit, direction) : vec4(0);
-            vec4 basis  = ProbeSHBasis(direction) * (2.0 * HYBRID_PI / 64.0);
-            // Uniform hemisphere samples: irradiance / pi = 2 * mean(L cos).
-            float cosine    = 2.0 / 64.0 * max(dot(direction, normal), 0.0);
+            vec4  bounce    = hybrid.bounce.x != 0u ? ProbeBounce(bounceHit, direction) : vec4(0);
+            float weight    = inDomain ? 1.0 / (64.0 * pdf) : 0.0;
+            vec4  basis     = ProbeSHBasis(direction) * weight;
+            float cosine    = weight * max(dot(direction, normal), 0.0) / HYBRID_PI;
             vec2  included  = vec2(skyHit.valid ? 1.0 : 0.0, bounceHit.valid ? 1.0 : 0.0);
             validSamples   += uvec2(included);
             for (uint coefficient = 0u; coefficient < 4u; ++coefficient)

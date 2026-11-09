@@ -445,6 +445,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                             {"ProbeAllocateCountSP", "VoxelGI/probe_allocate_count.comp.spv"},
                                             {"ProbeAllocateSP", "VoxelGI/probe_allocate.comp.spv"},
                                             {"ProbeTraceFieldSP", "VoxelGI/probe_trace_field.comp.spv"},
+                                            {"ProbeSkySourcesFieldSP", "VoxelGI/probe_sky_sources_field.comp.spv"},
                                             {"ProbeTemporalSP", "VoxelGI/probe_temporal.comp.spv"},
                                             {"ProbeFilterSP", "VoxelGI/probe_filter.comp.spv"},
                                             {"ProbeIntegrateSP", "VoxelGI/probe_integrate.comp.spv"},
@@ -471,6 +472,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         const char* const hardwareProbePrograms[][2] = {
             {"ProbeTraceHardwareSP", "VoxelGI/probe_trace_hardware.comp.spv"},
             {"ProbeTraceHardwareFieldSP", "VoxelGI/probe_trace_hardware_field.comp.spv"},
+            {"ProbeSkySourcesHardwareSP", "VoxelGI/probe_sky_sources_hardware.comp.spv"},
+            {"ProbeSkySourcesHardwareFieldSP", "VoxelGI/probe_sky_sources_hardware_field.comp.spv"},
             {"ProbeSpecularTraceHardwareSP", "VoxelGI/probe_specular_trace_hardware.comp.spv"},
             {"ProbeSpecularTraceHardwareFieldSP", "VoxelGI/probe_specular_trace_hardware_field.comp.spv"}};
         for (const char* const* program : hardwareProbePrograms)

@@ -1,4 +1,5 @@
 #include "probe_pixel.glsl"
+layout(set = 7, binding = 30) uniform sampler2D probeSourceSky;
 layout(std430, set = 7, binding = 2) readonly buffer ProbeInput
 {
     ProbeRecord probeInput[];
@@ -87,13 +88,18 @@ void ProbeIntegratePixel(ivec2 pixel, ProbeReceiver receiver, out vec4 rawSky, o
     sum.bounce /= max(sum.weight, 1e-8);
     if (receiver.valid)
     {
-        // Contact occlusion closer than a probe tile, applied to all indirect diffuse light.
+        // Contact occlusion closer than a probe tile, applied to probe-reconstructed diffuse light.
+        // Bright sources have receiver visibility already and are added afterwards.
         float contact   = ProbeContactVisibility(pixel, receiver.position, receiver.geometric, footprint);
         sum.sky        *= contact;
         sum.bounce.rgb *= contact;
     }
-    // Alpha -1 is missing data, distinct from a valid fully occluded sample.
-    bool missing = receiver.valid && sum.weight == 0.0;
-    rawSky       = vec4(max(sum.sky.rgb, vec3(0)), missing ? -1.0 : clamp(sum.sky.a, 0.0, 1.0));
-    rawBounce    = vec4(max(sum.bounce.rgb, vec3(0)), missing ? -1.0 : clamp(sum.bounce.a, 0.0, 1.0));
+    // Alpha -1 is missing data, distinct from a valid fully occluded sample. A missing source
+    // sample only skips the source history (probe_pixel_temporal.glsl); the probe residual
+    // remains a valid observation.
+    vec4 source   = texelFetch(probeSourceSky, pixel, 0);
+    sum.sky.rgb  += source.rgb;
+    bool missing  = receiver.valid && sum.weight == 0.0;
+    rawSky        = vec4(max(sum.sky.rgb, vec3(0)), missing ? -1.0 : clamp(sum.sky.a, 0.0, 1.0));
+    rawBounce     = vec4(max(sum.bounce.rgb, vec3(0)), missing ? -1.0 : clamp(sum.bounce.a, 0.0, 1.0));
 }

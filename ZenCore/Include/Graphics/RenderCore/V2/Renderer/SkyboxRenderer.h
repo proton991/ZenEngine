@@ -80,8 +80,10 @@ private:
         uint32_t  numSamples = 32u;
     };
 
-    const DataFormat cIrradianceFormat             = DataFormat::eR32G32B32A32SFloat;
-    const DataFormat cPrefilteredFormat            = DataFormat::eR16G16B16A16SFloat;
+    const DataFormat cIrradianceFormat = DataFormat::eR32G32B32A32SFloat;
+    // GI reads level zero directly. HDR sun texels can exceed half-float range;
+    // clipping them here loses energy in both sky lighting and secondary bounce.
+    const DataFormat cPrefilteredFormat            = DataFormat::eR32G32B32A32SFloat;
 
     const HeapVector<SkyboxVertex> cSkyboxVertices = {
         {Vec3(-1.0f, 1.0f, -1.0f)}, // Front face

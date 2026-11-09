@@ -244,18 +244,6 @@ float ProbeContactVisibility(ivec2 pixel, vec3 position, vec3 geometric, float f
     return clamp(1.0 - occluded / 8.0, 0.0, 1.0);
 }
 
-// A probe's stratified uniform-hemisphere direction for one lane (stratum) and ray batch; each batch
-// jitters its strata anew, seeded by the probe's pixel and the frame.
-vec3 ProbeRayDirection(vec4 screen, vec3 normal, uint lane, uint batch)
-{
-    vec2  jitter  = HybridSample(uvec2(screen.xy), hybrid.sampling.x, 0x48454d49u + lane + 64u * batch);
-    vec2  stratum = (vec2(lane & 7u, lane >> 3u) + jitter) / 8.0;
-    float cosine  = stratum.y;
-    float sine    = sqrt(max(1.0 - cosine * cosine, 0.0));
-    float phi     = 2.0 * HYBRID_PI * stratum.x;
-    return HybridBasis(normal) * vec3(sine * cos(phi), sine * sin(phi), cosine);
-}
-
 // Screen falloff of a probe's interpolation weight, in probe spacings.
 float ProbeScreenWeight(vec2 probePixel, vec2 pixel, float sharpness)
 {

@@ -14,6 +14,7 @@ layout(set = 7, binding = 11) uniform sampler2D nextProbeSpecular;
 layout(set = 7, binding = 12) uniform sampler2D nextProbePosition;
 layout(set = 7, binding = 13) uniform usampler2D nextProbeSurface;
 layout(set = 7, binding = 14) uniform sampler2D nextProbeNormalRoughness;
+layout(set = 7, binding = 31) uniform sampler2D nextProbeSourceSky;
 layout(set = 4, binding = 0, std430) writeonly buffer HybridCapture
 {
     vec4 diagnostics[];
@@ -40,7 +41,7 @@ void main()
         diagnostics[index + 5] = texelFetch(nextProbeSpecular, p, 0);
         // Probe reconstruction has no pixel variance moments or pixel rejection reason.
         diagnostics[index + 6]  = vec4(0);
-        diagnostics[index + 7]  = vec4(skyLength, specularLength, 0, bounce.a);
+        diagnostics[index + 7]  = vec4(skyLength, specularLength, texelFetch(nextProbeSourceSky, p, 0).a, bounce.a);
         diagnostics[index + 8]  = vec4(position, valid ? 1.0 : 0.0);
         diagnostics[index + 9]  = vec4(n, texelFetch(receiverRoughness, p, 0).g);
         diagnostics[index + 10] = vec4(ng, texelFetch(receiverDepth, p, 0).r);

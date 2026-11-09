@@ -79,6 +79,7 @@ private:
         Position,
         Surface,
         NormalRoughness,
+        SourceSky,
         Count
     };
     void BindInputs(RDGPassDescBase&           pass,

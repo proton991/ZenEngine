@@ -32,10 +32,13 @@ constexpr uint32_t kShrinkFrames = 240u;
 constexpr uint32_t kMaxHistoryFrames = 1u << 20;
 // probe_specular_filter.comp passes at block steps 1, 2, 4 and 8, as registered in ShaderProgram.cpp.
 constexpr uint32_t kSpecularFilterPasses = 4u;
-const char* const  kHistoryNames[]       = {"Sky", "Bounce", "Specular", "Position", "Surface", "NormalRoughness"};
-const DataFormat   kHistoryFormats[]     = {DataFormat::eR16G16B16A16SFloat, DataFormat::eR16G16B16A16SFloat,
-                                            DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat,
-                                            DataFormat::eR32G32UInt,         DataFormat::eR16G16B16A16SFloat};
+const char* const  kHistoryNames[]       = {"Sky", "Bounce", "Specular", "Position", "Surface", "NormalRoughness", "SourceSky"};
+// Sky and SourceSky are float32: the sky residual is the stored sky minus the source history, which
+// is often far brighter, and the source history takes updates below one half-float ULP.
+const DataFormat kHistoryFormats[] = {DataFormat::eR32G32B32A32SFloat, DataFormat::eR16G16B16A16SFloat,
+                                      DataFormat::eR16G16B16A16SFloat, DataFormat::eR32G32B32A32SFloat,
+                                      DataFormat::eR32G32UInt,         DataFormat::eR16G16B16A16SFloat,
+                                      DataFormat::eR32G32B32A32SFloat};
 
 // Variants without Field trace HW RT only; Compute features trace the distance field.
 NameID ProbeTraceProgram(const char* base, bool hardware, bool field)
@@ -411,6 +414,7 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     trace.SetPassTag("ProbeTrace");
     BindInputs(trace, sampler, uniforms, scene);
     BindTraceInputs(trace, voxelGI, hardware);
+    voxelGI.BindEnvironmentSamplingInputs(trace);
     trace.BindStorageBuffer("ProbePlacements", placements);
     trace.BindStorageBuffer("ProbeAdaptivePlacements", adaptivePlacements, RDGContentGuarantee::eConsumeProducedElements);
     trace.BindStorageBuffer("ProbeCounters", counters);
@@ -456,12 +460,25 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     desc.texFormat.height    = m_extent.y;
     desc.texFormat.format    = DataFormat::eR16G16B16A16SFloat;
     desc.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
-    desc.name     = "probe_raw_sky";
-    m_rawSky      = resources->CreateTexture(desc);
-    desc.name     = "probe_raw_bounce";
-    m_rawBounce   = resources->CreateTexture(desc);
-    desc.name     = "probe_raw_specular";
-    m_rawSpecular = resources->CreateTexture(desc);
+    desc.name                    = "probe_source_sky";
+    const RDGTexture   sourceSky = resources->CreateTexture(desc);
+    RDGComputePassDesc sources;
+    sources.SetShaderProgramName(ProbeTraceProgram("ProbeSkySources", hardware, field));
+    sources.SetPassTag("ProbeSkySources");
+    BindInputs(sources, sampler, uniforms, scene);
+    BindTraceInputs(sources, voxelGI, hardware);
+    voxelGI.BindEnvironmentSamplingInputs(sources);
+    sources.BindStorageImage("probeSourceSky", sourceSky, RDGContentGuarantee::eFullWrite);
+    Dispatch(std::move(sources), pixelGroups);
+    // Float32, like the sky history: reconstruction subtracts the source sky from this sum.
+    desc.name             = "probe_raw_sky";
+    desc.texFormat.format = DataFormat::eR32G32B32A32SFloat;
+    m_rawSky              = resources->CreateTexture(desc);
+    desc.texFormat.format = DataFormat::eR16G16B16A16SFloat;
+    desc.name             = "probe_raw_bounce";
+    m_rawBounce           = resources->CreateTexture(desc);
+    desc.name             = "probe_raw_specular";
+    m_rawSpecular         = resources->CreateTexture(desc);
     // Raw reconstruction is only consumed by captures/debug views. Normal rendering uses
     // ProbeReconstruct below, so RDG culls these passes and their full-resolution textures.
     RDGComputePassDesc integrate;
@@ -469,6 +486,7 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     integrate.SetPassTag("ProbeIntegrate");
     integrate.allowCulling = true;
     BindInputs(integrate, sampler, uniforms, scene);
+    integrate.BindSampledTexture("probeSourceSky", sampler, sourceSky);
     integrate.BindStorageBuffer("ProbeInput", integratedProbes);
     integrate.BindStorageBuffer("ProbeSubtiles", m_subtiles[m_current]);
     integrate.BindStorageImage("probeRawSky", m_rawSky, RDGContentGuarantee::eFullWrite);
@@ -535,6 +553,7 @@ void ScreenProbeGather::BuildRenderGraph(VoxelGIRenderer&           voxelGI,
     pixelTemporal.SetPassTag("ProbeReconstruct");
     pixelTemporal.allowCulling = false;
     BindInputs(pixelTemporal, sampler, uniforms, scene);
+    pixelTemporal.BindSampledTexture("probeSourceSky", sampler, sourceSky);
     pixelTemporal.BindStorageBuffer("ProbeInput", integratedProbes);
     pixelTemporal.BindStorageBuffer("ProbeSubtiles", m_subtiles[m_current]);
     pixelTemporal.BindSampledTexture("rawProbeSpecular", sampler, specularSamples);
