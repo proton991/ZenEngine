@@ -106,6 +106,14 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
     }
     vec3 normal  = RayHitNormal(hit, material, weights);
     vec3 diffuse = vec3(0);
+    // Lights without a visibility query are summed exactly. Lights that need one share a single
+    // RT shadow query: a weighted reservoir picks one in proportion to its unshadowed luminance,
+    // and its visible contribution is divided by that probability. The estimate is unbiased,
+    // costs one query whatever the light count, and is exact when a single light reaches the hit.
+    uint  stream         = HybridHash(seed ^ 0x2c1b3c6du);
+    float shadowedWeight = 0.0, chosenWeight = 0.0;
+    int   chosen         = -1;
+    vec3  chosenRadiance = vec3(0);
     for (int i = 0; i < (int(sceneUbo.lightInfo.x) + 1) * int(gi.lighting.x); ++i)
     {
         SceneLight light = i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i];
@@ -115,11 +123,29 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
         float      cosine   = max(dot(normal, direction), 0.0);
         if (cosine > 0.0 && dot(hit.normal, direction) > 0.0 && any(greaterThan(incoming, vec3(0))))
         {
-            float visibility  = gi.limits.z > 0.5 && (i == int(sceneUbo.lightInfo.x) || light.coneShadow.z > 0.0)
-                                  ? HardwareLightVisibility(hit.position, hit.normal, light)
-                                  : 1.0;
-            diffuse          += incoming * cosine * visibility / HYBRID_PI;
+            vec3 radiance = incoming * cosine / HYBRID_PI;
+            if (gi.limits.z > 0.5 && (i == int(sceneUbo.lightInfo.x) || light.coneShadow.z > 0.0))
+            {
+                float weight    = dot(radiance, vec3(0.2126, 0.7152, 0.0722));
+                float u         = float(HybridHash(stream + uint(i)) >> 8) / 16777216.0;
+                shadowedWeight += weight;
+                if (weight > 0.0 && u * shadowedWeight < weight)
+                {
+                    chosen         = i;
+                    chosenWeight   = weight;
+                    chosenRadiance = radiance;
+                }
+            }
+            else
+            {
+                diffuse += radiance;
+            }
         }
+    }
+    if (chosen >= 0)
+    {
+        SceneLight light = chosen == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[chosen];
+        diffuse += chosenRadiance * (shadowedWeight / chosenWeight) * HardwareLightVisibility(hit.position, hit.normal, light);
     }
     float skyScale = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y;
     if (skyScale > 0.0)
