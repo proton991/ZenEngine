@@ -123,6 +123,14 @@ bool ParseOptions(int              argc,
         {
             options.output = argument.substr(9);
         }
+        else if (argument.starts_with("--camera-path="))
+        {
+            options.cameraPath = argument.substr(14);
+        }
+        else if (argument.starts_with("--capture-start="))
+        {
+            ParseUnsigned(argument, options.captureStart, std::numeric_limits<uint64_t>::max(), error);
+        }
         else if (argument.starts_with("--width=") || argument.starts_with("--height="))
         {
             uint64_t value = 0;
@@ -201,8 +209,9 @@ bool ParseOptions(int              argc,
     if (error.empty() && !options.groundTruth.empty())
     {
         if (!path.empty() || options.output.empty() || options.startPaused || options.disableRT || !options.capture.empty()
-            || !options.profile.empty() || overrides.rhi || overrides.fullscreen || overrides.vsync || overrides.validation
-            || overrides.asyncCompute || overrides.gpuCulling || overrides.width || overrides.height || overrides.backend)
+            || !options.profile.empty() || options.captureStart != 0 || overrides.rhi || overrides.fullscreen || overrides.vsync
+            || overrides.validation || overrides.asyncCompute || overrides.gpuCulling || overrides.width || overrides.height
+            || overrides.backend)
         {
             error = "--ground-truth requires --output and uses the dataset's setup values without run overrides";
         }
@@ -226,9 +235,26 @@ bool ParseOptions(int              argc,
     {
         error = "Specify --setup=<file.zenrender>";
     }
+    if (error.empty() && !options.cameraPath.empty())
+    {
+        // Path keys name scene frames, so the timeline must not depend on wall-clock time.
+        if (!options.fixedStep || !options.groundTruth.empty() || options.startPaused)
+        {
+            error = "--camera-path requires --fixed-step and cannot be combined with --ground-truth or --start-paused";
+        }
+        else
+        {
+            ReadCameraPath(options.cameraPath, options.cameraKeys, error);
+        }
+    }
     if (error.empty() && !options.capture.empty() && options.frames == 0 && !options.startPaused)
     {
         error = "--capture requires --frames or --start-paused";
+    }
+    if (error.empty() && options.captureStart != 0
+        && (options.capture.empty() || options.captureStart > options.frames || options.startPaused))
+    {
+        error = "--capture-start requires --capture and --frames >= start, without --start-paused";
     }
     if (error.empty() && options.disableRT && overrides.backend == rc::VoxelGISettings::RayProvider::Hardware)
     {
@@ -249,7 +275,8 @@ int RuntimeMain(int argc, char** argv)
                      "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
                      "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
                      "       [--backend=compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
-                     "       [--fixed-step] [--start-paused]\n"
+                     "       [--fixed-step] [--start-paused] [--camera-path=<keys.json> (with --fixed-step)]\n"
+                     "       [--capture-start=N (writes <capture>.frame-N.ppm each frame from N)]\n"
                      "ZenApp --ground-truth=<dataset-directory> --output=<new-run-directory> [--frames=128]\n"
                      "Fullscreen defaults on and uses the display's native mode; width/height set the render size.\n"
                      "Space: Pause/Resume. Escape: Quit. Camera controls match the editor.\n";

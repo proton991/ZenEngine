@@ -136,6 +136,18 @@ public:
     }
 
 private:
+    // Places the camera for the scene frame about to render; navigation input is locked meanwhile.
+    bool ApplyCameraPath(uint64_t frame)
+    {
+        m_session->SetInputCapture(true, true);
+        const bool valid = m_camera.SetState(CameraPathState(m_options.cameraKeys, frame, m_camera.GetState()));
+        if (!valid)
+        {
+            m_error = "Camera path pose at frame " + std::to_string(frame) + " is not a valid camera";
+        }
+        return valid;
+    }
+
     bool KeepRunning() const
     {
         return m_options.batch.empty() ? (m_options.frames == 0 || GetSceneFrame() < m_options.frames) : !m_batchDone;
@@ -489,7 +501,7 @@ private:
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
-        bool valid = m_session->Render(overlay);
+        bool valid = (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1)) && m_session->Render(overlay);
         if (!m_options.batch.empty() && GetSceneFrame() - m_batchBegin > 4096)
         {
             // Preparation, refinement and convergence share this budget.
@@ -553,11 +565,15 @@ private:
                 }
             }
             const bool capture = !m_options.capture.empty()
-                              && (GetSceneFrame() == m_options.frames || (m_options.startPaused && GetSceneFrame() == 1));
+                              && (GetSceneFrame() == m_options.frames || (m_options.startPaused && GetSceneFrame() == 1)
+                                  || (m_options.captureStart != 0 && GetSceneFrame() >= m_options.captureStart));
             if (valid && capture)
             {
-                valid = rc::CaptureSceneFrame(*m_device, m_target->GetView().color, m_options.capture);
-                valid = valid && WriteFrameSummary(m_options.capture + ".json");
+                const std::string path = m_options.captureStart == 0
+                                           ? m_options.capture
+                                           : m_options.capture + ".frame-" + std::to_string(GetSceneFrame()) + ".ppm";
+                valid                  = rc::CaptureSceneFrame(*m_device, m_target->GetView().color, path);
+                valid                  = valid && WriteFrameSummary(path + ".json");
             }
         }
         if (!valid)

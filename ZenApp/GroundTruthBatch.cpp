@@ -1,5 +1,5 @@
 #include "GroundTruthBatch.h"
-#include <simdjson.h>
+#include "RuntimeJson.h"
 #include <algorithm>
 #include <fstream>
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -66,29 +66,7 @@ bool IsRTSSLoaded()
 
 namespace
 {
-// Reads through the wide path: simdjson's own loader opens a narrow, code-page path.
-bool LoadDatasetManifest(const std::filesystem::path& path,
-                         simdjson::dom::parser&       parser,
-                         simdjson::padded_string&     json,
-                         simdjson::dom::element&      document)
-{
-    constexpr uintmax_t kMaxManifestBytes = 64ull * 1024 * 1024;
-    std::error_code     fileError;
-    const uintmax_t     size  = std::filesystem::file_size(path, fileError);
-    bool                valid = !fileError && size != 0 && size <= kMaxManifestBytes;
-    if (valid)
-    {
-        std::string   text(static_cast<size_t>(size), '\0');
-        std::ifstream file(path, std::ios::binary);
-        valid = bool(file.read(text.data(), static_cast<std::streamsize>(text.size())));
-        if (valid)
-        {
-            json  = simdjson::padded_string(text);
-            valid = !parser.parse(json).get(document);
-        }
-    }
-    return valid;
-}
+constexpr uint64_t kMaxDatasetManifestBytes = 64ull * 1024 * 1024;
 
 // Batch frames share one window, device, package and scene preparation; only the camera,
 // environment and rendering settings change between them.
@@ -112,8 +90,8 @@ bool ReadGroundTruthBatch(const std::string& directory, HeapVector<GroundTruthFr
     simdjson::dom::element      document;
     simdjson::dom::array        entries;
     const std::filesystem::path root = std::filesystem::u8path(directory);
-    bool                        valid =
-        LoadDatasetManifest(root / "dataset.json", parser, json, document) && !document["frames"].get_array().get(entries);
+    bool valid                       = LoadJsonDocument(root / "dataset.json", kMaxDatasetManifestBytes, parser, json, document)
+                                    && !document["frames"].get_array().get(entries);
     if (valid)
     {
         for (simdjson::dom::element entry : entries)

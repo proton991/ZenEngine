@@ -1,6 +1,7 @@
 #pragma once
 #include "Runtime/RuntimeLaunchSettings.h"
 #include "GroundTruthBatch.h"
+#include "CameraPath.h"
 
 namespace zen::runtime
 {
@@ -17,7 +18,10 @@ struct RuntimeOptions
     std::string                  groundTruth;
     std::string                  output;
     HeapVector<GroundTruthFrame> batch;
+    std::string                  cameraPath;
+    HeapVector<CameraPathKey>    cameraKeys;
     uint64_t                     frames{0};
+    uint64_t                     captureStart{0};
     std::string                  capture;
     std::string                  profile;
     std::string                  logPath;
