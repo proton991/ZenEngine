@@ -1,7 +1,5 @@
 #include "CameraPath.h"
 #include "RuntimeJson.h"
-#include <cmath>
-#include <limits>
 
 namespace zen::runtime
 {
@@ -9,33 +7,11 @@ namespace
 {
 constexpr uint64_t kMaxCameraPathBytes = 16ull * 1024 * 1024;
 
-bool ReadVector(simdjson::dom::element entry, const char* name, Vec3& value)
-{
-    simdjson::dom::array components;
-    bool                 valid = !entry[name].get_array().get(components) && components.size() == 3;
-    if (valid)
-    {
-        uint32_t index = 0;
-        for (simdjson::dom::element component : components)
-        {
-            double number = 0.0;
-            valid         = valid && !component.get_double().get(number) && std::isfinite(number)
-                         && std::abs(number) <= std::numeric_limits<float>::max();
-            if (valid)
-            {
-                value[index] = static_cast<float>(number);
-            }
-            ++index;
-        }
-    }
-    return valid;
-}
-
 bool ReadKey(simdjson::dom::element entry, CameraPathKey& key)
 {
     uint64_t frame = 0;
-    bool     valid = !entry["frame"].get_uint64().get(frame) && frame > 0 && ReadVector(entry, "eye", key.eye)
-                  && ReadVector(entry, "target", key.target);
+    bool     valid = !entry["frame"].get_uint64().get(frame) && frame > 0 && ReadJsonVector(entry, "eye", key.eye)
+                  && ReadJsonVector(entry, "target", key.target);
     key.frame      = frame;
     return valid;
 }

@@ -6,11 +6,10 @@
 
 // Forward layers that cannot reuse an exact opaque receiver trace their own transport.
 // No screen-probe interpolation, voxel-cone fallback or cache radiance participates.
-void HardwareReceiverDiffuse(vec3 position, vec3 normal, vec3 geometric, uvec2 pixel, out vec3 sky, out vec3 bounce)
+void HardwareReceiverDiffuse(vec3 position, vec3 normal, vec3 geometric, uvec2 pixel, uint count, out vec3 sky, out vec3 bounce)
 {
     sky          = vec3(0);
     bounce       = vec3(0);
-    uint  count  = max(uint(gi.indirect.z), 1u);
     uint  frame  = floatBitsToUint(gi.indirect.w);
     float scale  = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y;
     vec3  origin = HybridTraceOrigin(position, geometric, 0.0);

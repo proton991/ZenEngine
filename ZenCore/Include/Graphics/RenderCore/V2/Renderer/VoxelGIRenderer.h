@@ -61,7 +61,12 @@ struct VoxelGISettings
     uint32_t accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
     uint32_t referenceSamples{0};              // Diagnostic: 0, 256, 1024 or 4096; static running mean, no spatial filter.
     uint32_t historyFrames{32};
+    // Pixel GI history/trace resolution divisor; final lighting remains at the view resolution.
+    uint32_t pixelResolutionDivisor{1}; // 1, 2 or 4. Reference and ray-count diagnostics use 1.
     bool     temporal{true};
+    bool     restirGI{false}; // HW per-pixel reservoir reuse; opt-in until acceptance measurements pass.
+    bool     restirSpatial{true};
+    bool     restirSpecular{true}; // Rough lobes (roughness >= 0.3).
     // Opt in to one-frame voxel-radiance latency so updates can overlap receiver lighting.
     bool previousFrameRadiance{false};
     bool filter{true};
@@ -269,7 +274,7 @@ public:
     {
         return m_rayQuery;
     }
-    void BindHardwareRayInputs(RDGPassDescBase& pass) const;
+    void BindHardwareRayInputs(RDGPassDescBase& pass, bool environment = true) const;
     void BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound = false) const;
 
     void BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const;
@@ -356,7 +361,9 @@ private:
 
     void BindFrameData(RDGPassDescBase& pass) const;
 
-    void BuildEnvironmentDistribution();
+    void      BuildEnvironmentDistribution();
+    void      BuildLightOccluders();
+    RDGBuffer m_lightOccluders;
 
     DistanceFieldSceneSettings BuildFieldSettings() const;
     HeapVector<AABB>           BuildLocalFieldVolumes() const;

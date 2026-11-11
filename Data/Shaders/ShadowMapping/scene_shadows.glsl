@@ -3,6 +3,7 @@
 #include "../Common/scene_lighting.glsl"
 #if defined(HARDWARE_SHADOWS)
 #    include "../VoxelGI/hybrid_provider.glsl"
+#    include "light_occluders.glsl"
 float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
 {
     SceneLight light      = lightIndex == MAX_SCENE_LIGHTS ? sceneUbo.cameraLight : sceneUbo.lights[lightIndex];
@@ -14,7 +15,9 @@ float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
         vec3  incoming = EvaluateLight(light, position, direction, distanceToLight);
         if (any(greaterThan(incoming, vec3(0))))
         {
-            visibility = HardwareLightVisibility(position, normal, light);
+            visibility = CachedLightOccluded(lightIndex, position, normal, light)
+                           ? 0.0
+                           : HardwareLightVisibility(position, normal, light);
         }
     }
     return visibility;

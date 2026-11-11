@@ -72,7 +72,7 @@ void main()
             bool sourceSample    = rawSource.a >= 0.0;
             sourceSky            = sourceSample ? vec4(rawSource.rgb, 1) : vec4(0);
             sky.rgb             -= rawSource.rgb;
-            vec4  motion         = texelFetch(receiverMotion, pixel, 0);
+            vec4  motion         = HybridMotion(pixel);
             vec2  previousPixel  = vec2(pixel) + motion.xy * 0.5 * vec2(textureSize(receiverDepth, 0));
             ivec2 base           = ivec2(floor(previousPixel));
             vec2  fraction       = fract(previousPixel);

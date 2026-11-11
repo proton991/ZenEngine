@@ -45,7 +45,7 @@ void main()
         diagnostics[index + 8]  = vec4(position, valid ? 1.0 : 0.0);
         diagnostics[index + 9]  = vec4(n, texelFetch(receiverRoughness, p, 0).g);
         diagnostics[index + 10] = vec4(ng, texelFetch(receiverDepth, p, 0).r);
-        diagnostics[index + 11] = texelFetch(receiverMotion, p, 0);
+        diagnostics[index + 11] = HybridMotion(p);
         // A spatially resolved specular value has no single per-pixel hit distance.
         diagnostics[index + 12] =
             vec4(uintBitsToFloat(texelFetch(receiverSurface, p, 0).g), 0, 0, hybrid.reflection.x != 0u ? specularLength : 0);

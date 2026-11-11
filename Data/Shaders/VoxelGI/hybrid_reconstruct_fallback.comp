@@ -1,0 +1,66 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#include "../Common/opacity_micromap.glsl"
+#include "hybrid_guides.glsl"
+#define HYBRID_HARDWARE_PROVIDER
+#include "hybrid_provider.glsl"
+layout(set = 1, binding = 30) uniform samplerCube coneEnvironmentMap;
+#include "hardware_receiver_lighting.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 6) uniform usampler2D missingReceiver;
+// Read as well: interpolated neighbours are the reference that bounds traced samples.
+layout(set = 1, binding = 13, rgba16f) uniform image2D outputSky;
+layout(set = 1, binding = 14, rgba16f) uniform image2D outputSpecular;
+layout(set = 1, binding = 15, rgba16f) uniform image2D outputBounce;
+
+#include "hybrid_fallback_reference.glsl"
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!HybridInView(p))
+    {
+        return;
+    }
+    uint missing = texelFetch(missingReceiver, p, 0).r;
+    if (missing != 0u)
+    {
+        // Keep ray-query register pressure out of the ordinary full-screen interpolation pass.
+        // Thin surfaces without a matching GI receiver get their own finite observation, which has
+        // no temporal history: its luminance is bounded by its interpolated neighbours' (HybridFallbackReference). The
+        // reference is gathered after tracing so that nothing extra stays live across ray queries.
+        vec3 position = HybridPosition(p), normal = HybridNormal(p), geometric = HybridGeometricNormal(p);
+        vec3 sky = vec3(0), bounce = vec3(0);
+        vec4 specular = vec4(0);
+        if ((missing & 1u) != 0u)
+        {
+            // These rare receivers have no temporal support, so spend extra diffuse samples here.
+            HardwareReceiverDiffuse(position, normal, geometric, uvec2(p), max(uint(gi.indirect.z), 16u), sky, bounce);
+        }
+        if ((missing & 2u) != 0u)
+        {
+            vec3 view = sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw)
+                                                      : normalize(sceneUbo.viewPosition.xyz - position);
+            specular =
+                HardwareReceiverSpecular(position, normal, geometric, view, texelFetch(receiverRoughness, p, 0).g, uvec2(p));
+        }
+        vec3 reference = HybridFallbackReference(p);
+        if ((missing & 1u) != 0u)
+        {
+            if (all(lessThan(p, imageSize(outputSky))))
+            {
+                imageStore(outputSky, p, vec4(sky * HybridSampleBound(HybridLuminance(sky), reference.x), 1));
+            }
+            if (hybrid.bounce.x != 0u)
+            {
+                imageStore(outputBounce, p, vec4(bounce * HybridSampleBound(HybridLuminance(bounce), reference.y), 1));
+            }
+        }
+        if ((missing & 2u) != 0u)
+        {
+            imageStore(outputSpecular, p,
+                       vec4(specular.rgb * HybridSampleBound(HybridLuminance(specular.rgb), reference.z), specular.a));
+        }
+    }
+}

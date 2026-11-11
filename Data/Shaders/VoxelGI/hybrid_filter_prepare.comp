@@ -22,6 +22,17 @@ void main()
     vec4  h            = hybrid.reflection.x != 0u ? texelFetch(reflectionHistory, p, 0) : vec4(0);
     vec4  v            = max(vec4(m.g - m.r * m.r, m.a - m.b * m.b, b.y - b.x * b.x, h.z - h.y * h.y), vec4(0));
     float bounceLength = hybrid.bounce.x != 0u ? texelFetch(bounceHistory, p, 0).a : 0.0;
-    vec4  lengths      = vec4(texelFetch(historyLength, p, 0).rg, bounceLength, h.w);
+    vec4  history      = texelFetch(historyLength, p, 0);
+    vec4  lengths      = vec4(history.rg, bounceLength, h.w);
+    // Reservoir observations retain up to this many frames of candidates. Their mean does
+    // not gain the independent-frame 1/N variance reduction assumed by the original gather.
+    if ((hybrid.reservoir.x & 1u) != 0u)
+    {
+        lengths.z /= float(max(hybrid.reservoir.y, 1u));
+    }
+    if ((hybrid.reservoir.x & 2u) != 0u && history.a >= 0.3)
+    {
+        lengths.w /= float(max(hybrid.reservoir.z, 1u));
+    }
     imageStore(initialVariance, p, v / max(lengths, vec4(1)));
 }

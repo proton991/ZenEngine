@@ -166,7 +166,7 @@ public:
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
-    } pushConstantsData;
+    };
 };
 
 class DeferredLightingSP : public ShaderProgram
@@ -300,25 +300,13 @@ public:
         Init();
     }
 
-    const uint8_t* GetVoxelConfigData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&voxelConfigData);
-    }
-
-    struct VoxelConfigData
-    {
-        Mat4 viewProjectionMatrices[3];  // view projection matrices for 3 axes
-        Mat4 viewProjectionMatricesI[3]; // inverse view projection matrices for 3 axes
-        Vec4 worldMinPointScale;
-    } voxelConfigData;
-
     struct PushConstantsData
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
         uint32_t firstTriangle;
         uint32_t volumeDimension;
-    } pushConstantsData;
+    };
 };
 
 class VoxelDrawSP : public ShaderProgram
@@ -332,23 +320,17 @@ public:
         Init();
     }
 
-    const uint8_t* GetVoxelInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&voxelInfo);
-    }
-
     struct PushConstantsData
     {
         uint32_t volumeDimension;
-        //        Vec4 colorChannels;
-    } pushConstantsData;
+    };
 
     struct VoxelInfo
     {
         Mat4 modelViewProjection;
         Vec4 frustumPlanes[6];
         Vec4 worldMinPointVoxelSize;
-    } voxelInfo;
+    };
 };
 
 class VoxelizationCompSP : public ShaderProgram
@@ -360,52 +342,11 @@ public:
         Init();
     }
 
-    const uint8_t* GetSceneInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&sceneInfo);
-    }
-
     struct SceneInfo
     {
         Vec4 aabbMin;
         Vec4 aabbMax;
-    } sceneInfo;
-
-    struct PushConstantsData
-    {
-        uint32_t nodeIndex;
-        uint32_t triangleCount;
-        uint32_t largeTriangleThreshold;
-    } pushConstantsData;
-};
-
-class VoxelizationLargeTriangleCompSP : public ShaderProgram
-{
-public:
-    explicit VoxelizationLargeTriangleCompSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "VoxelizationLargeTriangleCompSP")
-    {
-        AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxelization_large_triangles.comp.spv");
-        Init();
-    }
-
-    const uint8_t* GetSceneInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&sceneInfo);
-    }
-
-    struct SceneInfo
-    {
-        Vec4 aabbMin;
-        Vec4 aabbMax;
-    } sceneInfo;
-
-    struct PushConstantsData
-    {
-        uint32_t nodeIndex;
-        uint32_t triangleCount;
-        uint32_t largeTriangleThreshold;
-    } pushConstantsData;
+    };
 };
 
 class ResetDrawIndirectSP : public ShaderProgram
@@ -448,17 +389,6 @@ public:
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");
         Init(specializationConstants);
     }
-
-    const uint8_t* GetSceneInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&sceneInfo);
-    }
-
-    struct SceneInfo
-    {
-        Vec4 aabbMin;
-        Vec4 aabbMax;
-    } sceneInfo;
 };
 
 class VoxelDrawSP2 : public ShaderProgram
@@ -471,46 +401,12 @@ public:
         Init();
     }
 
-    const uint8_t* GetTransformData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&transformData);
-    }
-
     struct TransformData
     {
         Mat4 modelMatrix;
         Mat4 viewMatrix;
         Mat4 projMatrix;
-    } transformData;
-};
-
-class ShadowMapRenderSP : public ShaderProgram
-{
-public:
-    explicit ShadowMapRenderSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "ShadowMapRenderSP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "ShadowMapping/evsm.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment, "ShadowMapping/evsm.frag.spv");
-        Init();
-    }
-
-    const uint8_t* GetLightInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&lightInfo);
-    }
-
-    struct PushConstantsData
-    {
-        Vec2     exponents;
-        uint32_t nodeIndex;
-        uint32_t materialIndex;
-        float    alphaCutoff;
-    } pushConstantsData;
-
-    struct LightInfo
-    {
-        Mat4 lightViewProjection;
-    } lightInfo;
+    };
 };
 
 class ShaderProgramManager

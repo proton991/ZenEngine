@@ -619,9 +619,10 @@ private:
                                            "GI reconstructed sky",
                                            "GI history length",
                                            "GI specular hit / miss",
-                                           "GI history rejection"};
+                                           "GI history rejection",
+                                           "GI reconstruction fallback"};
 
-            bool changed                = ImGui::Combo(PropertyLabel("Output").c_str(), &output, outputs, 12);
+            bool changed                = ImGui::Combo(PropertyLabel("Output").c_str(), &output, outputs, 13);
 
             if (changed)
             {

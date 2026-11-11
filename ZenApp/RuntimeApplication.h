@@ -2,6 +2,7 @@
 #include "Runtime/RuntimeLaunchSettings.h"
 #include "GroundTruthBatch.h"
 #include "CameraPath.h"
+#include "LightPath.h"
 
 namespace zen::runtime
 {
@@ -20,6 +21,8 @@ struct RuntimeOptions
     HeapVector<GroundTruthFrame> batch;
     std::string                  cameraPath;
     HeapVector<CameraPathKey>    cameraKeys;
+    std::string                  lightPath;
+    LightPath                    lightKeys;
     uint64_t                     frames{0};
     uint64_t                     captureStart{0};
     std::string                  capture;

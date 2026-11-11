@@ -4,7 +4,6 @@
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "SceneGraph/Scene.h"
 #include "AssetLib/TextureLoader.h"
-#include "Graphics/RenderCore/V2/RenderResource.h"
 
 #include <gli/gli.hpp>
 #include <filesystem>

@@ -131,6 +131,10 @@ bool ParseOptions(int              argc,
         {
             ParseUnsigned(argument, options.captureStart, std::numeric_limits<uint64_t>::max(), error);
         }
+        else if (argument.starts_with("--light-path="))
+        {
+            options.lightPath = argument.substr(13);
+        }
         else if (argument.starts_with("--width=") || argument.starts_with("--height="))
         {
             uint64_t value = 0;
@@ -251,6 +255,17 @@ bool ParseOptions(int              argc,
     {
         error = "--capture requires --frames or --start-paused";
     }
+    if (error.empty() && !options.lightPath.empty())
+    {
+        if (!options.fixedStep || !options.groundTruth.empty() || options.startPaused)
+        {
+            error = "--light-path requires --fixed-step and cannot be combined with --ground-truth or --start-paused";
+        }
+        else
+        {
+            ReadLightPath(options.lightPath, options.lightKeys, error);
+        }
+    }
     if (error.empty() && options.captureStart != 0
         && (options.capture.empty() || options.captureStart > options.frames || options.startPaused))
     {
@@ -276,6 +291,7 @@ int RuntimeMain(int argc, char** argv)
                      "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
                      "       [--backend=compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
                      "       [--fixed-step] [--start-paused] [--camera-path=<keys.json> (with --fixed-step)]\n"
+                     "       [--light-path=<keys.json> (with --fixed-step)]\n"
                      "       [--capture-start=N (writes <capture>.frame-N.ppm each frame from N)]\n"
                      "ZenApp --ground-truth=<dataset-directory> --output=<new-run-directory> [--frames=128]\n"
                      "Fullscreen defaults on and uses the display's native mode; width/height set the render size.\n"

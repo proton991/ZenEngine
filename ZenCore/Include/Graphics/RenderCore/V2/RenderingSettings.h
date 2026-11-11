@@ -26,7 +26,8 @@ enum class DebugOutput : uint32_t
     eGIReconstructedSky,
     eGIHistoryLength,
     eGIHitMiss,
-    eGIRejection
+    eGIRejection,
+    eGIFallback
 };
 
 enum class LightOrigin : uint32_t

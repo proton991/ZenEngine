@@ -3,6 +3,9 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/Shared/EnvironmentSampling.h"
+#include "Graphics/Shared/HybridGI.h"
+#include "Graphics/Shared/ReSTIRGI.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include <cstring>
 #include <string_view>
 
@@ -119,9 +122,11 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width,
                                       bool     reflections,
                                       bool     search,
                                       bool     reference,
-                                      bool     budget)
+                                      bool     budget,
+                                      uint32_t restirMask)
 {
-    bool valid = true;
+    const bool restir = restirMask != 0;
+    bool       valid  = true;
     for (uint32_t side = 0; side < 2 && valid; ++side)
     {
         for (uint32_t texture = 0; texture < Count && valid; ++texture)
@@ -179,6 +184,53 @@ bool HybridGIRenderer::PrepareHistory(uint32_t width,
             valid         = m_guide[side] != nullptr;
         }
     }
+    uint64_t reservoirBytes = 0;
+    valid                   = valid
+                           && (!restir
+                               || ValidateGIStorageBuffer(uint64_t(width) * height, ZEN_RESTIR_RESERVOIR_BYTES, m_device->GetGPUInfo(),
+                                                          reservoirBytes)
+                                      == GIResourceStatus::eSuccess);
+    for (uint32_t side = 0; side < 2 && valid; ++side)
+    {
+        for (uint32_t type = 0; type < 2 && valid; ++type)
+        {
+            const uint32_t bytes =
+                (restirMask & (1u << type)) != 0 ? static_cast<uint32_t>(reservoirBytes) : ZEN_RESTIR_RESERVOIR_BYTES;
+            const uint64_t alignment   = std::max(uint64_t(1), uint64_t(m_device->GetGPUInfo().storageBufferAlignment));
+            const uint64_t paddedBytes = (uint64_t(bytes) + alignment - 1) / alignment * alignment;
+            if (m_reservoir[side][type] != nullptr && (!restir || m_reservoir[side][type]->GetRequiredSize() != paddedBytes))
+            {
+                m_device->DestroyBuffer(m_reservoir[side][type]);
+                m_reservoir[side][type] = nullptr;
+                m_preparedHistoryValid  = false;
+                InvalidateHistory("restir_layout");
+            }
+            if (restir && m_reservoir[side][type] == nullptr)
+            {
+                m_reservoir[side][type] =
+                    m_device->CreateStorageBuffer(bytes, nullptr, NameID(fmt::format("restir_gi_{}_{}", side, type)));
+                valid                  = m_reservoir[side][type] != nullptr;
+                m_preparedHistoryValid = false;
+                InvalidateHistory("restir_allocated");
+            }
+        }
+    }
+    if (!restir && m_restirLobeIntegral != nullptr)
+    {
+        m_device->DestroyTexture(m_restirLobeIntegral);
+        m_restirLobeIntegral    = nullptr;
+        m_restirLobeInitialized = false;
+    }
+    if (valid && restir && m_restirLobeIntegral == nullptr)
+    {
+        TextureFormat format;
+        format.dimension = TextureDimension::e2D;
+        format.width = format.height = 128;
+        format.depth                 = 1;
+        format.format                = DataFormat::eR32SFloat;
+        m_restirLobeIntegral         = m_device->CreateTextureStorage(format, {}, "restir_lobe_integral");
+        valid                        = m_restirLobeIntegral != nullptr;
+    }
     if (!valid)
     {
         Destroy();
@@ -199,7 +251,20 @@ void BindHybridReceiverGuides(RDGPassDescBase& pass, RHISampler* sampler, const 
 
 void HybridGIRenderer::BindGuides(RDGPassDescBase& pass) const
 {
-    BindHybridReceiverGuides(pass, m_sampler, m_uniforms);
+    if (m_extent == m_outputExtent)
+    {
+        BindHybridReceiverGuides(pass, m_sampler, m_uniforms);
+    }
+    else
+    {
+        pass.BindValue("uHybridData", m_uniforms);
+        const char* inputs[] = {"receiverDepth",   "receiverNormal", "receiverRoughness",
+                                "receiverSurface", "receiverMotion", "receiverPosition"};
+        for (uint32_t index = 0; index < 6; ++index)
+        {
+            pass.BindSampledTexture(inputs[index], m_sampler, m_receiverGuides[index]);
+        }
+    }
 }
 
 void HybridGIRenderer::BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const
@@ -239,12 +304,111 @@ void HybridGIRenderer::BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer
     pass.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
 }
 
-void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass)
+void HybridGIRenderer::Dispatch(RDGComputePassDesc&& pass, bool fullResolution)
 {
-    const glm::uvec2 groups = (m_extent + glm::uvec2(7)) / 8u;
+    const glm::uvec2 groups = ((fullResolution ? m_outputExtent : m_extent) + glm::uvec2(7)) / 8u;
     m_device->GetCurrentFrameRDG()->AddComputePass(std::move(pass)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
         encoder.Dispatch(groups.x, groups.y, 1);
     });
+}
+
+void HybridGIRenderer::PrepareGuides()
+{
+    if (m_extent != m_outputExtent)
+    {
+        RDGResourceManager* resources = m_device->GetCurrentFrameRDG()->GetResourceManager();
+        const char*         names[]   = {"hybrid_receiver_depth",   "hybrid_receiver_normal", "hybrid_receiver_roughness",
+                                         "hybrid_receiver_surface", "hybrid_receiver_motion", "hybrid_receiver_position"};
+        const char*         outputs[] = {"reducedDepth",   "reducedNormal", "reducedRoughness",
+                                         "reducedSurface", "reducedMotion", "reducedPosition"};
+        const DataFormat    formats[] = {DataFormat::eR32SFloat,  DataFormat::eR16G16UNORM,  DataFormat::eR8G8B8A8UNORM,
+                                         DataFormat::eR32G32UInt, DataFormat::eR32G32SFloat, DataFormat::eR32G32B32A32SFloat};
+        RDGComputePassDesc  pass;
+        pass.SetShaderProgramName("HybridDownsampleSP");
+        pass.SetPassTag("HybridDownsample");
+        BindHybridReceiverGuides(pass, m_sampler, m_uniforms);
+        for (uint32_t index = 0; index < 6; ++index)
+        {
+            RDGTextureDesc desc;
+            desc.name                = names[index];
+            desc.texFormat.dimension = TextureDimension::e2D;
+            desc.texFormat.width     = m_extent.x;
+            desc.texFormat.height    = m_extent.y;
+            desc.texFormat.depth     = 1;
+            desc.texFormat.format    = formats[index];
+            desc.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+            m_receiverGuides[index] = resources->CreateTexture(desc);
+            pass.BindStorageImage(outputs[index], m_receiverGuides[index], RDGContentGuarantee::eFullWrite);
+        }
+        Dispatch(std::move(pass));
+    }
+}
+
+void HybridGIRenderer::ReconstructOutput(VoxelGIRenderer& voxelGI)
+{
+    m_missingReceiver = {};
+    if (m_extent != m_outputExtent)
+    {
+        RDGResourceManager* resources = m_device->GetCurrentFrameRDG()->GetResourceManager();
+        RDGComputePassDesc  pass;
+        pass.SetShaderProgramName("HybridReconstructSP");
+        pass.SetPassTag("HybridReconstruct");
+        BindHybridReceiverGuides(pass, m_sampler, m_uniforms);
+        pass.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+        pass.BindSampledTexture("reducedPosition", m_sampler, m_receiverGuides[5]);
+        pass.BindSampledTexture("reducedNormal", m_sampler, m_receiverGuides[1]);
+        pass.BindSampledTexture("reducedSurface", m_sampler, m_receiverGuides[3]);
+        pass.BindSampledTexture("reducedRoughness", m_sampler, m_receiverGuides[2]);
+        RDGTexture* targets[] = {&m_outputSky, &m_outputSpecular, &m_outputBounce};
+        const char* inputs[]  = {"inputSky", "inputSpecular", "inputBounce"};
+        const char* outputs[] = {"outputSky", "outputSpecular", "outputBounce"};
+        const char* names[]   = {"hybrid_reconstructed_sky", "hybrid_reconstructed_specular", "hybrid_reconstructed_bounce"};
+        const bool  skyLight =
+            HasSkyLight(voxelGI.GetSettings(), *reinterpret_cast<const SceneUniformData*>(m_scene->GetSceneUniformData()));
+        for (uint32_t index = 0; index < 3; ++index)
+        {
+            pass.BindSampledTexture(inputs[index], m_sampler, *targets[index]);
+            const bool     enabled = index == 0 ? skyLight : (index != 2 || m_uniforms.bounce.x != 0);
+            RDGTextureDesc desc;
+            desc.name                = names[index];
+            desc.texFormat.dimension = TextureDimension::e2D;
+            desc.texFormat.width     = enabled ? m_outputExtent.x : 1u;
+            desc.texFormat.height    = enabled ? m_outputExtent.y : 1u;
+            desc.texFormat.depth     = 1;
+            desc.texFormat.format    = DataFormat::eR16G16B16A16SFloat;
+            desc.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+            *targets[index] = resources->CreateTexture(desc);
+            pass.BindStorageImage(outputs[index], *targets[index], RDGContentGuarantee::eFullWrite);
+        }
+        RDGTextureDesc missingDesc;
+        missingDesc.name                = "hybrid_missing_receiver";
+        missingDesc.texFormat.dimension = TextureDimension::e2D;
+        missingDesc.texFormat.width     = m_outputExtent.x;
+        missingDesc.texFormat.height    = m_outputExtent.y;
+        missingDesc.texFormat.depth     = 1;
+        missingDesc.texFormat.format    = DataFormat::eR8UInt;
+        missingDesc.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+        const RDGTexture missing = resources->CreateTexture(missingDesc);
+        m_missingReceiver        = missing;
+        pass.BindStorageImage("missingReceiver", missing, RDGContentGuarantee::eFullWrite);
+        Dispatch(std::move(pass), true);
+        RDGComputePassDesc fallback;
+        fallback.SetShaderProgramName("HybridReconstructFallbackSP");
+        fallback.SetPassTag("HybridReconstructFallback");
+        BindHybridReceiverGuides(fallback, m_sampler, m_uniforms);
+        voxelGI.BindHardwareRayInputs(fallback, false);
+        voxelGI.BindEnvironmentSamplingInputs(fallback);
+        const EnvTexture& environment = m_scene->GetEnvTexture();
+        fallback.BindSampledTexture("coneEnvironmentMap", environment.pPrefilteredSampler,
+                                    environment.pPrefiltered->GetDefaultView());
+        fallback.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+        fallback.BindSampledTexture("missingReceiver", m_sampler, missing);
+        for (uint32_t index = 0; index < 3; ++index)
+        {
+            fallback.BindStorageImage(outputs[index], *targets[index]);
+        }
+        Dispatch(std::move(fallback), true);
+    }
 }
 
 bool HybridGIRenderer::HasSkyLight(const VoxelGISettings& settings, const SceneUniformData& scene)
@@ -275,14 +439,26 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
     const bool reference     = settings.referenceSamples != 0;
     const bool searchEnabled = settings.filter && !reference;
     // Gather is independent of the tracer. Reference and ray-count diagnostics retain the pixel estimator.
-    const bool probes = settings.UsesScreenProbes() && !reference && !countRequested;
-    if (countValid && m_prepared && m_extent != glm::uvec2(view.width, view.height))
+    const bool     probes          = settings.UsesScreenProbes() && !reference && !countRequested;
+    const bool     restirRequested = settings.restirGI && !probes && !reference && !countRequested;
+    const uint32_t restirMask =
+        restirRequested
+            ? ((rays && (hardwareMask & 8u) != 0 ? 1u : 0u)
+               | (settings.restirSpecular && reflections && settings.specularOcclusion && (hardwareMask & 16u) != 0 ? 2u : 0u))
+            : 0u;
+    const bool     restir = restirMask != 0;
+    const uint32_t divisor =
+        probes || reference || countRequested || (hardwareMask & 27u) != 27u ? 1u : settings.pixelResolutionDivisor;
+    const glm::uvec2 outputExtent(view.width, view.height);
+    const glm::uvec2 extent = (outputExtent + glm::uvec2(divisor - 1u)) / divisor;
+    if (countValid && m_prepared && (m_extent != extent || m_outputExtent != outputExtent))
     {
         // The receiver pass has already captured this frame's vertices.
         RHIResourcePtr<RHIBuffer> recordedVertices = m_recordedVertices;
         Destroy();
         m_recordedVertices    = std::move(recordedVertices);
-        m_extent              = glm::uvec2(view.width, view.height);
+        m_extent              = extent;
+        m_outputExtent        = outputExtent;
         m_resetReason         = "resize";
         m_preparedResetReason = m_resetReason;
     }
@@ -308,8 +484,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
     }
     const bool ready = countValid && m_prepared
                     && (probes ? m_probeGather.Prepare(view.width, view.height, settings.probeSpacing)
-                               : PrepareHistory(view.width, view.height, rays, reflections, searchEnabled, reference,
-                                                settings.UsesAdaptiveSampling()));
+                               : PrepareHistory(m_extent.x, m_extent.y, rays, reflections, searchEnabled, reference,
+                                                settings.UsesAdaptiveSampling(), restirMask));
     if (ready)
     {
         const bool hadValidHistory = m_valid;
@@ -340,7 +516,10 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                  || settings.historyFrames != m_previousSettings.historyFrames
                  || settings.specularOcclusion != m_previousSettings.specularOcclusion
                  || settings.fieldResolution != m_previousSettings.fieldResolution
-                 || settings.gather != m_previousSettings.gather || settings.probeSpacing != m_previousSettings.probeSpacing)
+                 || settings.gather != m_previousSettings.gather || settings.probeSpacing != m_previousSettings.probeSpacing
+                 || settings.restirGI != m_previousSettings.restirGI
+                 || settings.restirSpatial != m_previousSettings.restirSpatial
+                 || settings.restirSpecular != m_previousSettings.restirSpecular)
         {
             InvalidateHistory("settings");
         }
@@ -411,9 +590,11 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const bool guideValid         = hadValidHistory && (m_valid || reason == "geometry_or_opacity" || reason == "settings");
         m_uniforms.provider           = glm::uvec4(hardwareTrace ? 1u : 0u, !probes && guideValid ? 1u : 0u, hardwareMask,
                                                    !probes && settings.UsesAdaptiveSampling() ? 1u : 0u);
-        m_uniforms.rejection          = Vec4(0.001f, settings.specularOcclusion ? 1.0f : 0.0f,
+        m_uniforms.rejection          = Vec4(ZEN_HYBRID_PLANE_REJECTION, settings.specularOcclusion ? 1.0f : 0.0f,
                                              settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
                                              settings.referenceSamples != 0 ? 1.0f : 0.0f);
+        m_uniforms.resolution         = glm::uvec4(view.width, view.height, divisor, unchangedReceivers ? 1u : 0u);
+        m_uniforms.reservoir          = glm::uvec4(restirMask, 4u, 20u, 0u);
         m_screenProbes                = probes;
         if (probes)
         {
@@ -427,13 +608,14 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         }
         else
         {
+            PrepareGuides();
             RenderGraph*        graph     = m_device->GetCurrentFrameRDG();
             RDGResourceManager* resources = graph->GetResourceManager();
             RDGTextureDesc      desc;
             desc.texFormat.dimension = TextureDimension::e2D;
             desc.texFormat.depth     = 1;
-            desc.texFormat.width     = view.width;
-            desc.texFormat.height    = view.height;
+            desc.texFormat.width     = m_extent.x;
+            desc.texFormat.height    = m_extent.y;
             desc.texFormat.format    = DataFormat::eR16G16B16A16SFloat;
             desc.usageFlags.SetFlag(RHITextureUsageFlagBits::eStorage);
             desc.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
@@ -447,17 +629,27 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             {
                 bounceDesc.texFormat.width = bounceDesc.texFormat.height = 1;
             }
-            bounceDesc.name                 = "hybrid_raw_bounce";
-            const RDGTexture rawBounce      = resources->CreateTexture(bounceDesc);
-            bounceDesc.name                 = "hybrid_raw_bounce_previous";
-            const RDGTexture previous       = resources->CreateTexture(bounceDesc);
+            bounceDesc.name                     = "hybrid_raw_bounce";
+            const RDGTexture rawBounce          = resources->CreateTexture(bounceDesc);
+            RDGTextureDesc   previousBounceDesc = bounceDesc;
+            if (hardwareBounce)
+            {
+                previousBounceDesc.texFormat.width = previousBounceDesc.texFormat.height = 1;
+            }
+            previousBounceDesc.name         = "hybrid_raw_bounce_previous";
+            const RDGTexture previous       = resources->CreateTexture(previousBounceDesc);
             RDGTextureDesc   reflectionDesc = desc;
             if (!reflections)
             {
                 reflectionDesc.texFormat.width = reflectionDesc.texFormat.height = 1;
             }
-            reflectionDesc.name                 = "hybrid_raw_reflection_previous";
-            const RDGTexture previousReflection = resources->CreateTexture(reflectionDesc);
+            RDGTextureDesc previousReflectionDesc = reflectionDesc;
+            if (hardwareReflection)
+            {
+                previousReflectionDesc.texFormat.width = previousReflectionDesc.texFormat.height = 1;
+            }
+            previousReflectionDesc.name         = "hybrid_raw_reflection_previous";
+            const RDGTexture previousReflection = resources->CreateTexture(previousReflectionDesc);
             reflectionDesc.name                 = "hybrid_raw_reflection";
             reflectionDesc.texFormat.format     = DataFormat::eR32G32SFloat;
             const RDGTexture rawReflection      = resources->CreateTexture(reflectionDesc);
@@ -474,12 +666,34 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             m_halfDiffuse                  = halfDiffuse;
             const glm::uvec2   guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
             RDGComputePassDesc trace;
-            trace.SetShaderProgramName(TraceProgram(halfDiffuse     ? "HybridTraceHalf"
+            const glm::uvec4   restirData(settings.restirSpatial ? 1u : 0u, (restirMask & 2u) != 0 ? 1u : 0u,
+                                          (restirMask & 1u) != 0 ? 1u : 0u, 0u);
+            if (restir && !m_restirLobeInitialized)
+            {
+                RDGComputePassDesc integral;
+                integral.SetShaderProgramName("ReSTIRLobeIntegralSP");
+                integral.SetPassTag("ReSTIRLobeIntegral");
+                integral.BindStorageImage("lobeIntegral", m_restirLobeIntegral->GetDefaultView(),
+                                          RDGContentGuarantee::eFullWrite);
+                graph->AddComputePass(std::move(integral)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+                    encoder.Dispatch(16, 16, 1);
+                });
+            }
+            trace.SetShaderProgramName(TraceProgram(restir          ? "HybridTraceReSTIRHardware"
+                                                    : halfDiffuse   ? "HybridTraceHalf"
                                                     : hardwareTrace ? "HybridTraceHardware"
                                                                     : "HybridTrace",
                                                     countRequested, field, m_deterministicGuideCapture));
             trace.SetPassTag("HybridTrace");
             BindTraceInputs(trace, voxelGI, reuseData);
+            if (restir)
+            {
+                trace.BindStorageBuffer("GIReservoirCurrent", m_reservoir[m_current][0], RDGContentGuarantee::eFullWrite);
+                trace.BindStorageBuffer("ReflectionReservoirCurrent", m_reservoir[m_current][1],
+                                        RDGContentGuarantee::eFullWrite);
+                trace.BindValue("uReSTIRData", restirData);
+                trace.BindSampledTexture("restirLobeIntegral", m_sampler, m_restirLobeIntegral->GetDefaultView());
+            }
             trace.BindStorageImage("nextBudget", m_history[m_current][Budget]->GetDefaultView(),
                                    RDGContentGuarantee::eFullWrite);
             trace.BindStorageImage("rawSpecular", rawSpecular, RDGContentGuarantee::eFullWrite);
@@ -495,8 +709,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             if (halfDiffuse)
             {
                 RDGTextureDesc halfDesc   = desc;
-                halfDesc.texFormat.width  = (view.width + 1u) / 2u;
-                halfDesc.texFormat.height = (view.height + 1u) / 2u;
+                halfDesc.texFormat.width  = (m_extent.x + 1u) / 2u;
+                halfDesc.texFormat.height = (m_extent.y + 1u) / 2u;
                 halfDesc.name             = "hybrid_half_sky";
                 halfSky                   = resources->CreateTexture(halfDesc);
                 halfDesc.name             = "hybrid_half_guide";
@@ -516,7 +730,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 fallbackArgs = resources->CreateBuffer(arguments);
                 RDGBufferDesc pixels;
                 pixels.name = "hybrid_diffuse_fallback_pixels";
-                pixels.size = uint64_t(view.width) * view.height * sizeof(uint32_t);
+                pixels.size = uint64_t(m_extent.x) * m_extent.y * sizeof(uint32_t);
                 pixels.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
                 fallbackPixels = resources->CreateBuffer(pixels);
                 // Per tile: guide cell weights, 6x8 row moments and total power (hybrid_trace.glsl).
@@ -545,6 +759,45 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             graph->AddComputePass(std::move(trace)).RecordPassCommands([guideGroups](RDGPassCmdEncoder& encoder) {
                 encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
             });
+            if (restir)
+            {
+                // Temporal updates only its own pixel. Spatial updates one checkerboard parity
+                // at a time and reads neighbors of the other parity, so both safely work in place.
+                // This avoids another 398 MB of transient reservoirs at 4K.
+                for (uint32_t stage = 0; stage < (settings.restirSpatial ? 3u : 2u); ++stage)
+                {
+                    RDGComputePassDesc resample;
+                    resample.SetShaderProgramName(stage == 0 ? "ReSTIRTemporalSP" : "ReSTIRSpatialSP");
+                    resample.SetPassTag(stage == 0 ? "ReSTIRTemporal" : stage == 1 ? "ReSTIRSpatial0" : "ReSTIRSpatial1");
+                    BindGuides(resample);
+                    voxelGI.BindHardwareRayInputs(resample, false);
+                    resample.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+                    glm::uvec4 parameters = restirData;
+                    parameters.w          = stage;
+                    resample.BindValue("uReSTIRData", parameters);
+                    resample.BindSampledTexture("restirLobeIntegral", m_sampler, m_restirLobeIntegral->GetDefaultView());
+                    for (uint32_t type = 0; type < 2; ++type)
+                    {
+                        const char* input         = type == 0 ? "GIReservoirCurrent" : "ReflectionReservoirCurrent";
+                        const char* output        = type == 0 ? "GIReservoirOutput" : "ReflectionReservoirOutput";
+                        const char* previousInput = type == 0 ? "GIReservoirPrevious" : "ReflectionReservoirPrevious";
+                        resample.BindStorageBuffer(input, m_reservoir[m_current][type]);
+                        resample.BindStorageBuffer(output, m_reservoir[m_current][type]);
+                        resample.BindStorageBuffer(previousInput, m_reservoir[1 - m_current][type]);
+                    }
+                    resample.BindSampledTexture("previousPosition", m_sampler,
+                                                m_history[1 - m_current][Position]->GetDefaultView());
+                    resample.BindSampledTexture("previousNormal", m_sampler,
+                                                m_history[1 - m_current][Normal]->GetDefaultView());
+                    resample.BindSampledTexture("previousReceiver", m_sampler,
+                                                m_history[1 - m_current][Receiver]->GetDefaultView());
+                    resample.BindSampledTexture("previousLength", m_sampler,
+                                                m_history[1 - m_current][Length]->GetDefaultView());
+                    resample.BindStorageImage("rawBounce", rawBounce);
+                    resample.BindStorageImage("rawSpecular", rawSpecular);
+                    Dispatch(std::move(resample));
+                }
+            }
             if (halfDiffuse)
             {
                 RDGComputePassDesc upsample;
@@ -664,13 +917,13 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                     searchArgs = resources->CreateBuffer(arguments);
                     RDGBufferDesc pixels;
                     pixels.name = "hybrid_sky_search_pixels";
-                    pixels.size = uint64_t(view.width) * view.height * sizeof(uint32_t);
+                    pixels.size = uint64_t(m_extent.x) * m_extent.y * sizeof(uint32_t);
                     pixels.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
                     searchPixels                 = resources->CreateBuffer(pixels);
                     RDGTextureDesc supportDesc   = desc;
                     supportDesc.name             = "hybrid_sky_support";
-                    supportDesc.texFormat.width  = (view.width + 7u) / 8u;
-                    supportDesc.texFormat.height = (view.height + 7u) / 8u;
+                    supportDesc.texFormat.width  = (m_extent.x + 7u) / 8u;
+                    supportDesc.texFormat.height = (m_extent.y + 7u) / 8u;
                     supportDesc.texFormat.format = DataFormat::eR32SFloat;
                     skySupport                   = resources->CreateTexture(supportDesc);
                     RDGBufferDesc bounds;
@@ -684,7 +937,14 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                     support.SetPassTag("HybridSkySupport");
                     support.BindSampledTexture("inputSky", m_sampler, m_outputSky);
                     support.BindSampledTexture("inputVariance", m_sampler, previousVariance);
-                    support.BindSampledTexture("receiverSurface", m_sampler, "offscreen_receiver");
+                    if (m_extent == m_outputExtent)
+                    {
+                        support.BindSampledTexture("receiverSurface", m_sampler, "offscreen_receiver");
+                    }
+                    else
+                    {
+                        support.BindSampledTexture("receiverSurface", m_sampler, m_receiverGuides[3]);
+                    }
                     support.BindSampledTexture("filterPosition", m_sampler, m_history[m_current][Position]->GetDefaultView());
                     support.BindStorageImage("skySupport", skySupport, RDGContentGuarantee::eFullWrite);
                     support.BindStorageBuffer("HybridSkySearchArgs", searchArgs, RDGContentGuarantee::eFullWrite);
@@ -763,12 +1023,13 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                     });
                 }
             }
+            ReconstructOutput(voxelGI);
             if (m_captureOutput != nullptr && m_captureReadback != nullptr)
             {
                 RDGComputePassDesc capture;
                 capture.SetShaderProgramName("HybridCaptureSP");
                 capture.SetPassTag("HybridCapture");
-                BindGuides(capture);
+                BindHybridReceiverGuides(capture, m_sampler, m_uniforms);
                 voxelGI.BindLightingInputs(capture);
                 capture.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
                 capture.BindSampledTexture("rawSky", m_sampler, rawSky);
@@ -782,7 +1043,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 capture.BindSampledTexture("rawReflection", m_sampler, rawReflection);
                 capture.BindSampledTexture("reflectionHistory", m_sampler, m_history[m_current][Reflection]->GetDefaultView());
                 capture.BindStorageBuffer("HybridCapture", m_captureOutput, RDGContentGuarantee::eFullWrite);
-                Dispatch(std::move(capture));
+                Dispatch(std::move(capture), true);
                 graph->AddTransferPass("ReadHybridCapture")
                     .CopyBuffer(m_captureOutput, m_captureReadback, {0, 0, m_captureOutput->GetRequiredSize()})
                     .NeverCull();
@@ -806,12 +1067,20 @@ void HybridGIRenderer::BindLightingInputs(RDGPassDescBase& pass) const
     pass.BindSampledTexture("hybridBounce", m_sampler, m_outputBounce);
 }
 
+void HybridGIRenderer::BindForwardLightingInputs(RDGPassDescBase& pass) const
+{
+    BindLightingInputs(pass);
+    // Blended layers compare their lobe with the receiver's before reusing its reflections.
+    pass.BindSampledTexture("hybridNormal", m_sampler, "offscreen_normal");
+    pass.BindSampledTexture("hybridRoughness", m_sampler, "offscreen_roughness");
+}
+
 DebugOutputDescription HybridGIRenderer::BuildDebugView(const RenderView& view, const DebugSelection& selection) const
 {
     DebugOutputDescription description;
     description.output = selection.output;
     description.available =
-        m_recorded && selection.output >= DebugOutput::eGIRawSky && selection.output <= DebugOutput::eGIRejection;
+        m_recorded && selection.output >= DebugOutput::eGIRawSky && selection.output <= DebugOutput::eGIFallback;
     description.reason = "Hybrid GI is not active in this view.";
     if (description.available && m_screenProbes)
     {
@@ -826,13 +1095,18 @@ DebugOutputDescription HybridGIRenderer::BuildDebugView(const RenderView& view, 
         const char* interpretations[] = {
             "Raw diffuse sky, linear radiance converted to sRGB; values above one clip.",
             "Reconstructed diffuse sky, linear radiance converted to sRGB; values above one clip.",
-            "Diffuse history length, black at zero and white at the configured history limit.",
+            "History length, black at zero and white at the configured limit. Face 0 diffuse, face 1 reflection.",
             "Raw specular escape fraction: black is blocked, white escapes. Grey averages reference samples.",
-            "History rejection: green accepted, red reset, yellow outside view, magenta identity, cyan plane/normal."};
+            "History rejection (face 0 diffuse, face 1 reflection): green accepted, red reset, yellow outside view, "
+            "magenta identity, cyan plane, blue shading normal, orange geometric normal, white roughness, grey view.",
+            "Reconstruction fallback: red traces diffuse, blue traces reflection, magenta both; dark grey interpolates. "
+            "Native-resolution GI has no fallback."};
         const uint32_t mode        = static_cast<uint32_t>(selection.output) - static_cast<uint32_t>(DebugOutput::eGIRawSky);
         description.interpretation = interpretations[mode];
         DebugVisualizationData data;
         data.selection.x         = mode;
+        data.selection.y         = selection.face == 1 ? 1u : 0u;
+        data.selection.z         = m_missingReceiver ? 1u : 0u;
         data.range.y             = static_cast<float>(m_uniforms.sampling.z);
         RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "HybridDebugSP", data);
         if (selection.output == DebugOutput::eGIRawSky || selection.output == DebugOutput::eGIReconstructedSky
@@ -845,9 +1119,20 @@ DebugOutputDescription HybridGIRenderer::BuildDebugView(const RenderView& view, 
         }
         else
         {
-            pass.BindSampledTexture("sourceImage", m_sampler, m_history[m_current][Length]->GetDefaultView());
+            const uint32_t layer =
+                selection.output == DebugOutput::eGIHistoryLength && data.selection.y != 0 ? Reflection : Length;
+            pass.BindSampledTexture("sourceImage", m_sampler, m_history[m_current][layer]->GetDefaultView());
         }
         pass.BindSampledTexture("historyLength", m_sampler, m_history[m_current][Length]->GetDefaultView());
+        // Native resolution has no fallback; the receiver identities only satisfy the binding.
+        if (m_missingReceiver)
+        {
+            pass.BindSampledTexture("missingReceiver", m_sampler, m_missingReceiver);
+        }
+        else
+        {
+            pass.BindSampledTexture("missingReceiver", m_sampler, "offscreen_receiver");
+        }
         AddDebugVisualizationPass(*m_device->GetCurrentFrameRDG(), std::move(pass));
     }
     return description;
@@ -867,7 +1152,8 @@ void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
             {
                 std::fill(std::begin(m_historyNeedsClear[side]), std::end(m_historyNeedsClear[side]), false);
             }
-            m_current = 1 - m_current;
+            m_current               = 1 - m_current;
+            m_restirLobeInitialized = m_restirLobeIntegral != nullptr;
         }
         m_valid = true;
         ++m_frame;
@@ -927,7 +1213,15 @@ void HybridGIRenderer::DestroyPixelHistory()
         }
         m_device->DestroyBuffer(m_guide[side]);
         m_guide[side] = nullptr;
+        for (uint32_t type = 0; type < 2; ++type)
+        {
+            m_device->DestroyBuffer(m_reservoir[side][type]);
+            m_reservoir[side][type] = nullptr;
+        }
     }
+    m_device->DestroyTexture(m_restirLobeIntegral);
+    m_restirLobeIntegral    = nullptr;
+    m_restirLobeInitialized = false;
 }
 
 void HybridGIRenderer::Destroy()
@@ -939,5 +1233,6 @@ void HybridGIRenderer::Destroy()
     m_valid                = false;
     m_preparedHistoryValid = false;
     m_extent               = glm::uvec2(0);
+    m_outputExtent         = glm::uvec2(0);
 }
 } // namespace zen::rc

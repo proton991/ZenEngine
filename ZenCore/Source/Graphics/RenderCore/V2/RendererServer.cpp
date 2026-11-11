@@ -179,7 +179,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
         if (succeeded && renderScene)
         {
-            const bool hybridDebug = m_debug.output >= DebugOutput::eGIRawSky && m_debug.output <= DebugOutput::eGIRejection;
+            const bool hybridDebug = m_debug.output >= DebugOutput::eGIRawSky && m_debug.output <= DebugOutput::eGIFallback;
             const bool diagnostic =
                 m_debug.output != DebugOutput::eFinal && m_debug.output != DebugOutput::eDepth && !hybridDebug;
 

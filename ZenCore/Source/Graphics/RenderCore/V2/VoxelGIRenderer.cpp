@@ -161,6 +161,8 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && (settings.fieldResolution == 32 || settings.fieldResolution == 64)
         && static_cast<uint32_t>(settings.gather) <= static_cast<uint32_t>(VoxelGISettings::Gather::Probes)
         && (settings.probeSpacing == 8 || settings.probeSpacing == 16)
+        && (settings.pixelResolutionDivisor == 1 || settings.pixelResolutionDivisor == 2
+            || settings.pixelResolutionDivisor == 4)
         && static_cast<uint32_t>(settings.rayProvider) <= static_cast<uint32_t>(VoxelGISettings::RayProvider::Hardware);
 }
 
@@ -229,6 +231,10 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid &= config.ReadNumber("voxel_gi_reference_samples", settings.referenceSamples);
     valid &= config.ReadNumber("voxel_gi_history_frames", settings.historyFrames);
     valid &= config.ReadBool("voxel_gi_temporal", settings.temporal);
+    valid &= config.ReadNumber("voxel_gi_pixel_resolution_divisor", settings.pixelResolutionDivisor);
+    valid &= config.ReadBool("voxel_gi_restir", settings.restirGI);
+    valid &= config.ReadBool("voxel_gi_restir_spatial", settings.restirSpatial);
+    valid &= config.ReadBool("voxel_gi_restir_specular", settings.restirSpecular);
     valid &= config.ReadBool("voxel_gi_previous_frame_radiance", settings.previousFrameRadiance);
     valid &= config.ReadBool("voxel_gi_filter", settings.filter);
     valid &= config.ReadBool("voxel_gi_indirect_diffuse", settings.indirectDiffuse);
@@ -941,6 +947,11 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             m_rayTotalsCleared = true;
         }
 
+        if (UsesHardwareShadows())
+        {
+            BuildLightOccluders();
+        }
+
         if (!voxelLighting && !m_emptyLightingInitialized)
         {
             graph->AddTransferPass("InitializeUnusedGIInputs").ClearTexture(m_emptyLighting, Color(0));
@@ -1139,9 +1150,16 @@ void VoxelGIRenderer::BindRayInputs(RDGPassDescBase& pass) const
     pass.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
 }
 
-void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass) const
+void VoxelGIRenderer::BindHardwareRayInputs(RDGPassDescBase& pass, bool environment) const
 {
-    BindRayInputs(pass);
+    if (environment)
+    {
+        BindRayInputs(pass);
+    }
+    else
+    {
+        pass.BindValue("uGISettings", m_uniforms);
+    }
     m_rayQuery.BindInputs(pass, *m_scene);
 }
 
@@ -1164,11 +1182,37 @@ void VoxelGIRenderer::BindFieldInputs(RDGPassDescBase& pass) const
     }
 }
 
+void VoxelGIRenderer::BuildLightOccluders()
+{
+    RenderGraph*  graph = m_device->GetCurrentFrameRDG();
+    RDGBufferDesc desc;
+    desc.name = "light_occluder_triangles";
+    desc.size = uint64_t(MaxSceneLights) * 6u * 16u * 16u * 3u * sizeof(Vec4);
+    desc.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    m_lightOccluders = graph->GetResourceManager()->CreateBuffer(desc);
+    RDGComputePassDesc pass;
+    pass.SetPassTag("LightOccluders");
+    pass.SetShaderProgramName(CountsRays() ? "LightOccludersCountsSP" : "LightOccludersSP");
+    if (CountsRays())
+    {
+        BindRayTotals(pass);
+    }
+    pass.BindValue("uGISettings", m_uniforms);
+    pass.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+    m_rayQuery.BindInputs(pass, *m_scene);
+    pass.BindStorageBuffer("LightOccluders", m_lightOccluders, RDGContentGuarantee::eFullWrite);
+    // Rebuild from this frame's published geometry and lights. No stale cache survives scene edits or declined frames.
+    graph->AddComputePass(std::move(pass)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+        encoder.Dispatch(2, 2, MaxSceneLights * 6);
+    });
+}
+
 void VoxelGIRenderer::BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound) const
 {
     if (UsesHardwareShadows())
     {
         m_rayQuery.BindInputs(pass, *m_scene, forwardMaterialBound);
+        pass.BindStorageBuffer("LightOccluders", m_lightOccluders);
     }
     else
     {

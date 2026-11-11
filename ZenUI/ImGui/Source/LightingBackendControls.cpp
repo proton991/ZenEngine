@@ -285,7 +285,22 @@ bool DrawGIGatherControls(rc::VoxelGISettings& settings)
     }
     else
     {
-        ImGui::TextWrapped("Every pixel traces its own rays.");
+        const char* resolutions[] = {"Native", "Half width and height", "Quarter width and height"};
+        int         resolution    = settings.pixelResolutionDivisor == 4 ? 2 : (settings.pixelResolutionDivisor == 2 ? 1 : 0);
+        if (ImGui::Combo("GI resolution", &resolution, resolutions, 3))
+        {
+            settings.pixelResolutionDivisor = 1u << resolution;
+            changed                         = true;
+        }
+        ImGui::TextWrapped(
+            "Reduced GI resolution saves memory and ray work with HW RT. Lighting is reconstructed at the output resolution; Compute and mixed GI retain native resolution.");
+        changed |= ImGui::Checkbox("ReSTIR GI", &settings.restirGI);
+        if (settings.restirGI)
+        {
+            changed |= ImGui::Checkbox("Spatial reuse", &settings.restirSpatial);
+            changed |= ImGui::Checkbox("Rough reflection reuse", &settings.restirSpecular);
+            ImGui::TextWrapped("Reuses indirect light paths with HW RT. Smooth reflections keep their own rays.");
+        }
     }
     ImGui::TextWrapped("Shared by diffuse and specular GI. Rays use each pass's selected tracer with either gather method.");
     return changed;

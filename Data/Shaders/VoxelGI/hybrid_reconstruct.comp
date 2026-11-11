@@ -1,0 +1,155 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hybrid_guides.glsl"
+#include "../Common/scene_lighting.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 6) uniform sampler2D inputSky;
+layout(set = 1, binding = 7) uniform sampler2D inputSpecular;
+layout(set = 1, binding = 8) uniform sampler2D inputBounce;
+layout(set = 1, binding = 9) uniform sampler2D reducedPosition;
+layout(set = 1, binding = 10) uniform sampler2D reducedNormal;
+layout(set = 1, binding = 11) uniform usampler2D reducedSurface;
+layout(set = 1, binding = 12) uniform sampler2D reducedRoughness;
+layout(set = 1, binding = 13, rgba16f) uniform writeonly image2D outputSky;
+layout(set = 1, binding = 14, rgba16f) uniform writeonly image2D outputSpecular;
+layout(set = 1, binding = 15, rgba16f) uniform writeonly image2D outputBounce;
+layout(set = 1, binding = 16, r8ui) uniform writeonly uimage2D missingReceiver;
+
+struct Receiver
+{
+    vec2  source;
+    vec3  position;
+    vec3  normal;
+    vec3  geometric;
+    uint  identity;
+    float roughness;
+    float limit;
+};
+
+struct Reconstruction
+{
+    vec4 sky;
+    vec4 specular;
+    vec4 bounce;
+    vec2 weights;
+};
+
+// Adds one GI texel that lies on the receiver's surface. falloff sets the spatial weight per
+// squared texel offset; the plane and normal tests are identical for every window.
+void Accumulate(ivec2 q, Receiver r, float falloff, inout Reconstruction result)
+{
+    uvec2 surface = texelFetch(reducedSurface, q, 0).rg;
+    vec3  delta   = texelFetch(reducedPosition, q, 0).xyz - r.position;
+    vec3  ng      = DecodeGBufferNormal(unpackUnorm2x16(surface.r));
+    float plane   = max(abs(dot(delta, r.geometric)), abs(dot(delta, ng)));
+    if (surface.g == r.identity && dot(ng, r.geometric) >= 0.9 && plane <= r.limit)
+    {
+        vec3  n               = DecodeGBufferNormal(texelFetch(reducedNormal, q, 0).rg);
+        vec2  offset          = vec2(q) - r.source;
+        float weight          = exp(-falloff * dot(offset, offset)) * pow(max(dot(n, r.normal), 0.0), 32.0)
+                              * exp(-plane / max(r.limit * 0.25, 1e-8));
+        float specularWeight  = weight * exp(-32.0 * abs(texelFetch(reducedRoughness, q, 0).g - r.roughness));
+        result.sky           += weight * texelFetch(inputSky, q, 0);
+        if (hybrid.bounce.x != 0u)
+        {
+            result.bounce += weight * texelFetch(inputBounce, q, 0);
+        }
+        result.specular += specularWeight * texelFetch(inputSpecular, q, 0);
+        result.weights  += vec2(weight, specularWeight);
+    }
+}
+
+// Fills the channels that still have no support from the texels of window [1 - outer, outer]^2
+// around base outside window [1 - inner, inner]^2.
+void SearchRing(ivec2 base, ivec2 extent, Receiver r, int inner, int outer, float falloff, inout Reconstruction result)
+{
+    Reconstruction ring = Reconstruction(vec4(0), vec4(0), vec4(0), vec2(0));
+    for (int y = 1 - outer; y <= outer; ++y)
+    {
+        for (int x = 1 - outer; x <= outer; ++x)
+        {
+            ivec2 q       = base + ivec2(x, y);
+            bool  checked = x > -inner && x <= inner && y > -inner && y <= inner;
+            if (!checked && all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, extent)))
+            {
+                Accumulate(q, r, falloff, ring);
+            }
+        }
+    }
+    if (result.weights.x < 1e-10)
+    {
+        result.sky       = ring.sky;
+        result.bounce    = ring.bounce;
+        result.weights.x = ring.weights.x;
+    }
+    if (result.weights.y < 1e-10)
+    {
+        result.specular  = ring.specular;
+        result.weights.y = ring.weights.y;
+    }
+}
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!HybridInView(p))
+    {
+        return;
+    }
+    Reconstruction result   = Reconstruction(vec4(0), vec4(0), vec4(0), vec2(0));
+    uint           identity = texelFetch(receiverSurface, p, 0).g;
+    bool           valid    = identity != 0u && texelFetch(receiverDepth, p, 0).r < 1.0;
+    if (valid)
+    {
+        float    divisor = float(hybrid.resolution.z);
+        Receiver r;
+        r.source    = (vec2(p) - floor(divisor * 0.5)) / divisor;
+        r.position  = HybridPosition(p);
+        r.normal    = HybridNormal(p);
+        r.geometric = HybridGeometricNormal(p);
+        r.identity  = identity;
+        r.roughness = texelFetch(receiverRoughness, p, 0).g;
+        // The plane-distance limit scales with view distance, as temporal and reservoir reuse do.
+        r.limit      = hybrid.rejection.x * max(1.0, length(r.position - sceneUbo.viewPosition.xyz));
+        ivec2 base   = ivec2(floor(r.source));
+        ivec2 extent = textureSize(reducedSurface, 0);
+        for (int y = -1; y <= 2; ++y)
+        {
+            for (int x = -1; x <= 2; ++x)
+            {
+                ivec2 q = base + ivec2(x, y);
+                if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, extent)))
+                {
+                    Accumulate(q, r, 2.0, result);
+                }
+            }
+        }
+        // Thin edge and bevel faces usually continue along the edge beyond the bilinear window.
+        // Before a receiver traces its own sample, search the surrounding rings of 8x8 and 16x16
+        // windows with the same tests and broader spatial falloffs. Receivers still unsupported trace
+        // (hybrid_reconstruct_fallback.comp): reusing the neighbouring face under a relaxed
+        // geometric-normal test leaked lamp light across edges (Doc/HybridGI/SparkFixPlan.md).
+        if (any(lessThan(result.weights, vec2(1e-10))))
+        {
+            SearchRing(base, extent, r, 2, 4, 0.5, result);
+        }
+        // Measured on New Sponza: 40% of the receivers still unsupported after the 8x8 window have
+        // a passing texel within 16x16. Weaker falloff keeps those weights above the threshold.
+        if (any(lessThan(result.weights, vec2(1e-10))))
+        {
+            SearchRing(base, extent, r, 4, 8, 0.1, result);
+        }
+    }
+    uint missing = valid ? uint(result.weights.x < 1e-10) | (uint(result.weights.y < 1e-10) << 1u) : 0u;
+    imageStore(missingReceiver, p, uvec4(missing));
+    if (all(lessThan(p, imageSize(outputSky))))
+    {
+        imageStore(outputSky, p, result.sky / max(result.weights.x, 1e-20));
+    }
+    imageStore(outputSpecular, p, result.specular / max(result.weights.y, 1e-20));
+    if (hybrid.bounce.x != 0u || all(equal(p, ivec2(0))))
+    {
+        // Initialize the one-texel placeholder too when diffuse bounce is disabled.
+        imageStore(outputBounce, p, result.bounce / max(result.weights.x, 1e-20));
+    }
+}

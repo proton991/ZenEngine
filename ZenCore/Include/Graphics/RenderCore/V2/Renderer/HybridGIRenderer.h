@@ -31,8 +31,10 @@ struct HybridGIUniformData
     Vec4               rejection{0};  // plane threshold, specular enabled, temporal enabled, static reference
     glm::uvec4         bounce{0};     // ray bounce enabled, bounce history valid, responsive reconstruction, cache changed
     glm::uvec4         reflection{0}; // reflections enabled, history valid, responsive reconstruction, cache changed
+    glm::uvec4         resolution{0}; // output width, output height, pixel divisor, unchanged receivers
+    glm::uvec4         reservoir{0};  // reuse bits, diffuse candidate-frame cap, specular candidate-frame cap, reserved
 };
-static_assert(sizeof(HybridGIUniformData) == 256);
+static_assert(sizeof(HybridGIUniformData) == 288);
 
 void BindHybridReceiverGuides(RDGPassDescBase& pass, RHISampler* sampler, const HybridGIUniformData& uniforms);
 
@@ -48,6 +50,7 @@ public:
     Mat4                   PreviousModel(uint32_t node) const;
     bool                   BuildRenderGraph(const RenderView& view, VoxelGIRenderer& voxelGI);
     void                   BindLightingInputs(RDGPassDescBase& pass) const;
+    void                   BindForwardLightingInputs(RDGPassDescBase& pass) const;
     DebugOutputDescription BuildDebugView(const RenderView& view, const DebugSelection& selection) const;
     void                   OnRenderGraphExecuted(RenderFrameResult result);
     void                   InvalidateHistory(const char* reason);
@@ -89,6 +92,10 @@ public:
         return m_rayCountsRecorded;
     }
 
+    glm::uvec2 GetGIExtent() const
+    {
+        return m_extent;
+    }
     bool IsActive() const
     {
         return m_recorded;
@@ -121,17 +128,21 @@ public:
     }
 
 private:
-    bool PrepareHistory(uint32_t width,
-                        uint32_t height,
-                        bool     bounce,
-                        bool     reflections,
-                        bool     search,
-                        bool     reference,
-                        bool     budget);
-    void BindGuides(RDGPassDescBase& pass) const;
-    void BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const;
-    void Dispatch(RDGComputePassDesc&& pass);
-    void DestroyPixelHistory();
+    bool       PrepareHistory(uint32_t width,
+                              uint32_t height,
+                              bool     bounce,
+                              bool     reflections,
+                              bool     search,
+                              bool     reference,
+                              bool     budget,
+                              uint32_t restirMask);
+    void       BindGuides(RDGPassDescBase& pass) const;
+    void       BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const;
+    void       PrepareGuides();
+    void       ReconstructOutput(VoxelGIRenderer& voxelGI);
+    void       Dispatch(RDGComputePassDesc&& pass, bool fullResolution = false);
+    void       DestroyPixelHistory();
+    RDGTexture m_receiverGuides[6];
 
     enum HistoryTexture : uint32_t
     {
@@ -149,6 +160,7 @@ private:
         Budget,       // Nonzero where the trace used the reduced settled ray budget.
         Count
     };
+    glm::uvec2        m_outputExtent{0};
     RenderDevice*     m_device;
     ScreenProbeGather m_probeGather;
     RenderScene*      m_scene{nullptr};
@@ -162,9 +174,14 @@ private:
     RHITexture*       m_history[2][Count]{};
     bool              m_historyNeedsClear[2][Count]{};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
-    RHIBuffer*       m_guide[2]{};
-    RDGTexture       m_outputSky, m_outputSpecular, m_outputBounce;
-    RDGTexture       m_rawSky, m_rawSpecular;
+    RHIBuffer*  m_guide[2]{};
+    RHIBuffer*  m_reservoir[2][2]{}; // Frame side, then diffuse / rough specular; 24 bytes per pixel.
+    RHITexture* m_restirLobeIntegral{nullptr};
+    bool        m_restirLobeInitialized{false};
+    RDGTexture  m_outputSky, m_outputSpecular, m_outputBounce;
+    RDGTexture  m_rawSky, m_rawSpecular;
+    // Full-resolution receivers the reduced-resolution reconstruction could not interpolate.
+    RDGTexture       m_missingReceiver;
     HeapVector<Mat4> m_previousModels;
     HeapVector<Mat4> m_recordedModels;
     // A retained buffer does not freeze its contents. Check the slot generation

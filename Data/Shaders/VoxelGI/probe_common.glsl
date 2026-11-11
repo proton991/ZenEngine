@@ -176,7 +176,7 @@ float ProbeSurfaceWeight(vec3 position, vec3 normal, float footprint, ProbeRecor
 vec2 ProbePreviousPixel(vec2 pixel)
 {
     ivec2 size   = textureSize(receiverDepth, 0);
-    vec4  motion = texelFetch(receiverMotion, clamp(ivec2(pixel), ivec2(0), size - 1), 0);
+    vec4  motion = HybridMotion(clamp(ivec2(pixel), ivec2(0), size - 1));
     return motion.z > 0.0 ? pixel + motion.xy * 0.5 * vec2(size) : pixel;
 }
 

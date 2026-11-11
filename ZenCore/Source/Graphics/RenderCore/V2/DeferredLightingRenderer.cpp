@@ -10,7 +10,6 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Platform/ConfigLoader.h"
-#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/ComputeDispatch.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
@@ -890,7 +889,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
         if (hybrid)
         {
             offscreen.AddColorOutput(DataFormat::eR32G32UInt, width, height, "offscreen_receiver");
-            offscreen.AddColorOutput(DataFormat::eR32G32B32A32SFloat, width, height, "offscreen_motion");
+            offscreen.AddColorOutput(DataFormat::eR32G32SFloat, width, height, "offscreen_motion");
             offscreen.AddColorOutput(DataFormat::eR32G32B32A32SFloat, width, height, "offscreen_position");
             m_hybrid->BindReceiverInputs(offscreen);
         }
@@ -1233,11 +1232,16 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
 
     bool displayTransparency       = false;
+    bool scattering                = false;
+    bool refraction                = false;
 
     for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
     {
         displayTransparency |=
             material.materialProperties.y > 0.5f && material.surfaceProperties.y == static_cast<float>(sg::AlphaMode::Blend);
+        scattering |= material.diffuseTransmissionColorFactor.w > 0.0f
+                   && glm::any(glm::greaterThan(Vec3(material.volumeScatterColorRetroreflection), Vec3(0.0f)));
+        refraction |= material.sheenColorTransmission.w > 0.0f;
     }
 
     RDGTextureDesc colorDesc;
@@ -1270,6 +1274,8 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     RDGTextureDesc scatterDesc   = colorDesc;
 
+    scatterDesc.texFormat.width  = scattering ? width : 1u;
+    scatterDesc.texFormat.height = scattering ? height : 1u;
     scatterDesc.name             = "forward_scatter_lighting";
 
     scatterDesc.texFormat.format = DataFormat::eR32G32B32A32SFloat;
@@ -1288,11 +1294,13 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     RDGTextureDesc opaqueDesc    = colorDesc;
 
+    opaqueDesc.texFormat.width   = refraction ? width : 1u;
+    opaqueDesc.texFormat.height  = refraction ? height : 1u;
     opaqueDesc.name              = "forward_opaque";
 
     opaqueDesc.texFormat.mipmaps = 1;
 
-    uint32_t mipSize             = std::max(width, height);
+    uint32_t mipSize             = std::max(opaqueDesc.texFormat.width, opaqueDesc.texFormat.height);
 
     while (mipSize > 1)
     {
@@ -1444,14 +1452,6 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
         graph->AddTransferPass("ClearLightVisibility").ClearTexture(lightVisibility, Color(0.0f));
     }
 
-    bool scattering = false;
-
-    for (const sg::MaterialData& material : m_pScene->GetMaterialsData())
-    {
-        scattering |= material.diffuseTransmissionColorFactor.w > 0.0f
-                   && glm::any(glm::greaterThan(Vec3(material.volumeScatterColorRetroreflection), Vec3(0.0f)));
-    }
-
     if (scattering)
     {
         for (uint32_t topology = 0; topology < 3; ++topology)
@@ -1534,21 +1534,24 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
     {
         if (stage == 3)
         {
-            RHITextureCopyRegion region{};
+            if (refraction)
+            {
+                RHITextureCopyRegion region{};
 
-            region.size                       = Vec3i(width, height, 1);
+                region.size                       = Vec3i(width, height, 1);
 
-            region.srcSubresources.layerCount = 1;
+                region.srcSubresources.layerCount = 1;
 
-            region.dstSubresources.layerCount = 1;
+                region.dstSubresources.layerCount = 1;
 
-            region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+                region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
 
-            region.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+                region.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
 
-            graph->AddTransferPass("ResolveRefraction").CopyTexture(color, opaque, MakeVecView(&region, 1));
+                graph->AddTransferPass("ResolveRefraction").CopyTexture(color, opaque, MakeVecView(&region, 1));
 
-            graph->AddTransferPass("FilterRefraction").GenerateMipmaps(opaque);
+                graph->AddTransferPass("FilterRefraction").GenerateMipmaps(opaque);
+            }
 
             if (displayTransparency)
             {
@@ -1692,7 +1695,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 {
                     forward.BindStorageBuffer("LightingCapture", m_captureOutput);
                 }
-                m_hybrid->BindLightingInputs(forward);
+                m_hybrid->BindForwardLightingInputs(forward);
             }
             if (receiverVisibility)
             {

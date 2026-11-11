@@ -1,0 +1,88 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "../hybrid_sampling.glsl"
+#include "../restir_reservoir.glsl"
+layout(local_size_x = 64) in;
+layout(std430, set = 1, binding = 0) writeonly buffer Results
+{
+    vec4 results[];
+};
+void main()
+{
+    uint        index     = gl_GlobalInvocationID.x;
+    GIReservoir candidate = GIReservoir(vec3(0, 0, 1), vec3(0, 0, -1), vec3(1), 1.0, 1u);
+    GIReservoir result    = EmptyGIReservoir();
+    if (index == 0u)
+    {
+        candidate.radiance = vec3(0.5, 4, 128);
+        candidate.count    = 127u;
+        candidate.weight   = 1.5;
+        result             = UnpackGIReservoir(PackGIReservoir(candidate));
+        results[index]     = vec4(result.radiance, float(result.count));
+    }
+    else if (index == 1u)
+    {
+        results[index] = vec4(GIJacobian(candidate, vec3(0), vec3(0, 0, -1)), GIJacobian(candidate, vec3(0, 0, -1), vec3(0)),
+                              GIJacobian(candidate, vec3(0), vec3(0, 0, 2)), GIJacobian(candidate, vec3(0), vec3(1, 0, 0)));
+    }
+    else if (index == 2u)
+    {
+        GIStream(result, candidate, 1000.0, 1000u, 0.0);
+        GIFinalize(result, 1.0);
+        result         = UnpackGIReservoir(PackGIReservoir(result));
+        results[index] = vec4(result.weight, float(result.count), result.radiance.x, dot(result.normal, candidate.normal));
+    }
+    else if (index == 3u)
+    {
+        GIStream(result, candidate, 0.0, 3u, 0.5);
+        GIStream(result, candidate, 12.0, 1u, 0.9);
+        GIFinalize(result, 3.0);
+        results[index] = vec4(result.weight * 3.0, float(result.count), 0, 0);
+    }
+    else if (index == 4u)
+    {
+        vec3 n         = vec3(0, 0, 1);
+        results[index] = vec4(GICompatibleSurface(1u, 1u, vec3(0), n, n, vec3(1, 0, 0), n, n, 0.001),
+                              GICompatibleSurface(1u, 2u, vec3(0), n, n, vec3(0), n, n, 0.001),
+                              GICompatibleSurface(1u, 1u, vec3(0), n, n, vec3(0, 0, 0.01), n, n, 0.001),
+                              GICompatibleSurface(1u, 1u, vec3(0), n, n, vec3(0), -n, n, 0.001));
+    }
+    else if (index == 5u)
+    {
+        GIStream(result, candidate, 2.0, 1u, 0.0);
+        candidate.radiance = vec3(6);
+        GIStream(result, candidate, 6.0, 3u, 0.5);
+        GIFinalize(result, GITarget(result.radiance));
+        results[index] = vec4(result.radiance * result.weight, float(result.count));
+    }
+    else if (index == 6u)
+    {
+        GIStream(result, candidate, uintBitsToFloat(0x7fc00000u), 1u, 0.0);
+        GIFinalize(result, 0.0);
+        results[index] = vec4(result.weight, float(result.count), UnpackGIRadiance(PackGIRadiance(vec3(65408))).x, 0);
+    }
+    else if (index == 7u)
+    {
+        candidate.normal = normalize(vec3(0.3, 0.4, 0.5));
+        result           = UnpackGIReservoir(PackGIReservoir(candidate));
+        results[index]   = vec4(dot(candidate.normal, result.normal), result.weight, 0, 0);
+    }
+    else
+    {
+        // Unit-radius emissive disk at z=1, Lo=4. E/pi=Lo*R^2/(R^2+h^2)=2.
+        // Misses count as zero-valued samples of the same cosine proposal.
+        for (uint i = 0u; i < 64u; ++i)
+        {
+            uint  seed = HybridHash(index * 64u + i);
+            vec2  u    = vec2(uvec2(HybridHash(seed), HybridHash(seed ^ 0x9183u)) >> 8u) / 16777216.0;
+            float pdf;
+            vec3  direction    = HybridCosineSample(vec3(0, 0, 1), u, pdf);
+            candidate.position = direction / max(direction.z, 1e-20);
+            candidate.radiance = vec3(4);
+            float weight       = dot(candidate.position.xy, candidate.position.xy) <= 1.0 ? 4.0 : 0.0;
+            GIStream(result, candidate, weight, 1u, float(HybridHash(seed ^ 0x7182u) >> 8u) / 16777216.0);
+        }
+        GIFinalize(result, GITarget(GIDiffuse(result, vec3(0), vec3(0, 0, 1), vec3(0, 0, 1))));
+        results[index] = vec4(GIDiffuse(result, vec3(0), vec3(0, 0, 1), vec3(0, 0, 1)) * result.weight, float(result.count));
+    }
+}

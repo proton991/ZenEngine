@@ -36,6 +36,14 @@ def fingerprint(path):
     return dict(path=str(path), bytes=path.stat().st_size, sha256=digest)
 
 
+def running_renderers():
+    """A minimized editor still owns GPU memory and can force the capture to page."""
+    tasks = subprocess.run(['tasklist', '/FO', 'CSV', '/NH'], capture_output=True, text=True, check=True)
+    names = {'zen_editor.exe', 'zenapp.exe', 'scene_renderer_demo.exe'}
+    return [dict(name=row[0], pid=int(row[1])) for row in csv.reader(tasks.stdout.splitlines())
+            if len(row) >= 2 and row[0].casefold() in names]
+
+
 def actual_state(log):
     """The extents and renderer state ZenApp reports for its first frame."""
     render = RENDER_STATE.search(log)
@@ -43,7 +51,9 @@ def actual_state(log):
     culling = list(CULLING_STATE.finditer(log))
     assert render and presentation, 'ZenApp did not report its render and presentation state'
     assert culling, 'ZenApp did not report its requested and actual GPU culling path'
-    return dict(render_width=int(render[1]), render_height=int(render[2]), async_compute=render[3], rhi=render[4],
+    gi_extent = re.search(r"ZenApp GI extent: (\d+)x(\d+), output=(\d+)x(\d+)", log)
+    return dict(gi_width=int(gi_extent[1]) if gi_extent else None, gi_height=int(gi_extent[2]) if gi_extent else None,
+                render_width=int(render[1]), render_height=int(render[2]), async_compute=render[3], rhi=render[4],
                 ray_provider=render[5], ray_query=render[6], diagnostics=render[7] == 'true',
                 fullscreen=presentation[1] == 'true', framebuffer_width=int(presentation[2]),
                 framebuffer_height=int(presentation[3]), gpu_culling_requested=culling[0][1] == 'true',
@@ -119,6 +129,9 @@ def main():
         parser.error('Width and height must be in 1..8192')
     if args.frames <= 0 or args.start_after_ms < 0 or not 0 < args.max_duration_ms < 10000:
         parser.error('Frames must be positive, delay nonnegative, and duration in 1..9999 ms')
+    renderers = running_renderers()
+    if renderers:
+        parser.error(f'Close other Zen rendering processes before profiling, including minimized editors: {renderers}')
     source = args.setup.resolve(strict=True)
     setup = json.loads(source.read_text(encoding='utf-8'))
     package = Path(setup['packagePath']).resolve(strict=True)
@@ -158,6 +171,9 @@ def main():
         print('RTSS is running; unless ZenApp.exe is excluded there, this capture may include its overlay work', flush=True)
     with (out / 'launch.log').open('w') as log:
         process = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+    renderers = running_renderers()
+    (out / 'other-renderers-after.json').write_text(json.dumps(renderers, indent=2) + '\n')
+    assert not renderers, f'Other Zen renderers were present after the capture: {renderers}'
     log = (out / 'launch.log').read_text(errors='replace')
     errors = [line for line in log.splitlines() if any(token in line for token in (
         '[error]', 'VUID-', 'SYNC-HAZARD', 'TARGET ERROR:', 'Using GI defaults after rejected configuration'))]

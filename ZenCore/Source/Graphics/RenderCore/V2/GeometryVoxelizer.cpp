@@ -1,7 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 
-#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"

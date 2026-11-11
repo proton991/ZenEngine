@@ -1,0 +1,50 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+// Evaluates the shared decisions of the reuse and bound passes on test inputs: decal support and
+// lobe matching (forward_material.glsl), the sample bound, the reconstruction fallback reference
+// (hybrid_reconstruct_fallback.comp) and the forward layers' receiver reference.
+#include "../hybrid_guides.glsl"
+layout(local_size_x = 64) in;
+layout(set = 1, binding = 6) uniform usampler2D missingReceiver;
+layout(set = 1, binding = 13, rgba16f) uniform image2D outputSky;
+layout(set = 1, binding = 14, rgba16f) uniform image2D outputSpecular;
+layout(set = 1, binding = 15, rgba16f) uniform image2D outputBounce;
+#include "../hybrid_fallback_reference.glsl"
+layout(set = 3, binding = 9) uniform sampler2D hybridSky;
+layout(set = 3, binding = 10) uniform sampler2D hybridSpecular;
+layout(set = 3, binding = 11) uniform usampler2D hybridSurface;
+layout(set = 3, binding = 12) uniform sampler2D hybridDepth;
+layout(set = 3, binding = 13) uniform sampler2D hybridBounce;
+#include "../hybrid_receiver_reference.glsl"
+struct ReuseCase
+{
+    vec4  fragment;       // xyz view-space layer position; w normal agreement
+    vec4  receiver;       // xyz view-space receiver position; w half a voxel
+    vec4  receiverNormal; // xyz view-space geometric normal; w 1 for ray-traced GI
+    vec4  lobe;           // xyz receiver shading normal; w receiver roughness
+    vec4  layer;          // xyz layer shading normal; w layer roughness
+    vec4  bound;          // x luminance, y reference
+    ivec4 pixel;          // xy pixel for both references
+};
+layout(set = 1, binding = 40, std430) readonly buffer ReuseCases
+{
+    ReuseCase cases[];
+};
+layout(set = 1, binding = 41, std430) writeonly buffer ReuseResults
+{
+    vec4 results[];
+};
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < cases.length())
+    {
+        ReuseCase c              = cases[index];
+        bool      rest           = HybridLayerRests(c.fragment.xyz, c.receiver.xyz, c.receiverNormal.xyz, c.fragment.w,
+                                                    c.receiverNormal.w > 0.5, c.receiver.w);
+        bool      lobe           = HybridLayerLobeMatches(c.lobe.xyz, c.lobe.w, c.layer.xyz, c.layer.w);
+        results[index * 3u + 0u] = vec4(rest ? 1.0 : 0.0, lobe ? 1.0 : 0.0, HybridSampleBound(c.bound.x, c.bound.y), 0);
+        results[index * 3u + 1u] = vec4(HybridFallbackReference(c.pixel.xy), 0);
+        results[index * 3u + 2u] = vec4(HybridReceiverReference(c.pixel.xy, true), HybridReceiverReference(c.pixel.xy, false));
+    }
+}

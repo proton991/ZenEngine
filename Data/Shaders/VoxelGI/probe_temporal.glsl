@@ -83,7 +83,7 @@ void main()
                 Accumulate(current, probeHistory[kept], 1.0);
                 skyHistoryScale = weight > 0.0 ? 4.0 : 1.0;
             }
-            vec4 motion = texelFetch(receiverMotion, ivec2(current.screen.xy), 0);
+            vec4 motion = HybridMotion(ivec2(current.screen.xy));
             if (motion.z > 0.0 && weight == 0.0)
             {
                 // A new probe starts from the previous probes around its reprojection, weighted by

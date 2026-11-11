@@ -97,6 +97,10 @@ The first launch after a shader change recompiled the ten field programs (570 ms
 
 ### Lamp shadow work
 
+Historical measurement: the sampled HW lamp-fixture masks described below are no longer active.
+The 2026-11-10 [rendering cleanup](../HybridGI/RenderingCleanup.md) removes their orphaned code;
+current HW shadows use exact triangle candidates. The measurements below retain their original scope.
+
 With the editor closed, an upper bound came from a temporary shader that treats every point and spot light as fully occluded without shadow work. It saves 1.7–2.1 ms in the hall: Compute 7.26 → 5.36 ms and HW RT 5.15 → 3.12 ms at the hall end. Lighting the 22 lamps without shadows costs only 0.2 ms (the GI-off frame is 1.0–1.2 ms). Two changes now remove most of that work:
 
 - **Compute: exact shadow-map early-out** (`scene_shadows.glsl`, `scene_shadow_max_depth.comp`). Each rendered shadow face is reduced to the deepest depth of every 4×4 texel block. Every tap's plane-corrected reference is a distance to a point of the receiver plane, so none is nearer than the plane. Away from grazing incidence, where every tap ray meets the plane ahead of the light, a plane beyond the deepest depth under the taps means every tap is shadowed and the filter is exactly 0. Four fetches replace sixteen filtered taps. A diagnostic build that still ran the filter and amplified any disagreement found none in either view. The remaining image differences, at most 6 of 255, come from GI timing: lamp volumes publish at different frames when frames are faster. The shadow memory estimate includes the reduction, 1/16 of the maps.

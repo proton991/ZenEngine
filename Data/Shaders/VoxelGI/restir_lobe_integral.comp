@@ -1,0 +1,20 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "hybrid_sampling.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0, r32f) uniform writeonly image2D lobeIntegral;
+void main()
+{
+    ivec2      p          = ivec2(gl_GlobalInvocationID.xy);
+    vec2       parameters = (vec2(p) + 0.5) / vec2(imageSize(lobeIntegral));
+    vec3       view       = vec3(sqrt(1.0 - parameters.x * parameters.x), 0, parameters.x);
+    float      integral   = 0.0;
+    const uint count      = 4096u;
+    for (uint i = 0u; i < count; ++i)
+    {
+        vec2 u          = vec2((float(i) + 0.5) / float(count), float(bitfieldReverse(i)) * 2.3283064365386963e-10);
+        vec3 direction  = HybridGGXSample(vec3(0, 0, 1), view, parameters.y, u);
+        integral       += HybridSmithG1(direction.z, max(parameters.y * parameters.y, 0.0016));
+    }
+    imageStore(lobeIntegral, p, vec4(integral / float(count)));
+}

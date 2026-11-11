@@ -153,6 +153,27 @@ private:
         return m_options.batch.empty() ? (m_options.frames == 0 || GetSceneFrame() < m_options.frames) : !m_batchDone;
     }
 
+    bool ApplyLightPath(uint64_t frame)
+    {
+        bool       found    = false;
+        bool       changed  = false;
+        const Vec3 position = LightPathPosition(m_options.lightKeys, frame);
+        for (rc::RenderingLight& entry : m_setup.rendering.lights)
+        {
+            if (entry.id == m_options.lightKeys.id && entry.light.type != rc::SceneLightType::eDirectional)
+            {
+                found                = true;
+                changed              = entry.light.position != position;
+                entry.light.position = position;
+            }
+        }
+        if (!found)
+        {
+            m_error = "Light path lightId must identify a point or spot light in the launch setup";
+        }
+        return found && (!changed || m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error));
+    }
+
     bool CreateCaptureBuffers()
     {
         const uint32_t strides[] = {ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL, ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL};
@@ -160,8 +181,11 @@ private:
         for (uint32_t index = 0; index < 4 && valid; ++index)
         {
             RHIBufferCreateInfo info;
-            info.size         = uint64_t(m_setup.run.renderWidth) * m_setup.run.renderHeight * strides[index / 2];
-            info.allocateType = index % 2 == 0 ? RHIBufferAllocateType::eGPU : RHIBufferAllocateType::eCPURead;
+            info.size = uint64_t(m_setup.run.renderWidth) * m_setup.run.renderHeight * strides[index / 2];
+            // Batch diagnostics are written only at capture frames. Keeping their two
+            // large storage outputs in host memory avoids another 3 GB of resident VRAM
+            // at 4K; the existing transfer/readback ordering still governs CPU access.
+            info.allocateType = RHIBufferAllocateType::eCPURead;
             info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer,
                                      RHIBufferUsageFlagBits::eTransferDstBuffer);
             m_captureBuffers[index] = m_device->CreateBuffer(info);
@@ -501,7 +525,8 @@ private:
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
-        bool valid = (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1)) && m_session->Render(overlay);
+        bool valid = (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1))
+                  && (m_options.lightKeys.keys.empty() || ApplyLightPath(previousFrame + 1)) && m_session->Render(overlay);
         if (!m_options.batch.empty() && GetSceneFrame() - m_batchBegin > 4096)
         {
             // Preparation, refinement and convergence share this budget.
@@ -557,6 +582,8 @@ private:
                                                                    : "inactive",
                      gi != nullptr ? gi->GetHardwareFeatureMask() : 0u, gi != nullptr && gi->UsesFieldTraversal(),
                      gi != nullptr && gi->UsesVoxelLighting());
+                const glm::uvec2 giExtent = hybrid != nullptr ? hybrid->GetGIExtent() : glm::uvec2(0);
+                LOGI("ZenApp GI extent: {}x{}, output={}x{}", giExtent.x, giExtent.y, view.width, view.height);
                 m_device->FlushRHIThread();
                 valid = m_device->PollFrameSubmissions();
                 if (valid && m_options.startPaused)
@@ -611,10 +638,11 @@ private:
         const platform::WindowExtent  framebuffer =
             window != nullptr ? window->GetFramebufferExtent() : platform::WindowExtent{};
         // UI-only or paused submissions must not replace the last scene frame's path.
-        const rc::SceneCullingResult& culling = m_lastSceneCulling;
-        const rc::RendererServer&     server  = *m_device->GetRendererServer();
-        const rc::HybridGIRenderer*   hybrid  = server.RequestDeferredLightingRenderer()->GetHybridGI();
-        const rc::VoxelGIRenderer*    gi      = server.RequestVoxelGI();
+        const rc::SceneCullingResult& culling  = m_lastSceneCulling;
+        const rc::RendererServer&     server   = *m_device->GetRendererServer();
+        const rc::HybridGIRenderer*   hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
+        const rc::VoxelGIRenderer*    gi       = server.RequestVoxelGI();
+        const glm::uvec2              giExtent = hybrid != nullptr ? hybrid->GetGIExtent() : glm::uvec2(0);
         std::ofstream                 summary(std::filesystem::u8path(path));
         summary << "{\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
@@ -623,6 +651,7 @@ private:
                 << ",\"backend\":" << std::quoted(GetRayProviderName(m_setup.rendering.gi.cone.rayProvider)) << ",\"gather\":"
                 << std::quoted(hybrid != nullptr && hybrid->IsHistoryValid() ? (hybrid->UsesScreenProbes() ? "probes" : "pixel")
                                                                              : "inactive")
+                << ",\"giWidth\":" << giExtent.x << ",\"giHeight\":" << giExtent.y
                 << ",\"hardwareFeatureMask\":" << (gi != nullptr ? gi->GetHardwareFeatureMask() : 0u)
                 << ",\"fieldTraversal\":" << (gi != nullptr && gi->UsesFieldTraversal() ? "true" : "false")
                 << ",\"voxelLighting\":" << (gi != nullptr && gi->UsesVoxelLighting() ? "true" : "false")

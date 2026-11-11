@@ -1,7 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/RenderObject.h"
-#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Platform/ConfigLoader.h"

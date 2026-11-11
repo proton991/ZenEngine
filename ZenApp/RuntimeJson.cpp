@@ -1,9 +1,32 @@
 #include "RuntimeJson.h"
 #include <fstream>
 #include <string>
+#include <cmath>
+#include <limits>
 
 namespace zen::runtime
 {
+bool ReadJsonVector(simdjson::dom::element entry, const char* name, Vec3& value)
+{
+    simdjson::dom::array components;
+    bool                 valid = !entry[name].get_array().get(components) && components.size() == 3;
+    if (valid)
+    {
+        uint32_t index = 0;
+        for (simdjson::dom::element component : components)
+        {
+            double number = 0.0;
+            valid         = valid && !component.get_double().get(number) && std::isfinite(number)
+                         && std::abs(number) <= std::numeric_limits<float>::max();
+            if (valid)
+            {
+                value[index] = static_cast<float>(number);
+            }
+            ++index;
+        }
+    }
+    return valid;
+}
 bool LoadJsonDocument(const std::filesystem::path& path,
                       uint64_t                     maxBytes,
                       simdjson::dom::parser&       parser,

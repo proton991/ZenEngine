@@ -105,20 +105,6 @@ public:
     }
 };
 
-class VoxelCalibrationReferenceSP : public ShaderProgram
-{
-public:
-    explicit VoxelCalibrationReferenceSP(RenderDevice* device) : ShaderProgram(device, "VoxelCalibrationReferenceSP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
-
-        AddShaderStage(RHIShaderStage::eGeometry, "VoxelGI/Calibration/reference.geom.spv");
-
-        AddShaderStage(RHIShaderStage::eFragment, "VoxelGI/Calibration/reference.frag.spv");
-
-        Init();
-    }
-};
 } // namespace
 
 ShaderProgram::ShaderProgram(RenderDevice* pRenderDevice, NameID name) : m_pRenderDevice(pRenderDevice), m_name(name) {}
@@ -356,15 +342,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                              "SceneRenderer/transparency_radix_scatter.comp.spv"));
     }
 
-    StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "CaptureVoxelVolumeSP", "VoxelGI/capture_volume.comp.spv", volumeConstants));
-
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelBufferSP", "VoxelGI/capture_buffer.comp.spv"));
-
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelCaptureOwnersSP", "VoxelGI/Calibration/capture_owners.comp.spv"));
-
-    StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "VoxelCaptureGBufferSP", "VoxelGI/Calibration/capture_gbuffer.comp.spv"));
 
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "VoxelVisibilityCheckSP", "VoxelGI/Calibration/visibility_check.comp.spv"));
@@ -422,7 +400,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv",
                                          volumeConstants));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureHybridEnvironmentSP", "VoxelGI/capture_environment.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureSkyCacheSP", "VoxelGI/capture_sky_cache.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridDownsampleSP", "VoxelGI/hybrid_downsample.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridReconstructSP", "VoxelGI/hybrid_reconstruct.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridCaptureSP", "VoxelGI/hybrid_capture.comp.spv"));
     // Compute GI traces the distance field (DistanceFieldScene); trace variants without Field are HW RT only.
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceFieldSP", "VoxelGI/hybrid_trace_field.comp.spv");
@@ -469,6 +448,13 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"));
     if (pRenderDevice->GetGPUInfo().rayQuery.IsUsable())
     {
+        // Ray-query programs: hardware shadow occluders and the reduced-resolution fallback, which
+        // only hardware providers select.
+        StoreProgram(
+            ZEN_NEW() ComputeFileSP(pRenderDevice, "LightOccludersCountsSP", "ShadowMapping/light_occluders_counts.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "LightOccludersSP", "ShadowMapping/light_occluders.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridReconstructFallbackSP",
+                                             "VoxelGI/hybrid_reconstruct_fallback.comp.spv"));
         const char* const hardwareProbePrograms[][2] = {
             {"ProbeTraceHardwareSP", "VoxelGI/probe_trace_hardware.comp.spv"},
             {"ProbeTraceHardwareFieldSP", "VoxelGI/probe_trace_hardware_field.comp.spv"},
@@ -481,6 +467,13 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
             StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], program[1]));
         }
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareSP", "VoxelGI/hybrid_trace_hardware.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareSP",
+                                "VoxelGI/hybrid_trace_restir_hardware.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareFieldSP",
+                                "VoxelGI/hybrid_trace_restir_hardware_field.comp.spv");
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRTemporalSP", "VoxelGI/restir_temporal.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRSpatialSP", "VoxelGI/restir_spatial.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRLobeIntegralSP", "VoxelGI/restir_lobe_integral.comp.spv"));
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareCountsSP",
                                 "VoxelGI/hybrid_trace_hardware_counts.comp.spv");
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareFieldSP",
@@ -493,11 +486,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                              "VoxelGI/inject_hardware_radiance.comp.spv", volumeConstants));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceAveragedSP",
                                              "VoxelGI/inject_hardware_radiance_averaged.comp.spv", volumeConstants));
-        // Lamp fixture masks for ray-traced shadows (LightFixtureMasks).
-        StoreProgram(ZEN_NEW()
-                         ComputeFileSP(pRenderDevice, "LightFixtureMaskBuildSP", "VoxelGI/light_fixture_mask_build.comp.spv"));
-        StoreProgram(
-            ZEN_NEW() ComputeFileSP(pRenderDevice, "LightFixtureMaskDilateSP", "VoxelGI/light_fixture_mask_dilate.comp.spv"));
         // Diagnostic variants count the rays they issue (gi_ray_totals.glsl); never used for timing.
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceHardwareCountsSP",
                                              "VoxelGI/sky_irradiance_hardware_counts.comp.spv", volumeConstants));
@@ -578,9 +566,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(
             ZEN_NEW() ComputeFileSP(pRenderDevice, "ClearLightingCaptureSP", "SceneRenderer/clear_lighting_capture.comp.spv"));
     }
-
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelReflectanceSP", "VoxelGI/capture_reflectance.comp.spv",
-                                         volumeConstants));
 
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelClearOwnersAveragedSP", "VoxelGI/clear_owners_averaged.comp.spv",
                                          volumeConstants));
@@ -707,12 +692,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         }
     }
 
-    if (ResolveVoxelizerMode(platform::VoxelizerMode::eGeometry, pRenderDevice->GetGPUInfo())
-        == platform::VoxelizerMode::eGeometry)
-    {
-        StoreProgram(ZEN_NEW() VoxelCalibrationReferenceSP(pRenderDevice));
-    }
-
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() ResetComputeIndirectSP(pRenderDevice);
 
@@ -738,12 +717,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(pShaderProgram);
     }
 
-    {
-        ShaderProgram* pShaderProgram = ZEN_NEW() VoxelizationLargeTriangleCompSP(pRenderDevice);
-
-        StoreProgram(pShaderProgram);
-    }
-
     // Also first used by voxel debug views.
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelPreDrawSP(pRenderDevice, volumeConstants);
@@ -753,12 +726,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelDrawSP2(pRenderDevice);
-
-        StoreProgram(pShaderProgram);
-    }
-
-    {
-        ShaderProgram* pShaderProgram = ZEN_NEW() ShadowMapRenderSP(pRenderDevice);
 
         StoreProgram(pShaderProgram);
     }

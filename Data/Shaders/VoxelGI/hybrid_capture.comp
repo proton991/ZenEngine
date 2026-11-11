@@ -26,24 +26,26 @@ void main()
     {
         return;
     }
-    uint index    = uint(p.x + textureSize(receiverDepth, 0).x * p.y) * ZEN_HYBRID_CAPTURE_COMPONENTS;
-    bool valid    = texelFetch(receiverDepth, p, 0).r < 1.0 && texelFetch(receiverSurface, p, 0).g != 0u;
-    vec3 position = valid ? HybridPosition(p) : vec3(0);
-    vec3 n = HybridNormal(p), ng = HybridGeometricNormal(p);
-    vec3 bounce             = valid ? DiffuseVoxelLighting(position, n, false) : vec3(0);
-    diagnostics[index + 0]  = texelFetch(rawSky, p, 0);
-    diagnostics[index + 1]  = texelFetch(reconstructedSky, p, 0);
-    diagnostics[index + 2]  = hybrid.bounce.x != 0u ? texelFetch(rawBounce, p, 0) : vec4(bounce, 0);
+    // Raw observations and history diagnostics remain nearest samples of the actual GI grid.
+    ivec2 q        = min(p / int(max(hybrid.resolution.z, 1u)), textureSize(rawSky, 0) - 1);
+    uint  index    = uint(p.x + textureSize(receiverDepth, 0).x * p.y) * ZEN_HYBRID_CAPTURE_COMPONENTS;
+    bool  valid    = texelFetch(receiverDepth, p, 0).r < 1.0 && texelFetch(receiverSurface, p, 0).g != 0u;
+    vec3  position = valid ? HybridPosition(p) : vec3(0);
+    vec3  n = HybridNormal(p), ng = HybridGeometricNormal(p);
+    vec3  bounce            = valid ? DiffuseVoxelLighting(position, n, false) : vec3(0);
+    diagnostics[index + 0]  = texelFetch(rawSky, q, 0);
+    diagnostics[index + 1]  = texelFetch(reconstructedSky, min(p, textureSize(reconstructedSky, 0) - 1), 0);
+    diagnostics[index + 2]  = hybrid.bounce.x != 0u ? texelFetch(rawBounce, q, 0) : vec4(bounce, 0);
     diagnostics[index + 3]  = hybrid.bounce.x != 0u ? texelFetch(reconstructedBounce, p, 0) : vec4(bounce, 0);
-    diagnostics[index + 4]  = texelFetch(rawSpecular, p, 0);
+    diagnostics[index + 4]  = texelFetch(rawSpecular, q, 0);
     diagnostics[index + 5]  = texelFetch(reconstructedSpecular, p, 0);
-    diagnostics[index + 6]  = texelFetch(moments, p, 0);
-    diagnostics[index + 7]  = texelFetch(historyLength, p, 0);
+    diagnostics[index + 6]  = texelFetch(moments, q, 0);
+    diagnostics[index + 7]  = texelFetch(historyLength, q, 0);
     diagnostics[index + 8]  = vec4(position, valid ? 1.0 : 0.0);
     diagnostics[index + 9]  = vec4(n, texelFetch(receiverRoughness, p, 0).g);
     diagnostics[index + 10] = vec4(ng, texelFetch(receiverDepth, p, 0).r);
-    diagnostics[index + 11] = texelFetch(receiverMotion, p, 0);
-    vec2  hit               = hybrid.reflection.x != 0u ? texelFetch(rawReflection, p, 0).rg : vec2(0);
-    float length            = hybrid.reflection.x != 0u ? texelFetch(reflectionHistory, p, 0).w : 0.0;
+    diagnostics[index + 11] = HybridMotion(p);
+    vec2  hit               = hybrid.reflection.x != 0u ? texelFetch(rawReflection, q, 0).rg : vec2(0);
+    float length            = hybrid.reflection.x != 0u ? texelFetch(reflectionHistory, q, 0).w : 0.0;
     diagnostics[index + 12] = vec4(uintBitsToFloat(texelFetch(receiverSurface, p, 0).g), hit, length);
 }

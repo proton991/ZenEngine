@@ -163,11 +163,28 @@ void main()
         vec3  radiance = EvaluateLight(i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i], worldPos, L,
                                        distanceToLight);
         float NdotL    = max(dot(N, L), 0.0);
-        if (NdotL <= 0.0)
+        if (NdotL <= 0.0 || !any(greaterThan(radiance, vec3(0.0))))
         {
             continue;
         }
 
+        float visibility = 1.0;
+#if defined(VOXEL_GI) || defined(SCENE_SHADOW_MAPS)
+        visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, worldPos, surfaceNormal);
+#endif
+#ifdef RECEIVER_LIGHT_VISIBILITY
+        // The camera light is not recorded.
+        if (i < int(sceneUbo.lightInfo.x))
+        {
+            bool exact       = visibility <= 0.0 || visibility >= 1.0;
+            lightVisibility |= uvec2(exact ? 1u : 0u, exact && visibility >= 1.0 ? 1u : 0u) << uint(i);
+        }
+#endif
+        // Occluded lights have no material response. Retain their exact visibility above for forward reuse.
+        if (visibility <= 0.0)
+        {
+            continue;
+        }
         vec3  H          = normalize(V + L);
         float D          = DistributionGGX(N, H, roughness);
         float G          = GeometrySmith(N, V, L, roughness);
@@ -182,19 +199,7 @@ void main()
         vec3 diffuse     = albedo / PI;
 
 
-        float visibility = 1.0;
-#if defined(VOXEL_GI) || defined(SCENE_SHADOW_MAPS)
-        visibility = SceneLightVisibility(i == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : i, worldPos, surfaceNormal);
-#endif
-#ifdef RECEIVER_LIGHT_VISIBILITY
-        // The camera light is not recorded.
-        if (i < int(sceneUbo.lightInfo.x))
-        {
-            bool exact       = visibility <= 0.0 || visibility >= 1.0;
-            lightVisibility |= uvec2(exact ? 1u : 0u, exact && visibility >= 1.0 ? 1u : 0u) << uint(i);
-        }
-#endif
-        Lo += (kD * diffuse + specular) * radiance * NdotL * visibility;
+        Lo              += (kD * diffuse + specular) * radiance * NdotL * visibility;
 #ifdef LIGHTING_CAPTURE
         directIrradiance += radiance * NdotL * visibility / PI;
 #endif
@@ -218,7 +223,7 @@ void main()
     vec3 bounce = vec3(0);
     if (gi.indirect.x > 0.5)
     {
-        sky    = texelFetch(hybridSky, ivec2(gl_FragCoord.xy), 0).rgb;
+        sky    = HybridSky(ivec2(gl_FragCoord.xy));
         bounce = gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
                                      : DiffuseVoxelLighting(worldPos, N, false);
     }

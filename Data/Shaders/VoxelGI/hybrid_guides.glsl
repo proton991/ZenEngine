@@ -1,4 +1,5 @@
 #include "../Common/gbuffer.glsl"
+#include "hybrid_common.glsl"
 layout(std140, set = 1, binding = 0) uniform uHybridData
 {
     mat4  inverseViewProjection;
@@ -11,6 +12,8 @@ layout(std140, set = 1, binding = 0) uniform uHybridData
     vec4  rejection;
     uvec4 bounce;
     uvec4 reflection;
+    uvec4 resolution;
+    uvec4 reservoir;
 }
 hybrid;
 layout(set = 1, binding = 1) uniform sampler2D receiverDepth;
@@ -19,6 +22,10 @@ layout(set = 1, binding = 3) uniform sampler2D receiverRoughness;
 layout(set = 1, binding = 4) uniform usampler2D receiverSurface;
 layout(set = 1, binding = 5) uniform sampler2D receiverMotion;
 layout(set = 1, binding = 24) uniform sampler2D receiverPosition;
+vec4 HybridMotion(ivec2 pixel)
+{
+    return vec4(texelFetch(receiverMotion, pixel, 0).xy, texelFetch(receiverPosition, pixel, 0).w, 0);
+}
 vec3 HybridPosition(ivec2 pixel)
 {
     return texelFetch(receiverPosition, pixel, 0).xyz;
@@ -31,9 +38,9 @@ vec3 HybridGeometricNormal(ivec2 pixel)
 {
     return DecodeGBufferNormal(unpackUnorm2x16(texelFetch(receiverSurface, pixel, 0).r));
 }
-float HybridLuminance(vec3 rgb)
+float HybridReflectionRoughnessTolerance(float roughness)
 {
-    return dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+    return HybridRoughnessTolerance(roughness, hybrid.resolution.z > 1u);
 }
 bool HybridInView(ivec2 pixel)
 {

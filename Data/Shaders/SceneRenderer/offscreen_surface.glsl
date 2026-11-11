@@ -7,7 +7,7 @@ layout(location = 2) out vec4 outMetallicRoughness;
 layout(location = 3) out vec4 outEmissiveOcclusion;
 #ifdef HYBRID_RECEIVER
 layout(location = 4) out uvec2 outReceiver;
-layout(location = 5) out vec4 outMotion;
+layout(location = 5) out vec2 outMotion;
 layout(location = 6) out vec4 outPosition;
 layout(location = 16) in vec4 inPreviousClip;
 layout(location = 17) in vec4 inCurrentClip;
@@ -70,11 +70,10 @@ void main()
     // single-sided geometry; preserve the logical facing for two-sided/mirrored receivers.
     bool facing = gl_FrontFacing == (inOrientation >= 0.0);
     outReceiver = uvec2(packUnorm2x16(EncodeGBufferNormal(geometric)), (uNodeIndex + 1u) * 2u + (facing ? 1u : 0u));
-    // NDC motion (previous - current) and the previous w; w <= 0 lay behind the previous camera.
-    outMotion   = inPreviousClip.w > 0.0
-                    ? vec4(inPreviousClip.xy / inPreviousClip.w - inCurrentClip.xy / inCurrentClip.w, inPreviousClip.w, 0)
-                    : vec4(0, 0, inPreviousClip.w, 0);
-    outPosition = vec4(inWorldPos, 1);
+    // Keep NDC motion at full precision; the position's unused w carries previous clip w.
+    // A nonpositive previous w identifies receivers behind the previous camera.
+    outMotion   = inPreviousClip.w > 0.0 ? inPreviousClip.xy / inPreviousClip.w - inCurrentClip.xy / inCurrentClip.w : vec2(0);
+    outPosition = vec4(inWorldPos, inPreviousClip.w);
 #endif
     outNormal = EncodeGBufferNormal(normal);
     outAlbedo = vec4(albedo.rgb, 1);

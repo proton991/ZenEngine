@@ -1,7 +1,28 @@
 # ReSTIR GI for the per-pixel HW RT gather — plan
 
-2026-11-10. Status: Phase 0 complete: tools, test prerequisites and recorded baselines. Accuracy-reference
-noise limits are documented in the Phase 0 report. ReSTIR phases 1–5 are not implemented.
+2026-11-10. Status: Phase 0 complete. The core Phase 1–4 code paths are implemented behind
+the default-off `restirGI` setting. The verification round is complete, but acceptance gates fail
+and the refresh-versus-reset comparison remains undone. The whole plan is not complete. Phase 5
+remains the optional Compute extension. Implementation details, deviations and measured gates are
+tracked in [ReSTIRGIImplementation.md](ReSTIRGIImplementation.md). Implementation is not acceptance.
+
+The active follow-up accepts the current four-ray Phase 3 quality as the baseline and targets
+4K output at 30 FPS within 8 GB dedicated memory. Reduced-resolution reconstructed GI is allowed.
+The performance checkpoint was documented and work stopped at the user's request. The tested
+RTX 5080 center view reaches 35.8 FPS; sampled dedicated process memory is 7.770 GiB. Actual 8 GB
+hardware validation and the quality limits remain open; see the implementation report's 4K section.
+
+Subsequent user requests resumed [unused rendering-code cleanup](RenderingCleanup.md) and
+[HW RT camera-motion flicker correction](HWRTFlicker.md). The latter reduces repeated-pose floor
+variation by 82% and continuous-motion error by 45% in the tested 4K view. Its final RTX 5080
+measurement is 32.6 FPS with 7.809 GiB sampled dedicated process memory. Original plan acceptance
+and actual 8 GB hardware validation remain open.
+
+The [editor/HW RT follow-up](EditorHWRTFollowup.md) qualifies the configuration mismatch:
+the earlier benchmark disabled normal maps. With normal maps enabled, the clean 4K
+fullscreen retest measures 18.5 FPS for half-resolution GI with the original package,
+and 35.8 FPS for quarter-resolution GI with the compressed package. A further shading-normal
+history correction reduces measured camera-motion variation by 17%; isolated flicker remains.
 
 Phase 0 evidence and reproduction commands are recorded in [ReSTIRGIPhase0.md](ReSTIRGIPhase0.md).
 
@@ -160,16 +181,17 @@ appearance alone.
 | Phase | Work | Exit |
 |---|---|---|
 | 0 — complete | Prerequisite rendering commits landed; noise measurement, camera-path/capture mode and lamp reference tool completed; stale test fixtures repaired. | [Recorded accuracy, noise, motion, memory and 4K time baselines](ReSTIRGIPhase0.md); reference-noise limits retained |
-| 1 | Reservoir format, candidate streaming in HybridTrace, ReSTIRTemporal, ReSTIRResolve; setting `restirGI` (default off) in `VoxelGISettings` and the launch setup | Accuracy unchanged; static bounce noise reduced; tests pass |
-| 2 | ReSTIRSpatial, bias check, MIS if needed, `L_o` refresh decision | Lamp-case noise at sun-only level with bias within criteria |
-| 3 | Specular reservoir for rough lobes | Specular noise at or below the sun-only level |
-| 4 | Ray budget and denoiser retune; editor toggle; default on for HW per-pixel if every criterion holds | 4K timing and full verification table |
+| 1 — implemented, not accepted | Reservoir format, candidate streaming in HybridTrace, ReSTIRTemporal, folded resolve; optional launch settings | GPU contracts pass; temporal-only mean RMS and diffuse-noise gates fail |
+| 2 — core implemented, not accepted | Checkerboard spatial reuse, pairwise MIS after the simple estimator lost energy, revision-reset policy for `L_o` | Spatial mean RMS improves; per-view bias-change and diffuse-noise gates fail. Refresh-versus-reset comparison remains undone |
+| 3 — implemented, not accepted | Separate rough-specular reservoir and normalized GGX target; smooth gather retained | Specular change is 5.615%, below 8%; inherited diffuse gates still fail |
+| 4 — implemented, not accepted | Fixed 4, 2 and 1 budgets measured against the frozen setup; correlation-aware variance; editor switches; default stays off | 2/1 rays meet the trace-time target but fail the RMS gate. Camera/light metrics improve, but eight-frame lighting recovery is not established; default-on remains conditional on every gate |
 | 5 (optional) | Compute traversal | Same criteria on the Compute tier |
 
 ## Risks and open questions
 
 - **Bias from temporal reuse without `L_o` refresh** under slowly changing lighting that does not
-  bump a revision. Measured in Phase 2.
+  bump a revision. The measured moving-light path bumps revisions; unreported changes and the
+  planned refresh-versus-reset comparison remain unverified.
 - **Correlation artefacts** (blotches) from aggressive spatial reuse at low ray counts; mitigated
   by `M` caps, neighbour rejection and the remaining denoiser.
 - **Memory at 4K.** Two reservoir types cost about 0.8 GB; the frame already runs memory-limited.

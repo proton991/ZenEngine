@@ -1,6 +1,19 @@
 #include "hybrid_guides.glsl"
 #include "hybrid_sampling.glsl"
 #include "hybrid_provider.glsl"
+#ifdef HYBRID_RESTIR
+#    include "restir_target.glsl"
+layout(std430, set = 1, binding = 38) writeonly buffer GIReservoirCurrent
+{
+    PackedGIReservoir currentReservoirs[];
+};
+layout(std430, set = 1, binding = 44) writeonly buffer ReflectionReservoirCurrent
+{
+    PackedGIReservoir currentReflections[];
+};
+GIReservoir initialGI;
+GIReservoir initialReflection;
+#endif
 #if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
 #    define HIT_LIGHT_CACHE
 #    include "hit_radiance.glsl"
@@ -661,9 +674,15 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
             issuedRayFeature = 2u;
 #endif
             uint hitSeed  = HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(sequence * diffuseSamples + i) ^ seed ^ 0xb01ce123u);
-            vec3 value    = TraceHitRadiance(hit, w, hitSeed, rejected) * weight;
-            bounce.rgb   += value;
-            bounce.a     += rejected ? 1.0 : 0.0;
+            vec3 radiance = TraceHitRadiance(hit, w, hitSeed, rejected);
+            vec3 value    = radiance * weight;
+#ifdef HYBRID_RESTIR
+            GIReservoir candidate = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
+            float       random    = float(HybridHash(hitSeed ^ 0x719ad312u) >> 8u) / 16777216.0;
+            GIStream(initialGI, candidate, GITarget(value), 0u, random);
+#endif
+            bounce.rgb += value;
+            bounce.a   += rejected ? 1.0 : 0.0;
             // The same hit in the previous cache: these correlated lookups measure the change
             // with little noise when lighting changes a little.
 #if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
@@ -697,7 +716,12 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
     bounce.rgb     /= max(completed.y, 1.0);
     previous.rgb   /= max(completed.y, 1.0);
     bounce.a        = completed.y > 0.0 ? bounce.a : -1.0;
-    sky.a           = completed.x > 0.0 ? sky.a : -1.0;
+#ifdef HYBRID_RESTIR
+    // Misses and zero-contribution proposals count; unavailable traces do not.
+    initialGI.count = uint(completed.y);
+    GIFinalize(initialGI, GITarget(GIDiffuse(initialGI, position, n, ng)));
+#endif
+    sky.a = completed.x > 0.0 ? sky.a : -1.0;
     // Each source tile gets its own rays, half the residual count (two at the shipping preset),
     // so sources are integrated without selection noise between them. Their directions are
     // coherent across pixels, so they cost far less than residual rays (P4Execution.md).
@@ -786,7 +810,17 @@ void TraceSpecular(ivec2      p,
 #    endif
                     uint hitSeed =
                         HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(hybrid.sampling.x * specularSamples + i) ^ 0x5eec1234u);
-                    specular.rgb += TraceHitRadiance(hit, w, hitSeed, rejected);
+                    vec3 radiance  = TraceHitRadiance(hit, w, hitSeed, rejected);
+                    specular.rgb  += radiance;
+#    ifdef HYBRID_RESTIR
+                    if (restirOptions.y != 0u && roughness >= 0.3)
+                    {
+                        GIReservoir candidate = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
+                        float       random    = float(HybridHash(hitSeed ^ 0x87f19ab3u) >> 8u) / 16777216.0;
+                        // Target/pdf cancels the normalized lobe used by HybridSpecularDirection.
+                        GIStream(initialReflection, candidate, GITarget(radiance), 0u, random);
+                    }
+#    endif
                     reflection.y += rejected ? 1.0 : 0.0;
                     reflection.x += length(hit.position - position);
                     hitCount     += 1.0;
@@ -806,6 +840,13 @@ void TraceSpecular(ivec2      p,
         reflectionPrevious /= max(completed.y, 1.0);
         reflection.x       /= max(hitCount, 1.0);
         reflection.y        = completed.y > 0.0 ? reflection.y : -1.0;
+#    ifdef HYBRID_RESTIR
+        if (restirOptions.y != 0u && roughness >= 0.3)
+        {
+            initialReflection.count = uint(completed.y);
+            GIFinalize(initialReflection, GITarget(GIIntegrand(initialReflection, position, n, ng, view, roughness, true)));
+        }
+#    endif
     }
 }
 
@@ -815,7 +856,10 @@ void StoreSpecular(ivec2 p, vec4 specular, vec2 reflection, vec3 reflectionPrevi
     if (hybrid.reflection.x != 0u)
     {
         imageStore(rawReflection, p, vec4(reflection, 0, 0));
-        imageStore(rawReflectionPrevious, p, vec4(reflectionPrevious, 0));
+        if (hybrid.reflection.w != 0u)
+        {
+            imageStore(rawReflectionPrevious, p, vec4(reflectionPrevious, 0));
+        }
     }
 }
 #endif
@@ -828,7 +872,10 @@ void StoreDiffuse(ivec2 p, DiffuseResult d)
     if (hybrid.bounce.x != 0u) // 1x1 placeholders for cone bounce
     {
         imageStore(rawBounce, p, d.bounce);
-        imageStore(rawBouncePrevious, p, d.previous);
+        if (hybrid.bounce.w != 0u)
+        {
+            imageStore(rawBouncePrevious, p, d.previous);
+        }
     }
     if (hybrid.provider.w != 0u) // 1x1 placeholder without adaptive sampling
     {
@@ -1100,6 +1147,10 @@ void main()
     ivec2 p    = ivec2(gl_GlobalInvocationID.xy);
     uint  lane = gl_LocalInvocationIndex;
     BuildGuide(lane);
+#    ifdef HYBRID_RESTIR
+    initialGI         = EmptyGIReservoir();
+    initialReflection = EmptyGIReservoir();
+#    endif
     DiffuseResult d                  = DiffuseResult(vec4(0), vec4(0), vec4(0), vec3(1), 0u);
     vec4          specular           = vec4(0, 0, 0, 1);
     vec2          reflection         = vec2(0);
@@ -1115,6 +1166,17 @@ void main()
     {
         StoreDiffuse(p, d);
         StoreSpecular(p, specular, reflection, reflectionPrevious);
+#    ifdef HYBRID_RESTIR
+        uint index = uint(p.y * textureSize(receiverDepth, 0).x + p.x);
+        if (restirOptions.z != 0u || index == 0u)
+        {
+            currentReservoirs[index] = PackGIReservoir(initialGI);
+        }
+        if (restirOptions.y != 0u || index == 0u)
+        {
+            currentReflections[index] = PackGIReservoir(initialReflection);
+        }
+#    endif
     }
     FinishGuide(lane);
 }

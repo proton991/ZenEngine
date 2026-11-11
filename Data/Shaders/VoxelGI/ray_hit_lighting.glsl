@@ -144,8 +144,14 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
     }
     if (chosen >= 0)
     {
-        SceneLight light = chosen == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[chosen];
-        diffuse += chosenRadiance * (shadowedWeight / chosenWeight) * HardwareLightVisibility(hit.position, hit.normal, light);
+        SceneLight light    = chosen == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[chosen];
+        bool       occluded = false;
+#    ifdef ZEN_LIGHT_OCCLUDERS
+        occluded = CachedLightOccluded(chosen == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : chosen, hit.position,
+                                       hit.normal, light);
+#    endif
+        diffuse += chosenRadiance * (shadowedWeight / chosenWeight)
+                 * (occluded ? 0.0 : HardwareLightVisibility(hit.position, hit.normal, light));
     }
     float skyScale = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y;
     if (skyScale > 0.0)

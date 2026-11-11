@@ -10,13 +10,13 @@
 // Regions of a published field that committed edits have made stale (DistanceFieldStaleUniform).
 #define ZEN_FIELD_STALE_BOXES 8u
 // Local detail volumes around point and spot lights, each a slot of one pool (DistanceFieldLocalsUniform).
-#define ZEN_FIELD_LOCAL_VOLUMES                   32u
-#define ZEN_FIELD_MAX_TRIANGLE_BATCH              (1u << 26)
-#define ZEN_FIELD_REGION_SIDE                     4u
-#define ZEN_FIELD_SCAN_GROUP                      256u
-#define ZEN_FIELD_MAX_SCAN_BLOCKS                 1024u
-#define ZEN_FIELD_MAX_CELL_REFS                   65536u
-#define ZEN_FIELD_REFERENCE_TILE                  256u
+#define ZEN_FIELD_LOCAL_VOLUMES      32u
+#define ZEN_FIELD_MAX_TRIANGLE_BATCH (1u << 26)
+#define ZEN_FIELD_REGION_SIDE        4u
+#define ZEN_FIELD_SCAN_GROUP         256u
+#define ZEN_FIELD_MAX_SCAN_BLOCKS    1024u
+#define ZEN_FIELD_MAX_CELL_REFS      65536u
+#define ZEN_FIELD_REFERENCE_TILE     256u
 // A cell with more references is emitted by one workgroup per chunk of this many, which merge their
 // texel minima in a split slot of ZEN_FIELD_EMIT_SPLIT_WORDS: 512 minima, then the finished chunks.
 #define ZEN_FIELD_EMIT_CHUNK_REFERENCES           1024u

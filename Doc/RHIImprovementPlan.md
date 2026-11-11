@@ -191,7 +191,7 @@ Rules for the whole phase:
 5. **Delete shaders used only by the removed samples.** They are compiled into `Data/SpvShaders` by the shader glob, so they currently cost build time.
    - Referenced only by legacy code at `d22e0641`: `GLTFViewer/viewer.{vert,frag}`, `Offscreen/{mirror,phong}.{vert,frag}`, `SGDemo/{main.vert,pbr.frag}`, `ShadowMapping/scene.{vert,frag}`, and in `Data/Shaders/` itself `gbuffer.frag`, `gears.{vert,frag}`, `push_constants.{vert,frag}`, `triangle.vert`, `triangle_fixed.frag`, `uber.{vert,frag}`.
    - Referenced by nothing: `Environment/skybox.vert`, `Offscreen/quad.{vert,frag}`, `VoxelGI/compact.glsl`, `triangle_fixed.vert`.
-   - The rest of `ShadowMapping/` (`evsm.*`, `scene_shadow.*`) and the textures in `Data/Textures` are used by active code; keep them.
+   - At this milestone, the rest of `ShadowMapping/` (`evsm.*`, `scene_shadow.*`) and the textures in `Data/Textures` were retained. The subsequent [2026-11-10 rendering cleanup](HybridGI/RenderingCleanup.md) removes the now-unreferenced EVSM renderer and shaders; `scene_shadow.*` remains active.
 6. **Update documentation.**
    - [README.md](../README.md): remove the SPIRV-Cross/TinyGLTF dependency rows and the legacy-renderer build notes. Keep the dated milestone history (M0–M2) and its images as a record of the project, and add one line stating that those demos were removed in this cleanup and remain in Git history.
    - Remove the `-DZEN_BUILD_LEGACY=ON` build note in [ActiveCodeCleanup.md](ActiveCodeCleanup.md).

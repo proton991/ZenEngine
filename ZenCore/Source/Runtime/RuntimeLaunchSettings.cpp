@@ -83,6 +83,10 @@ template <class Archive> void Fields(Archive& archive, rc::VoxelGISettings& valu
     archive.Field("referenceSamples", value.referenceSamples);
     archive.Field("historyFrames", value.historyFrames);
     archive.Field("temporal", value.temporal);
+    archive.Field("pixelResolutionDivisor", value.pixelResolutionDivisor, false);
+    archive.Field("restirGI", value.restirGI, false);
+    archive.Field("restirSpatial", value.restirSpatial, false);
+    archive.Field("restirSpecular", value.restirSpecular, false);
     archive.Field("previousFrameRadiance", value.previousFrameRadiance);
     archive.Field("filter", value.filter);
     archive.Field("indirectDiffuse", value.indirectDiffuse);

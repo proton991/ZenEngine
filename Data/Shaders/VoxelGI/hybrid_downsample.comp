@@ -1,0 +1,30 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hybrid_guides.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 6, r32f) uniform writeonly image2D reducedDepth;
+layout(set = 1, binding = 7, rg16) uniform writeonly image2D reducedNormal;
+layout(set = 1, binding = 8, rgba8) uniform writeonly image2D reducedRoughness;
+layout(set = 1, binding = 9, rg32ui) uniform writeonly uimage2D reducedSurface;
+layout(set = 1, binding = 10, rg32f) uniform writeonly image2D reducedMotion;
+layout(set = 1, binding = 11, rgba32f) uniform writeonly image2D reducedPosition;
+void main()
+{
+    ivec2 p      = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = imageSize(reducedDepth);
+    if (any(greaterThanEqual(p, extent)))
+    {
+        return;
+    }
+    int   divisor = int(hybrid.resolution.z);
+    ivec2 q       = min(p * divisor + divisor / 2, textureSize(receiverDepth, 0) - 1);
+    // Select one complete receiver; averaging depth, identities or normals creates fictitious surfaces.
+    vec4 motion  = texelFetch(receiverMotion, q, 0);
+    motion.xy   *= vec2(textureSize(receiverDepth, 0)) / (vec2(extent) * float(divisor));
+    imageStore(reducedDepth, p, texelFetch(receiverDepth, q, 0));
+    imageStore(reducedNormal, p, texelFetch(receiverNormal, q, 0));
+    imageStore(reducedRoughness, p, texelFetch(receiverRoughness, q, 0));
+    imageStore(reducedSurface, p, texelFetch(receiverSurface, q, 0));
+    imageStore(reducedMotion, p, motion);
+    imageStore(reducedPosition, p, texelFetch(receiverPosition, q, 0));
+}

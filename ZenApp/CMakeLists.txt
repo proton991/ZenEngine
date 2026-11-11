@@ -10,7 +10,7 @@ endif()
 
 if(ZEN_BUILD_APP)
     add_executable(ZenApp Main.cpp RuntimeApplication.cpp RuntimeApplication.h RuntimeLog.cpp RuntimeLog.h GroundTruthBatch.cpp GroundTruthBatch.h
-                          RuntimeJson.cpp RuntimeJson.h CameraPath.cpp CameraPath.h)
+                          RuntimeJson.cpp RuntimeJson.h CameraPath.cpp CameraPath.h LightPath.cpp LightPath.h)
     target_link_libraries(ZenApp PRIVATE ZenAppRuntime simdjson)
     if(ZEN_BUILD_RUNTIME_UI)
         target_link_libraries(ZenApp PRIVATE ZenAppRuntimeUI)
