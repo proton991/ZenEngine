@@ -5,7 +5,8 @@
 #ifdef HYBRID_COUNT_RAYS
 #    include "Graphics/Shared/VoxelGI.h"
 uvec4 issuedComputeRays = uvec4(0), issuedHardwareRays = uvec4(0);
-uvec4 issuedFieldWork  = uvec4(0);
-uint  issuedRayFeature = 0u;
+uvec4 issuedFieldWork    = uvec4(0);
+uvec4 hardwareCandidates = uvec4(0);
+uint  issuedRayFeature   = 0u;
 #endif
 #endif

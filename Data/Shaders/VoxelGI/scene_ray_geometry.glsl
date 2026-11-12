@@ -32,6 +32,22 @@ vec3 HybridTraceOrigin(vec3 position, vec3 normal, float error)
     return intBitsToFloat(bits + mix(offset, -offset, lessThan(shifted, vec3(0))));
 }
 
+uvec3 RayVertexIndices(uvec4 triangle)
+{
+    return uvec3(indices[triangle.x], indices[triangle.x + 1u], indices[triangle.x + 2u]);
+}
+
+void RaySurfaceGeometry(uvec4 triangle, uvec3 vertexIndices, vec2 barycentric, out vec3 position, out vec3 normal)
+{
+    vec3     a     = vertices[vertexIndices.x].position.xyz;
+    vec3     b     = vertices[vertexIndices.y].position.xyz;
+    vec3     c     = vertices[vertexIndices.z].position.xyz;
+    NodeData node  = nodesData[triangle.y];
+    vec3     local = a + (b - a) * barycentric.x + (c - a) * barycentric.y;
+    position       = (node.modelMatrix * vec4(local, 1)).xyz;
+    normal         = normalize(mat3(node.normalMatrix) * cross(b - a, c - a));
+}
+
 vec3 RayGeometricNormal(uvec4 triangle)
 {
     vec3 a = vertices[indices[triangle.x]].position.xyz;
@@ -51,7 +67,7 @@ vec3 RaySurfacePosition(uvec4 triangle, vec2 barycentric)
     return (nodesData[triangle.y].modelMatrix * vec4(local, 1)).xyz;
 }
 
-vec2 RaySurfaceUV(uvec4 triangle, vec3 weights, int set)
+vec2 RaySurfaceUV(uvec3 vertexIndices, vec3 weights, int set)
 {
     uint stride = uint(uvValues[0].x);
     vec2 uv     = vec2(0);
@@ -59,10 +75,15 @@ vec2 RaySurfaceUV(uvec4 triangle, vec3 weights, int set)
     {
         for (uint corner = 0u; corner < 3u; ++corner)
         {
-            uv += weights[corner] * uvValues[1u + indices[triangle.x + corner] * stride + uint(max(set, 0))];
+            uv += weights[corner] * uvValues[1u + vertexIndices[corner] * stride + uint(max(set, 0))];
         }
     }
     return uv;
+}
+
+vec2 RaySurfaceUV(uvec4 triangle, vec3 weights, int set)
+{
+    return RaySurfaceUV(RayVertexIndices(triangle), weights, set);
 }
 
 // Only mask and blend geometry is non-opaque in the BLAS. Both faces of single-sided
@@ -75,13 +96,14 @@ bool RayCandidateAccepted(uvec4 triangle, vec2 barycentric)
     if (material.surfaceProperties.y != 0.0)
     {
         vec3  weights            = vec3(1.0 - barycentric.x - barycentric.y, barycentric);
+        uvec3 vertexIndices      = RayVertexIndices(triangle);
         bool  specularGlossiness = material.surfaceProperties.w > 0.5;
         uint  set   = uint(max(specularGlossiness ? int(material.featureTextures[2].properties.y) : material.bcTexSet, 0));
-        vec2  uv    = RaySurfaceUV(triangle, weights, int(set));
+        vec2  uv    = RaySurfaceUV(vertexIndices, weights, int(set));
         float alpha = 0.0;
         for (uint corner = 0u; corner < 3u; ++corner)
         {
-            uint vertex  = indices[triangle.x + corner];
+            uint vertex  = vertexIndices[corner];
             alpha       += weights[corner] * vertices[vertex].color.a;
         }
         // Ray hits have neither the current fragment's interpolated UVs nor its derivatives.

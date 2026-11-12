@@ -1,0 +1,19 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_GUIDE_PREPARE
+#include "hybrid_uniforms.glsl"
+#include "../Common/scene_lighting.glsl"
+#include "environment_sampling.glsl"
+layout(local_size_x = 16, local_size_y = 16) in;
+const uint TRACE_THREADS = 256u;
+#include "hybrid_guide_storage.glsl"
+#include "hybrid_guide_build.glsl"
+void main()
+{
+    uint lane = gl_LocalInvocationIndex;
+    BuildGuide(lane);
+    for (uint t = lane; t <= ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
+    {
+        guideNext[guideBase + t] = 0.0;
+    }
+}

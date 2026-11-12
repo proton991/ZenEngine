@@ -1,5 +1,6 @@
 #pragma once
 #include <fstream>
+#include <filesystem>
 #include <string>
 #include <type_traits>
 #include "Utils/Errors.h"
@@ -26,7 +27,7 @@ public:
     template <typename T = uint8_t> static HeapVector<T> LoadSpvFile(const std::string& name, FileLoadError* pError = nullptr)
     {
         static_assert(std::is_trivially_copyable_v<T>);
-        const std::string path = std::string(SPV_SHADER_PATH) + name;
+        const std::string path = std::filesystem::path(name).is_absolute() ? name : std::string(SPV_SHADER_PATH) + name;
         std::ifstream     file(path, std::ios::ate | std::ios::binary);
         HeapVector<T>     buffer;
         FileLoadError     error = FileLoadError::eNone;

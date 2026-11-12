@@ -34,8 +34,17 @@ void FrameBufferRing::MarkDirty(uint32_t offset, uint32_t size)
     }
 }
 
-bool FrameBufferRing::Update(RenderDevice& device, const void* data, uint32_t size, NameID name, bool vertexBuffer)
+bool FrameBufferRing::Update(RenderDevice& device,
+                             const void*   data,
+                             uint32_t      size,
+                             NameID        name,
+                             bool          vertexBuffer,
+                             uint64_t*     retiredBytes)
 {
+    if (retiredBytes != nullptr)
+    {
+        *retiredBytes = 0;
+    }
     bool valid = data != nullptr && size != 0 && !device.AreSubmissionsBlocked();
     if (valid && (m_changed || GetBuffer() == nullptr))
     {
@@ -52,6 +61,10 @@ bool FrameBufferRing::Update(RenderDevice& device, const void* data, uint32_t si
             valid                  = replacement != nullptr;
             if (valid)
             {
+                if (retiredBytes != nullptr && slot.buffer != nullptr)
+                {
+                    *retiredBytes = slot.buffer->GetRequiredSize();
+                }
                 device.DestroyBuffer(slot.buffer);
                 slot.buffer = replacement;
                 slot.size   = size;
@@ -89,6 +102,16 @@ bool FrameBufferRing::ContainsGeneration(const RHIBuffer* buffer, uint64_t gener
         found = found || (buffer != nullptr && slot.buffer == buffer && generation != 0 && slot.generation == generation);
     }
     return found;
+}
+
+uint64_t FrameBufferRing::GetAllocatedBytes() const
+{
+    uint64_t bytes = 0;
+    for (const Slot& slot : m_slots)
+    {
+        bytes += slot.buffer != nullptr ? slot.buffer->GetRequiredSize() : 0;
+    }
+    return bytes;
 }
 
 void FrameBufferRing::Destroy(RenderDevice& device)

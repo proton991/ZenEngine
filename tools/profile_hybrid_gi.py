@@ -121,7 +121,16 @@ def main():
     parser.add_argument('--timestamps', type=int, default=100000)
     parser.add_argument('--multi-pass-metrics', action='store_true')
     parser.add_argument('--shader-profiler', metavar='ARCHITECTURE')
+    parser.add_argument('--metric-set-name', default='Top-Level Triage',
+                        help='Metric set used with --shader-profiler (it requires an explicit architecture and set)')
+    modules = parser.add_mutually_exclusive_group()
+    modules.add_argument('--hybrid-trace-module', type=Path,
+                        help='Exact all-HW per-pixel ReSTIR SPIR-V module (include .omm when required)')
+    modules.add_argument('--hybrid-trace-buffered-module', type=Path,
+                         help='Exact 8x8 buffered-guide all-HW per-pixel ReSTIR module')
+    parser.add_argument('--hybrid-hit-stream', action='store_true')
     args = parser.parse_args()
+    trace_module = args.hybrid_trace_module or args.hybrid_trace_buffered_module
     executable = args.exe.resolve(strict=True)
     if executable.stem.casefold() != 'zenapp':
         parser.error('Profiling must launch ZenApp directly; other executables and aliases are not accepted')
@@ -147,6 +156,13 @@ def main():
                    '--fixed-step', '--no-ui', '--gpu-markers', f'--frames={target_frames}']
     if args.backend == 'compute':
         application.append('--disable-rt')
+    if trace_module:
+        if args.backend != 'hardware':
+            parser.error('--hybrid-trace-module requires --backend=hardware')
+        option = '--hybrid-trace-buffered-module' if args.hybrid_trace_buffered_module else '--hybrid-trace-module'
+        application.append(f'{option}={trace_module.resolve(strict=True)}')
+    if args.hybrid_hit_stream:
+        application.append('--hybrid-hit-stream')
     command = [str(args.nsight), '--activity', 'GPU Trace Profiler', '--exe', str(executable),
                '--dir', str(ROOT), '--args', subprocess.list2cmdline(application[1:]),
                '--env', 'DISABLE_RTSS_LAYER=1; VK_LOADER_LAYERS_DISABLE=VK_LAYER_RTSS;',
@@ -159,12 +175,15 @@ def main():
     if args.multi_pass_metrics:
         command.append('--multi-pass-metrics')
     if args.shader_profiler:
-        command += ['--architecture', args.shader_profiler, '--real-time-shader-profiler']
+        command += ['--architecture', args.shader_profiler, '--metric-set-name', args.metric_set_name,
+                    '--real-time-shader-profiler']
     (out / 'application-command.json').write_text(json.dumps(application, indent=2) + '\n')
     (out / 'command.json').write_text(json.dumps(command, indent=2) + '\n')
     inputs = dict(executable=fingerprint(executable), nsight=fingerprint(args.nsight),
                   setup=fingerprint(source), package=fingerprint(package),
                   shaders=[fingerprint(p) for p in sorted((ROOT / 'Data/SpvShaders').rglob('*.spv'))])
+    if trace_module:
+        inputs['hybrid_trace_module'] = fingerprint(trace_module.resolve(strict=True))
     (out / 'inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')
     overlay = rtss_running()
     if overlay:

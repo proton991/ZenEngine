@@ -33,6 +33,13 @@ struct RuntimeOptions
     bool                         rhiOverride{false};
     bool                         noUI{false};
     bool                         gpuMarkers{false};
+    bool                         pipelineStatistics{false};
+    std::string                  hybridTraceModule;
+    bool                         hybridTraceBufferedModule{false};
+    bool                         hybridHitStream{false};
+    bool                         hybridRayCounts{false};
+    std::string                  hybridTraceOverrideProgram;
+    std::string                  hybridTraceOverrideModule;
     bool                         disableRT{false};
     bool                         gpuCulling{true};
 };

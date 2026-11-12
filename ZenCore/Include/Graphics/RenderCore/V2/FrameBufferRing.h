@@ -19,8 +19,14 @@ public:
     FrameBufferRing(const FrameBufferRing&)            = delete;
     FrameBufferRing& operator=(const FrameBufferRing&) = delete;
     void             MarkDirty(uint32_t offset, uint32_t size);
-    bool             Update(RenderDevice& device, const void* data, uint32_t size, NameID name, bool vertexBuffer = false);
-    void             Destroy(RenderDevice& device);
+    // retiredBytes reports replaced storage still awaiting GPU retirement, when requested.
+    bool Update(RenderDevice& device,
+                const void*   data,
+                uint32_t      size,
+                NameID        name,
+                bool          vertexBuffer = false,
+                uint64_t*     retiredBytes = nullptr);
+    void Destroy(RenderDevice& device);
 
     RHIBuffer* GetBuffer() const
     {
@@ -32,7 +38,8 @@ public:
         return m_generation;
     }
 
-    bool ContainsGeneration(const RHIBuffer* buffer, uint64_t generation) const;
+    bool     ContainsGeneration(const RHIBuffer* buffer, uint64_t generation) const;
+    uint64_t GetAllocatedBytes() const;
 
 private:
     struct Range

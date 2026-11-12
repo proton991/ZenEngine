@@ -386,6 +386,23 @@ private:
         }
     }
 
+    void DrawMaterials(EditorController& editor)
+    {
+        if (ImGui::CollapsingHeader("Materials"))
+        {
+            ImGui::BeginDisabled(!editor.GetViewport().HasScene() || editor.GetLoadState().IsActive());
+            rc::RenderingSettings draft   = editor.GetRenderingState().GetDraft();
+            const bool            changed = ImGui::Checkbox("Normal maps", &draft.normalMaps);
+            DrawHint(
+                "Applies live and restarts GI history. Per-pixel ReSTIR GI always shades its diffuse-ray hits without normal maps.");
+            if (changed)
+            {
+                editor.StageRenderingSettings(draft);
+            }
+            ImGui::EndDisabled();
+        }
+    }
+
     void DrawGI(EditorController& editor, const EditorRenderSnapshot& snapshot)
     {
         rc::RenderingSettings draft           = editor.GetRenderingState().GetDraft();
@@ -866,6 +883,8 @@ private:
         DrawEnvironment(context);
 
         DrawTransparency(editor);
+
+        DrawMaterials(editor);
 
         DrawGI(editor, snapshot);
 

@@ -152,8 +152,8 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && settings.maxDistanceGridLengths > 0 && settings.maxDistanceGridLengths <= 2
         && (settings.coneCount == 4 || settings.coneCount == 6) && settings.maxSteps >= 8 && settings.maxSteps <= 512
         && (settings.samples == 1 || settings.samples == 2 || settings.samples == 4)
-        && (settings.referenceSamples == 0 || settings.referenceSamples == 256 || settings.referenceSamples == 1024
-            || settings.referenceSamples == 4096)
+        && (settings.referenceSamples == 0 || settings.referenceSamples == 64 || settings.referenceSamples == 256
+            || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
         && settings.historyFrames >= 1 && settings.historyFrames <= 256
         && static_cast<uint32_t>(settings.bounceSource) <= static_cast<uint32_t>(VoxelGISettings::BounceSource::Rays)
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)

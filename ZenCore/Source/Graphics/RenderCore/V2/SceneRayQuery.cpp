@@ -3,6 +3,8 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/Shared/RayHitShading.h"
 #include "Templates/SmallVector.h"
 #include <bit>
 #include <cstring>
@@ -96,7 +98,8 @@ uint64_t SceneRayQuery::GetMemoryBytes() const
     // scene no longer contains those meshes. Count those allocations too, once.
     SmallVector<RHIAccelerationStructure*, 64>   structures;
     SmallVector<const SceneOpacityMicromap*, 64> micromaps;
-    uint64_t                                     bytes = m_scratchBytes + m_pendingInstanceBytes;
+    uint64_t                                     bytes =
+        m_scratchBytes + m_pendingInstanceBytes + m_hitVertices.GetAllocatedBytes() + m_hitMaterials.GetAllocatedBytes();
     for (uint32_t i = 0; i < RenderFrameState::kMaxFramesInFlight + 2; ++i)
     {
         const Generation& generation = i == 0 ? m_active : i == 1 ? m_pending : m_cached[i - 2];
@@ -198,6 +201,16 @@ void SceneRayQuery::Cache(Generation& generation)
 void SceneRayQuery::Destroy()
 {
     ReleaseGenerations();
+    const uint64_t hitBytes = m_hitVertices.GetAllocatedBytes() + m_hitMaterials.GetAllocatedBytes();
+    if (hitBytes != 0)
+    {
+        m_retired.push_back({hitBytes, m_device->CaptureResourceRetirement()});
+    }
+    m_hitVertices.Destroy(*m_device);
+    m_hitMaterials.Destroy(*m_device);
+    m_hitVertexGeneration = 0;
+    m_hitSurfaceRevision  = 0;
+    m_hitStreamReady      = false;
     if (m_scratchBytes != 0)
     {
         m_retired.push_back({m_scratchBytes, m_device->CaptureResourceRetirement()});
@@ -639,6 +652,101 @@ void SceneRayQuery::RecordBuilds(RenderScene& scene)
     m_recorded                 = true;
 }
 
+bool SceneRayQuery::PrepareHitShading(RenderScene& scene, uint64_t budgetBytes)
+{
+    m_hitStreamReady   = false;
+    const bool enabled = RenderConfig::GetInstance().hybridHitStream;
+    bool       ready   = true;
+    if (enabled)
+    {
+        const bool verticesChanged =
+            m_hitVertices.GetBuffer() == nullptr || m_hitVertexGeneration != scene.GetVertexGeneration();
+        const bool materialsChanged =
+            m_hitMaterials.GetBuffer() == nullptr || m_hitSurfaceRevision != scene.GetSurfaceRevision();
+        const HeapVector<asset::Vertex>&    vertices    = scene.GetVertices();
+        const HeapVector<sg::MaterialData>& materials   = scene.GetMaterialsData();
+        uint64_t                            vertexBytes = 0, materialBytes = 0;
+        ready = (!verticesChanged || !scene.HasUncommittedVertices()) && (!materialsChanged || !scene.HasUncommittedMaterials())
+             && ValidateGIStorageBuffer(std::max(vertices.size(), size_t(1)), sizeof(RayHitVertex), m_device->GetGPUInfo(),
+                                        vertexBytes)
+                    == GIResourceStatus::eSuccess
+             && ValidateGIStorageBuffer(std::max(materials.size(), size_t(1)), sizeof(RayHitMaterial), m_device->GetGPUInfo(),
+                                        materialBytes)
+                    == GIResourceStatus::eSuccess;
+        // Reserve a complete new slot before updating either stream. Existing ring slots and
+        // retired resources remain included in the query budget until GPU retirement.
+        const uint64_t additional = (verticesChanged ? vertexBytes : 0) + (materialsChanged ? materialBytes : 0);
+        ready                     = ready && (budgetBytes == 0 || GetMemoryBytes() + additional <= budgetBytes);
+        if (ready && verticesChanged)
+        {
+            HeapVector<RayHitVertex> compact(std::max(vertices.size(), size_t(1)));
+            for (size_t i = 0; i < vertices.size(); ++i)
+            {
+                compact[i] = {vertices[i].normal, vertices[i].tangent, vertices[i].color};
+            }
+            m_hitVertices.MarkDirty(0, static_cast<uint32_t>(vertexBytes));
+            uint64_t retiredBytes = 0;
+            ready = m_hitVertices.Update(*m_device, compact.data(), static_cast<uint32_t>(vertexBytes), "ray_hit_vertices",
+                                         false, &retiredBytes);
+            if (retiredBytes != 0)
+            {
+                m_retired.push_back({retiredBytes, m_device->CaptureResourceRetirement()});
+            }
+        }
+        if (ready && materialsChanged)
+        {
+            HeapVector<RayHitMaterial> compact(std::max(materials.size(), size_t(1)));
+            for (size_t i = 0; i < materials.size(); ++i)
+            {
+                const sg::MaterialData& source   = materials[i];
+                RayHitMaterial&         target   = compact[i];
+                const bool              specular = source.surfaceProperties.w > 0.5f;
+                target.baseColorFactor           = specular ? source.diffuseFactor : source.baseColorFactor;
+                target.emissiveFactor            = source.emissiveFactor;
+                target.surfaceProperties         = source.surfaceProperties;
+                target.specularFactor            = source.specularGlossiness;
+                target.normalEncoding            = source.normalEncoding;
+                target.textureSampling           = source.textureSampling;
+                target.factors                   = Vec4(source.metallicFactor, 0, 0, 0);
+                target.textures[0] = specular ? source.featureTextures[2]
+                                              : sg::MaterialTextureData{Vec4(source.bcTexIndex, source.bcTexSet, 0, 0),
+                                                                        source.textureTransforms[0]};
+                target.textures[1] = specular ? source.featureTextures[3]
+                                              : sg::MaterialTextureData{Vec4(source.mrTexIndex, source.mrTexSet, 0, 0),
+                                                                        source.textureTransforms[1]};
+                target.textures[2] = {Vec4(source.normalTexIndex, source.normalTexSet, 0, 0), source.textureTransforms[2]};
+                target.textures[3] = {Vec4(source.emissiveTexIndex, source.emissiveTexSet, 0, 0), source.textureTransforms[4]};
+            }
+            m_hitMaterials.MarkDirty(0, static_cast<uint32_t>(materialBytes));
+            uint64_t retiredBytes = 0;
+            ready = m_hitMaterials.Update(*m_device, compact.data(), static_cast<uint32_t>(materialBytes), "ray_hit_materials",
+                                          false, &retiredBytes);
+            if (retiredBytes != 0)
+            {
+                m_retired.push_back({retiredBytes, m_device->CaptureResourceRetirement()});
+            }
+        }
+        if (ready)
+        {
+            m_hitVertexGeneration = scene.GetVertexGeneration();
+            m_hitSurfaceRevision  = scene.GetSurfaceRevision();
+            m_hitStreamReady      = true;
+            if (verticesChanged || materialsChanged)
+            {
+                LOGI("Ray hit shading stream: vertex-bytes={}, material-bytes={}, allocated-ring-bytes={}", vertexBytes,
+                     materialBytes, m_hitVertices.GetAllocatedBytes() + m_hitMaterials.GetAllocatedBytes());
+            }
+        }
+        else
+        {
+            m_reason = "hit_shading_stream_uncommitted_or_allocation_or_budget";
+            LOGE(
+                "Ray hit shading stream rejected: uncommitted scene edits, invalid size, allocation failure or query budget exceeded");
+        }
+    }
+    return ready;
+}
+
 bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
 {
     if (m_scene != &scene)
@@ -666,6 +774,7 @@ bool SceneRayQuery::BuildRenderGraph(RenderScene& scene, uint64_t budgetBytes)
     }
     bool ready = m_device->GetGPUInfo().rayQuery.IsUsable();
     m_reason   = ready ? "hardware_ready" : "ray_query_features_disabled_or_unavailable";
+    ready      = ready && PrepareHitShading(scene, budgetBytes);
     if (ready && budgetBytes != 0 && GetMemoryBytes() > budgetBytes)
     {
         ReleaseGenerations();
@@ -715,15 +824,17 @@ void SceneRayQuery::BindInputs(RDGPassDescBase& pass, RenderScene& scene, bool f
     pass.BindStorageBuffer("RayGeometryMetadata", generation.geometryMetadata);
     pass.BindStorageBuffer("RayInstanceMetadata", generation.instanceMetadata);
     BindSceneRayGeometry(pass, *m_device, scene, forwardMaterialBound);
+    pass.BindStorageBuffer("RayHitVertices", m_hitStreamReady ? m_hitVertices.GetBuffer() : scene.GetVertexBuffer());
+    pass.BindStorageBuffer("RayHitMaterials", m_hitStreamReady ? m_hitMaterials.GetBuffer() : scene.GetMaterialsDataSSBO());
     struct QueryUniforms
     {
         Vec4       minimum;
         Vec4       maximum;
         glm::uvec4 generation;
     };
-    const QueryUniforms uniforms{
-        Vec4(scene.GetAABB().GetMin(), 0), Vec4(scene.GetAABB().GetMax(), 0),
-        glm::uvec4(static_cast<uint32_t>(generation.generation), static_cast<uint32_t>(generation.generation >> 32), 0, 0)};
+    const QueryUniforms uniforms{Vec4(scene.GetAABB().GetMin(), 0), Vec4(scene.GetAABB().GetMax(), 0),
+                                 glm::uvec4(static_cast<uint32_t>(generation.generation),
+                                            static_cast<uint32_t>(generation.generation >> 32), m_hitStreamReady ? 1u : 0u, 0)};
     pass.BindValue("uRayQueryData", uniforms);
 }
 

@@ -35,6 +35,7 @@ struct DeviceExtensionFlags
     uint32_t hasSamplerMirrorClampToEdge : 1;
     uint32_t hasDeviceFault              : 1;
     uint32_t hasBufferMarker             : 1;
+    uint32_t hasPipelineExecutableInfo   : 1;
 };
 
 class VulkanDevice

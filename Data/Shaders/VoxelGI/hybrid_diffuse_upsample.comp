@@ -102,8 +102,11 @@ void        main()
                 sky            += weight * vec4(leaderSky.rgb / leaderGuide.rgb, leaderSky.a);
                 if (hybrid.bounce.x != 0u)
                 {
-                    bounce   += weight * texelFetch(halfBounce, b, 0);
-                    previous += weight * texelFetch(halfBouncePrevious, b, 0);
+                    bounce += weight * texelFetch(halfBounce, b, 0);
+                    if (hybrid.bounce.w != 0u)
+                    {
+                        previous += weight * texelFetch(halfBouncePrevious, b, 0);
+                    }
                 }
                 total += weight;
             }

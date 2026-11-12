@@ -290,7 +290,8 @@ def run(args):
         raise ValueError('Captures require the standalone ZenApp executable')
     shaders = {str(path.relative_to(ROOT)): digest(path) for path in sorted((ROOT/'Data/SpvShaders').rglob('*.spv'))}
     executable_hash = digest(exe)
-    command = [str(exe), '--ground-truth='+str(args.dataset.resolve()), '--output='+str(args.output.resolve())]
+    command = [str(exe), '--ground-truth='+str(args.dataset.resolve()), '--output='+str(args.output.resolve()),
+               *(getattr(args, 'zenapp_arg', None) or [])]
     started = time.perf_counter()
     result = subprocess.run(command, cwd=ROOT, check=False)
     provenance = dict(executable=str(exe), executable_sha256=executable_hash, arguments=command[1:],
@@ -479,6 +480,8 @@ def main():
             command.add_argument('--accept-baseline', action='store_true')
             if name == 'run':
                 command.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-release/bin/ZenApp.exe')
+                command.add_argument('--zenapp-arg', action='append', default=[],
+                                     help='Extra ZenApp argument, e.g. a measurement-only --hybrid-trace-override')
     args = parser.parse_args()
     if args.command in ('build', 'benchmark'):
         if not (0 < args.width <= 8192 and 0 < args.height <= 8192 and args.batch > 0

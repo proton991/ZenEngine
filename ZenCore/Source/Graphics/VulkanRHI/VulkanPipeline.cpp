@@ -1290,6 +1290,77 @@ void VulkanPipeline::InitGraphics(const RHIRenderingLayout& layout)
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
 
+// Compiler-defined statistics are logged with their native names and formats. In particular,
+// do not interpret a vendor's local-memory counter as a portable byte footprint.
+static void LogPipelineStatistics(VkPipeline pipeline, NameID shader)
+{
+    const VkDevice    device = GVulkanRHI->GetVkDevice();
+    VkPipelineInfoKHR info{VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR};
+    info.pipeline            = pipeline;
+    uint32_t executableCount = 0;
+    VkResult result          = vkGetPipelineExecutablePropertiesKHR(device, &info, &executableCount, nullptr);
+    HeapVector<VkPipelineExecutablePropertiesKHR> executables;
+    if (result == VK_SUCCESS && executableCount > 0)
+    {
+        executables.resize(executableCount);
+        for (VkPipelineExecutablePropertiesKHR& property : executables)
+        {
+            property = {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR};
+        }
+        result = vkGetPipelineExecutablePropertiesKHR(device, &info, &executableCount, executables.data());
+    }
+    for (uint32_t i = 0; result == VK_SUCCESS && i < executableCount; ++i)
+    {
+        LOGI("Pipeline statistics: shader='{}' executable={} name='{}' subgroup={}", shader.CStr(), i, executables[i].name,
+             executables[i].subgroupSize);
+        VkPipelineExecutableInfoKHR executable{VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR};
+        executable.pipeline        = pipeline;
+        executable.executableIndex = i;
+        uint32_t statisticCount    = 0;
+        result                     = vkGetPipelineExecutableStatisticsKHR(device, &executable, &statisticCount, nullptr);
+        HeapVector<VkPipelineExecutableStatisticKHR> statistics;
+        if (result == VK_SUCCESS && statisticCount > 0)
+        {
+            statistics.resize(statisticCount);
+            for (VkPipelineExecutableStatisticKHR& statistic : statistics)
+            {
+                statistic = {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR};
+            }
+            result = vkGetPipelineExecutableStatisticsKHR(device, &executable, &statisticCount, statistics.data());
+        }
+        if (result == VK_SUCCESS)
+        {
+            for (uint32_t s = 0; s < statisticCount; ++s)
+            {
+                const VkPipelineExecutableStatisticKHR& statistic = statistics[s];
+                std::string                             value;
+                switch (statistic.format)
+                {
+                    case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
+                        value = statistic.value.b32 ? "true" : "false";
+                        break;
+                    case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
+                        value = fmt::format("{}", statistic.value.i64);
+                        break;
+                    case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
+                        value = fmt::format("{}", statistic.value.u64);
+                        break;
+                    case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR:
+                        value = fmt::format("{}", statistic.value.f64);
+                        break;
+                    default: value = "unknown format"; break;
+                }
+                LOGI("Pipeline statistic: shader='{}' executable={} {}={} ({})", shader.CStr(), i, statistic.name, value,
+                     statistic.description);
+            }
+        }
+    }
+    if (result != VK_SUCCESS)
+    {
+        LOGW("Pipeline statistics unavailable or incomplete for '{}': {}", shader.CStr(), GetResultString(result));
+    }
+}
+
 void VulkanPipeline::InitCompute()
 {
     VulkanShader* pShader = TO_VK_SHADER(m_pShader);
@@ -1302,6 +1373,18 @@ void VulkanPipeline::InitCompute()
 
     pipelineCI.layout     = pShader->GetVkPipelineLayout();
 
+    const bool statistics = RHIOptions::GetInstance().PipelineStatistics()
+                         && GVulkanRHI->GetDevice()->GetExtensionFlags().hasPipelineExecutableInfo
+                         && vkGetPipelineExecutablePropertiesKHR != nullptr && vkGetPipelineExecutableStatisticsKHR != nullptr;
+    if (statistics)
+    {
+        pipelineCI.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
+    }
+    else if (RHIOptions::GetInstance().PipelineStatistics())
+    {
+        LOGW("Pipeline statistics unsupported for '{}'", pShader->GetName().CStr());
+    }
+
     const VkResult result = vkCreateComputePipelines(GVulkanRHI->GetVkDevice(), GVulkanRHI->GetDevice()->GetPipelineCache(), 1,
                                                      &pipelineCI, nullptr, &m_vkPipeline);
 
@@ -1312,6 +1395,10 @@ void VulkanPipeline::InitCompute()
         ReportVulkanDeviceLoss(result, "vkCreateComputePipelines");
 
         LOGE("vkCreateComputePipelines failed: {}", GetResultString(result));
+    }
+    else if (statistics)
+    {
+        LogPipelineStatistics(m_vkPipeline, pShader->GetName());
     }
 
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();

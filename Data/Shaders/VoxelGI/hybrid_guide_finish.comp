@@ -1,0 +1,30 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_GUIDE_FINISH
+#include "hybrid_uniforms.glsl"
+#include "hybrid_guide_history.glsl"
+layout(local_size_x = 16, local_size_y = 16) in;
+const uint TRACE_THREADS = 256u;
+void       main()
+{
+    uint  lane      = gl_LocalInvocationIndex;
+    uint  base      = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * (ZEN_HYBRID_GUIDE_TILES + 1u);
+    bool  valid     = hybrid.provider.y != 0u;
+    float frames    = valid ? guidePrevious[base + ZEN_HYBRID_GUIDE_TILES] : 0.0;
+    float alpha     = 1.0 / min(frames + 1.0, HYBRID_GUIDE_FRAMES);
+    uint  receivers = guideAccumulation[base + ZEN_HYBRID_GUIDE_TILES];
+    for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
+    {
+        float sum                   = uintBitsToFloat(guideAccumulation[base + t]);
+        float learned               = receivers > 0u ? sum / float(receivers) : 0.0;
+        float previous              = valid ? guidePrevious[base + t] : 0.0;
+        guideAccumulation[base + t] = floatBitsToUint(mix(previous, learned, alpha));
+    }
+    // All lanes must load the receiver count before lane zero overwrites it with the frame count.
+    memoryBarrierBuffer();
+    barrier();
+    if (lane == 0u)
+    {
+        guideAccumulation[base + ZEN_HYBRID_GUIDE_TILES] = floatBitsToUint(min(frames + 1.0, HYBRID_GUIDE_FRAMES));
+    }
+}

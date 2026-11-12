@@ -6,8 +6,9 @@
 #define GI_DYNAMIC 2u
 #define GI_ALL     3u
 
-// Diagnostic words: four Compute rays, four HW rays, then field work (loads/samples/unknown/limits).
-#define ZEN_GI_TRACE_COUNT_WORDS 12u
+// Diagnostic words: four Compute rays, four HW rays, field work (loads/samples/unknown/limits),
+// then four HW candidate-loop iteration counts, in sky/specular/bounce/reflection order.
+#define ZEN_GI_TRACE_COUNT_WORDS 16u
 // Per non-gather slot: Compute/HW rays followed by the same four field work totals.
 #define ZEN_GI_TOTAL_COUNT_WORDS 6u
 

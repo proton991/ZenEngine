@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
 #include "Graphics/RenderCore/V2/RenderFrameState.h"
 #include "Graphics/RenderCore/V2/SceneOpacityMicromap.h"
+#include "Graphics/RenderCore/V2/FrameBufferRing.h"
 
 namespace zen::sg
 {
@@ -103,6 +104,7 @@ private:
     };
 
     bool Prepare(RenderScene& scene, uint64_t budgetBytes);
+    bool PrepareHitShading(RenderScene& scene, uint64_t budgetBytes);
     bool PrepareMeshes(RenderScene& scene, HeapVector<glm::uvec4>& metadata);
     bool UpdateInput(RHIBuffer*& buffer, HeapVector<uint8_t>& payload, NameID name, uint32_t size, const void* data);
     void RecordBuilds(RenderScene& scene);
@@ -128,5 +130,10 @@ private:
     BuildStatistics m_statistics;
     bool            m_recorded{false};
     const char*     m_reason{"scene_not_ready"};
+    FrameBufferRing m_hitVertices;
+    FrameBufferRing m_hitMaterials;
+    uint64_t        m_hitVertexGeneration{0};
+    uint64_t        m_hitSurfaceRevision{0};
+    bool            m_hitStreamReady{false};
 };
 } // namespace zen::rc

@@ -19,6 +19,9 @@ layout(std140, set = 2, binding = 3) uniform uRayQueryData
     uvec4 generation;
 }
 rayScene;
+// Every ray-query pass binds the secondary-hit streams (SceneRayQuery::BindInputs), so each
+// ray-query shader declares them, including those that never shade a hit.
+#include "ray_hit_material.glsl"
 
 uvec4 RayTriangle(uint instance, uint geometry, uint primitive)
 {
@@ -40,14 +43,9 @@ struct HardwareRayHit
     // Facing before orienting the geometric normal against the incoming ray. Every face occludes.
     bool frontFacing;
 };
-HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance, bool closest)
+// Share clipping, alpha testing and ray accounting between visibility and surface queries.
+bool HardwareTraverse(rayQueryEXT query, vec3 origin, vec3 direction, float maximumDistance, bool closest)
 {
-    HardwareRayHit result;
-    result.ray      = MakeHybridRayResult(false, origin, vec3(0), ivec3(-1), true);
-    result.instance = result.primitive = result.material = 0xffffffffu;
-    result.barycentrics                                  = vec2(0);
-    result.generation                                    = rayScene.generation.xy;
-    result.frontFacing                                   = false;
     float enter = 0.0, leave = maximumDistance;
     bool  intersects = true;
     for (int axis = 0; axis < 3; ++axis)
@@ -69,13 +67,15 @@ HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance,
 #ifdef HYBRID_COUNT_RAYS
         ++issuedHardwareRays[issuedRayFeature];
 #endif
-        rayQueryEXT query;
-        uint        flags = closest ? 0u : gl_RayFlagsTerminateOnFirstHitEXT;
+        uint flags = closest ? 0u : gl_RayFlagsTerminateOnFirstHitEXT;
         // Pad the scene bound, but never trace beyond a finite caller-supplied endpoint (a light).
         rayQueryInitializeEXT(query, sceneAccelerationStructure, flags, 0xffu, origin, 0.0, direction,
                               min(leave + 1e-5, maximumDistance));
         while (rayQueryProceedEXT(query))
         {
+#ifdef HYBRID_COUNT_RAYS
+            ++hardwareCandidates[issuedRayFeature];
+#endif
             if (rayQueryGetIntersectionTypeEXT(query, false) == gl_RayQueryCandidateIntersectionTriangleEXT)
             {
                 uvec4 triangle = RayTriangle(rayQueryGetIntersectionInstanceCustomIndexEXT(query, false),
@@ -87,6 +87,31 @@ HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance,
                 }
             }
         }
+    }
+    return intersects && leave >= enter && leave > 0.0;
+}
+bool HardwareOccluded(vec3 origin, vec3 direction, float maximumDistance)
+{
+    rayQueryEXT query;
+    bool        occluded = false;
+    if (HardwareTraverse(query, origin, direction, maximumDistance, false))
+    {
+        occluded = rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionTriangleEXT;
+    }
+    return occluded;
+}
+
+HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance, bool closest)
+{
+    HardwareRayHit result;
+    result.ray      = MakeHybridRayResult(false, origin, vec3(0), ivec3(-1), true);
+    result.instance = result.primitive = result.material = 0xffffffffu;
+    result.barycentrics                                  = vec2(0);
+    result.generation                                    = rayScene.generation.xy;
+    result.frontFacing                                   = false;
+    rayQueryEXT query;
+    if (HardwareTraverse(query, origin, direction, maximumDistance, closest))
+    {
         if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
         {
             result.instance  = rayQueryGetIntersectionInstanceCustomIndexEXT(query, true);
@@ -98,9 +123,9 @@ HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance,
             result.ray.triangle     = triangle;
             result.ray.barycentrics = result.barycentrics;
             result.ray.hit          = true;
-            result.ray.position     = RaySurfacePosition(triangle, result.barycentrics);
-            result.ray.normal       = RayGeometricNormal(triangle);
-            result.frontFacing      = dot(result.ray.normal, direction) < 0.0;
+            uvec3 vertexIndices     = RayVertexIndices(triangle);
+            RaySurfaceGeometry(triangle, vertexIndices, result.barycentrics, result.ray.position, result.ray.normal);
+            result.frontFacing = dot(result.ray.normal, direction) < 0.0;
             if (!result.frontFacing)
             {
                 result.ray.normal = -result.ray.normal;
@@ -130,6 +155,6 @@ float HardwareLightVisibility(vec3 position, vec3 normal, SceneLight light)
         distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
         origin          = light.positionRange.xyz;
     }
-    return distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit ? 0.0 : 1.0;
+    return distanceToLight > 0.0 && HardwareOccluded(origin, direction, distanceToLight) ? 0.0 : 1.0;
 }
 #endif

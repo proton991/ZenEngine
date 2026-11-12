@@ -23,6 +23,37 @@ static void AddToPNext(ExistingChainType& Existing, NewStructType& Added)
     Existing.pNext = (void*)&Added;
 }
 
+class VulkanPipelineExecutableExtension : public VulkanDeviceExtension
+{
+public:
+    explicit VulkanPipelineExecutableExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        AddToPNext(features, m_features);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        SetSupport(m_features.pipelineExecutableInfo == VK_TRUE);
+        m_pDevice->GetExtensionFlags().hasPipelineExecutableInfo = IsEnabledAndSupported();
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(info, m_features);
+        }
+    }
+
+private:
+    VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR m_features{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR};
+};
+
 class VulkanDeviceFaultExtension : public VulkanDeviceExtension
 {
 public:
@@ -719,6 +750,11 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanHostQueryResetExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDeviceFaultExtension)
+
+    if (RHIOptions::GetInstance().PipelineStatistics())
+    {
+        ADD_ADVANCED_DEVICE_EXTENSION(VulkanPipelineExecutableExtension)
+    }
 
     const HeapVector<VkExtensionProperties> supported = GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
 

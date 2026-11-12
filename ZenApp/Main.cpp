@@ -193,6 +193,46 @@ bool ParseOptions(int              argc,
         {
             options.gpuMarkers = true;
         }
+        else if (argument == "--pipeline-statistics")
+        {
+            options.pipelineStatistics = true;
+        }
+        else if (argument == "--hybrid-hit-stream")
+        {
+            options.hybridHitStream = true;
+        }
+        else if (argument == "--hybrid-ray-counts")
+        {
+            options.hybridRayCounts = true;
+        }
+        else if (argument.starts_with("--hybrid-trace-override="))
+        {
+            // <ProgramName>=<file.spv>; program names never contain '='.
+            const std::string_view value     = argument.substr(argument.find('=') + 1);
+            const size_t           separator = value.find('=');
+            if (separator == std::string_view::npos || separator == 0 || separator + 1 == value.size())
+            {
+                error = "--hybrid-trace-override requires <ProgramName>=<file.spv>";
+            }
+            else
+            {
+                options.hybridTraceOverrideProgram = std::string(value.substr(0, separator));
+                options.hybridTraceOverrideModule  = std::string(value.substr(separator + 1));
+            }
+        }
+        else if (argument.starts_with("--hybrid-trace-module=") || argument.starts_with("--hybrid-trace-buffered-module="))
+        {
+            if (!options.hybridTraceModule.empty())
+            {
+                error = "Specify only one HybridTrace measurement module";
+            }
+            options.hybridTraceBufferedModule = argument.starts_with("--hybrid-trace-buffered-module=");
+            options.hybridTraceModule         = argument.substr(argument.find('=') + 1);
+            if (options.hybridTraceModule.empty())
+            {
+                error = "--hybrid-trace-module requires a SPIR-V path";
+            }
+        }
         else if (argument == "--disable-rt")
         {
             options.disableRT = true;
@@ -255,6 +295,10 @@ bool ParseOptions(int              argc,
     {
         error = "--capture requires --frames or --start-paused";
     }
+    if (error.empty() && options.hybridRayCounts && (options.frames < 2 || !options.groundTruth.empty()))
+    {
+        error = "--hybrid-ray-counts requires --frames=2 or more and cannot be combined with --ground-truth";
+    }
     if (error.empty() && !options.lightPath.empty())
     {
         if (!options.fixedStep || !options.groundTruth.empty() || options.startPaused)
@@ -290,6 +334,12 @@ int RuntimeMain(int argc, char** argv)
                      "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
                      "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
                      "       [--backend=compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
+                     "       [--pipeline-statistics (compiler diagnostics; exclude from timing runs)]\n"
+                     "       [--hybrid-trace-module=<file.spv> (all-HW per-pixel ReSTIR measurement only)]\n"
+                     "       [--hybrid-trace-buffered-module=<file.spv> (8x8 buffered-guide measurement module)]\n"
+                     "       [--hybrid-hit-stream (optional compact secondary-hit buffers)]\n"
+                     "       [--hybrid-ray-counts (logs HybridTrace ray and candidate counts of the last two frames)]\n"
+                     "       [--hybrid-trace-override=<16x16 trace program>=<file.spv> (measurement only)]\n"
                      "       [--fixed-step] [--start-paused] [--camera-path=<keys.json> (with --fixed-step)]\n"
                      "       [--light-path=<keys.json> (with --fixed-step)]\n"
                      "       [--capture-start=N (writes <capture>.frame-N.ppm each frame from N)]\n"

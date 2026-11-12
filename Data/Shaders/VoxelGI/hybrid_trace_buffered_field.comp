@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_FIELD_TRAVERSAL
+#define HYBRID_BUFFER_GUIDE
+#include "hybrid_trace.glsl"

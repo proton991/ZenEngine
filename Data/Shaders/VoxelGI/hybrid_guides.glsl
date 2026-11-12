@@ -1,21 +1,6 @@
 #include "../Common/gbuffer.glsl"
 #include "hybrid_common.glsl"
-layout(std140, set = 1, binding = 0) uniform uHybridData
-{
-    mat4  inverseViewProjection;
-    vec4  worldOrigin;
-    mat4  previousProjectionView;
-    vec4  previousViewPosition;
-    vec4  previousViewDirection;
-    uvec4 sampling;
-    uvec4 provider;
-    vec4  rejection;
-    uvec4 bounce;
-    uvec4 reflection;
-    uvec4 resolution;
-    uvec4 reservoir;
-}
-hybrid;
+#include "hybrid_uniforms.glsl"
 layout(set = 1, binding = 1) uniform sampler2D receiverDepth;
 layout(set = 1, binding = 2) uniform sampler2D receiverNormal;
 layout(set = 1, binding = 3) uniform sampler2D receiverRoughness;

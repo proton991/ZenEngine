@@ -5,6 +5,7 @@
 #include "Graphics/Shared/VoxelGI.h"
 #include "Platform/ConfigLoader.h"
 #include <string_view>
+#include <string>
 
 namespace zen::rc
 {
@@ -127,6 +128,17 @@ struct RenderConfig
     AsyncComputeMode asyncComputeMode{platform::ConfigLoader::GetInstance().GetAsyncComputeMode()};
 
     uint32_t numThreads = 8;
+
+    // Measurement-only replacement for the all-HW per-pixel ReSTIR trace. Set before shader creation.
+    std::string hybridTraceModule;
+    bool        hybridTraceBufferedModule{false};
+    bool        hybridTraceReferenceModule{false};
+    // Measurement-only replacement of one named 16x16 guide trace program (and its Exact variant),
+    // for example HybridTraceHardwareSP in ground-truth batches. Set before shader creation.
+    std::string hybridTraceOverrideProgram;
+    std::string hybridTraceOverrideModule;
+    // Optional until the compact stream's memory/quality/performance gates are measured.
+    bool hybridHitStream{false};
 
     DataFormat shadowDepthFormat{DataFormat::eD16UNORM};
 };

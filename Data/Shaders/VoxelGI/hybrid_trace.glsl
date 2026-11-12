@@ -13,6 +13,20 @@ layout(std430, set = 1, binding = 44) writeonly buffer ReflectionReservoirCurren
 };
 GIReservoir initialGI;
 GIReservoir initialReflection;
+#    if !defined(HYBRID_TRACE_COMBINED)
+// Receivers at least this rough estimate their reflection from their diffuse rays instead of
+// tracing a reflection ray: each diffuse hit is weighted by the normalized GGX lobe over its
+// proposal density, for radiance, specular occlusion and the reflection reservoir alike
+// (HybridTraceProfile.md, stage 4).
+const float HYBRID_DIFFUSE_REFLECTION_ROUGHNESS = 0.5;
+bool        reflectFromDiffuse                  = false;
+vec3        diffuseReflectionView               = vec3(0, 0, 1);
+float       diffuseReflectionRoughness          = 1.0;
+vec4        diffuseReflectionSum                = vec4(0); // Lobe-weighted hit radiance, lobe-weighted escapes.
+vec2        diffuseReflectionHits               = vec2(0); // Lobe-weighted hit distance and rejected hits.
+float       diffuseReflectionWeight             = 0.0;     // Sum of the hits' lobe weights.
+vec2        diffuseReflectionCompleted          = vec2(0);
+#    endif
 #endif
 #if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
 #    define HIT_LIGHT_CACHE
@@ -24,6 +38,9 @@ GIReservoir initialReflection;
 // One 8x8 workgroup per 16x16 tile of the visibility guide (HybridGIRenderer::kGuideTile).
 // Each thread owns a 2x2 receiver block, tracing diffuse rays for one rotating leader and
 // specular rays for all four receivers.
+layout(local_size_x = 8, local_size_y = 8) in;
+const uint TRACE_THREADS = 64u;
+#elif defined(HYBRID_BUFFER_GUIDE)
 layout(local_size_x = 8, local_size_y = 8) in;
 const uint TRACE_THREADS = 64u;
 #elif defined(HYBRID_TRACE_FALLBACK)
@@ -83,13 +100,8 @@ layout(std430, set = 1, binding = 35) writeonly buffer HybridDiffuseFallbackArgs
     uint fallbackGroupsY;
     uint fallbackGroupsZ;
 };
-// Each tile's pooled guide for the fallback pass: cell weights, row moments and total power.
-layout(std430, set = 1, binding = 37) writeonly buffer HybridPooledGuide
-{
-    float pooledGuide[];
-};
 #endif
-#ifdef HYBRID_TRACE_FALLBACK
+#if defined(HYBRID_TRACE_FALLBACK)
 layout(std430, set = 1, binding = 35) readonly buffer HybridDiffuseFallbackArgs
 {
     uint fallbackCount;
@@ -101,92 +113,10 @@ layout(std430, set = 1, binding = 36) readonly buffer HybridDiffuseFallbackPixel
 {
     uint fallbackPixels[];
 };
-layout(std430, set = 1, binding = 37) readonly buffer HybridPooledGuide
-{
-    float pooledGuide[];
-};
 #endif
-// Pooled-guide record per tile, matching HybridGIRenderer's buffer size.
-const uint POOLED_GUIDE_STRIDE = ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE + 4u;
-// Visibility guide: per screen tile, the visible residual radiance (without the receiver's cosine)
-// over the environment's tiles, learned from this pass's rays, followed by the frames it averages.
-// Each receiver weights it by its own cosine toward the tile centres and draws guided rays from it,
-// so its rays go where the sky is both bright and unblocked from that part of the screen.
-layout(std430, set = 1, binding = 10) readonly buffer HybridGuidePrevious
-{
-    float guidePrevious[];
-};
-#ifndef HYBRID_TRACE_FALLBACK
-layout(std430, set = 1, binding = 11) writeonly buffer HybridGuideNext
-{
-    float guideNext[];
-};
-#endif
-shared float guideWeight[ZEN_HYBRID_GUIDE_TILES];
-vec3         GuideCellDirection(uint t)
-{
-    uint perFace = ZEN_HYBRID_GUIDE_PER_FACE * ZEN_HYBRID_GUIDE_PER_FACE;
-    vec2 center  = (vec2(t % ZEN_HYBRID_GUIDE_PER_FACE, (t % perFace) / ZEN_HYBRID_GUIDE_PER_FACE) + 0.5)
-                     * (2.0 / float(ZEN_HYBRID_GUIDE_PER_FACE))
-                 - 1.0;
-    return EnvironmentWorldDirection(t / perFace, center);
-}
-#if defined(HYBRID_TRACE_HALF) || defined(HYBRID_TRACE_FALLBACK)
-// A quarter as many threads share each tile's guide here. Recomputing the cell directions keeps
-// the workgroup's shared memory small enough not to limit occupancy.
-vec3 GuideDirection(uint t)
-{
-    return GuideCellDirection(t);
-}
-#else
-shared vec3 guideDirection[ZEN_HYBRID_GUIDE_TILES];
-vec3        GuideDirection(uint t)
-{
-    return guideDirection[t];
-}
-#endif
-#define GUIDE_SUM_BINS ZEN_HYBRID_GUIDE_TILES
-// Capture-only specialization. Normal rendering retains one float word per bin.
-layout(constant_id = 0) const bool HYBRID_EXACT_GUIDE = false;
-const uint HYBRID_GUIDE_WORDS                         = HYBRID_EXACT_GUIDE ? 10u : 1u;
-#define GUIDE_SUM_STORAGE_WORDS HYBRID_GUIDE_WORDS
-#include "guide_sum.glsl"
-shared uint  guideReceivers;
-shared float guidePower;
-shared float guidePartialPower[TRACE_THREADS];
-shared vec4  guideRowMoment[6u * ZEN_HYBRID_GUIDE_PER_FACE];
-// Guide reads: the workgroup's shared copy, or the tile's published copy in the fallback pass.
-#ifdef HYBRID_TRACE_FALLBACK
-uint  pooledBase;
-float GuideWeightAt(uint t)
-{
-    return pooledGuide[pooledBase + t];
-}
-vec4 GuideRowMomentAt(uint row)
-{
-    uint base = pooledBase + ZEN_HYBRID_GUIDE_TILES + row * 4u;
-    return vec4(pooledGuide[base], pooledGuide[base + 1u], pooledGuide[base + 2u], pooledGuide[base + 3u]);
-}
-float GuidePowerValue()
-{
-    return pooledGuide[pooledBase + ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE];
-}
-#else
-float GuideWeightAt(uint t)
-{
-    return guideWeight[t];
-}
-vec4 GuideRowMomentAt(uint row)
-{
-    return guideRowMoment[row];
-}
-float GuidePowerValue()
-{
-    return guidePower;
-}
-#endif
+#include "hybrid_guide_storage.glsl"
 #ifdef HYBRID_COUNT_RAYS
-// Full and half passes write each tile's first three entries and clear the second three, to which
+// Full and half passes write each tile's first four entries and clear the second four, to which
 // the fallback pass adds.
 #    ifdef HYBRID_TRACE_FALLBACK
 layout(std430, set = 1, binding = 26) buffer HybridRayCounts
@@ -201,9 +131,8 @@ layout(std430, set = 1, binding = 26) writeonly buffer HybridRayCounts
 #    endif
 shared uvec4 computeRaySums[TRACE_THREADS], hardwareRaySums[TRACE_THREADS];
 shared uvec4 fieldWorkSums[TRACE_THREADS];
+shared uvec4 candidateSums[TRACE_THREADS];
 #endif
-// Learned frames are averaged equally up to this count, then exponentially.
-const float HYBRID_GUIDE_FRAMES = 64.0;
 
 // Bits match VoxelGISettings::Feature. The hardware variant also supports software queries
 // so each feature can select its own provider without tracing every signal twice.
@@ -225,7 +154,16 @@ HybridRayResult TraceFeature(uint feature, vec3 position, vec3 normal, vec3 dire
 #ifdef HYBRID_HARDWARE_PROVIDER
     if (FeatureHardware(feature))
     {
-        result = HardwareTraceRay(HybridTraceOrigin(position, normal, 0.0), direction, 1e20, closest);
+        vec3 origin = HybridTraceOrigin(position, normal, 0.0);
+        if (closest)
+        {
+            result = HardwareTraceRay(origin, direction, 1e20, true);
+        }
+        else
+        {
+            result.valid = true;
+            result.hit   = HardwareOccluded(origin, direction, 1e20);
+        }
     }
 #endif
 #ifdef HYBRID_FIELD_TRAVERSAL
@@ -253,7 +191,7 @@ float HitLightVisibility(HybridRayResult hit, SceneLight light, int lightIndex)
         vec3  direction       = delta / max(distanceToLight, 1e-20);
         // Exclude the endpoint itself, without dropping a finite interval before it.
         distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
-        visibility      = distanceToLight > 0.0 && HardwareTraceRay(origin, direction, distanceToLight, false).hit ? 0.0 : 1.0;
+        visibility      = distanceToLight > 0.0 && HardwareOccluded(origin, direction, distanceToLight) ? 0.0 : 1.0;
     }
     else
 #endif
@@ -267,6 +205,20 @@ float HitLightVisibility(HybridRayResult hit, SceneLight light, int lightIndex)
 
 void GuideLearn(uint tile, float value)
 {
+#if defined(HYBRID_NO_GUIDE)
+    // This program is selected only when environment lighting contributes nothing.
+#elif defined(HYBRID_BUFFER_GUIDE)
+    if (reuseData.z != 0u)
+    {
+        uint index    = guideBase + tile;
+        uint previous = guideAccumulation[index], expected;
+        do
+        {
+            expected = previous;
+            previous = atomicCompSwap(guideAccumulation[index], expected, floatBitsToUint(uintBitsToFloat(expected) + value));
+        } while (previous != expected);
+    }
+#elif !defined(HYBRID_ABLATE_GUIDE)
     if (HYBRID_EXACT_GUIDE)
     {
         GuideSumAdd(tile, value);
@@ -280,8 +232,10 @@ void GuideLearn(uint tile, float value)
             previous = atomicCompSwap(guideSumWords[tile], expected, floatBitsToUint(uintBitsToFloat(expected) + value));
         } while (previous != expected);
     }
+#endif
 }
 
+#ifndef HYBRID_NO_GUIDE
 float GuideHorizonSupport()
 {
     // Triangle visibility resolves grazing openings inside a guide cell. The
@@ -408,107 +362,12 @@ vec3 GuideSample(vec3 normal, float total, float rows[GUIDE_ATLAS_ROWS], vec2 u,
     return SampleEnvironmentTileGrid(GuideAtlasTile(x, y), u, ZEN_HYBRID_GUIDE_PER_FACE, ZEN_HYBRID_GUIDE_CDF_OFFSET, pdf);
 }
 
+#endif
+
 // The guide survives resets that keep the screen and environment (HybridGIRenderer); source
 // tiles have their own rays.
-bool guideValid;
-uint guideBase;
 
-void BuildGuide(uint lane)
-{
-    guideBase   = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * (ZEN_HYBRID_GUIDE_TILES + 1u);
-    guideValid  = hybrid.provider.y != 0u;
-    float power = 0.0;
-    for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
-    {
-        uint perFace = ZEN_HYBRID_GUIDE_PER_FACE * ZEN_HYBRID_GUIDE_PER_FACE;
-#if !defined(HYBRID_TRACE_HALF) && !defined(HYBRID_TRACE_FALLBACK)
-        guideDirection[t] = GuideCellDirection(t);
-#endif
-        // Rays are drawn from the guide smoothed over the neighbouring screen tiles (a 5x5 binomial
-        // kernel): each tile learns from its own receivers, and sampling borrows their neighbours'
-        // statistics, which are noisier per tile than they are different between nearby tiles.
-        float weight = 0.0;
-        if (guideValid)
-        {
-            for (int dy = -2; dy <= 2; ++dy)
-            {
-                for (int dx = -2; dx <= 2; ++dx)
-                {
-                    ivec2 neighbour = clamp(ivec2(gl_WorkGroupID.xy) + ivec2(dx, dy), ivec2(0), ivec2(gl_NumWorkGroups.xy) - 1);
-                    uint  base = (uint(neighbour.y) * gl_NumWorkGroups.x + uint(neighbour.x)) * (ZEN_HYBRID_GUIDE_TILES + 1u);
-                    const float poolKernel[5]  = float[5](1, 4, 6, 4, 1);
-                    weight                    += poolKernel[dx + 2] * poolKernel[dy + 2] * guidePrevious[base + t];
-                }
-            }
-        }
-        // A cosine ray can learn radiance in a dim cell whose CDF mass rounded to zero.
-        // Such a cell cannot be sampled by the guide; the cosine proposal retains its support.
-        uint cdfEnd      = ZEN_HYBRID_GUIDE_CDF_OFFSET + t * (ZEN_HYBRID_GUIDE_CELL_SIZE + 1u) + ZEN_HYBRID_GUIDE_CELL_SIZE;
-        guideWeight[t]   = environmentTiles[cdfEnd] > 0.0 ? weight / 256.0 : 0.0;
-        power           += guideWeight[t];
-        uint ratio       = ZEN_HYBRID_GUIDE_PER_FACE / ZEN_ENVIRONMENT_TILES_PER_FACE;
-        uint sourceTile  = ((t / perFace) * ZEN_ENVIRONMENT_TILES_PER_FACE + (t % perFace) / ZEN_HYBRID_GUIDE_PER_FACE / ratio)
-                             * ZEN_ENVIRONMENT_TILES_PER_FACE
-                         + (t % ZEN_HYBRID_GUIDE_PER_FACE) / ratio;
-        if (EnvironmentSourceTile(sourceTile))
-        {
-            guideWeight[t] = -guideWeight[t];
-        }
-        if (HYBRID_EXACT_GUIDE)
-        {
-            GuideSumClear(t);
-        }
-        else
-        {
-            guideSumWords[t] = 0u;
-        }
-    }
-    // Separate power scratch lets the learning bins initialize with the guide,
-    // removing the barrier previously needed before clearing reused storage.
-    guidePartialPower[lane] = power;
-    if (lane == 0u)
-    {
-        guideReceivers = 0u;
-    }
-    barrier();
-    if (lane == 0u)
-    {
-        guidePower = 0.0;
-        for (uint i = 0u; i < TRACE_THREADS; ++i)
-        {
-            guidePower += guidePartialPower[i];
-        }
-    }
-    if (lane < 6u * ZEN_HYBRID_GUIDE_PER_FACE)
-    {
-        vec4 moment = vec4(0);
-        for (uint x = 0u; x < ZEN_HYBRID_GUIDE_PER_FACE; ++x)
-        {
-            uint t  = lane * ZEN_HYBRID_GUIDE_PER_FACE + x;
-            moment += max(guideWeight[t], 0.0) * vec4(GuideDirection(t), 1);
-        }
-        guideRowMoment[lane] = moment;
-    }
-    barrier();
-#ifdef HYBRID_TRACE_HALF
-    uint published = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * POOLED_GUIDE_STRIDE;
-    for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
-    {
-        pooledGuide[published + t] = guideWeight[t];
-    }
-    if (lane < 6u * ZEN_HYBRID_GUIDE_PER_FACE)
-    {
-        for (uint c = 0u; c < 4u; ++c)
-        {
-            pooledGuide[published + ZEN_HYBRID_GUIDE_TILES + lane * 4u + c] = guideRowMoment[lane][c];
-        }
-    }
-    if (lane == 0u)
-    {
-        pooledGuide[published + ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE] = guidePower;
-    }
-#endif
-}
+#include "hybrid_guide_build.glsl"
 
 bool IsReceiver(ivec2 p)
 {
@@ -531,25 +390,86 @@ struct DiffuseResult
 vec3 ReconstructionGuide(vec3 n, float fullGuideTotal)
 {
     vec3 guide = HybridSkyGuide(n);
+#ifndef HYBRID_NO_GUIDE
     if (guideValid && GuidePowerValue() > 0.0 && fullGuideTotal > 0.0)
     {
         guide = max(guide / HybridLuminance(guide) * (fullGuideTotal / GuidePowerValue()), vec3(1e-3));
     }
+#endif
     return guide;
 }
 
+#ifndef HYBRID_TRACE_FALLBACK
+void AccumulateReflection(HybridRayResult hit,
+                          vec3            direction,
+                          vec3            position,
+                          vec3            radiance,
+                          uint            hitSeed,
+                          float           roughness,
+                          bool            rejected,
+                          inout vec4      specular,
+                          inout vec2      reflection,
+                          inout vec3      reflectionPrevious,
+                          inout float     hitCount)
+{
+    specular.rgb += radiance;
+#    ifdef HYBRID_RESTIR
+    if (restirOptions.y != 0u && roughness >= 0.3)
+    {
+        GIReservoir candidate = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
+        float       random    = float(HybridHash(hitSeed ^ 0x87f19ab3u) >> 8u) / 16777216.0;
+        // Target/pdf cancels the normalized lobe used by HybridSpecularDirection.
+        GIStream(initialReflection, candidate, GITarget(radiance), 0u, random);
+    }
+#    endif
+    reflection.y += rejected ? 1.0 : 0.0;
+    reflection.x += length(hit.position - position);
+    hitCount     += 1.0;
+#    if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
+    if (hybrid.reflection.w != 0u)
+    {
+        reflectionPrevious += HitRadiance(hitRadiancePrevious, hitNormal, hit, direction, true, rejected);
+    }
+#    endif
+}
+#endif
+
+#ifdef HYBRID_TRACE_COMBINED
+void StoreDiffuse(ivec2 p, DiffuseResult d);
+void StoreSpecular(ivec2 p, vec4 specular, vec2 reflection, vec3 reflectionPrevious);
+void TraceReceiver(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequence, uint seed, float learning)
+#else
 DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequence, uint seed, float learning)
+#endif
 {
     vec4  sky = vec4(0), bounce = vec4(0), previous = vec4(0);
     uvec2 unavailable   = uvec2(0); // Sky and bounce traces that could not complete.
     uint  reducedBudget = 0u;
     float scale         = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y;
     float fullGuideTotal;
+#ifndef HYBRID_NO_GUIDE
     float guideRows[GUIDE_ATLAS_ROWS];
-    float guideTotal          = GuideTotal(n, fullGuideTotal, guideRows);
-    vec3  reconstructionGuide = ReconstructionGuide(n, fullGuideTotal);
+#endif
+#if defined(HYBRID_ABLATE_GUIDE) || defined(HYBRID_NO_GUIDE)
+    fullGuideTotal   = 0.0;
+    float guideTotal = 0.0;
+#else
+    float guideTotal = 0.0;
+    fullGuideTotal   = 0.0;
+#    if defined(HYBRID_BUFFER_GUIDE)
+    if (reuseData.z != 0u)
+#    endif
+    {
+        guideTotal = GuideTotal(n, fullGuideTotal, guideRows);
+    }
+#endif
+    vec3 reconstructionGuide = ReconstructionGuide(n, fullGuideTotal);
     // Shares of guided, residual-environment and cosine rays; without a guide its share goes to
     // the environment. Every density below is the mixture of these three proposals.
+#ifdef HYBRID_NO_GUIDE
+    vec3       share               = vec3(0, 0, 1);
+    const bool residualEnvironment = false;
+#else
     vec3 share = guideTotal > 0.0 ? vec3(0.75, 0.0, 0.25) : vec3(0.0, HYBRID_ENVIRONMENT_SHARE, 1.0 - HYBRID_ENVIRONMENT_SHARE);
     bool residualEnvironment = environmentResidualRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS] > 0.0
                             && gi.lighting.y * sceneUbo.environment.x * sceneUbo.environment.z > 0.0;
@@ -557,6 +477,7 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
     {
         share = vec3(0, 0, 1);
     }
+#endif
     // The base rays remain everywhere. Two extra guided rays reduce the
     // compact guide's variance where previous sky samples found energy.
     // Receivers with a positive guide also need exploration: an
@@ -590,111 +511,231 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
     {
         share = guideTotal > 0.0 ? vec3(5.0 / 6.0, 0, 1.0 / 6.0) : vec3(0, 5.0 / 6.0, 1.0 / 6.0);
     }
-    for (uint i = 0u; i < diffuseSamples; ++i)
+#if defined(HYBRID_RESTIR) && !defined(HYBRID_TRACE_COMBINED)
+    initialReflection = EmptyGIReservoir();
+    diffuseReflectionView =
+        sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz - position);
+    diffuseReflectionRoughness = clamp(texelFetch(receiverRoughness, p, 0).g, 0.04, 1.0);
+    // The diffuse rays must trace with the providers the reflection would use.
+    reflectFromDiffuse         = hybrid.rejection.y > 0.0 && hybrid.reflection.x != 0u && hybrid.bounce.x != 0u
+                              && hybrid.sampling.y <= 4u && diffuseReflectionRoughness >= HYBRID_DIFFUSE_REFLECTION_ROUGHNESS
+                              && FeatureHardware(SPECULAR_PROVIDER) == FeatureHardware(SKY_PROVIDER)
+                              && FeatureHardware(REFLECTION_PROVIDER) == FeatureHardware(BOUNCE_PROVIDER);
+    diffuseReflectionSum       = vec4(0);
+    diffuseReflectionHits      = vec2(0);
+    diffuseReflectionWeight    = 0.0;
+    diffuseReflectionCompleted = vec2(0);
+#endif
+    uint totalSamples = diffuseSamples;
+#ifdef HYBRID_TRACE_COMBINED
+    uint specularSamples = hybrid.sampling.y > 4u ? hybrid.sampling.y : 1u;
+#    ifndef HYBRID_ABLATE_REFLECTION
+    totalSamples += hybrid.rejection.y > 0.0 ? specularSamples : 0u;
+#    endif
+    vec4  specular   = vec4(0, 0, 0, 1);
+    vec2  reflection = vec2(0), specularCompleted = vec2(specularSamples);
+    vec3  reflectionPrevious = vec3(0), view = vec3(0);
+    float roughness = 0.0, hitCount = 0.0;
+#endif
+    for (uint slot = 0u; slot < totalSamples; ++slot)
     {
-        // Rays from the same proposal share one temporal Sobol net. The pixel's digital shift
-        // preserves spatial stratification while each proposal advances by its own ray count.
-        vec2 u = HybridSkySample(uvec2(p), sequence, seed + 0x1000u + i);
-        // Four-ray budgets split 3:1; six-ray budgets split 5:1. Other
-        // configured counts use a stratified proposal choice per ray.
-        float choice   = (diffuseSamples % 4u == 0u || diffuseSamples == 6u) ? (float(i) + 0.5) / float(diffuseSamples) : u.x;
-        uint  proposal = choice < share.x ? 0u : choice < share.x + share.y ? 1u : 2u;
-        if (diffuseSamples % 4u == 0u || diffuseSamples == 6u)
-        {
-            uint first = uint(float(diffuseSamples) * (proposal == 0u ? 0.0 : proposal == 1u ? share.x : share.x + share.y));
-            uint count = uint(float(diffuseSamples) * share[proposal]);
-            // Reserve the maximum sequence stride even when using fewer
-            // rays, so budget changes cannot repeat an earlier frame's samples.
-            uint stride = adaptive ? (proposal == 2u ? 1u : 5u) : count;
-            u           = HybridSkySample(uvec2(p), sequence * stride + i - first, seed + 0x1000u + proposal);
-        }
-        if (diffuseSamples % 4u != 0u && diffuseSamples != 6u)
-        {
-            u.x = min(proposal == 0u   ? u.x / share.x
-                      : proposal == 1u ? (u.x - share.x) / share.y
-                                       : (u.x - share.x - share.y) / share.z,
-                      0.99999994);
-        }
+        bool  specularSlot = slot >= diffuseSamples;
+        uint  i            = specularSlot ? slot - diffuseSamples : slot;
         vec3  w;
-        float pdf;
-        if (proposal == 0u)
+        float pdf    = 1.0;
+        bool  source = false;
+        uint  tile   = 0u;
+#ifdef HYBRID_TRACE_COMBINED
+        if (specularSlot)
         {
-            w = GuideSample(n, guideTotal, guideRows, u, pdf);
-        }
-        else if (proposal == 1u)
-        {
-            w = SampleEnvironmentDistribution(u, true, pdf);
+            if (i == 0u)
+            {
+                view       = sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw)
+                                                           : normalize(sceneUbo.viewPosition.xyz - position);
+                roughness  = clamp(texelFetch(receiverRoughness, p, 0).g, 0.04, 1.0);
+                specular.a = 0.0;
+            }
+            w = HybridSpecularDirection(n, view, roughness, uvec2(p), hybrid.sampling.x * specularSamples + i, 0x1234u);
         }
         else
+#endif
         {
-            w = HybridCosineSample(n, u, pdf);
+            // Rays from the same proposal share one temporal Sobol net. The pixel's digital shift
+            // preserves spatial stratification while each proposal advances by its own ray count.
+            vec2 u = HybridSkySample(uvec2(p), sequence, seed + 0x1000u + i);
+            // Four-ray budgets split 3:1; six-ray budgets split 5:1. Other
+            // configured counts use a stratified proposal choice per ray.
+            float choice = (diffuseSamples % 4u == 0u || diffuseSamples == 6u) ? (float(i) + 0.5) / float(diffuseSamples) : u.x;
+            uint  proposal = choice < share.x ? 0u : choice < share.x + share.y ? 1u : 2u;
+            if (diffuseSamples % 4u == 0u || diffuseSamples == 6u)
+            {
+                uint first = uint(float(diffuseSamples)
+                                  * (proposal == 0u   ? 0.0
+                                     : proposal == 1u ? share.x
+                                                      : share.x + share.y));
+                uint count = uint(float(diffuseSamples) * share[proposal]);
+                // Reserve the maximum sequence stride even when using fewer
+                // rays, so budget changes cannot repeat an earlier frame's samples.
+                uint stride = adaptive ? (proposal == 2u ? 1u : 5u) : count;
+                u           = HybridSkySample(uvec2(p), sequence * stride + i - first, seed + 0x1000u + proposal);
+            }
+            if (diffuseSamples % 4u != 0u && diffuseSamples != 6u)
+            {
+                u.x = min(proposal == 0u   ? u.x / share.x
+                          : proposal == 1u ? (u.x - share.x) / share.y
+                                           : (u.x - share.x - share.y) / share.z,
+                          0.99999994);
+            }
+#ifndef HYBRID_NO_GUIDE
+            if (proposal == 0u)
+            {
+                w = GuideSample(n, guideTotal, guideRows, u, pdf);
+            }
+            else
+#endif
+                if (proposal == 1u)
+            {
+                w = SampleEnvironmentDistribution(u, true, pdf);
+            }
+            else
+            {
+                w = HybridCosineSample(n, u, pdf);
+            }
+#ifndef HYBRID_NO_GUIDE
+            // Mixture density of the direction under all three proposals.
+            uint  face;
+            vec2  uv, st;
+            uvec2 cell;
+            EnvironmentLocate(w, face, uv, cell, st);
+            uint size    = ZEN_ENVIRONMENT_IMPORTANCE_SIZE / ZEN_HYBRID_GUIDE_PER_FACE;
+            tile         = (face * ZEN_HYBRID_GUIDE_PER_FACE + cell.y / size) * ZEN_HYBRID_GUIDE_PER_FACE + cell.x / size;
+            source       = EnvironmentSourceTile(EnvironmentTileOf(face, cell));
+            float guided = 0.0, residual = 0.0;
+#    ifndef HYBRID_NO_GUIDE
+            if (share.x > 0.0)
+            {
+                float tilePDF = proposal == 0u
+                                  ? pdf
+                                  : EnvironmentCellInTilePDF(tile, face * ZEN_ENVIRONMENT_IMPORTANCE_SIZE + cell.y, cell.x, uv,
+                                                             st, ZEN_HYBRID_GUIDE_CELL_SIZE, ZEN_HYBRID_GUIDE_CDF_OFFSET);
+                guided        = GuideCosineWeight(tile, n) / guideTotal * tilePDF;
+            }
+#    endif
+            if (share.y > 0.0 && !source && residualEnvironment)
+            {
+                residual = proposal == 1u ? pdf : EnvironmentDistributionPDF(w, true);
+            }
+#else
+            float guided = 0.0, residual = 0.0;
+#endif
+            pdf = share.x * guided + share.y * residual + share.z * max(dot(n, w), 0.0) / HYBRID_PI;
         }
-        // Mixture density of the direction under all three proposals.
-        uint  face;
-        vec2  uv, st;
-        uvec2 cell;
-        EnvironmentLocate(w, face, uv, cell, st);
-        uint  size   = ZEN_ENVIRONMENT_IMPORTANCE_SIZE / ZEN_HYBRID_GUIDE_PER_FACE;
-        uint  tile   = (face * ZEN_HYBRID_GUIDE_PER_FACE + cell.y / size) * ZEN_HYBRID_GUIDE_PER_FACE + cell.x / size;
-        bool  source = EnvironmentSourceTile(EnvironmentTileOf(face, cell));
-        float guided = 0.0, residual = 0.0;
-        if (share.x > 0.0)
-        {
-            float tilePDF = proposal == 0u
-                              ? pdf
-                              : EnvironmentCellInTilePDF(tile, face * ZEN_ENVIRONMENT_IMPORTANCE_SIZE + cell.y, cell.x, uv, st,
-                                                         ZEN_HYBRID_GUIDE_CELL_SIZE, ZEN_HYBRID_GUIDE_CDF_OFFSET);
-            guided        = GuideCosineWeight(tile, n) / guideTotal * tilePDF;
-        }
-        if (share.y > 0.0 && !source && residualEnvironment)
-        {
-            residual = proposal == 1u ? pdf : EnvironmentDistributionPDF(w, true);
-        }
-        pdf                          = share.x * guided + share.y * residual + share.z * max(dot(n, w), 0.0) / HYBRID_PI;
-        bool            inDomain     = pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0;
-        bool            sharedBounce = FeatureHardware(SKY_PROVIDER) == FeatureHardware(BOUNCE_PROVIDER);
-        HybridRayResult hit          = MakeHybridRayResult(false, position, vec3(0), ivec3(-1), true);
+        bool            inDomain          = (specularSlot || (pdf > 0.0 && dot(n, w) > 0.0)) && dot(ng, w) > 0.0;
+        uint            visibilityFeature = specularSlot ? SPECULAR_PROVIDER : SKY_PROVIDER;
+        uint            radianceFeature   = specularSlot ? REFLECTION_PROVIDER : BOUNCE_PROVIDER;
+        bool            radianceEnabled   = (specularSlot ? hybrid.reflection.x : hybrid.bounce.x) != 0u;
+        bool            sharedBounce      = FeatureHardware(visibilityFeature) == FeatureHardware(radianceFeature);
+        HybridRayResult hit               = MakeHybridRayResult(false, position, vec3(0), ivec3(-1), true);
         if (inDomain)
         {
-            hit = TraceFeature(SKY_PROVIDER, position, ng, w, hybrid.bounce.x != 0u && sharedBounce);
+            hit = TraceFeature(visibilityFeature, position, ng, w, radianceEnabled && sharedBounce);
         }
         // Only a covered miss escapes; an unavailable trace leaves both estimates below.
-        bool escaped   = inDomain && hit.valid && !hit.hit;
-        unavailable.x += hit.valid ? 0u : 1u;
-        if (inDomain && hybrid.bounce.x != 0u && !sharedBounce)
+        bool escaped = inDomain && hit.valid && !hit.hit;
+#ifdef HYBRID_TRACE_COMBINED
+        if (specularSlot)
         {
-            hit = TraceFeature(BOUNCE_PROVIDER, position, ng, w, true);
+            specularCompleted.x -= hit.valid ? 0.0 : 1.0;
+            specular.a          += escaped ? 1.0 : 0.0;
         }
-        unavailable.y += hit.valid ? 0u : 1u;
-        if (inDomain && hit.hit && hybrid.bounce.x != 0u)
+        else
+#endif
+        {
+            unavailable.x += hit.valid ? 0u : 1u;
+        }
+        if (inDomain && radianceEnabled && !sharedBounce)
+        {
+            hit = TraceFeature(radianceFeature, position, ng, w, true);
+        }
+#ifdef HYBRID_TRACE_COMBINED
+        if (specularSlot)
+        {
+            specularCompleted.y -= hit.valid ? 0.0 : 1.0;
+        }
+        else
+#endif
+        {
+            unavailable.y += hit.valid ? 0u : 1u;
+        }
+        if (inDomain && hit.hit && radianceEnabled)
         {
             bool  rejected;
             float weight = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
 #ifdef HYBRID_COUNT_RAYS
-            issuedRayFeature = 2u;
+            issuedRayFeature = specularSlot ? 3u : 2u;
 #endif
-            uint hitSeed  = HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(sequence * diffuseSamples + i) ^ seed ^ 0xb01ce123u);
-            vec3 radiance = TraceHitRadiance(hit, w, hitSeed, rejected);
-            vec3 value    = radiance * weight;
-#ifdef HYBRID_RESTIR
-            GIReservoir candidate = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
-            float       random    = float(HybridHash(hitSeed ^ 0x719ad312u) >> 8u) / 16777216.0;
-            GIStream(initialGI, candidate, GITarget(value), 0u, random);
-#endif
-            bounce.rgb += value;
-            bounce.a   += rejected ? 1.0 : 0.0;
-            // The same hit in the previous cache: these correlated lookups measure the change
-            // with little noise when lighting changes a little.
-#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
-            if (hybrid.bounce.w != 0u)
+            uint hitSeed = HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(sequence * diffuseSamples + i) ^ seed ^ 0xb01ce123u);
+#ifdef HYBRID_TRACE_COMBINED
+            if (specularSlot)
             {
-                previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected) * weight;
+                hitSeed =
+                    HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(hybrid.sampling.x * specularSamples + i) ^ 0x5eec1234u);
             }
 #endif
+#if defined(HYBRID_RESTIR) && !defined(HYBRID_TRACE_COMBINED)
+            hitSkipsNormalMap = true;
+#endif
+            vec3 radiance = TraceHitRadiance(hit, w, hitSeed, rejected);
+#ifdef HYBRID_TRACE_COMBINED
+            if (specularSlot)
+            {
+                AccumulateReflection(hit, w, position, radiance, hitSeed, roughness, rejected, specular, reflection,
+                                     reflectionPrevious, hitCount);
+            }
+            else
+#endif
+            {
+                vec3 value = radiance * weight;
+#ifdef HYBRID_RESTIR
+                GIReservoir candidate = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
+                float       random    = float(HybridHash(hitSeed ^ 0x719ad312u) >> 8u) / 16777216.0;
+                GIStream(initialGI, candidate, GITarget(value), 0u, random);
+#endif
+                bounce.rgb += value;
+                bounce.a   += rejected ? 1.0 : 0.0;
+#if defined(HYBRID_RESTIR) && !defined(HYBRID_TRACE_COMBINED)
+                if (reflectFromDiffuse)
+                {
+                    float lobe = GISpecularDensity(n, diffuseReflectionView, w, diffuseReflectionRoughness) / pdf;
+                    diffuseReflectionSum.rgb += radiance * lobe;
+                    diffuseReflectionHits    += vec2(length(hit.position - position) * lobe, rejected ? lobe : 0.0);
+                    diffuseReflectionWeight  += lobe;
+                    if (restirOptions.y != 0u)
+                    {
+                        GIReservoir reflected = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
+                        float       random    = float(HybridHash(hitSeed ^ 0x87f19ab3u) >> 8u) / 16777216.0;
+                        GIStream(initialReflection, reflected, GITarget(radiance) * lobe, 0u, random);
+                    }
+                }
+#endif
+                // The same hit in the previous cache: these correlated lookups measure the change
+                // with little noise when lighting changes a little.
+#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
+                if (hybrid.bounce.w != 0u)
+                {
+                    previous.rgb += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected) * weight;
+                }
+#endif
+            }
         }
-        if (escaped)
+        if (!specularSlot && escaped)
         {
+#if defined(HYBRID_RESTIR) && !defined(HYBRID_TRACE_COMBINED)
+            diffuseReflectionSum.a +=
+                reflectFromDiffuse ? GISpecularDensity(n, diffuseReflectionView, w, diffuseReflectionRoughness) / pdf : 0.0;
+#endif
             float weight = max(dot(n, w), 0.0) / (HYBRID_PI * pdf);
+#ifndef HYBRID_NO_GUIDE
             if (!source)
             {
                 vec3 radiance  = textureLod(coneEnvironmentMap, EnvironmentDirection(w), 0).rgb;
@@ -705,62 +746,97 @@ DiffuseResult TraceDiffuse(ivec2 p, vec3 position, vec3 n, vec3 ng, uint sequenc
                     GuideLearn(tile, learning * HybridLuminance(radiance) / (HYBRID_PI * pdf * float(diffuseSamples)));
                 }
             }
+#endif
             // Alpha estimates the cosine-weighted visible fraction over all directions.
             sky.a += weight;
         }
-    }
-    // Average over completed samples. A receiver whose samples were all unavailable has no
-    // estimate this frame. Negative alpha keeps it out of temporal accumulation.
-    vec2 completed  = vec2(diffuseSamples) - vec2(unavailable);
-    sky            /= max(completed.x, 1.0);
-    bounce.rgb     /= max(completed.y, 1.0);
-    previous.rgb   /= max(completed.y, 1.0);
-    bounce.a        = completed.y > 0.0 ? bounce.a : -1.0;
-#ifdef HYBRID_RESTIR
-    // Misses and zero-contribution proposals count; unavailable traces do not.
-    initialGI.count = uint(completed.y);
-    GIFinalize(initialGI, GITarget(GIDiffuse(initialGI, position, n, ng)));
-#endif
-    sky.a = completed.x > 0.0 ? sky.a : -1.0;
-    // Each source tile gets its own rays, half the residual count (two at the shipping preset),
-    // so sources are integrated without selection noise between them. Their directions are
-    // coherent across pixels, so they cost far less than residual rays (P4Execution.md).
-    uint sourceRays = max(hybrid.sampling.y / 2u, 1u);
-    for (uint k = 0u; k < environmentSourceCount; ++k)
-    {
-        vec3 sourceSky   = vec3(0);
-        uint sourceValid = sourceRays;
-        for (uint j = 0u; j < sourceRays; ++j)
+        if (slot + 1u == diffuseSamples)
         {
-            float           pdf;
-            vec2            u      = HybridSkySample(uvec2(p), sequence * sourceRays + j, seed + 0x8000u + k * 0x1000u);
-            vec3            w      = SampleEnvironmentTile(environmentSourceTiles[k], u, pdf);
-            HybridRayResult source = MakeHybridRayResult(true, position, vec3(0), ivec3(-1), true);
-            if (pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0)
+            // Average over completed samples. A receiver whose samples were all unavailable has no
+            // estimate this frame. Negative alpha keeps it out of temporal accumulation.
+            vec2 completed  = vec2(diffuseSamples) - vec2(unavailable);
+            sky            /= max(completed.x, 1.0);
+            bounce.rgb     /= max(completed.y, 1.0);
+            previous.rgb   /= max(completed.y, 1.0);
+            bounce.a        = completed.y > 0.0 ? bounce.a : -1.0;
+#ifdef HYBRID_RESTIR
+            // Misses and zero-contribution proposals count; unavailable traces do not.
+            initialGI.count = uint(completed.y);
+#    ifndef HYBRID_TRACE_COMBINED
+            diffuseReflectionCompleted = completed;
+#    endif
+            GIFinalize(initialGI, GITarget(GIDiffuse(initialGI, position, n, ng)));
+#endif
+            sky.a = completed.x > 0.0 ? sky.a : -1.0;
+            // Each source tile gets its own rays, half the residual count (two at the shipping preset),
+            // so sources are integrated without selection noise between them. Their directions are
+            // coherent across pixels, so they cost far less than residual rays (P4Execution.md).
+#ifndef HYBRID_NO_GUIDE
+            uint sourceRays = max(hybrid.sampling.y / 2u, 1u);
+            for (uint k = 0u; k < environmentSourceCount; ++k)
             {
-                source       = TraceFeature(SKY_PROVIDER, position, ng, w, false);
-                sourceValid -= source.valid ? 0u : 1u;
-            }
-            if (source.valid && !source.hit)
-            {
-                vec3 radiance  = textureLod(coneEnvironmentMap, EnvironmentDirection(w), 0).rgb;
-                sourceSky     += radiance * max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(sourceRays)) * scale;
-                uint  face;
-                vec2  uv, st;
-                uvec2 cell;
-                EnvironmentLocate(w, face, uv, cell, st);
-                uint tile = (face * ZEN_HYBRID_GUIDE_PER_FACE + cell.y / ZEN_HYBRID_GUIDE_CELL_SIZE) * ZEN_HYBRID_GUIDE_PER_FACE
-                          + cell.x / ZEN_HYBRID_GUIDE_CELL_SIZE;
-                if (learning > 0.0)
+                vec3 sourceSky   = vec3(0);
+                uint sourceValid = sourceRays;
+                for (uint j = 0u; j < sourceRays; ++j)
                 {
-                    GuideLearn(tile, learning * HybridLuminance(radiance) / (HYBRID_PI * pdf * float(sourceRays)));
+                    float           pdf;
+                    vec2            u      = HybridSkySample(uvec2(p), sequence * sourceRays + j, seed + 0x8000u + k * 0x1000u);
+                    vec3            w      = SampleEnvironmentTile(environmentSourceTiles[k], u, pdf);
+                    HybridRayResult source = MakeHybridRayResult(true, position, vec3(0), ivec3(-1), true);
+                    if (pdf > 0.0 && dot(n, w) > 0.0 && dot(ng, w) > 0.0)
+                    {
+                        source       = TraceFeature(SKY_PROVIDER, position, ng, w, false);
+                        sourceValid -= source.valid ? 0u : 1u;
+                    }
+                    if (source.valid && !source.hit)
+                    {
+                        vec3 radiance  = textureLod(coneEnvironmentMap, EnvironmentDirection(w), 0).rgb;
+                        sourceSky     += radiance * max(dot(n, w), 0.0) / (HYBRID_PI * pdf * float(sourceRays)) * scale;
+                        uint  face;
+                        vec2  uv, st;
+                        uvec2 cell;
+                        EnvironmentLocate(w, face, uv, cell, st);
+                        uint tile =
+                            (face * ZEN_HYBRID_GUIDE_PER_FACE + cell.y / ZEN_HYBRID_GUIDE_CELL_SIZE) * ZEN_HYBRID_GUIDE_PER_FACE
+                            + cell.x / ZEN_HYBRID_GUIDE_CELL_SIZE;
+                        if (learning > 0.0)
+                        {
+                            GuideLearn(tile, learning * HybridLuminance(radiance) / (HYBRID_PI * pdf * float(sourceRays)));
+                        }
+                    }
                 }
+                // Each source tile averages its completed rays only.
+                sky.rgb += sourceSky * (float(sourceRays) / float(max(sourceValid, 1u)));
             }
+#endif
+#ifdef HYBRID_TRACE_COMBINED
+            StoreDiffuse(p, DiffuseResult(sky, bounce, previous, reconstructionGuide, reducedBudget));
+#    ifdef HYBRID_RESTIR
+            initialReflection = EmptyGIReservoir();
+#    endif
+#endif
         }
-        // Each source tile averages its completed rays only.
-        sky.rgb += sourceSky * (float(sourceRays) / float(max(sourceValid, 1u)));
     }
+#ifdef HYBRID_TRACE_COMBINED
+    if (totalSamples > diffuseSamples)
+    {
+        specular.a          = specularCompleted.x > 0.0 ? specular.a / specularCompleted.x : -1.0;
+        specular.rgb       /= max(specularCompleted.y, 1.0);
+        reflectionPrevious /= max(specularCompleted.y, 1.0);
+        reflection.x       /= max(hitCount, 1.0);
+        reflection.y        = specularCompleted.y > 0.0 ? reflection.y : -1.0;
+#    ifdef HYBRID_RESTIR
+        if (restirOptions.y != 0u && roughness >= 0.3)
+        {
+            initialReflection.count = uint(specularCompleted.y);
+            GIFinalize(initialReflection, GITarget(GIIntegrand(initialReflection, position, n, ng, view, roughness, true)));
+        }
+#    endif
+    }
+    StoreSpecular(p, specular, reflection, reflectionPrevious);
+#else
     return DiffuseResult(sky, bounce, previous, reconstructionGuide, reducedBudget);
+#endif
 }
 
 #ifndef HYBRID_TRACE_FALLBACK
@@ -773,7 +849,25 @@ void TraceSpecular(ivec2      p,
                    inout vec2 reflection,
                    inout vec3 reflectionPrevious)
 {
-    if (hybrid.rejection.y > 0.0)
+#    if defined(HYBRID_RESTIR) && !defined(HYBRID_TRACE_COMBINED)
+    if (reflectFromDiffuse)
+    {
+        vec2 completed = diffuseReflectionCompleted;
+        specular.a     = completed.x > 0.0 ? diffuseReflectionSum.a / completed.x : -1.0;
+        specular.rgb   = diffuseReflectionSum.rgb / max(completed.y, 1.0);
+        reflection.x   = diffuseReflectionWeight > 0.0 ? diffuseReflectionHits.x / diffuseReflectionWeight : 0.0;
+        reflection.y   = completed.y > 0.0 ? diffuseReflectionHits.y / completed.y : -1.0;
+        if (restirOptions.y != 0u)
+        {
+            initialReflection.count = uint(completed.y);
+            GIFinalize(initialReflection, GITarget(GIIntegrand(initialReflection, position, n, ng, diffuseReflectionView,
+                                                               diffuseReflectionRoughness, true)));
+        }
+    }
+    else
+#    endif
+#    ifndef HYBRID_ABLATE_REFLECTION
+        if (hybrid.rejection.y > 0.0)
     {
         vec3 view =
             sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw) : normalize(sceneUbo.viewPosition.xyz - position);
@@ -805,31 +899,17 @@ void TraceSpecular(ivec2      p,
                     bool rejected;
                     // Store the unconditional hit integral C=(1-S)*H. Averaging conditional H
                     // separately from the hit fraction would multiply two noisy estimates.
-#    ifdef HYBRID_COUNT_RAYS
+#        ifdef HYBRID_COUNT_RAYS
                     issuedRayFeature = 3u;
-#    endif
+#        endif
                     uint hitSeed =
                         HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(hybrid.sampling.x * specularSamples + i) ^ 0x5eec1234u);
-                    vec3 radiance  = TraceHitRadiance(hit, w, hitSeed, rejected);
-                    specular.rgb  += radiance;
-#    ifdef HYBRID_RESTIR
-                    if (restirOptions.y != 0u && roughness >= 0.3)
-                    {
-                        GIReservoir candidate = GIReservoir(hit.position, hit.normal, radiance, 0.0, 1u);
-                        float       random    = float(HybridHash(hitSeed ^ 0x87f19ab3u) >> 8u) / 16777216.0;
-                        // Target/pdf cancels the normalized lobe used by HybridSpecularDirection.
-                        GIStream(initialReflection, candidate, GITarget(radiance), 0u, random);
-                    }
-#    endif
-                    reflection.y += rejected ? 1.0 : 0.0;
-                    reflection.x += length(hit.position - position);
-                    hitCount     += 1.0;
-#    if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
-                    if (hybrid.reflection.w != 0u)
-                    {
-                        reflectionPrevious += HitRadiance(hitRadiancePrevious, hitNormal, hit, w, true, rejected);
-                    }
-#    endif
+#        if defined(HYBRID_RESTIR) && !defined(HYBRID_TRACE_COMBINED)
+                    hitSkipsNormalMap = false;
+#        endif
+                    vec3 radiance = TraceHitRadiance(hit, w, hitSeed, rejected);
+                    AccumulateReflection(hit, w, position, radiance, hitSeed, roughness, rejected, specular, reflection,
+                                         reflectionPrevious, hitCount);
                 }
             }
         }
@@ -840,14 +920,15 @@ void TraceSpecular(ivec2      p,
         reflectionPrevious /= max(completed.y, 1.0);
         reflection.x       /= max(hitCount, 1.0);
         reflection.y        = completed.y > 0.0 ? reflection.y : -1.0;
-#    ifdef HYBRID_RESTIR
+#        ifdef HYBRID_RESTIR
         if (restirOptions.y != 0u && roughness >= 0.3)
         {
             initialReflection.count = uint(completed.y);
             GIFinalize(initialReflection, GITarget(GIIntegrand(initialReflection, position, n, ng, view, roughness, true)));
         }
-#    endif
+#        endif
     }
+#    endif
 }
 
 void StoreSpecular(ivec2 p, vec4 specular, vec2 reflection, vec3 reflectionPrevious)
@@ -861,6 +942,13 @@ void StoreSpecular(ivec2 p, vec4 specular, vec2 reflection, vec3 reflectionPrevi
             imageStore(rawReflectionPrevious, p, vec4(reflectionPrevious, 0));
         }
     }
+#    ifdef HYBRID_RESTIR
+    uint index = uint(p.y * textureSize(receiverDepth, 0).x + p.x);
+    if (restirOptions.y != 0u || index == 0u)
+    {
+        currentReflections[index] = PackGIReservoir(initialReflection);
+    }
+#    endif
 }
 #endif
 
@@ -881,6 +969,13 @@ void StoreDiffuse(ivec2 p, DiffuseResult d)
     {
         imageStore(nextBudget, p, uvec4(d.reducedBudget));
     }
+#    ifdef HYBRID_RESTIR
+    uint index = uint(p.y * textureSize(receiverDepth, 0).x + p.x);
+    if (restirOptions.z != 0u || index == 0u)
+    {
+        currentReservoirs[index] = PackGIReservoir(initialGI);
+    }
+#    endif
 }
 #endif
 
@@ -890,6 +985,7 @@ void StoreRayCounts(uint lane, uint slot)
     computeRaySums[lane]  = issuedComputeRays;
     hardwareRaySums[lane] = issuedHardwareRays;
     fieldWorkSums[lane]   = issuedFieldWork;
+    candidateSums[lane]   = hardwareCandidates;
     barrier();
     for (uint stride = TRACE_THREADS / 2u; stride > 0u; stride /= 2u)
     {
@@ -898,6 +994,7 @@ void StoreRayCounts(uint lane, uint slot)
             computeRaySums[lane]  += computeRaySums[lane + stride];
             hardwareRaySums[lane] += hardwareRaySums[lane + stride];
             fieldWorkSums[lane]   += fieldWorkSums[lane + stride];
+            candidateSums[lane]   += candidateSums[lane + stride];
         }
         barrier();
     }
@@ -906,11 +1003,12 @@ void StoreRayCounts(uint lane, uint slot)
         rayCounts[slot]      = computeRaySums[0];
         rayCounts[slot + 1u] = hardwareRaySums[0];
         rayCounts[slot + 2u] = fieldWorkSums[0];
+        rayCounts[slot + 3u] = candidateSums[0];
     }
 }
 #endif
 
-#ifndef HYBRID_TRACE_FALLBACK
+#if !defined(HYBRID_TRACE_FALLBACK) && !defined(HYBRID_BUFFER_GUIDE) && !defined(HYBRID_GUIDE_FINISH)
 void FinishGuide(uint lane)
 {
     barrier();
@@ -937,6 +1035,7 @@ void FinishGuide(uint lane)
         rayCounts[fallbackSlot]      = uvec4(0);
         rayCounts[fallbackSlot + 1u] = uvec4(0);
         rayCounts[fallbackSlot + 2u] = uvec4(0);
+        rayCounts[fallbackSlot + 3u] = uvec4(0);
     }
     StoreRayCounts(lane, tile * (ZEN_GI_TRACE_COUNT_WORDS / 4u));
 #    endif
@@ -1008,7 +1107,7 @@ void main()
         if (hybrid.bounce.x != 0u)
         {
             imageStore(halfBounce, block, d.bounce);
-            imageStore(halfBouncePrevious, block, d.previous);
+            imageStore(halfBouncePrevious, block, hybrid.bounce.w != 0u ? d.previous : vec4(0));
         }
     }
     // Rough lobes vary slowly, and the spatial filter spreads them over many pixels: compatible
@@ -1138,6 +1237,10 @@ void main()
         {
             atomicAdd(rayCounts[slot + 2u][c], issuedFieldWork[c]);
         }
+        if (hardwareCandidates[c] != 0u)
+        {
+            atomicAdd(rayCounts[slot + 3u][c], hardwareCandidates[c]);
+        }
     }
 #    endif
 }
@@ -1146,38 +1249,61 @@ void main()
 {
     ivec2 p    = ivec2(gl_GlobalInvocationID.xy);
     uint  lane = gl_LocalInvocationIndex;
+#    ifdef HYBRID_NO_GUIDE
+    guideValid = false;
+#    elif defined(HYBRID_BUFFER_GUIDE)
+    uint tile  = uint(p.y / 16) * ((uint(textureSize(receiverDepth, 0).x) + 15u) / 16u) + uint(p.x / 16);
+    pooledBase = tile * POOLED_GUIDE_STRIDE;
+    guideBase  = tile * (ZEN_HYBRID_GUIDE_TILES + 1u);
+    guideValid = hybrid.provider.y != 0u && reuseData.z != 0u;
+#    elif defined(HYBRID_ABLATE_GUIDE)
+    guideValid = false;
+#    else
     BuildGuide(lane);
-#    ifdef HYBRID_RESTIR
-    initialGI         = EmptyGIReservoir();
-    initialReflection = EmptyGIReservoir();
 #    endif
-    DiffuseResult d                  = DiffuseResult(vec4(0), vec4(0), vec4(0), vec3(1), 0u);
-    vec4          specular           = vec4(0, 0, 0, 1);
-    vec2          reflection         = vec2(0);
-    vec3          reflectionPrevious = vec3(0);
+#    ifdef HYBRID_RESTIR
+    initialGI = EmptyGIReservoir();
+#    endif
     if (IsReceiver(p))
     {
+#    if defined(HYBRID_BUFFER_GUIDE) && !defined(HYBRID_NO_GUIDE)
+        if (reuseData.z != 0u)
+        {
+            atomicAdd(guideAccumulation[guideBase + ZEN_HYBRID_GUIDE_TILES], 1u);
+        }
+#    elif !defined(HYBRID_ABLATE_GUIDE) && !defined(HYBRID_NO_GUIDE)
         atomicAdd(guideReceivers, 1u);
+#    endif
         vec3 position = HybridPosition(p), n = HybridNormal(p), ng = HybridGeometricNormal(p);
-        d = TraceDiffuse(p, position, n, ng, hybrid.sampling.x, 0u, 1.0);
+#    ifdef HYBRID_TRACE_COMBINED
+        TraceReceiver(p, position, n, ng, hybrid.sampling.x, 0u, 1.0);
+#    else
+        // ReSTIR traces reset the reflection reservoir in TraceDiffuse, which may stream into it.
+        StoreDiffuse(p, TraceDiffuse(p, position, n, ng, hybrid.sampling.x, 0u, 1.0));
+        vec4 specular           = vec4(0, 0, 0, 1);
+        vec2 reflection         = vec2(0);
+        vec3 reflectionPrevious = vec3(0);
         TraceSpecular(p, position, n, ng, specular, reflection, reflectionPrevious);
-    }
-    if (HybridInView(p))
-    {
-        StoreDiffuse(p, d);
         StoreSpecular(p, specular, reflection, reflectionPrevious);
-#    ifdef HYBRID_RESTIR
-        uint index = uint(p.y * textureSize(receiverDepth, 0).x + p.x);
-        if (restirOptions.z != 0u || index == 0u)
-        {
-            currentReservoirs[index] = PackGIReservoir(initialGI);
-        }
-        if (restirOptions.y != 0u || index == 0u)
-        {
-            currentReflections[index] = PackGIReservoir(initialReflection);
-        }
 #    endif
     }
+    else if (HybridInView(p))
+    {
+        StoreDiffuse(p, DiffuseResult(vec4(0), vec4(0), vec4(0), vec3(1), 0u));
+#    ifdef HYBRID_RESTIR
+        initialReflection = EmptyGIReservoir();
+#    endif
+        StoreSpecular(p, vec4(0, 0, 0, 1), vec2(0), vec3(0));
+    }
+#    if !defined(HYBRID_ABLATE_GUIDE) && !defined(HYBRID_BUFFER_GUIDE)
     FinishGuide(lane);
+#    elif defined(HYBRID_ABLATE_GUIDE) && !defined(HYBRID_BUFFER_GUIDE)
+    // Keep guide storage defined across frames even in this measurement-only variant.
+    uint base = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * (ZEN_HYBRID_GUIDE_TILES + 1u);
+    for (uint t = lane; t <= ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
+    {
+        guideNext[base + t] = 0.0;
+    }
+#    endif
 }
 #endif

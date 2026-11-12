@@ -59,7 +59,7 @@ struct VoxelGISettings
     // fully settled low-variance histories use the four-ray base.
     bool     adaptiveSampling{true};
     uint32_t accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
-    uint32_t referenceSamples{0};              // Diagnostic: 0, 256, 1024 or 4096; static running mean, no spatial filter.
+    uint32_t referenceSamples{0};              // Diagnostic: 0, 64, 256, 1024 or 4096; static mean, no spatial filter.
     uint32_t historyFrames{32};
     // Pixel GI history/trace resolution divisor; final lighting remains at the view resolution.
     uint32_t pixelResolutionDivisor{1}; // 1, 2 or 4. Reference and ray-count diagnostics use 1.

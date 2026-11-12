@@ -100,6 +100,17 @@ public:
         return m_gpuProfilerMarkers;
     }
 
+    // Opt-in compiler statistics, set before device creation. Never enabled for normal timing runs.
+    void SetPipelineStatistics(bool enabled)
+    {
+        m_pipelineStatistics = enabled;
+    }
+
+    bool PipelineStatistics() const
+    {
+        return m_pipelineStatistics;
+    }
+
     void SetDeviceLossDiagnostics(bool enabled)
     {
         m_deviceLossDiagnostics = enabled;
@@ -224,6 +235,7 @@ private:
     bool        m_rayTracingDisabled{false};
     std::string m_preferredDevice;
     bool        m_gpuProfilerMarkers{false};
+    bool        m_pipelineStatistics{false};
     bool        m_gpuMemoryStats{false};
     bool        m_deviceLossDiagnostics{false};
     RHIOptions() = default;

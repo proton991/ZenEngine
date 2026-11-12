@@ -185,6 +185,11 @@ public:
         return m_verticesDirty;
     }
 
+    bool HasUncommittedMaterials() const
+    {
+        return m_materialsDirty;
+    }
+
     const HeapVector<uint32_t>& GetIndices() const
     {
         return m_indices;

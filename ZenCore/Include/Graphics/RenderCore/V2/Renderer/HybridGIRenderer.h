@@ -207,6 +207,8 @@ private:
     bool                      m_previousScreenProbes{false};
     bool                      m_previousReflections{false};
     bool                      m_deterministicGuideCapture{false};
+    bool                      m_previousGuideWritten{false};
+    bool                      m_recordedGuideWritten{false};
     glm::uvec2                m_extent{0};
     uint64_t                  m_geometry{0}, m_environment{0}, m_surface{0}, m_lighting{0};
     uint64_t                  m_radianceGeneration{0}, m_recordedRadianceGeneration{0};

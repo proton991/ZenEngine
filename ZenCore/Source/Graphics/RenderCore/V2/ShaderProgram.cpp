@@ -1,6 +1,8 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneCulling.h"
 #include "Graphics/RenderCore/V2/Renderer/ForwardDepthSort.h"
 #include "Graphics/RenderCore/V2/Renderer/ForwardGPUDraws.h"
@@ -35,6 +37,41 @@ bool HasOpacityMicromapVariant(const std::string& path)
         }
     }
     return found;
+}
+
+// The generated list is the build's source of truth, including buffered/no-guide variants.
+bool HasHitStreamVariant(const std::string& path)
+{
+    bool found = false;
+    for (const char* candidate : kHitStreamShaderFiles)
+    {
+        found = found || path == candidate;
+    }
+    return found;
+}
+
+void StoreBufferedTracePrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* path)
+{
+    const RenderConfig& config         = RenderConfig::GetInstance();
+    const bool          overrideModule = NameID(name)
+                                          == NameID(config.hybridTraceReferenceModule ? "HybridTraceHardwareBufferedSP"
+                                                                                      : "HybridTraceReSTIRHardwareBufferedSP")
+                                      && config.hybridTraceBufferedModule && !config.hybridTraceModule.empty();
+    for (bool noGuide : {false, true})
+    {
+        std::string program(name);
+        std::string source(path);
+        if (noGuide)
+        {
+            program.insert(program.size() - 2u, "NoGuide");
+            source.insert(source.size() - 4u, ".noguide");
+        }
+        if (overrideModule)
+        {
+            source = config.hybridTraceModule;
+        }
+        manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, NameID(program), source.c_str()));
+    }
 }
 
 void StoreMaterialUVPrograms(ShaderProgramManager&                                  manager,
@@ -72,6 +109,19 @@ void StoreForwardMaterialPrograms(ShaderProgramManager& manager, RenderDevice* d
 // larger exact accumulator only when that pipeline is selected.
 void StoreGuideTracePrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* path)
 {
+    const RenderConfig& config = RenderConfig::GetInstance();
+    const std::string&  module = config.hybridTraceModule;
+    if (NameID(name) == NameID("HybridTraceReSTIRHardwareSP") && !module.empty() && !config.hybridTraceBufferedModule)
+    {
+        // The caller supplies the exact module, including the OMM variant when required.
+        path = module.c_str();
+        LOGI("HybridTrace measurement module: {}", path);
+    }
+    if (!config.hybridTraceOverrideProgram.empty() && NameID(name) == NameID(config.hybridTraceOverrideProgram.c_str()))
+    {
+        path = config.hybridTraceOverrideModule.c_str();
+        LOGI("HybridTrace override module for {}: {}", name, path);
+    }
     manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, name, path));
     std::string exactName(name);
     exactName.insert(exactName.size() - 2u, "Exact");
@@ -152,6 +202,16 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
         RHIShaderCreateInfo info{};
 
         std::ranges::copy(m_stageSources, info.spirvFileName);
+        if (RenderConfig::GetInstance().hybridHitStream)
+        {
+            for (std::string& source : info.spirvFileName)
+            {
+                if (source != RenderConfig::GetInstance().hybridTraceModule && HasHitStreamVariant(source))
+                {
+                    source.insert(source.size() - 4u, ".stream");
+                }
+            }
+        }
         if (GDynamicRHI->QueryGPUInfo().rayQuery.opacityMicromap)
         {
             for (std::string& source : info.spirvFileName)
@@ -163,7 +223,18 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
             }
         }
 
-        info.stageFlags              = m_stageFlags;
+        info.stageFlags = m_stageFlags;
+
+        if (RHIOptions::GetInstance().PipelineStatistics())
+        {
+            for (const std::string& source : info.spirvFileName)
+            {
+                if (!source.empty())
+                {
+                    LOGI("Shader module: shader='{}' source='{}'", m_name.CStr(), source);
+                }
+            }
+        }
 
         info.name                    = m_name;
 
@@ -405,6 +476,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridCaptureSP", "VoxelGI/hybrid_capture.comp.spv"));
     // Compute GI traces the distance field (DistanceFieldScene); trace variants without Field are HW RT only.
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceFieldSP", "VoxelGI/hybrid_trace_field.comp.spv");
+    StoreBufferedTracePrograms(*this, pRenderDevice, "HybridTraceBufferedFieldSP",
+                               "VoxelGI/hybrid_trace_buffered_field.comp.spv");
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridGuidePrepareSP", "VoxelGI/hybrid_guide_prepare.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridGuideFinishSP", "VoxelGI/hybrid_guide_finish.comp.spv"));
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceCountsFieldSP", "VoxelGI/hybrid_trace_counts_field.comp.spv");
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHalfFieldSP", "VoxelGI/hybrid_trace_half_field.comp.spv");
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHalfCountsFieldSP",
@@ -469,6 +544,15 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareSP", "VoxelGI/hybrid_trace_hardware.comp.spv");
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareSP",
                                 "VoxelGI/hybrid_trace_restir_hardware.comp.spv");
+        const char* bufferedTracePrograms[][2] = {
+            {"HybridTraceHardwareBufferedSP", "VoxelGI/hybrid_trace_hardware_buffered.comp.spv"},
+            {"HybridTraceHardwareBufferedFieldSP", "VoxelGI/hybrid_trace_hardware_buffered_field.comp.spv"},
+            {"HybridTraceReSTIRHardwareBufferedSP", "VoxelGI/hybrid_trace_restir_hardware_buffered.comp.spv"},
+            {"HybridTraceReSTIRHardwareBufferedFieldSP", "VoxelGI/hybrid_trace_restir_hardware_buffered_field.comp.spv"}};
+        for (const char* const* program : bufferedTracePrograms)
+        {
+            StoreBufferedTracePrograms(*this, pRenderDevice, program[0], program[1]);
+        }
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareFieldSP",
                                 "VoxelGI/hybrid_trace_restir_hardware_field.comp.spv");
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRTemporalSP", "VoxelGI/restir_temporal.comp.spv"));

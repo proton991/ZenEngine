@@ -1,6 +1,7 @@
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "SceneGraph/Camera.h"
 #include "Graphics/Shared/EnvironmentSampling.h"
 #include "Graphics/Shared/HybridGI.h"
@@ -24,9 +25,10 @@ const DataFormat  kHistoryFormats[] = {
 constexpr uint32_t kGuideTile = 16;
 // Trace programs are named base, optional Counts, optional Field, then SP (ShaderProgram.cpp).
 // Variants without Field trace HW RT only; Compute features trace the distance field.
-NameID TraceProgram(const char* base, bool counts, bool field, bool exactGuide = false)
+NameID TraceProgram(const char* base, bool counts, bool field, bool exactGuide = false, bool noGuide = false)
 {
-    return NameID(fmt::format("{}{}{}{}SP", base, counts ? "Counts" : "", field ? "Field" : "", exactGuide ? "Exact" : ""));
+    return NameID(fmt::format("{}{}{}{}{}SP", base, counts ? "Counts" : "", field ? "Field" : "", exactGuide ? "Exact" : "",
+                              noGuide ? "NoGuide" : ""));
 }
 } // namespace
 
@@ -587,15 +589,16 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         // Provider changes use different visibility geometry and must relearn the proposal.
         // A reset reason alone cannot make a fresh or failed-frame guide safe to read.
         const std::string_view reason = m_resetReason;
-        const bool guideValid         = hadValidHistory && (m_valid || reason == "geometry_or_opacity" || reason == "settings");
-        m_uniforms.provider           = glm::uvec4(hardwareTrace ? 1u : 0u, !probes && guideValid ? 1u : 0u, hardwareMask,
-                                                   !probes && settings.UsesAdaptiveSampling() ? 1u : 0u);
-        m_uniforms.rejection          = Vec4(ZEN_HYBRID_PLANE_REJECTION, settings.specularOcclusion ? 1.0f : 0.0f,
-                                             settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
-                                             settings.referenceSamples != 0 ? 1.0f : 0.0f);
-        m_uniforms.resolution         = glm::uvec4(view.width, view.height, divisor, unchangedReceivers ? 1u : 0u);
-        m_uniforms.reservoir          = glm::uvec4(restirMask, 4u, 20u, 0u);
-        m_screenProbes                = probes;
+        const bool             guideValid =
+            hadValidHistory && m_previousGuideWritten && (m_valid || reason == "geometry_or_opacity" || reason == "settings");
+        m_uniforms.provider   = glm::uvec4(hardwareTrace ? 1u : 0u, !probes && guideValid ? 1u : 0u, hardwareMask,
+                                           !probes && settings.UsesAdaptiveSampling() ? 1u : 0u);
+        m_uniforms.rejection  = Vec4(ZEN_HYBRID_PLANE_REJECTION, settings.specularOcclusion ? 1.0f : 0.0f,
+                                     settings.temporal || settings.referenceSamples != 0 ? 1.0f : 0.0f,
+                                     settings.referenceSamples != 0 ? 1.0f : 0.0f);
+        m_uniforms.resolution = glm::uvec4(view.width, view.height, divisor, unchangedReceivers ? 1u : 0u);
+        m_uniforms.reservoir  = glm::uvec4(restirMask, 4u, 20u, 0u);
+        m_screenProbes        = probes;
         if (probes)
         {
             m_halfDiffuse = false;
@@ -659,10 +662,17 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             // reconstructs the other receivers and lists those that need full-resolution rays. It needs
             // valid history (dark and dissimilar receivers are found from it) and temporal accumulation
             // to gather each receiver's own samples, and applies to the Compute-only trace variant.
-            const bool halfRequested       = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
-                                          || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
-                                              && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
-            const bool halfDiffuse         = halfRequested && !reference && settings.temporal && m_valid && !hardwareTrace;
+            const bool halfRequested = settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Half
+                                    || (settings.diffuseResolution == VoxelGISettings::DiffuseResolution::Auto
+                                        && !voxelGI.UsesHardwareQueries(VoxelGISettings::Feature::Sky));
+            const bool halfDiffuse   = halfRequested && !reference && settings.temporal && m_valid && !hardwareTrace;
+            // Buffered environment guides regressed the normal launch in qualification. Keep them
+            // available to explicit module experiments; the no-environment 8x8 path is qualified.
+            const bool bufferedGuide       = !halfDiffuse && !countRequested && !m_deterministicGuideCapture
+                                          && (!skyLight || RenderConfig::GetInstance().hybridTraceBufferedModule)
+                                          && (RenderConfig::GetInstance().hybridTraceModule.empty()
+                                              || RenderConfig::GetInstance().hybridTraceBufferedModule);
+            m_recordedGuideWritten         = !bufferedGuide || skyLight;
             m_halfDiffuse                  = halfDiffuse;
             const glm::uvec2   guideGroups = (m_extent + glm::uvec2(kGuideTile - 1)) / kGuideTile;
             RDGComputePassDesc trace;
@@ -679,11 +689,15 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                     encoder.Dispatch(16, 16, 1);
                 });
             }
-            trace.SetShaderProgramName(TraceProgram(restir          ? "HybridTraceReSTIRHardware"
+            trace.SetShaderProgramName(TraceProgram(bufferedGuide   ? (restir          ? "HybridTraceReSTIRHardwareBuffered"
+                                                                       : hardwareTrace ? "HybridTraceHardwareBuffered"
+                                                                                       : "HybridTraceBuffered")
+                                                    : restir        ? "HybridTraceReSTIRHardware"
                                                     : halfDiffuse   ? "HybridTraceHalf"
                                                     : hardwareTrace ? "HybridTraceHardware"
                                                                     : "HybridTrace",
-                                                    countRequested, field, m_deterministicGuideCapture));
+                                                    countRequested, field, m_deterministicGuideCapture,
+                                                    bufferedGuide && !skyLight));
             trace.SetPassTag("HybridTrace");
             BindTraceInputs(trace, voxelGI, reuseData);
             if (restir)
@@ -699,13 +713,48 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             trace.BindStorageImage("rawSpecular", rawSpecular, RDGContentGuarantee::eFullWrite);
             trace.BindStorageImage("rawReflection", rawReflection, RDGContentGuarantee::eFullWrite);
             trace.BindStorageImage("rawReflectionPrevious", previousReflection, RDGContentGuarantee::eFullWrite);
-            trace.BindStorageBuffer("HybridGuideNext", m_guide[m_current], RDGContentGuarantee::eFullWrite);
+            trace.BindStorageBuffer("HybridGuideNext", m_guide[m_current],
+                                    bufferedGuide ? RDGContentGuarantee::eNone : RDGContentGuarantee::eFullWrite);
             if (countRequested)
             {
                 trace.BindStorageBuffer("HybridRayCounts", m_rayCountOutput, RDGContentGuarantee::eFullWrite);
             }
             RDGTexture halfSky, halfBounce, halfBouncePrevious, halfGuide;
             RDGBuffer  fallbackArgs, fallbackPixels, pooledGuide;
+            if (halfDiffuse || (bufferedGuide && skyLight))
+            {
+                // 2,320 bytes per guide tile; accumulation reuses the next history buffer.
+                RDGBufferDesc pooled;
+                pooled.name = "hybrid_pooled_guide";
+                pooled.size = uint64_t(guideGroups.x) * guideGroups.y
+                            * (ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE + 4u) * sizeof(float);
+                pooled.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+                pooledGuide = resources->CreateBuffer(pooled);
+            }
+            if (bufferedGuide)
+            {
+                if (skyLight)
+                {
+                    trace.BindStorageBuffer("HybridPooledGuide", pooledGuide);
+                    RDGComputePassDesc prepare;
+                    prepare.SetShaderProgramName("HybridGuidePrepareSP");
+                    prepare.SetPassTag("HybridGuidePrepare");
+                    prepare.BindValue("uHybridData", m_uniforms);
+                    prepare.BindValue("uSceneData", m_scene->GetSceneUniformData(), sizeof(SceneUniformData));
+                    voxelGI.BindEnvironmentSamplingInputs(prepare);
+                    prepare.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
+                    prepare.BindStorageBuffer("HybridGuideNext", m_guide[m_current], RDGContentGuarantee::eFullWrite);
+                    prepare.BindStorageBuffer("HybridPooledGuide", pooledGuide, RDGContentGuarantee::eFullWrite);
+                    graph->AddComputePass(std::move(prepare)).RecordPassCommands([guideGroups](RDGPassCmdEncoder& encoder) {
+                        encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
+                    });
+                }
+                else
+                {
+                    // No guide allocation or pass without sky light. This descriptor is never read.
+                    trace.BindStorageBuffer("HybridPooledGuide", m_guide[1 - m_current]);
+                }
+            }
             if (halfDiffuse)
             {
                 RDGTextureDesc halfDesc   = desc;
@@ -733,13 +782,6 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 pixels.size = uint64_t(m_extent.x) * m_extent.y * sizeof(uint32_t);
                 pixels.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
                 fallbackPixels = resources->CreateBuffer(pixels);
-                // Per tile: guide cell weights, 6x8 row moments and total power (hybrid_trace.glsl).
-                RDGBufferDesc pooled;
-                pooled.name = "hybrid_pooled_guide";
-                pooled.size = uint64_t(guideGroups.x) * guideGroups.y
-                            * (ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE + 4u) * sizeof(float);
-                pooled.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
-                pooledGuide = resources->CreateBuffer(pooled);
                 trace.BindStorageImage("halfSky", halfSky, RDGContentGuarantee::eFullWrite);
                 trace.BindStorageImage("halfGuide", halfGuide, RDGContentGuarantee::eFullWrite);
                 trace.BindStorageImage("halfBounce", halfBounce, RDGContentGuarantee::eFullWrite);
@@ -756,9 +798,22 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 trace.BindStorageImage("rawBounce", rawBounce, RDGContentGuarantee::eFullWrite);
                 trace.BindStorageImage("rawBouncePrevious", previous, RDGContentGuarantee::eFullWrite);
             }
-            graph->AddComputePass(std::move(trace)).RecordPassCommands([guideGroups](RDGPassCmdEncoder& encoder) {
-                encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
+            const glm::uvec2 traceGroups = bufferedGuide ? (m_extent + glm::uvec2(7)) / 8u : guideGroups;
+            graph->AddComputePass(std::move(trace)).RecordPassCommands([traceGroups](RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch(traceGroups.x, traceGroups.y, 1);
             });
+            if (bufferedGuide && skyLight)
+            {
+                RDGComputePassDesc finish;
+                finish.SetShaderProgramName("HybridGuideFinishSP");
+                finish.SetPassTag("HybridGuideFinish");
+                finish.BindValue("uHybridData", m_uniforms);
+                finish.BindStorageBuffer("HybridGuidePrevious", m_guide[1 - m_current]);
+                finish.BindStorageBuffer("HybridGuideNext", m_guide[m_current]);
+                graph->AddComputePass(std::move(finish)).RecordPassCommands([guideGroups](RDGPassCmdEncoder& encoder) {
+                    encoder.Dispatch(guideGroups.x, guideGroups.y, 1);
+                });
+            }
             if (restir)
             {
                 // Temporal updates only its own pixel. Spatial updates one checkerboard parity
@@ -1175,6 +1230,7 @@ void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_previousHardwareMask            = m_uniforms.provider.z;
         m_previousVisibility              = m_recordedVisibility;
         m_previousScreenProbes            = m_screenProbes;
+        m_previousGuideWritten            = !m_screenProbes && m_recordedGuideWritten;
         if (m_bounceResponsiveFrames != 0)
         {
             --m_bounceResponsiveFrames;
@@ -1222,6 +1278,8 @@ void HybridGIRenderer::DestroyPixelHistory()
     m_device->DestroyTexture(m_restirLobeIntegral);
     m_restirLobeIntegral    = nullptr;
     m_restirLobeInitialized = false;
+    m_previousGuideWritten  = false;
+    m_recordedGuideWritten  = false;
 }
 
 void HybridGIRenderer::Destroy()

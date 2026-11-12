@@ -10,6 +10,7 @@
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/Shared/LightingCapture.h"
+#include "Graphics/Shared/VoxelGI.h"
 #include "Platform/NativeWindow.h"
 #include "ZenApp/RuntimeWindow.h"
 #include <fstream>
@@ -60,6 +61,10 @@ public:
         {
             m_device->WaitForPreviousFrames();
             for (RHIBuffer* buffer : m_captureBuffers)
+            {
+                m_device->DestroyBuffer(buffer);
+            }
+            for (RHIBuffer* buffer : m_rayCountBuffers)
             {
                 m_device->DestroyBuffer(buffer);
             }
@@ -337,6 +342,76 @@ private:
         return valid;
     }
 
+    // The diagnostic replaces the last two frames' traces with the 16x16 counting variant. Counting
+    // keeps the pixel estimator without ReSTIR at full GI resolution (HybridGIRenderer), so its first
+    // frame is a resize reset; the last frame is logged after a regular one.
+    bool BeginRayCountCapture()
+    {
+        const rc::RenderView view = m_target->GetView();
+        RHIBufferCreateInfo  info;
+        info.size         = rc::HybridGIRenderer::GetRayCountCaptureBytes(view.width, view.height);
+        info.allocateType = RHIBufferAllocateType::eGPU;
+        info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        m_rayCountBuffers[0] = m_device->CreateBuffer(info);
+        info.allocateType    = RHIBufferAllocateType::eCPURead;
+        info.usageFlags      = 0;
+        info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+        m_rayCountBuffers[1]         = m_device->CreateBuffer(info);
+        rc::HybridGIRenderer* hybrid = m_device->GetRendererServer()->RequestDeferredLightingRenderer()->GetHybridGI();
+        const bool            valid  = m_rayCountBuffers[0] != nullptr && m_rayCountBuffers[1] != nullptr && hybrid != nullptr;
+        if (valid)
+        {
+            hybrid->SetRayCountCapture(m_rayCountBuffers[0], m_rayCountBuffers[1]);
+        }
+        else
+        {
+            m_error = "Cannot create the HybridTrace ray-count buffers";
+        }
+        return valid;
+    }
+
+    // Logs the frame's trace totals: compute rays, HW rays, field work and HW candidate-loop
+    // iterations, each per feature slot (sky, specular, bounce, reflection; hybrid_ray_counts.glsl).
+    bool FinishRayCountCapture()
+    {
+        m_device->WaitForPreviousFrames();
+        rc::HybridGIRenderer* hybrid = m_device->GetRendererServer()->RequestDeferredLightingRenderer()->GetHybridGI();
+        const uint8_t* data  = hybrid != nullptr && hybrid->WereRayCountsRecorded() ? m_rayCountBuffers[1]->Map() : nullptr;
+        const bool     valid = data != nullptr;
+        if (valid)
+        {
+            const glm::uvec2 extent = hybrid->GetGIExtent();
+            const uint64_t   tiles  = rc::HybridGIRenderer::GetRayCountCaptureBytes(extent.x, extent.y)
+                                    / (2u * ZEN_GI_TRACE_COUNT_WORDS * sizeof(uint32_t));
+            const uint32_t*  words  = reinterpret_cast<const uint32_t*>(data);
+            uint64_t         totals[ZEN_GI_TRACE_COUNT_WORDS]{};
+            for (uint64_t tile = 0; tile < tiles; ++tile)
+            {
+                for (uint32_t word = 0; word < ZEN_GI_TRACE_COUNT_WORDS; ++word)
+                {
+                    totals[word] += words[tile * ZEN_GI_TRACE_COUNT_WORDS + word];
+                }
+            }
+            m_rayCountBuffers[1]->Unmap();
+            const char* const groups[] = {"compute", "hardware", "field", "candidates"};
+            for (uint32_t group = 0; group < 4; ++group)
+            {
+                const uint64_t* value = totals + group * 4u;
+                LOGI("ZenApp hybrid ray counts: frame={}, gi={}x{}, tiles={}, {}=[{}, {}, {}, {}]", GetSceneFrame(), extent.x,
+                     extent.y, tiles, groups[group], value[0], value[1], value[2], value[3]);
+            }
+        }
+        else
+        {
+            m_error = "The HybridTrace ray counts were not recorded";
+        }
+        if (hybrid != nullptr && GetSceneFrame() >= m_options.frames)
+        {
+            hybrid->SetRayCountCapture(nullptr, nullptr);
+        }
+        return valid;
+    }
+
     bool RenderIteration()
     {
         platform::NativeWindow& window = *m_session->GetWindow();
@@ -393,6 +468,20 @@ private:
         {
             m_error = "Ground-truth capture refuses to run while RTSS is loaded";
         }
+        if (valid && !m_options.hybridTraceModule.empty())
+        {
+            const rc::VoxelGISettings& gi          = m_setup.rendering.gi.cone;
+            const uint32_t             allFeatures = (1u << static_cast<uint32_t>(rc::VoxelGISettings::Feature::Count)) - 1u;
+            const bool                 referenceModule =
+                gi.referenceSamples != 0 && m_options.hybridTraceBufferedModule && !m_setup.rendering.environment.lighting;
+            valid = m_setup.rendering.algorithm == rc::RenderAlgorithm::eVoxelGI && !gi.UsesScreenProbes()
+                 && ((gi.restirGI && gi.referenceSamples == 0) || referenceModule) && gi.GetHardwareFeatureMask() == allFeatures
+                 && !m_options.disableRT;
+            if (!valid)
+            {
+                m_error = "HybridTrace modules require all-HW pixel GI with ReSTIR, or a buffered environment-off reference";
+            }
+        }
         if (valid)
         {
             asset::SceneImportRequest request{m_setup.packagePath};
@@ -418,13 +507,21 @@ private:
             RHIOptions::GetInstance().SetValidationEnabled(m_setup.run.validation);
             RHIOptions::GetInstance().SetGPUMemoryStats(true);
             RHIOptions::GetInstance().SetGPUProfilerMarkers(m_options.gpuMarkers);
+            RHIOptions::GetInstance().SetPipelineStatistics(m_options.pipelineStatistics);
             RHIOptions::GetInstance().SetRayTracingDisabled(m_options.disableRT);
             RHIOptions::GetInstance().SetPresentMode(m_setup.run.presentMode);
-            rc::RenderConfig& config = rc::RenderConfig::GetInstance();
-            config.numFrames         = m_setup.run.framesInFlight;
-            config.numThreads        = m_setup.run.workerThreads;
-            config.depthBiasConstant = m_setup.run.shadowDepthBias;
-            config.depthBiasSlope    = m_setup.run.shadowSlopeBias;
+            rc::RenderConfig& config         = rc::RenderConfig::GetInstance();
+            config.numFrames                 = m_setup.run.framesInFlight;
+            config.numThreads                = m_setup.run.workerThreads;
+            config.hybridTraceModule         = m_options.hybridTraceModule;
+            config.hybridTraceBufferedModule = m_options.hybridTraceBufferedModule;
+            config.hybridTraceReferenceModule =
+                !m_options.hybridTraceModule.empty() && m_setup.rendering.gi.cone.referenceSamples != 0;
+            config.hybridHitStream            = m_options.hybridHitStream;
+            config.hybridTraceOverrideProgram = m_options.hybridTraceOverrideProgram;
+            config.hybridTraceOverrideModule  = m_options.hybridTraceOverrideModule;
+            config.depthBiasConstant          = m_setup.run.shadowDepthBias;
+            config.depthBiasSlope             = m_setup.run.shadowSlopeBias;
             RuntimeWindowSettings settings;
             settings.windowWidth                     = m_setup.run.windowWidth;
             settings.windowHeight                    = m_setup.run.windowHeight;
@@ -525,8 +622,10 @@ private:
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
-        bool valid = (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1))
-                  && (m_options.lightKeys.keys.empty() || ApplyLightPath(previousFrame + 1)) && m_session->Render(overlay);
+        const bool countRays = m_options.hybridRayCounts && previousFrame + 2 >= m_options.frames;
+        bool valid           = (!countRays || m_rayCountBuffers[0] != nullptr || BeginRayCountCapture())
+                            && (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1))
+                            && (m_options.lightKeys.keys.empty() || ApplyLightPath(previousFrame + 1)) && m_session->Render(overlay);
         if (!m_options.batch.empty() && GetSceneFrame() - m_batchBegin > 4096)
         {
             // Preparation, refinement and convergence share this budget.
@@ -535,7 +634,8 @@ private:
         }
         if (valid && GetSceneFrame() > previousFrame)
         {
-            if (captureTerms)
+            valid = !countRays || FinishRayCountCapture();
+            if (valid && captureTerms)
             {
                 valid = !IsRTSSLoaded();
                 if (!valid)
@@ -689,6 +789,7 @@ private:
     bool                             m_cullingReported{false};
     rc::SceneCullingResult           m_lastSceneCulling;
     RHIBuffer*                       m_captureBuffers[4]{};
+    RHIBuffer*                       m_rayCountBuffers[2]{};
     HeapVector<Vec4>                 m_previousLighting;
     size_t                           m_batchIndex{0};
     uint64_t                         m_batchStart{0};
