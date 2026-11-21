@@ -1,10 +1,8 @@
 #include "hybrid_guides.glsl"
 #include "../Common/scene_lighting.glsl"
-#ifdef HYBRID_CACHE_HISTORY_GUIDES
-layout(local_size_x = 16, local_size_y = 16) in;
-#else
+// Only the reference diagnostic (hybrid_temporal_reference.comp) compiles this history update; the
+// GIDenoise passes denoise every other GI frame.
 layout(local_size_x = 8, local_size_y = 8) in;
-#endif
 layout(set = 1, binding = 6) uniform sampler2D rawSky;
 layout(set = 1, binding = 7) uniform sampler2D rawSpecular;
 layout(set = 1, binding = 8) uniform sampler2D previousSky;
@@ -50,62 +48,12 @@ vec4 PreviousNormals(ivec2 p)
     vec2 geometric = EncodeGBufferNormal(DecodeGBufferNormal(unpackUnorm2x16(texelFetch(previousReceiver, p, 0).r)));
     return vec4(texelFetch(previousNormal, p, 0).rg, unpackHalf2x16(packHalf2x16(geometric)));
 }
-#ifdef HYBRID_CACHE_HISTORY_GUIDES
-// A 16x16 group reuses the exact receiver guides in its 9x9 responsive-history
-// neighbourhood. Two or three loads per lane replace up to 81 position reconstructions.
-shared float historyGuidePositionX[576];
-shared float historyGuidePositionY[576];
-shared float historyGuidePositionZ[576];
-shared float historyGuideNormalX[576];
-shared float historyGuideNormalY[576];
-shared float historyGuideNormalZ[576];
-shared uint  historyGuideIdentity[576];
-uint         HybridHistoryGuideIndex(ivec2 p)
-{
-    ivec2 q = p - ivec2(gl_WorkGroupID.xy) * 16 + 4;
-    return uint(q.y * 24 + q.x);
-}
-vec3 HybridHistoryPosition(ivec2 p)
-{
-    uint index = HybridHistoryGuideIndex(p);
-    return vec3(historyGuidePositionX[index], historyGuidePositionY[index], historyGuidePositionZ[index]);
-}
-vec3 HybridHistoryNormal(ivec2 p)
-{
-    uint index = HybridHistoryGuideIndex(p);
-    return vec3(historyGuideNormalX[index], historyGuideNormalY[index], historyGuideNormalZ[index]);
-}
-uint HybridHistoryIdentity(ivec2 p)
-{
-    return historyGuideIdentity[HybridHistoryGuideIndex(p)];
-}
-void LoadHistoryGuides()
-{
-    ivec2 origin = ivec2(gl_WorkGroupID.xy) * 16 - 4;
-    for (uint index = gl_LocalInvocationIndex; index < 576u; index += 256u)
-    {
-        ivec2 q                      = origin + ivec2(index % 24u, index / 24u);
-        bool  valid                  = HybridInView(q);
-        vec3  position               = valid ? HybridPosition(q) : vec3(0);
-        vec3  normal                 = valid ? HybridGeometricNormal(q) : vec3(0);
-        historyGuidePositionX[index] = position.x;
-        historyGuidePositionY[index] = position.y;
-        historyGuidePositionZ[index] = position.z;
-        historyGuideNormalX[index]   = normal.x;
-        historyGuideNormalY[index]   = normal.y;
-        historyGuideNormalZ[index]   = normal.z;
-        historyGuideIdentity[index]  = valid ? texelFetch(receiverSurface, q, 0).g : 0u;
-    }
-    barrier();
-}
-#else
-#    define HybridHistoryPosition HybridPosition
-#    define HybridHistoryNormal   HybridGeometricNormal
+#define HybridHistoryPosition HybridPosition
+#define HybridHistoryNormal   HybridGeometricNormal
 uint HybridHistoryIdentity(ivec2 p)
 {
     return texelFetch(receiverSurface, p, 0).g;
 }
-#endif
 #include "hybrid_radiance_history.glsl"
 
 // Rejection code of a previous reflection texel for this receiver, zero when it continues the
@@ -433,9 +381,6 @@ void AccumulateDiffuseTap(ivec2 q, float w, bool rays, float roughness, vec3 vie
 
 void main()
 {
-#ifdef HYBRID_CACHE_HISTORY_GUIDES
-    LoadHistoryGuides();
-#endif
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
     if (!HybridInView(p))
     {

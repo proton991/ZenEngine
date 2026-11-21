@@ -5,6 +5,8 @@
 #include <iostream>
 #include <optional>
 #include <limits>
+#include <fstream>
+#include <sstream>
 #include <algorithm>
 
 namespace zen::runtime
@@ -13,6 +15,8 @@ namespace
 {
 struct LaunchOverrides
 {
+    std::string                                     giConfiguration;
+    std::string                                     giConfigPath;
     std::optional<RHIExecutionMode>                 rhi;
     std::optional<bool>                             fullscreen;
     std::optional<bool>                             vsync;
@@ -36,6 +40,41 @@ bool ParseUnsigned(std::string_view argument, uint64_t& value, uint64_t maximum,
     return error.empty();
 }
 
+// Parses "--capture-frames=a,b,c-d" into sorted, unique scene frames (each from 1, at most 4096 frames).
+void ParseFrameList(std::string_view argument, HeapVector<uint64_t>& frames, std::string& error)
+{
+    const size_t     separator = argument.find('=');
+    std::string_view text      = argument.substr(separator + 1);
+    while (error.empty() && !text.empty())
+    {
+        const size_t           comma = text.find(',');
+        const std::string_view item  = text.substr(0, comma);
+        const size_t           dash  = item.find('-');
+        uint64_t               first = 0;
+        uint64_t               last  = 0;
+        const std::string_view low   = item.substr(0, dash);
+        const std::string_view high  = dash == std::string_view::npos ? low : item.substr(dash + 1);
+        const bool parsedLow  = std::from_chars(low.data(), low.data() + low.size(), first).ptr == low.data() + low.size();
+        const bool parsedHigh = std::from_chars(high.data(), high.data() + high.size(), last).ptr == high.data() + high.size();
+        if (!parsedLow || !parsedHigh || low.empty() || high.empty() || first == 0 || last < first || last - first >= 4096
+            || frames.size() + (last - first + 1) > 4096)
+        {
+            error = "--capture-frames requires comma-separated frames or ranges a-b from 1, at most 4096 frames";
+        }
+        for (uint64_t frame = first; error.empty() && frame <= last; ++frame)
+        {
+            frames.push_back(frame);
+        }
+        text = comma == std::string_view::npos ? std::string_view() : text.substr(comma + 1);
+    }
+    if (error.empty() && frames.empty())
+    {
+        error = "--capture-frames requires at least one frame";
+    }
+    std::sort(frames.begin(), frames.end());
+    frames.erase(std::unique(frames.begin(), frames.end()), frames.end());
+}
+
 void ParseToggle(std::string_view argument, std::optional<bool>& value, std::string& error)
 {
     const size_t           separator = argument.find('=');
@@ -50,8 +89,72 @@ void ParseToggle(std::string_view argument, std::optional<bool>& value, std::str
     }
 }
 
-void ApplyOverrides(const LaunchOverrides& overrides, RuntimeLaunchSettings& setup)
+void ParseGIOverride(std::string_view argument, LaunchOverrides& overrides, std::string& error)
 {
+    // Names come from the GI option table shared with engine.cfg and the editor's GI settings panel.
+    // Values are parsed by the same ConfigLoader and GI validator as Data/engine.cfg.
+    const size_t              equals = argument.find('=');
+    const std::string_view    name   = argument.substr(5, equals == std::string_view::npos ? equals : equals - 5);
+    const std::string_view    value  = equals == std::string_view::npos ? std::string_view{} : argument.substr(equals + 1);
+    const rc::GIConfigOption* option = rc::FindGIConfigArgument(name);
+    if (option == nullptr || value.empty()
+        || value.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789.+-E") != std::string_view::npos)
+    {
+        error = "Unknown or invalid GI override: " + std::string(argument);
+    }
+    else
+    {
+        overrides.giConfiguration += std::string(option->key) + "=" + std::string(value) + "\n";
+    }
+}
+
+std::string GetGIOptionHelp()
+{
+    std::string help;
+    for (const rc::GIConfigOption& option : rc::GetGIConfigOptions())
+    {
+        help += "       [--gi-" + rc::GetGIConfigArgumentName(option) + "=" + option.values + "]\n";
+    }
+    return help;
+}
+
+bool ApplyOverrides(const LaunchOverrides& overrides, RuntimeLaunchSettings& setup, std::string& error)
+{
+    bool giEnabled = true;
+    if (!overrides.giConfigPath.empty())
+    {
+        std::ifstream input(std::filesystem::u8path(overrides.giConfigPath));
+        if (!input)
+        {
+            error = "Cannot read GI configuration: " + overrides.giConfigPath;
+        }
+        else
+        {
+            platform::ConfigLoader config(input);
+            if (config.ReadBool("voxel_gi_enabled", giEnabled) && rc::LoadVoxelGIRuntimeSettings(config, setup.rendering.gi))
+            {
+                setup.rendering.algorithm = giEnabled ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+            }
+            else
+            {
+                error = "Invalid GI configuration: " + overrides.giConfigPath;
+            }
+        }
+    }
+    if (error.empty() && !overrides.giConfiguration.empty())
+    {
+        std::istringstream     input(overrides.giConfiguration);
+        platform::ConfigLoader config(input);
+        if (config.ReadBool("voxel_gi_enabled", giEnabled)
+            && rc::LoadVoxelGIRuntimeSettings(config, setup.rendering.gi, &setup.rendering.gi))
+        {
+            setup.rendering.algorithm = giEnabled ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+        }
+        else
+        {
+            error = "Invalid GI overrides:\n" + overrides.giConfiguration;
+        }
+    }
     if (overrides.rhi.has_value())
     {
         setup.run.rhiMode = *overrides.rhi;
@@ -88,9 +191,10 @@ void ApplyOverrides(const LaunchOverrides& overrides, RuntimeLaunchSettings& set
     }
     if (overrides.backend.has_value())
     {
-        setup.rendering.algorithm = rc::RenderAlgorithm::eVoxelGI;
-        setup.rendering.gi.cone.SetAllFeatureProviders(*overrides.backend);
+        setup.rendering.algorithm           = giEnabled ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+        setup.rendering.gi.cone.rayProvider = *overrides.backend;
     }
+    return error.empty();
 }
 
 bool ParseOptions(int              argc,
@@ -130,6 +234,10 @@ bool ParseOptions(int              argc,
         else if (argument.starts_with("--capture-start="))
         {
             ParseUnsigned(argument, options.captureStart, std::numeric_limits<uint64_t>::max(), error);
+        }
+        else if (argument.starts_with("--capture-frames="))
+        {
+            ParseFrameList(argument, options.captureFrames, error);
         }
         else if (argument.starts_with("--light-path="))
         {
@@ -180,9 +288,18 @@ bool ParseOptions(int              argc,
         {
             ParseToggle(argument, overrides.gpuCulling, error);
         }
-        else if (argument == "--backend=compute" || argument == "--backend=hardware")
+        else if (argument.starts_with("--gi-config=") && argument.size() > 12)
         {
-            overrides.backend = argument == "--backend=compute" ? rc::VoxelGISettings::RayProvider::Voxel
+            overrides.giConfigPath = argument.substr(12);
+        }
+        else if (argument.starts_with("--gi-"))
+        {
+            ParseGIOverride(argument, overrides, error);
+        }
+        else if (argument == "--backend=auto" || argument == "--backend=compute" || argument == "--backend=hardware")
+        {
+            overrides.backend = argument == "--backend=auto"    ? rc::VoxelGISettings::RayProvider::Auto
+                              : argument == "--backend=compute" ? rc::VoxelGISettings::RayProvider::Voxel
                                                                 : rc::VoxelGISettings::RayProvider::Hardware;
         }
         else if (argument == "--no-ui")
@@ -205,37 +322,13 @@ bool ParseOptions(int              argc,
         {
             options.hybridRayCounts = true;
         }
-        else if (argument.starts_with("--hybrid-trace-override="))
-        {
-            // <ProgramName>=<file.spv>; program names never contain '='.
-            const std::string_view value     = argument.substr(argument.find('=') + 1);
-            const size_t           separator = value.find('=');
-            if (separator == std::string_view::npos || separator == 0 || separator + 1 == value.size())
-            {
-                error = "--hybrid-trace-override requires <ProgramName>=<file.spv>";
-            }
-            else
-            {
-                options.hybridTraceOverrideProgram = std::string(value.substr(0, separator));
-                options.hybridTraceOverrideModule  = std::string(value.substr(separator + 1));
-            }
-        }
-        else if (argument.starts_with("--hybrid-trace-module=") || argument.starts_with("--hybrid-trace-buffered-module="))
-        {
-            if (!options.hybridTraceModule.empty())
-            {
-                error = "Specify only one HybridTrace measurement module";
-            }
-            options.hybridTraceBufferedModule = argument.starts_with("--hybrid-trace-buffered-module=");
-            options.hybridTraceModule         = argument.substr(argument.find('=') + 1);
-            if (options.hybridTraceModule.empty())
-            {
-                error = "--hybrid-trace-module requires a SPIR-V path";
-            }
-        }
         else if (argument == "--disable-rt")
         {
             options.disableRT = true;
+        }
+        else if (argument.starts_with("--device-memory-limit-mb="))
+        {
+            ParseUnsigned(argument, options.deviceMemoryLimitMB, 1024ull * 1024, error);
         }
         else if (argument == "--fixed-step")
         {
@@ -252,10 +345,11 @@ bool ParseOptions(int              argc,
     }
     if (error.empty() && !options.groundTruth.empty())
     {
-        if (!path.empty() || options.output.empty() || options.startPaused || options.disableRT || !options.capture.empty()
-            || !options.profile.empty() || options.captureStart != 0 || overrides.rhi || overrides.fullscreen || overrides.vsync
-            || overrides.validation || overrides.asyncCompute || overrides.gpuCulling || overrides.width || overrides.height
-            || overrides.backend)
+        if (!path.empty() || options.output.empty() || options.startPaused || options.disableRT
+            || options.deviceMemoryLimitMB != 0 || !options.capture.empty() || !options.profile.empty()
+            || options.captureStart != 0 || overrides.rhi || overrides.fullscreen || overrides.vsync || overrides.validation
+            || overrides.asyncCompute || overrides.gpuCulling || overrides.width || overrides.height || overrides.backend
+            || !overrides.giConfiguration.empty() || !overrides.giConfigPath.empty())
         {
             error = "--ground-truth requires --output and uses the dataset's setup values without run overrides";
         }
@@ -315,6 +409,12 @@ bool ParseOptions(int              argc,
     {
         error = "--capture-start requires --capture and --frames >= start, without --start-paused";
     }
+    if (error.empty() && !options.captureFrames.empty()
+        && (options.capture.empty() || options.captureStart != 0 || options.startPaused
+            || options.captureFrames.back() > options.frames))
+    {
+        error = "--capture-frames requires --capture and --frames >= its last frame, without --capture-start or --start-paused";
+    }
     if (error.empty() && options.disableRT && overrides.backend == rc::VoxelGISettings::RayProvider::Hardware)
     {
         error = "--backend=hardware cannot be combined with --disable-rt";
@@ -330,22 +430,25 @@ int RuntimeMain(int argc, char** argv)
     RuntimeExit result = RuntimeExit::Setup;
     if (argc == 2 && std::string_view(argv[1]) == "--help")
     {
-        std::cout << "ZenApp --setup=<file.zenrender> [--frames=N] [--capture=scene.ppm] [--profile=prefix]\n"
-                     "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
-                     "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
-                     "       [--backend=compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
-                     "       [--pipeline-statistics (compiler diagnostics; exclude from timing runs)]\n"
-                     "       [--hybrid-trace-module=<file.spv> (all-HW per-pixel ReSTIR measurement only)]\n"
-                     "       [--hybrid-trace-buffered-module=<file.spv> (8x8 buffered-guide measurement module)]\n"
-                     "       [--hybrid-hit-stream (optional compact secondary-hit buffers)]\n"
-                     "       [--hybrid-ray-counts (logs HybridTrace ray and candidate counts of the last two frames)]\n"
-                     "       [--hybrid-trace-override=<16x16 trace program>=<file.spv> (measurement only)]\n"
-                     "       [--fixed-step] [--start-paused] [--camera-path=<keys.json> (with --fixed-step)]\n"
-                     "       [--light-path=<keys.json> (with --fixed-step)]\n"
-                     "       [--capture-start=N (writes <capture>.frame-N.ppm each frame from N)]\n"
-                     "ZenApp --ground-truth=<dataset-directory> --output=<new-run-directory> [--frames=128]\n"
-                     "Fullscreen defaults on and uses the display's native mode; width/height set the render size.\n"
-                     "Space: Pause/Resume. Escape: Quit. Camera controls match the editor.\n";
+        std::cout
+            << "ZenApp --setup=<file.zenrender> [--frames=N] [--capture=scene.ppm] [--profile=prefix]\n"
+               "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
+               "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
+               "       [--backend=auto|compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
+               "       [--gi-config=engine.cfg (read like Data/engine.cfg; --gi-* options below override it)]\n"
+               "       [--device-memory-limit-mb=N (caps device-local heaps; 8192 emulates an 8 GB GPU)]\n"
+               "       [--pipeline-statistics (compiler diagnostics; exclude from timing runs)]\n"
+               "       [--hybrid-hit-stream (optional compact secondary-hit buffers)]\n"
+               "       [--hybrid-ray-counts (logs HybridTrace ray and candidate counts of the last two frames)]\n"
+               "       [--fixed-step] [--start-paused] [--camera-path=<keys.json> (with --fixed-step)]\n"
+               "       [--light-path=<keys.json> (with --fixed-step)]\n"
+               "       [--capture-start=N (writes <capture>.frame-N.ppm each frame from N)]\n"
+               "       [--capture-frames=a,b,c-d (writes <capture>.frame-N.ppm at only these frames)]\n"
+               "GI options, the engine.cfg keys voxel_gi_<name> and the editor's GI settings (Copy as ZenApp arguments):\n"
+            << GetGIOptionHelp()
+            << "ZenApp --ground-truth=<dataset-directory> --output=<new-run-directory> [--frames=128]\n"
+               "Fullscreen defaults on and uses the display's native mode; width/height set the render size.\n"
+               "Space: Pause/Resume. Escape: Quit. Camera controls match the editor.\n";
         result = RuntimeExit::Success;
     }
     else
@@ -359,10 +462,10 @@ int RuntimeMain(int argc, char** argv)
                                    && ReadRuntimeLaunchSettings(std::filesystem::u8path(path), setup, error);
         if (valid)
         {
-            ApplyOverrides(overrides, setup);
+            valid               = ApplyOverrides(overrides, setup, error);
             options.rhiOverride = overrides.rhi.has_value();
             options.gpuCulling  = overrides.gpuCulling.value_or(true);
-            valid               = ValidateRuntimeLaunchSettings(setup, error);
+            valid               = valid && ValidateRuntimeLaunchSettings(setup, error);
         }
         if (valid)
         {

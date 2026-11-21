@@ -178,6 +178,13 @@ public:
 
     static VulkanPipeline* CreateObject(const RHIComputePipelineCreateInfo& createInfo);
 
+    static VulkanPipeline* CreateObject(const RHIRayTracingPipelineCreateInfo& createInfo);
+
+    const std::array<VkStridedDeviceAddressRegionKHR, RHIShaderBindingTableLayout::Count>& GetShaderBindingTable() const
+    {
+        return m_shaderBindingTable;
+    }
+
     VkPipelineBindPoint GetVkPipelineBindPoint() const
     {
         return m_bindPoint;
@@ -213,13 +220,22 @@ private:
 
     VulkanPipeline(const RHIComputePipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
 
+    VulkanPipeline(const RHIRayTracingPipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
+
     void InitGraphics(const RHIRenderingLayout& layout);
 
     void InitCompute();
+
+    void InitRayTracing(const RHIRayTracingPipelineCreateInfo& createInfo, const RHIShaderBindingTableLayout& layout);
+
+    bool InitShaderBindingTable(const HeapVector<RHIRayTracingShaderGroup>& groups, const RHIShaderBindingTableLayout& layout);
 
     VkPipeline          m_vkPipeline{VK_NULL_HANDLE};
     VkPipelineBindPoint m_bindPoint{VK_PIPELINE_BIND_POINT_GRAPHICS};
     VkShaderStageFlags  m_pushConstantsStageFlags{0};
     bool                m_initialized{false};
+    // Immutable after creation, and retained with the pipeline through GPU retirement.
+    RHIResourcePtr<RHIBuffer>                                                       m_shaderBindingTableBuffer;
+    std::array<VkStridedDeviceAddressRegionKHR, RHIShaderBindingTableLayout::Count> m_shaderBindingTable{};
 };
 } // namespace zen

@@ -16,7 +16,9 @@ bool ValidBufferCreateInfo(const RHIBufferCreateInfo& info)
     return info.allocateType > RHIBufferAllocateType::eNone && info.allocateType < RHIBufferAllocateType::eMax && info.size > 0
         && !info.usageFlags.IsEmpty()
         && (!info.usageFlags.HasFlag(RHIBufferUsageFlagBits::eDeviceAddress)
-            || GVulkanRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress);
+            || GVulkanRHI->QueryGPUInfo().rayQuery.bufferDeviceAddress)
+        && (!info.usageFlags.HasFlag(RHIBufferUsageFlagBits::eShaderBindingTable)
+            || GVulkanRHI->QueryGPUInfo().rayTracing.IsUsable());
 }
 
 template <class Operation>

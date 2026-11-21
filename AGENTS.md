@@ -11,6 +11,7 @@
 # Profiling workflow
 
 - Run all application performance profiling through the standalone **ZenApp** executable with explicit startup arguments.
+- Reuse `build/x64-windows-msvc-release/bin/ZenApp.exe` for application tests and profiling, rebuilding it in place as needed. Do not create per-run executable copies; retain hashes and capture metadata for provenance.
 - Do not substitute `scene_renderer_demo`, an editor preview, or a renamed executable for ZenApp.
 - Supply the scene/camera/render configuration using `--setup=<file.zenrender>` and use ZenApp startup arguments for run overrides. Do not temporarily edit `Data/engine.cfg` for profiling.
 - Retain the executable identity, exact argument list, setup and input hashes with the capture. Record actual framebuffer and render extents, fullscreen state, backend and async-compute state.

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <fstream>
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/Shared/LightingCapture.h"
 #if defined(_WIN32)
 #    include <Windows.h>
 #endif
@@ -64,9 +65,66 @@ bool IsRTSSLoaded()
     return loaded;
 }
 
+bool WriteSelectedHybridCapture(RHIBuffer& buffer, const GroundTruthFrame& frame, const std::string& path)
+{
+    const Vec4* data  = reinterpret_cast<const Vec4*>(buffer.Map());
+    bool        valid = data != nullptr;
+    if (valid)
+    {
+        // Preserve full-frame coverage while exporting only the CUDA comparison taps.
+        const uint64_t count = uint64_t(frame.setup.run.renderWidth) * frame.setup.run.renderHeight;
+        uint64_t       coverage[3]{};
+        for (uint64_t pixel = 0; pixel < count; ++pixel)
+        {
+            const Vec4* record = data + pixel * ZEN_HYBRID_CAPTURE_COMPONENTS;
+            if (record[8].w > 0)
+            {
+                ++coverage[0];
+                coverage[1] += record[1].w > 0;
+                coverage[2] += record[15].w > 0;
+            }
+        }
+        std::ofstream output(std::filesystem::u8path(path), std::ios::binary);
+        output.write(reinterpret_cast<const char*>(coverage), sizeof(coverage));
+        for (uint64_t pixel : frame.hybridPixels)
+        {
+            output.write(reinterpret_cast<const char*>(data + pixel * ZEN_HYBRID_CAPTURE_COMPONENTS),
+                         ZEN_HYBRID_CAPTURE_BYTES_PER_PIXEL);
+        }
+        output.close();
+        valid = output.good();
+        buffer.Unmap();
+    }
+    return valid;
+}
+
 namespace
 {
 constexpr uint64_t kMaxDatasetManifestBytes = 64ull * 1024 * 1024;
+
+bool ReadHybridPixels(simdjson::dom::element entry, GroundTruthFrame& frame)
+{
+    simdjson::dom::array       pixels;
+    const simdjson::error_code error = entry["hybrid_pixels"].get_array().get(pixels);
+    bool                       valid = error == simdjson::NO_SUCH_FIELD || error == simdjson::SUCCESS;
+    if (error == simdjson::SUCCESS)
+    {
+        const uint64_t count = uint64_t(frame.setup.run.renderWidth) * frame.setup.run.renderHeight;
+        valid                = pixels.size() > 0;
+        for (simdjson::dom::element value : pixels)
+        {
+            uint64_t index = 0;
+            valid          = !value.get_uint64().get(index) && index < count
+                          && (frame.hybridPixels.empty() || index > frame.hybridPixels.back());
+            if (!valid)
+            {
+                break;
+            }
+            frame.hybridPixels.push_back(index);
+        }
+    }
+    return valid;
+}
 
 // Batch frames share one window, device, package and scene preparation; only the camera,
 // environment and rendering settings change between them.
@@ -108,7 +166,8 @@ bool ReadGroundTruthBatch(const std::string& directory, HeapVector<GroundTruthFr
             }
             if (valid)
             {
-                valid = ReadRuntimeLaunchSettings(root / "frames" / frame.id / "scene.zenrender", frame.setup, error);
+                valid = ReadRuntimeLaunchSettings(root / "frames" / frame.id / "scene.zenrender", frame.setup, error)
+                     && ReadHybridPixels(entry, frame);
                 const char* terms[] = {"D_direct", "D_sky", "D_bounce"};
                 for (uint32_t term = 0; term < 3 && valid; ++term)
                 {

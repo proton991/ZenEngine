@@ -27,7 +27,6 @@ def main():
     parser.add_argument('--executable', default=DEFAULT_EXE, type=Path)
     parser.add_argument('--keep-captures', action='store_true')
     parser.add_argument('--backend', choices=('setup', 'hardware', 'compute'), default='setup')
-    parser.add_argument('--gather', choices=('setup', 'pixel', 'probes'), default='setup')
     args = parser.parse_args()
     if not (args.frames > 0 and args.warmup > 0 and args.recovery > 0 and args.settle >= 128
             and 1 <= args.width <= 8192 and 1 <= args.height <= 8192 and np.isfinite(args.distance)):

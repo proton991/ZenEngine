@@ -1,6 +1,7 @@
 #include "ZenApp/RuntimeOverlay.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "ImGui/LightingBackendControls.h"
 #include "imgui.h"
 #include <algorithm>
 
@@ -52,27 +53,31 @@ bool RuntimeOverlay::Draw(RuntimeWindow&                    session,
     const rc::RDGMetricsSnapshot& metrics = session.GetSceneMetrics();
     const rc::RenderView&         view    = session.GetRenderView();
     ui::SessionDebugSnapshot      snapshot;
-    snapshot.paused            = session.GetState() == RuntimeState::Paused;
-    snapshot.preparingGI       = server.IsPreparingGI();
-    snapshot.frame             = session.GetSceneFrame();
-    snapshot.seconds           = session.GetSceneSeconds();
-    snapshot.frameMilliseconds = seconds * 1000;
-    snapshot.sceneMilliseconds = session.GetSceneMilliseconds();
-    snapshot.width             = view.width;
-    snapshot.height            = view.height;
-    snapshot.memory            = device.GetGPUMemoryStats();
-    snapshot.capacityBytes     = device.GetGPUInfo().deviceLocalMemoryBytes;
-    snapshot.sharedScene       = sharedScene;
-    snapshot.droppedLogs       = droppedLogs;
-    snapshot.status            = status.fallbackReason;
-    snapshot.source            = source;
-    snapshot.logPath           = logPath;
-    snapshot.configuration     = fmt::format("{} -> {}{}", status.requested == rc::RenderAlgorithm::eVoxelGI ? "GI" : "PBR",
-                                             status.effective == rc::RenderAlgorithm::eVoxelGI ? "GI" : "PBR",
-                                             sharedScene ? " | shared editor scene" : "");
-    snapshot.graphCPUUs        = metrics.compileCPUUs + metrics.executeCPUUs;
-    snapshot.passes            = metrics.nodeCount;
-    snapshot.resources         = metrics.resources;
+    snapshot.paused                             = session.GetState() == RuntimeState::Paused;
+    snapshot.preparingGI                        = server.IsPreparingGI();
+    snapshot.frame                              = session.GetSceneFrame();
+    snapshot.seconds                            = session.GetSceneSeconds();
+    snapshot.frameMilliseconds                  = seconds * 1000;
+    snapshot.sceneMilliseconds                  = session.GetSceneMilliseconds();
+    snapshot.width                              = view.width;
+    snapshot.height                             = view.height;
+    snapshot.memory                             = device.GetGPUMemoryStats();
+    snapshot.capacityBytes                      = device.GetGPUInfo().deviceLocalMemoryBytes;
+    snapshot.sharedScene                        = sharedScene;
+    snapshot.droppedLogs                        = droppedLogs;
+    snapshot.status                             = status.fallbackReason;
+    snapshot.source                             = source;
+    snapshot.logPath                            = logPath;
+    const rc::VoxelGIRuntimeSettings giSettings = server.GetEffectiveVoxelGISettings();
+    const rc::VoxelGISettings&       gi         = giSettings.cone;
+    snapshot.configuration =
+        fmt::format("{} -> {} | {}{}: {}, {}, {} denoiser{}", status.requested == rc::RenderAlgorithm::eVoxelGI ? "GI" : "PBR",
+                    status.effective == rc::RenderAlgorithm::eVoxelGI ? "GI" : "PBR", giSettings.optimal ? "optimal " : "",
+                    "GI", ui::GetGIMethodLabel(rc::GetGIMethod(gi)), ui::GetGITracingLabel(rc::GetGITracing(gi)),
+                    ui::GetGIDenoiserLabel(rc::GetGIDenoiser(gi)), sharedScene ? " | shared editor scene" : "");
+    snapshot.graphCPUUs                   = metrics.compileCPUUs + metrics.executeCPUUs;
+    snapshot.passes                       = metrics.nodeCount;
+    snapshot.resources                    = metrics.resources;
     const ui::SessionDebugCommand command = ui::DrawSessionDebugUI(snapshot, logs, session.ShowDiagnostics(), m_state);
     if (command == ui::SessionDebugCommand::Pause)
     {

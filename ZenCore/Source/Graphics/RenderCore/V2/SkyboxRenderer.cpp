@@ -95,18 +95,25 @@ void SkyboxRenderer::PrepareTextures()
     }
 }
 
-void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
+bool SkyboxRenderer::PrepareEnvironment(const EnvTexture& environment)
 {
-    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    RenderGraph graph("EnvironmentPreprocess");
+    bool        ready = graph.Begin();
+    if (ready)
+    {
+        RecordPendingEnvironment(graph, environment);
+        ready = graph.End() && (m_recordedPreprocessEnvironments.empty() || m_pRenderDevice->ExecuteRenderGraph(graph));
+        OnRenderGraphExecuted(ready ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
+    }
+    return ready;
+}
 
-    VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
-
+void SkyboxRenderer::RecordPendingEnvironment(RenderGraph& graph, const EnvTexture& active)
+{
     m_recordedPreprocessEnvironments.clear();
 
     // Preparing another scene must not add its work to the active scene's graph.
     // The BRDF target identifies the environment even when its handle bundle is copied.
-    const EnvTexture& active = m_pScene->GetEnvTexture();
-
     const HeapVector<EnvTexture*>::iterator pending =
         std::find_if(m_pendingPreprocessEnvironments.begin(), m_pendingPreprocessEnvironments.end(),
                      [&active](const EnvTexture* environment) { return environment->pLutBRDF == active.pLutBRDF; });
@@ -184,7 +191,7 @@ void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
 
                         constants.mvp = mvp;
 
-                        pRDG->AddGraphicsPass(std::move(desc))
+                        graph.AddGraphicsPass(std::move(desc))
                             .RecordPassCommands([constants, count](RDGPassCmdEncoder& encoder) {
                                 encoder.SetPushConstants(constants);
 
@@ -199,7 +206,7 @@ void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
 
                         constants.roughness = static_cast<float>(mip) / std::max(1u, numMips - 1);
 
-                        pRDG->AddGraphicsPass(std::move(desc))
+                        graph.AddGraphicsPass(std::move(desc))
                             .RecordPassCommands([constants, count](RDGPassCmdEncoder& encoder) {
                                 encoder.SetPushConstants(constants);
 
@@ -219,7 +226,7 @@ void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
 
                     region.size                           = {extent, extent, 1};
 
-                    pRDG->AddTransferPass(NameID(fmt::format("{}_copy", tag.CStr())))
+                    graph.AddTransferPass(NameID(fmt::format("{}_copy", tag.CStr())))
                         .CopyTexture(pOffscreen, pCubemap, MakeVecView(&region, 1));
                 }
             }
@@ -253,9 +260,18 @@ void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
 
             lut.SetPassTag("GenlutBRDF");
 
-            pRDG->AddGraphicsPass(std::move(lut)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
+            graph.AddGraphicsPass(std::move(lut)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Draw(3, 1); });
         }
     }
+}
+
+void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
+{
+    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+
+    VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
+
+    RecordPendingEnvironment(*pRDG, m_pScene->GetEnvTexture());
 
     RHIGfxPipelineStates pso{};
 

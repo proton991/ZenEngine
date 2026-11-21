@@ -11,21 +11,23 @@ namespace zen::editor
 struct EditorRenderSnapshot
 {
     RHIGPUMemoryStats              memory;
-    rc::VoxelGIRuntimeSettings     settings;
+    rc::VoxelGIRuntimeSettings     settings; // As requested (RendererServer::GetRequestedVoxelGISettings).
     rc::RenderOption               requestedMode{rc::RenderOption::ePBR};
     rc::RenderOption               renderedMode{rc::RenderOption::ePBR};
     rc::RenderingStatus            status;
-    platform::VoxelizerMode        effectiveVoxelizer{platform::VoxelizerMode::eCompute};
     rc::DebugOutputDescription     debug;
     bool                           lightMarkers{false};
     float                          lightMarkerSize{0.02f};
     bool                           hardwareQueries{false};
     std::string                    rayQueryReason;
-    std::string                    giSelectionReason;
-    bool                           preparingGI{false}; // RendererServer::IsPreparingGI.
-    bool                           refiningGI{false};  // Published field still has pending updates/local volumes.
+    bool                           rayQueriesSupported{false}; // Device capability for the GI tracing tiers.
+    bool                           rayTracingPipelineSupported{false};
+    std::string                    giTierFallbackReason; // HW failure that moved the automatic tier to Compute.
+    bool                           preparingGI{false};   // RendererServer::IsPreparingGI.
+    bool                           refiningGI{false};    // Published field still has pending updates/local volumes.
     bool                           gpuTimingsEnabled{false};
     HeapVector<rc::RDGNodeMetrics> giPassTimings;
+    rc::VoxelGIRuntimeSettings     effectiveSettings; // With the optimal configuration and provider resolved.
 };
 
 // A completed GPU surface pick. The stamp is the one supplied with the request; the

@@ -20,6 +20,28 @@ bool RendererServer::ValidateShadowResources(const RenderingSettings& settings, 
 
 VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const
 {
+    VoxelGIRuntimeSettings settings = GetEffectiveVoxelGISettings();
+
+    settings.optimal                = false;
+
+    if (m_giAutomaticTier)
+    {
+        settings.cone.rayProvider = VoxelGISettings::RayProvider::Auto;
+    }
+    return settings;
+}
+
+VoxelGIRuntimeSettings RendererServer::GetRequestedVoxelGISettings() const
+{
+    VoxelGIRuntimeSettings settings = m_giRequested.optimal ? m_giRequested : GetVoxelGISettings();
+
+    settings.asyncCompute           = m_pRenderDevice->GetAsyncComputeMode();
+
+    return settings;
+}
+
+VoxelGIRuntimeSettings RendererServer::GetEffectiveVoxelGISettings() const
+{
     VoxelGIRuntimeSettings settings = m_giSettings;
 
     settings.asyncCompute           = m_pRenderDevice->GetAsyncComputeMode();
@@ -28,7 +50,6 @@ VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const
     {
         settings.cone = m_pVoxelGI->GetSettings();
     }
-
     return settings;
 }
 
@@ -76,15 +97,17 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 {
     VoxelGIRuntimeSettings settings        = requested;
     const char*            selectionReason = ResolveVoxelGIAutomaticProvider(settings, m_pRenderDevice->GetGPUInfo());
+    const bool             automatic =
+        IsOptimalVoxelGIConfiguration(requested) || requested.cone.rayProvider == VoxelGISettings::RayProvider::Auto;
 
-    uint64_t reflectanceBytes              = 0;
+    uint64_t reflectanceBytes = 0;
 
     bool valid = ValidateVoxelGIResources(settings, reflectanceBytes) == GIResourceStatus::eSuccess && m_pVoxelGI != nullptr
               && m_pRenderDevice->CanReconfigureResources();
 
     if (valid)
     {
-        const VoxelGIRuntimeSettings previous = GetVoxelGISettings();
+        const VoxelGIRuntimeSettings previous = GetEffectiveVoxelGISettings();
 
         // Allocation failures stay latched between frames; only an explicit retry rebuilds a failed
         // voxelizer, so interactive cone edits never drain the GPU to repeat a failed allocation.
@@ -120,9 +143,9 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
             }
 
             m_giSettings        = settings;
+            m_giRequested       = requested;
             m_giSelectionReason = selectionReason;
-
-            m_voxelizerMode     = ResolveVoxelizerMode(settings.voxelizer, m_pRenderDevice->GetGPUInfo());
+            m_giAutomaticTier   = automatic;
 
             if (rebuild)
             {
@@ -130,6 +153,8 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
             }
 
             m_pVoxelGI->SetSettings(settings.cone);
+
+            m_pVoxelGI->SetAutomaticTier(automatic);
 
             m_pSceneShadows->SetResolution(settings.shadowMapResolution);
 
@@ -140,11 +165,10 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
             m_pRenderDevice->CollectCompletedResources();
 
-            // Cone edits apply every frame while a control is dragged; log resource changes only.
+            // GI edits apply every frame while a control is dragged; log resource changes only.
             if (rebuild || resizeShadows)
             {
-                LOGI("Applied runtime GI settings: grid={}, voxelizer={}, resources={}", settings.resolution,
-                     m_voxelizerMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp",
+                LOGI("Applied runtime GI settings: grid={}, resources={}", settings.resolution,
                      rebuild ? "recreated" : "retained");
             }
         }

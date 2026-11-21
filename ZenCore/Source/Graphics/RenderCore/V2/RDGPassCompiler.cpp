@@ -298,9 +298,9 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
     return pResult;
 }
 
-RDGComputePass* RDGPassCompiler::CompileComputePass(const RDGComputePassDesc& desc)
+RDGDispatchPass* RDGPassCompiler::CompileDispatchPass(const RDGDispatchPassDesc& desc)
 {
-    RDGComputePass* result{};
+    RDGDispatchPass* result{};
 
     if (Check(m_pRenderDevice != nullptr && m_pRDG != nullptr, RDGErrorCode::eLifecycle,
               "Pass compilation requires a graph and device"))
@@ -314,24 +314,38 @@ RDGComputePass* RDGPassCompiler::CompileComputePass(const RDGComputePassDesc& de
         if (CheckFormat(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader, "Invalid shader program '{}'",
                         desc.shaderProgramName.CStr()))
         {
-            RDGComputePass* pComputePass = m_pRDG->AcquireComputePass();
+            RDGDispatchPass* pComputePass = m_pRDG->AcquireDispatchPass();
 
-            m_pRDG->m_compiledComputePasses.push_back(pComputePass);
+            m_pRDG->m_compiledDispatchPasses.push_back(pComputePass);
 
             pComputePass->passTag         = desc.passTag;
 
             pComputePass->queuePreference = desc.GetQueuePreference();
+            const bool rayTracing         = desc.GetPipelineType() == RHIPipelineType::eRayTracing;
+            pComputePass->type            = rayTracing ? RDGCompiledPassType::eRayTracing : RDGCompiledPassType::eCompute;
 
             if (BuildShaderParameters(pSP, &desc, pComputePass->shaderParameters))
             {
                 {
                     ScopedMetricsTimer pipelineTimer(timings.enabled, timings.pipelineCPUUs);
 
-                    pComputePass->pPipeline = m_pRenderDevice->GetOrCreateComputePipeline(pSP->GetShader(), timings.enabled);
+                    if (rayTracing)
+                    {
+                        RHIRayTracingPipelineCreateInfo info;
+                        info.pShader            = pSP->GetShader();
+                        info.groups             = desc.GetShaderGroups();
+                        info.maxRecursionDepth  = desc.GetMaxRecursionDepth();
+                        pComputePass->pPipeline = m_pRenderDevice->GetOrCreateRayTracingPipeline(info, timings.enabled);
+                    }
+                    else
+                    {
+                        pComputePass->pPipeline =
+                            m_pRenderDevice->GetOrCreateComputePipeline(pSP->GetShader(), timings.enabled);
+                    }
                 }
 
                 if (CheckFormat(pComputePass->pPipeline != nullptr, RDGErrorCode::eAllocation,
-                                "Failed to create compute pipeline for '{}'", desc.passTag.CStr()))
+                                "Failed to create dispatch pipeline for '{}'", desc.passTag.CStr()))
                 {
                     pComputePass->pPipeline->AddReference();
 
@@ -707,11 +721,11 @@ bool RDGPassCmdEncoder::RequireIndirect(RHIBuffer* buffer, uint64_t offset, uint
     return result;
 }
 
-bool RDGPassCmdEncoder::ValidateDispatch()
+bool RDGPassCmdEncoder::ValidateDispatch(RDGCompiledPassType type)
 {
     bool result{};
 
-    if (((RequirePass(RDGCompiledPassType::eCompute, "Dispatch")))
+    if (((RequirePass(type, type == RDGCompiledPassType::eRayTracing ? "TraceRays" : "Dispatch")))
         && ((Check(m_dispatchCount == 0 || (m_pDescription != nullptr && m_pDescription->independentDispatches),
                    RDGErrorCode::eUnsupportedCommand,
                    "Dependent dispatches require separate passes; assert independentDispatches only for independent work"))))
@@ -820,6 +834,45 @@ void RDGPassCmdEncoder::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t off
         && Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))
     {
         m_pCmdList->DispatchIndirect(indirectBuffer, offset);
+    }
+}
+
+void RDGPassCmdEncoder::TraceRays(uint32_t width, uint32_t height, uint32_t depth)
+{
+    if (ValidateDispatch(RDGCompiledPassType::eRayTracing)
+        && Check(m_pCmdList != nullptr && GDynamicRHI != nullptr, RDGErrorCode::eLifecycle,
+                 "Command encoder requires a command list and RHI")
+        && Check(GDynamicRHI->QueryGPUInfo().IsTraceRaysWithinLimits(width, height, depth), RDGErrorCode::eRange,
+                 "Ray-tracing launch exceeds device limits or pipelines are unsupported"))
+    {
+        m_pCmdList->TraceRays(width, height, depth);
+    }
+}
+
+void RDGPassCmdEncoder::TraceRaysIndirect(RDGBuffer resource, uint32_t offset)
+{
+    if (RequirePass(RDGCompiledPassType::eRayTracing, "TraceRaysIndirect"))
+    {
+        if (RHIBuffer* buffer = ResolveIndirectBuffer(resource))
+        {
+            TraceRaysIndirect(buffer, offset);
+        }
+    }
+}
+
+void RDGPassCmdEncoder::TraceRaysIndirect(RHIBuffer* buffer, uint32_t offset)
+{
+    if (ValidateDispatch(RDGCompiledPassType::eRayTracing) && RequireIndirect(buffer, offset, 12, "TraceRaysIndirect")
+        && Check(m_pCmdList != nullptr && GDynamicRHI != nullptr, RDGErrorCode::eLifecycle,
+                 "Command encoder requires a command list and RHI")
+        && Check(GDynamicRHI->QueryGPUInfo().rayTracing.IsUsable() && GDynamicRHI->QueryGPUInfo().rayTracing.indirect,
+                 RDGErrorCode::eUnsupportedCommand, "Indirect ray tracing is unsupported")
+        && Check(buffer->GetUsageFlags().HasFlag(RHIBufferUsageFlagBits::eDeviceAddress)
+                     && buffer->GetUsageFlags().HasFlag(RHIBufferUsageFlagBits::eIndirectBuffer)
+                     && buffer->GetDeviceAddress() != 0,
+                 RDGErrorCode::eBinding, "Indirect ray-tracing buffer requires indirect usage and a device address"))
+    {
+        m_pCmdList->TraceRaysIndirect(buffer, offset);
     }
 }
 

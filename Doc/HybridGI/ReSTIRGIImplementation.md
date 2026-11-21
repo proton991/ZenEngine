@@ -488,3 +488,149 @@ The reconstructed 4K preset now retains validated history during camera motion a
 roughness-texture variation across coarse reflection receivers. The previous checkpoint's
 motion-history limits above are historical. See [HW RT flicker correction](HWRTFlicker.md) for
 the current limits, isolation captures, motion measurements and remaining outliers.
+
+## Spatial reuse cost (2026-11-15)
+
+**Result: neither cheap cut is free.** The two spatial passes are one reuse step split by a
+checkerboard, and together cost 7.1 ms at GI 1920x1080. About 3 ms of that is the visibility rays
+in the pairwise MIS weights. Removing those rays biases the image badly; halving the neighbors adds
+noise. Defaults are unchanged.
+
+How it works:
+- **Checkerboard:** each pass handles one parity of texels and reads the other parity's reservoirs.
+- **Rays per texel:** each of the up to 4 neighbors per signal traces one ray, so the pairwise MIS
+  weights account for occlusion. One more ray per signal checks the selected sample. That is up to
+  10 shadow rays per texel.
+- **Controls:** setting `restirSpatialSamples` (neighbors per signal, 1–4, default 4) and
+  `restirSpatialVisibility` (MIS rays, default on); config keys `voxel_gi_restir_spatial_samples`
+  and `voxel_gi_restir_spatial_visibility`; editor section "ReSTIR GI spatial reuse". The defaults
+  render the same estimator as before.
+
+How it was measured:
+- **Tool:** `tools/gi_quick_gates.py`, HW preset, records in `build/checks/restir-spatial`.
+- **Base:** a cost-only run; its images match the footprint build's default and A/A runs
+  (`build/checks/footprint-receivers/quick`).
+- **Bias:** static RMS is against the CUDA reference, so it shows bias. The motion and light rows
+  use the base reference, so they are valid only for the unbiased 2-neighbor case.
+
+| Metric | Base: 4 neighbors, MIS rays | MIS rays off | 2 neighbors |
+|---|---:|---:|---:|
+| `ReSTIRSpatial0` + `1`, ms | 7.12 | 4.18 | 4.28 |
+| Frame, ms static | 33.52 | 30.55 | 30.48 |
+| Static RMS vs CUDA reference /255 (A/A 0.564–0.565) | 0.565 | 0.969 | 0.582 |
+| Static flicker, mean std /255 (A/A 0.0153–0.0156) | 0.0156 | 0.0131 | 0.0189 |
+| Slow pan, mean % above 4/255 (A/A 0.082–0.093) | 0.091 | biased | 0.111 |
+| Fast pan, mean % (A/A 0.145–0.182) | 0.182 | biased | 0.194 |
+| Dolly, mean % (A/A 0.081–0.085) | 0.085 | biased | 0.088 |
+| Light recovery frame 16, % above 4 (A/A 0.043–0.045) | 0.044 | biased | 0.069 |
+| Moving sparks, px/frame (A/A 6.8–8.5) | 8.5 | 8.3 | 8.8 |
+
+Dispositions:
+- **MIS rays off: rejected.** Without visibility the weights credit neighbors with samples they
+  cannot see, so energy is lost wherever occlusion differs between neighbors. The static error
+  against ground truth rises 71% in this occlusion-heavy scene.
+- **2 neighbors: a quality trade.** It saves 2.8 ms (−9% of the frame), but flicker rises 21%,
+  slow-pan error 22% and light-recovery error 55%.
+- **Remaining cost:** without the MIS rays the passes still cost 4.2 ms, so per-neighbor work, not
+  rays, is the larger part. The ray-query compute variant costs the same (6.99 ms against 7.12;
+  `build/checks/restir-spatial/quick-query`), so the RT-pipeline raygen form is not the cause.
+  Each neighbor fetches its guides in a 32-texel radius and evaluates several target functions.
+
+### Spatial reuse profile (2026-11-15)
+
+**Result: the passes are latency-bound at low occupancy, and registers set the limit.** The scattered
+neighbor reads miss L1 and are the latency that low occupancy cannot hide.
+
+How it was captured:
+- **Tool:** `tools/profile_hybrid_gi.py --shader-profiler "Blackwell GB20x" --multi-pass-metrics`.
+- **Run:** 10 frames of the base setup, base clocks.
+- **Records:** `build/checks/restir-spatial/profile`; counters are in `BASE/GPUTRACE_REGIMES.xls`.
+
+| Counter, median of 10 frames | `ReSTIRSpatial0` | `HybridTrace` |
+|---|---:|---:|
+| SM throughput, % of peak | 34 | 35 |
+| L1 throughput | 32 | 27 |
+| L2 throughput | 64 | 47 |
+| RT core cycles | 38 | 39 |
+| Warps active (occupancy) | 31 | 30 |
+| Register file allocated | 95.6 | 88.5 |
+| L1 texture-load hit rate, % | 35 | 73 |
+| L2 hit rate, % | 88 | 85 |
+| Stalled on L1/texture latency, % of peak | 10.5 | 9.4 |
+| Stalled on RT core latency | 5.3 | 6.8 |
+| Local-memory (spill) traffic | none | present |
+
+- **No unit saturated:** SM, L1, RT cores and L2 all run below their peak.
+- **Occupancy:** about 130 registers per thread (62.7K allocated over about 15 active warps per SM)
+  limit the passes to roughly a third of the maximum warps. They do not spill.
+- **Memory:** neighbor reads within a 32-texel radius hit L1 only 35% of the time and keep L2 at
+  64%. Each neighbor fetches its depth, position, normals, roughness and identity from separate
+  textures, and the merge fetches them again.
+- **Cost levers that keep the estimator:** fewer live registers (one signal per dispatch, which
+  halves the neighbor arrays and per-signal state), and fewer or packed guide fetches per neighbor.
+  Both were then built; see the next two sections.
+
+### Per-signal spatial dispatch (2026-11-15)
+
+**Result: spatial reuse costs 0.86 ms less (−12%) with the same estimator.** Each dispatch now
+handles one signal, so it keeps only that signal's neighbors and result live. This answers the
+register-limited occupancy found by the profile.
+
+What changed:
+- **Programs:** `ReSTIRSpatialDiffuse` and `ReSTIRSpatialReflection`, each as a compute shader and an
+  RT-pipeline raygen (`restir_spatial_{diffuse,reflection}.{comp,rgen}`, define
+  `RESTIR_SPATIAL_SIGNAL`). They replace the combined `ReSTIRSpatial` programs.
+- **Passes:** each frame runs `ReSTIRSpatialDiffuse0`, `ReSTIRSpatialReflection0`,
+  `ReSTIRSpatialDiffuse1` and `ReSTIRSpatialReflection1`, in checkerboard order per signal.
+- **Unallocated signals:** a signal whose reservoirs are not allocated is not dispatched.
+- **Equivalence:** both signals already drew the same neighbors and random numbers, and each reads
+  and writes only its own reservoirs, so the split computes the same estimator.
+
+Measured:
+- **Image:** the pre-split reference timeline was replayed to frames 224 and 384
+  (`build/checks/restir-spatial/split-identity`). 0.4% and 1.2% of pixels differ, almost all by
+  one 8-bit level (99.99th percentile 1, maximum 9), with no mean shift. That is floating-point
+  rounding carried through temporal accumulation.
+- **Cost:** a cost-only Nsight capture (`build/checks/restir-spatial/split-cost`) against two
+  captures of the combined passes.
+
+| | Combined (two captures) | Split |
+|---|---:|---:|
+| Spatial reuse, all passes, ms | 7.10–7.12 | 6.25 |
+| Diffuse, per parity, ms | — | 1.43 / 1.44 |
+| Reflection, per parity, ms | — | 1.68 / 1.71 |
+| Frame, ms static | 33.42–33.52 | 32.87 |
+
+### Packed neighbor guides (2026-11-15)
+
+**Result: spatial reuse costs another 0.65 ms less (6.25 → 5.60 ms). Packing adds 0.09 ms to
+temporal reuse, so the net saving is about 0.56 ms.** Spatial reuse now reads each neighbor's
+receiver with one 32-byte load instead of six texture fetches scattered across the reuse radius.
+
+What changed:
+- **Writer:** `ReSTIRTemporal` stores its own texel's receiver in `GIReceiverGuides` (binding 20).
+  The record is the position bits, the encoded shading normal, the packed geometric normal, the
+  identity (0 without a receiver) and the roughness bits, all copied bit for bit.
+- **Readers:** spatial reuse reads its neighbors there for the compatibility test, the MIS
+  visibility rays and the merge. Each texel's own receiver still comes from the guide textures.
+- **Buffer:** `restir_receiver_guides` is transient, 32 bytes per GI texel (66 MB at 1920x1080 GI).
+  It lives from temporal reuse through the last spatial pass, and is write-only in temporal reuse
+  and read-only in spatial reuse.
+
+Measured:
+- **Image:** the reference timeline was replayed to frames 224 and 384
+  (`build/checks/restir-spatial/pack-identity`) and compared with the split build. 1.4% and 1.9% of
+  pixels differ, almost all by one 8-bit level (99.99th percentile 1, maximum 9), with no mean
+  shift. That is rounding from the recompiled shaders, not an estimator change.
+- **Cost:** a cost-only Nsight capture, `build/checks/restir-spatial/pack-cost`.
+
+| | Combined | Split | Split and packed |
+|---|---:|---:|---:|
+| Spatial reuse, all passes, ms | 7.12 | 6.25 | 5.60 |
+| Diffuse, per parity, ms | — | 1.43 / 1.44 | 1.28 / 1.29 |
+| Reflection, per parity, ms | — | 1.68 / 1.71 | 1.51 / 1.53 |
+| `ReSTIRTemporal`, ms | 0.54 | 0.54 | 0.63 |
+| Frame, ms static | 33.52 | 32.87 | 32.64 |
+
+- **Total:** since the profile, ReSTIR reuse costs 1.43 ms less (spatial −1.52 ms, temporal
+  +0.09 ms), with the same estimator.

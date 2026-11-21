@@ -93,7 +93,10 @@ void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline*        
     {
         const VkPipelineBindPoint bindPoint = pipeline->GetVkPipelineBindPoint();
 
-        BoundPipelineState& state           = m_boundStates[bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0 : 1];
+        const uint32_t      stateIndex      = bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0
+                                            : bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE  ? 1
+                                                                                           : 2;
+        BoundPipelineState& state           = m_boundStates[stateIndex];
 
         if (state.pipeline != pipeline->GetVkPipeline())
         {
@@ -1457,31 +1460,31 @@ bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
     return ready;
 }
 
-VulkanComputeState::VulkanComputeState()
+VulkanDispatchState::VulkanDispatchState()
 {
     m_pDescriptorSetState = ZEN_NEW() VulkanDescriptorSetState();
 }
 
-VulkanComputeState::~VulkanComputeState()
+VulkanDispatchState::~VulkanDispatchState()
 {
     ZEN_DELETE(m_pDescriptorSetState);
 
     m_pDescriptorSetState = nullptr;
 }
 
-void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
+void VulkanDispatchState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
 
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-bool VulkanComputeState::SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch, uint64_t transaction)
+bool VulkanDispatchState::SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch, uint64_t transaction)
 {
     return m_pCurrentPipeline != nullptr && m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch, transaction);
 }
 
-bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
+bool VulkanDispatchState::PreDispatch(FVulkanCommandListContext* pContext)
 {
     bool      ready = m_pCurrentPipeline != nullptr && pContext->EnsureRecording();
     RHIStatus preparation{MakeRHIError(RHIErrorCode::eInvalidArgument, "Prepare shader descriptors", __FILE__, __LINE__)};
@@ -1515,15 +1518,18 @@ FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType conte
     m_contextType(contextType),
     m_pDevice(pDevice)
 {
-    m_pGfxState     = ZEN_NEW() VulkanGfxState();
+    m_pGfxState        = ZEN_NEW() VulkanGfxState();
 
-    m_pComputeState = ZEN_NEW() VulkanComputeState();
+    m_pComputeState    = ZEN_NEW() VulkanDispatchState();
+    m_pRayTracingState = ZEN_NEW() VulkanDispatchState();
 
     BindRecordingError(&GetRecordingError());
 }
 
 FVulkanCommandListContext::~FVulkanCommandListContext()
 {
+    ZEN_DELETE(m_pRayTracingState);
+    m_pRayTracingState = nullptr;
     ZEN_DELETE(m_pComputeState);
 
     m_pComputeState = nullptr;
@@ -1554,6 +1560,7 @@ void FVulkanCommandListContext::ResetShaderBindings()
     m_pGfxState->ClearVertexBuffers();
 
     m_pComputeState->SetPipelineState(nullptr);
+    m_pRayTracingState->SetPipelineState(nullptr);
 }
 
 RHICommandContextType FVulkanCommandListContext::GetContextType()
@@ -1840,6 +1847,10 @@ void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
         {
             m_pComputeState->SetPipelineState(pPipeline);
         }
+        else if (pVkPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
+        {
+            m_pRayTracingState->SetPipelineState(pPipeline);
+        }
         else
         {
             m_pGfxState->SetPipelineState(pPipeline);
@@ -1886,9 +1897,19 @@ void FVulkanCommandListContext::RHISetShaderParameters(RHIShaderParameterView pa
     {
         const uint64_t transaction = GetRecordingTransaction();
 
-        ready                      = m_pCurrentPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE
-                                       ? m_pComputeState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction)
-                                       : m_pGfxState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction);
+        switch (m_pCurrentPipeline->GetVkPipelineBindPoint())
+        {
+            case VK_PIPELINE_BIND_POINT_COMPUTE:
+                ready = m_pComputeState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction);
+                break;
+            case VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR:
+                ready = m_pRayTracingState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction);
+                break;
+            case VK_PIPELINE_BIND_POINT_GRAPHICS:
+                ready = m_pGfxState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction);
+                break;
+            default: break;
+        }
     }
 
     if (!ready)
@@ -1993,6 +2014,65 @@ void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, 
         GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().dispatches);
 
         vkCmdDispatchIndirect(GetCommandBuffer()->GetVkHandle(), pVkBuffer->GetVkBuffer(), offset);
+    }
+}
+
+bool FVulkanCommandListContext::PrepareTraceRays()
+{
+    const VkQueueFamilyProperties& queue = m_pDevice->GetQueueFamilyProperties(GetQueue()->GetFamilyIndex());
+    bool ready = GVulkanRHI->QueryGPUInfo().rayTracing.IsUsable() && (queue.queueFlags & VK_QUEUE_COMPUTE_BIT) != 0
+              && m_pCurrentPipeline != nullptr && m_pCurrentPipeline->GetType() == RHIPipelineType::eRayTracing
+              && EnsureRecording() && GetCommandBuffer()->IsOutsideRenderPass();
+    if (ready)
+    {
+        ready = m_pRayTracingState->PreDispatch(this);
+    }
+    else
+    {
+        LatchError(
+            MakeRHIError(RHIErrorCode::eInvalidArgument, "Trace rays pipeline/queue/rendering state", __FILE__, __LINE__));
+    }
+    return ready;
+}
+
+void FVulkanCommandListContext::RHITraceRays(uint32_t width, uint32_t height, uint32_t depth)
+{
+    const bool valid = GVulkanRHI->QueryGPUInfo().IsTraceRaysWithinLimits(width, height, depth) && vkCmdTraceRaysKHR != nullptr;
+    if (!valid)
+    {
+        LatchError(MakeRHIError(RHIErrorCode::eInvalidArgument, "Trace rays launch dimensions", __FILE__, __LINE__));
+    }
+    else if (PrepareTraceRays())
+    {
+        const std::array<VkStridedDeviceAddressRegionKHR, RHIShaderBindingTableLayout::Count>& table =
+            m_pCurrentPipeline->GetShaderBindingTable();
+        vkCmdTraceRaysKHR(GetCommandBuffer()->GetVkHandle(), &table[0], &table[1], &table[2], &table[3], width, height, depth);
+        RHIExecutionCounterStorage& counters = GVulkanRHI->GetExecutionCounterStorage();
+        counters.Increment(counters.rayTraces);
+    }
+}
+
+void FVulkanCommandListContext::RHITraceRaysIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)
+{
+    const bool valid = GVulkanRHI->QueryGPUInfo().rayTracing.indirect && vkCmdTraceRaysIndirectKHR != nullptr
+                    && pIndirectBuffer != nullptr && pIndirectBuffer->GetResourceType() == RHIResourceType::eBuffer
+                    && pIndirectBuffer->GetUsageFlags().HasFlag(RHIBufferUsageFlagBits::eIndirectBuffer)
+                    && pIndirectBuffer->GetDeviceAddress() != 0 && offset % 4 == 0
+                    && offset <= pIndirectBuffer->GetRequiredSize()
+                    && sizeof(VkTraceRaysIndirectCommandKHR) <= pIndirectBuffer->GetRequiredSize() - offset
+                    && (pIndirectBuffer->GetDeviceAddress() + offset) % 4 == 0;
+    if (!valid)
+    {
+        LatchError(MakeRHIError(RHIErrorCode::eInvalidArgument, "Trace rays indirect buffer/capability", __FILE__, __LINE__));
+    }
+    else if (PrepareTraceRays())
+    {
+        const std::array<VkStridedDeviceAddressRegionKHR, RHIShaderBindingTableLayout::Count>& table =
+            m_pCurrentPipeline->GetShaderBindingTable();
+        vkCmdTraceRaysIndirectKHR(GetCommandBuffer()->GetVkHandle(), &table[0], &table[1], &table[2], &table[3],
+                                  pIndirectBuffer->GetDeviceAddress() + offset);
+        RHIExecutionCounterStorage& counters = GVulkanRHI->GetExecutionCounterStorage();
+        counters.Increment(counters.rayTraces);
     }
 }
 

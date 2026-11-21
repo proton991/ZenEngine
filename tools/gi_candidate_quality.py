@@ -2,8 +2,7 @@
 
 The reference is the four-ray quality reference of `gi_matched_quality.py` (a high-sample,
 unfiltered ZenApp reference); its images are read from --reference-dataset and never recaptured.
-The candidate is an isolated environment-off buffered trace module (--module), or nothing for the
-same-build control. Phases:
+The candidate is the supplied ZenApp build. Phases:
 
 - static: five views at quarter and half GI, frame 256, against the reference means;
 - motion: the eight-pose orbit/dolly of the matched protocol, each pose against its own settled preset;
@@ -11,7 +10,7 @@ same-build control. Phases:
 - noise: the 4K noise-protocol term means (ground-truth batch of the center view, normal maps off).
 
 Use build/venv/Scripts/python.exe. Every capture runs with Vulkan validation and records its
-executable, setup, module and exact arguments (gi_matched_quality.capture).
+executable, setup and exact arguments (gi_matched_quality.capture).
 """
 import argparse
 import copy
@@ -47,7 +46,7 @@ def static(args, views):
         reference = reference_mean(args, name)
         for resolution in ('quarter', 'half'):
             folder = args.output / 'static' / name / resolution
-            capture(args, folder, preset(setup, resolution), 240, 256, keep=[256], module=args.module)
+            capture(args, folder, preset(setup, resolution), 240, 256, keep=[256])
             row = dict(view=name, preset=resolution, frame_256=metrics(image(folder / 'frame-256.png'), reference, mask))
             rows.append(row)
             print(name, resolution, f"relative RMS {row['frame_256']['relative_rms_percent']:.3f}%",
@@ -75,12 +74,12 @@ def motion(args, setup):
     for resolution in ('quarter', 'half'):
         folder = args.output / 'motion' / resolution
         moving = preset(setup, resolution)
-        capture(args, folder / 'moving', moving, 161, 168, path=path, module=args.module)
+        capture(args, folder / 'moving', moving, 161, 168, path=path)
         rows = []
         for key in keys[2:]:
             still = copy.deepcopy(moving)
             still['camera'].update(eye=key['eye'], target=key['target'])
-            capture(args, folder / f"still-{key['frame']}", still, 240, 256, keep=[240, 256], module=args.module)
+            capture(args, folder / f"still-{key['frame']}", still, 240, 256, keep=[240, 256])
             rows.append(metrics(image(folder / 'moving' / f"frame-{key['frame']}.png"),
                                 image(folder / f"still-{key['frame']}" / 'frame-256.png')))
         reports[resolution] = {name: float(np.mean([row[name] for row in rows])) for name in rows[0]}
@@ -96,8 +95,7 @@ def sparks(args, setup):
         reports[resolution] = {}
         for camera in ('moving', 'static'):
             folder = args.output / 'sparks' / resolution / camera
-            capture(args, folder, configured, 129, 144, path=camera_path(configured, camera, 128, 16, .5),
-                    module=args.module)
+            capture(args, folder, configured, 129, 144, path=camera_path(configured, camera, 128, 16, .5))
             values = np.stack([np.asarray(Image.open(folder / f'frame-{frame}.png'), dtype=np.int16)
                                for frame in range(129, 145)])
             rows, pixels = find_sparks(values, 48)
@@ -131,8 +129,7 @@ def noise(args, setup):
         D_direct=1.0, D_sky=1.0, D_bounce=1.0))]))
     run = output / 'run'
     if not (run / 'view.json').exists():
-        extra = [f'--hybrid-trace-buffered-module={args.module.resolve()}'] if args.module else []
-        zenapp(args, ['--ground-truth=' + str(dataset), '--output=' + str(run), '--frames=256', *extra],
+        zenapp(args, ['--ground-truth=' + str(dataset), '--output=' + str(run), '--frames=256'],
                output / 'zenapp.log')
     lighting = np.memmap(run / 'view.lighting.bin', '<f4', mode='r', shape=(height, width, 10, 4))
     valid = lighting[:, :, 0, 3] > 0
@@ -153,8 +150,7 @@ def main(args):
     views = configurations(args)
     report_path = args.output / 'report.json'
     report = read_json(report_path) if report_path.exists() else {}
-    report.update(executable_sha256=digest(args.executable), module=str(args.module) if args.module else None,
-                  module_sha256=digest(args.module) if args.module else None,
+    report.update(executable_sha256=digest(args.executable),
                   reference_dataset=str(args.reference_dataset), setup_sha256=digest(args.setup),
                   half_setup_sha256=digest(args.half_setup), tool_sha256=digest(__file__))
     phases = args.phase or ['static', 'motion', 'sparks', 'noise']
@@ -177,7 +173,6 @@ if __name__ == '__main__':
     parser.add_argument('--half-setup', type=Path, required=True)
     parser.add_argument('--reference-dataset', type=Path, required=True)
     parser.add_argument('--reference-mask', type=Path, required=True)
-    parser.add_argument('--module', type=Path, help='Environment-off buffered candidate module; omit for the control')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--cameras', type=Path, default=Path('E:/Dev/ZenGroundTruth/newsponza/v3'))
     parser.add_argument('--executable', type=Path, default=DEFAULT_EXE)

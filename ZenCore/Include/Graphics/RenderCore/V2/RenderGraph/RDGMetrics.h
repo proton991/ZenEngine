@@ -208,42 +208,42 @@ struct RDGSubmissionMetrics
 
 struct RDGMetricsSnapshot
 {
-    NameID                  graph;
-    bool                    sceneDispatch{false};
-    uint64_t                execution{0};
-    uint64_t                frameIndex{UINT64_MAX}; // Application frame identity; UINT64_MAX denotes startup/unset.
-    uint64_t                windowExecutions{0};
-    uint64_t                windowNodes{0};
-    bool                    transferOnly{false};
-    bool                    precompiled{false}; // Graph was compiled before this execution's preparation began.
-    bool                    validated{false};
-    bool                    nodeTimingsEnabled{false}; // Captured configuration; false means unmeasured, not zero.
-    bool                    gpuTimingsEnabled{false};
-    uint32_t                resources{0};
-    uint32_t                importedResources{0};
-    uint32_t                transientResources{0};
-    uint32_t                dependencyEdges{0};
-    uint32_t                culledPasses{0};
-    uint32_t                reusedAllocations{0};
-    uint32_t                plannedGroups{0};
-    bool                    plannedMultipleQueues{false};
-    bool                    allowsAllocationReuse{true};
-    uint64_t                assignedTransientBytes{0};
-    uint64_t                availableTransientBytes{0};
-    uint64_t                retiringTransientBytes{0};
-    uint64_t                poolHits{0}; // Cumulative over the graph's lifetime, including this preparation.
-    uint64_t                poolMisses{0};
-    uint64_t                poolEvictions{0};
-    uint32_t                dependencyHazards{0};
-    uint32_t                reorderedNodes{0};
-    uint32_t                nodeCount{0};
-    std::array<uint32_t, 4> passCounts{};
-    RDGNodeMetrics          totals;
-    double                  compileCPUUs{0};      // All preparation/refresh work for this execution, excluding uploads.
-    uint32_t                preparationPasses{0}; // Full compile/barrier passes, including state refreshes.
-    RDGPassCompileTimings   passCompileTimings;
-    double                  executeCPUUs{0};    // Includes sampled diagnostics; excludes formatting and sink I/O.
-    double                  submissionCPUUs{0}; // CPU handoff/backpressure, not GPU work or completion time.
+    NameID   graph;
+    bool     sceneDispatch{false};
+    uint64_t execution{0};
+    uint64_t frameIndex{UINT64_MAX}; // Application frame identity; UINT64_MAX denotes startup/unset.
+    uint64_t windowExecutions{0};
+    uint64_t windowNodes{0};
+    bool     transferOnly{false};
+    bool     precompiled{false}; // Graph was compiled before this execution's preparation began.
+    bool     validated{false};
+    bool     nodeTimingsEnabled{false}; // Captured configuration; false means unmeasured, not zero.
+    bool     gpuTimingsEnabled{false};
+    uint32_t resources{0};
+    uint32_t importedResources{0};
+    uint32_t transientResources{0};
+    uint32_t dependencyEdges{0};
+    uint32_t culledPasses{0};
+    uint32_t reusedAllocations{0};
+    uint32_t plannedGroups{0};
+    bool     plannedMultipleQueues{false};
+    bool     allowsAllocationReuse{true};
+    uint64_t assignedTransientBytes{0};
+    uint64_t availableTransientBytes{0};
+    uint64_t retiringTransientBytes{0};
+    uint64_t poolHits{0}; // Cumulative over the graph's lifetime, including this preparation.
+    uint64_t poolMisses{0};
+    uint64_t poolEvictions{0};
+    uint32_t dependencyHazards{0};
+    uint32_t reorderedNodes{0};
+    uint32_t nodeCount{0};
+    std::array<uint32_t, ToUnderlying(RDGNodeType::eMax)> passCounts{};
+    RDGNodeMetrics                                        totals;
+    double                compileCPUUs{0};      // All preparation/refresh work for this execution, excluding uploads.
+    uint32_t              preparationPasses{0}; // Full compile/barrier passes, including state refreshes.
+    RDGPassCompileTimings passCompileTimings;
+    double                executeCPUUs{0};    // Includes sampled diagnostics; excludes formatting and sink I/O.
+    double                submissionCPUUs{0}; // CPU handoff/backpressure, not GPU work or completion time.
     std::array<uint32_t, static_cast<size_t>(RDGMetricIssue::eCount)> issues{};
     uint32_t                                                          omittedNodes{0};
     uint32_t                                                          omittedDiagnostics{0};

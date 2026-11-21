@@ -27,7 +27,9 @@ enum class DebugOutput : uint32_t
     eGIHistoryLength,
     eGIHitMiss,
     eGIRejection,
-    eGIFallback
+    eGIFallback,
+    eGIValidation,
+    eGICache
 };
 
 enum class LightOrigin : uint32_t

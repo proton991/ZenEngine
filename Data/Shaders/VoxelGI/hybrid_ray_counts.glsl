@@ -7,6 +7,11 @@
 uvec4 issuedComputeRays = uvec4(0), issuedHardwareRays = uvec4(0);
 uvec4 issuedFieldWork    = uvec4(0);
 uvec4 hardwareCandidates = uvec4(0);
+uvec4 traceBreakdown     = uvec4(0); // GI, hit light, hit sky, reflection.
+uint  issuedRayPurpose   = 0u;
 uint  issuedRayFeature   = 0u;
+#    ifdef HYBRID_RADIANCE_CACHE
+uvec2 cacheTraceCounts = uvec2(0);
+#    endif
 #endif
 #endif

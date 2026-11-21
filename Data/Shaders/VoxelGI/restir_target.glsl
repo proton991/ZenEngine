@@ -5,6 +5,8 @@ layout(set = 1, binding = 39) uniform sampler2D restirLobeIntegral;
 layout(std140, set = 1, binding = 43) uniform uReSTIRData
 {
     uvec4 restirOptions;
+    // x: spatial neighbors per signal (1..4); y: trace visibility for the pairwise MIS weights.
+    uvec4 restirSpatial;
 };
 // The existing reflection signal is the average Lo under the normalized GGX lobe.
 // Its split-sum material factor is applied later by deferred lighting.

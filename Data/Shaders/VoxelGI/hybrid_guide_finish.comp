@@ -1,30 +1,28 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
-#define HYBRID_GUIDE_FINISH
+#define HYBRID_RAY_PIPELINE
+#include "gi_common.glsl"
 #include "hybrid_uniforms.glsl"
-#include "hybrid_guide_history.glsl"
+#include "environment_sampling.glsl"
+#include "hybrid_guide_storage.glsl"
 layout(local_size_x = 16, local_size_y = 16) in;
-const uint TRACE_THREADS = 256u;
-void       main()
+void main()
 {
-    uint  lane      = gl_LocalInvocationIndex;
-    uint  base      = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * (ZEN_HYBRID_GUIDE_TILES + 1u);
-    bool  valid     = hybrid.provider.y != 0u;
-    float frames    = valid ? guidePrevious[base + ZEN_HYBRID_GUIDE_TILES] : 0.0;
+    uint lane       = gl_LocalInvocationIndex;
+    guideBase       = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * (ZEN_HYBRID_GUIDE_TILES + 1u);
+    guideValid      = hybrid.provider.y != 0u;
+    float frames    = guideValid ? guidePrevious[guideBase + ZEN_HYBRID_GUIDE_TILES] : 0.0;
     float alpha     = 1.0 / min(frames + 1.0, HYBRID_GUIDE_FRAMES);
-    uint  receivers = guideAccumulation[base + ZEN_HYBRID_GUIDE_TILES];
-    for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
+    uint  receivers = guideSumWords[(guideBase + ZEN_HYBRID_GUIDE_TILES) * HYBRID_GUIDE_WORDS];
+    for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += 256u)
     {
-        float sum                   = uintBitsToFloat(guideAccumulation[base + t]);
-        float learned               = receivers > 0u ? sum / float(receivers) : 0.0;
-        float previous              = valid ? guidePrevious[base + t] : 0.0;
-        guideAccumulation[base + t] = floatBitsToUint(mix(previous, learned, alpha));
+        float sum      = HYBRID_EXACT_GUIDE ? GuideSumValue(guideBase + t) : uintBitsToFloat(guideSumWords[guideBase + t]);
+        float learned  = receivers > 0u ? sum / float(receivers) : 0.0;
+        float previous = guideValid ? guidePrevious[guideBase + t] : 0.0;
+        guideNext[guideBase + t] = mix(previous, learned, alpha);
     }
-    // All lanes must load the receiver count before lane zero overwrites it with the frame count.
-    memoryBarrierBuffer();
-    barrier();
     if (lane == 0u)
     {
-        guideAccumulation[base + ZEN_HYBRID_GUIDE_TILES] = floatBitsToUint(min(frames + 1.0, HYBRID_GUIDE_FRAMES));
+        guideNext[guideBase + ZEN_HYBRID_GUIDE_TILES] = min(frames + 1.0, HYBRID_GUIDE_FRAMES);
     }
 }

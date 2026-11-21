@@ -17,4 +17,7 @@ void main()
     uint            index = gl_GlobalInvocationID.x;
     HybridRayResult hit   = HardwareTraceRay(vec3(float(index) * 2.0, 0, 0.25), vec3(0, 0, -1), 1.0, true);
     values[index]         = hit.hit ? vec4(HardwareHitRadiance(hit, HybridHash(index)), float(hit.triangle.z)) : vec4(-1);
+    vec3 origin           = vec3(float(index) * 2.0, 0, 0.25);
+    values[index + 2u]    = vec4(HardwareOccluded(origin, vec3(0, 0, -1), 1.0), HardwareOccluded(origin, vec3(0, 0, 1), 1e20),
+                                 HardwareOccluded(origin, vec3(1, 0, 0), 1e20), 1);
 }

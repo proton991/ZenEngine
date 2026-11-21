@@ -210,8 +210,11 @@ def sky(mi, dr, scene, proposal, radiance, points, ng, ns, samples, batch, seed)
     return split.mean(0), split
 
 
-def bounce(mi, dr, scene, materials, environment, points, ng, ns, lights, samples, batch, seed, proposal=None):
+def bounce(mi, dr, scene, materials, environment, points, ng, ns, lights, samples, batch, seed, proposal=None,
+           max_bounces=1, sample_lights=True):
     check_split_samples(samples, batch)
+    if max_bounces < 1:
+        raise ValueError('max_bounces must be positive')
     count, lanes = len(points), len(points)*batch
     def vector(kind, values):
         return kind(*[mi.Float(np.repeat(values[:, i], batch).astype(np.float32)) for i in range(3)])
@@ -229,10 +232,29 @@ def bounce(mi, dr, scene, materials, environment, points, ng, ns, lights, sample
         normal = dr.select(valid, dr.select(facing, hit.n, -hit.n), mi.Normal3f(0, 1, 0))
         smooth = dr.select(valid, dr.select(facing, hit.sh_frame.n, -hit.sh_frame.n), mi.Normal3f(0, 1, 0))
         position = dr.select(valid, hit.p, mi.Point3f(0))
-        value = direct(mi, dr, scene, position, normal, smooth, lights, valid, sampler.next_1d())
+        value = direct(mi, dr, scene, position, normal, smooth, lights, valid, sampler.next_1d() if sample_lights else None)
         if proposal is not None:
             value += environment_sample(mi, dr, scene, proposal, environment, position, normal, smooth, sampler, valid)
-        halves[index % 2] += dr.select(valid, value*materials.eval(hit, valid), 0)
+        throughput = dr.select(valid, materials.eval(hit, valid), 0)
+        accumulated = dr.select(valid, value*throughput, 0)
+        # Every vertex estimates its own direct light and escaped environment. A continuation
+        # miss adds nothing: counting its environment again would double that term.
+        for depth in range(1, max_bounces):
+            incoming = mi.Frame3f(smooth).to_world(mi.warp.square_to_cosine_hemisphere(sampler.next_2d()))
+            hit = closest(mi, dr, scene, offset(mi, dr, position, normal, incoming),
+                          valid & (dr.dot(normal, incoming) > 0))
+            valid &= hit.is_valid()
+            facing = dr.dot(hit.n, incoming) < 0
+            normal = dr.select(valid, dr.select(facing, hit.n, -hit.n), mi.Normal3f(0, 1, 0))
+            smooth = dr.select(valid, dr.select(facing, hit.sh_frame.n, -hit.sh_frame.n), mi.Normal3f(0, 1, 0))
+            position = dr.select(valid, hit.p, mi.Point3f(0))
+            value = direct(mi, dr, scene, position, normal, smooth, lights, valid, sampler.next_1d() if sample_lights else None)
+            if proposal is not None:
+                value += environment_sample(mi, dr, scene, proposal, environment, position, normal, smooth, sampler, valid)
+            throughput *= dr.select(valid, materials.eval(hit, valid), 0)
+            accumulated += dr.select(valid, value*throughput, 0)
+            dr.eval(accumulated, throughput, position, normal, smooth, valid)
+        halves[index % 2] += accumulated
         dr.eval(halves[index % 2])
     split = np.stack([np.array(value).T.reshape(count, batch, 3).mean(1)/(passes//2) for value in halves])
     return split.mean(0), split

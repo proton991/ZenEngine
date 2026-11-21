@@ -417,6 +417,15 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport, RDGDeb
     return result;
 }
 
+bool RenderDevice::PrecacheFrameGraph()
+{
+    // Reuse the pipeline cache and frame resource pool without recording or submitting scene commands.
+    const bool prepared = m_rdgExecutor.Prepare(m_frameRDG.Get());
+    const bool reset    = m_frameRDG->Reset();
+    m_rdgPassCompiler.SetRenderGraph(nullptr);
+    return prepared && reset;
+}
+
 void RenderDevice::PrepareFrame(RHIViewport* presentation)
 {
     PollFrameSubmissions(false);
@@ -1060,7 +1069,7 @@ void RenderDevice::LogTransferSubmission(const RenderGraph& graph, RHICommandCon
     }
     else if (queue == RHICommandContextType::eGraphics && !m_loggedGraphicsTransferSubmission
              && !graph.m_compiledXferPasses.empty() && graph.m_compiledGfxPasses.empty()
-             && graph.m_compiledComputePasses.empty())
+             && graph.m_compiledDispatchPasses.empty())
     {
         LOGI("Upload/transfer in use: graphics queue fallback; first submission serial={}", serial);
 
@@ -1518,9 +1527,27 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader)
 
 RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader, bool timed)
 {
+    RHIComputePipelineCreateInfo info{};
+    info.pShader = shader;
+    return GetOrCreateDispatchPipeline(info, timed);
+}
+
+RHIPipeline* RenderDevice::GetOrCreateRayTracingPipeline(const RHIRayTracingPipelineCreateInfo& info)
+{
+    const RDGMetricsOptions& options = GetRDGMetrics().GetOptions();
+    return GetOrCreateRayTracingPipeline(info, options.logging.enabled && options.preparationTimings);
+}
+
+RHIPipeline* RenderDevice::GetOrCreateRayTracingPipeline(const RHIRayTracingPipelineCreateInfo& info, bool timed)
+{
+    return GetOrCreateDispatchPipeline(info, timed);
+}
+
+template <typename CreateInfo> RHIPipeline* RenderDevice::GetOrCreateDispatchPipeline(const CreateInfo& info, bool timed)
+{
     RHIPipeline* result{};
 
-    if (shader != nullptr)
+    if (info.pShader != nullptr)
     {
         ++m_pipelineMetrics.requests;
 
@@ -1528,7 +1555,15 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader, bool ti
 
         ScopedMetricsTimer keyTimer(timed, m_pipelineMetrics.keyCPUUs);
 
-        PipelineKey key = MakePipelineKey(shader);
+        PipelineKey key;
+        if constexpr (std::is_same_v<CreateInfo, RHIComputePipelineCreateInfo>)
+        {
+            key = MakePipelineKey(info.pShader);
+        }
+        else
+        {
+            key = MakePipelineKey(info);
+        }
 
         keyTimer.Stop();
 
@@ -1555,10 +1590,6 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader, bool ti
             ++m_pipelineMetrics.misses;
 
             ScopedMetricsTimer creationTimer(timed, m_pipelineMetrics.creationCPUUs);
-
-            RHIComputePipelineCreateInfo info{};
-
-            info.pShader          = shader;
 
             RHIPipeline* pipeline = GDynamicRHI->CreatePipeline(info);
 
@@ -2180,6 +2211,23 @@ void RenderDevice::PipelineKey::AddAttachment(const RHIRenderTarget& target)
     Add(target.numSamples);
 
     Add(int64_t(target.GetAspects()));
+}
+
+RenderDevice::PipelineKey RenderDevice::MakePipelineKey(const RHIRayTracingPipelineCreateInfo& info)
+{
+    PipelineKey key;
+    key.Add(RHIPipelineType::eRayTracing);
+    key.Add(info.pShader->GetStableId());
+    key.Add(info.maxRecursionDepth);
+    key.Add(uint64_t(info.groups.size()));
+    for (const RHIRayTracingShaderGroup& group : info.groups)
+    {
+        key.Add(group.type);
+        key.Add(group.generalShader);
+        key.Add(group.closestHitShader);
+        key.Add(group.anyHitShader);
+    }
+    return key;
 }
 
 RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader*                                             shader,

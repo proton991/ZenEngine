@@ -16,6 +16,8 @@ public:
 
     void BuildRenderGraph(const RenderView& view);
 
+    bool PrepareEnvironment(const EnvTexture& environment);
+
     // Restore one-time work when the frame is rejected before submission.
     void OnRenderGraphExecuted(RenderFrameResult result);
 
@@ -37,6 +39,8 @@ private:
         PREFILTERED_MAP = 1,
 
     };
+
+    void RecordPendingEnvironment(RenderGraph& graph, const EnvTexture& environment);
 
     void PrepareTextures();
 

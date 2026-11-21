@@ -318,11 +318,12 @@ struct RDGContentAccess
 
 enum class RDGNodeType : uint32_t
 {
-    eNone         = 0,
-    eGraphicsPass = 1,
-    eComputePass  = 2,
-    eTransferPass = 3,
-    eMax          = 4
+    eNone           = 0,
+    eGraphicsPass   = 1,
+    eComputePass    = 2,
+    eTransferPass   = 3,
+    eRayTracingPass = 4,
+    eMax            = 5
 };
 
 enum class RDGQueuePreference : uint8_t

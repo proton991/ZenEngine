@@ -1,6 +1,7 @@
 #pragma once
 #include <bit>
 #include "RHICommon.h"
+#include "RHIRayTracing.h"
 #include "Templates/NameID.h"
 #include "Utils/RefCountPtr.h"
 #include "Utils/Helpers.h"
@@ -161,51 +162,96 @@ template <class T> using RHIResourcePtr = RefCountPtr<T, RHIResourceRefCountPoli
 class RHIShaderGroupSPIRV : public RefCounted
 {
 public:
+    struct Module
+    {
+        RHIShaderStage      stage{RHIShaderStage::eMax};
+        HeapVector<uint8_t> code;
+    };
+
     RHIShaderGroupSPIRV() = default;
 
     ~RHIShaderGroupSPIRV() {}
 
     void SetStageFlags(int64_t flags)
     {
-        m_stageFlags = flags;
-        m_stageCount = std::popcount(static_cast<uint32_t>(flags));
+        for (auto module = m_modules.begin(); module != m_modules.end();)
+        {
+            if ((flags & (int64_t(1) << ToUnderlying(module->stage))) == 0)
+            {
+                module = m_modules.erase(module);
+            }
+            else
+            {
+                ++module;
+            }
+        }
+        for (uint32_t stage = 0; stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
+        {
+            if ((flags & (int64_t(1) << stage)) != 0 && !HasShaderStage(static_cast<RHIShaderStage>(stage)))
+            {
+                m_modules.push_back({static_cast<RHIShaderStage>(stage), {}});
+            }
+        }
     }
 
     void SetStageSPIRV(RHIShaderStage stage, HeapVector<uint8_t>&& source)
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        if (!HasShaderStage(stage))
+        const uint32_t index = FindStage(stage);
+        if (index == m_modules.size())
         {
-            ++m_stageCount;
+            AppendStageSPIRV(stage, std::move(source));
         }
+        else
+        {
+            m_modules[index].code = std::move(source);
+        }
+    }
 
-        m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
-        m_spirv[static_cast<uint32_t>(stage)] = std::move(source);
+    // RT groups index this ordered module list; multiple miss/hit shaders keep distinct indices.
+    uint32_t AppendStageSPIRV(RHIShaderStage stage, HeapVector<uint8_t>&& source)
+    {
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
+        const uint32_t index = static_cast<uint32_t>(m_modules.size());
+        m_modules.push_back({stage, std::move(source)});
+        return index;
+    }
+
+    const HeapVector<Module>& GetModules() const
+    {
+        return m_modules;
     }
 
     const HeapVector<uint8_t>& GetStageSPIRV(RHIShaderStage stage) const
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        return m_spirv[ToUnderlying(stage)];
+        const uint32_t index = FindStage(stage);
+        VERIFY_EXPR(index < m_modules.size());
+        return m_modules[index].code;
     }
 
     bool HasShaderStage(RHIShaderStage stage) const
     {
-        return m_stageFlags.HasFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
+        return FindStage(stage) < m_modules.size();
     }
 
     uint32_t GetStageCount() const
     {
-        return m_stageCount;
+        return static_cast<uint32_t>(m_modules.size());
     }
 
 private:
-    // shader flags
-    BitField<RHIShaderStageFlagBits> m_stageFlags;
-    uint32_t                         m_stageCount{0};
+    uint32_t FindStage(RHIShaderStage stage) const
+    {
+        uint32_t index = 0;
+        while (index < m_modules.size() && m_modules[index].stage != stage)
+        {
+            ++index;
+        }
+        return index;
+    }
 
-    // spirv code
-    HeapVector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
+    HeapVector<Module> m_modules;
 };
 
 using RHIShaderGroupSPIRVPtr = RefCountPtr<RHIShaderGroupSPIRV>;
@@ -662,6 +708,11 @@ public:
         return &m_SRDTable;
     }
 
+    const RHIShaderGroupSPIRV& GetModules() const
+    {
+        return *m_shaderGroupSPIRV;
+    }
+
     uint32_t GetPushConstantSize() const
     {
         return m_reflection.has_value() ? m_reflection->pushConstants.size : 0;
@@ -714,6 +765,14 @@ protected:
         if (!createInfo.spirv)
         {
             m_shaderGroupSPIRV->SetStageFlags(m_shaderStageFlags);
+        }
+        else
+        {
+            m_shaderStageFlags = {};
+            for (const RHIShaderGroupSPIRV::Module& module : m_shaderGroupSPIRV->GetModules())
+            {
+                m_shaderStageFlags.SetFlag(RHIShaderStageToFlagBits(module.stage));
+            }
         }
     }
 
@@ -901,6 +960,11 @@ public:
         return m_pShader;
     }
 
+    RHIPipelineType GetType() const
+    {
+        return m_type;
+    }
+
 protected:
     RHIPipeline(const RHIGfxPipelineCreateInfo& createInfo) :
         RHIResource(RHIResourceType::ePipeline),
@@ -913,6 +977,12 @@ protected:
 
     RHIPipeline(const RHIComputePipelineCreateInfo& createInfo) :
         RHIResource(RHIResourceType::ePipeline), m_type(RHIPipelineType::eCompute), m_pShader(createInfo.pShader)
+    {
+        m_pShader->AddReference();
+    }
+
+    RHIPipeline(const RHIRayTracingPipelineCreateInfo& createInfo) :
+        RHIResource(RHIResourceType::ePipeline), m_type(RHIPipelineType::eRayTracing), m_pShader(createInfo.pShader)
     {
         m_pShader->AddReference();
     }
@@ -949,5 +1019,10 @@ public:
     virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
 
     virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)     = 0;
+
+    virtual RHIPipeline* CreatePipeline(const RHIRayTracingPipelineCreateInfo& createInfo)
+    {
+        return nullptr;
+    }
 };
 } // namespace zen

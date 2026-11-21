@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define GI_CACHE_KEY64
+#define HYBRID_FIELD_TRAVERSAL
+#include "glossy_reflection_trace.glsl"

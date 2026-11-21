@@ -25,6 +25,7 @@ struct RuntimeOptions
     LightPath                    lightKeys;
     uint64_t                     frames{0};
     uint64_t                     captureStart{0};
+    HeapVector<uint64_t>         captureFrames; // Sorted and unique; writes <capture>.frame-N.ppm at only these frames.
     std::string                  capture;
     std::string                  profile;
     std::string                  logPath;
@@ -34,13 +35,10 @@ struct RuntimeOptions
     bool                         noUI{false};
     bool                         gpuMarkers{false};
     bool                         pipelineStatistics{false};
-    std::string                  hybridTraceModule;
-    bool                         hybridTraceBufferedModule{false};
     bool                         hybridHitStream{false};
     bool                         hybridRayCounts{false};
-    std::string                  hybridTraceOverrideProgram;
-    std::string                  hybridTraceOverrideModule;
     bool                         disableRT{false};
+    uint64_t                     deviceMemoryLimitMB{0}; // Zero uses the device's own heaps.
     bool                         gpuCulling{true};
 };
 

@@ -175,7 +175,10 @@ public:
 
         m_device->InitializeRendererServer();
 
-        m_device->GetRendererServer()->SetRenderOption(m_options.mode);
+        bool giEnabled = true;
+        platform::ConfigLoader::GetInstance().ReadBool("voxel_gi_enabled", giEnabled);
+        m_device->GetRendererServer()->SetRenderOption(
+            m_options.mode.value_or(giEnabled ? rc::RenderOption::eVoxelGI : rc::RenderOption::ePBR));
 
         float scale = 1;
 

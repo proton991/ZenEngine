@@ -6,7 +6,6 @@
 #include "Graphics/RenderCore/V2/DistanceFieldScene.h"
 #include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
-#include <array>
 
 namespace zen::platform
 {
@@ -29,63 +28,60 @@ struct VoxelGISettings
         Hardware
     };
     RayProvider rayProvider{RayProvider::Auto};
-    // Auto is retained for old configs/capture tools only; feature controls resolve to Compute or HW RT.
-    enum class Feature : uint32_t
+    // Auto resolves the whole tier by device capability; explicit choices select HW RT or Compute.
+    uint32_t GetHardwareFeatureMask() const;
+    bool     UsesRayShadows(bool hardwareReady) const;
+    bool     UsesShadowReuse() const
     {
-        Sky,
-        SpecularOcclusion,
-        SkyCache,
-        Bounce,
-        Reflections,
-        Shadows,
-        Count
-    };
-    std::array<RayProvider, static_cast<size_t>(Feature::Count)> featureProviders{};
-    RayProvider                                                  GetFeatureProvider(Feature feature) const;
-    uint32_t                                                     GetHardwareFeatureMask() const;
-    bool                                                         UsesAdaptiveSampling() const;
-    bool                                                         UsesRayShadows(bool hardwareReady) const;
-    void                                                         SetFeatureProvider(Feature feature, RayProvider provider);
-    void                                                         SetAllFeatureProviders(RayProvider provider);
-    enum class BounceSource : uint32_t
-    {
-        Auto, // Ray hits with either provider.
-        Cone,
-        Rays
-    };
-    BounceSource bounceSource{BounceSource::Auto};
-    uint32_t     samples{4};
-    // Both triangle backends retain six rays for reset/dark/uncertain receivers;
-    // fully settled low-variance histories use the four-ray base.
-    bool     adaptiveSampling{true};
+        return screenProbeGI ? nativeShadowReuse : shadowReuse;
+    }
+    uint32_t samples{4};
     uint32_t accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
     uint32_t referenceSamples{0};              // Diagnostic: 0, 64, 256, 1024 or 4096; static mean, no spatial filter.
+    uint32_t referenceTileStride{1};           // Reference diagnostic: 1 (dense), 8 (one 8x8 tile per 64x64 stratum).
     uint32_t historyFrames{32};
     // Pixel GI history/trace resolution divisor; final lighting remains at the view resolution.
-    uint32_t pixelResolutionDivisor{1}; // 1, 2 or 4. Reference and ray-count diagnostics use 1.
+    // 1, 2 or 4, or 0 for automatic (ResolvePixelResolutionDivisor). Reference and ray-count diagnostics use 1.
+    uint32_t pixelResolutionDivisor{1};
     bool     temporal{true};
     bool     restirGI{false}; // HW per-pixel reservoir reuse; opt-in until acceptance measurements pass.
     bool     restirSpatial{true};
-    bool     restirSpecular{true}; // Rough lobes (roughness >= 0.3).
-    // Opt in to one-frame voxel-radiance latency so updates can overlap receiver lighting.
-    bool previousFrameRadiance{false};
+    uint32_t restirSpatialSamples{4};       // Spatial neighbors per signal, 1..4.
+    bool     restirSpatialVisibility{true}; // Visibility rays for the pairwise MIS weights of spatial reuse.
+    bool     restirSpecular{true};          // Rough lobes (roughness >= 0.3).
+    // The GI denoiser (GIDenoise passes) always runs outside reference diagnostics. Off skips its
+    // three spatial a-trous passes and the output stabilizer; temporal accumulation and history
+    // fix still run.
     bool filter{true};
-    // Indirect diffuse from GI rays or probes (sky light and bounce). Off lights diffuse from the
+    bool radianceCache{false};        // Experimental HW secondary-hit cache; exact shading at zero capacity.
+    bool nativeProbeBenchmark{false}; // Diagnostic: 64 cache-only rays per 16x16 tile, plus 25% extra probes.
+    bool worldRadianceCache{false};   // Directional multi-bounce cache; retained pixel GI stays available for comparison.
+    bool worldCacheFeedback{true};    // Disable only for matching the one-bounce reference contract.
+    // Experimental (GI refinement Phase 3 item 1): per-pixel methods with the world cache start a
+    // disoccluded receiver's diffuse history from its cell's indirect light. Adds one record per cell.
+    bool     worldCacheSeed{false};
+    uint32_t worldCacheTileSize{8};
+    uint32_t worldCacheHistory{128};
+    uint32_t worldCacheUnusedFrames{240};
+    bool     screenProbeGI{false}; // Native-resolution gather from world-anchored screen probes.
+    // RT-pipeline direct shadows from a 4x4 coarse grid, with exact rays where neighbours disagree.
+    // nativeShadowReuse serves screen probes and shadowReuse the per-pixel methods (UsesShadowReuse).
+    bool nativeShadowReuse{true};
+    bool shadowReuse{false};
+    bool dataDrivenAntiLag{true};    // Per-signal clamp deviation shortens slow history.
+    bool youngReceiverSamples{true}; // Double diffuse samples below four accepted frames.
+    bool bicubicHistory{true};       // Catmull-Rom history resampling when all twelve taps are valid.
+    bool antiFirefly{true};          // History fix limits texels under four frames to their brightest matching neighbour.
+    // Reduced-resolution GI texels take the mean shading normal of their pixel block's face and roughness
+    // widened by the normals' spread, instead of one pixel's. No effect at native GI resolution.
+    bool footprintReceivers{true};
+    bool denoiserValidation{false}; // Diagnostic images and capture channels; no lighting change.
+    bool rayTracingPipeline{false}; // Prototype: qualify pipeline ports before switching the HW tier.
+    // Indirect diffuse from GI rays (sky light and bounce). Off lights diffuse from the
     // unoccluded environment, as without GI, while specular GI and direct lighting are unchanged.
     // The rays are still traced: it isolates the diffuse term rather than saving its cost.
     bool indirectDiffuse{true};
     bool specularOcclusion{true};
-    // Diffuse (sky, source shadows, ray-hit bounce) rays per receiver. Half traces one rotating
-    // leader per 2x2 block and reconstructs the others; glossy specular stays at full resolution.
-    // Opt-in: half resolution fails the frozen P0 limits on several shipping views
-    // (Doc/HybridGI/NsightOptimizations.md), so full resolution remains the default.
-    enum class DiffuseResolution : uint32_t
-    {
-        Auto, // Half with the Compute trace; full with HW RT.
-        Full,
-        Half
-    };
-    DiffuseResolution diffuseResolution{DiffuseResolution::Full};
     enum class Reflections : uint32_t
     {
         Auto, // Reflected hit lighting: actual surfaces with HW RT, cached shading with Compute.
@@ -97,26 +93,8 @@ struct VoxelGISettings
     // sparse distance field covering every committed occluder (DistanceFieldScene). Cells per
     // axis: 32 or 64 (the builder's limit), each holding 8x8x8 distance samples over the scene bounds.
     uint32_t fieldResolution{64};
-    // Diffuse/specular estimation uses pixels or screen probes with half-resolution specular rays.
-    // Either gather preserves each feature's selected tracer. Reference and ray-count captures use pixels.
-    enum class Gather : uint32_t
-    {
-        Pixel,
-        Probes
-    };
-    Gather gather{Gather::Pixel};
-    bool   UsesScreenProbes() const
-    {
-        return gather == Gather::Probes;
-    }
-    uint32_t probeSpacing{16}; // Screen-probe tile side in pixels: 8 or 16.
     float    indirectIntensity{1.0f};
-    float    coneAngleDegrees{60.0f};
-    float    stepScale{1.0f};
     float    normalBiasVoxels{1.5f};
-    float    maxDistanceGridLengths{1.7321f};
-    uint32_t coneCount{6};
-    uint32_t maxSteps{128};
     bool     shadows{true};
     // False forces maps. True uses HW shadow rays when HW RT is selected and ready; Compute uses maps.
     bool rtShadows{true};
@@ -128,6 +106,20 @@ struct VoxelGISettings
 };
 
 bool ValidateVoxelGISettings(const VoxelGISettings& settings);
+
+// The per-pixel GI divisor for an output height. An explicit divisor is kept; automatic keeps at least
+// 540 GI lines: quarter per axis at 2160 lines and above, half from 1080, full below.
+uint32_t ResolvePixelResolutionDivisor(uint32_t requested, uint32_t outputHeight);
+
+// Why the configured HW tier cannot run on this device, or nullptr when it can. The HW tier needs usable
+// ray queries; with rayTracingPipeline it also needs RT pipelines that trace closest-hit shadow rays.
+// Capability decides, never device or driver identity.
+const char* GetHardwareTierUnavailableReason(const VoxelGISettings& settings, const RHIGPUInfo& gpu);
+
+// Whether a SceneRayQuery reason is a failure that the next frame will not fix: missing features, the
+// acceleration-structure budget, or scene preparation or hit-stream allocation failures. A pending
+// build and a failed frame are retried.
+bool IsPersistentHardwareTierFailure(const char* reason);
 
 bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& output, const VoxelGISettings& defaults = {});
 
@@ -141,18 +133,6 @@ struct VoxelGIUniformData
     Vec4 indirect{1.0f, 0.0f, 0.0f, 0.0f}; // Diffuse enabled, HW feature mask, forward ray samples, frame bits.
 };
 static_assert(sizeof(VoxelGIUniformData) == 96);
-
-// Conservative base-level occupied-cell range, with an exclusive upper bound.
-struct VoxelGIVisibilityBounds
-{
-    Vec4 minimum;
-    Vec4 maximum;
-};
-static_assert(sizeof(VoxelGIVisibilityBounds) == 32);
-
-VoxelGIVisibilityBounds BuildVoxelGIVisibilityBounds(const sg::AABB& geometryBounds,
-                                                     const Vec4&     gridMinimumSize,
-                                                     uint32_t        resolution);
 
 class VoxelGIRenderer
 {
@@ -176,18 +156,30 @@ public:
 
     bool SetSettings(const VoxelGISettings& settings);
 
+    // The HW tier was chosen by capability (RayProvider::Auto resolved by RendererServer). A persistent
+    // HW failure then selects the Compute tier until the settings, the scene or this choice change;
+    // an explicitly selected HW tier stays unavailable instead. RayProvider::Auto is always automatic.
+    void SetAutomaticTier(bool automatic);
+
+    // The persistent HW failure that moved an automatic tier to Compute, or nullptr.
+    const char* GetTierFallbackReason() const
+    {
+        return m_tierFallback;
+    }
+
     const VoxelGISettings& GetSettings() const
     {
         return m_settings;
     }
 
-    void BindLightingInputs(RDGPassDescBase& pass) const;
+    void BindLightingInputs(RDGPassDescBase& pass, bool environment = false) const;
     void BindRayInputs(RDGPassDescBase& pass) const;
     void BindHitRadianceInputs(RDGPassDescBase& pass) const;
+    void BindNativeFieldInputs(RDGPassDescBase& pass, bool environment = true) const;
 
     uint64_t GetRadianceGeneration() const
     {
-        return m_radianceGeneration + (m_recordedRadiance && !m_recordedDelayedRadiance ? 1 : 0);
+        return m_radianceGeneration + (m_recordedRadiance ? 1 : 0);
     }
 
     bool HasPreviousRadiance() const
@@ -199,21 +191,17 @@ public:
     {
         return m_hardwareQueries;
     }
-    bool UsesHardwareQueries(VoxelGISettings::Feature feature) const
-    {
-        return (m_hardwareFeatureMask & (1u << static_cast<uint32_t>(feature))) != 0;
-    }
+    bool     UsesRayTracingPipeline() const;
     uint32_t GetHardwareFeatureMask() const
     {
         return m_hardwareFeatureMask;
     }
-    // HW-only transport shades actual hits without voxel lighting, with either gather method.
+    // HW-only transport shades actual hits without voxel lighting.
     bool UsesVoxelLighting() const
     {
-        const uint32_t lighting = 9u | (m_settings.specularOcclusion ? 2u : 0u) | (UsesReflections() ? 16u : 0u);
-        return (m_hardwareFeatureMask & lighting) != lighting;
+        return !m_hardwareQueries;
     }
-    // An enabled feature resolves to Compute while the distance field is still being built.
+    // The Compute tier is waiting for its first published distance field.
     bool IsPreparingField() const
     {
         return m_preparingField;
@@ -221,7 +209,7 @@ public:
     // Compute traces a published field that is still being completed: it predates committed edits, or
     // local volumes around lights are still building and those lights use the scene field.
     bool IsRefiningField() const;
-    // True when an enabled GI feature resolves to Compute and traces the ready distance field.
+    // True when the Compute tier traces the ready distance field.
     bool UsesComputeQueries() const;
     bool UsesFieldTraversal() const
     {
@@ -249,17 +237,11 @@ public:
     void OnVisibilityGraphExecuted(RenderFrameResult result);
     bool UsesHardwareShadows() const
     {
-        return m_settings.shadows && m_settings.rtShadows && UsesHardwareQueries(VoxelGISettings::Feature::Shadows);
+        return m_settings.UsesRayShadows(m_hardwareQueries);
     }
     bool UsesRayShadows() const
     {
-        return m_settings.UsesRayShadows(m_hardwareQueries) || UsesHardwareShadows();
-    }
-    // The resolved bounce source; valid once BuildRayQueryGraph has selected the provider.
-    bool UsesRayBounce() const
-    {
-        return UsesHardwareQueries(VoxelGISettings::Feature::Bounce)
-            || m_settings.bounceSource != VoxelGISettings::BounceSource::Cone;
+        return UsesHardwareShadows();
     }
     // Resolved reflection enablement; reflections need the specular-occlusion rays they reuse.
     bool UsesReflections() const
@@ -274,7 +256,7 @@ public:
     {
         return m_rayQuery;
     }
-    void BindHardwareRayInputs(RDGPassDescBase& pass, bool environment = true) const;
+    void BindHardwareRayInputs(RDGPassDescBase& pass, bool environment = true, bool occluders = false) const;
     void BindShadowInputs(RDGPassDescBase& pass, SceneShadowRenderer* shadows, bool forwardMaterialBound = false) const;
 
     void BindEnvironmentSamplingInputs(RDGPassDescBase& pass) const;
@@ -363,12 +345,11 @@ private:
 
     void      BuildEnvironmentDistribution();
     void      BuildLightOccluders();
+    bool      PrepareNativeDynamicGeometry();
     RDGBuffer m_lightOccluders;
 
     DistanceFieldSceneSettings BuildFieldSettings() const;
     HeapVector<AABB>           BuildLocalFieldVolumes() const;
-    // Enabled features that do not resolve to HW RT under the given HW feature mask.
-    uint32_t ComputeFeatureMask(uint32_t hardwareMask) const;
 
     SceneRayQuery                 m_rayQuery;
     UniquePtr<DistanceFieldScene> m_field;
@@ -384,10 +365,16 @@ private:
     RHISampler*                   m_unshadowedSampler{nullptr};
     uint64_t                      m_recordedSkyVisibility{0};
     bool                          m_hardwareQueries{false};
+    bool                          m_requestedHardware{false}; // The previous frame requested the HW tier.
+    bool                          m_automaticTier{false};
+    const char*                   m_tierFallback{nullptr};
     uint32_t                      m_hardwareFeatureMask{0};
     const char*                   m_providerReason{"field_selected"};
     RenderDevice*                 m_device{nullptr};
     RenderScene*                  m_scene{nullptr};
+    FrameBufferRing               m_nativeDynamicGeometry;
+    uint64_t                      m_nativeDynamicRevision{0};
+    uint32_t                      m_nativeDynamicCount{0};
     VoxelizerBase*                m_voxelizer{nullptr};
     RHITexture*                   m_radiance{nullptr};
     RHITexture*                   m_emptyLighting{nullptr}; // Valid unused legacy texture bindings in HW-only shaders.
@@ -395,15 +382,11 @@ private:
     bool                          m_recordedEmptyLighting{false};
     bool                          m_recordedEnvironmentDistribution{false};
     uint32_t                      m_frame{0};
-    // Base-level hit history normally; alternate full mip chain with previous-frame radiance enabled.
+    // Base-level snapshot used by the old denoiser to correct changes in cached hit lighting.
     RHITexture*                 m_previousRadiance{nullptr};
-    HeapVector<RHITextureView*> m_previousRadianceMips;
-    // Preserve the older base level before the alternate chain is overwritten on compute.
-    RHITexture*                 m_hitRadiancePrevious{nullptr};
     bool                        m_previousRadianceInitialized{false};
     bool                        m_recordedPreviousRadianceInitialization{false};
     bool                        m_radianceValid{false};
-    bool                        m_recordedDelayedRadiance{false};
     RHITexture*                 m_skyIrradiance{nullptr};
     RHIBuffer*                  m_environmentColumns{nullptr};
     RHIBuffer*                  m_environmentRows{nullptr};
@@ -417,7 +400,6 @@ private:
     HeapVector<RHITextureView*> m_albedoMips;
     VoxelGISettings             m_settings;
     VoxelGIUniformData          m_uniforms{};
-    VoxelGIVisibilityBounds     m_visibilityBounds{};
     uint64_t                    m_geometryRevision{0};
     uint64_t                    m_lightingRevision{0};
     uint64_t                    m_environmentRevision{0};
@@ -434,14 +416,12 @@ private:
     bool                        m_countedSkyCache{false};
     bool                        m_countedInjection{false};
 
-    // Light-visibility cache of m_radiance, m_previousRadiance and m_hitRadiancePrevious
+    // Light-visibility cache of m_radiance and m_previousRadiance
     // (light_visibility_cache.glsl): per-class masks of the scene lights reaching a cell's
     // surfaces, and the lights they were traced for. Header-only while inactive.
     RHIBuffer* m_lightCache{nullptr};
     RHIBuffer* m_previousLightCache{nullptr};
-    RHIBuffer* m_hitLightCachePrevious{nullptr};
     uint64_t   m_lightCacheBytes{0};
-    uint64_t   m_lightCacheSnapshotBytes{0};
     bool       m_lightCacheActive{false};
     // Whether the history buffers hold a cache the graph has written, and whether this frame copies one.
     bool m_lightCacheHistoryInitialized{false};

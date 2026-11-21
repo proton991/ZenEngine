@@ -1,0 +1,66 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_PROBE_COMPUTE
+#define SCREEN_SPECULAR_READ
+#include "screen_probe.glsl"
+layout(std430, set = 1, binding = 93) writeonly buffer FilteredScreenProbeSpecular
+{
+    uvec2 filteredProbeSpecularData[];
+};
+layout(local_size_x = 64) in;
+void main()
+{
+    uint index = ProbeGroupIndex(), lane = gl_LocalInvocationID.x;
+    if (index < screenProbe.grid.w)
+    {
+        ScreenProbe probe = probes[index];
+        ivec2       tile  = ivec2(probe.source.yz / screenProbe.spacing);
+        for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
+        {
+            uint  address      = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
+            uvec2 packed       = probeSpecularData[address];
+            vec4  value        = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
+            float total        = max(min(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
+                                         probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z),
+                                     1.0);
+            float young        = 1.0 - smoothstep(1.0, 8.0, total);
+            vec3  groupWeight  = vec3(total, 0, 0);
+            vec3  groupLuma    = vec3(HybridLuminance(value.rgb) * total, 0, 0);
+            value             *= total;
+            if (screenProbe.control.w != 0.0 && probe.position.w != 0.0)
+            {
+                for (int y = -1; y <= 1; ++y)
+                {
+                    for (int x = -1; x <= 1; ++x)
+                    {
+                        ivec2 q = tile + ivec2(x, y);
+                        if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, ivec2(screenProbe.grid.xy))))
+                        {
+                            uint        other        = uint(q.x) + uint(q.y) * screenProbe.grid.x;
+                            ScreenProbe sampleProbe  = probes[other];
+                            float       weight       = exp(-.5 * float(x * x + y * y))
+                                                     * ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, sampleProbe)
+                                                     * float(other != index && probe.source.w == sampleProbe.source.w);
+                            weight                  *= max(min(probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
+                                                               probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z),
+                                                           1.0);
+                            uvec2 sampleValue        = probeSpecularData[other * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel];
+                            vec4  contribution = vec4(unpackHalf2x16(sampleValue.x), unpackHalf2x16(sampleValue.y)) * weight;
+                            if (young > 0.0)
+                            {
+                                uint group          = uint(3 + x + y) % 3u;
+                                groupLuma[group]   += HybridLuminance(contribution.rgb);
+                                groupWeight[group] += weight;
+                            }
+                            value += contribution;
+                            total += weight;
+                        }
+                    }
+                }
+            }
+            value     /= total;
+            value.rgb *= ProbeSpatialOutlierScale(groupLuma, groupWeight, total, HybridLuminance(value.rgb), young);
+            filteredProbeSpecularData[address] = uvec2(packHalf2x16(value.rg), packHalf2x16(value.ba));
+        }
+    }
+}

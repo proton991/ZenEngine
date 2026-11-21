@@ -3,6 +3,7 @@
 #include "hybrid_guides.glsl"
 #include "../Common/scene_lighting.glsl"
 layout(local_size_x = 8, local_size_y = 8) in;
+layout(constant_id = 1) const bool SKY_ENABLED = true;
 layout(set = 1, binding = 6) uniform sampler2D inputSky;
 layout(set = 1, binding = 7) uniform sampler2D inputSpecular;
 layout(set = 1, binding = 8) uniform sampler2D inputBounce;
@@ -14,6 +15,10 @@ layout(set = 1, binding = 13, rgba16f) uniform writeonly image2D outputSky;
 layout(set = 1, binding = 14, rgba16f) uniform writeonly image2D outputSpecular;
 layout(set = 1, binding = 15, rgba16f) uniform writeonly image2D outputBounce;
 layout(set = 1, binding = 16, r8ui) uniform writeonly uimage2D missingReceiver;
+
+layout(set = 1, binding = 17) uniform sampler2D fixedSky;
+layout(set = 1, binding = 18) uniform sampler2D fixedSpecular;
+layout(set = 1, binding = 19) uniform sampler2D fixedBounce;
 
 struct Receiver
 {
@@ -44,12 +49,16 @@ void Accumulate(ivec2 q, Receiver r, float falloff, inout Reconstruction result)
     float plane   = max(abs(dot(delta, r.geometric)), abs(dot(delta, ng)));
     if (surface.g == r.identity && dot(ng, r.geometric) >= 0.9 && plane <= r.limit)
     {
-        vec3  n               = DecodeGBufferNormal(texelFetch(reducedNormal, q, 0).rg);
-        vec2  offset          = vec2(q) - r.source;
-        float weight          = exp(-falloff * dot(offset, offset)) * pow(max(dot(n, r.normal), 0.0), 32.0)
-                              * exp(-plane / max(r.limit * 0.25, 1e-8));
-        float specularWeight  = weight * exp(-32.0 * abs(texelFetch(reducedRoughness, q, 0).g - r.roughness));
-        result.sky           += weight * texelFetch(inputSky, q, 0);
+        vec3  n      = DecodeGBufferNormal(texelFetch(reducedNormal, q, 0).rg);
+        vec2  offset = vec2(q) - r.source;
+        float weight = exp(-falloff * dot(offset, offset)) * pow(max(dot(n, r.normal), 0.0), 32.0)
+                     * exp(-plane / max(r.limit * 0.25, 1e-8));
+        // Alpha is the texel's own pixel roughness; green may be widened for its footprint.
+        float specularWeight = weight * exp(-32.0 * abs(texelFetch(reducedRoughness, q, 0).a - r.roughness));
+        if (SKY_ENABLED)
+        {
+            result.sky += weight * texelFetch(inputSky, q, 0);
+        }
         if (hybrid.bounce.x != 0u)
         {
             result.bounce += weight * texelFetch(inputBounce, q, 0);
@@ -126,8 +135,8 @@ void main()
         }
         // Thin edge and bevel faces usually continue along the edge beyond the bilinear window.
         // Before a receiver traces its own sample, search the surrounding rings of 8x8 and 16x16
-        // windows with the same tests and broader spatial falloffs. Receivers still unsupported trace
-        // (hybrid_reconstruct_fallback.comp): reusing the neighbouring face under a relaxed
+        // windows with the same tests and broader spatial falloffs. Receivers still unsupported take the
+        // nearest history-fixed texel below: reusing the neighbouring face under a relaxed
         // geometric-normal test leaked lamp light across edges (Doc/HybridGI/SparkFixPlan.md).
         if (any(lessThan(result.weights, vec2(1e-10))))
         {
@@ -142,6 +151,26 @@ void main()
     }
     uint missing = valid ? uint(result.weights.x < 1e-10) | (uint(result.weights.y < 1e-10) << 1u) : 0u;
     imageStore(missingReceiver, p, uvec4(missing));
+    if (missing != 0u)
+    {
+        // Unsupported receivers keep the nearest history-fixed observation (before spatial
+        // filtering), without fresh output-resolution rays.
+        ivec2 q = min(p / int(hybrid.resolution.z), textureSize(reducedSurface, 0) - 1);
+        if ((missing & 1u) != 0u)
+        {
+            if (SKY_ENABLED)
+            {
+                result.sky = texelFetch(fixedSky, q, 0);
+            }
+            result.bounce    = texelFetch(fixedBounce, q, 0);
+            result.weights.x = 1.0;
+        }
+        if ((missing & 2u) != 0u)
+        {
+            result.specular  = texelFetch(fixedSpecular, q, 0);
+            result.weights.y = 1.0;
+        }
+    }
     if (all(lessThan(p, imageSize(outputSky))))
     {
         imageStore(outputSky, p, result.sky / max(result.weights.x, 1e-20));

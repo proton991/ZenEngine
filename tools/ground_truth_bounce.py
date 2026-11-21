@@ -56,9 +56,11 @@ def offset(mi, dr, point, normal, direction, distance=None):
 
 
 def render_bounce(mi, dr, scene, points, normals, albedo, lights, environment,
-                  samples=4096, batch=4, seed=1):
+                  samples=4096, batch=4, seed=1, max_bounces=1):
     if samples < 2 * batch or samples % (2 * batch):
         raise ValueError('Samples must be a positive multiple of twice the batch size')
+    if max_bounces < 1:
+        raise ValueError('max_bounces must be positive')
     count, lanes = len(points), len(points) * batch
     repeat = lambda a: mi.Float(np.repeat(a, batch).astype(np.float32))
     point = mi.Point3f(*[repeat(points[:, i]) for i in range(3)])
@@ -78,30 +80,50 @@ def render_bounce(mi, dr, scene, points, normals, albedo, lights, environment,
         # Invalid lanes use finite neutral data before evaluating divisions/frames.
         hit_point = dr.select(valid, hit.p, mi.Point3f(0))
         hit_normal = dr.select(valid, hit_normal, mi.Normal3f(0, 1, 0))
-        value = dr.zeros(mi.Color3f, lanes)
-        for position, intensity, directional in lights:
-            if directional:
-                # 'position' is the unit direction toward the light; illuminance does not fall off.
-                to_light, distance, falloff = mi.Vector3f(*position), None, 1.0
-                active = valid
-            else:
-                delta = mi.Point3f(*position) - hit_point
-                distance = dr.norm(delta)
-                to_light = delta / dr.maximum(distance, 1e-20)
-                falloff = 1 / dr.maximum(distance * distance, 1e-20)
-                active = valid & (distance > 1e-5)
-            cosine = dr.maximum(dr.dot(hit_normal, to_light), 0)
-            active = active & (cosine > 0)
-            shadow = closest(mi, dr, scene, offset(mi, dr, hit_point, hit_normal, to_light, distance), active)
-            value += dr.select(active & ~shadow.is_valid(), mi.Color3f(*intensity) * cosine * falloff / dr.pi, 0)
-        if environment is not None:
+        value = vertex_lighting(mi, dr, scene, hit_point, hit_normal, valid, lights, environment, sampler)
+        accumulated = dr.select(valid, value * albedo, 0)
+        throughput = albedo
+        # Each vertex estimates direct lighting and escaped environment independently.
+        # Continuation misses contribute nothing: their environment was already estimated
+        # at the preceding vertex. The receiver's own direct sky remains excluded.
+        for depth in range(1, max_bounces):
             incoming = mi.Frame3f(hit_normal).to_world(mi.warp.square_to_cosine_hemisphere(sampler.next_2d()))
-            shadow = closest(mi, dr, scene, offset(mi, dr, hit_point, hit_normal, incoming), valid)
-            value += dr.select(valid & ~shadow.is_valid(), environment.eval(incoming), 0)
-        halves[index % 2] += dr.select(valid, value * albedo, 0)
+            hit = closest(mi, dr, scene, offset(mi, dr, hit_point, hit_normal, incoming), valid)
+            valid = valid & hit.is_valid()
+            hit_normal = dr.select(dr.dot(hit.n, incoming) < 0, hit.n, -hit.n)
+            hit_point = dr.select(valid, hit.p, mi.Point3f(0))
+            hit_normal = dr.select(valid, hit_normal, mi.Normal3f(0, 1, 0))
+            value = vertex_lighting(mi, dr, scene, hit_point, hit_normal, valid, lights, environment, sampler)
+            throughput *= albedo
+            accumulated += dr.select(valid, value * throughput, 0)
+            dr.eval(accumulated, hit_point, hit_normal, valid)
+        halves[index % 2] += accumulated
         dr.eval(halves[index % 2])
     split = np.stack([np.array(h).T.reshape(count, batch, 3).mean(1) / (passes // 2) for h in halves])
     return split.mean(0), split
+
+
+def vertex_lighting(mi, dr, scene, point, normal, valid, lights, environment, sampler):
+    value = dr.zeros(mi.Color3f, dr.width(valid))
+    for position, intensity, directional in lights:
+        if directional:
+            direction, distance, falloff = mi.Vector3f(*position), None, 1.0
+            active = valid
+        else:
+            delta = mi.Point3f(*position) - point
+            distance = dr.norm(delta)
+            direction = delta / dr.maximum(distance, 1e-20)
+            falloff = 1 / dr.maximum(distance * distance, 1e-20)
+            active = valid & (distance > 1e-5)
+        cosine = dr.maximum(dr.dot(normal, direction), 0)
+        active = active & (cosine > 0)
+        shadow = closest(mi, dr, scene, offset(mi, dr, point, normal, direction, distance), active)
+        value += dr.select(active & ~shadow.is_valid(), mi.Color3f(*intensity) * cosine * falloff / dr.pi, 0)
+    if environment is not None:
+        incoming = mi.Frame3f(normal).to_world(mi.warp.square_to_cosine_hemisphere(sampler.next_2d()))
+        shadow = closest(mi, dr, scene, offset(mi, dr, point, normal, incoming), valid)
+        value += dr.select(valid & ~shadow.is_valid(), environment.eval(incoming), 0)
+    return value
 
 
 def summarize(actual, expected, halves, mask):
@@ -122,15 +144,20 @@ def fingerprint(path):
 
 # Each pass costs about a second of host tracing whatever its width, so wide batches set the
 # throughput: 32 samples per pixel per pass made New Sponza's 4096-sample reference ~20x faster.
-def validate_capture(mi, capture, output, samples=4096, batch=32, seed=1, albedo=.5, scene_path=None, fixture_gate=None):
+def validate_capture(mi, capture, output, samples=4096, batch=32, seed=1, albedo=.5, scene_path=None, fixture_gate=None,
+                     max_bounces=1, receiver_reference=None):
     if Path(str(output) + '.npz').exists() or Path(str(output) + '.json').exists():
         raise FileExistsError('Reference artifacts are immutable; choose a new output prefix')
-    metadata, data = load(capture)
+    retained = np.load(receiver_reference) if receiver_reference else None
+    if retained is None:
+        metadata, data = load(capture)
+    else:
+        metadata = json.loads(Path(str(capture) + '.lighting.json').read_text())
     scene_path = scene_path or Path(str(capture) + '.gltf')
     primitives, alpha_image, normalization = load_gltf_primitives(scene_path)
     # This comparison only applies to the uniform fixture material contract.
     document = json.loads(scene_path.read_text())
-    dependencies = [scene_path, Path(str(capture) + '.environment.bin'), Path(str(capture) + '.lighting.json')]
+    dependencies = [scene_path, Path(str(capture) + '.lighting.json')]
     for entry in document.get('buffers', []) + document.get('images', []):
         uri = entry.get('uri', '')
         if uri and not uri.startswith('data:'):
@@ -142,18 +169,30 @@ def validate_capture(mi, capture, output, samples=4096, batch=32, seed=1, albedo
         assert pbr.get('metallicFactor', 1) == 0 and not np.any(material.get('emissiveFactor', [0, 0, 0]))
     state = metadata['environment_intensity_rotation_enabled_visible']
     size = metadata['environment_cube_size']
-    cube = np.fromfile(str(capture) + '.environment.bin', '<f4').reshape(6, size, size, 4)
+    if state[0] * state[2] != 0:
+        environment_path = Path(str(capture) + '.environment.bin')
+        cube = np.fromfile(environment_path, '<f4').reshape(6, size, size, 4)
+        dependencies.append(environment_path)
+    else:
+        # Disabled in the retained bounce fixture; texels cannot contribute.
+        cube = np.zeros((6, 1, 1, 4), np.float32)
     env = Environment(cube=cube, rotation=state[1], orientation=metadata.get('environment_orientation', [0, 0, 0, 1]),
                       intensity=state[0] * state[2])
     scene, dr, black = build_scene(mi, primitives, alpha_image, env, resolution=32)
-    eye, directions = camera_rays(metadata, data)
-    height, width = directions.shape[:2]
-    directions = directions.reshape(-1, 3)
-    pv = np.array(metadata['projection_view_column_major'], np.float32).astype(float).reshape(4, 4).T
-    near_t = -(pv[2, :3] @ eye + pv[2, 3]) / (directions @ pv[2, :3])
-    assert np.all(near_t > 0), 'The bounce oracle requires a forward Vulkan near plane'
-    origins = eye + directions * near_t[:, None]
-    valid, points, ng, _, _ = primary_hits(mi, dr, scene, eye, directions, origins=origins)
+    if retained is not None:
+        height, width = retained['matched'].shape
+        valid = retained['matched'].reshape(-1)
+        points = retained['position'].reshape(-1, 3)
+        ng = retained['geometric'].reshape(-1, 3)
+    else:
+        eye, directions = camera_rays(metadata, data)
+        height, width = directions.shape[:2]
+        directions = directions.reshape(-1, 3)
+        pv = np.array(metadata['projection_view_column_major'], np.float32).astype(float).reshape(4, 4).T
+        near_t = -(pv[2, :3] @ eye + pv[2, 3]) / (directions @ pv[2, :3])
+        assert np.all(near_t > 0), 'The bounce oracle requires a forward Vulkan near plane'
+        origins = eye + directions * near_t[:, None]
+        valid, points, ng, _, _ = primary_hits(mi, dr, scene, eye, directions, origins=origins)
     lights = []
     for light in metadata['lights']:
         kind = light['direction_type'][3]
@@ -166,22 +205,31 @@ def validate_capture(mi, capture, output, samples=4096, batch=32, seed=1, albedo
     expected, halves = np.zeros((height * width, 3)), np.zeros((2, height * width, 3))
     expected[valid], halves[:, valid] = render_bounce(
         mi, dr, scene, points[valid], ng[valid], albedo, lights,
-        None if black else CubeRadiance(mi, dr, env), samples, batch, seed)
+        None if black else CubeRadiance(mi, dr, env), samples, batch, seed, max_bounces)
     expected = expected.reshape(height, width, 3)
     halves = halves.reshape(2, height, width, 3)
     points = points.reshape(height, width, 3)
     ng = ng.reshape(height, width, 3)
-    covered = data[:, :, 8, 3] > 0
-    # Use the frozen sky-reference surface-agreement tolerance, including face normals.
-    matched = valid.reshape(height, width) & covered
-    engine = data[:, :, 8, :3]
-    tolerance = 4 * depth_quantization_error(metadata, engine) + 1e-6 * (1 + np.abs(engine).max(-1))
-    matched &= np.linalg.norm(points - engine, axis=-1) <= tolerance
-    cosine = np.abs(np.sum(ng * data[:, :, 10, :3], axis=-1))
-    cosine /= np.maximum(np.linalg.norm(ng, axis=-1) * np.linalg.norm(data[:, :, 10, :3], axis=-1), 1e-20)
-    matched &= cosine > np.cos(np.deg2rad(.5))
+    if retained is not None:
+        matched = retained['matched']
+        covered = matched
+        comparison = retained['bounce']
+    else:
+        covered = data[:, :, 8, 3] > 0
+        # Use the frozen sky-reference surface-agreement tolerance, including face normals.
+        matched = valid.reshape(height, width) & covered
+        engine = data[:, :, 8, :3]
+        tolerance = 4 * depth_quantization_error(metadata, engine) + 1e-6 * (1 + np.abs(engine).max(-1))
+        matched &= np.linalg.norm(points - engine, axis=-1) <= tolerance
+        cosine = np.abs(np.sum(ng * data[:, :, 10, :3], axis=-1))
+        cosine /= np.maximum(np.linalg.norm(ng, axis=-1) * np.linalg.norm(data[:, :, 10, :3], axis=-1), 1e-20)
+        matched &= cosine > np.cos(np.deg2rad(.5))
+        comparison = data[:, :, 3, :3]
     regions = dict(all_receivers=matched, floor=matched & (ng[:, :, 1] > .99))
     report = dict(capture=str(capture), samples=samples, batch=batch, seed=seed, albedo=albedo,
+                  receiver_reference=fingerprint(receiver_reference) if receiver_reference else None,
+                  comparison_source='retained one-bounce CUDA reference' if retained is not None else 'engine capture',
+                  max_bounces=max_bounces, transport='finite-depth diffuse indirect; receiver direct sky excluded',
                   analytic_fixture_gate=fixture_gate, mitsuba=mi.__version__, variant=mi.variant(),
                   source_inputs=[fingerprint(path.resolve()) for path in dependencies],
                   reference_code=[fingerprint(Path(__file__).resolve()),
@@ -191,7 +239,7 @@ def validate_capture(mi, capture, output, samples=4096, batch=32, seed=1, albedo
                   primary_mismatch=int(np.sum(covered & ~matched)),
                   scene_sha256=hashlib.sha256(scene_path.read_bytes()).hexdigest(),
                   normalization=normalization,
-                  regions={name: summarize(data[:, :, 3, :3], expected, halves, mask)
+                  regions={name: summarize(comparison, expected, halves, mask)
                            for name, mask in regions.items() if mask.any()},
                   interpretation='Validation of isotropic voxel radiance against triangle transport; RMS is report-only')
     report['bias_gate_passed'] = all(abs(r['bias']) <= .10 for r in report['regions'].values())
@@ -217,6 +265,20 @@ def self_test(mi):
     side = 10 / np.sqrt(101)
     expected = .5 * 4 / np.pi * side * np.arctan(side)
     assert np.max(np.abs(value / expected - 1)) <= .005, (value, expected)
+    # The only surface faces empty space: extra vertices cannot add lighting, and
+    # continuation escapes must not count the environment a second time.
+    single, _ = render_bounce(mi, dr, scene, p, n, .5, [], CubeRadiance(mi, dr, env), 4096, 256)
+    multiple, _ = render_bounce(mi, dr, scene, p, n, .5, [], CubeRadiance(mi, dr, env), 4096, 256,
+                                max_bounces=4)
+    np.testing.assert_array_equal(single, multiple)
+    # Two opposing faces, with a point light between them, have a strictly positive
+    # second bounce. This checks propagation and throughput without engine radiance.
+    lower = dict(primitive, positions=primitive['positions'] - np.array([0, 2, 0]))
+    paired, _, _ = build_scene(mi, [primitive, lower], None, Environment(intensity=0), 8)
+    single, _ = render_bounce(mi, dr, paired, p, n, .5, [([0, 0, 0], [1, 1, 1], False)], None, 4096, 256)
+    multiple, _ = render_bounce(mi, dr, paired, p, n, .5, [([0, 0, 0], [1, 1, 1], False)], None, 4096, 256,
+                                max_bounces=2)
+    assert np.all(multiple > single), (single, multiple)
     # A unit directional light from below lights the plane's lower face at normal incidence.
     value, _ = render_bounce(mi, dr, scene, p, n, .5, [([0, -1, 0], [1, 1, 1], True)], None, 65536, 256)
     expected = .5 / np.pi * 4 / np.pi * side * np.arctan(side)
@@ -232,7 +294,8 @@ def self_test(mi):
     np.testing.assert_array_equal(np.array(hit.is_valid()), [False, True])
     np.testing.assert_allclose(np.array(hit.p.y)[1], 2, atol=1e-6)
     return dict(point_light_plane='pass', uniform_environment_bounce='pass', directional_light_plane='pass', empty_bounce='pass',
-                alpha_continuation_and_finite_shadow_range='pass')
+                alpha_continuation_and_finite_shadow_range='pass', multi_bounce_escape_not_double_counted='pass',
+                multi_bounce_propagation='pass')
 
 
 if __name__ == '__main__':
@@ -242,8 +305,11 @@ if __name__ == '__main__':
     parser.add_argument('--scene', type=Path, help='Source fixture glTF when it is not beside the capture')
     parser.add_argument('--samples', type=int, default=4096)
     parser.add_argument('--batch', type=int, default=32)
+    parser.add_argument('--max-bounces', type=int, default=1,
+                        help='Indirect diffuse vertices (1 preserves the one-bounce reference)')
     parser.add_argument('--backend', choices=('cuda',), default='cuda',
                         help='Mitsuba backend; references run only on CUDA and fail without it')
+    parser.add_argument('--receiver-reference', type=Path, help='Retained one-bounce NPZ receivers and comparison radiance')
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     renderer = setup_mitsuba(args.backend)
@@ -253,6 +319,8 @@ if __name__ == '__main__':
         if args.capture is None or args.output is None:
             parser.error('--capture and --output are required unless --self-test is used')
         result = validate_capture(renderer, args.capture, args.output, args.samples, args.batch,
-                                  scene_path=args.scene, fixture_gate=gates)
+                                  scene_path=args.scene, fixture_gate=gates, max_bounces=args.max_bounces,
+                                  receiver_reference=args.receiver_reference)
         print(json.dumps(result, indent=2), flush=True)
-        raise SystemExit(0 if result['bias_gate_passed'] else 1)
+        # Multi-bounce bias is decision evidence, not a gate for the single-bounce engine.
+        raise SystemExit(0 if args.max_bounces > 1 or result['bias_gate_passed'] else 1)

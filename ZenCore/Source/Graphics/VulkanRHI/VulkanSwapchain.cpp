@@ -328,7 +328,8 @@ VulkanSwapchain::VulkanSwapchain(uint32_t                     width,
         }
         else
         {
-            uint32_t imageCount = std::max(capabilities.minImageCount, GRHIFrameState.GetNumFramesInFlight());
+            // The presentation engine can retain an image while the CPU and GPU render the frames in flight.
+            uint32_t imageCount = std::max(capabilities.minImageCount, GRHIFrameState.GetNumFramesInFlight() + 1u);
 
             if (capabilities.maxImageCount != 0)
             {

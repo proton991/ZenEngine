@@ -36,6 +36,12 @@ struct Light
 class ShaderProgram
 {
 public:
+    struct StageFile
+    {
+        RHIShaderStage stage;
+        std::string    path;
+    };
+
     ShaderProgram(RenderDevice* pRenderDevice, NameID name);
 
     virtual ~ShaderProgram();
@@ -97,9 +103,18 @@ public:
 protected:
     void ResolveShaderResources();
 
+    bool m_allowInvocationReorder{true};
+
     void AddShaderStage(RHIShaderStage stage, const std::string& path)
     {
-        m_stageSources[ToUnderlying(stage)] = path;
+        if (stage >= RHIShaderStage::eRayGeneration && stage < RHIShaderStage::eMax)
+        {
+            m_rayTracingSources.push_back({stage, path});
+        }
+        else
+        {
+            m_stageSources[ToUnderlying(stage)] = path;
+        }
         m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
     }
 
@@ -108,6 +123,7 @@ private:
     NameID                           m_name;
     std::string                      m_stageSources[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> m_stageFlags;
+    HeapVector<StageFile>            m_rayTracingSources;
 
     RHIShader* m_pShader{nullptr};
 
@@ -133,6 +149,25 @@ public:
     {
         AddShaderStage(RHIShaderStage::eCompute, path);
         Init(specializationConstants);
+    }
+};
+
+class RayTracingFileSP : public ShaderProgram
+{
+public:
+    RayTracingFileSP(RenderDevice*                                          device,
+                     NameID                                                 name,
+                     const HeapVector<StageFile>&                           modules,
+                     bool                                                   allowInvocationReorder = true,
+                     const HashMap<uint32_t, RHIShaderSpecializationValue>& constants              = {}) :
+        ShaderProgram(device, name)
+    {
+        m_allowInvocationReorder = allowInvocationReorder;
+        for (const StageFile& module : modules)
+        {
+            AddShaderStage(module.stage, module.path);
+        }
+        Init(constants);
     }
 };
 
@@ -208,19 +243,6 @@ public:
     }
 };
 
-class DeferredVoxelGISP : public ShaderProgram
-{
-public:
-    explicit DeferredVoxelGISP(RenderDevice* device, bool capture = false) :
-        ShaderProgram(device, capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment,
-                       capture ? "SceneRenderer/voxel_gi_capture.frag.spv" : "SceneRenderer/voxel_gi.frag.spv");
-        Init();
-    }
-};
-
 class SceneShadowSP : public ShaderProgram
 {
 public:
@@ -285,52 +307,6 @@ public:
         AddShaderStage(RHIShaderStage::eFragment, "Environment/genbrdflut.frag.spv");
         Init();
     }
-};
-
-class VoxelizationSP : public ShaderProgram
-{
-public:
-    explicit VoxelizationSP(RenderDevice* pRenderDevice, bool averagedReflectance = false) :
-        ShaderProgram(pRenderDevice, averagedReflectance ? "VoxelizationAveragedSP" : "VoxelizationSP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
-        AddShaderStage(RHIShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
-        AddShaderStage(RHIShaderStage::eFragment,
-                       averagedReflectance ? "VoxelGI/voxelization_averaged.frag.spv" : "VoxelGI/voxelization.frag.spv");
-        Init();
-    }
-
-    struct PushConstantsData
-    {
-        uint32_t nodeIndex;
-        uint32_t materialIndex;
-        uint32_t firstTriangle;
-        uint32_t volumeDimension;
-    };
-};
-
-class VoxelDrawSP : public ShaderProgram
-{
-public:
-    explicit VoxelDrawSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "VoxelDrawSP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/draw_voxels.vert.spv");
-        AddShaderStage(RHIShaderStage::eGeometry, "VoxelGI/draw_voxels.geom.spv");
-        AddShaderStage(RHIShaderStage::eFragment, "VoxelGI/draw_voxels.frag.spv");
-        Init();
-    }
-
-    struct PushConstantsData
-    {
-        uint32_t volumeDimension;
-    };
-
-    struct VoxelInfo
-    {
-        Mat4 modelViewProjection;
-        Vec4 frustumPlanes[6];
-        Vec4 worldMinPointVoxelSize;
-    };
 };
 
 class VoxelizationCompSP : public ShaderProgram

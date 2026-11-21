@@ -124,11 +124,16 @@ public:
 
     virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)     = 0;
 
-    virtual void DestroyPipeline(RHIPipeline* pPipeline)                                = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIRayTracingPipelineCreateInfo& createInfo)
+    {
+        return nullptr;
+    }
 
-    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo)           = 0;
+    virtual void DestroyPipeline(RHIPipeline* pPipeline)                      = 0;
 
-    virtual void DestroySampler(RHISampler* pSampler)                                   = 0;
+    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
+
+    virtual void DestroySampler(RHISampler* pSampler)                         = 0;
 
     virtual RHIBindlessHandle RegisterBindlessResource(RHIResource* pResource, uint32_t slotIndex = kInvalidBindlessSlotIndex)
     {

@@ -499,9 +499,10 @@ inline bool RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr spirv,
 
     RHIShaderGroupInfo info{};
 
-    for (uint32_t i = 0; valid && i < ToUnderlying(RHIShaderStage::eMax); ++i)
+    for (uint32_t i = 0; valid && i < spirv->GetModules().size(); ++i)
     {
-        const RHIShaderStage stage = static_cast<RHIShaderStage>(i);
+        const RHIShaderGroupSPIRV::Module& shader = spirv->GetModules()[i];
+        const RHIShaderStage               stage  = shader.stage;
 
         if (spirv->HasShaderStage(stage))
         {
@@ -509,7 +510,7 @@ inline bool RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr spirv,
 
             SpvReflectShaderModule module{};
 
-            const HeapVector<uint8_t>& code = spirv->GetStageSPIRV(stage);
+            const HeapVector<uint8_t>& code = shader.code;
 
             const SpvReflectResult result   = HasValidSpirvStructure(code)
                                                 ? spvReflectCreateShaderModule(code.size(), code.data(), &module)
@@ -519,9 +520,22 @@ inline bool RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr spirv,
 
             if (valid)
             {
+                static constexpr SpvExecutionModel executionModels[] = {SpvExecutionModelVertex,
+                                                                        SpvExecutionModelTessellationControl,
+                                                                        SpvExecutionModelTessellationEvaluation,
+                                                                        SpvExecutionModelGeometry,
+                                                                        SpvExecutionModelFragment,
+                                                                        SpvExecutionModelGLCompute,
+                                                                        SpvExecutionModelRayGenerationKHR,
+                                                                        SpvExecutionModelMissKHR,
+                                                                        SpvExecutionModelClosestHitKHR,
+                                                                        SpvExecutionModelAnyHitKHR,
+                                                                        SpvExecutionModelCallableKHR};
+                static_assert(std::size(executionModels) == ToUnderlying(RHIShaderStage::eMax));
                 uint32_t count = 0;
 
-                valid          = spvReflectEnumerateDescriptorSets(&module, &count, nullptr) == SPV_REFLECT_RESULT_SUCCESS;
+                valid = stage < RHIShaderStage::eMax && module.spirv_execution_model == executionModels[ToUnderlying(stage)]
+                     && spvReflectEnumerateDescriptorSets(&module, &count, nullptr) == SPV_REFLECT_RESULT_SUCCESS;
 
                 HeapVector<SpvReflectDescriptorSet*> sets(count);
 

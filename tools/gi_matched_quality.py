@@ -22,6 +22,23 @@ def image(path):
     return np.asarray(Image.open(path).convert('RGB'), dtype=np.float32)
 
 
+def reference_mask(width, height):
+    """Builtin referenceTileStride=8 mask, including partially filled edge strata."""
+    tiles_x, tiles_y = (width + 7) // 8, (height + 7) // 8
+    mask = np.zeros((height, width), dtype=bool)
+    for y in range((tiles_y + 7) // 8):
+        for x in range((tiles_x + 7) // 8):
+            available_x, available_y = min(8, tiles_x - x * 8), min(8, tiles_y - y * 8)
+            value = (x + 4099 * y + 0x3c6ef372) & 0xffffffff
+            value = ((value ^ (value >> 16)) * 0x7feb352d) & 0xffffffff
+            value = ((value ^ (value >> 15)) * 0x846ca68b) & 0xffffffff
+            value ^= value >> 16
+            chosen = value % (available_x * available_y)
+            left, top = (x * 8 + chosen % available_x) * 8, (y * 8 + chosen // available_x) * 8
+            mask[top:top + 8, left:left + 8] = True
+    return mask
+
+
 def average(folder, frames):
     result = None
     for frame in frames:
@@ -58,12 +75,13 @@ def check_state(state, setup, frame):
                     fullscreen=run['fullscreen'], backend='hardware', gather='pixel', hardwareFeatureMask=63,
                     giWidth=run['renderWidth'] // divisor, giHeight=run['renderHeight'] // divisor,
                     fieldTraversal=False, voxelLighting=False, asyncCompute='available', gpuCullingPath='gpu_indirect')
+    expected.update(referenceSamples=cone['referenceSamples'], referenceTileStride=cone.get('referenceTileStride', 1))
     for key, value in expected.items():
         if state.get(key) != value:
             raise ValueError(f'Unexpected captured state {key}: {state.get(key)!r}, expected {value!r}')
 
 
-def capture(args, folder, setup, start, end, keep=None, path=None, module=None):
+def capture(args, folder, setup, start, end, keep=None, path=None, state_check=check_state):
     """Resume only completed, identity-matched jobs; keep lossless pixels and actual state."""
     folder.mkdir(parents=True, exist_ok=True)
     setup_path = folder / 'setup.zenrender'
@@ -87,8 +105,6 @@ def capture(args, folder, setup, start, end, keep=None, path=None, module=None):
     if path is not None:
         write_json(folder / 'camera-path.json', path)
         command.append('--camera-path=' + str(folder / 'camera-path.json'))
-    if module is not None:
-        command.append('--hybrid-trace-buffered-module=' + str(module.resolve()))
     print('Capture', folder.relative_to(args.output), flush=True)
     started = time.perf_counter()
     exact = zenapp(args, command, folder / 'zenapp.log')
@@ -101,7 +117,7 @@ def capture(args, folder, setup, start, end, keep=None, path=None, module=None):
         ppm = folder / f'capture.frame-{frame}.ppm'
         state_path = Path(str(ppm) + '.json')
         state = read_json(state_path)
-        check_state(state, setup, frame)
+        state_check(state, setup, frame)
         if frame in keep:
             png = folder / f'frame-{frame}.png'
             with Image.open(ppm) as source:
@@ -116,7 +132,7 @@ def capture(args, folder, setup, start, end, keep=None, path=None, module=None):
         state_path.unlink()
     record = dict(arguments=exact, executable_sha256=digest(args.executable), setup_sha256=digest(setup_path),
                   frames=keep, seconds=time.perf_counter() - started, files=hashes,
-                  module_sha256=digest(module) if module is not None else None)
+                  reference_tile_stride=setup['rendering']['gi']['cone'].get('referenceTileStride', 1))
     write_json(complete, record)
     return record
 
@@ -141,9 +157,10 @@ def configurations(args):
 def preset(setup, name):
     result = copy.deepcopy(setup)
     cone = result['rendering']['gi']['cone']
+    cone['referenceTileStride'] = 1
     if name == 'reference':
         cone.update(referenceSamples=4096, pixelResolutionDivisor=1, restirGI=False,
-                    restirSpatial=False, restirSpecular=False, filter=False, adaptiveSampling=False)
+                    restirSpatial=False, restirSpecular=False, filter=False)
     else:
         cone['pixelResolutionDivisor'] = 4 if name == 'quarter' else 2
     return result
@@ -155,7 +172,8 @@ def static(args, views):
         control = preset(setup, 'reference')
         control['rendering']['gi']['cone']['referenceSamples'] = 64
         capture(args, folder / 'full-control', control, 1, 1)
-        capture(args, folder / 'sampled-control', control, 1, 1, module=args.reference_module)
+        control['rendering']['gi']['cone']['referenceTileStride'] = 8
+        capture(args, folder / 'sampled-control', control, 1, 1)
         mask = np.asarray(Image.open(args.reference_mask)) > 0
         difference = np.max(np.abs(image(folder / 'full-control/frame-1.png')
                                    - image(folder / 'sampled-control/frame-1.png')), axis=2)
@@ -169,8 +187,10 @@ def static(args, views):
             raise ValueError(f'Sparse reference exceeded the precision bound: {name}: {validity}')
         for resolution in ('quarter', 'half'):
             capture(args, args.output / 'static' / name / resolution, preset(setup, resolution), 240, 256)
-        capture(args, args.output / 'static' / name / 'reference', preset(setup, 'reference'), 128, 256,
-                keep=[*range(128, 145), *range(240, 257)], module=args.reference_module)
+        reference = preset(setup, 'reference')
+        reference['rendering']['gi']['cone']['referenceTileStride'] = 8
+        capture(args, args.output / 'static' / name / 'reference', reference, 128, 256,
+                keep=[*range(128, 145), *range(240, 257)])
         static_report(args, [name])
 
 
@@ -252,9 +272,11 @@ def run(args):
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
     views = configurations(args)
+    if not np.array_equal(np.asarray(Image.open(args.reference_mask)) > 0, reference_mask(3840, 2160)):
+        raise ValueError('Sampling mask differs from the builtin sparse reference diagnostic')
     identity = provenance(args, args.setup.resolve(), [])
     identity.update(half_setup_sha256=digest(args.half_setup), matched_tool_sha256=digest(__file__),
-                    reference_module_sha256=digest(args.reference_module), reference_mask_sha256=digest(args.reference_mask))
+                    reference_tile_stride=8, reference_mask_sha256=digest(args.reference_mask))
     identity_path = args.output / 'identity.json'
     if identity_path.exists() and read_json(identity_path) != identity:
         raise ValueError('Measurement inputs changed; use a new output directory')
@@ -288,7 +310,6 @@ if __name__ == '__main__':
     parser.add_argument('--setup', type=Path, required=True)
     parser.add_argument('--half-setup', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--reference-module', type=Path, required=True)
     parser.add_argument('--reference-mask', type=Path, required=True)
     parser.add_argument('--cameras', type=Path, default=Path('E:/Dev/ZenGroundTruth/newsponza/v3'))
     parser.add_argument('--executable', type=Path, default=DEFAULT_EXE)

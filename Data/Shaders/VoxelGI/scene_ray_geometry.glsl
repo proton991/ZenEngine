@@ -98,14 +98,13 @@ bool RayCandidateAccepted(uvec4 triangle, vec2 barycentric)
         vec3  weights            = vec3(1.0 - barycentric.x - barycentric.y, barycentric);
         uvec3 vertexIndices      = RayVertexIndices(triangle);
         bool  specularGlossiness = material.surfaceProperties.w > 0.5;
-        uint  set   = uint(max(specularGlossiness ? int(material.featureTextures[2].properties.y) : material.bcTexSet, 0));
-        vec2  uv    = RaySurfaceUV(vertexIndices, weights, int(set));
-        float alpha = 0.0;
-        for (uint corner = 0u; corner < 3u; ++corner)
-        {
-            uint vertex  = vertexIndices[corner];
-            alpha       += weights[corner] * vertices[vertex].color.a;
-        }
+        uint  set = uint(max(specularGlossiness ? int(material.featureTextures[2].properties.y) : material.bcTexSet, 0));
+        vec2  uv  = RaySurfaceUV(vertexIndices, weights, int(set));
+        // Affine interpolation preserves a constant alpha exactly at the cutoff.
+        // A weighted sum can round .5 below the threshold in one shader stage.
+        float alphaA = vertices[vertexIndices.x].color.a;
+        float alpha  = alphaA + (vertices[vertexIndices.y].color.a - alphaA) * barycentric.x
+                     + (vertices[vertexIndices.z].color.a - alphaA) * barycentric.y;
         // Ray hits have neither the current fragment's interpolated UVs nor its derivatives.
         // Always apply the hit's transform and level-zero alpha, including in fragment shaders.
         TextureTransform transform = specularGlossiness ? material.featureTextures[2].transform : material.textureTransforms[0];

@@ -1,34 +1,8 @@
 #ifndef ZEN_HARDWARE_RAY_QUERY
 #define ZEN_HARDWARE_RAY_QUERY
 #include "hybrid_ray_counts.glsl"
-#include "scene_ray_geometry.glsl"
-layout(set = 6, binding = 0) uniform accelerationStructureEXT sceneAccelerationStructure;
-layout(std430, set = 6, binding = 1) readonly buffer RayGeometryMetadata
-{
-    uvec4 rayGeometries[];
-};
-layout(std430, set = 6, binding = 2) readonly buffer RayInstanceMetadata
-{
-    uvec4 rayInstances[];
-};
-// A retained geometry snapshot must not multiply descriptors by the uniform ring slot.
-layout(std140, set = 2, binding = 3) uniform uRayQueryData
-{
-    vec4  minimum;
-    vec4  maximum;
-    uvec4 generation;
-}
-rayScene;
-// Every ray-query pass binds the secondary-hit streams (SceneRayQuery::BindInputs), so each
-// ray-query shader declares them, including those that never shade a hit.
-#include "ray_hit_material.glsl"
-
-uvec4 RayTriangle(uint instance, uint geometry, uint primitive)
-{
-    uvec4 object = rayInstances[instance];
-    uvec4 mesh   = rayGeometries[object.y + geometry];
-    return uvec4(mesh.x + 3u * primitive, object.x, mesh.y, instance);
-}
+#include "scene_ray_inputs.glsl"
+#include "hardware_visibility.glsl"
 
 // The same query supports visibility and closest-hit consumers. Metadata is
 // versioned with the snapshot, not decoded against a later scene generation.
@@ -46,31 +20,17 @@ struct HardwareRayHit
 // Share clipping, alpha testing and ray accounting between visibility and surface queries.
 bool HardwareTraverse(rayQueryEXT query, vec3 origin, vec3 direction, float maximumDistance, bool closest)
 {
-    float enter = 0.0, leave = maximumDistance;
-    bool  intersects = true;
-    for (int axis = 0; axis < 3; ++axis)
-    {
-        if (abs(direction[axis]) < 1e-12)
-        {
-            intersects = intersects && origin[axis] >= rayScene.minimum[axis] && origin[axis] <= rayScene.maximum[axis];
-        }
-        else
-        {
-            float a = (rayScene.minimum[axis] - origin[axis]) / direction[axis];
-            float b = (rayScene.maximum[axis] - origin[axis]) / direction[axis];
-            enter   = max(enter, min(a, b));
-            leave   = min(leave, max(a, b));
-        }
-    }
-    if (intersects && leave >= enter && leave > 0.0)
+    float end;
+    bool  intersects = HardwareRayInterval(origin, direction, maximumDistance, end);
+    if (intersects)
     {
 #ifdef HYBRID_COUNT_RAYS
         ++issuedHardwareRays[issuedRayFeature];
+        ++traceBreakdown[issuedRayPurpose != 0u ? issuedRayPurpose : (issuedRayFeature == 3u ? 3u : 0u)];
 #endif
         uint flags = closest ? 0u : gl_RayFlagsTerminateOnFirstHitEXT;
         // Pad the scene bound, but never trace beyond a finite caller-supplied endpoint (a light).
-        rayQueryInitializeEXT(query, sceneAccelerationStructure, flags, 0xffu, origin, 0.0, direction,
-                              min(leave + 1e-5, maximumDistance));
+        rayQueryInitializeEXT(query, sceneAccelerationStructure, flags, 0xffu, origin, 0.0, direction, end);
         while (rayQueryProceedEXT(query))
         {
 #ifdef HYBRID_COUNT_RAYS
@@ -88,7 +48,7 @@ bool HardwareTraverse(rayQueryEXT query, vec3 origin, vec3 direction, float maxi
             }
         }
     }
-    return intersects && leave >= enter && leave > 0.0;
+    return intersects;
 }
 bool HardwareOccluded(vec3 origin, vec3 direction, float maximumDistance)
 {
@@ -138,23 +98,5 @@ HardwareRayHit HardwareQuery(vec3 origin, vec3 direction, float maximumDistance,
 HybridRayResult HardwareTraceRay(vec3 origin, vec3 direction, float maximumDistance, bool closest)
 {
     return HardwareQuery(origin, direction, maximumDistance, closest).ray;
-}
-// Exact finite-segment visibility, shared by primary and secondary shading. Local rays start
-// at the light so an enclosing fixture terminates traversal without an approximate cached mask.
-float HardwareLightVisibility(vec3 position, vec3 normal, SceneLight light)
-{
-    vec3  direction;
-    float distanceToLight;
-    EvaluateLight(light, position, direction, distanceToLight);
-    vec3 origin = HybridTraceOrigin(position, dot(normal, direction) >= 0.0 ? normal : -normal, 0.0);
-    if (int(light.directionType.w) != 0)
-    {
-        vec3 delta      = origin - light.positionRange.xyz;
-        distanceToLight = length(delta);
-        direction       = delta / max(distanceToLight, 1e-20);
-        distanceToLight = uintBitsToFloat(floatBitsToUint(distanceToLight) - uint(distanceToLight > 0.0));
-        origin          = light.positionRange.xyz;
-    }
-    return distanceToLight > 0.0 && HardwareOccluded(origin, direction, distanceToLight) ? 0.0 : 1.0;
 }
 #endif

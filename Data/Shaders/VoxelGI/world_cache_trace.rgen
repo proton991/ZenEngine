@@ -1,0 +1,28 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+#define HYBRID_HARDWARE_PROVIDER
+#define HYBRID_RAY_PIPELINE
+#define ZEN_NO_PRIMARY_REORDER
+#include "../Common/ray_pipeline.glsl"
+#include "hybrid_guides.glsl"
+#include "world_cache.glsl"
+#include "hybrid_provider.glsl"
+#include "world_cache_path.glsl"
+void main()
+{
+    uvec2     tile  = gl_LaunchIDEXT.xy;
+    uint      index = tile.x + gl_LaunchSizeEXT.x * tile.y;
+    WorldPath path  = paths[index];
+    path.hit        = uvec4(0xffffffffu);
+    if (path.state.w != kDead)
+    {
+        vec3            normal = DecodeGBufferNormal(unpackUnorm2x16(floatBitsToUint(path.origin.w)));
+        HybridRayResult hit    = HardwareTraceRay(HybridTraceOrigin(path.origin.xyz, normal, 0.0), path.ray.xyz, 1e20, true);
+        if (hit.hit)
+        {
+            path.hit = uvec4(floatBitsToUint(hit.position), packUnorm2x16(hit.normal.xy));
+        }
+    }
+    paths[index] = path;
+}

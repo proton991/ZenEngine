@@ -2,7 +2,7 @@
 #include "../Common/material_lighting.glsl"
 #include "../Common/scene_lighting.glsl"
 #ifdef VOXEL_GI
-#    include "../VoxelGI/cone_trace.glsl"
+#    include "../VoxelGI/gi_common.glsl"
 #    include "../ShadowMapping/scene_shadows.glsl"
 #    include "../VoxelGI/gi_ray_totals.glsl"
 #endif
@@ -65,9 +65,6 @@ void main()
             texture(envIrradianceMap, EnvironmentDirection(N)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;
         vec3 backIrradiance =
             texture(envIrradianceMap, EnvironmentDirection(-N)).rgb * sceneUbo.environment.x * sceneUbo.environment.z;
-#ifdef VOXEL_GI
-        frontIrradiance = DiffuseVoxelLighting(inWorldPos, N);
-#endif
         color =
             (frontIrradiance + backIrradiance * VolumeAttenuation(s, DiffuseVolumeThickness(s)) * (vec3(1.0) - singleScatter))
             * singleScatter * s.diffuseTransmissionColor * s.diffuseTransmission

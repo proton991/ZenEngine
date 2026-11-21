@@ -292,13 +292,19 @@ public:
 
     virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)                                    = 0;
 
-    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0)    = 0;
+    virtual void RHITraceRays(uint32_t width, uint32_t height, uint32_t depth)                                       = 0;
+
+    // The indirect buffer contains three uint32_t launch dimensions, and requires
+    // indirect + device-address usage. Its producer must obey the device launch limits.
+    virtual void RHITraceRaysIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)                                = 0;
+
+    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0) = 0;
 
     virtual void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
                                    BitField<RHIPipelineStageFlagBits> dstStages,
                                    VectorView<RHIMemoryTransition>    memoryTransitions,
                                    VectorView<RHIBufferTransition>    bufferTransitions,
-                                   VectorView<RHITextureTransition>   textureTransitions)                            = 0;
+                                   VectorView<RHITextureTransition>   textureTransitions)                         = 0;
 
     virtual void RHIBuildAccelerationStructure(const RHIAccelerationStructureBuildInfo& info)
     {
@@ -1027,6 +1033,37 @@ struct RHICommandDispatchIndirect final : public RHICommandWithBindlessEpoch
     }
 };
 
+struct RHICommandTraceRays final : public RHICommandWithBindlessEpoch
+{
+    uint32_t width;
+    uint32_t height;
+    uint32_t depth;
+
+    RHICommandTraceRays(uint32_t width, uint32_t height, uint32_t depth, uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch), width(width), height(height), depth(depth)
+    {}
+
+    void ExecuteCommand(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHITraceRays(width, height, depth);
+    }
+};
+
+struct RHICommandTraceRaysIndirect final : public RHICommandWithBindlessEpoch
+{
+    RHIBuffer* buffer;
+    uint64_t   offset;
+
+    RHICommandTraceRaysIndirect(RHIBuffer* buffer, uint64_t offset, uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch), buffer(buffer), offset(offset)
+    {}
+
+    void ExecuteCommand(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHITraceRaysIndirect(buffer, offset);
+    }
+};
+
 struct RHICommandSetPushConstants final : public RHICommand
 {
     RHIPipeline*              pPipeline;
@@ -1148,6 +1185,10 @@ public:
     void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 
     void DispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset);
+
+    void TraceRays(uint32_t width, uint32_t height, uint32_t depth = 1);
+
+    void TraceRaysIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset);
 
     void SetPushConstants(RHIPipeline* pPipeline, const uint8_t* pData, uint32_t sizeBytes, uint32_t offset);
 

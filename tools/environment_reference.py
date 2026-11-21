@@ -497,7 +497,7 @@ def main():
     else:
         assert args.samples>=4096 and args.stride>0
         metadata = json.loads(Path(str(args.capture)+'.lighting.json').read_text())
-        capture = np.fromfile(str(args.capture)+'.hybrid.bin',dtype='<f4').reshape(metadata['height'],metadata['width'],13,4)
+        capture = np.fromfile(str(args.capture)+'.hybrid.bin',dtype='<f4').reshape(metadata['height'],metadata['width'],-1,4)
         oracle, normalization = load_gltf(args.scene)
         e = metadata['environment_intensity_rotation_enabled_visible']
         cube = None

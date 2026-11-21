@@ -4,6 +4,7 @@
 #include "Graphics/Shared/DistanceFieldScene.h"
 #include "Graphics/Shared/DistanceFieldScheduler.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Math/Math.h"
 #include "Math/AABB.h"
 #include "Utils/SharedPtr.h"
@@ -64,7 +65,13 @@ struct DistanceFieldSceneSettings
     // generation, then the cycles per frame, up to maxCyclesPerFrame; over budget, it halves the
     // cycles, then the batch cap. Each generation starts at one cycle. Zero keeps the incremental
     // schedule with fixed triangleBatchSize batches.
-    double   throughputFrameBudgetMicroseconds{0};
+    double throughputFrameBudgetMicroseconds{0};
+    // Throughput construction may also lengthen the frame interval measured without construction by
+    // this share. When the interval exceeds the absolute budget, each generation first records no
+    // construction for a few frames to measure it: rendering alone can exceed the absolute budget
+    // (Compute GI at 4K), and shrinking construction against it would never finish the field.
+    // Zero restores the absolute budget alone (PaceFieldThroughput).
+    double   throughputFrameBudgetShare{0.25};
     uint32_t jobCapacity{65536}; // Patch jobs per triangle batch.
     uint32_t referenceCapacity{1u << 20};
     uint32_t referencesPerCell{256};
@@ -210,8 +217,9 @@ private:
         bool                 failed{false};
         uint32_t             unavailableCells{0};
     };
-    bool     Start(RenderScene& scene, bool local = false);
-    uint32_t NextCycleCount();
+    bool Start(RenderScene& scene, bool local = false);
+    // False on a throughput probe frame, which records no construction.
+    bool     NextCycleCount(uint32_t& cycles);
     bool     UsesThroughputBuild() const;
     uint32_t BatchCeiling() const;
     bool     SetVolumeCores(const HeapVector<AABB>& cores);
@@ -239,7 +247,8 @@ private:
     void     BindBuild(RDGPassDescBase& pass, const Generation& generation) const;
     void     BindGeometry(RDGPassDescBase& pass, const Generation& generation) const;
     void     RecordSnapshot(Generation& generation);
-    void     RecordBuild(Generation& generation);
+    bool     RecordBuild(Generation& generation);
+    void     RecordBuildCycles(Generation& generation, uint32_t cycles);
     void     UpdateStaleRegions(const RenderScene& scene);
 
     RenderDevice*                     m_device;
@@ -284,7 +293,7 @@ private:
     AABB                       m_localCore;       // Core of the local volume being built.
     uint64_t                   m_localRequest{0}; // Bumped by each new volume set.
     uint32_t                   m_cyclesPerFrame{1};
-    uint32_t                   m_batchCap{0};      // Throughput triangle batch cap; zero until the first build.
+    FieldThroughputPacing      m_throughput;       // Throughput batch cap (zero until the first build) and cycles.
     uint64_t                   m_scratchBudget{0}; // Scratch budget of the latest Start.
     uint32_t                   m_dispatchLimits[ZEN_FIELD_PHASE_COMPLETE]{}; // Throughput work per dispatch.
     uint32_t                   m_recordedCycles{0};                          // Cycles in this frame's graph, until it executes.

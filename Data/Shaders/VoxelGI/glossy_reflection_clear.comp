@@ -1,0 +1,15 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define GLOSSY_CLEAR
+#define GLOSSY_HISTORY_WRITE
+#include "glossy_reflection.glsl"
+layout(local_size_x = 256) in;
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < glossy.extent.x * glossy.extent.y)
+    {
+        glossyCurrent[index]  = GlossyEmpty();
+        glossyPrevious[index] = GlossyEmpty();
+    }
+}

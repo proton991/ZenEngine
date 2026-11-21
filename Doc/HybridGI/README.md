@@ -1,5 +1,12 @@
 # Hybrid GI P0–P3 implementation record
 
+Current work (2026-11-14) follows the [render pipeline hardening plan](../RenderPipelineHardeningPlan.md).
+[Denoiser measurements and qualification status](Denoiser.md#qualification-status) track the feature removals,
+the ReLAX-style denoiser and Vulkan RT pipelines. Since 2026-11-14 the ReLAX-style `GIDenoise` passes are
+the only GI denoiser and the old HybridTemporal/HybridFilter path is removed
+([denoiser-only path](Denoiser.md#denoiser-only-path-2026-11-14)). The RT pipeline path remains opt-in. The
+dated implementation records below describe their original revisions.
+
 > Historical demo workflow: the standalone demo and its dedicated runners were removed on 2026-11-06. Commands using them apply to the original revision. Current application rendering and profiling use [ZenApp](../ZenAppMigration.md).
 
 Current compute implementation (2026-10-14): [Compute triangle visibility](ComputeTriangleVisibility.md) fixes Sponza's occupied-voxel floor blocks with software triangle queries, shared sampling/material rules and ray shadows. Both backends retain the voxel radiance cache. The new parity tests pass; software traversal is substantially slower and remains outside P8 performance qualification. Earlier dated voxel-provider results below are historical.

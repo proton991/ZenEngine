@@ -45,14 +45,17 @@ def running_renderers():
 
 
 def actual_state(log):
-    """The extents and renderer state ZenApp reports for its first frame."""
-    render = RENDER_STATE.search(log)
-    presentation = PRESENTATION_STATE.search(log)
+    """Latest reported state, including GI activation after the cold PBR fallback."""
+    renders = list(RENDER_STATE.finditer(log))
+    presentations = list(PRESENTATION_STATE.finditer(log))
     culling = list(CULLING_STATE.finditer(log))
-    assert render and presentation, 'ZenApp did not report its render and presentation state'
+    assert renders and presentations, 'ZenApp did not report its render and presentation state'
+    render, presentation = renders[-1], presentations[-1]
     assert culling, 'ZenApp did not report its requested and actual GPU culling path'
-    gi_extent = re.search(r"ZenApp GI extent: (\d+)x(\d+), output=(\d+)x(\d+)", log)
-    return dict(gi_width=int(gi_extent[1]) if gi_extent else None, gi_height=int(gi_extent[2]) if gi_extent else None,
+    gi_extents = list(re.finditer(r"ZenApp GI extent: (\d+)x(\d+), output=(\d+)x(\d+)", log))
+    gathers = re.findall(r"ZenApp GI: gather=(\w+)", log)
+    gi_extent = gi_extents[-1] if gi_extents else None
+    return dict(gather=gathers[-1] if gathers else None, gi_width=int(gi_extent[1]) if gi_extent else None, gi_height=int(gi_extent[2]) if gi_extent else None,
                 render_width=int(render[1]), render_height=int(render[2]), async_compute=render[3], rhi=render[4],
                 ray_provider=render[5], ray_query=render[6], diagnostics=render[7] == 'true',
                 fullscreen=presentation[1] == 'true', framebuffer_width=int(presentation[2]),
@@ -123,14 +126,10 @@ def main():
     parser.add_argument('--shader-profiler', metavar='ARCHITECTURE')
     parser.add_argument('--metric-set-name', default='Top-Level Triage',
                         help='Metric set used with --shader-profiler (it requires an explicit architecture and set)')
-    modules = parser.add_mutually_exclusive_group()
-    modules.add_argument('--hybrid-trace-module', type=Path,
-                        help='Exact all-HW per-pixel ReSTIR SPIR-V module (include .omm when required)')
-    modules.add_argument('--hybrid-trace-buffered-module', type=Path,
-                         help='Exact 8x8 buffered-guide all-HW per-pixel ReSTIR module')
     parser.add_argument('--hybrid-hit-stream', action='store_true')
+    parser.add_argument('--camera-path', type=Path,
+                        help='ZenApp camera keys (fixed-step frames); must cover the capture, as the last key holds')
     args = parser.parse_args()
-    trace_module = args.hybrid_trace_module or args.hybrid_trace_buffered_module
     executable = args.exe.resolve(strict=True)
     if executable.stem.casefold() != 'zenapp':
         parser.error('Profiling must launch ZenApp directly; other executables and aliases are not accepted')
@@ -156,13 +155,12 @@ def main():
                    '--fixed-step', '--no-ui', '--gpu-markers', f'--frames={target_frames}']
     if args.backend == 'compute':
         application.append('--disable-rt')
-    if trace_module:
-        if args.backend != 'hardware':
-            parser.error('--hybrid-trace-module requires --backend=hardware')
-        option = '--hybrid-trace-buffered-module' if args.hybrid_trace_buffered_module else '--hybrid-trace-module'
-        application.append(f'{option}={trace_module.resolve(strict=True)}')
     if args.hybrid_hit_stream:
         application.append('--hybrid-hit-stream')
+    if args.camera_path:
+        camera_path = out / 'camera-path.json'
+        camera_path.write_bytes(args.camera_path.resolve(strict=True).read_bytes())
+        application.append(f'--camera-path={camera_path}')
     command = [str(args.nsight), '--activity', 'GPU Trace Profiler', '--exe', str(executable),
                '--dir', str(ROOT), '--args', subprocess.list2cmdline(application[1:]),
                '--env', 'DISABLE_RTSS_LAYER=1; VK_LOADER_LAYERS_DISABLE=VK_LAYER_RTSS;',
@@ -182,8 +180,6 @@ def main():
     inputs = dict(executable=fingerprint(executable), nsight=fingerprint(args.nsight),
                   setup=fingerprint(source), package=fingerprint(package),
                   shaders=[fingerprint(p) for p in sorted((ROOT / 'Data/SpvShaders').rglob('*.spv'))])
-    if trace_module:
-        inputs['hybrid_trace_module'] = fingerprint(trace_module.resolve(strict=True))
     (out / 'inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')
     overlay = rtss_running()
     if overlay:
@@ -200,6 +196,12 @@ def main():
     traces = list(out.glob('*.ngfx-gputrace'))
     assert len(traces) == 1, 'Nsight did not produce exactly one trace; inspect launch.log'
     actual = actual_state(log)
+    gi_settings = setup['rendering']['gi']['cone']
+    divisor = (1 if gi_settings.get('referenceSamples', 0) or actual['gather'] == 'screen_probes'
+               else gi_settings.get('pixelResolutionDivisor', 1))
+    assert (actual['gi_width'], actual['gi_height']) == ((args.width + divisor - 1) // divisor,
+                                                       (args.height + divisor - 1) // divisor), \
+        'Active GI extent differs from the requested resolution; inspect field preparation and fallback logs'
     assert (actual['render_width'], actual['render_height']) == (args.width, args.height), 'Requested render extent was not confirmed'
     assert actual['ray_provider'] == args.backend, ('Backend differs from the request', actual)
     assert actual['gpu_culling_requested'] == bool(args.gpu_culling), ('Culling request differs from the command', actual)
@@ -215,7 +217,9 @@ def main():
                   width=args.width, height=args.height, actual=actual, rtss_running=overlay,
                   hardware_events=args.hardware_events,
                   multi_pass_metrics=args.multi_pass_metrics, shader_profiler=args.shader_profiler,
-                  trace=traces[0].name, configuration_sha256=hashlib.sha256(launch_setup.read_bytes()).hexdigest())
+                  trace=traces[0].name, configuration_sha256=hashlib.sha256(launch_setup.read_bytes()).hexdigest(),
+                  camera_path_sha256=hashlib.sha256((out / 'camera-path.json').read_bytes()).hexdigest()
+                  if args.camera_path else None)
     (out / 'summary.json').write_text(json.dumps(report, indent=2) + '\n')
     print(f'{out.name}: ZenApp median {report["median_ms"]:.3f} ms, p95 {report["p95_ms"]:.3f} ms over {args.frames} frames',
           flush=True)

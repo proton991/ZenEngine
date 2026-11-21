@@ -14,6 +14,7 @@
 #include "Graphics/RenderCore/V2/ComputeDispatch.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/LightingCapture.h"
+#include "Graphics/Shared/ReceiverVisibility.h"
 #include "SceneGraph/Camera.h"
 #include <cmath>
 #include <algorithm>
@@ -1000,15 +1001,35 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
                                                      VoxelGIRenderer*     voxelGI,
                                                      SceneShadowRenderer* shadows)
 {
-    if (m_hybrid != nullptr && voxelGI != nullptr && !m_hybrid->BuildRenderGraph(view, *voxelGI))
+    const bool recorded = voxelGI == nullptr || (m_hybrid != nullptr && m_hybrid->BuildRenderGraph(view, *voxelGI));
+    if (!recorded)
     {
-        LOGE("Hybrid GI history allocation failed; rendering the minimum PBR tier");
+        const char* reason = m_hybrid == nullptr                     ? "no Hybrid GI renderer for this view"
+                           : m_hybrid->GetFailureReason() != nullptr ? m_hybrid->GetFailureReason()
+                                                                     : "no GI was recorded";
+        if (m_loggedGIFailure != reason)
+        {
+            LOGE("Hybrid GI unavailable ({}); rendering the minimum PBR tier", reason);
+            m_loggedGIFailure = reason;
+        }
         voxelGI = nullptr;
         shadows = nullptr;
     }
-    if (UsesForwardMaterials())
+    else if (voxelGI != nullptr)
     {
-        BuildForwardGraph(view, voxelGI, shadows);
+        m_loggedGIFailure.clear();
+    }
+    const bool forward         = UsesForwardMaterials();
+    const bool pipelineShadows = voxelGI != nullptr && voxelGI->UsesHardwareShadows() && voxelGI->UsesRayTracingPipeline()
+                              && (!forward || ShadesOpaqueDeferred());
+    RDGTexture visibility;
+    if (pipelineShadows)
+    {
+        visibility = BuildLightVisibility(view, *voxelGI);
+    }
+    if (forward)
+    {
+        BuildForwardGraph(view, voxelGI, shadows, pipelineShadows ? &visibility : nullptr);
     }
     else
     {
@@ -1022,7 +1043,7 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
 
         const bool captureValid = !capture || BuildLightingCaptureClear(view);
 
-        AddLightingPass(view, voxelGI, shadows, capture, captureValid, nullptr, nullptr);
+        AddLightingPass(view, voxelGI, shadows, capture, captureValid, nullptr, pipelineShadows ? &visibility : nullptr);
 
         if (capture && captureValid)
         {
@@ -1041,6 +1062,69 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
     }
 }
 
+RDGTexture DeferredLightingRenderer::BuildLightVisibility(const RenderView& view, VoxelGIRenderer& voxelGI)
+{
+    RenderGraph*            graph     = m_pRenderDevice->GetCurrentFrameRDG();
+    const SceneUniformData& sceneData = *reinterpret_cast<const SceneUniformData*>(m_pScene->GetSceneUniformData());
+    const bool              wide      = sceneData.lightInfo.x >= static_cast<float>(MaxSceneLights);
+    RDGTextureDesc          desc;
+    desc.name             = "deferred_light_visibility";
+    desc.texFormat.format = wide ? DataFormat::eR32G32B32A32UInt : DataFormat::eR32G32UInt;
+    desc.texFormat.width  = view.GetWidth();
+    desc.texFormat.height = view.GetHeight();
+    desc.texFormat.depth  = 1;
+    desc.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+    const RDGTexture visibility = graph->GetResourceManager()->CreateTexture(desc);
+    const bool       counts     = m_captureOutput == nullptr && voxelGI.CountsRays();
+    const bool       reuse      = voxelGI.GetSettings().UsesShadowReuse() && !counts;
+    RDGTexture       coarse;
+    if (reuse)
+    {
+        desc.name             = "deferred_coarse_visibility";
+        desc.texFormat.width  = (view.GetWidth() + ZEN_RECEIVER_VISIBILITY_STRIDE - 1u) / ZEN_RECEIVER_VISIBILITY_STRIDE;
+        desc.texFormat.height = (view.GetHeight() + ZEN_RECEIVER_VISIBILITY_STRIDE - 1u) / ZEN_RECEIVER_VISIBILITY_STRIDE;
+        coarse                = graph->GetResourceManager()->CreateTexture(desc);
+    }
+    for (uint32_t stage = reuse ? 0u : 1u; stage < 2u; ++stage)
+    {
+        RDGRayTracingPassDesc pass;
+        pass.SetShaderProgramName(wide ? (counts ? "ReceiverVisibilityWideCountsSP" : "ReceiverVisibilityWideSP")
+                                       : (counts ? "ReceiverVisibilityCountsSP" : "ReceiverVisibilitySP"));
+        if (reuse)
+        {
+            pass.SetShaderProgramName(
+                NameID(fmt::format("ReceiverVisibility{}{}SP", stage == 0u ? "Coarse" : "Refine", wide ? "Wide" : "")));
+        }
+        pass.SetPassTag(stage == 0u ? "ReceiverVisibilityCoarse" : "ReceiverVisibility");
+        pass.SetShaderGroups({{RHIRayTracingShaderGroupType::eRayGeneration, 0},
+                              {RHIRayTracingShaderGroupType::eMiss, 1},
+                              {RHIRayTracingShaderGroupType::eHit, kUnusedRayTracingShader, kUnusedRayTracingShader, 2}});
+        pass.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
+        pass.BindSampledTexture("receiverPosition", m_pDepthSampler, "offscreen_position");
+        pass.BindSampledTexture("receiverNormal", m_pDepthSampler, "offscreen_normal");
+        pass.BindSampledTexture("receiverSurface", m_pDepthSampler, "offscreen_receiver");
+        pass.BindSampledTexture("receiverDepth", m_pDepthSampler, "offscreen_depth");
+        pass.BindSampledTexture("receiverAlbedo", m_pDepthSampler, "offscreen_albedo");
+        pass.BindStorageImage("receiverVisibility", stage == 0u ? coarse : visibility, RDGContentGuarantee::eFullWrite);
+        if (reuse && stage == 1u)
+        {
+            pass.BindSampledTexture("coarseVisibility", m_pDepthSampler, coarse);
+        }
+        voxelGI.BindLightingInputs(pass);
+        voxelGI.BindShadowInputs(pass, nullptr);
+        if (counts)
+        {
+            voxelGI.BindRayTotals(pass);
+        }
+        const glm::uvec2 extent = stage == 0u ? glm::uvec2(desc.texFormat.width, desc.texFormat.height)
+                                              : glm::uvec2(view.GetWidth(), view.GetHeight());
+        graph->AddRayTracingPass(std::move(pass)).RecordPassCommands([extent](RDGPassCmdEncoder& encoder) {
+            encoder.TraceRays(extent.x, extent.y, 1);
+        });
+    }
+    return visibility;
+}
+
 void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
                                                VoxelGIRenderer*     voxelGI,
                                                SceneShadowRenderer* shadows,
@@ -1053,12 +1137,13 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
 
     const glm::uvec2 captureExtent(view.GetWidth(), view.GetHeight());
 
-    const bool rayShadows = voxelGI != nullptr && voxelGI->UsesRayShadows();
+    const bool rayShadows      = voxelGI != nullptr && voxelGI->UsesRayShadows();
+    const bool pipelineShadows = rayShadows && voxelGI->UsesRayTracingPipeline();
 
-    const bool hybrid     = m_hybrid != nullptr && m_hybrid->IsActive();
+    const bool hybrid          = m_hybrid != nullptr && m_hybrid->IsActive();
 
     // Ray-shadowed and shadow-mapped hybrid receivers export exact shadow results for resting layers.
-    const bool visibility = lightVisibility != nullptr && (rayShadows || (hybrid && !capture));
+    const bool visibility = lightVisibility != nullptr && !pipelineShadows && (rayShadows || (hybrid && !capture));
 
     RHIGfxPipelineStates pso{};
 
@@ -1081,7 +1166,7 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
     lighting.SetShaderProgramName(voxelGI == nullptr ? (capture          ? "DeferredLightingCaptureSP"
                                                         : mapShadowedPBR ? "DeferredShadowMapsSP"
                                                                          : "DeferredLightingSP")
-                                                     : (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
+                                                     : (capture ? "DeferredHybridGICaptureSP" : "DeferredHybridGISP"));
 
     if (hybrid)
     {
@@ -1090,7 +1175,14 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
                                                    : "DeferredHybridGISP");
         m_hybrid->BindLightingInputs(lighting);
     }
-    if (rayShadows)
+    if (pipelineShadows)
+    {
+        VERIFY_EXPR(lightVisibility != nullptr);
+        lighting.SetShaderProgramName(capture ? "DeferredPipelineShadowsCaptureSP" : "DeferredPipelineShadowsSP");
+        lighting.BindSampledTexture("shadowReceiverPosition", m_pDepthSampler, "offscreen_position");
+        lighting.BindSampledTexture("receiverLightVisibility", m_pDepthSampler, *lightVisibility);
+    }
+    else if (rayShadows)
     {
         // Ray-count diagnostics never coincide with a lighting capture.
         const bool counts = !capture && voxelGI->CountsRays();
@@ -1170,7 +1262,10 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
     {
         voxelGI->BindLightingInputs(lighting);
 
-        voxelGI->BindShadowInputs(lighting, shadows);
+        if (!pipelineShadows)
+        {
+            voxelGI->BindShadowInputs(lighting, shadows);
+        }
     }
     else if (mapShadowedPBR)
     {
@@ -1215,7 +1310,10 @@ bool DeferredLightingRenderer::UsesForwardMaterials() const
     return result;
 }
 
-void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows)
+void DeferredLightingRenderer::BuildForwardGraph(const RenderView&    view,
+                                                 VoxelGIRenderer*     voxelGI,
+                                                 SceneShadowRenderer* shadows,
+                                                 const RDGTexture*    pipelineVisibility)
 {
     RenderGraph* graph            = m_pRenderDevice->GetCurrentFrameRDG();
 
@@ -1317,7 +1415,6 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     // Ray-shadowed and hybrid forward layers read the deferred receivers' exact shadow results.
     const bool rayShadows         = voxelGI != nullptr && voxelGI->UsesRayShadows();
-    const bool hardwareTransport  = voxelGI != nullptr && (voxelGI->GetHardwareFeatureMask() & 27u) != 0u;
 
     const bool hybrid             = m_hybrid != nullptr && m_hybrid->IsActive();
 
@@ -1325,7 +1422,11 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     RDGTexture lightVisibility;
 
-    if (receiverVisibility)
+    if (pipelineVisibility != nullptr)
+    {
+        lightVisibility = *pipelineVisibility;
+    }
+    else if (receiverVisibility)
     {
         RDGTextureDesc visibilityDesc;
 
@@ -1443,10 +1544,11 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
     if (deferredOpaque)
     {
-        AddLightingPass(view, voxelGI, shadows, capture, true, &color, shareRays ? &lightVisibility : nullptr);
+        AddLightingPass(view, voxelGI, shadows, capture, true, &color,
+                        shareRays || pipelineVisibility != nullptr ? &lightVisibility : nullptr);
     }
 
-    if (receiverVisibility && !shareRays)
+    if (receiverVisibility && !shareRays && pipelineVisibility == nullptr)
     {
         // Every forward layer evaluates its own shadows; the bound receiver results stay empty.
         graph->AddTransferPass("ClearLightVisibility").ClearTexture(lightVisibility, Color(0.0f));
@@ -1683,9 +1785,8 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
 
             RDGGraphicsPassDesc forward;
 
-            forward.SetShaderProgramName(voxelGI == nullptr
-                                             ? (basicPBR ? "ForwardMaterialBasicSP" : "ForwardMaterialSP")
-                                             : (basicPBR ? "ForwardMaterialVoxelGIBasicSP" : "ForwardMaterialVoxelGISP"));
+            forward.SetShaderProgramName(voxelGI == nullptr ? (basicPBR ? "ForwardMaterialBasicSP" : "ForwardMaterialSP")
+                                                            : (basicPBR ? "ForwardHybridGIBasicSP" : "ForwardHybridGISP"));
 
             if (hybrid)
             {
@@ -1700,19 +1801,6 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
             if (receiverVisibility)
             {
                 forward.BindSampledTexture("receiverLightVisibility", m_pDepthSampler, lightVisibility);
-            }
-            if (hardwareTransport && !rayShadows)
-            {
-                const bool counts = !capture && voxelGI->CountsRays();
-                forward.SetShaderProgramName(
-                    capture  ? (basicPBR ? "ForwardHardwareLightingCaptureBasicSP" : "ForwardHardwareLightingCaptureSP")
-                    : counts ? (basicPBR ? "ForwardHardwareLightingCountsBasicSP" : "ForwardHardwareLightingCountsSP")
-                             : (basicPBR ? "ForwardHardwareLightingBasicSP" : "ForwardHardwareLightingSP"));
-                voxelGI->GetSceneRayQuery().BindInputs(forward, *m_pScene, true);
-                if (counts)
-                {
-                    voxelGI->BindRayTotals(forward);
-                }
             }
             if (rayShadows)
             {
@@ -1790,10 +1878,6 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView& view, VoxelGI
                 voxelGI->BindLightingInputs(forward);
 
                 voxelGI->BindShadowInputs(forward, shadows, true);
-                if (hardwareTransport || rayShadows)
-                {
-                    voxelGI->BindEnvironmentSamplingInputs(forward);
-                }
             }
 
             if (gpuRun)

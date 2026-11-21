@@ -15,17 +15,17 @@ struct EditorOptions
     std::string capture;
     std::string sceneCapture;
     // Opens the Render Graph window and captures it on the final frame.
-    std::string      graphCapture;
-    std::string      graphSelect;
-    rc::DebugOutput  debugOutput{rc::DebugOutput::eFinal};
-    bool             debugSpecified{false};
-    uint32_t         frames{0};
-    float            scale{0};
-    bool             threaded{true};
-    bool             smokeTest{false};
-    bool             hidden{false};
-    bool             windowed{false};
-    rc::RenderOption mode{rc::RenderOption::eVoxelGI}; // PBR + Global illumination.
+    std::string                     graphCapture;
+    std::string                     graphSelect;
+    rc::DebugOutput                 debugOutput{rc::DebugOutput::eFinal};
+    bool                            debugSpecified{false};
+    uint32_t                        frames{0};
+    float                           scale{0};
+    bool                            threaded{true};
+    bool                            smokeTest{false};
+    bool                            hidden{false};
+    bool                            windowed{false};
+    std::optional<rc::RenderOption> mode;
 
     std::optional<bool> validation;
 };

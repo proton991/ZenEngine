@@ -31,8 +31,9 @@ def build(args):
     setup['rendering']['environment']['lighting'] = False
     setup['rendering']['normalMaps'] = False
     setup['animationEnabled'] = False
-    setup['rendering']['gi']['cone'].update(rayProvider=2, featureProviders=[2]*6, gather=0,
-                                         emissiveLighting=False, previousFrameRadiance=False)
+    setup['rendering']['gi']['cone'].pop('featureProviders', None)
+    setup['rendering']['gi']['cone'].update(rayProvider=2,
+                                         emissiveLighting=False)
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=target.name+'.building-', dir=target.parent))
     frame = staging/'frames'/'imported_lamps_sun'

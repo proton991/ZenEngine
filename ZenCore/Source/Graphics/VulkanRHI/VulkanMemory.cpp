@@ -155,6 +155,24 @@ void VulkanMemoryAllocator::Init(VkInstance       instance,
 
     vkGetPhysicalDeviceMemoryProperties(gpu, &m_memoryProperties);
 
+    // VMA rejects allocations past a heap limit and reports budgets within it, so every budget-driven
+    // choice (field scratch, shadow preflight, frames in flight) sees the limited device.
+    VkDeviceSize   heapLimits[VK_MAX_MEMORY_HEAPS];
+    const uint64_t limit = RHIOptions::GetInstance().DeviceMemoryLimit();
+
+    for (uint32_t i = 0; i < m_memoryProperties.memoryHeapCount; ++i)
+    {
+        VkMemoryHeap& heap = m_memoryProperties.memoryHeaps[i];
+
+        const bool limited = limit != 0 && (heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0 && heap.size > limit;
+
+        heapLimits[i]      = limited ? limit : VK_WHOLE_SIZE;
+
+        heap.size          = limited ? limit : heap.size;
+    }
+
+    allocatorCI.pHeapSizeLimit         = limit != 0 ? heapLimits : nullptr;
+
     allocatorCI.pDeviceMemoryCallbacks = &memoryCallbacks;
 
     VERIFY_EXPR_MSG_F((vmaCreateAllocator(&allocatorCI, &m_vmaAllocator)) == VK_SUCCESS,

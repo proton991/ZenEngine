@@ -285,7 +285,7 @@ bool SceneRendering::ApplyRenderingSettings(const rc::RenderingSettings& setting
 
     // Light, environment and output edits arrive every frame during a drag. They skip the GI
     // apply unless its values change or Apply explicitly retries resources.
-    if (valid && (retryResources || settings.gi != server.GetVoxelGISettings()))
+    if (valid && (retryResources || settings.gi != server.GetRequestedVoxelGISettings()))
     {
         valid = server.ApplyVoxelGISettings(settings.gi, retryResources);
 

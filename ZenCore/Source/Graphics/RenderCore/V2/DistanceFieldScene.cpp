@@ -707,7 +707,8 @@ void DistanceFieldScene::UpdateLocalVolumes(const RenderScene& scene)
         record.authorityMaximum          = Vec4(authority.GetMax(), 0);
         const uint32_t unavailable       = m_hasDynamic && index == m_detailCores.size() ? 2u : 0u;
         record.slot = glm::uvec4(static_cast<uint32_t>(index) % m_poolColumns, static_cast<uint32_t>(index) / m_poolColumns,
-                                 slot.ready && m_state == State::Ready ? 1u : unavailable, 0u);
+                                 slot.ready && m_state == State::Ready ? 1u : unavailable,
+                                 m_hasDynamic && index == m_detailCores.size() ? 1u : 0u);
         if (record.slot.z != 0)
         {
             readySlots.push_back(static_cast<uint32_t>(index));
@@ -1111,40 +1112,28 @@ uint32_t DistanceFieldScene::BatchCeiling() const
                                        : m_settings.triangleBatchSize;
 }
 
-uint32_t DistanceFieldScene::NextCycleCount()
+bool DistanceFieldScene::NextCycleCount(uint32_t& cycles)
 {
-    uint32_t cycles = m_settings.maxCyclesPerFrame;
+    bool record = true;
+    cycles      = m_settings.maxCyclesPerFrame;
     if (UsesThroughputBuild())
     {
         // Whole-batch dispatches make a cycle's cost scene- and device-dependent: start each
         // generation at one cycle and the device's last batch cap, so a slow device cannot record
         // seconds of work in one submission. Within the budget, grow the batch cap first, which
         // finishes the generation in fewer dispatches than more cycles would; over it, shrink the
-        // cycles first.
-        const uint32_t ceiling = BatchCeiling();
-        cycles                 = m_pending && m_pending->submittedCycles != 0 ? m_cyclesPerFrame : 1u;
-        if (m_pending && m_pending->submittedCycles != 0 && m_frameIntervalUs <= m_settings.throughputFrameBudgetMicroseconds)
-        {
-            if (m_batchCap < std::min(ceiling, m_pending->triangleCount))
-            {
-                m_batchCap = std::min(ceiling, m_batchCap * 2u);
-            }
-            else
-            {
-                cycles = std::min(m_settings.maxCyclesPerFrame, m_cyclesPerFrame * 2u);
-            }
-        }
-        else if (m_pending && m_pending->submittedCycles != 0)
-        {
-            if (m_cyclesPerFrame > 1)
-            {
-                cycles = m_cyclesPerFrame / 2u;
-            }
-            else
-            {
-                m_batchCap = std::max(1u, m_batchCap / 2u);
-            }
-        }
+        // cycles first. The budget also admits a share of the measured render-only interval, so a
+        // frame that exceeds the absolute budget without construction still finishes the field.
+        FieldThroughputLimits limits;
+        limits.budgetUs      = m_settings.throughputFrameBudgetMicroseconds;
+        limits.budgetShare   = m_settings.throughputFrameBudgetShare;
+        limits.maxCycles     = m_settings.maxCyclesPerFrame;
+        limits.batchCeiling  = BatchCeiling();
+        limits.triangleCount = m_pending ? m_pending->triangleCount : 0u;
+        limits.probeFrames   = kBaselineFrames;
+        const bool submitted = m_pending && m_pending->submittedCycles != 0;
+        record               = PaceFieldThroughput(m_throughput, limits, m_frameIntervalUs, submitted);
+        cycles               = m_throughput.cycles;
     }
     else if (m_settings.frameBudgetMicroseconds > 0.0 || m_settings.frameBudgetShare > 0.0)
     {
@@ -1168,7 +1157,7 @@ uint32_t DistanceFieldScene::NextCycleCount()
         }
     }
     m_cyclesPerFrame = cycles;
-    return cycles;
+    return record;
 }
 
 void DistanceFieldScene::Poll()
@@ -1321,9 +1310,10 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     m_lastSubmittedGraphs    = 0;
     m_failureDetails         = {};
     // Costs and the frame around them differ between generations: measure again from a single cycle.
-    m_cyclesPerFrame          = 1;
-    m_baselineFrames          = 0;
-    m_baselineUs              = 0;
+    m_cyclesPerFrame = 1;
+    m_baselineFrames = 0;
+    m_baselineUs     = 0;
+    StartFieldThroughputGeneration(m_throughput);
     const uint32_t side       = local ? m_settings.localCellsPerAxis : m_settings.cellsPerAxis;
     const uint32_t atlasSide  = local ? m_settings.localAtlasTexelsPerAxis : m_settings.atlasTexelsPerAxis;
     const uint64_t cells      = uint64_t(side) * side * side;
@@ -1340,7 +1330,8 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
                 && m_settings.maxCyclesPerFrame <= 64 && m_settings.frameBudgetMicroseconds >= 0.0
                 && std::isfinite(m_settings.frameBudgetMicroseconds) && m_settings.frameBudgetShare >= 0.0
                 && std::isfinite(m_settings.frameBudgetShare) && m_settings.throughputFrameBudgetMicroseconds >= 0.0
-                && std::isfinite(m_settings.throughputFrameBudgetMicroseconds) && m_settings.jobCapacity > 0
+                && std::isfinite(m_settings.throughputFrameBudgetMicroseconds) && m_settings.throughputFrameBudgetShare >= 0.0
+                && std::isfinite(m_settings.throughputFrameBudgetShare) && m_settings.jobCapacity > 0
                 && m_settings.referencesPerCell > 0 && m_settings.referencesPerCell <= ZEN_FIELD_MAX_CELL_REFS
                 && m_settings.referenceCapacity > 0 && m_settings.hitTolerance > 0.0f && m_settings.hitTolerance < 1.0f
                 && std::isfinite(m_settings.hitTolerance) && m_settings.deviceMemoryShare > 0.0
@@ -1610,12 +1601,15 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         workspaceEstimate = m_workspace->bytes;
     }
     // Scratch already allocated is part of the device's usage; a released workspace's is free again.
+    // The generation's own range buffer (16 bytes per instance range) is always admitted: a generation
+    // that reuses the retained geometry and workspace needs nothing else, and on a full device (Compute
+    // GI on an 8 GB card) refusing it would starve every local volume.
     const uint64_t released = m_workspace ? 0 : reclaimable;
-    m_scratchBudget =
-        !m_settings.deriveCapacities || available == UINT64_MAX
-            ? m_settings.scratchBudgetBytes
-            : std::min(m_settings.scratchBudgetBytes,
-                       GetScratchBytes() + static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + released)));
+    m_scratchBudget = !m_settings.deriveCapacities || available == UINT64_MAX
+                        ? m_settings.scratchBudgetBytes
+                        : std::min(m_settings.scratchBudgetBytes,
+                                   GetScratchBytes() + rangeEstimate
+                                       + static_cast<uint64_t>(m_settings.deviceMemoryShare * double(available + released)));
     const uint64_t coverageBytes = uint64_t(coverageSlots) * ZEN_FIELD_COVERAGE_STATE_WORDS * sizeof(uint32_t);
     const uint64_t activeBytes   = ActiveEntries(cells, referenceCapacity) * sizeof(glm::uvec2);
     const uint64_t splitBytes    = SplitSlots(referenceCapacity) * ZEN_FIELD_EMIT_SPLIT_WORDS * sizeof(uint32_t);
@@ -1629,13 +1623,16 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     }
     const uint64_t newScratch =
         (reuseGeometry ? 0 : geometryEstimate) + (reuseWorkspace ? 0 : workspaceEstimate) + rangeEstimate;
-    if (!valid || persistent > m_settings.persistentBudgetBytes || scratch > m_scratchBudget)
+    // Only a generation that can never fit the configured budgets fails. One that exceeds only the share
+    // of currently free memory waits below for retired allocations or freed memory, as a refresh does.
+    if (!valid || persistent > m_settings.persistentBudgetBytes || scratch > m_settings.scratchBudgetBytes)
     {
         LOGE(
-            "Distance field allocation rejected ({}): snapshot {} bytes (vertices {}, nodes {}, materials {}, UV {}), persistent {}, scratch {}",
+            "Distance field allocation rejected ({}): snapshot {} bytes (vertices {}, nodes {}, materials {}, UV {}), persistent {}, scratch {} (geometry {}, workspace {}, ranges {}; retained {}, budget {}, free {})",
             valid ? "memory budget" : failed, snapshotBytes, inputs[0] != nullptr ? inputs[0]->GetRequiredSize() : 0,
             inputs[1] != nullptr ? inputs[1]->GetRequiredSize() : 0, inputs[2] != nullptr ? inputs[2]->GetRequiredSize() : 0,
-            inputs[3] != nullptr ? inputs[3]->GetRequiredSize() : 0, persistent, scratch);
+            inputs[3] != nullptr ? inputs[3]->GetRequiredSize() : 0, persistent, scratch, geometryEstimate, workspaceEstimate,
+            rangeEstimate, GetScratchBytes(), m_scratchBudget, available);
         m_failedScene    = scene.GetIdentity();
         m_failedRevision = scene.GetGeometryRevision();
         Fail(valid ? "generation exceeds configured memory budget" : "invalid settings, scene buffers, or full-scene bounds",
@@ -1643,7 +1640,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         valid = false;
     }
     else if ((m_workspace && !reuseWorkspace) || persistent + GetPersistentBytes() > m_settings.persistentBudgetBytes
-             || newScratch + GetScratchBytes() > m_scratchBudget)
+             || newScratch + GetScratchBytes() > m_scratchBudget || scratch > m_scratchBudget)
     {
         // Retired generations remain charged until the GPU is finished; try again on a later frame.
         // A refresh that cannot fit beside the published generation at all replaces it instead, as a
@@ -1718,9 +1715,10 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
             glm::uvec4(referenceCapacity, m_settings.referencesPerCell,
                        (local ? ZEN_FIELD_BUILD_CROP_VOLUME : 0u) | (partial ? ZEN_FIELD_BUILD_PARTIAL : 0u), rangeCount);
         // Throughput builds keep the adapted batch cap across generations (NextCycleCount).
-        m_batchCap =
-            std::min(UsesThroughputBuild() && m_batchCap != 0 ? m_batchCap : m_settings.triangleBatchSize, BatchCeiling());
-        generation.build.triangleRange = glm::uvec4(0, m_batchCap, generation.triangleCount, jobCapacity);
+        m_throughput.batchCap =
+            std::min(UsesThroughputBuild() && m_throughput.batchCap != 0 ? m_throughput.batchCap : m_settings.triangleBatchSize,
+                     BatchCeiling());
+        generation.build.triangleRange = glm::uvec4(0, m_throughput.batchCap, generation.triangleCount, jobCapacity);
         if (!reuseGeometry)
         {
             for (uint32_t index = 0; index < kSnapshotBuffers; ++index)
@@ -2042,7 +2040,19 @@ void DistanceFieldScene::RecordSnapshot(Generation& generation)
     }
 }
 
-void DistanceFieldScene::RecordBuild(Generation& generation)
+bool DistanceFieldScene::RecordBuild(Generation& generation)
+{
+    // A throughput probe frame records no construction while the render-only interval settles.
+    uint32_t   cycles = 0;
+    const bool record = NextCycleCount(cycles);
+    if (record)
+    {
+        RecordBuildCycles(generation, cycles);
+    }
+    return record;
+}
+
+void DistanceFieldScene::RecordBuildCycles(Generation& generation, uint32_t cycles)
 {
     RenderGraph&   graph      = *m_device->GetCurrentFrameRDG();
     const char*    programs[] = {"DistanceFieldBatchClearSP", "DistanceFieldJobsSP",    "DistanceFieldCoverageSP",
@@ -2054,9 +2064,8 @@ void DistanceFieldScene::RecordBuild(Generation& generation)
     // finishes at most one triangle batch: a batch's clear and jobs phases precede the previous
     // batch's emission. One cycle per frame tied readiness to the frame rate (New Sponza: about
     // 3,900 frames). Repeated cycles let a frame finish several batches.
-    const uint32_t cycles            = NextCycleCount();
     m_recordedCycles                 = cycles;
-    generation.build.triangleRange.y = m_batchCap;
+    generation.build.triangleRange.y = m_throughput.batchCap;
     uint32_t previousPhase           = ZEN_FIELD_PHASE_FAILED;
     for (uint32_t cycle = 0; cycle < cycles; ++cycle)
     {
@@ -2228,12 +2237,12 @@ DistanceFieldScene::State DistanceFieldScene::BuildRenderGraph(RenderScene& scen
                 if (m_pending->stage == BuildStage::Snapshot)
                 {
                     RecordSnapshot(*m_pending);
+                    m_recorded = true;
                 }
-                else
+                else if (RecordBuild(*m_pending))
                 {
-                    RecordBuild(*m_pending);
+                    m_recorded = true;
                 }
-                m_recorded = true;
             }
         }
     }

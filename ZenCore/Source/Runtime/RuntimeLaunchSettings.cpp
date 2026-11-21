@@ -75,34 +75,45 @@ template <class Archive> void Fields(Archive& archive, rc::DebugSelection& value
 template <class Archive> void Fields(Archive& archive, rc::VoxelGISettings& value)
 {
     archive.Field("rayProvider", value.rayProvider);
-    archive.Field("featureProviders", value.featureProviders);
-    archive.Field("bounceSource", value.bounceSource);
     archive.Field("samples", value.samples);
-    archive.Field("adaptiveSampling", value.adaptiveSampling);
     archive.Field("accelerationStructureBudgetMB", value.accelerationStructureBudgetMB);
     archive.Field("referenceSamples", value.referenceSamples);
+    archive.Field("referenceTileStride", value.referenceTileStride, false);
     archive.Field("historyFrames", value.historyFrames);
     archive.Field("temporal", value.temporal);
     archive.Field("pixelResolutionDivisor", value.pixelResolutionDivisor, false);
     archive.Field("restirGI", value.restirGI, false);
     archive.Field("restirSpatial", value.restirSpatial, false);
+    archive.Field("restirSpatialSamples", value.restirSpatialSamples, false);
+    archive.Field("restirSpatialVisibility", value.restirSpatialVisibility, false);
     archive.Field("restirSpecular", value.restirSpecular, false);
-    archive.Field("previousFrameRadiance", value.previousFrameRadiance);
     archive.Field("filter", value.filter);
+    archive.Field("dataDrivenAntiLag", value.dataDrivenAntiLag, false);
+    archive.Field("youngReceiverSamples", value.youngReceiverSamples, false);
+    archive.Field("radianceCache", value.radianceCache, false);
+    archive.Field("nativeProbeBenchmark", value.nativeProbeBenchmark, false);
+    archive.Field("worldRadianceCache", value.worldRadianceCache, false);
+    archive.Field("worldCacheFeedback", value.worldCacheFeedback, false);
+    archive.Field("worldCacheSeed", value.worldCacheSeed, false);
+    archive.Field("worldCacheTileSize", value.worldCacheTileSize, false);
+    archive.Field("worldCacheHistory", value.worldCacheHistory, false);
+    archive.Field("worldCacheUnusedFrames", value.worldCacheUnusedFrames, false);
+    archive.Field("screenProbeGI", value.screenProbeGI, false);
+    archive.Field("nativeShadowReuse", value.nativeShadowReuse, false);
+    archive.Field("shadowReuse", value.shadowReuse, false);
+    archive.Field("bicubicHistory", value.bicubicHistory, false);
+    archive.Field("antiFirefly", value.antiFirefly, false);
+    archive.Field("footprintReceivers", value.footprintReceivers, false);
+    archive.Field("denoiserValidation", value.denoiserValidation, false);
+    // Removed 2026-11-14: the GI denoiser no longer has an alternative. Older setups still load.
+    archive.LegacyField("relaxDenoiser");
+    archive.Field("rayTracingPipeline", value.rayTracingPipeline, false);
     archive.Field("indirectDiffuse", value.indirectDiffuse);
     archive.Field("specularOcclusion", value.specularOcclusion);
-    archive.Field("diffuseResolution", value.diffuseResolution);
     archive.Field("reflections", value.reflections);
     archive.Field("fieldResolution", value.fieldResolution);
-    archive.Field("gather", value.gather);
-    archive.Field("probeSpacing", value.probeSpacing);
     archive.Field("indirectIntensity", value.indirectIntensity);
-    archive.Field("coneAngleDegrees", value.coneAngleDegrees);
-    archive.Field("stepScale", value.stepScale);
     archive.Field("normalBiasVoxels", value.normalBiasVoxels);
-    archive.Field("maxDistanceGridLengths", value.maxDistanceGridLengths);
-    archive.Field("coneCount", value.coneCount);
-    archive.Field("maxSteps", value.maxSteps);
     archive.Field("shadows", value.shadows);
     archive.Field("rtShadows", value.rtShadows);
     archive.Field("analyticLighting", value.analyticLighting);
@@ -114,11 +125,11 @@ template <class Archive> void Fields(Archive& archive, rc::VoxelGIRuntimeSetting
 {
     archive.Field("resolution", value.resolution);
     archive.Field("cone", value.cone);
-    archive.Field("voxelizer", value.voxelizer);
     archive.Field("asyncCompute", value.asyncCompute);
     archive.Field("averagedReflectance", value.averagedReflectance);
     archive.Field("reflectanceBudgetBytes", value.reflectanceBudgetBytes);
     archive.Field("shadowMapResolution", value.shadowMapResolution);
+    archive.Field("optimal", value.optimal, false);
 }
 
 template <class Archive> void Fields(Archive& archive, rc::TransparencySettings& value)
@@ -206,6 +217,9 @@ public:
         m_output += ":";
         Value(value);
     }
+
+    // Removed fields are accepted on read and never written.
+    void LegacyField(const char*) {}
 
     void String(std::string_view text)
     {
@@ -345,6 +359,21 @@ public:
                 Value(element, value, path);
             }
         }
+    }
+
+    // A removed field: ignored when present, so setups written before its removal still load.
+    void LegacyField(const char* name)
+    {
+        size_t count = 0;
+        for (simdjson::dom::key_value_pair entry : m_object)
+        {
+            count += entry.key == name ? 1u : 0u;
+        }
+        if (count > 1)
+        {
+            Fail(m_path + "." + name, "duplicate field");
+        }
+        m_fields += count;
     }
 
     void Finish()
@@ -581,6 +610,11 @@ bool DecodeRuntimeLaunchSettings(std::string_view json, RuntimeLaunchSettings& s
         JsonReader reader(element, error);
         Fields(reader, candidate);
         reader.Finish();
+        // A setup saved in the optimal configuration uses the current one, not the stored fields.
+        if (error.empty() && candidate.rendering.gi.optimal)
+        {
+            rc::ApplyVoxelGIPreset(rc::VoxelGIPreset::Optimal, candidate.rendering.gi);
+        }
         valid = error.empty() && ValidateRuntimeLaunchSettings(candidate, error);
     }
     if (valid)

@@ -27,9 +27,12 @@ namespace zen::runtime
 {
 namespace
 {
-const char* GetRayProviderName(rc::VoxelGISettings::RayProvider provider)
+const char* GetRayProviderName(const rc::VoxelGIRenderer* gi, rc::VoxelGISettings::RayProvider requested)
 {
-    const char* name = "auto";
+    const rc::VoxelGISettings::RayProvider provider = gi == nullptr            ? requested
+                                                    : gi->UsesFieldTraversal() ? rc::VoxelGISettings::RayProvider::Voxel
+                                                                               : gi->GetSettings().rayProvider;
+    const char*                            name     = "auto";
     if (provider == rc::VoxelGISettings::RayProvider::Voxel)
     {
         name = "compute";
@@ -264,14 +267,22 @@ private:
     bool WriteBatchFrame(const GroundTruthFrame& frame, const HeapVector<Vec4>& lighting, const double (&rms)[3])
     {
         const std::string prefix = m_options.output + "/" + frame.id;
-        HeapVector<Vec4>  hybrid;
-        bool valid = ReadCaptureBuffer(3, hybrid) && WriteCaptureFile(prefix + ".lighting.bin", lighting)
-                  && WriteCaptureFile(prefix + ".hybrid.bin", hybrid)
-                  && WriteCaptureFile(prefix + ".previous.lighting.bin", m_previousLighting)
-                  && WriteFrameSummary(prefix + ".json")
-                  && CaptureGroundTruthEnvironment(*m_device, m_rendering->GetScene()->GetEnvTexture().pPrefiltered,
-                                                   prefix + ".environment.bin")
-                  && WriteRuntimeLaunchSettings(std::filesystem::u8path(prefix + ".zenrender"), m_setup, m_error);
+        bool              valid  = true;
+        if (frame.hybridPixels.empty())
+        {
+            HeapVector<Vec4> hybrid;
+            valid = ReadCaptureBuffer(3, hybrid) && WriteCaptureFile(prefix + ".lighting.bin", lighting)
+                 && WriteCaptureFile(prefix + ".hybrid.bin", hybrid)
+                 && WriteCaptureFile(prefix + ".previous.lighting.bin", m_previousLighting)
+                 && CaptureGroundTruthEnvironment(*m_device, m_rendering->GetScene()->GetEnvTexture().pPrefiltered,
+                                                  prefix + ".environment.bin");
+        }
+        else
+        {
+            valid = WriteSelectedHybridCapture(*m_captureBuffers[3], frame, prefix + ".hybrid-pixels.bin");
+        }
+        valid = valid && WriteFrameSummary(prefix + ".json")
+             && WriteRuntimeLaunchSettings(std::filesystem::u8path(prefix + ".zenrender"), m_setup, m_error);
         if (valid)
         {
             std::ofstream convergence(std::filesystem::u8path(prefix + ".convergence.json"));
@@ -377,12 +388,11 @@ private:
         m_device->WaitForPreviousFrames();
         rc::HybridGIRenderer* hybrid = m_device->GetRendererServer()->RequestDeferredLightingRenderer()->GetHybridGI();
         const uint8_t* data  = hybrid != nullptr && hybrid->WereRayCountsRecorded() ? m_rayCountBuffers[1]->Map() : nullptr;
-        const bool     valid = data != nullptr;
+        bool           valid = data != nullptr;
         if (valid)
         {
             const glm::uvec2 extent = hybrid->GetGIExtent();
-            const uint64_t   tiles  = rc::HybridGIRenderer::GetRayCountCaptureBytes(extent.x, extent.y)
-                                    / (2u * ZEN_GI_TRACE_COUNT_WORDS * sizeof(uint32_t));
+            const uint64_t   tiles  = uint64_t((extent.x + 15u) / 16u) * ((extent.y + 15u) / 16u);
             const uint32_t*  words  = reinterpret_cast<const uint32_t*>(data);
             uint64_t         totals[ZEN_GI_TRACE_COUNT_WORDS]{};
             for (uint64_t tile = 0; tile < tiles; ++tile)
@@ -390,6 +400,34 @@ private:
                 for (uint32_t word = 0; word < ZEN_GI_TRACE_COUNT_WORDS; ++word)
                 {
                     totals[word] += words[tile * ZEN_GI_TRACE_COUNT_WORDS + word];
+                }
+            }
+            uint64_t        breakdown[8]{};
+            const uint32_t* pixels = words + tiles * ZEN_GI_TRACE_COUNT_WORDS;
+            for (uint64_t pixel = 0; pixel < uint64_t(extent.x) * extent.y; ++pixel)
+            {
+                for (uint32_t counter = 0; counter < 8; ++counter)
+                {
+                    breakdown[counter] += pixels[pixel * 8u + counter];
+                }
+            }
+            LOGI("ZenApp trace breakdown: GI={}, hit_light={}, hit_sky={}, reflection={}, cache_queries={}, cache_hits={}",
+                 breakdown[0], breakdown[1], breakdown[2], breakdown[3], breakdown[4], breakdown[5]);
+            const std::string prefix = !m_options.profile.empty() ? m_options.profile : m_options.logPath;
+            if (!prefix.empty())
+            {
+                const std::string path = fmt::format("{}.trace-{}.bin", prefix, GetSceneFrame());
+                std::ofstream     dump(std::filesystem::u8path(path), std::ios::binary);
+                // Header: magic GITR, version, GI extent, words per texel, reserved.
+                const uint32_t header[] = {0x52544947u, 1u, extent.x, extent.y, 8u, 0u};
+                dump.write(reinterpret_cast<const char*>(header), sizeof(header));
+                dump.write(reinterpret_cast<const char*>(pixels),
+                           static_cast<std::streamsize>(uint64_t(extent.x) * extent.y * 8u * sizeof(uint32_t)));
+                dump.close();
+                valid = dump.good();
+                if (!valid)
+                {
+                    m_error = "Cannot write the per-texel trace breakdown";
                 }
             }
             m_rayCountBuffers[1]->Unmap();
@@ -468,20 +506,6 @@ private:
         {
             m_error = "Ground-truth capture refuses to run while RTSS is loaded";
         }
-        if (valid && !m_options.hybridTraceModule.empty())
-        {
-            const rc::VoxelGISettings& gi          = m_setup.rendering.gi.cone;
-            const uint32_t             allFeatures = (1u << static_cast<uint32_t>(rc::VoxelGISettings::Feature::Count)) - 1u;
-            const bool                 referenceModule =
-                gi.referenceSamples != 0 && m_options.hybridTraceBufferedModule && !m_setup.rendering.environment.lighting;
-            valid = m_setup.rendering.algorithm == rc::RenderAlgorithm::eVoxelGI && !gi.UsesScreenProbes()
-                 && ((gi.restirGI && gi.referenceSamples == 0) || referenceModule) && gi.GetHardwareFeatureMask() == allFeatures
-                 && !m_options.disableRT;
-            if (!valid)
-            {
-                m_error = "HybridTrace modules require all-HW pixel GI with ReSTIR, or a buffered environment-off reference";
-            }
-        }
         if (valid)
         {
             asset::SceneImportRequest request{m_setup.packagePath};
@@ -509,19 +533,14 @@ private:
             RHIOptions::GetInstance().SetGPUProfilerMarkers(m_options.gpuMarkers);
             RHIOptions::GetInstance().SetPipelineStatistics(m_options.pipelineStatistics);
             RHIOptions::GetInstance().SetRayTracingDisabled(m_options.disableRT);
+            RHIOptions::GetInstance().SetDeviceMemoryLimit(m_options.deviceMemoryLimitMB * 1024 * 1024);
             RHIOptions::GetInstance().SetPresentMode(m_setup.run.presentMode);
-            rc::RenderConfig& config         = rc::RenderConfig::GetInstance();
-            config.numFrames                 = m_setup.run.framesInFlight;
-            config.numThreads                = m_setup.run.workerThreads;
-            config.hybridTraceModule         = m_options.hybridTraceModule;
-            config.hybridTraceBufferedModule = m_options.hybridTraceBufferedModule;
-            config.hybridTraceReferenceModule =
-                !m_options.hybridTraceModule.empty() && m_setup.rendering.gi.cone.referenceSamples != 0;
-            config.hybridHitStream            = m_options.hybridHitStream;
-            config.hybridTraceOverrideProgram = m_options.hybridTraceOverrideProgram;
-            config.hybridTraceOverrideModule  = m_options.hybridTraceOverrideModule;
-            config.depthBiasConstant          = m_setup.run.shadowDepthBias;
-            config.depthBiasSlope             = m_setup.run.shadowSlopeBias;
+            rc::RenderConfig& config = rc::RenderConfig::GetInstance();
+            config.numFrames         = m_setup.run.framesInFlight;
+            config.numThreads        = m_setup.run.workerThreads;
+            config.hybridHitStream   = m_options.hybridHitStream;
+            config.depthBiasConstant = m_setup.run.shadowDepthBias;
+            config.depthBiasSlope    = m_setup.run.shadowSlopeBias;
             RuntimeWindowSettings settings;
             settings.windowWidth                     = m_setup.run.windowWidth;
             settings.windowHeight                    = m_setup.run.windowHeight;
@@ -569,7 +588,7 @@ private:
                 if (valid)
                 {
                     m_session->Update();
-                    valid = m_session->GetWindow() != nullptr && !m_session->IsClosing();
+                    valid = m_session->GetWindow() != nullptr && !m_session->IsClosing() && m_session->PrepareFirstView();
                 }
             }
             if (valid)
@@ -666,24 +685,30 @@ private:
                           << " gi_refining=" << server.IsRefiningGI() << " gpu_allocated_bytes=" << memory.deviceLocalBytes
                           << " gpu_peak_allocated_bytes=" << memory.peakDeviceLocalBytes << '\n';
             }
-            if (GetSceneFrame() == 1)
+            const rc::RenderView        view     = m_target->GetView();
+            const rc::RendererServer&   server   = *m_device->GetRendererServer();
+            const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
+            const bool                  activeGI = server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr;
+            const glm::uvec2            giExtent = activeGI ? hybrid->GetGIExtent() : glm::uvec2(0);
+            const glm::uvec4            extents(giExtent, view.width, view.height);
+            if (GetSceneFrame() == 1 || extents != m_reportedExtents)
             {
-                const rc::RenderView view = m_target->GetView();
+                m_reportedExtents             = extents;
+                const rc::VoxelGIRenderer* gi = server.RequestVoxelGI();
                 LOGI("ZenApp render: {}x{}, async-compute={}, RHI={}, ray-provider={}, ray-query={}, diagnostics={}",
                      view.width, view.height, rc::GetAsyncComputeStatusReason(m_device->GetAsyncComputeStatus()),
                      m_setup.run.rhiMode == RHIExecutionMode::eThreaded ? "threaded" : "inline",
-                     GetRayProviderName(m_setup.rendering.gi.cone.rayProvider),
+                     GetRayProviderName(gi, m_setup.rendering.gi.cone.rayProvider),
                      m_device->GetGPUInfo().rayQuery.IsUsable() ? "available" : "unavailable", overlay != nullptr);
-                const rc::RendererServer&   server = *m_device->GetRendererServer();
-                const rc::HybridGIRenderer* hybrid = server.RequestDeferredLightingRenderer()->GetHybridGI();
-                const rc::VoxelGIRenderer*  gi     = server.RequestVoxelGI();
                 LOGI("ZenApp GI: gather={}, hardware-mask={}, field-traversal={}, voxel-lighting={}",
-                     hybrid != nullptr && hybrid->IsHistoryValid() ? (hybrid->UsesScreenProbes() ? "probes" : "pixel")
-                                                                   : "inactive",
+                     activeGI && hybrid->IsHistoryValid() ? (hybrid->GetScreenProbeCount() != 0u ? "screen_probes" : "pixel")
+                                                          : "inactive",
                      gi != nullptr ? gi->GetHardwareFeatureMask() : 0u, gi != nullptr && gi->UsesFieldTraversal(),
                      gi != nullptr && gi->UsesVoxelLighting());
-                const glm::uvec2 giExtent = hybrid != nullptr ? hybrid->GetGIExtent() : glm::uvec2(0);
                 LOGI("ZenApp GI extent: {}x{}, output={}x{}", giExtent.x, giExtent.y, view.width, view.height);
+            }
+            if (GetSceneFrame() == 1)
+            {
                 m_device->FlushRHIThread();
                 valid = m_device->PollFrameSubmissions();
                 if (valid && m_options.startPaused)
@@ -691,16 +716,22 @@ private:
                     Pause(true);
                 }
             }
-            const bool capture = !m_options.capture.empty()
-                              && (GetSceneFrame() == m_options.frames || (m_options.startPaused && GetSceneFrame() == 1)
-                                  || (m_options.captureStart != 0 && GetSceneFrame() >= m_options.captureStart));
+            const uint64_t frame    = GetSceneFrame();
+            const bool     perFrame = m_options.captureStart != 0 || !m_options.captureFrames.empty();
+            bool           capture  = frame == m_options.frames || (m_options.startPaused && frame == 1)
+                                   || (m_options.captureStart != 0 && frame >= m_options.captureStart);
+            if (!m_options.captureFrames.empty())
+            {
+                // An explicit frame list replaces the last-frame capture.
+                capture = std::binary_search(m_options.captureFrames.begin(), m_options.captureFrames.end(), frame);
+            }
+            capture = capture && !m_options.capture.empty();
             if (valid && capture)
             {
-                const std::string path = m_options.captureStart == 0
-                                           ? m_options.capture
-                                           : m_options.capture + ".frame-" + std::to_string(GetSceneFrame()) + ".ppm";
-                valid                  = rc::CaptureSceneFrame(*m_device, m_target->GetView().color, path);
-                valid                  = valid && WriteFrameSummary(path + ".json");
+                const std::string path =
+                    !perFrame ? m_options.capture : m_options.capture + ".frame-" + std::to_string(GetSceneFrame()) + ".ppm";
+                valid = rc::CaptureSceneFrame(*m_device, m_target->GetView().color, path);
+                valid = valid && WriteFrameSummary(path + ".json");
             }
         }
         if (!valid)
@@ -743,16 +774,48 @@ private:
         const rc::HybridGIRenderer*   hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
         const rc::VoxelGIRenderer*    gi       = server.RequestVoxelGI();
         const glm::uvec2              giExtent = hybrid != nullptr ? hybrid->GetGIExtent() : glm::uvec2(0);
-        std::ofstream                 summary(std::filesystem::u8path(path));
+        const bool    probes = hybrid != nullptr && hybrid->GetScreenProbeCount() != 0u && hybrid->IsHistoryValid();
+        std::ofstream summary(std::filesystem::u8path(path));
         summary << "{\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
                 << ",\"framebufferHeight\":" << framebuffer.height
                 << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false")
-                << ",\"backend\":" << std::quoted(GetRayProviderName(m_setup.rendering.gi.cone.rayProvider)) << ",\"gather\":"
-                << std::quoted(hybrid != nullptr && hybrid->IsHistoryValid() ? (hybrid->UsesScreenProbes() ? "probes" : "pixel")
-                                                                             : "inactive")
+                << ",\"backend\":" << std::quoted(GetRayProviderName(gi, m_setup.rendering.gi.cone.rayProvider))
+                << ",\"gather\":"
+                << std::quoted(probes                                          ? "screen_probes"
+                               : hybrid != nullptr && hybrid->IsHistoryValid() ? "pixel"
+                                                                               : "inactive")
                 << ",\"giWidth\":" << giExtent.x << ",\"giHeight\":" << giExtent.y
+                << ",\"referenceSamples\":" << (gi != nullptr ? gi->GetSettings().referenceSamples : 0u)
+                << ",\"referenceTileStride\":" << (gi != nullptr ? gi->GetSettings().referenceTileStride : 1u)
+                << ",\"giDenoiser\":"
+                << (!probes && gi != nullptr && gi->GetSettings().referenceSamples == 0 ? "true" : "false")
+                << ",\"glossyDenoiser\":" << (probes && gi != nullptr && gi->GetSettings().specularOcclusion ? "true" : "false")
+                << ",\"nativeShadowReuse\":"
+                << (probes && gi != nullptr && gi->GetSettings().nativeShadowReuse && gi->UsesRayTracingPipeline() ? "true"
+                                                                                                                   : "false")
+                << ",\"giSpatialFilter\":" << (gi != nullptr && gi->GetSettings().filter ? "true" : "false")
+                << ",\"rayTracingPipeline\":" << (gi != nullptr && gi->UsesRayTracingPipeline() ? "true" : "false")
+                << ",\"radianceCacheCapacity\":" << (hybrid != nullptr ? hybrid->GetRadianceCacheCapacity() : 0u)
+                << ",\"nativeProbeRaySlots\":" << (hybrid != nullptr ? hybrid->GetNativeProbeRaySlots() : 0u)
+                << ",\"worldCacheCapacity\":" << (hybrid != nullptr ? hybrid->GetWorldCacheCapacity() : 0u)
+                << ",\"screenProbeCount\":" << (hybrid != nullptr ? hybrid->GetScreenProbeCount() : 0u)
+                << ",\"nativeProbeBenchmark\":" << (gi != nullptr && gi->GetSettings().nativeProbeBenchmark ? "true" : "false")
+                << ",\"radianceCacheKeyBits\":" << (m_device->GetGPUInfo().supportBufferInt64Atomics ? 64 : 32)
+                << ",\"bicubicHistory\":" << (!probes && gi != nullptr && gi->GetSettings().bicubicHistory ? "true" : "false")
+                << ",\"dataDrivenAntiLag\":"
+                << (!probes && gi != nullptr && gi->GetSettings().dataDrivenAntiLag ? "true" : "false")
+                << ",\"youngReceiverSamples\":"
+                << (!probes && gi != nullptr && gi->GetSettings().youngReceiverSamples ? "true" : "false")
+                << ",\"antiFirefly\":" << (!probes && gi != nullptr && gi->GetSettings().antiFirefly ? "true" : "false")
+                << ",\"footprintReceivers\":"
+                << (!probes && gi != nullptr && gi->GetSettings().footprintReceivers ? "true" : "false")
+                << ",\"restirSpatialSamples\":" << (!probes && gi != nullptr ? gi->GetSettings().restirSpatialSamples : 0u)
+                << ",\"restirSpatialVisibility\":"
+                << (!probes && gi != nullptr && gi->GetSettings().restirSpatialVisibility ? "true" : "false")
                 << ",\"hardwareFeatureMask\":" << (gi != nullptr ? gi->GetHardwareFeatureMask() : 0u)
+                << ",\"deviceMemoryLimitMB\":" << m_options.deviceMemoryLimitMB << ",\"tierFallback\":"
+                << std::quoted(gi != nullptr && gi->GetTierFallbackReason() != nullptr ? gi->GetTierFallbackReason() : "")
                 << ",\"fieldTraversal\":" << (gi != nullptr && gi->UsesFieldTraversal() ? "true" : "false")
                 << ",\"voxelLighting\":" << (gi != nullptr && gi->UsesVoxelLighting() ? "true" : "false")
                 << ",\"asyncCompute\":" << std::quoted(rc::GetAsyncComputeStatusReason(m_device->GetAsyncComputeStatus()))
@@ -787,6 +850,7 @@ private:
     std::shared_ptr<RuntimeLog>      m_log;
     bool                             m_logReady{false};
     bool                             m_cullingReported{false};
+    glm::uvec4                       m_reportedExtents{0};
     rc::SceneCullingResult           m_lastSceneCulling;
     RHIBuffer*                       m_captureBuffers[4]{};
     RHIBuffer*                       m_rayCountBuffers[2]{};

@@ -1,3 +1,5 @@
+#ifndef ZEN_HYBRID_GUIDES
+#define ZEN_HYBRID_GUIDES
 #include "../Common/gbuffer.glsl"
 #include "hybrid_common.glsl"
 #include "hybrid_uniforms.glsl"
@@ -31,3 +33,5 @@ bool HybridInView(ivec2 pixel)
 {
     return all(greaterThanEqual(pixel, ivec2(0))) && all(lessThan(pixel, textureSize(receiverDepth, 0)));
 }
+
+#endif

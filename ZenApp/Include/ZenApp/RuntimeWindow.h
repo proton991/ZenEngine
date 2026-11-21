@@ -42,6 +42,7 @@ public:
     bool                                     Quit();
     void                                     Update();
     void                                     Shutdown();
+    bool                                     PrepareFirstView();
     bool                  Render(rc::RenderOverlay* overlay = nullptr, rc::RDGDebugSnapshot* capture = nullptr);
     bool                  BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewport) override;
     bool                  IsActive() const;
@@ -89,6 +90,7 @@ public:
     }
 
 private:
+    bool ResizeSceneTarget(const platform::WindowExtent& extent);
     friend struct RuntimeWindowTestAccess;
     void OnInput(const platform::InputEvent& event);
     void ApplyInput(float seconds);

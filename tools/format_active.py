@@ -6,7 +6,7 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("ZenCore", "ZenTest", "ZenSample", "ZenUI", "Data/Shaders")
+SOURCE_ROOTS = ("ZenCore", "ZenTest", "ZenSample", "ZenUI", "ZenApp", "ZenEditor", "Data/Shaders")
 SUBPROJECTS = ("ZenSample", "ZenTest")
 # GLSL is formatted as C++: shared includes plus every glslang stage suffix.
 SOURCE_SUFFIXES = {".h", ".hpp", ".cpp", ".inl", ".glsl", ".vert", ".tesc", ".tese", ".geom", ".frag", ".comp",

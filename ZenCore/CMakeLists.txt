@@ -79,7 +79,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h
-    Include/Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h
 
     Include/Graphics/RenderCore/V2/RenderScene.h
     Include/Graphics/RenderCore/V2/FrameBufferRing.h
@@ -211,12 +210,13 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/TextureManager.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/ComputeVoxelizer.cpp
-    Source/Graphics/RenderCore/V2/GeometryVoxelizer.cpp
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
+    Source/Graphics/RenderCore/V2/WorldRadianceCache.cpp
+    Source/Graphics/RenderCore/V2/ScreenProbeGI.cpp
+    Source/Graphics/RenderCore/V2/GlossyReflections.cpp
     Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
     Source/Graphics/RenderCore/V2/SceneOpacityMicromap.cpp
-    Source/Graphics/RenderCore/V2/ScreenProbeGather.cpp
     Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
     Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
     Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
@@ -234,6 +234,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RHI/DynamicRHI.cpp
     Source/Graphics/RHI/RHICommandList.cpp
     Source/Graphics/RHI/RHIResource.cpp
+    Source/Graphics/RHI/RHIRayTracing.cpp
     Source/Graphics/RHI/RHICommandListExecutor.cpp
     Source/Graphics/RHI/RHIGPUFrameTiming.cpp
     Source/Graphics/RHI/RHIThread.cpp
@@ -306,6 +307,7 @@ target_sources(ZenRenderCoreTestSources INTERFACE
     Source/Graphics/RHI/DynamicRHI.cpp
     Source/Graphics/RHI/RHICommandList.cpp
     Source/Graphics/RHI/RHIResource.cpp
+    Source/Graphics/RHI/RHIRayTracing.cpp
     Source/Graphics/RHI/RHICommandListExecutor.cpp
     Source/Graphics/RHI/RHIGPUFrameTiming.cpp
     Source/Graphics/RHI/RHIThread.cpp
@@ -329,7 +331,9 @@ target_sources(ZenRenderCoreTestSources INTERFACE
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
     Source/Graphics/RenderCore/V2/HybridGIRenderer.cpp
-    Source/Graphics/RenderCore/V2/ScreenProbeGather.cpp
+    Source/Graphics/RenderCore/V2/WorldRadianceCache.cpp
+    Source/Graphics/RenderCore/V2/ScreenProbeGI.cpp
+    Source/Graphics/RenderCore/V2/GlossyReflections.cpp
     Source/Graphics/RenderCore/V2/SceneRayQuery.cpp
     Source/Graphics/RenderCore/V2/SceneOpacityMicromap.cpp
     Source/Graphics/RenderCore/V2/DistanceFieldScene.cpp
@@ -373,39 +377,60 @@ file(GLOB_RECURSE ZEN_SHADER_FILES CONFIGURE_DEPENDS
     "${SHADER_SRC_PATH}/*.vert"
     "${SHADER_SRC_PATH}/*.geom"
     "${SHADER_SRC_PATH}/*.comp"
+    "${SHADER_SRC_PATH}/*.rgen"
+    "${SHADER_SRC_PATH}/*.rmiss"
+    "${SHADER_SRC_PATH}/*.rchit"
+    "${SHADER_SRC_PATH}/*.rahit"
+    "${SHADER_SRC_PATH}/*.rcall"
 )
 
 message(STATUS "Spv Shader path: ${SHADER_SPV_PATH}")
 
 set(ZEN_MICROMAP_SHADER_PATHS "")
 set(ZEN_HIT_STREAM_SHADER_PATHS "")
+set(ZEN_INVOCATION_REORDER_SHADER_PATHS "")
 foreach (GLSL ${ZEN_SHADER_FILES})
     get_filename_component(FILE_NAME ${GLSL} NAME)
     get_filename_component(FILE_PATH ${GLSL} DIRECTORY)
     file(RELATIVE_PATH RELATIVE_FILE_PATH ${SHADER_SRC_PATH} ${FILE_PATH})
     file(READ "${GLSL}" SHADER_SOURCE)
     set(SHADER_VARIANTS base)
+    if(FILE_NAME MATCHES "\\.(rgen|rchit)$" AND SHADER_SOURCE MATCHES "ray_pipeline.glsl")
+        list(APPEND SHADER_VARIANTS ser_nv ser_ext)
+        string(APPEND ZEN_INVOCATION_REORDER_SHADER_PATHS "    \"${RELATIVE_FILE_PATH}/${FILE_NAME}.spv\",\n")
+    endif()
     if(SHADER_SOURCE MATCHES "include \"forward_material.glsl\"")
         list(APPEND SHADER_VARIANTS gpu)
     endif()
-    if(SHADER_SOURCE MATCHES "HYBRID_BUFFER_GUIDE" AND NOT SHADER_SOURCE MATCHES "HYBRID_NO_GUIDE")
-        list(APPEND SHADER_VARIANTS noguide)
-    endif()
-    if(SHADER_SOURCE MATCHES "GL_EXT_ray_query" AND NOT SHADER_SOURCE MATCHES "gl_EnableOpacityMicromapEXT")
+    if((SHADER_SOURCE MATCHES "GL_EXT_ray_query" AND NOT SHADER_SOURCE MATCHES "gl_EnableOpacityMicromapEXT")
+        OR (FILE_NAME MATCHES "\\.rchit$" AND SHADER_SOURCE MATCHES "hybrid_hit.glsl"))
         foreach(BASE_VARIANT ${SHADER_VARIANTS})
             list(APPEND SHADER_VARIANTS ${BASE_VARIANT}_stream)
         endforeach()
     endif()
+    if(FILE_NAME MATCHES "^hybrid_trace(_noguide)?_field(_young)?[.]comp$")
+        list(APPEND SHADER_VARIANTS world32 world64)
+    endif()
     foreach(VARIANT ${SHADER_VARIANTS})
         set(VARIANT_SUFFIX "")
         set(VARIANT_DEFINITIONS "")
+        if(VARIANT MATCHES "^world(32|64)$")
+            set(VARIANT_SUFFIX ".${VARIANT}")
+            list(APPEND VARIANT_DEFINITIONS -DHYBRID_FIELD_WORLD_CACHE=1)
+            if(VARIANT STREQUAL "world64")
+                list(APPEND VARIANT_DEFINITIONS -DGI_CACHE_KEY64=1)
+            endif()
+        endif()
+        if(VARIANT MATCHES "^ser_")
+            string(REGEX REPLACE "_stream$" "" SER_VARIANT "${VARIANT}")
+            string(APPEND VARIANT_SUFFIX ".${SER_VARIANT}")
+            string(TOUPPER "${SER_VARIANT}" SER_DEFINE)
+            string(REPLACE "SER_" "ZEN_INVOCATION_REORDER_" SER_DEFINE "${SER_DEFINE}")
+            list(APPEND VARIANT_DEFINITIONS "-D${SER_DEFINE}=1")
+        endif()
         if(VARIANT MATCHES "^gpu")
             string(APPEND VARIANT_SUFFIX ".gpu")
             list(APPEND VARIANT_DEFINITIONS -DGPU_FORWARD_DRAW=1)
-        endif()
-        if(VARIANT MATCHES "^noguide")
-            string(APPEND VARIANT_SUFFIX ".noguide")
-            list(APPEND VARIANT_DEFINITIONS -DHYBRID_NO_GUIDE=1)
         endif()
         if(VARIANT MATCHES "_stream$")
             string(APPEND ZEN_HIT_STREAM_SHADER_PATHS "    \"${RELATIVE_FILE_PATH}/${FILE_NAME}${VARIANT_SUFFIX}.spv\",\n")
@@ -414,7 +439,7 @@ foreach (GLSL ${ZEN_SHADER_FILES})
         endif()
         set(SPIRV "${SHADER_SPV_PATH}/${RELATIVE_FILE_PATH}/${FILE_NAME}${VARIANT_SUFFIX}.spv")
         set(SPIRV_TARGET spirv1.3)
-        if(FILE_NAME MATCHES "^ray_query_micromap_.*\\.comp$")
+        if(FILE_NAME MATCHES "^ray_query_micromap_.*\\.comp$" OR FILE_NAME MATCHES "\\.(rgen|rmiss|rchit|rahit|rcall)$")
             set(SPIRV_TARGET spirv1.4)
         endif()
         add_custom_command(
@@ -442,7 +467,7 @@ endforeach (GLSL)
 
 # Keep runtime module selection tied to the variants actually produced by this build.
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ZenOpacityMicromapShaders.h" CONTENT
-    "#pragma once\nnamespace zen::rc\n{\ninline constexpr const char* kOpacityMicromapShaderFiles[] = {\n${ZEN_MICROMAP_SHADER_PATHS}};\ninline constexpr const char* kHitStreamShaderFiles[] = {\n${ZEN_HIT_STREAM_SHADER_PATHS}};\n}\n")
+    "#pragma once\nnamespace zen::rc\n{\ninline constexpr const char* kOpacityMicromapShaderFiles[] = {\n${ZEN_MICROMAP_SHADER_PATHS}};\ninline constexpr const char* kHitStreamShaderFiles[] = {\n${ZEN_HIT_STREAM_SHADER_PATHS}};\ninline constexpr const char* kInvocationReorderShaderFiles[] = {\n${ZEN_INVOCATION_REORDER_SHADER_PATHS}};\n}\n")
 target_include_directories(ZenCore PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
 add_custom_target(

@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_FIELD_TRAVERSAL
+#define GI_CACHE_KEY64
+#include "world_cache_shade.glsl"

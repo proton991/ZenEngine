@@ -10,6 +10,17 @@ uint        HybridHash(uint x)
     x ^= x >> 16;
     return x;
 }
+uint HybridPackSignedRGBE(vec3 value)
+{
+    float largest  = max(abs(value.x), max(abs(value.y), abs(value.z)));
+    float exponent = clamp(ceil(log2(max(largest, 1e-30))), -126.0, 127.0);
+    return packSnorm4x8(vec4(value * exp2(-exponent), exponent / 127.0));
+}
+vec3 HybridUnpackSignedRGBE(uint word)
+{
+    vec4 packed = unpackSnorm4x8(word);
+    return packed.rgb * exp2(round(packed.w * 127.0));
+}
 // Burley, "Practical Hash-based Owen Scrambling" (JCGT 2020).
 uint HybridOwenScramble(uint x, uint seed)
 {
@@ -71,6 +82,23 @@ mat3 HybridBasis(vec3 n)
 {
     vec3 t = normalize(cross(abs(n.z) < 0.999 ? vec3(0, 0, 1) : vec3(0, 1, 0), n));
     return mat3(t, cross(n, t), n);
+}
+float HybridHenyeyGreensteinPDF(float oneMinusCosine, float g)
+{
+    float width = 1.0 - g;
+    float d     = width * width + 2.0 * g * oneMinusCosine;
+    return width * (1.0 + g) / (4.0 * HYBRID_PI * d * sqrt(d));
+}
+vec3 HybridHenyeyGreensteinSample(vec3 axis, vec2 u, float g)
+{
+    // Compute 1-cos(theta) directly. For a small footprint, rounding the
+    // cosine first collapses distinct central samples onto the light axis.
+    float width          = 1.0 - g;
+    float d              = 1.0 + g - 2.0 * g * u.x;
+    float oneMinusCosine = min(2.0 * u.x * (1.0 + g - g * u.x) * width * width / (d * d), 2.0);
+    float z              = 1.0 - oneMinusCosine;
+    float r              = sqrt(oneMinusCosine * (2.0 - oneMinusCosine));
+    return HybridBasis(axis) * vec3(r * cos(2.0 * HYBRID_PI * u.y), r * sin(2.0 * HYBRID_PI * u.y), z);
 }
 vec3 HybridCosineSample(vec3 normal, vec2 u, out float pdf)
 {

@@ -1,0 +1,41 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+#define HYBRID_HARDWARE_PROVIDER
+#define HYBRID_RAY_PIPELINE
+#define HYBRID_RADIANCE_CACHE
+#define ZEN_NO_PRIMARY_REORDER
+#include "../Common/ray_pipeline.glsl"
+#include "hybrid_guides.glsl"
+#include "hybrid_sampling.glsl"
+#include "hybrid_provider.glsl"
+layout(std430, set = 1, binding = 74) writeonly buffer NativeProbeRays
+{
+    vec4 probeRays[];
+};
+void main()
+{
+    uvec2 tiles     = (uvec2(textureSize(receiverDepth, 0)) + 15u) / 16u;
+    uint  baseCount = tiles.x * tiles.y;
+    uint  probe     = gl_LaunchIDEXT.y;
+    // Reserve the full adaptive budget. The extra probes use another surface point in every fourth tile.
+    bool  extra = probe >= baseCount;
+    uint  tile  = extra ? (probe - baseCount) * 4u : probe;
+    ivec2 pixel =
+        min(ivec2(uvec2(tile % tiles.x, tile / tiles.x) * 16u + (extra ? 4u : 8u)), textureSize(receiverDepth, 0) - 1);
+    vec3 radiance = vec3(0);
+    bool valid    = texelFetch(receiverDepth, pixel, 0).r < 1.0;
+    if (valid)
+    {
+        uint ray            = gl_LaunchIDEXT.x;
+        vec2 jitter         = HybridSample(uvec2(tile, ray), hybrid.sampling.x, 0x37a19u);
+        vec3 direction      = DecodeGBufferNormal((vec2(ray & 7u, ray >> 3u) + jitter) / 8.0);
+        vec3 normal         = HybridGeometricNormal(pixel);
+        direction           = dot(direction, normal) < 0.0 ? reflect(direction, normal) : direction;
+        rayShading          = uvec3(HybridHash(tile ^ ray ^ hybrid.sampling.x), 1u, 2u);
+        hitPayload.radiance = vec3(0);
+        HardwareTraceRay(HybridTraceOrigin(HybridPosition(pixel), normal, 0.0), direction, 1e20, true);
+        radiance = hitPayload.radiance;
+    }
+    probeRays[probe * 64u + gl_LaunchIDEXT.x] = vec4(radiance, float(valid));
+}

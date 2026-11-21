@@ -367,10 +367,13 @@ void VulkanDevice::Init()
     m_extensionFlags.hasAccelerationStructure &=
         m_extensionFlags.hasBufferDeviceAddress && m_extensionFlags.hasDeferredHostOperation;
 
-    m_extensionFlags.hasRaytracingPipeline &= m_extensionFlags.hasAccelerationStructure;
+    m_extensionFlags.hasRaytracingPipeline   &= m_extensionFlags.hasAccelerationStructure;
+    m_extensionFlags.hasInvocationReorderEXT &= m_extensionFlags.hasRaytracingPipeline;
+    m_extensionFlags.hasInvocationReorderNV &=
+        m_extensionFlags.hasRaytracingPipeline && !m_extensionFlags.hasInvocationReorderEXT;
 
-    m_extensionFlags.hasRayQuery           &= m_extensionFlags.hasAccelerationStructure;
-    m_extensionFlags.hasOpacityMicromap    &= m_extensionFlags.hasRayQuery;
+    m_extensionFlags.hasRayQuery        &= m_extensionFlags.hasAccelerationStructure;
+    m_extensionFlags.hasOpacityMicromap &= m_extensionFlags.hasRayQuery;
 
     for (const UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
     {
@@ -378,6 +381,9 @@ void VulkanDevice::Init()
 
         if ((name == NameID(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) && !m_extensionFlags.hasAccelerationStructure)
             || (name == NameID(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) && !m_extensionFlags.hasRaytracingPipeline)
+            || (name == NameID(VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME)
+                && !m_extensionFlags.hasInvocationReorderEXT)
+            || (name == NameID(VK_NV_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME) && !m_extensionFlags.hasInvocationReorderNV)
             || (name == NameID(VK_KHR_RAY_QUERY_EXTENSION_NAME) && !m_extensionFlags.hasRayQuery)
             || (name == NameID(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME) && !m_extensionFlags.hasOpacityMicromap))
         {
@@ -515,6 +521,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     enabledFeatures.samplerAnisotropy              = m_physicalDeviceFeatures.samplerAnisotropy;
     enabledFeatures.textureCompressionBC           = m_physicalDeviceFeatures.textureCompressionBC;
     enabledFeatures.imageCubeArray                 = m_physicalDeviceFeatures.imageCubeArray;
+    enabledFeatures.shaderInt64                    = m_extensionFlags.hasBufferInt64Atomics;
     enabledFeatures.fullDrawIndexUint32            = m_physicalDeviceFeatures.fullDrawIndexUint32;
 
     enabledFeatures.fillModeNonSolid               = m_physicalDeviceFeatures.fillModeNonSolid;

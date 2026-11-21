@@ -1,0 +1,220 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_PROBE_READ_WRITE
+#define SCREEN_PROBE_COMPUTE
+#include "screen_probe.glsl"
+layout(local_size_x = 64) in;
+layout(constant_id = 0) const bool kAdaptive = false;
+ScreenProbe ProbeReceiver(ivec2 pixel)
+{
+    pixel         = clamp(pixel, ivec2(0), ivec2(hybrid.resolution.xy) - 1);
+    uint identity = texelFetch(receiverSurface, pixel, 0).g;
+    bool valid    = texelFetch(receiverDepth, pixel, 0).r < 1.0 && identity != 0u;
+    return ScreenProbe(vec4(valid ? HybridPosition(pixel) : vec3(0), float(valid)),
+                       vec4(valid ? HybridGeometricNormal(pixel) : vec3(0, 0, 1), 1),
+                       uvec4(0xffffffffu, uvec2(pixel), identity));
+}
+shared ScreenProbe supportBases[9 * ZEN_SCREEN_PROBE_ADAPTIVE_TILES];
+shared vec2        supportPixels[9 * ZEN_SCREEN_PROBE_ADAPTIVE_TILES];
+void               ProbeLoadBaseSupport(uint firstTile, uint lane)
+{
+    uint owner = firstTile + lane / 9u;
+    if (lane < 9u * screenProbe.adaptiveTiles && owner < screenProbe.grid.z)
+    {
+        ivec2 coordinate =
+            ivec2(owner % screenProbe.grid.x, owner / screenProbe.grid.x) + ivec2(int(lane % 3u) - 1, int(lane % 9u / 3u) - 1);
+        ScreenProbe base = ScreenProbe(vec4(0), vec4(0), uvec4(0));
+        if (all(greaterThanEqual(coordinate, ivec2(0))) && all(lessThan(coordinate, ivec2(screenProbe.grid.xy))))
+        {
+            base = probes[uint(coordinate.x) + uint(coordinate.y) * screenProbe.grid.x];
+        }
+        supportBases[lane]  = base;
+        supportPixels[lane] = ProbeProject(base.position.xyz, screenProbe.projectionView);
+    }
+}
+float ProbeBaseSupport(ScreenProbe candidate, uint owner)
+{
+    // The base probes have already reprojected their world anchors. Measure the
+    // weight and centroid of their actual footprint at this receiver. On a fully
+    // covered regular grid the tent weights sum to one and its centroid is zero.
+    vec2  receiver = vec2(candidate.source.yz) + .5;
+    float support  = 0.0;
+    vec2  moment   = vec2(0);
+    for (uint i = owner * 9u; i < (owner + 1u) * 9u; ++i)
+    {
+        ScreenProbe base = supportBases[i];
+        if (base.source.w == candidate.source.w && base.position.w != 0.0)
+        {
+            vec2  offset  = (supportPixels[i] - receiver) / float(screenProbe.spacing);
+            vec2  tent    = max(vec2(1) - abs(offset), vec2(0));
+            float weight  = tent.x * tent.y * ProbePlaneWeight(candidate.position.xyz, candidate.normal.xyz, base);
+            support      += weight;
+            moment       += weight * offset;
+        }
+    }
+    vec2 displacement = abs(moment) / max(support, 1e-20);
+    return min(support, 1.0) * max(1.0 - max(displacement.x, displacement.y), 0.0);
+}
+// One workgroup scores receiver candidates for an adaptive slot. A probe
+// should cover the largest unsupported patch it can interpolate, including
+// thin visible surfaces whose first uncovered sample lies at their edge.
+shared ScreenProbe candidates[64];
+shared float       deficits[64];
+shared float       gains[64];
+shared uint        winners[64];
+ScreenProbe        ProbeAdaptiveReceiver(uint tile)
+{
+    uint lane = gl_LocalInvocationID.x;
+    ProbeLoadBaseSupport(tile, lane);
+    barrier();
+    // Cover every pixel when a slot owns one tile. When it owns four,
+    // stratify the same workgroup across their four pixel footprints.
+    uint        stride            = screenProbe.adaptiveTiles == 1u ? 1u : 2u;
+    uint        side              = screenProbe.spacing / stride;
+    uint        candidatesPerTile = side * side;
+    uint        count             = min(screenProbe.adaptiveTiles, screenProbe.grid.z - tile) * candidatesPerTile;
+    ScreenProbe candidate         = ScreenProbe(vec4(0), vec4(0, 0, 1, 1), uvec4(0xffffffffu, 0, 0, 0));
+    if (lane < count)
+    {
+        uint  candidateTile = tile + lane / candidatesPerTile;
+        uvec2 origin = uvec2(candidateTile % screenProbe.grid.x, candidateTile / screenProbe.grid.x) * screenProbe.spacing;
+        uint  corner = lane % candidatesPerTile;
+        uvec2 pixel  = origin + stride / 2u + stride * uvec2(corner % side, corner / side);
+        if (all(lessThan(pixel, uvec2(hybrid.resolution.xy))))
+        {
+            candidate = ProbeReceiver(ivec2(pixel));
+        }
+    }
+    candidates[lane] = candidate;
+    deficits[lane] =
+        candidate.position.w != 0.0 ? clamp(1.0 - ProbeBaseSupport(candidate, lane / candidatesPerTile), 0.0, 1.0) : 0.0;
+    barrier();
+    float gain = 0.0;
+    if (lane < count && deficits[lane] > .1)
+    {
+        for (uint i = 0u; i < count; ++i)
+        {
+            ScreenProbe receiver = candidates[i];
+            if (deficits[i] > 0.0 && candidate.source.w == receiver.source.w)
+            {
+                vec2 distance = abs(vec2(candidate.source.yz) - vec2(receiver.source.yz)) / (1.25 * float(screenProbe.spacing));
+                vec2 tent     = max(1.0 - distance, vec2(0));
+                gain += deficits[i] * deficits[i] * tent.x * tent.y
+                      * ProbePlaneWeight(receiver.position.xyz, receiver.normal.xyz, candidate);
+            }
+        }
+    }
+    gains[lane]   = gain;
+    winners[lane] = lane;
+    barrier();
+    for (uint stride = 32u; stride != 0u; stride /= 2u)
+    {
+        if (lane < stride && gains[lane + stride] > gains[lane])
+        {
+            gains[lane]   = gains[lane + stride];
+            winners[lane] = winners[lane + stride];
+        }
+        barrier();
+    }
+    candidate             = candidates[winners[0]];
+    candidate.position.w *= float(gains[0] > 0.0);
+    return candidate;
+}
+void main()
+{
+    uint index = kAdaptive ? ProbeGroupIndex() + screenProbe.grid.z : ProbeInvocationIndex(64u);
+    if (index < (kAdaptive ? screenProbe.grid.w : screenProbe.grid.z))
+    {
+        uint        tile   = ProbeBaseTile(index);
+        ivec2       center = ivec2(uvec2(tile % screenProbe.grid.x, tile / screenProbe.grid.x) * screenProbe.spacing
+                                   + (screenProbe.spacing / 2u));
+        ScreenProbe probe  = kAdaptive ? ProbeAdaptiveReceiver(tile) : ProbeReceiver(center);
+        if (kAdaptive && gl_LocalInvocationID.x != 0u)
+        {
+            return;
+        }
+        if (probe.position.w != 0.0 && screenProbe.control.y != 0.0)
+        {
+            float best = 0.0;
+            for (uint history = 0u; history < uint(screenProbe.control.y); ++history)
+            {
+                vec2  oldPixel = ProbeProject(probe.position.xyz, screenProbe.previousProjectionViews[history]);
+                ivec2 oldTile  = ivec2(floor(oldPixel / float(screenProbe.spacing)));
+                for (int y = -1; y <= 1; ++y)
+                {
+                    for (int x = -1; x <= 1; ++x)
+                    {
+                        ivec2 coordinate = oldTile + ivec2(x, y);
+                        if (all(greaterThanEqual(coordinate, ivec2(0)))
+                            && all(lessThan(coordinate, ivec2(screenProbe.grid.xy))))
+                        {
+                            uint oldBase = uint(coordinate.x) + uint(coordinate.y) * screenProbe.grid.x;
+                            for (uint kind = 0u; kind < 2u; ++kind)
+                            {
+                                uint previousIndex =
+                                    kind == 0u ? oldBase : screenProbe.grid.z + oldBase / screenProbe.adaptiveTiles;
+                                previousIndex               |= history << 30u;
+                                ScreenProbe old              = PreviousProbe(previousIndex);
+                                vec2        pixel            = ProbeProject(old.position.xyz, screenProbe.projectionView);
+                                vec2        displacement     = pixel - (vec2(probe.source.yz) + .5);
+                                float       distanceSquared  = dot(displacement, displacement);
+                                float       alignment        = dot(old.normal.xyz, probe.normal.xyz);
+                                bool        stable = old.position.w != 0.0 && old.source.w == probe.source.w && alignment > .7
+                                                  && distanceSquared < 2.25 * float(screenProbe.spacing * screenProbe.spacing);
+                                ivec2       oldReceiver = ivec2(floor(pixel));
+                                if (stable && HybridInView(oldReceiver))
+                                {
+                                    ScreenProbe currentSurface = ProbeReceiver(oldReceiver);
+                                    stable                     = currentSurface.source.w == old.source.w
+                                                              && ProbePlaneWeight(currentSurface.position.xyz, currentSurface.normal.xyz, old) > .5;
+                                }
+                                else
+                                {
+                                    stable = false;
+                                }
+                                float weight =
+                                    stable && alignment > .98
+                                        ? ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) / (1.0 + distanceSquared)
+                                        : 0.0;
+                                weight *= 1.0 + min(old.normal.w, 64.0) / 64.0;
+                                if (weight > best && weight > .001)
+                                {
+                                    best           = weight;
+                                    probe.source.x = previousIndex;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Without a coplanar predecessor (often detailed geometry during motion) the probe
+            // starts fresh. Borrowing a differently oriented neighbor's history was biased
+            // more than one frame of the young-probe ray allocation is noisy.
+            if (probe.source.x != 0xffffffffu)
+            {
+                ScreenProbe old    = PreviousProbe(probe.source.x);
+                vec2  displacement = ProbeProject(old.position.xyz, screenProbe.projectionView) - (vec2(probe.source.yz) + .5);
+                float distanceSquared = dot(displacement, displacement);
+                // Motion keeps a drifted world anchor and its history. Once the view is still
+                // relative to that anchor, return a compatible probe to its tile center:
+                // otherwise settled placement, and the settled image, depend on the camera path.
+                vec2 previousPixel = ProbeProject(old.position.xyz, screenProbe.previousProjectionViews[probe.source.x >> 30u]);
+                vec2 motion        = ProbeProject(old.position.xyz, screenProbe.projectionView) - previousPixel;
+                bool recenter      = dot(motion, motion) < 1e-4 && distanceSquared >= 1.0
+                                  && ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) > .5;
+                if (distanceSquared < .5625 * float(screenProbe.spacing * screenProbe.spacing) && !recenter)
+                {
+                    probe.position = old.position;
+                    probe.normal   = vec4(old.normal.xyz, min(old.normal.w + 1.0, 1152.0));
+                }
+                else
+                {
+                    // When the anchored sample leaves this tile, initialize its replacement
+                    // from compatible nearby lighting instead of a single noisy frame.
+                    probe.normal.w = min(old.normal.w + 1.0, recenter ? 256.0 : 64.0);
+                }
+            }
+        }
+        probes[index] = probe;
+    }
+}

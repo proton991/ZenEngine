@@ -4,8 +4,9 @@
 #include "Graphics/RenderCore/V2/SceneLighting.h"
 #include "Graphics/RenderCore/V2/Renderer/GBuffer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/WorldRadianceCache.h"
+#include "Graphics/RenderCore/V2/Renderer/ScreenProbeGI.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
-#include "Graphics/RenderCore/V2/Renderer/ScreenProbeGather.h"
 
 namespace zen::rc
 {
@@ -27,16 +28,35 @@ struct HybridGIUniformData
     Vec4               previousViewPosition{0};
     Vec4               previousViewDirection{0, 0, 1, 0};
     glm::uvec4         sampling{0};   // frame, sample count, history limit, history valid
-    glm::uvec4         provider{0};   // hardware trace variant, guide valid, hardware feature mask, adaptive sampling
+    glm::uvec4         provider{0};   // hardware trace variant, guide valid, hardware feature mask, reference tile stride
     Vec4               rejection{0};  // plane threshold, specular enabled, temporal enabled, static reference
     glm::uvec4         bounce{0};     // ray bounce enabled, bounce history valid, responsive reconstruction, cache changed
     glm::uvec4         reflection{0}; // reflections enabled, history valid, responsive reconstruction, cache changed
     glm::uvec4         resolution{0}; // output width, output height, pixel divisor, unchanged receivers
-    glm::uvec4         reservoir{0};  // reuse bits, diffuse candidate-frame cap, specular candidate-frame cap, reserved
+    glm::uvec4         reservoir{
+        0}; // reuse bits, diffuse candidate-frame cap, specular candidate-frame cap, denoiser (0: reference mean)
 };
 static_assert(sizeof(HybridGIUniformData) == 288);
 
+// uReSTIRData (restir_target.glsl).
+struct ReSTIRUniformData
+{
+    glm::uvec4 options{0};          // spatial reuse, reflection reservoirs, diffuse reservoirs, spatial parity stage
+    glm::uvec4 spatial{4, 1, 0, 0}; // neighbors per signal (1..4), visibility rays for the pairwise MIS weights
+};
+static_assert(sizeof(ReSTIRUniformData) == 32);
+
+void SetHybridRayTracingGroups(RDGRayTracingPassDesc& pass, uint32_t maxDepth);
 void BindHybridReceiverGuides(RDGPassDescBase& pass, RHISampler* sampler, const HybridGIUniformData& uniforms);
+
+struct GICacheUniformData
+{
+    glm::uvec4 limits{0};
+    Vec4       camera{0};
+    Vec4       previousCamera{0};
+    Vec4       grid{0.01f, 1.0f, 0.0f, 0.0f};
+};
+static_assert(sizeof(GICacheUniformData) == 64);
 
 // One instance owns histories for one view. Imported textures use RenderDevice's
 // submission history (including all outstanding readers), not CPU frame parity.
@@ -78,8 +98,8 @@ public:
     // Diagnostic variants only. The caller retains both buffers through GPU completion.
     static uint64_t GetRayCountCaptureBytes(uint32_t width, uint32_t height);
 
-    // Whether environment light can reach the sky term. Without it the final filter queues no
-    // receiver for the dense sky search, which could only confirm a zero sky.
+    // Whether environment light can reach the sky term. Without it the sky signal and its
+    // histories shrink to placeholders and the denoiser uses its no-sky variants.
     static bool HasSkyLight(const VoxelGISettings& settings, const SceneUniformData& scene);
     void        SetRayCountCapture(RHIBuffer* output, RHIBuffer* readback)
     {
@@ -96,6 +116,26 @@ public:
     {
         return m_extent;
     }
+    uint32_t GetRadianceCacheCapacity() const
+    {
+        return m_cacheCapacity;
+    }
+    uint32_t GetNativeProbeRaySlots() const
+    {
+        return m_nativeProbeRaySlots;
+    }
+    uint32_t GetWorldCacheCapacity() const
+    {
+        return m_worldCache.GetCapacity();
+    }
+    bool InitializeScreenProbeHistories()
+    {
+        return m_screenProbes.InitializeHistories();
+    }
+    uint32_t GetScreenProbeCount() const
+    {
+        return m_probePath ? m_screenProbes.GetProbeCount() : 0;
+    }
     bool IsActive() const
     {
         return m_recorded;
@@ -103,20 +143,6 @@ public:
     bool IsHistoryValid() const
     {
         return m_valid;
-    }
-    // Whether the last built frame traced diffuse rays at half resolution.
-    bool UsesHalfResolutionDiffuse() const
-    {
-        return m_halfDiffuse;
-    }
-    bool UsesScreenProbes() const
-    {
-        return m_screenProbes;
-    }
-    // Screen-probe counters of the last frame recorded with a lighting capture.
-    ScreenProbeStatistics GetScreenProbeStatistics() const
-    {
-        return m_probeGather.ReadStatistics();
     }
     uint32_t GetFrame() const
     {
@@ -126,22 +152,62 @@ public:
     {
         return m_resetReason;
     }
+    // Why the last BuildRenderGraph recorded no GI, or nullptr when it recorded.
+    const char* GetFailureReason() const
+    {
+        return m_failureReason;
+    }
 
 private:
-    bool       PrepareHistory(uint32_t width,
-                              uint32_t height,
-                              bool     bounce,
-                              bool     reflections,
-                              bool     search,
-                              bool     reference,
-                              bool     budget,
-                              uint32_t restirMask);
-    void       BindGuides(RDGPassDescBase& pass) const;
-    void       BindTraceInputs(RDGComputePassDesc& pass, VoxelGIRenderer& voxelGI, const glm::uvec4& reuseData) const;
-    void       PrepareGuides();
+    WorldRadianceCache m_worldCache;
+    ScreenProbeGI      m_screenProbes;
+    bool               m_probePath{false};
+    void               RecordNativeProbeBenchmark(VoxelGIRenderer& voxelGI);
+    uint32_t           m_nativeProbeRaySlots{0};
+    void               RecordRadianceCache(VoxelGIRenderer& voxelGI, bool enabled, bool noGuide);
+    void               BindRadianceCache(RDGPassDescBase& pass) const;
+    void               DestroyRadianceCache();
+    void               DestroyPixelHistory();
+    GICacheUniformData m_cacheUniforms;
+    RHIBuffer*         m_cacheBuffers[3]{};
+    uint32_t           m_cacheCapacity{0};
+    bool               m_cacheNeedsClear{true};
+    bool               m_cacheRequested{false};
+    bool               PrepareHistory(uint32_t width,
+                                      uint32_t height,
+                                      bool     reflections,
+                                      bool     reference,
+                                      uint32_t restirMask,
+                                      bool     relax,
+                                      bool     skyLight,
+                                      bool     guideEnabled,
+                                      bool     antiLag);
+    void               BindGuides(RDGPassDescBase& pass) const;
+    void               BindTraceInputs(RDGDispatchPassDesc& pass,
+                                       VoxelGIRenderer&     voxelGI,
+                                       const glm::uvec4&    reuseData,
+                                       bool                 worldField) const;
+    void               PrepareGuides();
+    // One ReSTIR resampling dispatch: signal 2 is temporal reuse, 0 and 1 are diffuse and reflection spatial reuse
+    // at checkerboard stage `stage` (1 and 2; one parity-free stage without spatial reuse).
+    void       RecordReSTIRResample(VoxelGIRenderer&         voxelGI,
+                                    const ReSTIRUniformData& restirData,
+                                    uint32_t                 stage,
+                                    uint32_t                 signal,
+                                    RDGBuffer                receiverGuides,
+                                    RDGTexture               rawBounce,
+                                    RDGTexture               rawSpecular,
+                                    RDGTexture               rawDiffuseDistance,
+                                    RDGTexture               rawReflection);
+    void       RecordDenoiser(RDGTexture rawSky,
+                              RDGTexture rawBounce,
+                              RDGTexture rawSpecular,
+                              RDGTexture rawReflection,
+                              RDGTexture rawDiffuseDistance);
     void       ReconstructOutput(VoxelGIRenderer& voxelGI);
+    bool       PrepareOutputHistory(bool enabled, bool skyLight);
+    void       StabilizeOutput();
     void       Dispatch(RDGComputePassDesc&& pass, bool fullResolution = false);
-    void       DestroyPixelHistory();
     RDGTexture m_receiverGuides[6];
 
     enum HistoryTexture : uint32_t
@@ -154,32 +220,49 @@ private:
         Normal,
         Receiver,
         Bounce,
-        BounceMoments,
-        Reflection,   // Hit distance, luminance moments, history length; radiance is in Specular.rgb.
-        SearchWeight, // Geometry-only dense sky-filter denominator; zero means not cached.
-        Budget,       // Nonzero where the trace used the reduced settled ray budget.
+        BounceMoments, // Reference diagnostic only.
+        Reflection,    // Hit distance, luminance moments, history length; radiance is in Specular.rgb.
+        FastSky,
+        FastBounce,
+        FastSpecular,
+        ResponseAge,
         Count
     };
-    glm::uvec2        m_outputExtent{0};
-    RenderDevice*     m_device;
-    ScreenProbeGather m_probeGather;
-    RenderScene*      m_scene{nullptr};
-    RHISampler*       m_sampler{nullptr};
-    RHIBuffer*        m_captureOutput{nullptr};
-    RHIBuffer*        m_captureReadback{nullptr};
-    bool              m_captureRecorded{false};
-    RHIBuffer*        m_rayCountOutput{nullptr};
-    RHIBuffer*        m_rayCountReadback{nullptr};
-    bool              m_rayCountsRecorded{false};
-    RHITexture*       m_history[2][Count]{};
-    bool              m_historyNeedsClear[2][Count]{};
+    glm::uvec2    m_outputExtent{0};
+    RenderDevice* m_device;
+    RenderScene*  m_scene{nullptr};
+    RHISampler*   m_sampler{nullptr};
+    RDGTexture    m_denoiserValidation[2];
+    RHIBuffer*    m_captureOutput{nullptr};
+    RHIBuffer*    m_captureReadback{nullptr};
+    bool          m_captureRecorded{false};
+    RHIBuffer*    m_rayCountOutput{nullptr};
+    RHIBuffer*    m_rayCountReadback{nullptr};
+    bool          m_rayCountsRecorded{false};
+    RHITexture*   m_history[2][Count]{};
+    bool          m_historyNeedsClear[2][Count]{};
+    enum OutputHistoryTexture : uint32_t
+    {
+        OutputSky,
+        OutputSpecular,
+        OutputBounce,
+        OutputPosition,
+        OutputNormal,
+        OutputSurface,
+        OutputAge,
+        OutputCount
+    };
+    RHITexture* m_outputHistory[2][OutputCount]{};
+    bool        m_outputHistoryValid{false};
+    bool        m_stabilizeOutput{false};
     // Visibility guide per kGuideTile x kGuideTile screen tile, previous and next (hybrid_trace.glsl).
     RHIBuffer*  m_guide[2]{};
     RHIBuffer*  m_reservoir[2][2]{}; // Frame side, then diffuse / rough specular; 24 bytes per pixel.
     RHITexture* m_restirLobeIntegral{nullptr};
     bool        m_restirLobeInitialized{false};
     RDGTexture  m_outputSky, m_outputSpecular, m_outputBounce;
-    RDGTexture  m_rawSky, m_rawSpecular;
+    RDGTexture  m_rawSky, m_rawSpecular, m_rawBounce;
+    RDGTexture  m_historyFixed[3];
     // Full-resolution receivers the reduced-resolution reconstruction could not interpolate.
     RDGTexture       m_missingReceiver;
     HeapVector<Mat4> m_previousModels;
@@ -201,10 +284,6 @@ private:
     uint32_t                  m_previousHardwareMask{0};
     uint64_t                  m_previousVisibility{0}; // VoxelGIRenderer::GetVisibilityGeneration of the history.
     uint64_t                  m_recordedVisibility{0};
-    bool                      m_previousRayBounce{false};
-    bool                      m_halfDiffuse{false};
-    bool                      m_screenProbes{false};
-    bool                      m_previousScreenProbes{false};
     bool                      m_previousReflections{false};
     bool                      m_deterministicGuideCapture{false};
     bool                      m_previousGuideWritten{false};
@@ -216,6 +295,7 @@ private:
     uint32_t                  m_frame{0}, m_current{0};
     bool                      m_valid{false}, m_prepared{false}, m_recorded{false};
     const char*               m_resetReason{"initial"};
+    const char*               m_failureReason{nullptr};
     // Recording may invalidate history for changed settings without consuming it.
     bool        m_preparedHistoryValid{false};
     const char* m_preparedResetReason{"initial"};

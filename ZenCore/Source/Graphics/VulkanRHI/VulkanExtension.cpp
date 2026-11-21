@@ -23,6 +23,38 @@ static void AddToPNext(ExistingChainType& Existing, NewStructType& Added)
     Existing.pNext = (void*)&Added;
 }
 
+class VulkanBufferInt64AtomicsExtension : public VulkanDeviceExtension
+{
+public:
+    explicit VulkanBufferInt64AtomicsExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        AddToPNext(features, m_features);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        SetSupport(m_features.shaderBufferInt64Atomics == VK_TRUE
+                   && m_pDevice->GetPhysicalDeviceFeatures().shaderInt64 == VK_TRUE);
+        m_pDevice->GetExtensionFlags().hasBufferInt64Atomics = IsEnabledAndSupported();
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            m_features.shaderSharedInt64Atomics = VK_FALSE;
+            AddToPNext(info, m_features);
+        }
+    }
+
+private:
+    VkPhysicalDeviceShaderAtomicInt64Features m_features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES};
+};
+
 class VulkanPipelineExecutableExtension : public VulkanDeviceExtension
 {
 public:
@@ -427,9 +459,11 @@ public:
             VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabled{
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
 
-            enabled.rayTracingPipeline   = VK_TRUE;
+            enabled.rayTracingPipeline                  = VK_TRUE;
+            enabled.rayTracingPipelineTraceRaysIndirect = m_rayTracingPipelineFeatures.rayTracingPipelineTraceRaysIndirect;
+            m_pDevice->GetExtensionFlags().hasTraceRaysIndirect = enabled.rayTracingPipelineTraceRaysIndirect != VK_FALSE;
 
-            m_rayTracingPipelineFeatures = enabled;
+            m_rayTracingPipelineFeatures                        = enabled;
 
             AddToPNext(DeviceCI, m_rayTracingPipelineFeatures);
         }
@@ -440,8 +474,80 @@ private:
 };
 
 /**
- * VK_KHR_ray_query
+ * VK_EXT/NV_ray_tracing_invocation_reorder
  */
+class VulkanInvocationReorderExtension : public VulkanDeviceExtension
+{
+public:
+    VulkanInvocationReorderExtension(VulkanDevice* device, bool ext) :
+        VulkanDeviceExtension(device,
+                              ext ? VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME
+                                  : VK_NV_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME),
+        m_ext(ext)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        if (m_ext)
+        {
+            AddToPNext(features, m_extFeatures);
+        }
+        else
+        {
+            AddToPNext(features, m_nvFeatures);
+        }
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT ext{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_PROPERTIES_EXT};
+        VkPhysicalDeviceRayTracingInvocationReorderPropertiesNV nv{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_PROPERTIES_NV};
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties.pNext = m_ext ? static_cast<void*>(&ext) : static_cast<void*>(&nv);
+        vkGetPhysicalDeviceProperties2(m_pDevice->GetPhysicalDeviceHandle(), &properties);
+        // Some implementations expose the language extension without active reordering.
+        const bool supported =
+            m_ext ? m_extFeatures.rayTracingInvocationReorder
+                        && ext.rayTracingInvocationReorderReorderingHint == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT
+                  : m_nvFeatures.rayTracingInvocationReorder
+                        && nv.rayTracingInvocationReorderReorderingHint == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV;
+        SetSupport(supported);
+        if (m_ext)
+        {
+            m_pDevice->GetExtensionFlags().hasInvocationReorderEXT = IsEnabledAndSupported();
+        }
+        else
+        {
+            m_pDevice->GetExtensionFlags().hasInvocationReorderNV = IsEnabledAndSupported();
+        }
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            if (m_ext)
+            {
+                AddToPNext(info, m_extFeatures);
+            }
+            else
+            {
+                AddToPNext(info, m_nvFeatures);
+            }
+        }
+    }
+
+private:
+    bool                                                   m_ext;
+    VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT m_extFeatures{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT};
+    VkPhysicalDeviceRayTracingInvocationReorderFeaturesNV m_nvFeatures{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_NV};
+};
+
+// VK_KHR_ray_query remains available for forward shadows and calibration checks.
 class VulkanRayQueryExtension : public VulkanDeviceExtension
 {
 public:
@@ -743,12 +849,16 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRaytracingPipelineExtension)
 
+    enabledExtensions.emplace_back(MakeUnique<VulkanInvocationReorderExtension>(pDevice, true));
+    enabledExtensions.emplace_back(MakeUnique<VulkanInvocationReorderExtension>(pDevice, false));
+
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRayQueryExtension)
 
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
 
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanHostQueryResetExtension)
+    ADD_ADVANCED_DEVICE_EXTENSION(VulkanBufferInt64AtomicsExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDeviceFaultExtension)
 
     if (RHIOptions::GetInstance().PipelineStatistics())
@@ -824,6 +934,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
         if (name == NameID(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) || name == NameID(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME)
             || name == NameID(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)
+            || name == NameID(VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME)
             || name == NameID(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) || name == NameID(VK_KHR_SPIRV_1_4_EXTENSION_NAME))
         {
             extension->SetCoreSupport();

@@ -1320,6 +1320,12 @@ RHIPipeline* RHICommandListExecutor::CreatePipeline(const RHIGfxPipelineCreateIn
     return result ? result.GetValue() : nullptr;
 }
 
+RHIPipeline* RHICommandListExecutor::CreatePipeline(const RHIRayTracingPipelineCreateInfo& info)
+{
+    RHIResult<RHIPipeline*> result = GetRHIThread().InvokeChecked([&] { return m_backend->CreatePipeline(info); });
+    return result ? result.GetValue() : nullptr;
+}
+
 void RHICommandListExecutor::DestroyPipeline(RHIPipeline* pipeline)
 {
     GetRHIThread().Invoke(&DynamicRHI::DestroyPipeline, m_backend, pipeline);

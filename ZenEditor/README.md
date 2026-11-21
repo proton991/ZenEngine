@@ -95,7 +95,8 @@ Application performance profiling uses **ZenApp.exe** with a prepared setup and
 explicit startup arguments. Use `--backend=compute|hardware`,
 `--async-compute=0|1`, `--rhi=inline|threaded`, `--vsync=0|1`,
 `--validation=0|1`, `--no-ui`, `--gpu-markers`, and `--disable-rt` as appropriate.
-`--backend` selects GI and sets all feature providers, including direct shadows.
+`--backend` selects the whole GI tier and preserves lighting enables. Compute uses
+shadow maps; HW RT uses ray-traced shadows when `rtShadows` is enabled.
 For example:
 
 ```powershell
@@ -351,9 +352,8 @@ fields and full-height dock. Save remains disabled in this viewer.
 ### Rendering configuration, lighting and diagnostics
 
 The Rendering panel owns an editable draft and an applied revision. Invalid edits
-keep the applied preview intact. Light values, environment scalars, GI cone values
-and output selection apply between frames. Grid size, voxelizer, reflectance
-resources/budget and shadow resolution wait for **Apply**; other edits keep
+keep the applied preview intact. Light values, environment scalars, GI lighting controls
+and output selection apply between frames. Resource changes such as shadow map resolution wait for **Apply**; other edits keep
 previewing in the meantime. **Revert** discards whatever has not been applied.
 **Apply** and **Revert** stay visible in a fixed bottom footer while settings scroll
 above them. Live edits apply on the next frame, so the footer keeps reporting
@@ -403,14 +403,14 @@ center and scale.
 **Mesh shadows** apply immediately in **PBR + voxel GI** and control shadows from
 direct lights (including the light ball). They do not disable environment lighting
 or voxel occlusion. With no enabled shadow-casting lights, toggling this option
-does not change the image; the Shadows section points this out. To compare, add a
+does not change the image; the result depends on the lights enabled under Lighting. To compare, add a
 light under Lighting, keep its **Casts shadows** enabled and place an object between
 the light and a visible surface. Environment lighting can soften the contrast;
 temporarily lower its intensity to isolate the cast shadow. Only **Map size**
 requires Apply. Shadow edits preflight the array size against reported GPU memory
 before publication. The GI contribution switches affect indirect light,
 separately from direct light, specular IBL and the
-skybox. The panel reports the effective voxelizer and resource errors.
+skybox. The panel reports resource errors.
 
 **Debug output** provides final color, raw/linear depth, albedo, world normals,
 shadow maps by light and point-light face, 3D surface voxels and axis-aligned voxel
@@ -437,17 +437,39 @@ runners do, or the overlay is drawn into the capture.
 
 ### Environment and skybox
 
-By default, PBR + Global illumination traces every GI pass with hardware ray queries
-when the selected device supports the required features and dependencies. Other
-devices trace with Compute: GI rays, sky visibility and local-light visibility use
-the GPU-built distance field; direct lighting uses shadow maps. Both gather GI
-through screen probes (`voxel_gi_gather=pixel` selects per-pixel rays). Set
-`voxel_gi_backend=compute` in `Data/engine.cfg` to force Compute, and
-`voxel_gi_field_resolution=64` to select the scene field's cell resolution. Local
-detail volumes preserve smaller openings around lamps. Cold scene activation shows
-voxel cone GI from the first rendered frame, with a "GI preview active" indicator.
-This preview has coarser visibility and diffuse bounce; full field-based sky,
-specular and probe gathering replace it automatically after initial preparation.
+**Rendering → GI settings** controls the preview and the Run window. **Optimal** (the default)
+gathers screen probes at native render resolution with the world radiance cache. It traces with the
+hardware RT pipeline when available and the compute distance field otherwise. The panel shows the
+resolved method and tracing tier. Editing a configuration control switches to **Custom**. [GI configuration](../Doc/HybridGI/GIConfiguration.md)
+Lighting content (diffuse and specular GI, intensity, light sources, reflections, cast shadows)
+stays as set in either mode.
+
+- **Method** lists every method: per-pixel, per-pixel ReSTIR, per-pixel with world-cache hit
+  shading, both together, and screen probes with the world cache. **All combinations** shows each
+  method against Compute, ray queries and the RT pipeline, marks what this GPU runs and the optimal
+  cell, and selects a combination when clicked. A method the active tier cannot run names its
+  requirement and renders the per-pixel trace.
+- **Tracing**: Automatic, Compute (distance field), hardware ray queries or the hardware RT pipeline.
+- **Denoiser**: spatiotemporal, temporal only, spatial only or off. Per-pixel methods use the pixel
+  denoiser (temporal accumulation, history repair, three à-trous passes and an output stabilizer;
+  its individual features are under **Denoiser details**); screen probes filter in probe space.
+- **Shadow method**: shadow maps, ray traced, or ray traced with reuse (a 4x4 coarse grid with exact
+  rays where neighbours disagree; RT pipeline only).
+
+The panel, `Data/engine.cfg` and ZenApp share one option list: each `voxel_gi_<name>` key is
+ZenApp's `--gi-<name>` argument (`_` written as `-`), and `ZenApp --help` prints the list.
+**Copy engine.cfg lines** and **Copy ZenApp arguments** copy the current values;
+**Save as startup defaults** replaces the GI options in `Data/engine.cfg` and keeps its other lines.
+The editor reads `Data/engine.cfg` at startup. ZenApp reads the settings saved in its `.zenrender`
+setup, which records whether they are optimal; setups saved before this option keep their explicit
+configuration. Pass `--gi-config=Data/engine.cfg` to use the editor's startup GI settings, or
+`--gi-preset=optimal` to choose for the GPU. Options such as
+`--gi-method=per-pixel-restir --gi-denoiser=temporal --gi-pixel-resolution-divisor=2` override the
+setup. Use `voxel_gi_enabled=false` or `--gi-enabled=false` for PBR.
+
+Local detail volumes preserve smaller openings around lamps. Cold scene activation shows
+PBR and environment lighting while the distance field is prepared, with the fallback
+reason reported in the status bar. Field-based GI replaces it after initial preparation.
 Initial field construction favors throughput and can briefly stall rendering;
 dispatch sizes adapt to GPU timings. Later geometry edits use smaller background batches.
 The field stays available across warm backend switches. Preparation or unavailable

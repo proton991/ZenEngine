@@ -8,6 +8,46 @@ layout(set = 1, binding = 8, rgba8) uniform writeonly image2D reducedRoughness;
 layout(set = 1, binding = 9, rg32ui) uniform writeonly uimage2D reducedSurface;
 layout(set = 1, binding = 10, rg32f) uniform writeonly image2D reducedMotion;
 layout(set = 1, binding = 11, rgba32f) uniform writeonly image2D reducedPosition;
+// HybridDownsampleFootprintSP: the texel's shading normal and roughness describe its whole pixel block.
+layout(constant_id = 1) const bool FOOTPRINT_RECEIVERS = false;
+
+// A reduced texel stands for its whole pixel block, not for the one pixel it reads. Average the shading
+// normals of the block's pixels on the representative's face and widen GGX roughness by their spread
+// (Toksvig, with a von Mises-Fisher fit: alpha^2 += 2 / kappa). Lighting and history then describe the
+// footprint, which stays stable as the pixel grid moves across normal-mapped or curved surfaces.
+void FilterFootprint(ivec2 p, int divisor, ivec2 q, inout vec2 normal, inout float roughness)
+{
+    ivec2 extent    = textureSize(receiverDepth, 0);
+    uint  identity  = texelFetch(receiverSurface, q, 0).g;
+    vec3  geometric = HybridGeometricNormal(q);
+    vec3  sum       = vec3(0);
+    float alpha2    = 0.0;
+    float count     = 0.0;
+    for (int y = 0; y < divisor; ++y)
+    {
+        for (int x = 0; x < divisor; ++x)
+        {
+            ivec2 s = min(p * divisor + ivec2(x, y), extent - 1);
+            if (texelFetch(receiverDepth, s, 0).r < 1.0 && texelFetch(receiverSurface, s, 0).g == identity
+                && dot(HybridGeometricNormal(s), geometric) >= 0.9)
+            {
+                float sampleRoughness  = texelFetch(receiverRoughness, s, 0).g;
+                sum                   += HybridNormal(s);
+                alpha2                += sampleRoughness * sampleRoughness * sampleRoughness * sampleRoughness;
+                count                 += 1.0;
+            }
+        }
+    }
+    if (count > 1.0)
+    {
+        // Mean resultant length r; 2 / kappa = 2 (1 - r^2) / (3r - r^3) vanishes as the normals agree.
+        float r        = clamp(length(sum) / count, 1e-4, 1.0);
+        float variance = max(2.0 * (1.0 - r * r) / (3.0 * r - r * r * r), 0.0);
+        normal         = EncodeGBufferNormal(normalize(sum));
+        roughness      = clamp(pow(alpha2 / count + variance, 0.25), 0.0, 1.0);
+    }
+}
+
 void main()
 {
     ivec2 p      = ivec2(gl_GlobalInvocationID.xy);
@@ -18,12 +58,20 @@ void main()
     }
     int   divisor = int(hybrid.resolution.z);
     ivec2 q       = min(p * divisor + divisor / 2, textureSize(receiverDepth, 0) - 1);
-    // Select one complete receiver; averaging depth, identities or normals creates fictitious surfaces.
-    vec4 motion  = texelFetch(receiverMotion, q, 0);
-    motion.xy   *= vec2(textureSize(receiverDepth, 0)) / (vec2(extent) * float(divisor));
+    // Select one complete receiver; averaging depth, identities or positions creates fictitious surfaces.
+    vec4 motion     = texelFetch(receiverMotion, q, 0);
+    motion.xy      *= vec2(textureSize(receiverDepth, 0)) / (vec2(extent) * float(divisor));
+    vec2 normal     = texelFetch(receiverNormal, q, 0).rg;
+    vec4 roughness  = texelFetch(receiverRoughness, q, 0);
+    // Alpha keeps the representative's own roughness: reconstruction matches materials with it.
+    roughness.a = roughness.g;
+    if (FOOTPRINT_RECEIVERS && texelFetch(receiverDepth, q, 0).r < 1.0 && texelFetch(receiverSurface, q, 0).g != 0u)
+    {
+        FilterFootprint(p, divisor, q, normal, roughness.g);
+    }
     imageStore(reducedDepth, p, texelFetch(receiverDepth, q, 0));
-    imageStore(reducedNormal, p, texelFetch(receiverNormal, q, 0));
-    imageStore(reducedRoughness, p, texelFetch(receiverRoughness, q, 0));
+    imageStore(reducedNormal, p, vec4(normal, 0, 0));
+    imageStore(reducedRoughness, p, roughness);
     imageStore(reducedSurface, p, texelFetch(receiverSurface, q, 0));
     imageStore(reducedMotion, p, motion);
     imageStore(reducedPosition, p, texelFetch(receiverPosition, q, 0));

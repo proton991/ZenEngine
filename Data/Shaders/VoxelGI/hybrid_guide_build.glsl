@@ -1,4 +1,4 @@
-#if !defined(HYBRID_BUFFER_GUIDE) && !defined(HYBRID_NO_GUIDE)
+#if !defined(HYBRID_NO_GUIDE) && !defined(HYBRID_RAY_PIPELINE)
 void BuildGuide(uint lane)
 {
     guideBase   = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * (ZEN_HYBRID_GUIDE_TILES + 1u);
@@ -6,10 +6,8 @@ void BuildGuide(uint lane)
     float power = 0.0;
     for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
     {
-        uint perFace = ZEN_HYBRID_GUIDE_PER_FACE * ZEN_HYBRID_GUIDE_PER_FACE;
-#    if !defined(HYBRID_TRACE_HALF) && !defined(HYBRID_TRACE_FALLBACK) && !defined(HYBRID_BUFFER_GUIDE)
+        uint perFace      = ZEN_HYBRID_GUIDE_PER_FACE * ZEN_HYBRID_GUIDE_PER_FACE;
         guideDirection[t] = GuideCellDirection(t);
-#    endif
         // Rays are drawn from the guide smoothed over the neighbouring screen tiles (a 5x5 binomial
         // kernel): each tile learns from its own receivers, and sampling borrows their neighbours'
         // statistics, which are noisier per tile than they are different between nearby tiles.
@@ -76,27 +74,5 @@ void BuildGuide(uint lane)
         guideRowMoment[lane] = moment;
     }
     barrier();
-#    if defined(HYBRID_TRACE_HALF) || defined(HYBRID_GUIDE_PREPARE)
-    uint published = (gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x) * POOLED_GUIDE_STRIDE;
-    for (uint t = lane; t < ZEN_HYBRID_GUIDE_TILES; t += TRACE_THREADS)
-    {
-        pooledGuide[published + t] = guideWeight[t];
-    }
-    if (lane < 6u * ZEN_HYBRID_GUIDE_PER_FACE)
-    {
-        for (uint c = 0u; c < 4u; ++c)
-        {
-            pooledGuide[published + ZEN_HYBRID_GUIDE_TILES + lane * 4u + c] = guideRowMoment[lane][c];
-        }
-    }
-    if (lane == 0u)
-    {
-        pooledGuide[published + ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE] = guidePower;
-        for (uint c = 1u; c < 4u; ++c)
-        {
-            pooledGuide[published + ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE + c] = 0.0;
-        }
-    }
-#    endif
 }
 #endif

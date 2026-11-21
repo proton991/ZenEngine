@@ -2,6 +2,9 @@
 #include "EditorWidgets.h"
 #include "ImGui/LightingBackendControls.h"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace zen::editor
 {
@@ -353,7 +356,7 @@ private:
                 "Disable Follow camera to hold the ball in place. Range, radius and distance use normalized scene units (scene span = 1). Range and hold distance must exceed the radius.");
 
             DrawHint(
-                "Lights nearby surfaces in every direction. Select PBR + Global illumination and enable Analytic lights into GI for bounce light. Mesh shadows include the ball; moving it updates shadows and GI radiance.");
+                "Lights nearby surfaces in every direction. Enable GI and Analytic lights under Diffuse light sources for bounce light. Mesh shadows include the ball; moving it updates shadows and GI radiance.");
 
             if (changed)
             {
@@ -403,221 +406,130 @@ private:
         }
     }
 
+    // Writes the panel's GI options into Data/engine.cfg, which the editor reads at startup.
+    void SaveGIDefaults(const rc::RenderingSettings& draft)
+    {
+        const bool        enabled = draft.algorithm == rc::RenderAlgorithm::eVoxelGI;
+        std::string       text;
+        std::ifstream     input(std::filesystem::u8path(ZEN_CONFIG_PATH), std::ios::binary);
+        std::stringstream contents;
+        contents << input.rdbuf();
+        text = rc::UpdateGIConfigText(contents.str(), draft.gi, enabled);
+        input.close();
+        std::ofstream output(std::filesystem::u8path(ZEN_CONFIG_PATH), std::ios::binary | std::ios::trunc);
+        output << text;
+        m_giSaveStatus = output.good() ? "Saved to Data/engine.cfg." : "Data/engine.cfg could not be written.";
+    }
+
+    void DrawGIExport(const rc::RenderingSettings& draft)
+    {
+        const bool enabled = draft.algorithm == rc::RenderAlgorithm::eVoxelGI;
+        if (ImGui::SmallButton("Copy engine.cfg lines"))
+        {
+            ImGui::SetClipboardText(rc::FormatGIConfig(draft.gi, enabled).c_str());
+        }
+        ImGui::SetItemTooltip("The voxel_gi_* lines for Data/engine.cfg or a file for ZenApp --gi-config.");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Copy ZenApp arguments"))
+        {
+            ImGui::SetClipboardText(rc::FormatGIArguments(draft.gi, enabled).c_str());
+        }
+        ImGui::SetItemTooltip("The same options as ZenApp --gi-* arguments.");
+        if (ImGui::SmallButton("Save as startup defaults"))
+        {
+            SaveGIDefaults(draft);
+        }
+        ImGui::SetItemTooltip("Replaces the GI options in Data/engine.cfg; other lines are kept.");
+        if (!m_giSaveStatus.empty())
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", m_giSaveStatus.c_str());
+        }
+    }
+
     void DrawGI(EditorController& editor, const EditorRenderSnapshot& snapshot)
     {
-        rc::RenderingSettings draft           = editor.GetRenderingState().GetDraft();
-
-        rc::VoxelGIRuntimeSettings& settings  = draft.gi;
-
-        bool changed                          = false;
-
-        changed                              |= ui::DrawGIPresetControls(settings, snapshot.giSelectionReason.c_str());
-        changed |= ui::DrawLightingBackendControls(settings.cone, snapshot.hardwareQueries, snapshot.rayQueryReason.c_str());
-
-        if (ImGui::CollapsingHeader("GI attributes"))
+        if (ImGui::CollapsingHeader("GI settings", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            if (ImGui::Button("Reset GI"))
+            rc::RenderingSettings       draft    = editor.GetRenderingState().GetDraft();
+            rc::VoxelGIRuntimeSettings& settings = draft.gi;
+            bool                        enabled  = draft.algorithm == rc::RenderAlgorithm::eVoxelGI;
+            bool                        changed  = ImGui::Checkbox("Enable GI", &enabled);
+            if (changed)
             {
-                settings.cone = editor.GetRenderingDefaults().gi.cone;
-
-                changed       = true;
+                draft.algorithm    = enabled ? rc::RenderAlgorithm::eVoxelGI : rc::RenderAlgorithm::ePBR;
+                draft.debug.output = rc::DebugOutput::eFinal;
             }
 
-            DrawHint("Reset GI also resets GI tracing.");
-
-            rc::VoxelGISettings& cone = settings.cone;
-
-            ImGui::SeparatorText("Indirect lighting");
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Indirect intensity").c_str(), &cone.indirectIntensity, 0.0f, 10.0f);
-
-            changed |= ImGui::Checkbox("Analytic lights into GI", &cone.analyticLighting);
-
-            changed |= ImGui::Checkbox("Environment diffuse GI", &cone.environmentLighting);
-
-            changed |= ImGui::Checkbox("Emissive into GI", &cone.emissiveLighting);
-
-            DrawHint("These toggles do not disable direct lighting, specular environment lighting or the skybox.");
-
-            ImGui::SeparatorText("Voxel cones");
-
-            int bounce            = cone.bounceSource == rc::VoxelGISettings::BounceSource::Cone ? 1 : 0;
-
-            const char* bounces[] = {"Ray hits", "Voxel cones"};
-
-            if (ImGui::Combo(PropertyLabel("Diffuse bounce").c_str(), &bounce, bounces, 2))
+            ImGui::BeginDisabled(!enabled);
+            ui::GIControlsContext context;
+            context.effective           = &snapshot.effectiveSettings;
+            context.hardwareReady       = snapshot.hardwareQueries;
+            context.reason              = snapshot.rayQueryReason.c_str();
+            context.rayQueries          = snapshot.rayQueriesSupported;
+            context.rayTracingPipeline  = snapshot.rayTracingPipelineSupported;
+            changed                    |= ui::DrawGIControls(settings, context);
+            const rc::VoxelGIRuntimeSettings& shown =
+                rc::IsOptimalVoxelGIConfiguration(settings) ? snapshot.effectiveSettings : settings;
+            if (settings.cone.shadows && !shown.cone.UsesRayShadows(snapshot.hardwareQueries))
             {
-                cone.bounceSource =
-                    bounce == 1 ? rc::VoxelGISettings::BounceSource::Cone : rc::VoxelGISettings::BounceSource::Auto;
-
-                changed = true;
-            }
-
-            int count             = cone.coneCount == 4 ? 0 : 1;
-
-            const char* counts[]  = {"4", "6"};
-
-            changed              |= ImGui::Combo(PropertyLabel("Cones").c_str(), &count, counts, 2);
-
-            cone.coneCount        = count == 0 ? 4 : 6;
-
-            int steps             = static_cast<int>(cone.maxSteps);
-
-            changed              |= ImGui::SliderInt(PropertyLabel("Max steps").c_str(), &steps, 8, 512);
-
-            cone.maxSteps         = static_cast<uint32_t>(steps);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Cone angle").c_str(), &cone.coneAngleDegrees, 10.0f, 90.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Step scale").c_str(), &cone.stepScale, 0.25f, 2.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("GI distance").c_str(), &cone.maxDistanceGridLengths, 0.01f, 2.0f);
-
-            changed |= ImGui::SliderFloat(PropertyLabel("Bias (voxels)").c_str(), &cone.normalBiasVoxels, 0.5f, 4.0f);
-
-            DrawHint(
-                "Voxel cones light translucent surfaces, and opaque surfaces when Diffuse bounce is Voxel cones. GI distance is measured in grid lengths. Bias also offsets voxel light injection.");
-        }
-
-        if (ImGui::CollapsingHeader("Shadows"))
-        {
-            if (ImGui::Button("Reset shadows"))
-            {
-                settings.shadowMapResolution = editor.GetRenderingDefaults().gi.shadowMapResolution;
-
-                settings.cone.shadows        = editor.GetRenderingDefaults().gi.cone.shadows;
-                settings.cone.rtShadows      = editor.GetRenderingDefaults().gi.cone.rtShadows;
-                settings.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)] =
-                    editor.GetRenderingDefaults()
-                        .gi.cone.featureProviders[static_cast<size_t>(rc::VoxelGISettings::Feature::Shadows)];
-
-                changed = true;
-            }
-
-            DrawHint(
-                "GI tracing > Direct shadows chooses how mesh shadows are traced in PBR + Global illumination. Map size applies to Shadow maps and the Shadow debug output.");
-
-
-            int resolution                = static_cast<int>(settings.shadowMapResolution);
-
-            changed                      |= ImGui::InputInt(PropertyLabel("Map size").c_str(), &resolution);
-
-            settings.shadowMapResolution  = static_cast<uint32_t>(resolution);
-
-            DrawHint("Map size changes require Apply.");
-
-            HeapVector<rc::SceneLight> lights;
-
-            for (const rc::RenderingLight& light : draft.lights)
-            {
-                lights.push_back(light.light);
-            }
-
-            const uint32_t faces = rc::CountShadowFaces(lights) + rc::CameraLightShadowFaces(draft.cameraLight);
-
-            ImGui::Text("%u faces | estimated array %.1f MiB", faces,
-                        double(rc::EstimateShadowBytes(settings.shadowMapResolution, faces)) / (1024.0 * 1024.0));
-
-            if (faces == 0)
-            {
-                DrawStatusText(GetEditorPalette().warning,
-                               "No shadow-casting lights. Add one under Lighting or enable Light ball to see mesh shadows.");
-            }
-        }
-
-        if (ImGui::CollapsingHeader("GI resources"))
-        {
-            if (ImGui::Button("Reset GI resources"))
-            {
-                const rc::VoxelGISettings cone = settings.cone;
-
-                const uint32_t shadows         = settings.shadowMapResolution;
-
-                settings                       = editor.GetRenderingDefaults().gi;
-
-                settings.cone                  = cone;
-
-                settings.shadowMapResolution   = shadows;
-
-                changed                        = true;
-            }
-
-            int resolution                   = settings.resolution == 64 ? 0 : settings.resolution == 128 ? 1 : 2;
-
-            const char* resolutions[]        = {"64", "128", "256"};
-
-            changed                         |= ImGui::Combo(PropertyLabel("Grid size").c_str(), &resolution, resolutions, 3);
-
-            settings.resolution              = 64u << resolution;
-
-            int voxelizer                    = settings.voxelizer == platform::VoxelizerMode::eAuto    ? 0
-                                             : settings.voxelizer == platform::VoxelizerMode::eCompute ? 1
-                                                                                                       : 2;
-
-            const char* voxelizers[]         = {"Auto", "Compute", "Geometry"};
-
-            changed                         |= ImGui::Combo(PropertyLabel("Voxelizer").c_str(), &voxelizer, voxelizers, 3);
-
-            settings.voxelizer               = voxelizer == 0 ? platform::VoxelizerMode::eAuto
-                                             : voxelizer == 1 ? platform::VoxelizerMode::eCompute
-                                                              : platform::VoxelizerMode::eGeometry;
-
-            changed                         |= ImGui::Checkbox("Averaged reflectance (Apply)", &settings.averagedReflectance);
-
-            int budget                       = static_cast<int>(settings.reflectanceBudgetBytes / (1024 * 1024));
-
-            changed                         |= ImGui::InputInt(PropertyLabel("Budget MiB").c_str(), &budget);
-
-            settings.reflectanceBudgetBytes  = uint64_t(std::max(budget, 0)) * 1024 * 1024;
-
-            bool async                       = settings.asyncCompute == platform::AsyncComputeMode::eAuto;
-
-            changed                         |= ImGui::Checkbox("Prefer async compute", &async);
-
-            settings.asyncCompute = async ? platform::AsyncComputeMode::eAuto : platform::AsyncComputeMode::eDisabled;
-
-            ImGui::Text("Effective voxelizer: %s",
-                        snapshot.effectiveVoxelizer == platform::VoxelizerMode::eGeometry ? "Geometry" : "Compute");
-
-            ImGui::Text("GPU committed: %.1f MiB", double(snapshot.memory.deviceLocalBytes) / (1024.0 * 1024.0));
-
-            bool gpuTimings = snapshot.gpuTimingsEnabled;
-            if (ImGui::Checkbox("Measure GI GPU passes", &gpuTimings))
-            {
-                editor.GetViewport().SetGPUTimingsEnabled(gpuTimings);
-            }
-            if (snapshot.gpuTimingsEnabled)
-            {
-                ImGui::TextDisabled("Last completed sample; intervals include barriers and may overlap.");
-                for (const rc::RDGNodeMetrics& pass : snapshot.giPassTimings)
+                int size = static_cast<int>(settings.shadowMapResolution);
+                if (ImGui::SliderInt("Shadow map size", &size, 128, 2048))
                 {
-                    if (pass.gpuStatus == RHIGPUTimingStatus::eAvailable)
+                    if (rc::IsOptimalVoxelGIConfiguration(settings))
                     {
-                        ImGui::Text("%s: %.3f ms", pass.name.CStr(), pass.gpuUs / 1000.0);
+                        // A custom configuration starts from the resolved one, like the other controls.
+                        const rc::VoxelGIRuntimeSettings content = settings;
+                        settings                                 = snapshot.effectiveSettings;
+                        rc::CopyVoxelGIContent(content, settings);
+                        settings.optimal = false;
                     }
-                    else
-                    {
-                        ImGui::TextDisabled("%s: %s", pass.name.CStr(), RHIGPUTimingStatusName(pass.gpuStatus));
-                    }
-                }
-                if (snapshot.giPassTimings.empty())
-                {
-                    ImGui::TextDisabled("Waiting for a completed GI sample.");
+                    settings.shadowMapResolution = static_cast<uint32_t>(size);
+                    changed                      = true;
                 }
             }
+            if (ImGui::TreeNode("Diagnostics"))
+            {
+                bool gpuTimings = snapshot.gpuTimingsEnabled;
+                if (ImGui::Checkbox("Measure GI GPU passes", &gpuTimings))
+                {
+                    editor.GetViewport().SetGPUTimingsEnabled(gpuTimings);
+                }
+                if (snapshot.gpuTimingsEnabled)
+                {
+                    ImGui::TextDisabled("Last completed sample; intervals include barriers and may overlap.");
+                    for (const rc::RDGNodeMetrics& pass : snapshot.giPassTimings)
+                    {
+                        if (pass.gpuStatus == RHIGPUTimingStatus::eAvailable)
+                        {
+                            ImGui::Text("%s: %.3f ms", pass.name.CStr(), pass.gpuUs / 1000.0);
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled("%s: %s", pass.name.CStr(), RHIGPUTimingStatusName(pass.gpuStatus));
+                        }
+                    }
+                    if (snapshot.giPassTimings.empty())
+                    {
+                        ImGui::TextDisabled("Waiting for a completed GI sample.");
+                    }
+                }
 
-            DrawHint("Apply validates resources before rebuilding. A later GPU allocation failure is reported as a fallback.");
-        }
-
-        if (changed)
-        {
-            editor.StageRenderingSettings(draft);
+                ImGui::TreePop();
+            }
+            ImGui::EndDisabled();
+            DrawGIExport(draft);
+            if (changed)
+            {
+                m_giSaveStatus.clear();
+                editor.StageRenderingSettings(draft);
+            }
         }
     }
 
     void DrawDebug(EditorController& editor, const EditorRenderSnapshot& snapshot)
     {
-        if (ImGui::CollapsingHeader("Debug output", ImGuiTreeNodeFlags_DefaultOpen))
+        if (ImGui::CollapsingHeader("Debug output"))
         {
             rc::RenderingSettings draft = editor.GetRenderingState().GetDraft();
 
@@ -632,14 +544,16 @@ private:
                                            "Shadow",
                                            "Voxels (3D)",
                                            "Voxel slice",
-                                           "GI raw sky",
-                                           "GI reconstructed sky",
+                                           "GI raw signal",
+                                           "GI output signal",
                                            "GI history length",
                                            "GI specular hit / miss",
                                            "GI history rejection",
-                                           "GI reconstruction fallback"};
+                                           "GI reconstruction fallback",
+                                           "GI denoiser validation",
+                                           "GI radiance cache"};
 
-            bool changed                = ImGui::Combo(PropertyLabel("Output").c_str(), &output, outputs, 13);
+            bool changed                = ImGui::Combo(PropertyLabel("Output").c_str(), &output, outputs, 15);
 
             if (changed)
             {
@@ -657,6 +571,13 @@ private:
                 }
             }
 
+            if (debug.output == rc::DebugOutput::eGIRawSky || debug.output == rc::DebugOutput::eGIReconstructedSky)
+            {
+                const char* signals[]  = {"Sky", "Reflection", "Bounce"};
+                int         signal     = static_cast<int>(std::min(debug.face, 2u));
+                changed               |= ImGui::Combo(PropertyLabel("GI signal").c_str(), &signal, signals, 3);
+                debug.face             = static_cast<uint32_t>(signal);
+            }
             if (debug.output == rc::DebugOutput::eDepth)
             {
                 if (ImGui::Checkbox("Linear view distance", &debug.linearDepth))
@@ -812,21 +733,6 @@ private:
 
         ImGui::EndDisabled();
 
-        rc::RenderingSettings draft = editor.GetRenderingState().GetDraft();
-
-        int algorithm               = static_cast<int>(draft.algorithm);
-
-        const char* algorithms[]    = {"PBR", "PBR + Global illumination"};
-
-        if (ImGui::Combo(PropertyLabel("Algorithm").c_str(), &algorithm, algorithms, 2))
-        {
-            draft.algorithm    = static_cast<rc::RenderAlgorithm>(algorithm);
-
-            draft.debug.output = rc::DebugOutput::eFinal;
-
-            editor.StageRenderingSettings(draft);
-        }
-
         int projection            = editor.GetCamera().IsOrthographic() ? 1 : 0;
 
         const char* projections[] = {"Perspective", "Orthographic"};
@@ -878,6 +784,8 @@ private:
 
         ImGui::Spacing();
 
+        DrawGI(editor, snapshot);
+
         DrawLights(editor);
 
         DrawEnvironment(context);
@@ -885,8 +793,6 @@ private:
         DrawTransparency(editor);
 
         DrawMaterials(editor);
-
-        DrawGI(editor, snapshot);
 
         DrawDebug(editor, snapshot);
 
@@ -979,6 +885,8 @@ private:
     int m_newLightType{1};
 
     char m_environmentPath[4096]{};
+
+    std::string m_giSaveStatus;
 };
 } // namespace
 

@@ -1,0 +1,10 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+#define HYBRID_HARDWARE_PROVIDER
+#define HYBRID_RAY_PIPELINE
+#define HYBRID_NO_GUIDE
+#define ZEN_NO_PRIMARY_REORDER
+#define HYBRID_RESTIR
+#include "../Common/ray_pipeline.glsl"
+#include "hybrid_trace.glsl"

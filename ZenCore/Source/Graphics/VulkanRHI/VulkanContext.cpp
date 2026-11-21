@@ -848,6 +848,7 @@ void VulkanRHI::Init()
     m_gpuInfo.supportTessellationShader        = m_pDevice->GetPhysicalDeviceFeatures().tessellationShader != VK_FALSE;
 
     m_gpuInfo.supportFragmentStoresAndAtomics  = m_pDevice->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics;
+    m_gpuInfo.supportBufferInt64Atomics        = m_pDevice->GetExtensionFlags().hasBufferInt64Atomics != 0;
 
     m_gpuInfo.uniformBufferAlignment           = limits.minUniformBufferOffsetAlignment;
 
@@ -861,13 +862,15 @@ void VulkanRHI::Init()
     vkGetPhysicalDeviceProperties2(m_pDevice->GetPhysicalDeviceHandle(), &subgroupProperties);
     m_gpuInfo.supportComputeSubgroupBallot = (subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0
                                           && (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0;
+    m_gpuInfo.supportComputeSubgroupReduction =
+        m_gpuInfo.supportComputeSubgroupBallot && (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0;
 
-    m_gpuInfo.maxBoundDescriptorSets       = limits.maxBoundDescriptorSets;
+    m_gpuInfo.maxBoundDescriptorSets = limits.maxBoundDescriptorSets;
 
-    m_gpuInfo.maxStorageBufferRange        = limits.maxStorageBufferRange;
+    m_gpuInfo.maxStorageBufferRange  = limits.maxStorageBufferRange;
 
-    m_gpuInfo.maxColorAttachments          = limits.maxColorAttachments;
-    m_gpuInfo.subTexelPrecisionBits        = limits.subTexelPrecisionBits;
+    m_gpuInfo.maxColorAttachments    = limits.maxColorAttachments;
+    m_gpuInfo.subTexelPrecisionBits  = limits.subTexelPrecisionBits;
 
     for (uint32_t axis = 0; axis < 3; ++axis)
     {
@@ -898,6 +901,28 @@ void VulkanRHI::Init()
         vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), VK_FORMAT_R32G32B32_SFLOAT, &formats);
         rayQuery.triangleFloat3 =
             (formats.bufferFeatures & VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR) != 0;
+    }
+
+    RHIRayTracingCapabilities& rayTracing = m_gpuInfo.rayTracing;
+    rayTracing.pipeline                   = extensions.hasRaytracingPipeline != 0;
+    rayTracing.indirect                   = rayTracing.pipeline && extensions.hasTraceRaysIndirect != 0;
+    rayTracing.invocationReorder          = extensions.hasInvocationReorderEXT ? RHIShaderInvocationReorder::eEXT
+                                          : extensions.hasInvocationReorderNV  ? RHIShaderInvocationReorder::eNV
+                                                                               : RHIShaderInvocationReorder::eNone;
+    if (rayTracing.pipeline)
+    {
+        VkPhysicalDeviceRayTracingPipelinePropertiesKHR tracing{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties.pNext = &tracing;
+        vkGetPhysicalDeviceProperties2(m_pDevice->GetPhysicalDeviceHandle(), &properties);
+        rayTracing.shaderGroupHandleSize         = tracing.shaderGroupHandleSize;
+        rayTracing.shaderGroupHandleAlignment    = tracing.shaderGroupHandleAlignment;
+        rayTracing.shaderGroupBaseAlignment      = tracing.shaderGroupBaseAlignment;
+        rayTracing.maxShaderGroupStride          = tracing.maxShaderGroupStride;
+        rayTracing.maxRayRecursionDepth          = tracing.maxRayRecursionDepth;
+        rayTracing.maxRayDispatchInvocationCount = tracing.maxRayDispatchInvocationCount;
+        rayTracing.maxRayHitAttributeSize        = tracing.maxRayHitAttributeSize;
     }
 
     if (rayQuery.opacityMicromap)

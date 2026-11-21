@@ -1,0 +1,17 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+#include "../../Common/ray_pipeline.glsl"
+layout(set = 1, binding = 0) uniform accelerationStructureEXT testScene;
+layout(std430, set = 1, binding = 1) writeonly buffer Results
+{
+    vec4 values[];
+};
+layout(location = 0) rayPayloadEXT vec4 result;
+void main()
+{
+    uint index = gl_LaunchIDEXT.x;
+    result     = vec4(-1, 0, 0, 0);
+    ZenTraceRay(testScene, 0u, 0xffu, 0u, 0u, 0u, vec3(float(index / 2u) * 2.0, 0, -1), 0.0, vec3(0, 0, 1), 10.0, 0);
+    values[index] = result;
+}

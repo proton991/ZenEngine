@@ -1,8 +1,40 @@
 #ifndef ZEN_RAY_HIT_LIGHTING
 #define ZEN_RAY_HIT_LIGHTING
-#ifdef HYBRID_HARDWARE_PROVIDER
+// Hit shading runs in closest-hit shaders, in ray-query passes, and in passes
+// that shade hits recorded by an earlier trace (HYBRID_RECORDED_HIT_SHADING).
+#if defined(HYBRID_HARDWARE_PROVIDER) \
+    && (!defined(HYBRID_RAY_PIPELINE) || defined(HYBRID_CLOSEST_HIT) || defined(HYBRID_RECORDED_HIT_SHADING))
 #    include "environment_sampling.glsl"
 #    include "ray_hit_material.glsl"
+#    ifdef HYBRID_RADIANCE_CACHE
+#        include "gi_radiance_cache.glsl"
+float hitCacheSegment = 0.0;
+float hitCacheCone    = 0.0;
+bool  CachedHitRadiance(HybridRayResult hit, vec3 normal, out vec3 radiance)
+{
+    int   level    = CacheLevel(hit.position, giCache.camera.xyz);
+    float size     = CacheCellSize(level);
+    bool  eligible = hitCacheSegment > sqrt(3.0) * size && (hitCacheCone < 0.0 || hitCacheSegment * hitCacheCone > size);
+    for (int index = 0; eligible && index <= int(sceneUbo.lightInfo.x) && gi.lighting.x != 0.0; ++index)
+    {
+        SceneLight light = index == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[index];
+        if (light.directionType.w != 0.0 && light.colorIntensity.w > 0.0
+            && length(light.positionRange.xyz - hit.position) < max(4.0 * size, 0.25 * giCache.grid.y))
+        {
+            eligible = false;
+        }
+    }
+    radiance   = vec3(0);
+    bool found = eligible && CacheLookup(hit.position, normal, level, radiance);
+#        ifdef HYBRID_COUNT_RAYS
+    cacheTraceCounts += uvec2(1u, uint(found));
+#        endif
+    return found;
+}
+#    endif
+#    ifdef NATIVE_WORLD_CACHE
+#        include "world_cache.glsl"
+#    endif
 
 // Ray hits use their own UV sets and transforms, never fragment derivatives or voxel-owner UVs.
 vec4 RayHitTexture(HybridRayResult hit, int textureIndex, int set, TextureTransform transform, vec2 sampling)
@@ -23,7 +55,8 @@ vec4 RayHitTexture(HybridRayResult hit, int textureIndex, int set, TextureTransf
 // stage 4). Reflection hits and every other ray-hit shader keep it.
 bool hitSkipsNormalMap = false;
 #    endif
-vec3 RayHitNormal(HybridRayResult hit, Material material, vec3 weights)
+// The interpolated vertex normal on the side of the geometric hit normal.
+vec3 RayHitVertexNormal(HybridRayResult hit, vec3 weights, out bool flipped)
 {
     Vertex   a    = LoadRayHitVertex(indices[hit.triangle.x]);
     Vertex   b    = LoadRayHitVertex(indices[hit.triangle.x + 1u]);
@@ -31,8 +64,19 @@ vec3 RayHitNormal(HybridRayResult hit, Material material, vec3 weights)
     NodeData node = nodesData[hit.triangle.y];
     vec3 normal   = mat3(node.normalMatrix) * (a.normal.xyz * weights.x + b.normal.xyz * weights.y + c.normal.xyz * weights.z);
     normal        = dot(normal, normal) > 1e-12 ? normalize(normal) : hit.normal;
-    bool flipped  = dot(normal, hit.normal) < 0.0;
-    normal        = flipped ? -normal : normal;
+    flipped       = dot(normal, hit.normal) < 0.0;
+    return flipped ? -normal : normal;
+}
+vec3 RayHitNormal(HybridRayResult hit, Material material, vec3 weights)
+{
+    bool flipped;
+    vec3 normal = RayHitVertexNormal(hit, weights, flipped);
+#    if !defined(HYBRID_ABLATE_NORMAL) && !defined(HYBRID_ABLATE_MATERIAL)
+    Vertex   a    = LoadRayHitVertex(indices[hit.triangle.x]);
+    Vertex   b    = LoadRayHitVertex(indices[hit.triangle.x + 1u]);
+    Vertex   c    = LoadRayHitVertex(indices[hit.triangle.x + 2u]);
+    NodeData node = nodesData[hit.triangle.y];
+#    endif
 #    if !defined(HYBRID_ABLATE_NORMAL) && !defined(HYBRID_ABLATE_MATERIAL)
 #        ifdef HYBRID_RESTIR
     if (material.normalTexIndex >= 0 && !hitSkipsNormalMap)
@@ -82,17 +126,12 @@ vec3 RayHitNormal(HybridRayResult hit, Material material, vec3 weights)
     return normal;
 }
 
-// One diffuse secondary surface, lit by exact RT visibility. This is shared by diffuse bounce
-// and reflected hit radiance; it does not recursively read the radiance of another cached cell.
-vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
+// Diffuse reflectance of the hit material; emission is returned separately.
+vec3 RayHitReflectance(HybridRayResult hit, Material material, out vec3 emission)
 {
-    Material material = LoadRayHitMaterial(hit.triangle.z);
-    vec3     weights  = vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics);
-    vec4     color    = vec4(0);
-    for (uint corner = 0u; corner < 3u; ++corner)
-    {
-        color += LoadRayHitVertex(indices[hit.triangle.x + corner]).color * weights[corner];
-    }
+    vec4 colorA = LoadRayHitVertex(indices[hit.triangle.x]).color;
+    vec4 color  = colorA + (LoadRayHitVertex(indices[hit.triangle.x + 1u]).color - colorA) * hit.barycentrics.x
+                + (LoadRayHitVertex(indices[hit.triangle.x + 2u]).color - colorA) * hit.barycentrics.y;
     vec3 reflectance;
     if (material.surfaceProperties.w > 0.5)
     {
@@ -121,8 +160,7 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
                              0.0, 1.0);
         reflectance  = albedo * (0.96 * (1.0 - metal));
     }
-    vec3 normal   = RayHitNormal(hit, material, weights);
-    vec3 emission = vec3(0);
+    emission = vec3(0);
     if (gi.lighting.z != 0.0 && any(notEqual(material.emissiveFactor.rgb, vec3(0))))
     {
         emission = material.emissiveFactor.rgb * gi.lighting.z
@@ -130,109 +168,134 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
                                  material.textureSampling.xy)
                        .rgb;
     }
-    vec3 diffuse = vec3(0);
-    // Lights without a visibility query are summed exactly. Lights that need one share a single
-    // RT shadow query: a weighted reservoir picks one in proportion to its unshadowed luminance,
-    // and its visible contribution is divided by that probability. The estimate is unbiased,
-    // costs one query whatever the light count, and is exact when a single light reaches the hit.
-    uint  stream         = HybridHash(seed ^ 0x2c1b3c6du);
-    float shadowedWeight = 0.0, chosenWeight = 0.0;
-    int   chosen         = -1;
-    vec3  chosenRadiance = vec3(0);
-    int   lightCount     = (int(sceneUbo.lightInfo.x) + 1) * int(gi.lighting.x);
-#    ifdef HYBRID_ABLATE_LIGHTS
-    lightCount = min(lightCount, 1);
-#    endif
-    for (int i = 0; i < lightCount; ++i)
-    {
-        SceneLight light = i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i];
-        vec3       direction;
-        float      distanceToLight;
-        vec3       incoming = EvaluateLight(light, hit.position, direction, distanceToLight);
-        float      cosine   = max(dot(normal, direction), 0.0);
-        if (cosine > 0.0 && dot(hit.normal, direction) > 0.0 && any(greaterThan(incoming, vec3(0))))
-        {
-            vec3 radiance = incoming * cosine / HYBRID_PI;
-            if (gi.limits.z > 0.5 && (i == int(sceneUbo.lightInfo.x) || light.coneShadow.z > 0.0))
-            {
-                float weight    = dot(radiance, vec3(0.2126, 0.7152, 0.0722));
-                float u         = float(HybridHash(stream + uint(i)) >> 8) / 16777216.0;
-                shadowedWeight += weight;
-                if (weight > 0.0 && u * shadowedWeight < weight)
-                {
-                    chosen         = i;
-                    chosenWeight   = weight;
-                    chosenRadiance = radiance;
-                }
-            }
-            else
-            {
-                diffuse += radiance;
-            }
-        }
-    }
-#    ifndef HYBRID_ABLATE_SHADOW
-    if (chosen >= 0)
-    {
-        SceneLight light    = chosen == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[chosen];
-        bool       occluded = false;
-#        ifdef ZEN_LIGHT_OCCLUDERS
-        occluded = CachedLightOccluded(chosen == int(sceneUbo.lightInfo.x) ? MAX_SCENE_LIGHTS : chosen, hit.position,
-                                       hit.normal, light);
-#        endif
-        diffuse += chosenRadiance * (shadowedWeight / chosenWeight)
-                 * (occluded ? 0.0 : HardwareLightVisibility(hit.position, hit.normal, light));
-    }
-#    else
-    diffuse += chosenRadiance * (chosenWeight > 0.0 ? shadowedWeight / chosenWeight : 0.0);
-#    endif
-#    ifndef HYBRID_NO_GUIDE
-    float skyScale = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y;
-    if (skyScale > 0.0)
-    {
-        // Independent counter dimensions avoid correlating the secondary light direction with
-        // the primary bounce direction. The seed changes for each ray and successful frame.
-        vec3 u =
-            vec3(uvec3(HybridHash(seed ^ 0xa511e9b3u), HybridHash(seed ^ 0x63d83595u), HybridHash(seed ^ 0x9e3779b9u)) >> 8)
-            / 16777216.0;
-        float pdf;
-        vec3  direction = HybridSkySample(normal, u.xy, u.z < HYBRID_ENVIRONMENT_SHARE, pdf);
-        float cosine    = max(dot(normal, direction), 0.0);
-        if (cosine > 0.0 && dot(hit.normal, direction) > 0.0 && pdf > 0.0)
-        {
-            vec3 origin = HybridTraceOrigin(hit.position, hit.normal, 0.0);
-            if (!HardwareOccluded(origin, direction, 1e20))
-            {
-                diffuse += textureLod(coneEnvironmentMap, EnvironmentDirection(direction), 0).rgb
-                         * (skyScale * cosine / (HYBRID_PI * pdf));
-            }
-        }
-    }
-#    endif
-    return (emission + reflectance * diffuse) * gi.volume.w;
+    return reflectance;
 }
+#    ifndef HYBRID_RECORDED_HIT_SHADING
+#        include "sampled_hit_diffuse.glsl"
+// Evaluate the hit material for cache lookup or endpoint shading.
+vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
+{
+    Material material = LoadRayHitMaterial(hit.triangle.z);
+    vec3     weights  = vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics);
+    vec3     emission;
+    vec3     reflectance = RayHitReflectance(hit, material, emission);
+    vec3     normal      = RayHitNormal(hit, material, weights);
+#        ifdef HYBRID_COUNT_RAYS
+    uint previousPurpose = issuedRayPurpose;
+    issuedRayPurpose     = 1u;
+#        endif
+    vec3 diffuse = vec3(0);
+#        if defined(NATIVE_WORLD_CACHE)
+#            if defined(NATIVE_GLOSSY_CACHE)
+    if ((hitPayload.skipNormalMap & 4u) == 0u)
+    {
+#            endif
+        bool worldFound, worldUsable;
+        diffuse = WorldLookup(hit.position, hit.normal, normal, (hitPayload.skipNormalMap & 16u) != 0u,
+                              WorldFeedbackSelection(seed), worldFound, worldUsable);
+#            if defined(NATIVE_CACHE_MISS_TRANSPORT) || defined(NATIVE_WORLD_CACHE_PIXEL)
+        if (!worldUsable)
+        {
+            diffuse = SampledHitDiffuse(hit, normal, seed, false, false);
+        }
+#            elif defined(NATIVE_GLOSSY_CACHE)
+    // Reflections use the same bounded endpoint as the probe gather.
+    if (!worldUsable)
+    {
+        diffuse = SampledHitDiffuse(hit, normal, seed, false, false);
+    }
+#            endif
+        if ((hitPayload.skipNormalMap & 7u) == 3u)
+        {
+            WorldCountProbe(seed, hit.position, hit.normal, worldFound, worldUsable);
+        }
+#            if defined(NATIVE_GLOSSY_CACHE)
+    }
+    else
+    {
+#            endif
+#        endif
+#        if defined(NATIVE_GI_CACHE_ONLY)
+        // A miss stays dark. Probe traces never fall back to nested shadow or sky rays.
+        CacheLookup(hit.position, normal, CacheLevel(hit.position, giCache.camera.xyz), diffuse);
+#        elif !defined(NATIVE_WORLD_CACHE) || defined(NATIVE_GLOSSY_CACHE)
+#            if defined(HYBRID_RADIANCE_CACHE) && !defined(GI_CACHE_WRITE)
+    bool cacheHit = CachedHitRadiance(hit, normal, diffuse);
+    if (!cacheHit)
+    {
+#            endif
+        bool exactLights = false;
+#            ifdef NATIVE_GLOSSY_CACHE
+        exactLights = true;
+#            endif
+        diffuse = SampledHitDiffuse(hit, normal, seed, true, exactLights);
+#            if defined(HYBRID_RADIANCE_CACHE) && !defined(GI_CACHE_WRITE)
+    }
+#            elif defined(GI_CACHE_WRITE)
+    CacheAccumulate(hit.position, normal, diffuse);
+#            endif
+#        endif
+#        if defined(NATIVE_GLOSSY_CACHE)
+    }
+#        endif
+#        ifdef HYBRID_COUNT_RAYS
+    issuedRayPurpose = previousPurpose;
+#        endif
+#        if defined(NATIVE_WORLD_CACHE) && !defined(NATIVE_WORLD_CACHE_PIXEL)
+    return emission + reflectance * diffuse;
+#        else
+    return (emission + reflectance * diffuse) * gi.volume.w;
+#        endif
+}
+#    endif
 #endif
 
+// Passes that only shade recorded hits trace nothing themselves.
+#ifndef HYBRID_RECORDED_HIT_SHADING
 vec3 TraceHitRadiance(HybridRayResult hit, vec3 direction, uint seed, out bool rejected)
 {
     vec3 value;
-#ifdef HYBRID_HARDWARE_PROVIDER
-    if (hit.hit && hit.triangle.x != 0xffffffffu)
+#    ifdef HYBRID_HARDWARE_PROVIDER
+#        if defined(HYBRID_RAY_PIPELINE) && !defined(HYBRID_CLOSEST_HIT)
+    bool materialAvailable = hitPayload.material != 0xffffffffu;
+#        else
+    bool materialAvailable = hit.triangle.x != 0xffffffffu;
+#        endif
+    if (hit.hit && materialAvailable)
     {
         rejected = false;
-        value    = HardwareHitRadiance(hit, seed);
+#        if defined(HYBRID_RAY_PIPELINE) && !defined(HYBRID_CLOSEST_HIT)
+        value = hitPayload.radiance;
+#        else
+        value = HardwareHitRadiance(hit, seed);
+#        endif
     }
     else
-#endif
+#    endif
     {
-#if !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
+#    if defined(HYBRID_FIELD_WORLD_CACHE)
+        value = NativeFieldRadiance(hit, seed, rejected) * gi.volume.w;
+#    elif !defined(HYBRID_HARDWARE_PROVIDER) || defined(HYBRID_FIELD_TRAVERSAL)
         value = HitRadiance(hitRadiance, hitNormal, hit, direction, false, rejected);
-#else
+#    else
         // A HW hit without surface metadata is unavailable, never a voxel-cache fallback.
         value    = vec3(0);
         rejected = hit.hit;
-#endif
+#    endif
     }
     return value;
 }
+
+void PrepareRayHitLighting(uint seed, bool diffuse, uint feature)
+{
+#    if defined(HYBRID_RAY_PIPELINE) && !defined(HYBRID_CLOSEST_HIT)
+    rayShading = uvec3(seed, 0u, feature);
+#        ifdef HYBRID_RESTIR
+    rayShading.y = uint(diffuse);
+#        endif
+#    elif defined(HYBRID_RESTIR)
+    hitSkipsNormalMap = diffuse;
+#    endif
+}
+#endif
 #endif

@@ -1,0 +1,7 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define GI_CACHE_KEY64
+#define DENOISE_BICUBIC
+#define DENOISE_ANTILAG
+#define DENOISE_WORLD_SEED
+#include "gi_denoise_temporal.glsl"

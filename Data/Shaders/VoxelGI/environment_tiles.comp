@@ -31,12 +31,13 @@ layout(std430, set = 1, binding = 5) writeonly buffer EnvironmentResidualColumns
 {
     float residualColumns[];
 };
-layout(std430, set = 1, binding = 6) buffer EnvironmentResidualRows
+layout(std430, set = 1, binding = 6) writeonly buffer EnvironmentResidualRows
 {
     float residualRows[];
 };
 shared float tileMass[ZEN_ENVIRONMENT_TILES];
 shared float brightMass[ZEN_ENVIRONMENT_TILES];
+shared float residualRowMass[ZEN_ENVIRONMENT_IMPORTANCE_ROWS];
 shared uint  chosen[ZEN_ENVIRONMENT_MAX_SOURCES];
 shared uint  chosenCount;
 // A source tile holds at least this share of the environment, and most of it in texels brighter
@@ -158,9 +159,8 @@ void        main()
             running += source ? 0.0 : max(environmentColumns[offset + x + 1u] - environmentColumns[offset + x], 0.0);
             residualColumns[offset + x + 1u] = running;
         }
-        residualRows[row + 1u] = running;
+        residualRowMass[row] = running;
     }
-    memoryBarrierBuffer();
     barrier();
     if (tile == 0u)
     {
@@ -168,7 +168,7 @@ void        main()
         residualRows[0] = 0.0;
         for (uint row = 0u; row < ZEN_ENVIRONMENT_IMPORTANCE_ROWS; ++row)
         {
-            sum                    += residualRows[row + 1u];
+            sum                    += residualRowMass[row];
             residualRows[row + 1u]  = sum;
         }
     }

@@ -97,9 +97,38 @@ struct RHIRayQueryCapabilities
     }
 };
 
+enum class RHIShaderInvocationReorder : uint32_t
+{
+    eNone,
+    eNV,
+    eEXT
+};
+
+struct RHIRayTracingCapabilities
+{
+    bool                       pipeline{false};
+    bool                       indirect{false};
+    RHIShaderInvocationReorder invocationReorder{RHIShaderInvocationReorder::eNone};
+    uint32_t                   shaderGroupHandleSize{0};
+    uint32_t                   shaderGroupHandleAlignment{0};
+    uint32_t                   shaderGroupBaseAlignment{0};
+    uint32_t                   maxShaderGroupStride{0};
+    uint32_t                   maxRayRecursionDepth{0};
+    uint32_t                   maxRayDispatchInvocationCount{0};
+    uint32_t                   maxRayHitAttributeSize{0};
+
+    bool IsUsable() const
+    {
+        return pipeline && shaderGroupHandleSize != 0 && std::has_single_bit(shaderGroupHandleAlignment)
+            && std::has_single_bit(shaderGroupBaseAlignment) && maxShaderGroupStride >= shaderGroupHandleSize
+            && maxRayRecursionDepth != 0 && maxRayDispatchInvocationCount != 0;
+    }
+};
+
 struct RHIGPUInfo
 {
-    RHIRayQueryCapabilities rayQuery;
+    RHIRayQueryCapabilities   rayQuery;
+    RHIRayTracingCapabilities rayTracing;
 
     // Backend-reported identity. Driver version encoding is vendor-specific.
     std::array<char, 256> deviceName{};
@@ -136,6 +165,7 @@ struct RHIGPUInfo
     uint32_t maxComputeWorkGroupInvocations{128};
     uint32_t maxComputeSharedMemorySize{16384};
     bool     supportComputeSubgroupBallot{false};
+    bool     supportComputeSubgroupReduction{false};
     // Every logical descriptor-set index must be below this backend limit (Vulkan guarantees at least 4).
     uint32_t                maxBoundDescriptorSets{4};
     std::array<uint32_t, 3> maxComputeWorkGroupSize{128, 128, 64};
@@ -146,6 +176,7 @@ struct RHIGPUInfo
     uint32_t subTexelPrecisionBits{0};
 
     // Largest device-local memory heap; zero means the backend did not report it.
+    bool     supportBufferInt64Atomics{false};
     uint64_t deviceLocalMemoryBytes{0};
 
     // Slots in each global bindless heap the backend created; zero for an unavailable heap.
@@ -154,6 +185,14 @@ struct RHIGPUInfo
     bool IsDispatchWithinLimits(uint32_t x, uint32_t y, uint32_t z) const
     {
         return x <= maxComputeWorkGroupCount[0] && y <= maxComputeWorkGroupCount[1] && z <= maxComputeWorkGroupCount[2];
+    }
+
+    bool IsTraceRaysWithinLimits(uint32_t width, uint32_t height, uint32_t depth) const
+    {
+        return rayTracing.IsUsable() && uint64_t(width) <= uint64_t(maxComputeWorkGroupCount[0]) * maxComputeWorkGroupSize[0]
+            && uint64_t(height) <= uint64_t(maxComputeWorkGroupCount[1]) * maxComputeWorkGroupSize[1]
+            && uint64_t(depth) <= uint64_t(maxComputeWorkGroupCount[2]) * maxComputeWorkGroupSize[2]
+            && (depth == 0 || uint64_t(width) * height <= uint64_t(rayTracing.maxRayDispatchInvocationCount) / depth);
     }
 };
 
@@ -196,7 +235,12 @@ enum class RHIShaderStage : uint32_t
     eGeometry              = 3,
     eFragment              = 4,
     eCompute               = 5,
-    eMax                   = 6
+    eRayGeneration         = 6,
+    eMiss                  = 7,
+    eClosestHit            = 8,
+    eAnyHit                = 9,
+    eCallable              = 10,
+    eMax                   = 11
 };
 
 enum class RHIShaderStageFlagBits : uint32_t
@@ -207,13 +251,28 @@ enum class RHIShaderStageFlagBits : uint32_t
     eGeometry              = 1 << 3,
     eFragment              = 1 << 4,
     eCompute               = 1 << 5,
-    eMax                   = 1 << 6
+    eRayGeneration         = 1 << 6,
+    eMiss                  = 1 << 7,
+    eClosestHit            = 1 << 8,
+    eAnyHit                = 1 << 9,
+    eCallable              = 1 << 10,
+    eMax                   = 1 << 11
 };
 
 inline std::string RHIShaderStageToString(RHIShaderStage stage)
 {
     static const char* SHADER_STAGE_NAMES[ToUnderlying(RHIShaderStage::eMax)] = {
-        "Vertex", "TesselationControl", "TesselationEvaluation", "Geometry", "Fragment", "Compute",
+        "Vertex",
+        "TesselationControl",
+        "TesselationEvaluation",
+        "Geometry",
+        "Fragment",
+        "Compute",
+        "RayGeneration",
+        "Miss",
+        "ClosestHit",
+        "AnyHit",
+        "Callable",
     };
     return ToUnderlying(stage) < ToUnderlying(RHIShaderStage::eMax) ? SHADER_STAGE_NAMES[ToUnderlying(stage)] : "Unknown";
 }
@@ -250,6 +309,14 @@ inline std::string RHIShaderStageFlagToString(BitField<RHIShaderStageFlagBits> s
     if (stageFlags.HasFlag(RHIShaderStageFlagBits::eGeometry))
     {
         str += "Geometry ";
+    }
+
+    for (uint32_t stage = ToUnderlying(RHIShaderStage::eRayGeneration); stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
+    {
+        if (stageFlags.HasFlag(static_cast<RHIShaderStageFlagBits>(1u << stage)))
+        {
+            str += RHIShaderStageToString(static_cast<RHIShaderStage>(stage)) + " ";
+        }
     }
 
     if (!str.empty())
@@ -741,6 +808,7 @@ enum class RHIBufferUsageFlagBits : uint32_t
     eIndexBuffer                  = 1 << 6,
     eVertexBuffer                 = 1 << 7,
     eIndirectBuffer               = 1 << 8,
+    eShaderBindingTable           = 1 << 10,
     eDeviceAddress                = 1 << 17,
     eAccelerationStructureInput   = 1 << 19,
     eAccelerationStructureStorage = 1 << 20,
@@ -761,7 +829,8 @@ enum class RHIBufferUsage : uint32_t
     eIndirectBuffer               = 9,
     eAccelerationStructureInput   = 10,
     eAccelerationStructureStorage = 11,
-    eMax                          = 12
+    eShaderBindingTable           = 12,
+    eMax                          = 13
 };
 
 // Access roles are compact indices; creation flags keep their native bit values.
@@ -778,11 +847,13 @@ inline constexpr RHIBufferUsageFlagBits kRHIBufferUsageFlags[] = {
     RHIBufferUsageFlagBits::eIndirectBuffer,
     RHIBufferUsageFlagBits::eAccelerationStructureInput,
     RHIBufferUsageFlagBits::eAccelerationStructureStorage,
+    RHIBufferUsageFlagBits::eShaderBindingTable,
 };
 static_assert(std::size(kRHIBufferUsageFlags) == ToUnderlying(RHIBufferUsage::eMax));
 
 // Device address is an allocation capability, not a graph access.
 inline constexpr uint32_t kRHIBufferAccessUsageMask = ((ToUnderlying(RHIBufferUsageFlagBits::eIndirectBuffer) << 1) - 1)
+                                                    | ToUnderlying(RHIBufferUsageFlagBits::eShaderBindingTable)
                                                     | ToUnderlying(RHIBufferUsageFlagBits::eAccelerationStructureInput)
                                                     | ToUnderlying(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
 
@@ -1159,10 +1230,11 @@ struct RHIRenderTarget
 
 enum class RHIPipelineType : uint32_t
 {
-    eNone     = 0,
-    eGraphics = 1,
-    eCompute  = 2,
-    eMax      = 3
+    eNone       = 0,
+    eGraphics   = 1,
+    eCompute    = 2,
+    eRayTracing = 3,
+    eMax        = 4
 };
 
 /**********************************************/
@@ -1223,6 +1295,7 @@ enum class RHIPipelineStageFlagBits : uint32_t
     eHost                         = 1 << 14,
     eAllGraphics                  = 1 << 15,
     eAllCommands                  = 1 << 16,
+    eRayTracingShader             = 1 << 21,
     eAccelerationStructureBuild   = 1 << 25,
     eMax                          = 0x7FFFFFFF
 };
@@ -1231,6 +1304,7 @@ inline constexpr uint32_t kRHIAccessMask        = ((ToUnderlying(RHIAccessFlagBi
                                                 | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureRead)
                                                 | ToUnderlying(RHIAccessFlagBits::eAccelerationStructureWrite);
 inline constexpr uint32_t kRHIPipelineStageMask = ((ToUnderlying(RHIPipelineStageFlagBits::eAllCommands) << 1) - 1)
+                                                | ToUnderlying(RHIPipelineStageFlagBits::eRayTracingShader)
                                                 | ToUnderlying(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
 inline constexpr uint32_t kRHIIndividualPipelineStageMask =
     kRHIPipelineStageMask
@@ -1244,7 +1318,7 @@ inline constexpr uint32_t kRHIShaderPipelineStageMask =
     ToUnderlying(RHIPipelineStageFlagBits::eVertexShader) | ToUnderlying(RHIPipelineStageFlagBits::eTessellationControlShader)
     | ToUnderlying(RHIPipelineStageFlagBits::eTessellationEvaluationShader)
     | ToUnderlying(RHIPipelineStageFlagBits::eGeometryShader) | ToUnderlying(RHIPipelineStageFlagBits::eFragmentShader)
-    | ToUnderlying(RHIPipelineStageFlagBits::eComputeShader);
+    | ToUnderlying(RHIPipelineStageFlagBits::eComputeShader) | ToUnderlying(RHIPipelineStageFlagBits::eRayTracingShader);
 // Arrays indexed by bit position include the holes between native flags.
 inline constexpr uint32_t kRHIAccessBitCount        = std::bit_width(kRHIAccessMask);
 inline constexpr uint32_t kRHIPipelineStageBitCount = std::bit_width(kRHIPipelineStageMask);
@@ -1257,6 +1331,7 @@ inline bool RHIQueueSupportsStages(const RHIQueueCopyCapabilities& queue, BitFie
     if (queue.compute)
     {
         allowed |= int64_t(Stage::eComputeShader) | int64_t(Stage::eDrawIndirect) | int64_t(Stage::eAccelerationStructureBuild);
+        allowed |= int64_t(Stage::eRayTracingShader);
     }
     if (queue.graphics)
     {
@@ -1380,6 +1455,10 @@ inline BitField<RHIPipelineStageFlagBits> RHIBufferUsageToPipelineStageFlags(Bit
         {
             result.SetFlag(RHIPipelineStageFlagBits::eDrawIndirect);
         }
+        if (usage.HasFlag(RHIBufferUsageFlagBits::eShaderBindingTable))
+        {
+            result.SetFlag(RHIPipelineStageFlagBits::eRayTracingShader);
+        }
 
         if (usage.HasFlag(RHIBufferUsageFlagBits::eVertexBuffer) || usage.HasFlag(RHIBufferUsageFlagBits::eIndexBuffer))
         {
@@ -1403,6 +1482,7 @@ inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(RHIBufferUsage
 
         case RHIBufferUsage::eUniformBuffer: result.SetFlag(RHIAccessFlagBits::eUniformRead); break;
         case RHIBufferUsage::eTextureBuffer: result.SetFlag(RHIAccessFlagBits::eShaderRead); break;
+        case RHIBufferUsage::eShaderBindingTable: result.SetFlag(RHIAccessFlagBits::eShaderRead); break;
 
         case RHIBufferUsage::eStorageBuffer:
         case RHIBufferUsage::eImageBuffer:

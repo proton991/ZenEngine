@@ -2,13 +2,15 @@
 #include "../Common/material_lighting.glsl"
 #include "../Common/scene_lighting.glsl"
 #ifdef VOXEL_GI
-#    include "../VoxelGI/cone_trace.glsl"
+#    include "../VoxelGI/gi_common.glsl"
+#    ifdef LIGHTING_CAPTURE
+vec3 captureDiffuseBounced = vec3(0), captureDiffuseEscaped = vec3(0);
+#    endif
 #    include "../ShadowMapping/scene_shadows.glsl"
 #    include "../VoxelGI/gi_ray_totals.glsl"
 #endif
 #ifdef HYBRID_HARDWARE_PROVIDER
 #    include "../VoxelGI/hybrid_provider.glsl"
-#    include "../VoxelGI/hardware_receiver_lighting.glsl"
 #endif
 // ForwardDrawCache selects this only when every omitted lobe is disabled.
 layout(constant_id = 0) const bool basicForwardMaterial = false;
@@ -286,8 +288,8 @@ void main()
         uvec2 receiverVisibility = uvec2(0);
 #ifdef VOXEL_GI
 #    ifdef HYBRID_GI
-        // Helper lanes only feed derivatives. Along edges their quads straddle other receivers,
-        // and tracing the voxel fallback for them would stall every warp on those edges.
+        // Only the matching receiver or a resting decal may reuse screen GI.
+        // Other layers retain PBR/environment lighting and their own shadow queries.
         bool receiverLayer    = topology == 2u && s.transmission == 0.0 && s.diffuseTransmission == 0.0;
         bool reconstructed    = gl_HelperInvocation
                              || (receiverLayer && material.surfaceProperties.y != 2.0
@@ -300,37 +302,14 @@ void main()
         // Resting within the ray-traced reconstruction's own plane limit.
         bool resting = decal && hardwareSpecular && (hardwareDiffuse ? supported : HybridReceiverSupports(shadowNormal, true));
         bool reflected = reconstructed || (resting && HybridReceiverReflects(N, s.roughness));
-        vec3 tracedSky = vec3(0), tracedBounce = vec3(0);
-#        ifdef HYBRID_HARDWARE_PROVIDER
-        if (!diffuse && hardwareDiffuse && gi.indirect.x > 0.5)
-        {
-            HardwareReceiverDiffuse(inWorldPos, N, shadowNormal, uvec2(gl_FragCoord.xy), max(uint(gi.indirect.z), 1u),
-                                    tracedSky, tracedBounce);
-            // A decal near its receiver but outside the reconstruction's plane limit traces without
-            // history: bound it by the receivers around it. Other layers stay unbounded.
-            if (decal && HybridReceiverSupports(shadowNormal, false))
-            {
-                float bound   = HybridSampleBound(HybridLuminance(tracedSky + tracedBounce),
-                                                  HybridReceiverReference(ivec2(gl_FragCoord.xy), gi.lighting.w > 0.5).x);
-                tracedSky    *= bound;
-                tracedBounce *= bound;
-            }
-        }
-#        endif
         // Indirect diffuse off (GI tracing panel) keeps the unoccluded environment, as without GI.
         bool indirect = gi.indirect.x > 0.5;
-        if (indirect)
-        {
-            irradiance = diffuse && gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
-                       : hardwareDiffuse                ? tracedBounce + tracedSky
-                                                        : DiffuseVoxelLighting(inWorldPos, N, !diffuse);
 #        ifdef LIGHTING_CAPTURE
-            if (!diffuse && hardwareDiffuse)
-            {
-                captureDiffuseEscaped = tracedSky;
-                captureDiffuseBounced = tracedBounce;
-            }
+        captureDiffuseEscaped = irradiance;
 #        endif
+        if (indirect && diffuse)
+        {
+            irradiance = texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb;
         }
         if (diffuse)
         {
@@ -353,23 +332,6 @@ void main()
             hybridSpecularVisibility = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).a;
             hybridReflectedRadiance  = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0).rgb;
         }
-#        ifdef HYBRID_HARDWARE_PROVIDER
-        else if (hardwareSpecular)
-        {
-            vec4 specular = HardwareReceiverSpecular(inWorldPos, N, shadowNormal, V, s.roughness, uvec2(gl_FragCoord.xy));
-            hybridSpecularVisibility = specular.a;
-            // A decal near its receiver (within half a voxel) that traces its own reflection has no
-            // history: bound it by the receivers around it. Transmissive and free-standing layers have
-            // no comparable receiver and stay unbounded.
-            bool  near  = decal && (supported || HybridReceiverSupports(shadowNormal, false));
-            float bound = near ? HybridSampleBound(HybridLuminance(specular.rgb),
-                                                   HybridReceiverReference(ivec2(gl_FragCoord.xy), gi.lighting.w > 0.5).y)
-                               : 1.0;
-            hybridReflectedRadiance = specular.rgb * bound;
-        }
-#        endif
-#    else
-        irradiance = gi.indirect.x > 0.5 ? DiffuseVoxelLighting(inWorldPos, N) : irradiance;
 #    endif
 #endif
         color = (vec3(1.0) - iblF) * irradiance * s.diffuse * (1.0 - s.transmission) * (1.0 - s.diffuseTransmission);

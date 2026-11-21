@@ -63,6 +63,11 @@ VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage)
         case RHIShaderStage::eGeometry: result = VK_SHADER_STAGE_GEOMETRY_BIT; break;
         case RHIShaderStage::eFragment: result = VK_SHADER_STAGE_FRAGMENT_BIT; break;
         case RHIShaderStage::eCompute: result = VK_SHADER_STAGE_COMPUTE_BIT; break;
+        case RHIShaderStage::eRayGeneration: result = VK_SHADER_STAGE_RAYGEN_BIT_KHR; break;
+        case RHIShaderStage::eMiss: result = VK_SHADER_STAGE_MISS_BIT_KHR; break;
+        case RHIShaderStage::eClosestHit: result = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR; break;
+        case RHIShaderStage::eAnyHit: result = VK_SHADER_STAGE_ANY_HIT_BIT_KHR; break;
+        case RHIShaderStage::eCallable: result = VK_SHADER_STAGE_CALLABLE_BIT_KHR; break;
         default: result = VK_SHADER_STAGE_ALL; break;
     }
 

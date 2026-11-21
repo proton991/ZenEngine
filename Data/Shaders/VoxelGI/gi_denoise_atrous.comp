@@ -1,0 +1,193 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "gi_denoise_common.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(constant_id = 0) const uint FILTER_STEP = 1u;
+layout(set = 1, binding = 6) uniform sampler2D inputSky;
+layout(set = 1, binding = 7) uniform sampler2D inputBounce;
+layout(set = 1, binding = 8) uniform sampler2D inputSpecular;
+layout(set = 1, binding = 9) uniform sampler2D historyLength;
+layout(set = 1, binding = 10) uniform sampler2D fastMoments;
+layout(set = 1, binding = 11) uniform sampler2D reflectionHistory;
+layout(set = 1, binding = 12, rgba16f) uniform writeonly image2D outputSky;
+layout(set = 1, binding = 13, rgba16f) uniform writeonly image2D outputBounce;
+layout(set = 1, binding = 14, rgba16f) uniform writeonly image2D outputSpecular;
+
+// The first iteration shares overlapping reads. Wider lattices use direct reads,
+// which measured faster than their larger shared tiles.
+const uint   CACHE_WIDTH = 8u + 4u * FILTER_STEP;
+const uint   CACHE_SIZE  = FILTER_STEP == 1u ? CACHE_WIDTH * CACHE_WIDTH : 1u;
+shared vec4  cachedPosition[CACHE_SIZE];
+shared uvec4 cachedNormal[CACHE_SIZE];
+shared vec3  cachedGeometric[CACHE_SIZE];
+shared vec3  cachedVariance[CACHE_SIZE];
+shared vec4  cachedSky[DENOISE_SKY_ENABLED ? CACHE_SIZE : 1u];
+shared vec4  cachedBounce[CACHE_SIZE];
+shared vec4  cachedSpecular[CACHE_SIZE];
+
+vec3 SignalVariance(ivec2 p)
+{
+    vec4 moments   = texelFetch(fastMoments, p, 0);
+    vec4 reflected = hybrid.reflection.x != 0u ? texelFetch(reflectionHistory, p, 0) : vec4(0);
+    return max(
+        vec3(moments.y - moments.x * moments.x, moments.w - moments.z * moments.z, reflected.z - reflected.y * reflected.y),
+        vec3(0));
+}
+
+uint CacheIndex(ivec2 p)
+{
+    ivec2 local = p - ivec2(gl_WorkGroupID.xy) * 8 + int(2u * FILTER_STEP);
+    return uint(local.y) * CACHE_WIDTH + uint(local.x);
+}
+
+void LoadFilterTile()
+{
+    if (FILTER_STEP == 1u)
+    {
+        ivec2 origin = ivec2(gl_WorkGroupID.xy) * 8 - int(2u * FILTER_STEP);
+        for (uint index = gl_LocalInvocationIndex; index < CACHE_SIZE; index += 64u)
+        {
+            ivec2          p        = origin + ivec2(index % CACHE_WIDTH, index / CACHE_WIDTH);
+            GIDenoiseGuide guide    = GIDenoiseGuide(vec3(0), vec3(0), vec3(0), 0u, 0.0);
+            vec3           variance = vec3(0);
+            if (HybridInView(p))
+            {
+                guide    = DenoiseGuide(p);
+                variance = SignalVariance(p);
+            }
+            cachedPosition[index]  = vec4(guide.position, guide.roughness);
+            cachedNormal[index]    = uvec4(floatBitsToUint(guide.normal), guide.identity);
+            cachedGeometric[index] = guide.geometric;
+            cachedVariance[index]  = variance;
+            if (FILTER_STEP == 1u)
+            {
+                if (DENOISE_SKY_ENABLED)
+                {
+                    cachedSky[index] = HybridInView(p) ? texelFetch(inputSky, p, 0) : vec4(0);
+                }
+                cachedBounce[index]   = HybridInView(p) ? texelFetch(inputBounce, p, 0) : vec4(0);
+                cachedSpecular[index] = HybridInView(p) ? texelFetch(inputSpecular, p, 0) : vec4(0);
+            }
+        }
+        barrier();
+    }
+}
+
+GIDenoiseGuide FilterGuide(ivec2 p)
+{
+    GIDenoiseGuide guide;
+    if (FILTER_STEP == 1u)
+    {
+        uint index = CacheIndex(p);
+        guide      = GIDenoiseGuide(cachedPosition[index].xyz, uintBitsToFloat(cachedNormal[index].xyz), cachedGeometric[index],
+                                    cachedNormal[index].w, cachedPosition[index].w);
+    }
+    else
+    {
+        guide = DenoiseGuide(p);
+    }
+    return guide;
+}
+
+vec3 FilterVariance(ivec2 p)
+{
+    return FILTER_STEP == 1u ? cachedVariance[CacheIndex(p)] : SignalVariance(p);
+}
+
+GIDenoiseSignals FilterSignals(ivec2 p)
+{
+    GIDenoiseSignals signals;
+    if (FILTER_STEP == 1u)
+    {
+        uint index = CacheIndex(p);
+        signals    = GIDenoiseSignals(DENOISE_SKY_ENABLED ? cachedSky[index] : vec4(0, 0, 0, 1), cachedBounce[index],
+                                      cachedSpecular[index]);
+    }
+    else
+    {
+        signals =
+            GIDenoiseSignals(DenoiseSkySignal(inputSky, p), texelFetch(inputBounce, p, 0), texelFetch(inputSpecular, p, 0));
+    }
+    return signals;
+}
+
+void main()
+{
+    LoadFilterTile();
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!HybridInView(p))
+    {
+        return;
+    }
+    GIDenoiseGuide   center    = FilterGuide(p);
+    GIDenoiseSignals result    = FilterSignals(p);
+    vec4             reflected = hybrid.reflection.x != 0u ? texelFetch(reflectionHistory, p, 0) : vec4(0);
+    vec3             age       = vec3(texelFetch(historyLength, p, 0).xy, reflected.w);
+    vec3             luminance =
+        vec3(HybridLuminance(result.sky.rgb + result.bounce.rgb), result.specular.a, HybridLuminance(result.specular.rgb));
+    vec3 variance = FilterVariance(p);
+    if (center.identity != 0u)
+    {
+        vec3 weights = vec3(1);
+        // Keep the 1/2/4 lattice. Adapt each signal's kernel, rather than collapsing later passes onto earlier strides.
+        vec3 radius   = clamp(8.0 / sqrt(max(age, vec3(1))), vec3(1), vec3(2));
+        int  stepSize = int(FILTER_STEP);
+        // The B-spline kernel is separable. Evaluate its two non-unit weights once per receiver.
+        vec3 edgeWeight  = pow(vec3(1.0 / 6.0), 1.0 / (radius * radius));
+        vec3 innerWeight = pow(vec3(2.0 / 3.0), 1.0 / (radius * radius));
+        for (int y = -2; y <= 2; ++y)
+        {
+            for (int x = -2; x <= 2; ++x)
+            {
+                ivec2 q = p + ivec2(x, y) * stepSize;
+                if ((x != 0 || y != 0) && HybridInView(q))
+                {
+                    GIDenoiseGuide   guide         = FilterGuide(q);
+                    vec2             surface       = DenoiseSurfaceTerms(center, guide);
+                    float            square        = surface.x * surface.x;
+                    float            fourth        = square * square;
+                    float            eighth        = fourth * fourth;
+                    float            normalWeight  = eighth * eighth;
+                    vec2             lobe          = DenoiseLobeExponents(center, guide);
+                    vec3             stopExponent  = vec3(surface.y) + vec3(0, lobe.x + lobe.y, lobe.x + lobe.y);
+                    GIDenoiseSignals sampleSignals = FilterSignals(q);
+                    vec3 sampleLuminance = vec3(HybridLuminance(sampleSignals.sky.rgb + sampleSignals.bounce.rgb),
+                                                sampleSignals.specular.a, HybridLuminance(sampleSignals.specular.rgb));
+                    vec3 sampleVariance  = FilterVariance(q);
+                    vec3 sigma           = sqrt(variance + sampleVariance);
+                    vec3 colorDistance   = abs(sampleLuminance - luminance) / (3.0 * sigma + 0.01 * abs(luminance) + 1e-4);
+                    colorDistance        = mix(vec3(0), colorDistance, greaterThanEqual(age, vec3(4)));
+                    vec3 kernelWeight    = (abs(x) == 2 ? edgeWeight
+                                            : x != 0    ? innerWeight
+                                                        : vec3(1))
+                                         * (abs(y) == 2 ? edgeWeight
+                                            : y != 0    ? innerWeight
+                                                        : vec3(1));
+                    // Multiply independent edge stops by adding their exponents, keeping all 25 taps.
+                    vec3 selected = kernelWeight * normalWeight * exp(-stopExponent - colorDistance);
+                    if (DENOISE_SKY_ENABLED)
+                    {
+                        result.sky += sampleSignals.sky * selected.x;
+                    }
+                    result.bounce   += sampleSignals.bounce * selected.x;
+                    result.specular += sampleSignals.specular * vec4(vec3(selected.z), selected.y);
+                    weights         += selected;
+                }
+            }
+        }
+        result.sky                /= weights.x;
+        result.bounce             /= weights.x;
+        result.specular           /= vec4(vec3(weights.z), weights.y);
+        GIDenoiseSignals original  = FilterSignals(p);
+        vec3             strength  = clamp(10.0 / sqrt(max(age, vec3(1))), vec3(0.25), vec3(1));
+        result.sky                 = mix(original.sky, result.sky, strength.x);
+        result.bounce              = mix(original.bounce, result.bounce, strength.x);
+        result.specular            = mix(original.specular, result.specular, vec4(vec3(strength.z), strength.y));
+    }
+    if (all(lessThan(p, imageSize(outputSky))))
+    {
+        imageStore(outputSky, p, center.identity != 0u ? result.sky : vec4(0));
+    }
+    imageStore(outputBounce, p, center.identity != 0u ? result.bounce : vec4(0));
+    imageStore(outputSpecular, p, center.identity != 0u ? result.specular : vec4(0));
+}

@@ -1,0 +1,54 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define GLOSSY_FILTER_READ
+#define GLOSSY_FILTER_WRITE
+#include "glossy_reflection.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (GlossyInView(p))
+    {
+        uint           index      = GlossyIndex(p);
+        GlossyHistory  center     = glossyCurrent[index];
+        GIDenoiseGuide guide      = DenoiseUnpackGuide(center.position, center.normal);
+        bool           repair     = glossy.extent.w == 1u;
+        vec4           result     = repair ? center.slow : glossyFiltered[index];
+        float          centerLuma = GlossyLuma(result.rgb);
+        float          total      = 1.0;
+        bool           mirror     = guide.roughness < glossy.control.w;
+        // The history-fix pass also filters horizontally; the second pass filters vertically.
+        // A dense footprint keeps thin receivers connected without skipping alternate pixels.
+        if (GlossyReceiver(guide) && !GlossyDeterministicMirror(guide) && glossy.control.y != 0.0)
+        {
+            float variance = max(center.moments.x - center.moments.w * center.moments.w, 0.0);
+            int   radius   = mirror ? 1 : 4;
+            for (int offset = -radius; offset <= radius; ++offset)
+            {
+                ivec2 q = p + (repair ? ivec2(offset, 0) : ivec2(0, offset));
+                if (offset != 0 && GlossyInView(q))
+                {
+                    uint           other         = GlossyIndex(q);
+                    GlossyHistory  sampleHistory = glossyCurrent[other];
+                    GIDenoiseGuide sampleGuide   = DenoiseUnpackGuide(sampleHistory.position, sampleHistory.normal);
+                    vec4           value         = repair ? sampleHistory.slow : glossyFiltered[other];
+                    float          weight = DenoiseSurfaceWeight(guide, sampleGuide) * DenoiseLobeWeight(guide, sampleGuide);
+                    if (mirror)
+                    {
+                        weight *= float(abs(center.moments.y - sampleHistory.moments.y) <= max(.005, .1 * center.moments.y));
+                    }
+                    weight *= exp(-(mirror ? .5 : 1.0 / 18.0) * float(offset * offset));
+                    // A mirror can reflect different lamps at adjacent receivers on the same
+                    // plane. Preserve this radiance edge even on the first frame.
+                    weight *= min(sampleHistory.moments.z, 4.0) / max(min(center.moments.z, 4.0), 1.0);
+                    weight *= !mirror && center.moments.z < 4.0
+                                ? 1.0
+                                : exp(-abs(GlossyLuma(value.rgb) - centerLuma) / max(3.0 * sqrt(variance), .02));
+                    result += value * weight;
+                    total  += weight;
+                }
+            }
+        }
+        glossyOutput[index] = result / total;
+    }
+}

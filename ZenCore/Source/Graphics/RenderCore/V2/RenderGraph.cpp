@@ -238,6 +238,11 @@ BitField<RHIPipelineStageFlagBits> ShaderPipelineStages(BitField<RHIShaderStageF
         {RHIShaderStageFlagBits::eTesselationEvaluation, RHIPipelineStageFlagBits::eTessellationEvaluationShader},
         {RHIShaderStageFlagBits::eGeometry, RHIPipelineStageFlagBits::eGeometryShader},
         {RHIShaderStageFlagBits::eCompute, RHIPipelineStageFlagBits::eComputeShader},
+        {RHIShaderStageFlagBits::eRayGeneration, RHIPipelineStageFlagBits::eRayTracingShader},
+        {RHIShaderStageFlagBits::eMiss, RHIPipelineStageFlagBits::eRayTracingShader},
+        {RHIShaderStageFlagBits::eClosestHit, RHIPipelineStageFlagBits::eRayTracingShader},
+        {RHIShaderStageFlagBits::eAnyHit, RHIPipelineStageFlagBits::eRayTracingShader},
+        {RHIShaderStageFlagBits::eCallable, RHIPipelineStageFlagBits::eRayTracingShader},
     };
 
     for (const std::pair<RHIShaderStageFlagBits, RHIPipelineStageFlagBits>& stageMapping : mapping)
@@ -1372,12 +1377,14 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
     if (valid)
     {
         valid = graph->ValidateShaderIdentities()
-             && std::all_of(
-                    graph->m_pendingGfxPassDescs.begin(), graph->m_pendingGfxPassDescs.end(),
-                    [graph](const RDGGraphicsPassDesc& desc) { return graph->ValidatePassDescription(desc, true) != nullptr; })
-             && std::all_of(
-                    graph->m_pendingComputePassDescs.begin(), graph->m_pendingComputePassDescs.end(),
-                    [graph](const RDGComputePassDesc& desc) { return graph->ValidatePassDescription(desc, false) != nullptr; });
+             && std::all_of(graph->m_pendingGfxPassDescs.begin(), graph->m_pendingGfxPassDescs.end(),
+                            [graph](const RDGGraphicsPassDesc& desc) {
+                                return graph->ValidatePassDescription(desc, RHIPipelineType::eGraphics) != nullptr;
+                            })
+             && std::all_of(graph->m_pendingDispatchPassDescs.begin(), graph->m_pendingDispatchPassDescs.end(),
+                            [graph](const RDGDispatchPassDesc& desc) {
+                                return graph->ValidatePassDescription(desc, desc.GetPipelineType()) != nullptr;
+                            });
     }
 
     if (valid && !alreadyCompiled)
@@ -1451,7 +1458,7 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
                 }
                 else
                 {
-                    node->pCompiledPass = compiler.CompileComputePass(graph->m_pendingComputePassDescs[node->passDescIdx]);
+                    node->pCompiledPass = compiler.CompileDispatchPass(graph->m_pendingDispatchPassDescs[node->passDescIdx]);
                 }
 
                 if (node->pCompiledPass == nullptr)
@@ -2144,7 +2151,7 @@ bool RenderGraph::ValidateShaderIdentities()
 
     if (valid)
     {
-        for (const RDGComputePassDesc& desc : m_pendingComputePassDescs)
+        for (const RDGDispatchPassDesc& desc : m_pendingDispatchPassDescs)
         {
             valid = ValidateShaderIdentity(desc.shaderProgramName, desc.shaderIdentity, desc.passTag);
 
@@ -2448,7 +2455,7 @@ struct RenderGraph::PassBindingValidator
     }
 };
 
-ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc, bool graphics)
+ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc, RHIPipelineType type)
 {
     bool valid =
         CheckPass(bool(desc.validationResult), desc.validationResult.code, desc.passTag, "{}", desc.validationResult.message);
@@ -2469,9 +2476,16 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
     {
         const BitField<RHIShaderStageFlagBits> stages = program->GetShader()->GetCreateInfo().stageFlags;
 
-        valid = CheckPass(graphics ? !stages.HasFlag(RHIShaderStageFlagBits::eCompute)
-                                   : (int64_t(stages) & ~int64_t(RHIShaderStageFlagBits::eCompute)) == 0,
-                          RDGErrorCode::eShader, desc.passTag, "Shader stages are incompatible with the pass type");
+        constexpr int64_t rayStages = int64_t(RHIShaderStageFlagBits::eRayGeneration) | int64_t(RHIShaderStageFlagBits::eMiss)
+                                    | int64_t(RHIShaderStageFlagBits::eClosestHit) | int64_t(RHIShaderStageFlagBits::eAnyHit)
+                                    | int64_t(RHIShaderStageFlagBits::eCallable);
+        const int64_t     allowed   = type == RHIPipelineType::eRayTracing ? rayStages
+                                    : type == RHIPipelineType::eCompute    ? int64_t(RHIShaderStageFlagBits::eCompute)
+                                                                           : int64_t(RHIShaderStageFlagBits::eCompute) - 1;
+        valid =
+            CheckPass((int64_t(stages) & ~allowed) == 0
+                          && (type != RHIPipelineType::eRayTracing || stages.HasFlag(RHIShaderStageFlagBits::eRayGeneration)),
+                      RDGErrorCode::eShader, desc.passTag, "Shader stages are incompatible with the pass type");
     }
 
     if (valid)
@@ -2804,7 +2818,7 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
 
     if (valid)
     {
-        ShaderProgram* shader = ValidatePassDescription(desc, true);
+        ShaderProgram* shader = ValidatePassDescription(desc, RHIPipelineType::eGraphics);
 
         valid                 = (shader != nullptr);
 
@@ -3016,13 +3030,25 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
 
 RDGShaderPassCmdRecorder RenderGraph::AddComputePass(RDGComputePassDesc desc)
 {
+    return AddDispatchPass(std::move(desc));
+}
+
+RDGShaderPassCmdRecorder RenderGraph::AddRayTracingPass(RDGRayTracingPassDesc desc)
+{
+    return AddDispatchPass(std::move(desc));
+}
+
+RDGShaderPassCmdRecorder RenderGraph::AddDispatchPass(RDGDispatchPassDesc desc)
+{
     RDGPassNode* pRecordedNode = nullptr;
 
     if (m_result
-        && Check(m_executionState == RDGExecutionState::eBuilding, RDGErrorCode::eLifecycle, "AddComputePass requires Begin")
-        && Check(IsValidQueuePreference(desc.GetQueuePreference()), RDGErrorCode::eBinding, "Invalid compute queue preference"))
+        && Check(m_executionState == RDGExecutionState::eBuilding, RDGErrorCode::eLifecycle, "Add dispatch pass requires Begin")
+        && Check(IsValidQueuePreference(desc.GetQueuePreference()), RDGErrorCode::eBinding,
+                 "Invalid dispatch queue preference"))
     {
-        ShaderProgram* pShader = ValidatePassDescription(desc, false);
+        const bool     rayTracing = desc.GetPipelineType() == RHIPipelineType::eRayTracing;
+        ShaderProgram* pShader    = ValidatePassDescription(desc, desc.GetPipelineType());
 
         if (pShader != nullptr)
         {
@@ -3034,19 +3060,20 @@ RDGShaderPassCmdRecorder RenderGraph::AddComputePass(RDGComputePassDesc desc)
 
             pNode->neverCull       = !desc.allowCulling;
 
-            pNode->type            = RDGNodeType::eComputePass;
+            pNode->type            = rayTracing ? RDGNodeType::eRayTracingPass : RDGNodeType::eComputePass;
 
             pNode->queuePreference = desc.GetQueuePreference();
 
             pNode->tag             = desc.passTag.ToString();
 
-            pNode->selfStages.SetFlag(RHIPipelineStageFlagBits::eComputeShader);
+            pNode->selfStages.SetFlag(rayTracing ? RHIPipelineStageFlagBits::eRayTracingShader
+                                                 : RHIPipelineStageFlagBits::eComputeShader);
 
-            pNode->passDescIdx = static_cast<int32_t>(m_pendingComputePassDescs.size());
+            pNode->passDescIdx = static_cast<int32_t>(m_pendingDispatchPassDescs.size());
 
             if (DeclarePassBindingAccess(pNode, pShader, &desc))
             {
-                m_pendingComputePassDescs.push_back(std::move(desc));
+                m_pendingDispatchPassDescs.push_back(std::move(desc));
 
                 pRecordedNode = pNode;
             }
@@ -3089,15 +3116,19 @@ RDGTransferPassCmdRecorder RenderGraph::AddTransferPass(NameID passName)
 
 void RenderGraph::SetPipelineStatesForPassNode(RDGPassNode* node, BitField<RHIPipelineStageFlagBits> stages)
 {
-    if (node->type == RDGNodeType::eComputePass)
+    if (node->type == RDGNodeType::eComputePass || node->type == RDGNodeType::eRayTracingPass)
     {
-        stages.ClearFlag(RHIPipelineStageFlagBits::eVertexShader);
-
-        stages.ClearFlag(RHIPipelineStageFlagBits::eFragmentShader);
+        if ((int64_t(stages) & kRHIShaderPipelineStageMask) != 0)
+        {
+            stages = BitField<RHIPipelineStageFlagBits>(int64_t(stages) & ~kRHIShaderPipelineStageMask);
+            stages.SetFlag(node->type == RDGNodeType::eRayTracingPass ? RHIPipelineStageFlagBits::eRayTracingShader
+                                                                      : RHIPipelineStageFlagBits::eComputeShader);
+        }
     }
     else if (node->type == RDGNodeType::eGraphicsPass)
     {
         stages.ClearFlag(RHIPipelineStageFlagBits::eComputeShader);
+        stages.ClearFlag(RHIPipelineStageFlagBits::eRayTracingShader);
     }
 
     node->selfStages.SetFlag(stages);
@@ -5720,7 +5751,8 @@ bool RenderGraph::RunNode(RDGNodeBase* base)
             result = ExecuteGraphicsPass(static_cast<RDGGraphicsPass*>(node->pCompiledPass), node->cmdLambdaIdx);
             break;
 
-        case RDGNodeType::eComputePass: result = ExecuteComputePass(node->pCompiledPass, node->cmdLambdaIdx); break;
+        case RDGNodeType::eComputePass:
+        case RDGNodeType::eRayTracingPass: result = ExecuteDispatchPass(node->pCompiledPass, node->cmdLambdaIdx); break;
         case RDGNodeType::eTransferPass:
             result = ExecuteTransferPass(static_cast<RDGTransferPass*>(node->pCompiledPass), node->cmdLambdaIdx);
             break;
@@ -5785,13 +5817,13 @@ bool RenderGraph::ExecuteGraphicsPass(RDGGraphicsPass* pass, uint32_t lambdaInde
     return valid;
 }
 
-bool RenderGraph::ExecuteComputePass(RDGCompiledPass* compiled, uint32_t lambdaIndex)
+bool RenderGraph::ExecuteDispatchPass(RDGCompiledPass* compiled, uint32_t lambdaIndex)
 {
-    bool valid           = true;
+    bool valid            = true;
 
-    RDGComputePass* pass = static_cast<RDGComputePass*>(compiled);
+    RDGDispatchPass* pass = static_cast<RDGDispatchPass*>(compiled);
 
-    m_pCmdList->BindPipeline(RHIPipelineType::eCompute, pass->pPipeline);
+    m_pCmdList->BindPipeline(pass->pPipeline->GetType(), pass->pPipeline);
 
     m_pCmdList->SetShaderParameters(pass->shaderParameters);
 
@@ -5799,7 +5831,7 @@ bool RenderGraph::ExecuteComputePass(RDGCompiledPass* compiled, uint32_t lambdaI
     {
         RDGPassCmdEncoder encoder(
             m_pCmdList, pass, m_activeMetrics && m_activeMetrics->m_capture ? &m_activeMetrics->m_node : nullptr,
-            &m_pendingComputePassDescs[static_cast<RDGPassNode*>(GetNodeBaseById(m_currentNode))->passDescIdx]);
+            &m_pendingDispatchPassDescs[static_cast<RDGPassNode*>(GetNodeBaseById(m_currentNode))->passDescIdx]);
 
         m_passCmdLambdas[lambdaIndex](encoder);
 
@@ -5867,19 +5899,19 @@ RDGGraphicsPass* RenderGraph::AcquireGraphicsPass()
     return result;
 }
 
-RDGComputePass* RenderGraph::AcquireComputePass()
+RDGDispatchPass* RenderGraph::AcquireDispatchPass()
 {
-    RDGComputePass* result{};
+    RDGDispatchPass* result{};
 
-    if (m_idleComputePasses.empty())
+    if (m_idleDispatchPasses.empty())
     {
-        result = ZEN_NEW() RDGComputePass();
+        result = ZEN_NEW() RDGDispatchPass();
     }
     else
     {
-        RDGComputePass* pass = m_idleComputePasses.back();
+        RDGDispatchPass* pass = m_idleDispatchPasses.back();
 
-        m_idleComputePasses.pop_back();
+        m_idleDispatchPasses.pop_back();
 
         m_idlePassBytes -= pass->GetStorageBytes();
 
@@ -5896,14 +5928,14 @@ void RenderGraph::TrimCompiledPassStorage()
         ZEN_DELETE(pass);
     }
 
-    for (RDGComputePass* pass : m_idleComputePasses)
+    for (RDGDispatchPass* pass : m_idleDispatchPasses)
     {
         ZEN_DELETE(pass);
     }
 
     m_idleGfxPasses.clear();
 
-    m_idleComputePasses.clear();
+    m_idleDispatchPasses.clear();
 
     m_idlePassBytes = 0;
 }
@@ -5927,7 +5959,8 @@ template <typename Pass> void RenderGraph::ReleaseCompiledPass(Pass* pass, HeapV
 
     const size_t bytes = pass->GetStorageBytes();
 
-    if (m_idleGfxPasses.size() + m_idleComputePasses.size() < cMaxIdlePassCount && bytes <= cMaxIdlePassBytes - m_idlePassBytes)
+    if (m_idleGfxPasses.size() + m_idleDispatchPasses.size() < cMaxIdlePassCount
+        && bytes <= cMaxIdlePassBytes - m_idlePassBytes)
     {
         m_idlePassBytes += bytes;
 
@@ -5973,14 +6006,14 @@ void RenderGraph::ReleaseCompiledShaderPasses()
         ReleaseCompiledPass(pass, m_idleGfxPasses);
     }
 
-    for (size_t i = m_compiledComputePasses.size(); i > 0; --i)
+    for (size_t i = m_compiledDispatchPasses.size(); i > 0; --i)
     {
-        ReleaseCompiledPass(m_compiledComputePasses[i - 1], m_idleComputePasses);
+        ReleaseCompiledPass(m_compiledDispatchPasses[i - 1], m_idleDispatchPasses);
     }
 
     m_compiledGfxPasses.clear();
 
-    m_compiledComputePasses.clear();
+    m_compiledDispatchPasses.clear();
 
     for (RDGNodeBase* base : m_nodes)
     {
@@ -6015,13 +6048,13 @@ void RenderGraph::ResetBuildState()
 
         m_compiledGfxPasses.clear();
 
-        m_compiledComputePasses.clear();
+        m_compiledDispatchPasses.clear();
 
         m_compiledXferPasses.clear();
 
         m_pendingGfxPassDescs.clear();
 
-        m_pendingComputePassDescs.clear();
+        m_pendingDispatchPassDescs.clear();
 
         m_pendingTransferPassDescs.clear();
 

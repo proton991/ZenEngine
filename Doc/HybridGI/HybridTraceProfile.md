@@ -1,5 +1,10 @@
 # HybridTrace profile (2026-11-11)
 
+Current RT-pipeline and denoiser work follows the [render pipeline hardening plan](../RenderPipelineHardeningPlan.md).
+Its frozen baselines, current captures and open gates are recorded in [Denoiser.md](Denoiser.md).
+The new paths remain opt-in. All current application profiling reuses
+`build/x64-windows-msvc-release/bin/ZenApp.exe`, rebuilt in place, with hashes and arguments retained per capture.
+
 Baseline for optimizing `HybridTrace`, the most expensive GI pass. Measured on the build that
 includes the [spark fix](SparkFixPlan.md) (ZenEngine `b6f9dfce`). The measurements below describe
 that baseline, not the current optimization code.

@@ -1,0 +1,6 @@
+#version 460
+#define HYBRID_YOUNG_RECEIVERS
+#extension GL_GOOGLE_include_directive : require
+#define HYBRID_FIELD_TRAVERSAL
+#define HYBRID_NO_GUIDE
+#include "hybrid_trace.glsl"

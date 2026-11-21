@@ -15,7 +15,10 @@ CHANNELS={'sky':(0,),'bounce':(2,),'diffuse':(0,2),'reflection':(4,)}
 
 def load(prefix):
     m=json.loads(Path(str(prefix)+'.lighting.json').read_text())
-    return m,np.frombuffer(read_bytes(str(prefix)+'.hybrid.bin'),'<f4').reshape(m['height'],m['width'],13,4).copy()
+    data=np.frombuffer(read_bytes(str(prefix)+'.hybrid.bin'),'<f4').reshape(m['height'],m['width'],-1,4).copy()
+    if data.shape[2] not in (13,18):
+        raise ValueError(f'Unsupported hybrid capture component count: {data.shape[2]}')
+    return m,data
 
 
 def validate_reference(metadata, data, samples=65536):

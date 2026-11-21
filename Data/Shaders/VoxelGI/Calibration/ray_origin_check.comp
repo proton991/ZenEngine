@@ -1,0 +1,28 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#include "../../Common/opacity_micromap.glsl"
+#define HYBRID_HARDWARE_PROVIDER 1
+#include "../hybrid_provider.glsl"
+layout(local_size_x = 1) in;
+layout(std430, set = 1, binding = 0) writeonly buffer Results
+{
+    vec4 values[];
+};
+layout(push_constant) uniform QueryConstants
+{
+    vec4 worldOffset;
+}
+query;
+void main()
+{
+    uint index  = gl_GlobalInvocationID.x;
+    vec3 point  = query.worldOffset.xyz + vec3((float(index / 2u) - 3.5) * 0.025, 0, 0);
+    vec3 normal = vec3(0, 0, (index & 1u) == 0u ? 1.0 : -1.0);
+    vec3 origin = HybridTraceOrigin(point, normal, 0.0);
+    // An inward control ensures the triangle is present and the interval isn't empty.
+    bool outward  = HardwareOccluded(origin, normal, 1.0);
+    bool grazing  = HardwareOccluded(origin, normalize(vec3(1, 0, normal.z * 1e-5)), 1.0);
+    bool inward   = HardwareOccluded(origin, -normal, 1.0);
+    values[index] = vec4(outward, grazing, inward, dot(origin - point, normal));
+}

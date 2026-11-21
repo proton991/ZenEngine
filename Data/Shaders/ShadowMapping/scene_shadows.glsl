@@ -1,7 +1,15 @@
 #ifndef ZEN_SCENE_SHADOWS
 #define ZEN_SCENE_SHADOWS
 #include "../Common/scene_lighting.glsl"
-#if defined(HARDWARE_SHADOWS)
+#if defined(PIPELINE_SHADOWS)
+layout(set = 4, binding = 4) uniform usampler2D receiverLightVisibility;
+float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)
+{
+    uvec4 visibility       = texelFetch(receiverLightVisibility, ivec2(gl_FragCoord.xy), 0);
+    uint  cameraVisibility = int(sceneUbo.lightInfo.x) < MAX_SCENE_LIGHTS ? visibility.y >> 31u : visibility.z;
+    return float(lightIndex == MAX_SCENE_LIGHTS ? cameraVisibility : (visibility.y >> uint(lightIndex)) & 1u);
+}
+#elif defined(HARDWARE_SHADOWS)
 #    include "../VoxelGI/hybrid_provider.glsl"
 #    include "light_occluders.glsl"
 float SceneLightVisibility(int lightIndex, vec3 position, vec3 normal)

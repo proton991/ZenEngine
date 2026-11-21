@@ -687,9 +687,9 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
     }
 };
 
-struct RDGComputePassDesc : RDGPassDescBase
+struct RDGDispatchPassDesc : RDGPassDescBase
 {
-    RDGComputePassDesc& SetQueuePreference(RDGQueuePreference preference)
+    RDGDispatchPassDesc& SetQueuePreference(RDGQueuePreference preference)
     {
         m_queuePreference = preference;
         return *this;
@@ -700,8 +700,58 @@ struct RDGComputePassDesc : RDGPassDescBase
         return m_queuePreference;
     }
 
+    RHIPipelineType GetPipelineType() const
+    {
+        return m_pipelineType;
+    }
+
+    const HeapVector<RHIRayTracingShaderGroup>& GetShaderGroups() const
+    {
+        return m_shaderGroups;
+    }
+
+    uint32_t GetMaxRecursionDepth() const
+    {
+        return m_maxRecursionDepth;
+    }
+
+protected:
+    explicit RDGDispatchPassDesc(RHIPipelineType type) : m_pipelineType(type) {}
+
+    HeapVector<RHIRayTracingShaderGroup> m_shaderGroups;
+    uint32_t                             m_maxRecursionDepth{1};
+
 private:
     RDGQueuePreference m_queuePreference{RDGQueuePreference::eDefault};
+    RHIPipelineType    m_pipelineType;
+};
+
+struct RDGComputePassDesc : RDGDispatchPassDesc
+{
+    RDGComputePassDesc() : RDGDispatchPassDesc(RHIPipelineType::eCompute) {}
+
+    RDGComputePassDesc& SetQueuePreference(RDGQueuePreference preference)
+    {
+        RDGDispatchPassDesc::SetQueuePreference(preference);
+        return *this;
+    }
+};
+
+struct RDGRayTracingPassDesc : RDGDispatchPassDesc
+{
+    RDGRayTracingPassDesc() : RDGDispatchPassDesc(RHIPipelineType::eRayTracing) {}
+
+    RDGRayTracingPassDesc& SetQueuePreference(RDGQueuePreference preference)
+    {
+        RDGDispatchPassDesc::SetQueuePreference(preference);
+        return *this;
+    }
+
+    void SetShaderGroups(HeapVector<RHIRayTracingShaderGroup> groups, uint32_t maxRecursionDepth = 1)
+    {
+        m_shaderGroups      = std::move(groups);
+        m_maxRecursionDepth = maxRecursionDepth;
+    }
 };
 
 struct RDGTransferPassDesc
@@ -712,11 +762,12 @@ struct RDGTransferPassDesc
 
 enum class RDGCompiledPassType : uint8_t
 {
-    eNone     = 0,
-    eGraphics = 1,
-    eCompute  = 2,
-    eTransfer = 3,
-    eMax      = 4
+    eNone       = 0,
+    eGraphics   = 1,
+    eCompute    = 2,
+    eTransfer   = 3,
+    eRayTracing = 4,
+    eMax        = 5
 };
 
 struct RDGCompiledPass
@@ -764,9 +815,9 @@ struct RDGGraphicsPass : RDGShaderPass
     }
 };
 
-struct RDGComputePass : RDGShaderPass
+struct RDGDispatchPass : RDGShaderPass
 {
-    RDGComputePass() : RDGShaderPass(RDGCompiledPassType::eCompute) {}
+    RDGDispatchPass() : RDGShaderPass(RDGCompiledPassType::eCompute) {}
 
     size_t GetStorageBytes() const
     {
@@ -790,7 +841,7 @@ public:
 
     RDGGraphicsPass* CompileGraphicsPass(const RDGGraphicsPassDesc& desc);
 
-    RDGComputePass* CompileComputePass(const RDGComputePassDesc& desc);
+    RDGDispatchPass* CompileDispatchPass(const RDGDispatchPassDesc& desc);
 
     void SetRenderGraph(RenderGraph* pRDG)
     {
@@ -860,6 +911,12 @@ public:
 
     void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset);
 
+    void TraceRays(uint32_t width, uint32_t height, uint32_t depth = 1);
+
+    void TraceRaysIndirect(RDGBuffer indirectBuffer, uint32_t offset);
+
+    void TraceRaysIndirect(RHIBuffer* indirectBuffer, uint32_t offset);
+
     void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
     void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
@@ -910,7 +967,7 @@ private:
     const RDGPassDescBase* m_pDescription{nullptr};
     uint32_t               m_dispatchCount{0};
 
-    bool ValidateDispatch();
+    bool ValidateDispatch(RDGCompiledPassType type = RDGCompiledPassType::eCompute);
 
     RDGResult m_result;
 

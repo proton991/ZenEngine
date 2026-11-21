@@ -1,0 +1,242 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "gi_denoise_common.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 6) uniform sampler2D inputSky;
+layout(set = 1, binding = 7) uniform sampler2D inputSpecular;
+layout(set = 1, binding = 8) uniform sampler2D inputBounce;
+layout(set = 1, binding = 9) uniform sampler2D previousSky;
+layout(set = 1, binding = 10) uniform sampler2D previousSpecular;
+layout(set = 1, binding = 11) uniform sampler2D previousBounce;
+layout(set = 1, binding = 12) uniform sampler2D previousPosition;
+layout(set = 1, binding = 13) uniform sampler2D previousNormal;
+layout(set = 1, binding = 14) uniform usampler2D previousSurface;
+layout(set = 1, binding = 15) uniform usampler2D previousAge;
+layout(set = 1, binding = 16, rgba16f) uniform writeonly image2D outputSky;
+layout(set = 1, binding = 17, rgba16f) uniform writeonly image2D outputSpecular;
+layout(set = 1, binding = 18, rgba16f) uniform writeonly image2D outputBounce;
+layout(set = 1, binding = 19, rgba32f) uniform writeonly image2D outputPosition;
+layout(set = 1, binding = 20, rg16) uniform writeonly image2D outputNormal;
+layout(set = 1, binding = 21, rg32ui) uniform writeonly uimage2D outputSurface;
+layout(set = 1, binding = 22, r16ui) uniform writeonly uimage2D outputAge;
+
+struct Signals
+{
+    vec4 sky;
+    vec4 specular;
+    vec4 bounce;
+};
+
+Signals CurrentSignals(ivec2 p)
+{
+    return Signals(DenoiseSkySignal(inputSky, p), texelFetch(inputSpecular, p, 0),
+                   texelFetch(inputBounce, min(p, textureSize(inputBounce, 0) - 1), 0));
+}
+
+struct Surface
+{
+    vec4  position;
+    vec2  encodedNormal;
+    vec3  normal;
+    vec3  geometric;
+    uvec2 identity;
+    float roughness;
+};
+
+// The clamp bounds include the current 3x3 signal neighbourhood. History acceptance
+// still requires the same receiver; unrelated neighbours never supply a history sample.
+shared vec4  tileSky[DENOISE_SKY_ENABLED ? 100 : 1];
+shared vec4  tileSpecular[100];
+shared vec4  tileBounce[100];
+shared float tileRoughness[100];
+shared uint  tileValid[100];
+
+Signals TileSignals(uint index)
+{
+    return Signals(DENOISE_SKY_ENABLED ? tileSky[index] : vec4(0, 0, 0, float(tileValid[index])), tileSpecular[index],
+                   tileBounce[index]);
+}
+
+void LoadTile()
+{
+    ivec2 origin = ivec2(gl_WorkGroupID.xy) * 8 - 1;
+    for (uint index = gl_LocalInvocationIndex; index < 100u; index += 64u)
+    {
+        ivec2   q         = origin + ivec2(index % 10u, index / 10u);
+        bool    valid     = false;
+        float   roughness = 0.0;
+        Signals signals   = Signals(vec4(0), vec4(0), vec4(0));
+        if (HybridInView(q))
+        {
+            valid     = texelFetch(receiverSurface, q, 0).g != 0u && texelFetch(receiverDepth, q, 0).r < 1.0;
+            roughness = texelFetch(receiverRoughness, q, 0).g;
+            if (valid)
+            {
+                signals = CurrentSignals(q);
+            }
+        }
+        if (DENOISE_SKY_ENABLED)
+        {
+            tileSky[index] = signals.sky;
+        }
+        tileSpecular[index]  = signals.specular;
+        tileBounce[index]    = signals.bounce;
+        tileRoughness[index] = roughness;
+        tileValid[index]     = valid ? 1u : 0u;
+    }
+}
+
+bool SameSurface(Surface center, uvec2 otherSurface, vec3 otherPosition, vec3 otherNormal, vec3 otherGeometric, float limit)
+{
+    vec3 delta = otherPosition - center.position.xyz;
+    return center.identity.g == otherSurface.g && dot(center.normal, otherNormal) >= 0.9
+        && dot(center.geometric, otherGeometric) >= 0.9
+        && max(abs(dot(delta, center.geometric)), abs(dot(delta, otherGeometric))) <= limit;
+}
+
+void main()
+{
+    LoadTile();
+    barrier();
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!HybridInView(p))
+    {
+        return;
+    }
+    uint    centerIndex = (gl_LocalInvocationID.y + 1u) * 10u + gl_LocalInvocationID.x + 1u;
+    Surface center;
+    center.position      = texelFetch(receiverPosition, p, 0);
+    center.encodedNormal = texelFetch(receiverNormal, p, 0).rg;
+    center.normal        = DecodeGBufferNormal(center.encodedNormal);
+    center.identity      = texelFetch(receiverSurface, p, 0).rg;
+    center.geometric     = DecodeGBufferNormal(unpackUnorm2x16(center.identity.r));
+    center.roughness     = tileRoughness[centerIndex];
+    center.identity.g    = tileValid[centerIndex] != 0u ? center.identity.g : 0u;
+    uvec2   surface      = center.identity;
+    bool    valid        = surface.g != 0u;
+    vec3    position     = center.position.xyz;
+    vec3    normal       = center.normal;
+    float   roughness    = center.roughness;
+    float   limit        = hybrid.rejection.x * max(1.0, length(position - sceneUbo.viewPosition.xyz));
+    Signals current      = TileSignals(centerIndex);
+    Signals result       = current;
+    vec2    age          = valid ? vec2(1) : vec2(0);
+    vec4    motion       = vec4(texelFetch(receiverMotion, p, 0).xy, center.position.w, 0);
+    if (valid && hybrid.sampling.w != 0u && motion.z > 0.0)
+    {
+        vec2 previousPixel =
+            hybrid.resolution.w != 0u ? vec2(p) : vec2(p) + motion.xy * 0.5 * vec2(textureSize(receiverDepth, 0));
+        ivec2   base     = ivec2(floor(previousPixel));
+        vec2    fraction = fract(previousPixel);
+        Signals history  = Signals(vec4(0), vec4(0), vec4(0));
+        vec2    weights = vec2(0), historyAge = vec2(0);
+        for (int y = 0; y < 2; ++y)
+        {
+            for (int x = 0; x < 2; ++x)
+            {
+                ivec2 q      = base + ivec2(x, y);
+                vec2  tap    = mix(vec2(1) - fraction, fraction, bvec2(x != 0, y != 0));
+                float weight = tap.x * tap.y;
+                if (weight > 0.0 && HybridInView(q))
+                {
+                    bool  unchanged   = hybrid.resolution.w != 0u;
+                    uvec2 oldSurface  = unchanged ? surface : texelFetch(previousSurface, q, 0).rg;
+                    vec4  oldPosition = unchanged ? vec4(position, roughness) : texelFetch(previousPosition, q, 0);
+                    vec3  oldNormal   = unchanged ? normal : DecodeGBufferNormal(texelFetch(previousNormal, q, 0).rg);
+                    if (unchanged
+                        || SameSurface(center, oldSurface, oldPosition.xyz, oldNormal,
+                                       DecodeGBufferNormal(unpackUnorm2x16(oldSurface.r)), limit))
+                    {
+                        uint packedAge = texelFetch(previousAge, q, 0).r;
+                        vec2 frames    = vec2(packedAge & 255u, packedAge >> 8u);
+                        vec3 view      = sceneUbo.viewPosition.w < 0.5 ? sceneUbo.lightInfo.yzw
+                                                                       : normalize(sceneUbo.viewPosition.xyz - position);
+                        vec3 oldView   = sceneUbo.viewPosition.w < 0.5
+                                           ? hybrid.previousViewDirection.xyz
+                                           : normalize(hybrid.previousViewPosition.xyz - oldPosition.xyz);
+                        bool lobe      = unchanged
+                                      || (abs(oldPosition.w - roughness) <= HybridReflectionRoughnessTolerance(roughness)
+                                          && dot(normal, oldNormal) >= mix(0.999, 0.9, roughness * roughness)
+                                          && dot(view, oldView) >= mix(0.9995, 0.9, roughness * roughness));
+                        vec2 w         = weight * vec2(frames.x > 0.0, frames.y > 0.0 && lobe);
+                        if (DENOISE_SKY_ENABLED)
+                        {
+                            history.sky += w.x * DenoiseSkySignal(previousSky, q);
+                        }
+                        history.bounce   += w.x * texelFetch(previousBounce, q, 0);
+                        history.specular += w.y * texelFetch(previousSpecular, q, 0);
+                        weights          += w;
+                        historyAge       += w * frames;
+                    }
+                }
+            }
+        }
+        if (any(greaterThan(weights, vec2(0.01))))
+        {
+            Signals lower = current, upper = current;
+            for (int y = -1; y <= 1; ++y)
+            {
+                for (int x = -1; x <= 1; ++x)
+                {
+                    uint index = uint(int(centerIndex) + y * 10 + x);
+                    if (tileValid[index] != 0u)
+                    {
+                        Signals neighbour = TileSignals(index);
+                        if (DENOISE_SKY_ENABLED)
+                        {
+                            lower.sky = min(lower.sky, neighbour.sky);
+                            upper.sky = max(upper.sky, neighbour.sky);
+                        }
+                        lower.bounce = min(lower.bounce, neighbour.bounce);
+                        upper.bounce = max(upper.bounce, neighbour.bounce);
+                        if (abs(tileRoughness[index] - roughness) <= HybridReflectionRoughnessTolerance(roughness))
+                        {
+                            lower.specular = min(lower.specular, neighbour.specular);
+                            upper.specular = max(upper.specular, neighbour.specular);
+                        }
+                    }
+                }
+            }
+            // Reconstructed edge receivers retain slow history too. The current neighbourhood
+            // clamp handles lighting changes; each packed signal age has eight bits.
+            uint historyLimit = hybrid.reservoir.w != 0u
+                                  ? min(255u, max(hybrid.sampling.z * max(hybrid.resolution.z * hybrid.resolution.z, 1u), 1u))
+                                  : min(8u, max(hybrid.sampling.z, 1u));
+            age               = min(historyAge / max(weights, vec2(1e-20)) + 1.0, vec2(historyLimit));
+            if (weights.x > 0.01)
+            {
+                if (DENOISE_SKY_ENABLED)
+                {
+                    result.sky.rgb =
+                        mix(clamp(history.sky.rgb / weights.x, lower.sky.rgb, upper.sky.rgb), current.sky.rgb, 1.0 / age.x);
+                }
+                if (hybrid.bounce.y != 0u || hybrid.reservoir.w != 0u)
+                {
+                    result.bounce.rgb = mix(clamp(history.bounce.rgb / weights.x, lower.bounce.rgb, upper.bounce.rgb),
+                                            current.bounce.rgb, 1.0 / age.x);
+                }
+            }
+            if (weights.y > 0.01)
+            {
+                // Alpha remains environment visibility, not a history counter.
+                vec4 accumulated =
+                    mix(clamp(history.specular / weights.y, lower.specular, upper.specular), current.specular, 1.0 / age.y);
+                result.specular.a = accumulated.a;
+                if (hybrid.reflection.y != 0u || hybrid.reservoir.w != 0u)
+                {
+                    result.specular.rgb = accumulated.rgb;
+                }
+            }
+        }
+    }
+    if (all(lessThan(p, imageSize(outputSky))))
+    {
+        imageStore(outputSky, p, result.sky);
+    }
+    imageStore(outputSpecular, p, result.specular);
+    imageStore(outputBounce, p, result.bounce);
+    imageStore(outputPosition, p, vec4(position, roughness));
+    imageStore(outputNormal, p, vec4(center.encodedNormal, 0, 0));
+    imageStore(outputSurface, p, uvec4(valid ? surface : uvec2(0), 0, 0));
+    imageStore(outputAge, p, uvec4(uint(age.x) | (uint(age.y) << 8u)));
+}

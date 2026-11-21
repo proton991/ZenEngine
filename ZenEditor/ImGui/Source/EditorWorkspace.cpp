@@ -781,13 +781,17 @@ void EditorWorkspace::DrawStatusBar(EditorContext& context)
     const EditorRenderingApplyStatus status = rendering.GetApplyStatus();
 
     // PBR frames while Compute GI prepares are not a fallback; the Scene view reports them.
-    const bool fallback      = snapshot.requestedMode != snapshot.renderedMode && !snapshot.preparingGI;
+    const bool fallback = snapshot.requestedMode != snapshot.renderedMode && !snapshot.preparingGI;
 
-    const char* mode         = editor.GetViewport().HasScene() ? GetRenderAlgorithmName(snapshot.status.effective) : "";
+    const char* mode    = editor.GetViewport().HasScene() ? GetRenderAlgorithmName(snapshot.status.effective) : "";
+
+    // An automatic HW tier that could not build this scene renders with the Compute tier.
+    const bool tierFallback  = !snapshot.giTierFallbackReason.empty();
 
     const char* notice       = fallback                                            ? "PBR fallback"
                              : status == EditorRenderingApplyStatus::Failed        ? "Rendering settings error"
                              : status == EditorRenderingApplyStatus::AwaitingApply ? "Rendering changes await Apply"
+                             : tierFallback                                        ? "Compute GI fallback"
                                                                                    : "";
 
     const ImGuiStyle& style  = ImGui::GetStyle();
@@ -822,7 +826,10 @@ void EditorWorkspace::DrawStatusBar(EditorContext& context)
         {
             ImGui::TextColored(palette.warning, "%s", notice);
 
-            const std::string& reason = fallback ? snapshot.status.fallbackReason : rendering.GetError();
+            const std::string& reason = fallback                                     ? snapshot.status.fallbackReason
+                                      : status == EditorRenderingApplyStatus::Failed ? rendering.GetError()
+                                      : tierFallback                                 ? snapshot.giTierFallbackReason
+                                                                                     : rendering.GetError();
 
             if (!reason.empty() && ImGui::IsItemHovered())
             {

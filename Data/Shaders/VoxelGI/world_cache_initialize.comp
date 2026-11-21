@@ -1,0 +1,47 @@
+#version 460
+layout(local_size_x = 256) in;
+// Both key widths occupy eight bytes per slot. Clear the same storage before either trace variant can read it.
+layout(std430, set = 1, binding = 71) writeonly buffer GICacheKeys
+{
+    uvec2 keys[];
+};
+layout(std430, set = 1, binding = 72) writeonly buffer GICacheAccumulation
+{
+    uvec4 accumulation[];
+};
+layout(std430, set = 1, binding = 73) writeonly buffer GICacheResolved
+{
+    uvec4 resolved[];
+};
+layout(std430, set = 1, binding = 76) writeonly buffer WorldCacheCells
+{
+    uint cellWords[];
+};
+layout(std430, set = 1, binding = 78) writeonly buffer WorldCacheLighting
+{
+    uint lightingWords[];
+};
+
+void main()
+{
+    uint slot   = gl_GlobalInvocationID.x;
+    uint stride = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+    for (uint i = slot; i < keys.length(); i += stride)
+    {
+        keys[i] = uvec2(0);
+    }
+    // The accumulation and resolved buffers have one vec4 each per directional record.
+    for (uint i = slot; i < accumulation.length(); i += stride)
+    {
+        accumulation[i] = uvec4(0);
+        resolved[i]     = uvec4(0);
+    }
+    for (uint i = slot; i < cellWords.length(); i += stride)
+    {
+        cellWords[i] = 0u;
+    }
+    for (uint i = slot; i < lightingWords.length(); i += stride)
+    {
+        lightingWords[i] = 0u;
+    }
+}

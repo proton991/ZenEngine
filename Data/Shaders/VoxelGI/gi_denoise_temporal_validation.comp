@@ -1,0 +1,4 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define DENOISE_VALIDATION
+#include "gi_denoise_temporal.glsl"

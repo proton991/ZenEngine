@@ -77,6 +77,19 @@ public:
         return m_rayTracingDisabled;
     }
 
+    // Diagnostic device-memory limit in bytes, set before device creation: each device-local heap
+    // larger than this is capped to it, so allocations past it fail and memory budgets report the
+    // smaller device (an 8 GB card on a larger one). Zero uses the device's own heaps.
+    void SetDeviceMemoryLimit(uint64_t bytes)
+    {
+        m_deviceMemoryLimit = bytes;
+    }
+
+    uint64_t DeviceMemoryLimit() const
+    {
+        return m_deviceMemoryLimit;
+    }
+
     // Diagnostic adapter choice, set before device creation. A valid device whose name
     // contains this text wins over the scored choice; empty falls back to the
     // ZEN_VULKAN_DEVICE environment variable, then to scoring.
@@ -233,6 +246,7 @@ private:
     bool        m_debugPrintfEnabled{false};
     bool        m_robustBufferAccessEnabled{false};
     bool        m_rayTracingDisabled{false};
+    uint64_t    m_deviceMemoryLimit{0};
     std::string m_preferredDevice;
     bool        m_gpuProfilerMarkers{false};
     bool        m_pipelineStatistics{false};

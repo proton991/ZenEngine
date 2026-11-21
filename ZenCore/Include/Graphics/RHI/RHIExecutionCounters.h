@@ -19,6 +19,7 @@ struct RHIExecutionCounters
     uint64_t bindlessCaptures{0};
     uint64_t buffersCreated{0};
     uint64_t buffersDestroyed{0};
+    uint64_t rayTraces{0};
 };
 
 struct RHIExecutionCounterStorage
@@ -33,6 +34,7 @@ struct RHIExecutionCounterStorage
     std::atomic<uint64_t> bindlessCaptures{0};
     std::atomic<uint64_t> buffersCreated{0};
     std::atomic<uint64_t> buffersDestroyed{0};
+    std::atomic<uint64_t> rayTraces{0};
 
     void Increment(std::atomic<uint64_t>& counter)
     {
@@ -53,7 +55,8 @@ struct RHIExecutionCounterStorage
                 descriptorRetirements.load(std::memory_order_relaxed),
                 bindlessCaptures.load(std::memory_order_relaxed),
                 buffersCreated.load(std::memory_order_relaxed),
-                buffersDestroyed.load(std::memory_order_relaxed)};
+                buffersDestroyed.load(std::memory_order_relaxed),
+                rayTraces.load(std::memory_order_relaxed)};
     }
 };
 } // namespace zen

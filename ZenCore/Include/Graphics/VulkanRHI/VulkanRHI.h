@@ -125,6 +125,8 @@ public:
 
     RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) final;
 
+    RHIPipeline* CreatePipeline(const RHIRayTracingPipelineCreateInfo& createInfo) final;
+
     RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) final;
 
     void DestroyPipeline(RHIPipeline* pPipeline) final;
@@ -338,6 +340,8 @@ public:
     RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) final;
 
     RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) final;
+
+    RHIPipeline* CreatePipeline(const RHIRayTracingPipelineCreateInfo& createInfo) final;
 
     RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) final;
 };

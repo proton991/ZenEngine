@@ -1,0 +1,112 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define WRC_LIGHTING_WRITE
+#include "world_cache_lighting.glsl"
+#include "hybrid_sampling.glsl"
+#include "../Common/scene_lighting.glsl"
+layout(push_constant) uniform LightingUpdate
+{
+    uint frame;
+    uint paths;
+    uint changeFlags;
+    uint history;
+    uint feedback;
+}
+update;
+layout(local_size_x = 1) in;
+void main()
+{
+    bool initialize     = (update.changeFlags & 1u) != 0u;
+    uint previousActive = initialize ? 0u : cacheStats.z;
+    cacheStats          = uvec4(0u, 0u, previousActive, 0u);
+    lookupCounts.xyz    = uvec3(0);
+    // Observe the GPU's lighting inputs directly. No CPU revision or reset hint is
+    // needed, and ordinary Monte Carlo noise cannot be mistaken for a light change.
+    uint signature = HybridHash(uint(sceneUbo.lightInfo.x));
+    uint policy    = signature;
+    bool moved     = false;
+    vec3 lower = vec3(1e30), upper = vec3(-1e30);
+    for (int index = 0; index <= int(sceneUbo.lightInfo.x); ++index)
+    {
+        SceneLight light = index == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[index];
+        policy           = HybridHash(policy ^ uint(light.colorIntensity.w > 0.0));
+        vec3 point       = light.positionRange.xyz;
+        if (!initialize && lightChange.y == uint(sceneUbo.lightInfo.x) && light.colorIntensity.w > 0.0
+            && light.directionType.w > .5 && any(notEqual(point, previousLights[index].xyz)))
+        {
+            moved = true;
+            lower = min(lower, min(point, previousLights[index].xyz));
+            upper = max(upper, max(point, previousLights[index].xyz));
+        }
+        // A disabled camera light follows the camera without changing illumination.
+        for (uint component = 0u; component < 4u && light.colorIntensity.w > 0.0; ++component)
+        {
+            signature = HybridHash(signature ^ floatBitsToUint(light.positionRange[component]));
+            signature = HybridHash(signature ^ floatBitsToUint(light.directionType[component]));
+            signature = HybridHash(signature ^ floatBitsToUint(light.colorIntensity[component]));
+            signature = HybridHash(signature ^ floatBitsToUint(light.coneShadow[component]));
+            if (component == 3u || light.directionType.w < .5)
+            {
+                policy = HybridHash(policy ^ floatBitsToUint(light.positionRange[component]));
+            }
+            policy = HybridHash(policy ^ floatBitsToUint(light.directionType[component]));
+            policy = HybridHash(policy ^ floatBitsToUint(light.colorIntensity[component]));
+            policy = HybridHash(policy ^ floatBitsToUint(light.coneShadow[component]));
+        }
+    }
+    // Renderer lighting toggles change the estimator without changing SceneLight data.
+    uint lightingEpoch = update.changeFlags >> 2u;
+    if (lightingEpoch != 0u)
+    {
+        signature = HybridHash(signature ^ lightingEpoch);
+        policy    = HybridHash(policy ^ lightingEpoch);
+    }
+    signature |= 1u;
+    if (initialize || sourceSignature.x != signature)
+    {
+        bool local = !initialize && moved && policy == lightChange.x;
+        if (!local)
+        {
+            lookupCounts.w = update.frame;
+        }
+        bool continuous = local && lightChange.z != 0u && sourceSignature.y < 8u;
+        editSources     = continuous ? uvec4(sourceSignature.x, editSources.xyz) : uvec4(initialize ? 0u : sourceSignature.x);
+        if (continuous)
+        {
+            lower = min(lower, changedMinimum.xyz);
+            upper = max(upper, changedMaximum.xyz);
+        }
+        changedMinimum = vec4(local ? lower : vec3(0), 0);
+        changedMaximum = vec4(local ? upper : vec3(0), 0);
+        lightChange    = uvec4(policy, uint(sceneUbo.lightInfo.x), uint(local), 0u);
+    }
+    for (int index = 0; index <= int(sceneUbo.lightInfo.x); ++index)
+    {
+        SceneLight light          = index == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[index];
+        bool       resetFootprint = initialize || (update.changeFlags & 2u) != 0u
+                                 || (sourceSignature.x != signature && lightChange.z == 0u)
+                                 || any(notEqual(previousLights[index].xyz, light.positionRange.xyz));
+        uint       radius         = resetFootprint ? floatBitsToUint(1e30) : nextLightFootprint[index / 4][index % 4];
+        lightFootprint[index / 4][index % 4]     = radius;
+        nextLightFootprint[index / 4][index % 4] = radius;
+        previousLights[index]                    = vec4(light.positionRange.xyz, 0);
+    }
+    // Both counters saturate at 128 frames. Probe ray allocation keeps the young-probe
+    // schedule for that long after a lighting edit; other readers test against 64 or fewer.
+    uint stableFrames   = initialize || sourceSignature.x != signature ? 0u : min(sourceSignature.y + 1u, 128u);
+    uint geometryFrames = initialize || (update.changeFlags & 2u) != 0u ? 0u : min(sourceSignature.z + 1u, 128u);
+    // Estimate how much of the prior lighting distribution is still in the
+    // cache. A sweep updates one observation per active cell on average.
+    float updates           = min(float(update.paths) / max(float(previousActive), 1.0), 8.0);
+    float retained          = pow(1.0 - 1.0 / max(float(update.history), 1.0), updates);
+    bool  resetResponse     = stableFrames == 0u || geometryFrames == 0u;
+    float directConfidence  = resetResponse ? 0.0 : uintBitsToFloat(lightChange.w);
+    float bounceConfidence  = resetResponse ? 0.0 : uintBitsToFloat(sourceSignature.w);
+    directConfidence       += (1.0 - directConfidence) * (1.0 - retained);
+    // Feedback observes the previous solve at the secondary surface. Its
+    // response is the convolution of the direct and indirect update windows.
+    bounceConfidence += (directConfidence - bounceConfidence) * (1.0 - retained);
+    lightChange.w     = floatBitsToUint(directConfidence);
+    sourceSignature   = uvec4(signature, stableFrames, geometryFrames,
+                              floatBitsToUint(update.feedback != 0u ? bounceConfidence : directConfidence));
+}

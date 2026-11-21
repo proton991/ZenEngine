@@ -575,6 +575,17 @@ void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offse
     ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset, CaptureBindlessEpoch());
 }
 
+void RHICommandList::TraceRays(uint32_t width, uint32_t height, uint32_t depth)
+{
+    ALLOC_CMD(RHICommandTraceRays)(width, height, depth, CaptureBindlessEpoch());
+}
+
+void RHICommandList::TraceRaysIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)
+{
+    RetainResource(pIndirectBuffer);
+    ALLOC_CMD(RHICommandTraceRaysIndirect)(pIndirectBuffer, offset, CaptureBindlessEpoch());
+}
+
 void RHICommandList::SetPushConstants(RHIPipeline* pPipeline, const uint8_t* pData, uint32_t sizeBytes, uint32_t offset)
 {
     RetainResource(pPipeline);

@@ -1,0 +1,197 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_CDF_WRITE
+#define SCREEN_REPROJECT_LANES 64u
+#define SCREEN_PROBE_COMPUTE
+#include "screen_probe.glsl"
+#include "../Common/scene_lighting.glsl"
+#include "world_cache_lighting.glsl"
+layout(local_size_x = 64) in;
+shared float weights[64];
+shared float acceptedBatches[2];
+// Schedule rays against the history that will actually enter the estimator.
+// Moving a world anchor across a lighting edge can invalidate most of its
+// radiance while its geometric match still reports dozens of frames of age.
+uint ProbeObservationBudget(ScreenProbe probe, uint lane)
+{
+    bool history   = probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0;
+    bool relocated = history && any(notEqual(probe.position.xyz, PreviousProbe(probe.source.x).position.xyz));
+    if (relocated)
+    {
+        ProbeHistoryFootprint(probe, lane);
+    }
+    if (lane < 2u)
+    {
+        float batches = 0.0;
+        if (relocated)
+        {
+            vec4  statistics = ProbePastValue(probe, 8u + lane);
+            float spatialVariance;
+            vec4  prior = ProbePastValue(probe, 4u * lane + 3u, spatialVariance);
+            batches     = ProbeRelocatedBatches(statistics, prior.w, spatialVariance);
+        }
+        else if (history)
+        {
+            batches = PreviousProbeLighting(probe.source.x, 4u * lane + 3u).w;
+        }
+        // The integrator expresses bounce observations in units of the cache's
+        // response to the current lighting. Convert the prior to units of one
+        // observation today. More rays cannot make the cache respond sooner.
+        float confidence      = lane == 1u ? uintBitsToFloat(sourceSignature.w) : 1.0;
+        acceptedBatches[lane] = confidence > 0.0 ? batches / (confidence * confidence) : 0.0;
+    }
+    barrier();
+    // A cold screen has the same per-probe ceiling as a newly exposed surface.
+    float age          = min(probe.normal.w, 1.0 + min(acceptedBatches[0], acceptedBatches[1]) / float(ProbeMatureBatches()));
+    uint  stableFrames = min(sourceSignature.y, sourceSignature.z);
+    bool  young        = stableFrames < 64u || age <= (stableFrames < 128u ? 128.0 : 32.0);
+    uint  batches      = hybrid.rejection.y != 0.0 && young ? ZEN_SCREEN_PROBE_MAX_BATCHES : ProbeMatureBatches();
+    return probe.position.w != 0.0 ? batches : 1u;
+}
+void main()
+{
+    uint index = ProbeGroupIndex(), lane = gl_LocalInvocationID.x;
+    if (index < screenProbe.grid.w)
+    {
+        ScreenProbe probe   = probes[index];
+        uint        batches = ProbeObservationBudget(probe, lane);
+        bool        reuse   = probe.source.x != 0xffffffffu && (hybrid.sampling.x & 63u) > (probe.source.x >> 30u);
+        if (reuse)
+        {
+            reuse = all(equal(probe.position.xyz, PreviousProbe(probe.source.x).position.xyz));
+        }
+
+        if (reuse)
+        {
+            if (lane < ZEN_SCREEN_PROBE_PROPOSAL_WORDS)
+            {
+                uint word = PreviousProbeCDF(probe.source.x, lane);
+                if (lane == 33u)
+                {
+                    word = (word & 0x00ffffffu) | (batches << 24u);
+                }
+                probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + lane] = word;
+            }
+        }
+        else
+        {
+            vec3  direction = DecodeGBufferNormal((vec2(lane & 7u, lane >> 3u) + .5) / 8.0);
+            float value     = 0.0;
+            if (probe.source.x != 0xffffffffu)
+            {
+                vec3 radiance = vec3(0), mean = vec3(0);
+                for (uint signal = 0u; signal < 2u; ++signal)
+                {
+                    for (uint channel = 0u; channel < 3u; ++channel)
+                    {
+                        vec4  coefficients  = PreviousProbeLighting(probe.source.x, signal * 4u + channel);
+                        float incoming      = max(dot(coefficients, ProbeSH(direction)), 0.0);
+                        radiance[channel]  += incoming;
+                        mean[channel]      += max(coefficients.x * .2820947918, 0.0);
+                    }
+                }
+                // Guide the broad component with the probe's incident-radiance SH.
+                // The continuous local-light proposal below resolves narrower peaks.
+                value = max(1e-6, .02 * HybridLuminance(mean)) + HybridLuminance(radiance);
+            }
+            // Nearby illuminated surfaces subtend a cone around each local light.
+            // Use their inverse-square envelope to guide new probes before directional
+            // history has resolved bright reflectors. Tracing still uses the mixture PDF.
+            float prior = 0.0;
+            float strongest[8];
+            uint  selected[8];
+            for (uint slot = 0; slot < 8u; ++slot)
+            {
+                strongest[slot] = 0.0;
+                selected[slot]  = 0u;
+            }
+            for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i)
+            {
+                SceneLight light = i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i];
+                if (light.directionType.w > .5 && light.colorIntensity.w > 0.0)
+                {
+                    vec3  delta      = light.positionRange.xyz - probe.position.xyz;
+                    float dist2      = max(dot(delta, delta), 1e-12);
+                    float cosine     = max(dot(delta * inversesqrt(dist2), direction), 0.0);
+                    float shape      = .04 / max(1.04 - cosine * cosine, .04);
+                    float power      = HybridLuminance(light.colorIntensity.rgb) * light.colorIntensity.w / dist2;
+                    float importance = power * max(dot(probe.normal.xyz, delta * inversesqrt(dist2)), .02);
+                    if (lane == 0u)
+                    {
+                        uint candidate = uint(i + 1);
+                        for (uint slot = 0u; slot < 8u; ++slot)
+                        {
+                            if (importance > strongest[slot])
+                            {
+                                float displacedWeight = strongest[slot];
+                                uint  displaced       = selected[slot];
+                                strongest[slot]       = importance;
+                                selected[slot]        = candidate;
+                                importance            = displacedWeight;
+                                candidate             = displaced;
+                            }
+                        }
+                    }
+                    prior += power * shape;
+                }
+            }
+            value         += .25 * prior + 1e-6;
+            weights[lane]  = value * max(dot(probe.normal.xyz, direction), .02) / ProbeOctDensity(direction);
+            barrier();
+            if (lane < 3u)
+            {
+                // Freeze the fitted distributions on the same independently scrambled
+                // block as the CDF. Thus training never sees the sample it guides.
+                uvec2 words = uvec2(0);
+                if (probe.source.x != 0xffffffffu
+                    && floatBitsToUint(PreviousProbeLighting(probe.source.x, 11u).x) == sourceSignature.x)
+                {
+                    words.x                       = floatBitsToUint(PreviousProbeLighting(probe.source.x, 10u)[lane + 1u]);
+                    words.y                       = floatBitsToUint(PreviousProbeLighting(probe.source.x, 11u)[lane + 1u]);
+                    ProbeLobe lobe                = ProbeReadLobe(words.x, words.y);
+                    vec4      statistics          = PreviousProbeLighting(probe.source.x, 9u);
+                    float     meanSquare          = statistics.x * statistics.x;
+                    float     observationVariance = max(statistics.w, statistics.y - meanSquare);
+                    float     independent         = statistics.z * meanSquare / max(observationVariance + meanSquare, 1e-30);
+                    // One exceptionally bright sample alone cannot localize a source.
+                    vec2 shape = unpackHalf2x16(words.y);
+                    shape.x    = clamp(lobe.concentration * independent / (independent + 1.0), .0001, .999);
+                    if (words.y != 0u)
+                    {
+                        words.y = packHalf2x16(shape);
+                    }
+                }
+                probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + 34u + lane] = words.x;
+                probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + 37u + lane] = words.y;
+            }
+            // Inclusive scan; every lane reads the old prefix before any lane overwrites it.
+            for (uint offset = 1u; offset < 64u; offset *= 2u)
+            {
+                float addend = lane >= offset ? weights[lane - offset] : 0.0;
+                barrier();
+                weights[lane] += addend;
+                barrier();
+            }
+            // Hold the proposal fixed over a scrambled temporal block. Re-estimating it
+            // from earlier samples in this block would correlate their inverse PDF with
+            // the stratified sequence and bias the estimator.
+            if (lane < 32u)
+            {
+                vec2 endpoints = vec2(weights[2u * lane], weights[2u * lane + 1u]) / weights[63];
+                probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + lane] = packUnorm2x16(endpoints);
+            }
+            if (lane == 0u)
+            {
+                // Each of the final words carries four six-bit light indices.
+                for (uint word = 0u; word < 2u; ++word)
+                {
+                    uint first   = word * 4u;
+                    uint indices = selected[first] | (selected[first + 1u] << 6u) | (selected[first + 2u] << 12u)
+                                 | (selected[first + 3u] << 18u);
+                    probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + 32u + word] =
+                        indices | (word == 1u ? batches << 24u : 0u);
+                }
+            }
+        }
+    }
+}

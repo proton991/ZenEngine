@@ -1,0 +1,134 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define GLOSSY_HISTORY_WRITE
+#define GLOSSY_RAW_READ
+#include "glossy_reflection.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (GlossyInView(p))
+    {
+        uint           index  = GlossyIndex(p);
+        GIDenoiseGuide guide  = DenoiseGuide(GlossyPixel(p));
+        GlossyHistory  result = GlossyEmpty();
+        if (GlossyReceiver(guide))
+        {
+            vec4  current         = glossyRaw[index * 2u];
+            float distance        = glossyRaw[index * 2u + 1u].x;
+            vec3  view            = DenoiseView(guide.position);
+            bool  parallax        = hybrid.previousViewPosition != sceneUbo.viewPosition
+                                 || (sceneUbo.viewPosition.w < .5 && hybrid.previousViewDirection.xyz != sceneUbo.lightInfo.yzw);
+            vec3  virtualPosition = guide.position - view * distance;
+            vec4  clip = hybrid.previousProjectionView * vec4(parallax && distance > 0.0 ? virtualPosition : guide.position, 1);
+            vec2  oldPixel = GlossyCoordinate((clip.xy / max(clip.w, 1e-20) * .5 + .5) * vec2(hybrid.resolution.xy) - .5);
+            ivec2 base     = ivec2(floor(oldPixel));
+            vec2  fraction = fract(oldPixel);
+            vec4  slow = vec4(0), fast = vec4(0), moments = vec4(0);
+            float weight       = 0.0;
+            bool  historyValid = !GlossyDeterministicMirror(guide) && glossy.extent.z != 0u && glossy.control.x != 0.0
+                              && hybrid.reflection.y != 0u;
+            if (historyValid && hybrid.resolution.w != 0u)
+            {
+                GlossyHistory old = glossyPrevious[index];
+                if (old.moments.z > 0.0
+                    && DenoiseHistoryRejection(guide, DenoiseUnpackGuide(old.position, old.normal), true) == 0.0)
+                {
+                    slow    = old.slow;
+                    fast    = old.fast;
+                    moments = old.moments;
+                    weight  = 1.0;
+                }
+            }
+            else if (historyValid && clip.w > 0.0)
+            {
+                vec4  wx = CatmullRomWeights(fraction.x), wy = CatmullRomWeights(fraction.y);
+                vec3  cubicSlow = vec3(0), cubicFast = vec3(0);
+                float cubicWeight = 0.0;
+                bool  cubicValid  = true;
+                for (int y = -1; y <= 2; ++y)
+                {
+                    for (int x = -1; x <= 2; ++x)
+                    {
+                        if ((x == -1 || x == 2) && (y == -1 || y == 2))
+                        {
+                            continue;
+                        }
+                        ivec2 q = base + ivec2(x, y);
+                        if (GlossyInView(q))
+                        {
+                            GlossyHistory  old      = glossyPrevious[GlossyIndex(q)];
+                            GIDenoiseGuide oldGuide = DenoiseUnpackGuide(old.position, old.normal);
+                            bool           valid = old.moments.z > 0.0 && DenoiseHistoryRejection(guide, oldGuide, true) == 0.0;
+                            if (parallax && distance > 0.0)
+                            {
+                                vec3 oldView = normalize(hybrid.previousViewPosition.w < .5
+                                                             ? hybrid.previousViewDirection.xyz
+                                                             : hybrid.previousViewPosition.xyz - oldGuide.position);
+                                valid        = valid && old.moments.y > 0.0
+                                            && length(oldGuide.position - oldView * old.moments.y - virtualPosition)
+                                                   <= max(.005, .1 * distance);
+                            }
+                            if (x >= 0 && x <= 1 && y >= 0 && y <= 1)
+                            {
+                                vec2  w             = mix(vec2(1) - fraction, fraction, vec2(x, y));
+                                float contribution  = valid ? w.x * w.y : 0.0;
+                                slow               += old.slow * contribution;
+                                fast               += old.fast * contribution;
+                                moments            += old.moments * contribution;
+                                weight             += contribution;
+                            }
+                            cubicValid   = cubicValid && valid;
+                            float w      = wx[x + 1] * wy[y + 1];
+                            cubicSlow   += old.slow.rgb * w;
+                            cubicFast   += old.fast.rgb * w;
+                            cubicWeight += w;
+                        }
+                        else
+                        {
+                            cubicValid = false;
+                        }
+                    }
+                }
+                if (cubicValid && weight >= .01 && cubicWeight > .01)
+                {
+                    // Preserve moments, age and visibility's positive bilinear footprint.
+                    // Repeated bilinear color reprojection otherwise diffuses reflected edges.
+                    slow.rgb = max(cubicSlow / cubicWeight, vec3(0)) * weight;
+                    fast.rgb = max(cubicFast / cubicWeight, vec3(0)) * weight;
+                }
+                // Repeated subpixel reprojection spreads reflected edges. Keep long histories
+                // on exact texel hits and replace interpolated history more quickly.
+                vec2 interpolation  = fraction * (1.0 - fraction);
+                moments.z          *= 1.0 - .25 * max(interpolation.x, interpolation.y);
+            }
+            slow /= max(weight, 1e-20);
+            fast /= max(weight, 1e-20);
+            // A partially rejected footprint carries fewer observations. Renormalize the
+            // signal, but keep the surviving sample count for the next update.
+            float survivingAge  = moments.z;
+            moments            /= max(weight, 1e-20);
+            float age           = weight >= .01 ? min(survivingAge + 1.0, 512.0) : 1.0;
+            float luminance     = GlossyLuma(current.rgb);
+            vec4  nextFast      = mix(fast, current, 1.0 / min(age, 4.0));
+            float variance      = max(moments.x - moments.w * moments.w, 0.0);
+            // Classify lag from completed history. Testing the new sample against the old
+            // variance promotes a first bright Monte Carlo sample into a lighting change,
+            // shortens its history and amplifies it into a visible spark.
+            float deviation = max(3.0 * sqrt(variance), .2 * max(GlossyLuma(fast.rgb), .005));
+            if (abs(GlossyLuma(fast.rgb) - GlossyLuma(slow.rgb)) > deviation || abs(fast.a - slow.a) > .25)
+            {
+                age  = min(age, 4.0);
+                slow = fast;
+            }
+            result.position = uvec4(floatBitsToUint(guide.position), guide.identity);
+            result.normal   = uvec4(floatBitsToUint(EncodeGBufferNormal(guide.normal)), floatBitsToUint(guide.roughness),
+                                    packUnorm2x16(EncodeGBufferNormal(guide.geometric)));
+            result.slow     = mix(slow, current, 1.0 / age);
+            result.fast     = nextFast;
+            result.moments  = vec4(mix(moments.x, luminance * luminance, 1.0 / min(age, 8.0)), distance, age,
+                                   mix(moments.w, luminance, 1.0 / min(age, 8.0)));
+        }
+        glossyCurrent[index] = result;
+    }
+}

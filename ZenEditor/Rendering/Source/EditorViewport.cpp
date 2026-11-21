@@ -313,18 +313,25 @@ EditorRenderSnapshot EditorViewport::GetSnapshot() const
     const rc::RendererServer& server = *m_device.GetRendererServer();
 
     EditorRenderSnapshot snapshot{m_device.GetGPUMemoryStats(),
-                                  server.GetVoxelGISettings(),
+                                  server.GetRequestedVoxelGISettings(),
                                   server.GetRequestedRenderOption(),
                                   server.GetRenderOption(),
                                   server.GetRenderingStatus(),
-                                  server.GetEffectiveVoxelizer(),
                                   server.GetDebugOutputDescription(),
                                   server.RequestDeferredLightingRenderer()->GetLightMarkersEnabled(),
                                   server.RequestDeferredLightingRenderer()->GetLightMarkerSize(),
                                   server.RequestVoxelGI() != nullptr && server.RequestVoxelGI()->UsesHardwareQueries(),
                                   server.RequestVoxelGI() != nullptr ? server.RequestVoxelGI()->GetProviderReason()
                                                                      : "GI inactive"};
-    snapshot.giSelectionReason = server.GetGISelectionReason();
+    if (server.GetGITierFallbackReason() != nullptr)
+    {
+        snapshot.giTierFallbackReason = server.GetGITierFallbackReason();
+    }
+    snapshot.effectiveSettings = server.GetEffectiveVoxelGISettings();
+    snapshot.rayQueriesSupported =
+        rc::GetGITracingUnavailableReason(rc::GITracing::RayQueries, m_device.GetGPUInfo()) == nullptr;
+    snapshot.rayTracingPipelineSupported =
+        rc::GetGITracingUnavailableReason(rc::GITracing::RayTracingPipeline, m_device.GetGPUInfo()) == nullptr;
     snapshot.preparingGI       = server.IsPreparingGI();
     snapshot.refiningGI        = server.IsRefiningGI();
     snapshot.gpuTimingsEnabled = m_gpuTimingsEnabled;
@@ -345,8 +352,10 @@ void EditorViewport::UpdateGPUTimings(const rc::RDGMetricsSnapshot& timings)
         for (const rc::RDGNodeMetrics& node : timings.nodes)
         {
             const std::string_view name(node.name.CStr());
-            if (name.starts_with("Hybrid") || name.starts_with("Voxel") || name == "BuildSceneBLAS" || name == "UpdateSceneBLAS"
-                || name == "BuildSceneTLAS")
+            if (name.starts_with("Hybrid") || name.starts_with("Voxel") || name.starts_with("WorldCache")
+                || name.starts_with("ScreenProbe") || name.starts_with("Glossy") || name.starts_with("ReSTIR")
+                || name.starts_with("GIDenoise") || name.starts_with("GICache") || name.starts_with("ReceiverVisibility")
+                || name == "BuildSceneBLAS" || name == "UpdateSceneBLAS" || name == "BuildSceneTLAS")
             {
                 m_giPassTimings.push_back(node);
             }

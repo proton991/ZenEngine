@@ -41,7 +41,8 @@ void main()
     Material material = materialData[uMaterialIndex];
     vec3     normal   = SurfaceNormal(material);
 #ifdef HYBRID_RECEIVER
-    vec3 geometric = TriangleNormal(normal);
+    // Orient the receiver plane using the mesh, independently of the normal map.
+    vec3 geometric = TriangleNormal(GeometricNormal(material));
 #endif
     vec4 albedo = MaterialAlbedo(material, inUV, inUV1, inColor);
 #ifdef GBUFFER_ALPHA_MASK

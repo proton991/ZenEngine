@@ -8,6 +8,7 @@
 #include "Graphics/RenderCore/V2/Renderer/ForwardGPUDraws.h"
 #include "ZenOpacityMicromapShaders.h"
 #include "Memory/Memory.h"
+#include "Platform/FileSystem.h"
 #include "Utils/Errors.h"
 #include <algorithm>
 
@@ -39,7 +40,7 @@ bool HasOpacityMicromapVariant(const std::string& path)
     return found;
 }
 
-// The generated list is the build's source of truth, including buffered/no-guide variants.
+// The generated list is the build's source of truth, including no-guide variants.
 bool HasHitStreamVariant(const std::string& path)
 {
     bool found = false;
@@ -48,30 +49,6 @@ bool HasHitStreamVariant(const std::string& path)
         found = found || path == candidate;
     }
     return found;
-}
-
-void StoreBufferedTracePrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* path)
-{
-    const RenderConfig& config         = RenderConfig::GetInstance();
-    const bool          overrideModule = NameID(name)
-                                          == NameID(config.hybridTraceReferenceModule ? "HybridTraceHardwareBufferedSP"
-                                                                                      : "HybridTraceReSTIRHardwareBufferedSP")
-                                      && config.hybridTraceBufferedModule && !config.hybridTraceModule.empty();
-    for (bool noGuide : {false, true})
-    {
-        std::string program(name);
-        std::string source(path);
-        if (noGuide)
-        {
-            program.insert(program.size() - 2u, "NoGuide");
-            source.insert(source.size() - 4u, ".noguide");
-        }
-        if (overrideModule)
-        {
-            source = config.hybridTraceModule;
-        }
-        manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, NameID(program), source.c_str()));
-    }
 }
 
 void StoreMaterialUVPrograms(ShaderProgramManager&                                  manager,
@@ -107,26 +84,34 @@ void StoreForwardMaterialPrograms(ShaderProgramManager& manager, RenderDevice* d
 
 // Both names use one SPIR-V module. The capture specialization reserves the
 // larger exact accumulator only when that pipeline is selected.
-void StoreGuideTracePrograms(ShaderProgramManager& manager, RenderDevice* device, const char* name, const char* path)
+void StoreGuideTracePrograms(ShaderProgramManager& manager,
+                             RenderDevice*         device,
+                             std::string           name,
+                             const std::string&    path,
+                             bool                  guide = true)
 {
-    const RenderConfig& config = RenderConfig::GetInstance();
-    const std::string&  module = config.hybridTraceModule;
-    if (NameID(name) == NameID("HybridTraceReSTIRHardwareSP") && !module.empty() && !config.hybridTraceBufferedModule)
+    manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, NameID(name), path));
+    if (guide)
     {
-        // The caller supplies the exact module, including the OMM variant when required.
-        path = module.c_str();
-        LOGI("HybridTrace measurement module: {}", path);
+        name.insert(name.size() - 2u, "Exact");
+        const HashMap<uint32_t, RHIShaderSpecializationValue> constants{{0u, true}};
+        manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, NameID(name), path, constants));
     }
-    if (!config.hybridTraceOverrideProgram.empty() && NameID(name) == NameID(config.hybridTraceOverrideProgram.c_str()))
+}
+
+void StoreRayGuidePrograms(ShaderProgramManager&                       manager,
+                           RenderDevice*                               device,
+                           std::string                                 name,
+                           const HeapVector<ShaderProgram::StageFile>& modules,
+                           bool                                        guide)
+{
+    manager.StoreProgram(ZEN_NEW() RayTracingFileSP(device, NameID(name), modules));
+    if (guide)
     {
-        path = config.hybridTraceOverrideModule.c_str();
-        LOGI("HybridTrace override module for {}: {}", name, path);
+        name.insert(name.size() - 2u, "Exact");
+        const HashMap<uint32_t, RHIShaderSpecializationValue> constants{{0u, true}};
+        manager.StoreProgram(ZEN_NEW() RayTracingFileSP(device, NameID(name), modules, true, constants));
     }
-    manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, name, path));
-    std::string exactName(name);
-    exactName.insert(exactName.size() - 2u, "Exact");
-    const HashMap<uint32_t, RHIShaderSpecializationValue> constants{{0u, true}};
-    manager.StoreProgram(ZEN_NEW() ComputeFileSP(device, NameID(exactName), path, constants));
 }
 
 class LightBallSP final : public ShaderProgram
@@ -206,7 +191,7 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
         {
             for (std::string& source : info.spirvFileName)
             {
-                if (source != RenderConfig::GetInstance().hybridTraceModule && HasHitStreamVariant(source))
+                if (HasHitStreamVariant(source))
                 {
                     source.insert(source.size() - 4u, ".stream");
                 }
@@ -240,7 +225,44 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
 
         info.specializationConstants = specializationConstants;
 
-        RHIShader* shader            = GDynamicRHI->CreateShader(info);
+        bool loaded                  = true;
+        if (!m_rayTracingSources.empty())
+        {
+            info.spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+            for (const StageFile& source : m_rayTracingSources)
+            {
+                std::string path = source.path;
+                if (m_allowInvocationReorder
+                    && std::find(std::begin(kInvocationReorderShaderFiles), std::end(kInvocationReorderShaderFiles), path)
+                           != std::end(kInvocationReorderShaderFiles))
+                {
+                    const RHIShaderInvocationReorder reorder = GDynamicRHI->QueryGPUInfo().rayTracing.invocationReorder;
+                    if (reorder != RHIShaderInvocationReorder::eNone)
+                    {
+                        path.insert(path.size() - 4u, reorder == RHIShaderInvocationReorder::eEXT ? ".ser_ext" : ".ser_nv");
+                    }
+                }
+                if (RenderConfig::GetInstance().hybridHitStream && HasHitStreamVariant(path))
+                {
+                    path.insert(path.size() - 4u, ".stream");
+                }
+                platform::FileLoadError error = platform::FileLoadError::eNone;
+                HeapVector<uint8_t>     code  = platform::FileSystem::LoadSpvFile(path, &error);
+                loaded                        = error == platform::FileLoadError::eNone;
+                if (!loaded)
+                {
+                    LOGE("Shader '{}' cannot load ray-tracing module '{}'", m_name.CStr(), path);
+                    break;
+                }
+                info.spirv->AppendStageSPIRV(source.stage, std::move(code));
+                if (RHIOptions::GetInstance().PipelineStatistics())
+                {
+                    LOGI("Shader module: shader='{}' source='{}'", m_name.CStr(), path);
+                }
+            }
+        }
+
+        RHIShader* shader = loaded ? GDynamicRHI->CreateShader(info) : nullptr;
 
         if (shader == nullptr)
         {
@@ -382,7 +404,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, debugNames[index], debugFiles[index]));
     }
     StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, "HybridDebugSP", "SceneRenderer/debug_hybrid.frag.spv"));
-    StoreProgram(ZEN_NEW() DebugViewSP(pRenderDevice, "ProbeDebugSP", "SceneRenderer/debug_probe.frag.spv"));
 
     const glm::uvec3 volumeGroupSize = ResolveVoxelVolumeWorkgroupSize(pRenderDevice->GetGPUInfo());
 
@@ -448,7 +469,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], std::string("VoxelGI/") + program[1] + ".comp.spv"));
     }
 
-    StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice));
     StoreMaterialUVPrograms(*this, pRenderDevice, "HybridReceiverSP", "SceneRenderer/receiver.vert.spv",
                             "SceneRenderer/receiver.frag.spv");
     StoreMaterialUVPrograms(*this, pRenderDevice, "HybridReceiverMaskedSP", "SceneRenderer/receiver.vert.spv",
@@ -468,115 +488,402 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHybridGISP", "SceneRenderer/forward_material_hybrid.frag.spv");
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardBackgroundDepthSP", "SceneRenderer/deferred.vert.spv",
                                             "SceneRenderer/forward_background_depth.frag.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceLegacySP", "VoxelGI/sky_irradiance_legacy.comp.spv",
-                                         volumeConstants));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureHybridEnvironmentSP", "VoxelGI/capture_environment.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridDownsampleSP", "VoxelGI/hybrid_downsample.comp.spv"));
+    // Footprint receivers: the reduced texel's shading normal and roughness describe its whole pixel block.
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridDownsampleFootprintSP", "VoxelGI/hybrid_downsample.comp.spv",
+                                         HashMap<uint32_t, RHIShaderSpecializationValue>{{1u, true}}));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridReconstructSP", "VoxelGI/hybrid_reconstruct.comp.spv"));
+    for (bool skyLight : {true, false})
+    {
+        const char*                                           suffix = skyLight ? "" : "NoSky";
+        const HashMap<uint32_t, RHIShaderSpecializationValue> constants{{1u, skyLight}};
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoisePreblur{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_preblur.comp.spv", constants));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseStabilize{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_stabilize.comp.spv", constants));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseTemporal{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_temporal.comp.spv", constants));
+        for (uint32_t bits : {32u, 64u})
+        {
+            if (bits == 32u || pRenderDevice->GetGPUInfo().supportBufferInt64Atomics)
+            {
+                StoreProgram(ZEN_NEW() ComputeFileSP(
+                    pRenderDevice, NameID(fmt::format("GIDenoiseTemporalAntiLagBicubicSeed{}{}SP", bits, suffix)),
+                    fmt::format("VoxelGI/gi_denoise_temporal_antilag_bicubic_seed{}.comp.spv", bits), constants));
+            }
+        }
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseHistoryFix{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_history_fix.comp.spv", constants));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseTemporalValidation{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_temporal_validation.comp.spv", constants));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseHistoryFixValidation{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_history_fix_validation.comp.spv", constants));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseTemporalBicubic{}SP", suffix)),
+                                             "VoxelGI/gi_denoise_temporal_bicubic.comp.spv", constants));
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseTemporalValidationBicubic{}SP", suffix)),
+                                       "VoxelGI/gi_denoise_temporal_validation_bicubic.comp.spv", constants));
+        for (bool validation : {false, true})
+        {
+            const char* diagnostic   = validation ? "Validation" : "";
+            const char* temporalFile = validation ? "VoxelGI/gi_denoise_temporal_validation_antilag.comp.spv"
+                                                  : "VoxelGI/gi_denoise_temporal_antilag.comp.spv";
+            const char* repairFile   = validation ? "VoxelGI/gi_denoise_history_fix_validation_antilag.comp.spv"
+                                                  : "VoxelGI/gi_denoise_history_fix_antilag.comp.spv";
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice,
+                                                 NameID(fmt::format("GIDenoiseTemporal{}AntiLag{}SP", diagnostic, suffix)),
+                                                 temporalFile, constants));
+            StoreProgram(ZEN_NEW() ComputeFileSP(
+                pRenderDevice, NameID(fmt::format("GIDenoiseTemporal{}AntiLagBicubic{}SP", diagnostic, suffix)),
+                validation ? "VoxelGI/gi_denoise_temporal_validation_antilag_bicubic.comp.spv"
+                           : "VoxelGI/gi_denoise_temporal_antilag_bicubic.comp.spv",
+                constants));
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice,
+                                                 NameID(fmt::format("GIDenoiseHistoryFix{}AntiLag{}SP", diagnostic, suffix)),
+                                                 repairFile, constants));
+            for (bool antiLag : {false, true})
+            {
+                // Anti-firefly limits young texels to their brightest matching neighbour.
+                StoreProgram(ZEN_NEW() ComputeFileSP(
+                    pRenderDevice,
+                    NameID(fmt::format("GIDenoiseHistoryFix{}{}AntiFirefly{}SP", diagnostic, antiLag ? "AntiLag" : "", suffix)),
+                    fmt::format("VoxelGI/gi_denoise_history_fix{}{}_antifirefly.comp.spv", validation ? "_validation" : "",
+                                antiLag ? "_antilag" : ""),
+                    constants));
+            }
+        }
+        if (!skyLight)
+        {
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridReconstructNoSkySP",
+                                                 "VoxelGI/hybrid_reconstruct.comp.spv", constants));
+        }
+        for (uint32_t iteration = 0; iteration < 3; ++iteration)
+        {
+            HashMap<uint32_t, RHIShaderSpecializationValue> spatialConstants(constants);
+            spatialConstants.emplace(0u, uint32_t(1u << iteration));
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GIDenoiseAtrous{}{}SP", iteration, suffix)),
+                                                 "VoxelGI/gi_denoise_atrous.comp.spv", spatialConstants));
+        }
+    }
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "GIDenoiseDebugSP", "SceneRenderer/deferred.vert.spv",
+                                            "SceneRenderer/debug_gi_denoise.frag.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "HybridCaptureValidationSP", "VoxelGI/hybrid_capture_validation.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridCaptureSP", "VoxelGI/hybrid_capture.comp.spv"));
+    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceFieldYoungSP", "VoxelGI/hybrid_trace_field_young.comp.spv");
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceNoGuideFieldYoungSP",
+                                         "VoxelGI/hybrid_trace_noguide_field_young.comp.spv"));
     // Compute GI traces the distance field (DistanceFieldScene); trace variants without Field are HW RT only.
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceFieldSP", "VoxelGI/hybrid_trace_field.comp.spv");
-    StoreBufferedTracePrograms(*this, pRenderDevice, "HybridTraceBufferedFieldSP",
-                               "VoxelGI/hybrid_trace_buffered_field.comp.spv");
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridGuidePrepareSP", "VoxelGI/hybrid_guide_prepare.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridGuideFinishSP", "VoxelGI/hybrid_guide_finish.comp.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "HybridTraceNoGuideFieldSP", "VoxelGI/hybrid_trace_noguide_field.comp.spv"));
     StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceCountsFieldSP", "VoxelGI/hybrid_trace_counts_field.comp.spv");
-    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHalfFieldSP", "VoxelGI/hybrid_trace_half_field.comp.spv");
-    StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHalfCountsFieldSP",
-                            "VoxelGI/hybrid_trace_half_counts_field.comp.spv");
-    StoreProgram(
-        ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackFieldSP", "VoxelGI/hybrid_trace_fallback_field.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceFallbackCountsFieldSP",
-                                         "VoxelGI/hybrid_trace_fallback_counts_field.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceFieldSP", "VoxelGI/sky_irradiance_field.comp.spv",
                                          volumeConstants));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceFieldCountsSP",
                                          "VoxelGI/sky_irradiance_field_counts.comp.spv", volumeConstants));
-    const char* const probePrograms[][2] = {{"ProbeClearSP", "VoxelGI/probe_clear.comp.spv"},
-                                            {"ProbeClaimSP", "VoxelGI/probe_claim.comp.spv"},
-                                            {"ProbePlaceSP", "VoxelGI/probe_place.comp.spv"},
-                                            {"ProbeAdaptiveSP", "VoxelGI/probe_adaptive.comp.spv"},
-                                            {"ProbeAllocateCountSP", "VoxelGI/probe_allocate_count.comp.spv"},
-                                            {"ProbeAllocateSP", "VoxelGI/probe_allocate.comp.spv"},
-                                            {"ProbeTraceFieldSP", "VoxelGI/probe_trace_field.comp.spv"},
-                                            {"ProbeSkySourcesFieldSP", "VoxelGI/probe_sky_sources_field.comp.spv"},
-                                            {"ProbeTemporalSP", "VoxelGI/probe_temporal.comp.spv"},
-                                            {"ProbeFilterSP", "VoxelGI/probe_filter.comp.spv"},
-                                            {"ProbeIntegrateSP", "VoxelGI/probe_integrate.comp.spv"},
-                                            {"ProbeSpecularTraceFieldSP", "VoxelGI/probe_specular_trace_field.comp.spv"},
-                                            {"ProbeSpecularResolveSP", "VoxelGI/probe_specular_resolve.comp.spv"},
-                                            {"ProbeReconstructSP", "VoxelGI/probe_reconstruct.comp.spv"},
-                                            {"ProbeCaptureSP", "VoxelGI/probe_capture.comp.spv"}};
-    for (const char* const* program : probePrograms)
-    {
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], program[1]));
-    }
-    // Specular sample filter passes at block steps 1, 2, 4 and 8 (ScreenProbeGather.cpp).
-    for (uint32_t iteration = 0; iteration < 4; ++iteration)
-    {
-        const HashMap<uint32_t, RHIShaderSpecializationValue> filterConstants{{0u, static_cast<int>(1u << iteration)}};
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("ProbeSpecularFilter{}SP", iteration)),
-                                             "VoxelGI/probe_specular_filter.comp.spv", filterConstants));
-    }
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentColumnsSP", "VoxelGI/environment_columns.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentRowsSP", "VoxelGI/environment_rows.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"));
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeFilterVerticalSP", "VoxelGI/screen_probe_filter_vertical.comp.spv"));
+    const char* probeStages[] = {"Clear",  "Place",    "Proposal",     "Integrate",    "Filter",
+                                 "Gather", "Specular", "ClearDiffuse", "GatherDiffuse"};
+    const char* probeFiles[]  = {"clear",  "place",    "proposal",      "integrate",     "filter",
+                                 "gather", "specular", "clear_diffuse", "gather_diffuse"};
+    for (uint32_t stage = 0; stage < std::size(probeStages); ++stage)
+    {
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("ScreenProbe{}SP", probeStages[stage])),
+                                             fmt::format("VoxelGI/screen_probe_{}.comp.spv", probeFiles[stage]).c_str()));
+    }
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeAdaptiveSP", "VoxelGI/screen_probe_place.comp.spv", {{0u, true}}));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "WorldCacheInitializeSP", "VoxelGI/world_cache_initialize.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "WorldCacheLightingSP", "VoxelGI/world_cache_lighting.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyClearSP", "VoxelGI/glossy_reflection_clear.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyTemporalSP", "VoxelGI/glossy_reflection_temporal.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyFilterSP", "VoxelGI/glossy_reflection_filter.comp.spv"));
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeSpecularFilterSP", "VoxelGI/screen_probe_specular_filter.comp.spv"));
+    StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "WorldCacheDisplaySP", "SceneRenderer/deferred.vert.spv",
+                                            "SceneRenderer/debug_world_cache.frag.spv"));
+    for (uint32_t bits : {32u, 64u})
+    {
+        if (bits == 32u || pRenderDevice->GetGPUInfo().supportBufferInt64Atomics)
+        {
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("WorldCacheCapture{}SP", bits)),
+                                                 fmt::format("VoxelGI/world_cache_capture{}.comp.spv", bits)));
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("ScreenProbeCapture{}SP", bits)),
+                                                 bits == 32u ? "VoxelGI/screen_probe_capture.comp.spv"
+                                                             : "VoxelGI/screen_probe_capture64.comp.spv"));
+            for (bool noGuide : {false, true})
+            {
+                for (bool young : {false, true})
+                {
+                    StoreGuideTracePrograms(
+                        *this, pRenderDevice,
+                        fmt::format("WorldCacheTraceField{}{}{}SP", noGuide ? "NoGuide" : "", young ? "Young" : "", bits),
+                        fmt::format("VoxelGI/hybrid_trace{}_field{}.comp.world{}.spv", noGuide ? "_noguide" : "",
+                                    young ? "_young" : "", bits),
+                        !noGuide);
+                }
+            }
+            const char* worldStages[] = {"Start", "Resolve", "Debug"};
+            const char* worldFiles[]  = {"start", "resolve", "debug"};
+            for (uint32_t stage = 0; stage < std::size(worldStages); ++stage)
+            {
+                StoreProgram(
+                    ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("WorldCache{}{}SP", worldStages[stage], bits)),
+                                            fmt::format("VoxelGI/world_cache_{}{}.comp.spv", worldFiles[stage], bits).c_str()));
+            }
+            const bool wave = pRenderDevice->GetGPUInfo().supportComputeSubgroupReduction;
+            for (bool field : {false, true})
+            {
+                if (field || SupportsHybridRayTracingPipeline(pRenderDevice->GetGPUInfo()))
+                {
+                    const NameID program(
+                        fmt::format("WorldCacheShade{}{}{}SP", field ? "Field" : "", wave ? "Wave" : "", bits));
+                    const std::string file = fmt::format("VoxelGI/world_cache_shade{}{}{}.comp.spv", field ? "_field" : "",
+                                                         wave ? "_wave" : "", bits);
+                    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program, file.c_str()));
+                }
+            }
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("ScreenProbeTraceField{}SP", bits)),
+                                                 fmt::format("VoxelGI/screen_probe_trace_field{}.comp.spv", bits).c_str()));
+            StoreProgram(ZEN_NEW()
+                             ComputeFileSP(pRenderDevice, NameID(fmt::format("GlossyTraceField{}SP", bits)),
+                                           fmt::format("VoxelGI/glossy_reflection_trace_field{}.comp.spv", bits).c_str()));
+            StoreProgram(ZEN_NEW()
+                             ComputeFileSP(pRenderDevice, NameID(fmt::format("GlossyUncoveredField{}SP", bits)),
+                                           fmt::format("VoxelGI/glossy_reflection_uncovered_field{}.comp.spv", bits).c_str()));
+        }
+    }
+    if (SupportsHybridRayTracingPipeline(pRenderDevice->GetGPUInfo()))
+    {
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "ScreenProbeAccumulateSP", "VoxelGI/screen_probe_accumulate.comp.spv"));
+        for (uint32_t bits : {32u, 64u})
+        {
+            if (bits == 32u || pRenderDevice->GetGPUInfo().supportBufferInt64Atomics)
+            {
+                const HeapVector<ShaderProgram::StageFile> worldModules = {
+                    {RHIShaderStage::eRayGeneration, "VoxelGI/world_cache_trace.rgen.spv"},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_radiance.rmiss.spv"},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+                    {RHIShaderStage::eClosestHit, fmt::format("VoxelGI/world_cache_hit_record{}.rchit.spv", bits)},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_radiance.rahit.spv"},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha.rahit.spv"}};
+                StoreProgram(ZEN_NEW() RayTracingFileSP(pRenderDevice, NameID(fmt::format("WorldCacheTraceHits{}SP", bits)),
+                                                        worldModules));
+                HeapVector<ShaderProgram::StageFile> screenModules = worldModules;
+                screenModules[0].path                              = "VoxelGI/screen_probe_trace_hits.rgen.spv";
+                StoreProgram(ZEN_NEW() RayTracingFileSP(pRenderDevice, NameID(fmt::format("ScreenProbeTraceHits{}SP", bits)),
+                                                        screenModules));
+                const char* splitStages[] = {"SampleHits", "ShadeHits"};
+                const char* splitFiles[]  = {"sample_hits", "shade_hits"};
+                for (uint32_t stage = 0; stage < std::size(splitStages); ++stage)
+                {
+                    StoreProgram(ZEN_NEW() ComputeFileSP(
+                        pRenderDevice, NameID(fmt::format("ScreenProbe{}{}SP", splitStages[stage], bits)),
+                        fmt::format("VoxelGI/screen_probe_{}{}.comp.spv", splitFiles[stage], bits).c_str()));
+                }
+                screenModules[0].path = "VoxelGI/glossy_reflection_trace.rgen.spv";
+                screenModules[3].path = fmt::format("VoxelGI/glossy_reflection_hit{}.rchit.spv", bits);
+                StoreProgram(ZEN_NEW()
+                                 RayTracingFileSP(pRenderDevice, NameID(fmt::format("GlossyTrace{}SP", bits)), screenModules));
+                screenModules[0].path = "VoxelGI/glossy_reflection_uncovered.rgen.spv";
+                StoreProgram(
+                    ZEN_NEW() RayTracingFileSP(pRenderDevice, NameID(fmt::format("GlossyUncovered{}SP", bits)), screenModules));
+                const HeapVector<ShaderProgram::StageFile> probeModules = {
+                    {RHIShaderStage::eRayGeneration, "VoxelGI/native_probe_benchmark.rgen.spv"},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_radiance_cache.rmiss.spv"},
+                    {RHIShaderStage::eClosestHit, fmt::format("VoxelGI/native_probe_hit{}.rchit.spv", bits)},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_radiance_cache.rahit.spv"}};
+                StoreProgram(ZEN_NEW() RayTracingFileSP(pRenderDevice, NameID(fmt::format("NativeProbeBenchmark{}SP", bits)),
+                                                        probeModules));
+                StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("GICacheResolve{}SP", bits)),
+                                                     fmt::format("VoxelGI/gi_cache_resolve{}.comp.spv", bits).c_str()));
+                StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, NameID(fmt::format("GICacheDebug{}SP", bits)),
+                                                        "SceneRenderer/deferred.vert.spv",
+                                                        fmt::format("SceneRenderer/debug_gi_cache{}.frag.spv", bits).c_str()));
+                const HeapVector<ShaderProgram::StageFile> cacheCountModules = {
+                    {RHIShaderStage::eRayGeneration, "VoxelGI/hybrid_trace_counts_cache.rgen.spv"},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_radiance_counts_cache.rmiss.spv"},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+                    {RHIShaderStage::eClosestHit, fmt::format("VoxelGI/gi_cache_query{}_counts.rchit.spv", bits)},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_radiance_counts_cache.rahit.spv"},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_shadow_counts.rahit.spv"}};
+                StoreRayGuidePrograms(*this, pRenderDevice, fmt::format("GICacheTraceCounts{}SP", bits), cacheCountModules,
+                                      true);
+                for (bool noGuide : {false, true})
+                {
+                    const char*                          suffix  = noGuide ? "_noguide" : "";
+                    HeapVector<ShaderProgram::StageFile> modules = {
+                        {RHIShaderStage::eRayGeneration, "VoxelGI/gi_cache_update.rgen.spv"},
+                        {RHIShaderStage::eMiss, "VoxelGI/ray_radiance_cache.rmiss.spv"},
+                        {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+                        {RHIShaderStage::eClosestHit, fmt::format("VoxelGI/gi_cache_update{}{}.rchit.spv", bits, suffix)},
+                        {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_radiance_cache.rahit.spv"},
+                        {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha.rahit.spv"}};
+                    StoreProgram(ZEN_NEW() RayTracingFileSP(
+                        pRenderDevice, NameID(fmt::format("GICacheUpdate{}{}SP", bits, noGuide ? "NoGuide" : "")), modules));
+                    modules[3] = {RHIShaderStage::eClosestHit,
+                                  fmt::format("VoxelGI/gi_cache_query{}{}.rchit.spv", bits, suffix)};
+                    for (bool restir : {false, true})
+                    {
+                        for (bool young : {false, true})
+                        {
+                            modules[0] = {RHIShaderStage::eRayGeneration,
+                                          fmt::format("VoxelGI/hybrid_trace{}{}{}_cache.rgen.spv", restir ? "_restir" : "",
+                                                      suffix, young ? "_young" : "")};
+                            HeapVector<ShaderProgram::StageFile> worldTraceModules = worldModules;
+                            worldTraceModules[0] = {RHIShaderStage::eRayGeneration,
+                                                    fmt::format("VoxelGI/hybrid_trace{}{}{}.rgen.spv", restir ? "_restir" : "",
+                                                                suffix, young ? "_young" : "")};
+                            worldTraceModules[3] = {RHIShaderStage::eClosestHit,
+                                                    fmt::format("VoxelGI/world_cache_pixel_hit{}.rchit.spv", bits)};
+                            StoreRayGuidePrograms(*this, pRenderDevice,
+                                                  fmt::format("WorldCacheTrace{}{}{}{}SP", restir ? "ReSTIR" : "",
+                                                              noGuide ? "NoGuide" : "", young ? "Young" : "", bits),
+                                                  worldTraceModules, !noGuide);
+                            StoreRayGuidePrograms(*this, pRenderDevice,
+                                                  fmt::format("GICacheTrace{}{}{}{}SP", restir ? "ReSTIR" : "",
+                                                              noGuide ? "NoGuide" : "", young ? "Young" : "", bits),
+                                                  modules, !noGuide);
+                        }
+                    }
+                }
+            }
+        }
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridGuidePrepareSP", "VoxelGI/hybrid_guide_prepare.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridGuidePrepareCountsSP",
+                                "VoxelGI/hybrid_guide_prepare_counts.comp.spv");
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridGuideFinishSP", "VoxelGI/hybrid_guide_finish.comp.spv");
+        for (bool restir : {false, true})
+        {
+            for (bool noGuide : {false, true})
+            {
+                HeapVector<ShaderProgram::StageFile> modules = {
+                    {RHIShaderStage::eRayGeneration,
+                     noGuide
+                         ? (restir ? "VoxelGI/hybrid_trace_restir_noguide.rgen.spv" : "VoxelGI/hybrid_trace_noguide.rgen.spv")
+                         : (restir ? "VoxelGI/hybrid_trace_restir.rgen.spv" : "VoxelGI/hybrid_trace.rgen.spv")},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_radiance.rmiss.spv"},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+                    {RHIShaderStage::eClosestHit,
+                     noGuide ? "VoxelGI/hybrid_hit_noguide.rchit.spv" : "VoxelGI/hybrid_hit.rchit.spv"},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_radiance.rahit.spv"},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha.rahit.spv"}};
+                const char* name = noGuide ? (restir ? "HybridTraceReSTIRNoGuidePipelineSP" : "HybridTraceNoGuidePipelineSP")
+                                           : (restir ? "HybridTraceReSTIRPipelineSP" : "HybridTracePipelineSP");
+                for (bool young : {false, true})
+                {
+                    std::string traceName(name);
+                    if (young)
+                    {
+                        traceName.insert(traceName.size() - 2u, "Young");
+                        modules[0].path.insert(modules[0].path.find(".rgen"), "_young");
+                    }
+                    StoreRayGuidePrograms(*this, pRenderDevice, traceName, modules, !noGuide);
+                }
+            }
+        }
+        const HeapVector<ShaderProgram::StageFile> countModules = {
+            {RHIShaderStage::eRayGeneration, "VoxelGI/hybrid_trace_counts.rgen.spv"},
+            {RHIShaderStage::eMiss, "VoxelGI/ray_radiance_counts.rmiss.spv"},
+            {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+            {RHIShaderStage::eClosestHit, "VoxelGI/hybrid_hit_counts.rchit.spv"},
+            {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_radiance_counts.rahit.spv"},
+            {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_shadow_counts.rahit.spv"}};
+        StoreRayGuidePrograms(*this, pRenderDevice, "HybridTracePipelineCountsSP", countModules, true);
+        const char* const restirPrograms[][2] = {
+            {"ReSTIRTemporalPipelineSP", "VoxelGI/restir_temporal.rgen.spv"},
+            {"ReSTIRSpatialDiffusePipelineSP", "VoxelGI/restir_spatial_diffuse.rgen.spv"},
+            {"ReSTIRSpatialReflectionPipelineSP", "VoxelGI/restir_spatial_reflection.rgen.spv"}};
+        for (const char* const(&program)[2] : restirPrograms)
+        {
+            const HeapVector<ShaderProgram::StageFile> modules = {{RHIShaderStage::eRayGeneration, program[1]},
+                                                                  {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+                                                                  {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha.rahit.spv"}};
+            StoreProgram(ZEN_NEW() RayTracingFileSP(pRenderDevice, program[0], modules));
+        }
+        for (bool counts : {false, true})
+        {
+            const HeapVector<ShaderProgram::StageFile> occluders = {
+                {RHIShaderStage::eRayGeneration,
+                 counts ? "ShadowMapping/light_occluders_counts.rgen.spv" : "ShadowMapping/light_occluders.rgen.spv"},
+                {RHIShaderStage::eMiss, "VoxelGI/ray_triangle.rmiss.spv"},
+                {RHIShaderStage::eClosestHit, "VoxelGI/ray_triangle.rchit.spv"},
+                {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha_triangle.rahit.spv"}};
+            StoreProgram(ZEN_NEW() RayTracingFileSP(
+                pRenderDevice, counts ? "LightOccludersPipelineCountsSP" : "LightOccludersPipelineSP", occluders));
+            for (bool wide : {false, true})
+            {
+                const HeapVector<ShaderProgram::StageFile> modules = {
+                    {RHIShaderStage::eRayGeneration, wide ? (counts ? "ShadowMapping/receiver_visibility_wide_counts.rgen.spv"
+                                                                    : "ShadowMapping/receiver_visibility_wide.rgen.spv")
+                                                          : (counts ? "ShadowMapping/receiver_visibility_counts.rgen.spv"
+                                                                    : "ShadowMapping/receiver_visibility.rgen.spv")},
+                    {RHIShaderStage::eMiss, "VoxelGI/ray_shadow.rmiss.spv"},
+                    {RHIShaderStage::eAnyHit, "VoxelGI/ray_alpha.rahit.spv"}};
+                const char* name = wide ? (counts ? "ReceiverVisibilityWideCountsSP" : "ReceiverVisibilityWideSP")
+                                        : (counts ? "ReceiverVisibilityCountsSP" : "ReceiverVisibilitySP");
+                StoreProgram(ZEN_NEW() RayTracingFileSP(pRenderDevice, name, modules));
+                if (!counts)
+                {
+                    for (bool coarse : {false, true})
+                    {
+                        HeapVector<ShaderProgram::StageFile> nativeModules = modules;
+                        nativeModules[0].path = fmt::format("ShadowMapping/receiver_visibility_{}{}.rgen.spv",
+                                                            coarse ? "coarse" : "refine", wide ? "_wide" : "");
+                        StoreProgram(ZEN_NEW() RayTracingFileSP(
+                            pRenderDevice,
+                            NameID(fmt::format("ReceiverVisibility{}{}SP", coarse ? "Coarse" : "Refine", wide ? "Wide" : "")),
+                            nativeModules));
+                    }
+                }
+            }
+        }
+        StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredPipelineShadowsSP", "SceneRenderer/deferred.vert.spv",
+                                                "SceneRenderer/hybrid_gi_visibility_read.frag.spv"));
+        if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)
+        {
+            StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredPipelineShadowsCaptureSP",
+                                                    "SceneRenderer/deferred.vert.spv",
+                                                    "SceneRenderer/hybrid_gi_visibility_read_capture.frag.spv"));
+        }
+    }
     if (pRenderDevice->GetGPUInfo().rayQuery.IsUsable())
     {
-        // Ray-query programs: hardware shadow occluders and the reduced-resolution fallback, which
-        // only hardware providers select.
+        // Ray-query programs, which only hardware providers select.
         StoreProgram(
             ZEN_NEW() ComputeFileSP(pRenderDevice, "LightOccludersCountsSP", "ShadowMapping/light_occluders_counts.comp.spv"));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "LightOccludersSP", "ShadowMapping/light_occluders.comp.spv"));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridReconstructFallbackSP",
-                                             "VoxelGI/hybrid_reconstruct_fallback.comp.spv"));
-        const char* const hardwareProbePrograms[][2] = {
-            {"ProbeTraceHardwareSP", "VoxelGI/probe_trace_hardware.comp.spv"},
-            {"ProbeTraceHardwareFieldSP", "VoxelGI/probe_trace_hardware_field.comp.spv"},
-            {"ProbeSkySourcesHardwareSP", "VoxelGI/probe_sky_sources_hardware.comp.spv"},
-            {"ProbeSkySourcesHardwareFieldSP", "VoxelGI/probe_sky_sources_hardware_field.comp.spv"},
-            {"ProbeSpecularTraceHardwareSP", "VoxelGI/probe_specular_trace_hardware.comp.spv"},
-            {"ProbeSpecularTraceHardwareFieldSP", "VoxelGI/probe_specular_trace_hardware_field.comp.spv"}};
-        for (const char* const* program : hardwareProbePrograms)
-        {
-            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, program[0], program[1]));
-        }
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareYoungSP",
+                                "VoxelGI/hybrid_trace_hardware_young.comp.spv");
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceHardwareNoGuideYoungSP",
+                                             "VoxelGI/hybrid_trace_hardware_noguide_young.comp.spv"));
+        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareYoungSP",
+                                "VoxelGI/hybrid_trace_restir_hardware_young.comp.spv");
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceReSTIRHardwareNoGuideYoungSP",
+                                             "VoxelGI/hybrid_trace_restir_hardware_noguide_young.comp.spv"));
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareSP", "VoxelGI/hybrid_trace_hardware.comp.spv");
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareSP",
                                 "VoxelGI/hybrid_trace_restir_hardware.comp.spv");
-        const char* bufferedTracePrograms[][2] = {
-            {"HybridTraceHardwareBufferedSP", "VoxelGI/hybrid_trace_hardware_buffered.comp.spv"},
-            {"HybridTraceHardwareBufferedFieldSP", "VoxelGI/hybrid_trace_hardware_buffered_field.comp.spv"},
-            {"HybridTraceReSTIRHardwareBufferedSP", "VoxelGI/hybrid_trace_restir_hardware_buffered.comp.spv"},
-            {"HybridTraceReSTIRHardwareBufferedFieldSP", "VoxelGI/hybrid_trace_restir_hardware_buffered_field.comp.spv"}};
-        for (const char* const* program : bufferedTracePrograms)
-        {
-            StoreBufferedTracePrograms(*this, pRenderDevice, program[0], program[1]);
-        }
-        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceReSTIRHardwareFieldSP",
-                                "VoxelGI/hybrid_trace_restir_hardware_field.comp.spv");
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceHardwareNoGuideSP",
+                                             "VoxelGI/hybrid_trace_hardware_noguide.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTraceReSTIRHardwareNoGuideSP",
+                                             "VoxelGI/hybrid_trace_restir_hardware_noguide.comp.spv"));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRTemporalSP", "VoxelGI/restir_temporal.comp.spv"));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRSpatialSP", "VoxelGI/restir_spatial.comp.spv"));
+        // Spatial reuse runs one signal per dispatch; see restir_reuse.glsl.
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "ReSTIRSpatialDiffuseSP", "VoxelGI/restir_spatial_diffuse.comp.spv"));
+        StoreProgram(
+            ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRSpatialReflectionSP", "VoxelGI/restir_spatial_reflection.comp.spv"));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ReSTIRLobeIntegralSP", "VoxelGI/restir_lobe_integral.comp.spv"));
         StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareCountsSP",
                                 "VoxelGI/hybrid_trace_hardware_counts.comp.spv");
-        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareFieldSP",
-                                "VoxelGI/hybrid_trace_hardware_field.comp.spv");
-        StoreGuideTracePrograms(*this, pRenderDevice, "HybridTraceHardwareCountsFieldSP",
-                                "VoxelGI/hybrid_trace_hardware_counts_field.comp.spv");
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceHardwareSP",
-                                             "VoxelGI/sky_irradiance_hardware.comp.spv", volumeConstants));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceSP",
-                                             "VoxelGI/inject_hardware_radiance.comp.spv", volumeConstants));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceAveragedSP",
-                                             "VoxelGI/inject_hardware_radiance_averaged.comp.spv", volumeConstants));
-        // Diagnostic variants count the rays they issue (gi_ray_totals.glsl); never used for timing.
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceHardwareCountsSP",
-                                             "VoxelGI/sky_irradiance_hardware_counts.comp.spv", volumeConstants));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceCountsSP",
-                                             "VoxelGI/inject_hardware_radiance_counts.comp.spv", volumeConstants));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectHardwareRadianceAveragedCountsSP",
-                                             "VoxelGI/inject_hardware_radiance_averaged_counts.comp.spv", volumeConstants));
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsSP", "SceneRenderer/deferred.vert.spv",
                                                 "SceneRenderer/hybrid_gi_shadows.frag.spv"));
         // Visibility variants also export each receiver's shadow-ray results for resting decals.
@@ -585,8 +892,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                 "SceneRenderer/hybrid_gi_shadows_visibility.frag.spv"));
         StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsSP",
                                      "SceneRenderer/forward_material_shadows.frag.spv");
-        StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareLightingSP",
-                                     "SceneRenderer/forward_material_rt_lighting.frag.spv");
         StoreProgram(ZEN_NEW()
                          HybridGraphicsSP(pRenderDevice, "ForwardScatterHardwareShadowsSP", "SceneRenderer/offscreen.vert.spv",
                                           "SceneRenderer/forward_scatter_shadows.frag.spv"));
@@ -600,8 +905,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                     "SceneRenderer/hybrid_gi_shadows_capture_visibility.frag.spv"));
             StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsCaptureSP",
                                          "SceneRenderer/forward_material_shadows_capture.frag.spv");
-            StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareLightingCaptureSP",
-                                         "SceneRenderer/forward_material_rt_lighting_capture.frag.spv");
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHardwareShadowsCountsSP",
                                                     "SceneRenderer/deferred.vert.spv",
                                                     "SceneRenderer/hybrid_gi_shadows_counts.frag.spv"));
@@ -610,38 +913,20 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                                     "SceneRenderer/hybrid_gi_shadows_counts_visibility.frag.spv"));
             StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareShadowsCountsSP",
                                          "SceneRenderer/forward_material_shadows_counts.frag.spv");
-            StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHardwareLightingCountsSP",
-                                         "SceneRenderer/forward_material_rt_lighting_counts.frag.spv");
             StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "ForwardScatterHardwareShadowsCountsSP",
                                                     "SceneRenderer/offscreen.vert.spv",
                                                     "SceneRenderer/forward_scatter_shadows_counts.frag.spv"));
         }
     }
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridDiffuseUpsampleSP", "VoxelGI/hybrid_diffuse_upsample.comp.spv"));
-    // First used after temporal history settles; warm it so that later frame does not stall.
-    StoreWarmedComputeProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalSP", "VoxelGI/hybrid_temporal.comp.spv"));
+    // Reference diagnostic mean; every other GI frame uses the GIDenoise passes.
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "HybridTemporalReferenceSP", "VoxelGI/hybrid_temporal_reference.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridTemporalCachedSP", "VoxelGI/hybrid_temporal_cached.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridFilterPrepareSP", "VoxelGI/hybrid_filter_prepare.comp.spv"));
-    for (uint32_t iteration = 0; iteration < 5; ++iteration)
-    {
-        const HashMap<uint32_t, RHIShaderSpecializationValue> filterConstants{{0u, static_cast<int>(1u << iteration)}};
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("HybridFilter{}SP", iteration)),
-                                             iteration == 4  ? "VoxelGI/hybrid_filter_final.comp.spv"
-                                             : iteration < 2 ? "VoxelGI/hybrid_filter_cached.comp.spv"
-                                                             : "VoxelGI/hybrid_filter.comp.spv",
-                                             filterConstants));
-    }
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridSkySupportSP", "VoxelGI/hybrid_sky_support.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "HybridSkySearchSP", "VoxelGI/hybrid_sky_search.comp.spv"));
 
 
     if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)
     {
         StoreProgram(ZEN_NEW() DeferredLightingSP(pRenderDevice, true));
 
-        StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice, true));
         StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardHybridGICaptureSP",
                                      "SceneRenderer/forward_material_hybrid_capture.frag.spv");
         StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "DeferredHybridGICaptureSP", "SceneRenderer/deferred.vert.spv",
@@ -672,8 +957,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 
     StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardMaterialSP", "SceneRenderer/forward_material.frag.spv");
 
-    StoreForwardMaterialPrograms(*this, pRenderDevice, "ForwardMaterialVoxelGISP",
-                                 "SceneRenderer/forward_material_voxel.frag.spv");
 
     StoreProgram(ZEN_NEW() ForwardFullscreenSP(pRenderDevice, false));
 
@@ -756,24 +1039,6 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         ShaderProgram* pShaderProgram = ZEN_NEW() EnvMapBRDFLutGenSP(pRenderDevice);
 
         StoreProgram(pShaderProgram);
-    }
-
-    // Both supported producers must be available for runtime voxelizer changes.
-    if (pRenderDevice->GetGPUInfo().supportGeometryShader)
-    {
-        {
-            StoreProgram(ZEN_NEW() VoxelizationSP(pRenderDevice, true));
-
-            ShaderProgram* pShaderProgram = ZEN_NEW() VoxelizationSP(pRenderDevice);
-
-            StoreProgram(pShaderProgram);
-        }
-
-        {
-            ShaderProgram* pShaderProgram = ZEN_NEW() VoxelDrawSP(pRenderDevice);
-
-            StoreProgram(pShaderProgram);
-        }
     }
 
     {

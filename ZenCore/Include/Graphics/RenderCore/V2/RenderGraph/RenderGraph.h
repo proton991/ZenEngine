@@ -389,6 +389,8 @@ public:
 
     RDGShaderPassCmdRecorder AddComputePass(RDGComputePassDesc desc);
 
+    RDGShaderPassCmdRecorder AddRayTracingPass(RDGRayTracingPassDesc desc);
+
     RDGTransferPassCmdRecorder AddTransferPass(NameID passName);
 
     // Set before compilation of a recorded graph submitted for presentation.
@@ -482,12 +484,14 @@ private:
 
     RDGGraphicsPass* AcquireGraphicsPass();
 
-    RDGComputePass* AcquireComputePass();
+    RDGDispatchPass* AcquireDispatchPass();
 
     void TrimCompiledPassStorage();
 
-    ShaderProgram* ValidatePassDescription(const RDGPassDescBase& desc, bool graphics);
-    bool           ValidateGraphicsVariants(RDGGraphicsPassDesc& desc, const ShaderProgram& base);
+    ShaderProgram* ValidatePassDescription(const RDGPassDescBase& desc, RHIPipelineType type);
+
+    RDGShaderPassCmdRecorder AddDispatchPass(RDGDispatchPassDesc desc);
+    bool                     ValidateGraphicsVariants(RDGGraphicsPassDesc& desc, const ShaderProgram& base);
 
     struct PassBindingValidator;
 
@@ -608,7 +612,7 @@ private:
 
     bool ExecuteGraphicsPass(RDGGraphicsPass* pPass, uint32_t cmdLambdaIdx);
 
-    bool ExecuteComputePass(RDGCompiledPass* pPass, uint32_t cmdLambdaIdx);
+    bool ExecuteDispatchPass(RDGCompiledPass* pPass, uint32_t cmdLambdaIdx);
 
     bool ExecuteTransferPass(RDGTransferPass* pPass, uint32_t cmdLambdaIdx);
 
@@ -753,11 +757,11 @@ private:
 
     // RDG pass data
     HeapVector<RDGGraphicsPassDesc> m_pendingGfxPassDescs;
-    HeapVector<RDGComputePassDesc>  m_pendingComputePassDescs;
+    HeapVector<RDGDispatchPassDesc> m_pendingDispatchPassDescs;
     HeapVector<RDGTransferPassDesc> m_pendingTransferPassDescs;
 
     HeapVector<RDGGraphicsPass*> m_compiledGfxPasses;
-    HeapVector<RDGComputePass*>  m_compiledComputePasses;
+    HeapVector<RDGDispatchPass*> m_compiledDispatchPasses;
     HeapVector<RDGTransferPass*> m_compiledXferPasses;
 
     // CPU scratch storage only; every reuse resolves current bindings and pipeline identities.
@@ -765,7 +769,7 @@ private:
     static constexpr size_t      cMaxIdlePassCount = 256;
     static constexpr size_t      cMaxIdlePassBytes = 1024 * 1024;
     HeapVector<RDGGraphicsPass*> m_idleGfxPasses;
-    HeapVector<RDGComputePass*>  m_idleComputePasses;
+    HeapVector<RDGDispatchPass*> m_idleDispatchPasses;
     size_t                       m_idlePassBytes{0};
 
     // RDG pass command lambdas

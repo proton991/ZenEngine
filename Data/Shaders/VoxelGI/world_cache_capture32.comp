@@ -1,0 +1,4 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define WORLD_CACHE_CAPTURE
+#include "hybrid_capture.glsl"

@@ -45,13 +45,12 @@ def read_json(path):
 
 
 def derive(setup, args):
-    """Gather and light selection applied to a copy of the setup."""
+    """Backend and light selection applied to a copy of the setup."""
     result = copy.deepcopy(setup)
     if args.backend != 'setup':
         provider = 2 if args.backend == 'hardware' else 1
-        result['rendering']['gi']['cone'].update(rayProvider=provider, featureProviders=[provider]*6)
-    if args.gather != 'setup':
-        result['rendering']['gi']['cone']['gather'] = 0 if args.gather == 'pixel' else 1
+        result['rendering']['gi']['cone'].pop('featureProviders', None)
+        result['rendering']['gi']['cone'].update(rayProvider=provider)
     if args.lights == 'local':
         result['rendering']['lights'] = [e for e in result['rendering']['lights'] if e['light']['type'] != 0]
     elif args.lights == 'directional':
@@ -135,7 +134,7 @@ def noise(args):
                            change_p999=float(np.quantile(change, .999)), change_max=float(change.max()))
     report = dict(kind='noise', interval_frames=16, pixels=int(valid.sum()), render=[width, height],
                   settled=read_json(run/'view.convergence.json'), summary=read_json(run/'view.json'),
-                  derived=dict(gather=args.gather, lights=args.lights, backend=args.backend, normal_maps=False,
+                  derived=dict(lights=args.lights, backend=args.backend, normal_maps=False,
                                windowed=True, animation=False),
                   terms=terms, **dict(identity, commands=[command]))
     publish_report(output, report, args)
@@ -180,12 +179,9 @@ def motion(args):
     moving_setup = output/'moving.zenrender'
     write_json(moving_setup, setup)
     identity = provenance(args, moving_setup, [])
-    # The derived setup already resolves providers and gather. A global backend CLI override
-    # would reset a requested probe gather back to per-pixel.
-    overrides = []
     commands = [zenapp(args, ['--setup='+str(moving_setup), '--camera-path='+str(output/'camera-path.json'),
                               f'--frames={last}', f'--capture-start={args.warmup+1}', '--fixed-step', '--no-ui',
-                              '--capture='+str(output/'moving'), *overrides], output/'moving.log')]
+                              '--capture='+str(output/'moving')], output/'moving.log')]
     rows = []
     for key in keys[2:]:
         frame = key['frame']
@@ -195,7 +191,7 @@ def motion(args):
         write_json(still_setup, still)
         commands.append(zenapp(args, ['--setup='+str(still_setup), f'--frames={args.settle}',
                                      f'--capture-start={args.settle-16}', '--fixed-step', '--no-ui',
-                                     '--capture='+str(output/f'still-{frame}'), *overrides], output/f'still-{frame}.log'))
+                                     '--capture='+str(output/f'still-{frame}')], output/f'still-{frame}.log'))
         moving_path = output/f'moving.frame-{frame}.ppm'
         reference_path = output/f'still-{frame}.frame-{args.settle}.ppm'
         moving = np.asarray(Image.open(moving_path)).astype(np.int16)
@@ -218,7 +214,7 @@ def motion(args):
         print(f"Frame {frame}: mean {rows[-1]['mean_abs_8bit']:.3f}/255; reference residual {residual.mean():.3f}/255", flush=True)
     report = dict(kind='motion', warmup=args.warmup, frames=args.frames, orbit_degrees=args.orbit_degrees,
                   settle=args.settle, render=list(moving.shape[1::-1]),
-                  derived=dict(gather=args.gather, lights=args.lights, backend=args.backend),
+                  derived=dict(lights=args.lights, backend=args.backend),
                   dolly_fraction=args.dolly_fraction, per_frame=rows,
                   mean_abs_8bit=float(np.mean([r['mean_abs_8bit'] for r in rows])),
                   path_sha256=digest(output/'camera-path.json'), **dict(identity, commands=commands))
@@ -235,7 +231,6 @@ def main():
         command.add_argument('--output', type=Path, required=True, help='New directory')
         command.add_argument('--executable', type=Path, default=DEFAULT_EXE)
         command.add_argument('--backend', choices=('setup', 'hardware', 'compute'), default='setup')
-        command.add_argument('--gather', choices=('setup', 'pixel', 'probes'), default='setup')
         command.add_argument('--lights', choices=('all', 'local', 'directional'), default='all')
         command.add_argument('--width', type=int, default=0, help='Render width; the setup value when zero')
         command.add_argument('--height', type=int, default=0)

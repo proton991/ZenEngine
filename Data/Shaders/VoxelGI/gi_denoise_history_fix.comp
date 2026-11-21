@@ -1,0 +1,3 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "gi_denoise_history_fix.glsl"

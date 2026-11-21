@@ -100,6 +100,7 @@ public:
     // Poll ready submissions and recreate pending swapchains before scene update and graph
     // declaration. A presentation viewport without backbuffers joins the pending viewports.
     void PrepareFrame(RHIViewport* presentation = nullptr);
+    bool PrecacheFrameGraph();
 
     bool PollFrameSubmissions(bool wait = false);
 
@@ -258,6 +259,8 @@ public:
                                         const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* pShader);
+
+    RHIPipeline* GetOrCreateRayTracingPipeline(const RHIRayTracingPipelineCreateInfo& info);
 
     const PipelineCacheMetrics& GetPipelineCacheMetrics() const
     {
@@ -496,6 +499,8 @@ private:
                                        const RHIRenderingLayout*                              layout    = nullptr,
                                        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {});
 
+    static PipelineKey MakePipelineKey(const RHIRayTracingPipelineCreateInfo& info);
+
     friend struct PipelineCacheTestAccess;
     friend struct RDGSubmissionTestAccess;
     friend struct RDGExecutionPlanTestAccess;
@@ -508,6 +513,10 @@ private:
                                         bool                                                   timed);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* shader, bool timed);
+
+    RHIPipeline* GetOrCreateRayTracingPipeline(const RHIRayTracingPipelineCreateInfo& info, bool timed);
+
+    template <typename CreateInfo> RHIPipeline* GetOrCreateDispatchPipeline(const CreateInfo& info, bool timed);
 
     static size_t CalcSamplerHash(const RHISamplerCreateInfo& info);
 

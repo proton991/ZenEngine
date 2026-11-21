@@ -66,22 +66,6 @@ inline bool ParseAsyncComputeOverride(std::string_view argument, AsyncComputeMod
     return valid;
 }
 
-inline platform::VoxelizerMode ResolveVoxelizerMode(platform::VoxelizerMode requestedMode, const RHIGPUInfo& gpuInfo)
-{
-    platform::VoxelizerMode returnValue{};
-
-    if (requestedMode != platform::VoxelizerMode::eCompute && gpuInfo.supportGeometryShader)
-    {
-        returnValue = platform::VoxelizerMode::eGeometry;
-    }
-    else
-    {
-        returnValue = platform::VoxelizerMode::eCompute;
-    }
-
-    return returnValue;
-}
-
 inline glm::uvec3 ResolveVoxelVolumeWorkgroupSize(const RHIGPUInfo& gpuInfo)
 {
     // A bounded capability-based default, not a substitute for per-pass GPU profiling.
@@ -104,6 +88,12 @@ inline glm::uvec3 GetVoxelVolumeDispatchGroups(uint32_t dimension, const RHIGPUI
 {
     const glm::uvec3 size = ResolveVoxelVolumeWorkgroupSize(gpuInfo);
     return (glm::uvec3(dimension) + size - 1u) / size;
+}
+
+inline bool SupportsHybridRayTracingPipeline(const RHIGPUInfo& gpuInfo)
+{
+    // Primary closest-hit lighting launches shadow rays, requiring a second recursion level.
+    return gpuInfo.rayTracing.IsUsable() && gpuInfo.rayTracing.maxRayRecursionDepth >= 2;
 }
 
 struct RenderConfig
@@ -129,14 +119,6 @@ struct RenderConfig
 
     uint32_t numThreads = 8;
 
-    // Measurement-only replacement for the all-HW per-pixel ReSTIR trace. Set before shader creation.
-    std::string hybridTraceModule;
-    bool        hybridTraceBufferedModule{false};
-    bool        hybridTraceReferenceModule{false};
-    // Measurement-only replacement of one named 16x16 guide trace program (and its Exact variant),
-    // for example HybridTraceHardwareSP in ground-truth batches. Set before shader creation.
-    std::string hybridTraceOverrideProgram;
-    std::string hybridTraceOverrideModule;
     // Optional until the compact stream's memory/quality/performance gates are measured.
     bool hybridHitStream{false};
 

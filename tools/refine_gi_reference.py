@@ -20,18 +20,15 @@ def main(args):
     args.executable = Path(identity['executable'])
     if digest(args.executable) != identity['executable_sha256']:
         raise ValueError('Reference extension requires the same executable')
+    if identity.get('reference_tile_stride') != 8:
+        raise ValueError('Legacy module datasets require their archived capture tools; this build uses builtin sparse reference')
     original = read_json(args.output / 'report.json')
     result = copy.deepcopy(original)
     selected = args.views or sorted({row['view'] for row in original['static']
                                      if not row['reference_drift_below_quarter_error']})
     for view in selected:
         folder = args.output / 'static' / view
-        old_capture = read_json(folder / 'reference/capture.json')
-        module = Path(next(value.split('=', 1)[1] for value in old_capture['arguments']
-                           if value.startswith('--hybrid-trace-buffered-module=')))
-        if digest(module) != identity['reference_module_sha256']:
-            raise ValueError('Reference module changed')
-        mask_path = module.parent / 'mask.png'
+        mask_path = args.reference_mask
         if digest(mask_path) != identity['reference_mask_sha256']:
             raise ValueError('Reference sampling mask changed')
         mask = np.asarray(Image.open(mask_path)) > 0
@@ -39,7 +36,9 @@ def main(args):
         early = list(range(args.frames - 128, args.frames - 111))
         late = list(range(args.frames - 16, args.frames + 1))
         setup = read_json(folder / 'reference/setup.zenrender')
-        capture(args, reference_folder, setup, early[0], late[-1], keep=early + late, module=module)
+        if setup['rendering']['gi']['cone'].get('referenceTileStride') != 8:
+            raise ValueError('Reference setup does not use the builtin sparse diagnostic')
+        capture(args, reference_folder, setup, early[0], late[-1], keep=early + late)
         reference = average(reference_folder, late)
         drift = metrics(average(reference_folder, early), reference, mask)
         np.save(reference_folder / 'mean.npy', reference, allow_pickle=False)
@@ -64,6 +63,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dataset', type=Path, required=True)
+    parser.add_argument('--reference-mask', type=Path, required=True)
     parser.add_argument('--frames', type=int, default=512)
     parser.add_argument('--views', nargs='+')
     main(parser.parse_args())

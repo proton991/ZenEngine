@@ -1,5 +1,10 @@
 # Matched 4K Hybrid GI quality — 2026-11-12
 
+The later [render pipeline hardening plan](../RenderPipelineHardeningPlan.md) uses this matched reference
+and adds frozen static, motion, spark and timing gates. Current implementation results and outstanding
+qualification are in [Denoiser.md](Denoiser.md#qualification-status); the new denoiser and RT path remain opt-in.
+The measurements below describe the November 12 revision.
+
 Fresh quality measurements for the quarter/half presets in
 [HybridTraceProfile.md](HybridTraceProfile.md).
 Half GI lowers pooled five-view image RMS by 15.2% and mean camera-motion error by 34.1%.

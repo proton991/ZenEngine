@@ -1,0 +1,8 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#define WORLD_SUBGROUP
+#define HYBRID_FIELD_TRAVERSAL
+#define GI_CACHE_KEY64
+#include "world_cache_shade.glsl"

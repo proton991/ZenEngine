@@ -147,8 +147,9 @@ def configurations(template, reference, width, height):
                        fullscreen=False, followWindow=False, vsync=False, gpuTimings=False)
     base['rendering'].update(normalMaps=False, lightMarkers=False, algorithm=1)
     base['rendering']['cameraLight']['enabled'] = False
-    base['rendering']['gi']['cone'].update(rayProvider=2, featureProviders=[2]*6, historyFrames=128,
-                                         previousFrameRadiance=False, emissiveLighting=False,
+    base['rendering']['gi']['cone'].pop('featureProviders', None)
+    base['rendering']['gi']['cone'].update(rayProvider=2, historyFrames=128,
+                                         emissiveLighting=False,
                                          indirectIntensity=1, analyticLighting=True, environmentLighting=True)
     base['camera'].update(aspect=width/height, verticalFovDegrees=60, orthographic=False)
     # Authored normalized candidates, each checked against the source geometry before use.
@@ -397,7 +398,7 @@ def compare(args, manifest=None):
         if [summary['width'], summary['height']] != [w, h]:
             raise ValueError(f'Capture extent mismatch: {name}')
         lighting = np.fromfile(args.output/(name+'.lighting.bin'), '<f4').reshape(h, w, 10, 4)
-        hybrid = np.fromfile(args.output/(name+'.hybrid.bin'), '<f4').reshape(h, w, 13, 4)
+        hybrid = np.fromfile(args.output/(name+'.hybrid.bin'), '<f4').reshape(h, w, -1, 4)
         with np.load(directory/'truth.npz', allow_pickle=False) as archive:
             truth = dict(archive)
         eye = np.array(setup['camera']['eye'])
@@ -481,7 +482,7 @@ def main():
             if name == 'run':
                 command.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-release/bin/ZenApp.exe')
                 command.add_argument('--zenapp-arg', action='append', default=[],
-                                     help='Extra ZenApp argument, e.g. a measurement-only --hybrid-trace-override')
+                                     help='Extra ZenApp startup argument, e.g. --hybrid-hit-stream')
     args = parser.parse_args()
     if args.command in ('build', 'benchmark'):
         if not (0 < args.width <= 8192 and 0 < args.height <= 8192 and args.batch > 0

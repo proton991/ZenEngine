@@ -205,7 +205,7 @@ private:
         HeapVector<uint32_t>        dynamicOffsets;
     };
     // Graphics and compute bind points have independent state.
-    BoundPipelineState           m_boundStates[2];
+    BoundPipelineState           m_boundStates[3];
     EnumBitMask<RHIDynamicState> m_validDynamicStates;
     VkViewport                   m_viewport{};
     VkRect2D                     m_scissor{};
@@ -564,12 +564,12 @@ private:
     float m_blendConstants[4]{};
 };
 
-class VulkanComputeState
+class VulkanDispatchState
 {
 public:
-    VulkanComputeState();
+    VulkanDispatchState();
 
-    ~VulkanComputeState();
+    ~VulkanDispatchState();
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
@@ -675,6 +675,10 @@ public:
 
     void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override;
 
+    void RHITraceRays(uint32_t width, uint32_t height, uint32_t depth) override;
+
+    void RHITraceRaysIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override;
+
     void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0) override;
 
     void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
@@ -719,6 +723,8 @@ public:
 private:
     void MakeHostReadAvailable(RHIBuffer* buffer, uint64_t offset, uint64_t size);
 
+    bool PrepareTraceRays();
+
     RHICommandContextType m_contextType;
 
     VulkanDevice* m_pDevice{nullptr};
@@ -727,8 +733,9 @@ private:
 
     uint64_t m_recordedBindlessEpoch{0};
 
-    VulkanGfxState*     m_pGfxState{nullptr};
-    VulkanComputeState* m_pComputeState{nullptr};
+    VulkanGfxState*      m_pGfxState{nullptr};
+    VulkanDispatchState* m_pComputeState{nullptr};
+    VulkanDispatchState* m_pRayTracingState{nullptr};
 };
 
 } // namespace zen

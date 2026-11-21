@@ -20,6 +20,9 @@ struct DeviceExtensionFlags
     uint32_t hasBufferDeviceAddress      : 1;
     uint32_t hasAccelerationStructure    : 1;
     uint32_t hasRaytracingPipeline       : 1;
+    uint32_t hasTraceRaysIndirect        : 1;
+    uint32_t hasInvocationReorderEXT     : 1;
+    uint32_t hasInvocationReorderNV      : 1;
     uint32_t hasRayQuery                 : 1;
     uint32_t hasOpacityMicromap          : 1;
     uint32_t hasDescriptorIndexing       : 1;
@@ -32,6 +35,7 @@ struct DeviceExtensionFlags
     uint32_t hasSwapchainMaintenance1    : 1;
     uint32_t hasCalibratedTimestamps     : 1;
     uint32_t hasMemoryBudget             : 1;
+    uint32_t hasBufferInt64Atomics       : 1;
     uint32_t hasSamplerMirrorClampToEdge : 1;
     uint32_t hasDeviceFault              : 1;
     uint32_t hasBufferMarker             : 1;

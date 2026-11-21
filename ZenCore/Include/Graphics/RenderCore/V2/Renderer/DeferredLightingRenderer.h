@@ -124,7 +124,12 @@ private:
     // non-triangle draws to the forward renderer.
     bool ShadesOpaqueDeferred() const;
 
-    void BuildForwardGraph(const RenderView& view, VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows);
+    void BuildForwardGraph(const RenderView&    view,
+                           VoxelGIRenderer*     voxelGI,
+                           SceneShadowRenderer* shadows,
+                           const RDGTexture*    pipelineVisibility);
+
+    RDGTexture BuildLightVisibility(const RenderView& view, VoxelGIRenderer& voxelGI);
 
     // Fullscreen lighting of the G-buffer receivers. Without a linear target it tone-maps into the
     // view and owns the view's depth. With one it writes linear HDR over the forward background's
@@ -156,7 +161,9 @@ private:
     RHIBuffer*             m_hybridCaptureOutput{nullptr};
     RHIBuffer*             m_hybridCaptureReadback{nullptr};
     bool                   m_deterministicGuideCapture{false};
-    RenderDevice*          m_pRenderDevice{nullptr};
+    // The GI fallback reason last logged; the log repeats only when the reason changes.
+    std::string   m_loggedGIFailure;
+    RenderDevice* m_pRenderDevice{nullptr};
 
     RenderScene* m_pScene{nullptr};
 

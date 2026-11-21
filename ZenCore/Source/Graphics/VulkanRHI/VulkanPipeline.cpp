@@ -3,6 +3,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
+#include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/RHIShaderUtil.h"
@@ -17,6 +18,20 @@
 
 namespace zen
 {
+static void LogPipelineStatistics(VkPipeline pipeline, NameID shader);
+
+static bool EnablePipelineStatistics(NameID shader)
+{
+    const bool enabled = RHIOptions::GetInstance().PipelineStatistics()
+                      && GVulkanRHI->GetDevice()->GetExtensionFlags().hasPipelineExecutableInfo
+                      && vkGetPipelineExecutablePropertiesKHR != nullptr && vkGetPipelineExecutableStatisticsKHR != nullptr;
+    if (!enabled && RHIOptions::GetInstance().PipelineStatistics())
+    {
+        LOGW("Pipeline statistics unsupported for '{}'", shader.CStr());
+    }
+    return enabled;
+}
+
 bool ValidateShaderLayout(const RHIShaderGroupInfo& info, uint32_t maxDescriptorSets)
 {
     // Set indices are table positions, so the table size bounds every index and the layout count.
@@ -276,6 +291,16 @@ RHIPipeline* VulkanResourceFactory::CreatePipeline(const RHIGfxPipelineCreateInf
     return pGfxPipeline;
 }
 
+RHIPipeline* VulkanResourceFactory::CreatePipeline(const RHIRayTracingPipelineCreateInfo& createInfo)
+{
+    return GVulkanRHI->AreSubmissionsBlocked() ? nullptr : VulkanPipeline::CreateObject(createInfo);
+}
+
+RHIPipeline* VulkanRHI::CreatePipeline(const RHIRayTracingPipelineCreateInfo& createInfo)
+{
+    return GVulkanRHI->GetResourceFactory()->CreatePipeline(createInfo);
+}
+
 RHIPipeline* VulkanRHI::CreatePipeline(const RHIComputePipelineCreateInfo& createInfo)
 {
     return GVulkanRHI->GetResourceFactory()->CreatePipeline(createInfo);
@@ -307,13 +332,25 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 
     new (pShader) VulkanShader(createInfo);
 
-    const bool tessellation = pShader->m_shaderGroupSPIRV->HasShaderStage(RHIShaderStage::eTesselationControl)
-                           || pShader->m_shaderGroupSPIRV->HasShaderStage(RHIShaderStage::eTesselationEvaluation);
-    bool       created      = !tessellation && (createInfo.spirv != nullptr || pShader->LoadSpirvFiles());
+    const bool tessellation    = pShader->m_shaderGroupSPIRV->HasShaderStage(RHIShaderStage::eTesselationControl)
+                              || pShader->m_shaderGroupSPIRV->HasShaderStage(RHIShaderStage::eTesselationEvaluation);
+    bool       rasterOrCompute = false;
+    bool       rayTracing      = false;
+    for (const RHIShaderGroupSPIRV::Module& module : pShader->m_shaderGroupSPIRV->GetModules())
+    {
+        rasterOrCompute |= module.stage < RHIShaderStage::eRayGeneration;
+        rayTracing      |= module.stage >= RHIShaderStage::eRayGeneration;
+    }
+    const bool tracingSupported = !rayTracing || (!rasterOrCompute && GVulkanRHI->QueryGPUInfo().rayTracing.IsUsable());
+    bool       created = !tessellation && tracingSupported && (createInfo.spirv != nullptr || pShader->LoadSpirvFiles());
     if (tessellation)
     {
         LOGE("Shader '{}' requests tessellation, which the current RHI pipeline contract does not support",
              createInfo.name.CStr());
+    }
+    if (!tracingSupported)
+    {
+        LOGE("Shader '{}' requires enabled ray-tracing pipelines and exclusively RT stages", createInfo.name.CStr());
     }
 
     if (created)
@@ -499,13 +536,14 @@ void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
 
     m_stageCreateInfos.reserve(m_shaderGroupSPIRV->GetStageCount());
 
-    for (uint32_t i = 0; ready && i < ToUnderlying(RHIShaderStage::eMax); i++)
+    for (uint32_t i = 0; ready && i < m_shaderGroupSPIRV->GetModules().size(); i++)
     {
-        RHIShaderStage stage = static_cast<RHIShaderStage>(i);
+        const RHIShaderGroupSPIRV::Module& shader = m_shaderGroupSPIRV->GetModules()[i];
+        RHIShaderStage                     stage  = shader.stage;
 
         if (m_shaderGroupSPIRV->HasShaderStage(stage))
         {
-            const HeapVector<uint8_t>& spirvCode = m_shaderGroupSPIRV->GetStageSPIRV(stage);
+            const HeapVector<uint8_t>& spirvCode = shader.code;
 
             VkShaderModuleCreateInfo shaderModuleCI;
 
@@ -1008,6 +1046,162 @@ void VulkanPipeline::Init()
     m_bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
 }
 
+VulkanPipeline* VulkanPipeline::CreateObject(const RHIRayTracingPipelineCreateInfo& createInfo)
+{
+    VulkanPipeline*                                          pipeline     = nullptr;
+    const RHIRayTracingCapabilities&                         capabilities = GVulkanRHI->QueryGPUInfo().rayTracing;
+    std::array<uint32_t, RHIShaderBindingTableLayout::Count> counts{};
+    RHIShaderBindingTableLayout                              layout;
+    const bool valid = capabilities.IsUsable() && createInfo.pShader != nullptr
+                    && createInfo.pShader->GetResourceType() == RHIResourceType::eShader && createInfo.maxRecursionDepth > 0
+                    && createInfo.maxRecursionDepth <= capabilities.maxRayRecursionDepth
+                    && ValidateRayTracingShaderGroups(createInfo.pShader->GetModules(), createInfo.groups, counts)
+                    && BuildShaderBindingTableLayout(capabilities, counts, layout)
+                    && layout.size <= SIZE_MAX - (layout.alignment - 1) && vkCreateRayTracingPipelinesKHR != nullptr
+                    && vkGetRayTracingShaderGroupHandlesKHR != nullptr;
+    if (valid)
+    {
+        pipeline = VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
+        new (pipeline) VulkanPipeline(createInfo);
+        pipeline->InitRayTracing(createInfo, layout);
+        if (!pipeline->m_initialized)
+        {
+            pipeline->ReleaseReference();
+            pipeline = nullptr;
+        }
+    }
+    if (pipeline == nullptr)
+    {
+        LOGE("Ray-tracing pipeline creation failed: unsupported capability, invalid groups/limits or allocation failure");
+    }
+    return pipeline;
+}
+
+void VulkanPipeline::InitRayTracing(const RHIRayTracingPipelineCreateInfo& createInfo,
+                                    const RHIShaderBindingTableLayout&     layout)
+{
+    const VulkanShader*                              shader = TO_VK_SHADER(m_pShader);
+    HeapVector<VkRayTracingShaderGroupCreateInfoKHR> groups;
+    groups.reserve(createInfo.groups.size());
+    for (const RHIRayTracingShaderGroup& group : createInfo.groups)
+    {
+        VkRayTracingShaderGroupCreateInfoKHR native{VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR};
+        native.type               = group.type == RHIRayTracingShaderGroupType::eHit
+                                      ? VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR
+                                      : VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        native.generalShader      = group.generalShader;
+        native.closestHitShader   = group.closestHitShader;
+        native.anyHitShader       = group.anyHitShader;
+        native.intersectionShader = VK_SHADER_UNUSED_KHR;
+        groups.push_back(native);
+    }
+    VkRayTracingPipelineCreateInfoKHR info{VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
+    info.stageCount                   = shader->GetNumShaderStages();
+    info.pStages                      = shader->GetStageCreateInfoData();
+    info.groupCount                   = static_cast<uint32_t>(groups.size());
+    info.pGroups                      = groups.data();
+    info.maxPipelineRayRecursionDepth = createInfo.maxRecursionDepth;
+    info.layout                       = shader->GetVkPipelineLayout();
+    const bool statistics             = EnablePipelineStatistics(shader->GetName());
+    if (statistics)
+    {
+        info.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
+    }
+    if (GVulkanRHI->GetDevice()->GetExtensionFlags().hasOpacityMicromap)
+    {
+        info.flags |= VK_PIPELINE_CREATE_RAY_TRACING_OPACITY_MICROMAP_BIT_KHR;
+    }
+    const VkResult result =
+        vkCreateRayTracingPipelinesKHR(GVulkanRHI->GetVkDevice(), VK_NULL_HANDLE, GVulkanRHI->GetDevice()->GetPipelineCache(),
+                                       1, &info, nullptr, &m_vkPipeline);
+    m_initialized = result == VK_SUCCESS && m_vkPipeline != VK_NULL_HANDLE;
+    if (m_initialized)
+    {
+        if (statistics)
+        {
+            LogPipelineStatistics(m_vkPipeline, shader->GetName());
+            for (uint32_t i = 0; vkGetRayTracingShaderGroupStackSizeKHR != nullptr && i < groups.size(); ++i)
+            {
+                const VkRayTracingShaderGroupCreateInfoKHR& group  = groups[i];
+                const VkDevice                              device = GVulkanRHI->GetVkDevice();
+                const VkDeviceSize                          general =
+                    group.generalShader == VK_SHADER_UNUSED_KHR
+                        ? 0
+                        : vkGetRayTracingShaderGroupStackSizeKHR(device, m_vkPipeline, i, VK_SHADER_GROUP_SHADER_GENERAL_KHR);
+                const VkDeviceSize closest = group.closestHitShader == VK_SHADER_UNUSED_KHR
+                                               ? 0
+                                               : vkGetRayTracingShaderGroupStackSizeKHR(device, m_vkPipeline, i,
+                                                                                        VK_SHADER_GROUP_SHADER_CLOSEST_HIT_KHR);
+                const VkDeviceSize any =
+                    group.anyHitShader == VK_SHADER_UNUSED_KHR
+                        ? 0
+                        : vkGetRayTracingShaderGroupStackSizeKHR(device, m_vkPipeline, i, VK_SHADER_GROUP_SHADER_ANY_HIT_KHR);
+                LOGI("Ray pipeline stack: shader='{}' group={} general={} closest={} any={}", shader->GetName().CStr(), i,
+                     general, closest, any);
+            }
+        }
+        m_initialized = InitShaderBindingTable(createInfo.groups, layout);
+    }
+    else
+    {
+        ReportVulkanDeviceLoss(result, "vkCreateRayTracingPipelinesKHR");
+        LOGE("vkCreateRayTracingPipelinesKHR failed: {}", GetResultString(result));
+    }
+    m_bindPoint               = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
+    m_pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
+}
+
+bool VulkanPipeline::InitShaderBindingTable(const HeapVector<RHIRayTracingShaderGroup>& groups,
+                                            const RHIShaderBindingTableLayout&          layout)
+{
+    const uint32_t      handleSize = GVulkanRHI->QueryGPUInfo().rayTracing.shaderGroupHandleSize;
+    HeapVector<uint8_t> handles(groups.size() * size_t(handleSize));
+    const VkResult      result = vkGetRayTracingShaderGroupHandlesKHR(
+        GVulkanRHI->GetVkDevice(), m_vkPipeline, 0, static_cast<uint32_t>(groups.size()), handles.size(), handles.data());
+    bool ready = result == VK_SUCCESS;
+    if (!ready)
+    {
+        ReportVulkanDeviceLoss(result, "vkGetRayTracingShaderGroupHandlesKHR");
+        LOGE("vkGetRayTracingShaderGroupHandlesKHR failed: {}", GetResultString(result));
+    }
+    if (ready)
+    {
+        RHIBufferCreateInfo info{};
+        info.size         = layout.size + layout.alignment - 1;
+        info.allocateType = RHIBufferAllocateType::eCPUWriteGPURead;
+        info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eShaderBindingTable, RHIBufferUsageFlagBits::eDeviceAddress);
+        m_shaderBindingTableBuffer = RHIResourcePtr<RHIBuffer>::Adopt(VulkanBuffer::CreateObject(info));
+        ready = m_shaderBindingTableBuffer != nullptr && m_shaderBindingTableBuffer->GetDeviceAddress() != 0
+             && m_shaderBindingTableBuffer->Map() != nullptr;
+    }
+    if (ready)
+    {
+        const uint64_t address = m_shaderBindingTableBuffer->GetDeviceAddress();
+        const uint64_t padding = (uint64_t(layout.alignment) - address % layout.alignment) % layout.alignment;
+        uint8_t*       mapped  = m_shaderBindingTableBuffer->Map() + padding;
+        std::memset(mapped, 0, static_cast<size_t>(layout.size));
+        std::array<uint32_t, RHIShaderBindingTableLayout::Count> record{};
+        for (size_t group = 0; group < groups.size(); ++group)
+        {
+            const uint32_t                     regionIndex = ToUnderlying(groups[group].type);
+            const RHIShaderBindingTableRegion& region      = layout.regions[regionIndex];
+            std::memcpy(mapped + region.offset + region.stride * record[regionIndex]++, handles.data() + group * handleSize,
+                        handleSize);
+        }
+        for (uint32_t regionIndex = 0; regionIndex < RHIShaderBindingTableLayout::Count; ++regionIndex)
+        {
+            const RHIShaderBindingTableRegion& region = layout.regions[regionIndex];
+            if (region.size != 0)
+            {
+                m_shaderBindingTable[regionIndex] = {address + padding + region.offset, region.stride, region.size};
+            }
+        }
+        // CPUWriteGPURead memory is host coherent. Initial writes precede every submission.
+        m_shaderBindingTableBuffer->Unmap();
+    }
+    return ready;
+}
+
 void VulkanPipeline::Destroy()
 {
     vkDestroyPipeline(GVulkanRHI->GetVkDevice(), m_vkPipeline, nullptr);
@@ -1359,6 +1553,10 @@ static void LogPipelineStatistics(VkPipeline pipeline, NameID shader)
     {
         LOGW("Pipeline statistics unavailable or incomplete for '{}': {}", shader.CStr(), GetResultString(result));
     }
+    else if (executableCount == 0)
+    {
+        LOGI("Pipeline statistics: shader='{}' reports no executables", shader.CStr());
+    }
 }
 
 void VulkanPipeline::InitCompute()
@@ -1373,16 +1571,10 @@ void VulkanPipeline::InitCompute()
 
     pipelineCI.layout     = pShader->GetVkPipelineLayout();
 
-    const bool statistics = RHIOptions::GetInstance().PipelineStatistics()
-                         && GVulkanRHI->GetDevice()->GetExtensionFlags().hasPipelineExecutableInfo
-                         && vkGetPipelineExecutablePropertiesKHR != nullptr && vkGetPipelineExecutableStatisticsKHR != nullptr;
+    const bool statistics = EnablePipelineStatistics(pShader->GetName());
     if (statistics)
     {
         pipelineCI.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
-    }
-    else if (RHIOptions::GetInstance().PipelineStatistics())
-    {
-        LOGW("Pipeline statistics unsupported for '{}'", pShader->GetName().CStr());
     }
 
     const VkResult result = vkCreateComputePipelines(GVulkanRHI->GetVkDevice(), GVulkanRHI->GetDevice()->GetPipelineCache(), 1,

@@ -31,7 +31,7 @@ bool ValidateRenderingSettings(const RenderingSettings& settings, std::string& e
     {
         error = "Camera light color, intensity and range must be finite and non-negative.";
     }
-    else if (settings.debug.output > DebugOutput::eGIFallback || !std::isfinite(settings.debug.minimum)
+    else if (settings.debug.output > DebugOutput::eGICache || !std::isfinite(settings.debug.minimum)
              || !std::isfinite(settings.debug.maximum) || settings.debug.maximum <= settings.debug.minimum
              || settings.debug.face >= 6 || settings.debug.axis >= 3 || settings.debug.mip != 0
              || (settings.debug.output == DebugOutput::eVoxelSlice && settings.debug.slice >= settings.gi.resolution))
@@ -84,7 +84,6 @@ void HoldRenderingResources(const RenderingSettings& applied, RenderingSettings&
 
     settings.gi.resolution          = applied.gi.resolution;
 
-    settings.gi.voxelizer           = applied.gi.voxelizer;
 
     settings.gi.shadowMapResolution = applied.gi.shadowMapResolution;
 

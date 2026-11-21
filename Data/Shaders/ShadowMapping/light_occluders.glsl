@@ -6,7 +6,7 @@ const int LIGHT_OCCLUDER_SIZE = 16;
 struct LightOccluder
 {
     vec4 origin; // xyz world vertex, w valid
-    vec4 edge1;
+    vec4 edge1;  // xyz edge, w twice the triangle area
     vec4 edge2;
 };
 ivec2 LightOccluderAxes(int axis)
@@ -41,7 +41,7 @@ bool CachedLightOccluded(int lightIndex, vec3 position, vec3 normal, SceneLight 
         {
             vec3  crossDirection = cross(delta, triangle.edge2.xyz);
             float determinant    = dot(triangle.edge1.xyz, crossDirection);
-            float scale          = length(delta) * length(cross(triangle.edge1.xyz, triangle.edge2.xyz));
+            float scale          = length(delta) * triangle.edge1.w;
             if (abs(determinant) > max(scale * 1e-6, 1e-20))
             {
                 vec3  offset      = light.positionRange.xyz - triangle.origin.xyz;

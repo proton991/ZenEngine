@@ -18,10 +18,12 @@
 
 // Compact learned visibility keeps the trace's register/shared-memory footprint bounded.
 // Source rays retain their independent allocation; compute can add guided residual samples.
-#define ZEN_HYBRID_GUIDE_PER_FACE     8u
-#define ZEN_HYBRID_GUIDE_TILES        (6u * ZEN_HYBRID_GUIDE_PER_FACE * ZEN_HYBRID_GUIDE_PER_FACE)
-#define ZEN_HYBRID_GUIDE_CELL_SIZE    (ZEN_ENVIRONMENT_IMPORTANCE_SIZE / ZEN_HYBRID_GUIDE_PER_FACE)
-#define ZEN_HYBRID_GUIDE_CDF_OFFSET   (ZEN_ENVIRONMENT_TILES * (ZEN_ENVIRONMENT_TILE_SIZE + 1u))
+#define ZEN_HYBRID_GUIDE_PER_FACE 8u
+#define ZEN_HYBRID_GUIDE_TILES    (6u * ZEN_HYBRID_GUIDE_PER_FACE * ZEN_HYBRID_GUIDE_PER_FACE)
+// Pooled weights, four-component row moments and total power for a ray-generation tile.
+#define ZEN_HYBRID_GUIDE_POOLED_FLOATS (ZEN_HYBRID_GUIDE_TILES + 4u * 6u * ZEN_HYBRID_GUIDE_PER_FACE + 1u)
+#define ZEN_HYBRID_GUIDE_CELL_SIZE     (ZEN_ENVIRONMENT_IMPORTANCE_SIZE / ZEN_HYBRID_GUIDE_PER_FACE)
+#define ZEN_HYBRID_GUIDE_CDF_OFFSET    (ZEN_ENVIRONMENT_TILES * (ZEN_ENVIRONMENT_TILE_SIZE + 1u))
 #define ZEN_ENVIRONMENT_TILE_CDF_SIZE (ZEN_HYBRID_GUIDE_CDF_OFFSET + ZEN_HYBRID_GUIDE_TILES * (ZEN_HYBRID_GUIDE_CELL_SIZE + 1u))
 
 #endif

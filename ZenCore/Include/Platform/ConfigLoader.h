@@ -12,13 +12,6 @@
 
 namespace zen::platform
 {
-enum class VoxelizerMode
-{
-    eAuto,
-    eCompute,
-    eGeometry
-};
-
 enum class AsyncComputeMode
 {
     eDisabled,
@@ -50,28 +43,6 @@ public:
     explicit ConfigLoader(std::istream& config)
     {
         LoadConfig(config);
-    }
-
-    VoxelizerMode GetVoxelizerMode() const
-    {
-        VoxelizerMode                                     mode = VoxelizerMode::eAuto;
-        HashMap<std::string, std::string>::const_iterator it   = m_configData.find("voxelizer");
-        if (it != m_configData.end() && it->second != "auto")
-        {
-            if (it->second == "comp")
-            {
-                mode = VoxelizerMode::eCompute;
-            }
-            else if (it->second == "geom")
-            {
-                mode = VoxelizerMode::eGeometry;
-            }
-            else
-            {
-                LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.", it->second);
-            }
-        }
-        return mode;
     }
 
     AsyncComputeMode GetAsyncComputeMode() const
@@ -284,8 +255,6 @@ private:
             std::ofstream outFile(configPath);
             outFile << "model_base_path=../../glTF-Sample-Assets/Models" << std::endl;
             outFile << "default_model=Suzanne" << std::endl;
-            outFile << "# Voxelizer: auto, comp or geom (falls back to comp if unsupported)." << std::endl;
-            outFile << "voxelizer=auto" << std::endl;
             outFile << "# Async compute: off or auto (requires a separate queue and GPU dependencies)." << std::endl;
             outFile << "async_compute=off" << std::endl;
             outFile.close();

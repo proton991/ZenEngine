@@ -1,319 +1,458 @@
 #include "ImGui/LightingBackendControls.h"
 #include "imgui.h"
 #include <algorithm>
-#include <cstring>
-#include <iterator>
+#include <string>
 
 namespace zen::ui
 {
-bool DrawGIPresetControls(rc::VoxelGIRuntimeSettings& settings, const char* selectionReason)
+namespace
 {
-    bool                    changed  = false;
-    const rc::VoxelGIPreset selected = rc::GetVoxelGIPreset(settings);
-    if (ImGui::BeginCombo("GI preset", rc::GetVoxelGIPresetName(selected)))
+using rc::GIDenoiser;
+using rc::GIMethod;
+using rc::GIShadows;
+using rc::GITracing;
+
+const char* const kMethodLabels[]   = {"Per-pixel", "Per-pixel ReSTIR", "Per-pixel + world cache",
+                                       "Per-pixel ReSTIR + world cache", "Screen probes + world cache"};
+const char* const kTracingLabels[]  = {"Automatic", "Compute (distance field)", "Hardware ray queries", "Hardware RT pipeline"};
+const char* const kDenoiserLabels[] = {"Spatiotemporal", "Temporal only", "Spatial only", "Off"};
+const char* const kShadowLabels[]   = {"Shadow maps", "Ray traced", "Ray traced with reuse"};
+const char* const kTierHeaders[]    = {"Compute", "Ray queries", "RT pipeline"};
+const GITracing   kTiers[]          = {GITracing::Compute, GITracing::RayQueries, GITracing::RayTracingPipeline};
+
+struct GIChanges
+{
+    bool configuration{false};
+    bool content{false};
+};
+
+bool IsPixelMethod(GIMethod method)
+{
+    return method != GIMethod::ScreenProbes;
+}
+
+bool UsesReSTIR(GIMethod method)
+{
+    return method == GIMethod::PixelReSTIR || method == GIMethod::PixelReSTIRCache;
+}
+
+bool SupportsTier(GITracing tracing, const GIControlsContext& context)
+{
+    return tracing == GITracing::Automatic || tracing == GITracing::Compute
+        || (tracing == GITracing::RayQueries && context.rayQueries)
+        || (tracing == GITracing::RayTracingPipeline && context.rayQueries && context.rayTracingPipeline);
+}
+
+// The tier the renderer runs: the effective settings carry the resolved provider.
+GITracing GetActiveTier(const rc::VoxelGIRuntimeSettings& effective)
+{
+    const GITracing tracing = rc::GetGITracing(effective.cone);
+    return tracing == GITracing::Automatic ? GITracing::Compute : tracing;
+}
+
+// Keep the active tier when it supports the method, then try the available hardware tiers.
+GITracing GetTierForMethod(GIMethod method, GITracing active, const GIControlsContext& context)
+{
+    GITracing tier = active;
+    if (rc::GetGIMethodUnavailableReason(method, active) != nullptr)
     {
-        for (uint32_t index = 1; index <= static_cast<uint32_t>(rc::VoxelGIPreset::Ultra); ++index)
+        tier = GITracing::Compute;
+        if (SupportsTier(GITracing::RayTracingPipeline, context))
         {
-            const rc::VoxelGIPreset preset = static_cast<rc::VoxelGIPreset>(index);
-            if (ImGui::Selectable(rc::GetVoxelGIPresetName(preset), selected == preset))
+            tier = GITracing::RayTracingPipeline;
+        }
+        else if (SupportsTier(GITracing::RayQueries, context)
+                 && rc::GetGIMethodUnavailableReason(method, GITracing::RayQueries) == nullptr)
+        {
+            tier = GITracing::RayQueries;
+        }
+    }
+    return tier;
+}
+
+void Hint(const char* text)
+{
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", text);
+    ImGui::PopTextWrapPos();
+}
+
+std::string GetSummary(const rc::VoxelGIRuntimeSettings& settings, GITracing active)
+{
+    const GIMethod method  = rc::GetGIMethod(settings.cone);
+    std::string    summary = std::string(GetGIMethodLabel(method)) + " / " + GetGITracingLabel(active);
+    if (IsPixelMethod(method))
+    {
+        const uint32_t divisor  = settings.cone.pixelResolutionDivisor;
+        summary                += divisor == 0 ? " / automatic resolution"
+                                : divisor == 1 ? " / full resolution"
+                                : divisor == 2 ? " / half resolution"
+                                               : " / quarter resolution";
+    }
+    summary += std::string(" / ") + GetGIDenoiserLabel(rc::GetGIDenoiser(settings.cone)) + " denoiser";
+    return summary;
+}
+
+void DrawSelector(rc::VoxelGIRuntimeSettings&       settings,
+                  const rc::VoxelGIRuntimeSettings& shown,
+                  GITracing                         active,
+                  bool&                             changed)
+{
+    ImGui::SeparatorText("Configuration");
+    const bool optimal = rc::IsOptimalVoxelGIConfiguration(settings);
+    if (ImGui::RadioButton("Optimal", optimal) && !optimal)
+    {
+        rc::ApplyVoxelGIPreset(rc::VoxelGIPreset::Optimal, settings);
+        changed = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Custom", !optimal) && optimal)
+    {
+        settings         = shown;
+        settings.optimal = false;
+        changed          = true;
+    }
+    if (optimal)
+    {
+        Hint(("Chosen for this GPU at startup: " + GetSummary(shown, active) + ".").c_str());
+    }
+}
+
+void DrawMethod(rc::VoxelGIRuntimeSettings& settings, GITracing active, const GIControlsContext& context, GIChanges& changes)
+{
+    rc::VoxelGISettings& cone   = settings.cone;
+    const GIMethod       method = rc::GetGIMethod(cone);
+    ImGui::SeparatorText("Method");
+    if (ImGui::BeginCombo("Method", GetGIMethodLabel(method)))
+    {
+        for (uint32_t index = 0; index < static_cast<uint32_t>(GIMethod::Count); ++index)
+        {
+            const GIMethod    candidate = static_cast<GIMethod>(index);
+            const char*       reason    = rc::GetGIMethodUnavailableReason(candidate, active);
+            const std::string label     = reason == nullptr ? std::string(GetGIMethodLabel(candidate))
+                                                            : std::string(GetGIMethodLabel(candidate)) + " (switches tracing)";
+            if (ImGui::Selectable(label.c_str(), candidate == method))
             {
-                changed = rc::ApplyVoxelGIPreset(preset, settings);
+                rc::SetGIMethod(cone, candidate);
+                if (reason != nullptr)
+                {
+                    rc::SetGITracing(cone, GetTierForMethod(candidate, active, context));
+                }
+                changes.configuration = true;
+            }
+            if (reason != nullptr && ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("%s", reason);
             }
         }
         ImGui::EndCombo();
     }
-    ImGui::TextWrapped(
-        "Low: 64 cubed, specular occlusion only. Medium: 64 cubed with reflections. High: 128 cubed. Ultra: 256 cubed. Low and Medium default to screen probes; High and Ultra default to per-pixel rays. Gather can be changed under GI tracing.");
-    ImGui::TextWrapped("Selection: %s. GI tracing can override the preset preference.", selectionReason);
-    return changed;
-}
 
-namespace
-{
-using Feature  = rc::VoxelGISettings::Feature;
-using Provider = rc::VoxelGISettings::RayProvider;
-
-// The ray features each pass traces, in GIPass order. The sky cache and shadows trace one feature.
-struct GIPassRow
-{
-    const char* name;
-    const char* rays;
-    Feature     first;
-    Feature     second;
-};
-const GIPassRow kGIPassRows[] = {
-    {"Diffuse GI", "Sky light and bounce rays", Feature::Sky, Feature::Bounce},
-    {"Specular GI", "Occlusion and reflection rays", Feature::SpecularOcclusion, Feature::Reflections},
-    {"Sky cache", "Sky visibility, on scene change", Feature::SkyCache, Feature::SkyCache},
-    {"Direct shadows", "Mesh visibility toward lights", Feature::Shadows, Feature::Shadows}};
-static_assert(std::size(kGIPassRows) == static_cast<size_t>(GIPass::Count));
-
-// Indexed by GITracer.
-const char* const kTracerNames[] = {"HW RT", "Compute: Distance field", "Shadow maps", "Off", "Mixed"};
-
-const char* TracerName(GITracer tracer)
-{
-    return kTracerNames[static_cast<uint32_t>(tracer)];
-}
-
-// The distance field serves GI rays and the sky cache; direct shadows use HW RT or shadow maps.
-// Diffuse and specular GI can be switched off to tell their contributions apart.
-bool Offers(GIPass pass, GITracer tracer)
-{
-    return tracer == GITracer::HardwareRT || (tracer == GITracer::Field && pass != GIPass::Shadows)
-        || (tracer == GITracer::ShadowMaps && pass == GIPass::Shadows)
-        || (tracer == GITracer::Off && (pass == GIPass::Diffuse || pass == GIPass::Specular));
-}
-} // namespace
-
-GITracer GetGIPassTracer(const rc::VoxelGISettings& settings, GIPass pass)
-{
-    const GIPassRow& row = kGIPassRows[static_cast<uint32_t>(pass)];
-    // A disabled feature traces no rays, so its provider does not make the pass Mixed.
-    bool firstOn  = true;
-    bool secondOn = false;
-    switch (pass)
+    const GITracing tracing = rc::GetGITracing(cone);
+    if (ImGui::BeginCombo("Tracing", GetGITracingLabel(tracing)))
     {
-        case GIPass::Diffuse:
-            firstOn  = settings.indirectDiffuse;
-            secondOn = settings.indirectDiffuse && settings.bounceSource != rc::VoxelGISettings::BounceSource::Cone;
-            break;
-        case GIPass::Specular:
-            firstOn  = settings.specularOcclusion;
-            secondOn = settings.specularOcclusion && settings.reflections != rc::VoxelGISettings::Reflections::Off;
-            break;
-        // Direct shadows trace HW rays when selected; otherwise they use shadow maps.
-        case GIPass::Shadows: firstOn = settings.UsesRayShadows(true); break;
-        default: break;
-    }
-    const Provider provider = settings.GetFeatureProvider(row.first);
-    GITracer       tracer   = provider == Provider::Hardware ? GITracer::HardwareRT : GITracer::Field;
-    if (secondOn && settings.GetFeatureProvider(row.second) != provider)
-    {
-        tracer = GITracer::Mixed;
-    }
-    if (!firstOn)
-    {
-        tracer = pass == GIPass::Shadows && settings.shadows ? GITracer::ShadowMaps : GITracer::Off;
-    }
-    return tracer;
-}
-
-void SetGIPassTracer(rc::VoxelGISettings& settings, GIPass pass, GITracer tracer)
-{
-    const GIPassRow& row = kGIPassRows[static_cast<uint32_t>(pass)];
-    if (tracer == GITracer::ShadowMaps && pass == GIPass::Shadows)
-    {
-        settings.shadows   = true;
-        settings.rtShadows = false;
-    }
-    else if (tracer == GITracer::Off && Offers(pass, tracer))
-    {
-        // Reflections need specular occlusion rays, so specular GI stops with them.
-        settings.indirectDiffuse   = pass == GIPass::Diffuse ? false : settings.indirectDiffuse;
-        settings.specularOcclusion = pass == GIPass::Specular ? false : settings.specularOcclusion;
-    }
-    else if ((tracer == GITracer::HardwareRT || tracer == GITracer::Field) && Offers(pass, tracer))
-    {
-        // SetFeatureProvider also enables the feature. A pass that already traces keeps its
-        // bounce source and reflection setting; the voxel cone bounce is a GI attribute.
-        const rc::VoxelGISettings::BounceSource bounce      = settings.bounceSource;
-        const rc::VoxelGISettings::Reflections  reflections = settings.reflections;
-        const bool                              specular    = settings.specularOcclusion;
-        const Provider provider = tracer == GITracer::HardwareRT ? Provider::Hardware : Provider::Voxel;
-        settings.SetFeatureProvider(row.first, provider);
-        settings.SetFeatureProvider(row.second, provider);
-        settings.bounceSource = bounce;
-        if (specular)
+        for (uint32_t index = 0; index < static_cast<uint32_t>(GITracing::Count); ++index)
         {
-            settings.reflections = reflections;
-        }
-        if (pass == GIPass::Diffuse)
-        {
-            settings.indirectDiffuse = true;
-        }
-    }
-}
-
-void SetGIRayTracing(rc::VoxelGISettings& settings, bool hardware)
-{
-    // Preserve feature enables and the explicit shadow-map choice; Compute shadows use maps.
-    settings.rayProvider = hardware ? Provider::Hardware : Provider::Voxel;
-    settings.featureProviders.fill(settings.rayProvider);
-    if (hardware)
-    {
-        settings.gather = rc::VoxelGISettings::Gather::Pixel;
-    }
-}
-
-bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason)
-{
-    bool changed = false;
-    if (ImGui::CollapsingHeader("GI tracing", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        // Pass names can repeat other settings' labels in the same window.
-        ImGui::PushID("GITracing");
-        GITracer tracers[static_cast<size_t>(GIPass::Count)];
-        bool     compute  = true;
-        bool     hardware = true;
-        bool     field    = false;
-        for (uint32_t index = 0; index < static_cast<uint32_t>(GIPass::Count); ++index)
-        {
-            const GITracer tracer  = GetGIPassTracer(settings, static_cast<GIPass>(index));
-            tracers[index]         = tracer;
-            compute               &= tracer != GITracer::HardwareRT && tracer != GITracer::Mixed;
-            hardware              &= tracer != GITracer::Field && tracer != GITracer::Mixed;
-            field                 |= tracer == GITracer::Field;
-        }
-
-        const char* choices[] = {"Compute", "HW RT"};
-        if (ImGui::BeginCombo("Ray tracing", compute ? choices[0] : hardware ? choices[1] : "Per pass"))
-        {
-            for (int index = 0; index < 2; ++index)
+            const GITracing candidate = static_cast<GITracing>(index);
+            const bool      supported = SupportsTier(candidate, context);
+            if (ImGui::Selectable(GetGITracingLabel(candidate), candidate == tracing,
+                                  supported ? ImGuiSelectableFlags_None : ImGuiSelectableFlags_Disabled))
             {
-                if (ImGui::Selectable(choices[index], index == 0 ? compute : hardware))
+                rc::SetGITracing(cone, candidate);
+                changes.configuration = true;
+            }
+            if (!supported && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                ImGui::SetTooltip("Not supported by this GPU");
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (active != GITracing::Compute)
+    {
+        if (context.hardwareReady)
+        {
+            ImGui::TextDisabled("Hardware RT is active.");
+        }
+        else
+        {
+            ImGui::TextWrapped("Hardware RT is not active: %s", context.reason);
+        }
+    }
+    const char* unavailable = rc::GetGIMethodUnavailableReason(method, active);
+    if (unavailable != nullptr)
+    {
+        ImGui::TextWrapped("%s; the per-pixel trace runs instead.", unavailable);
+    }
+
+    if (IsPixelMethod(method))
+    {
+        const char* resolutions[] = {"Automatic (at least 540 lines)", "Full", "Half per axis", "Quarter per axis"};
+        int         resolution    = cone.pixelResolutionDivisor == 0 ? 0
+                                  : cone.pixelResolutionDivisor == 4 ? 3
+                                                                     : static_cast<int>(cone.pixelResolutionDivisor);
+        if (ImGui::Combo("GI resolution", &resolution, resolutions, 4))
+        {
+            cone.pixelResolutionDivisor = resolution == 0 ? 0u : 1u << (resolution - 1);
+            changes.configuration       = true;
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled("Full-resolution probe gather");
+    }
+    if (UsesReSTIR(method) && active != GITracing::Compute)
+    {
+        changes.configuration |= ImGui::Checkbox("Spatial reuse", &cone.restirSpatial);
+        if (cone.restirSpatial)
+        {
+            int neighbors = static_cast<int>(cone.restirSpatialSamples);
+            if (ImGui::SliderInt("Reuse neighbors", &neighbors, 1, 4))
+            {
+                cone.restirSpatialSamples = static_cast<uint32_t>(neighbors);
+                changes.configuration     = true;
+            }
+        }
+    }
+    if (active == GITracing::Compute)
+    {
+        const char* cells[] = {"32", "64"};
+        int         field   = cone.fieldResolution == 32 ? 0 : 1;
+        if (ImGui::Combo("Distance field cells per axis", &field, cells, 2))
+        {
+            cone.fieldResolution  = 32u << field;
+            changes.configuration = true;
+        }
+        const char* grids[] = {"64", "128", "256"};
+        int         grid    = settings.resolution == 64 ? 0 : settings.resolution == 128 ? 1 : 2;
+        if (ImGui::Combo("Material voxels per axis", &grid, grids, 3))
+        {
+            settings.resolution   = 64u << grid;
+            changes.configuration = true;
+        }
+    }
+}
+
+// Every method against every tracing tier, with what this GPU runs and the optimal choice.
+void DrawCombinations(rc::VoxelGISettings& cone, GITracing active, const GIControlsContext& context, GIChanges& changes)
+{
+    if (ImGui::TreeNodeEx("All combinations", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        const GITracing optimalTier   = rc::GetOptimalGITracing(context.rayQueries, context.rayTracingPipeline);
+        const GIMethod  optimalMethod = rc::GetOptimalGIMethod(optimalTier);
+        const GIMethod  method        = rc::GetGIMethod(cone);
+        if (ImGui::BeginTable("GI combinations", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp))
+        {
+            ImGui::TableSetupColumn("Method", ImGuiTableColumnFlags_WidthStretch, 2.8f);
+            for (const char* header : kTierHeaders)
+            {
+                ImGui::TableSetupColumn(header, ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            }
+            ImGui::TableHeadersRow();
+            for (uint32_t row = 0; row < static_cast<uint32_t>(GIMethod::Count); ++row)
+            {
+                const GIMethod candidate = static_cast<GIMethod>(row);
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(GetGIMethodLabel(candidate));
+                for (GITracing tier : kTiers)
                 {
-                    SetGIRayTracing(settings, index == 1);
-                    changed = true;
+                    ImGui::TableNextColumn();
+                    const char*       reason   = rc::GetGIMethodUnavailableReason(candidate, tier);
+                    const bool        runs     = reason == nullptr && SupportsTier(tier, context);
+                    const bool        optimal  = candidate == optimalMethod && tier == optimalTier;
+                    const std::string label    = std::string(!runs     ? "-"
+                                                             : optimal ? "Optimal"
+                                                                       : "Available")
+                                               + "##" + std::to_string(row) + "_" + std::to_string(static_cast<uint32_t>(tier));
+                    const bool        selected = candidate == method && tier == active;
+                    if (ImGui::Selectable(label.c_str(), selected,
+                                          runs ? ImGuiSelectableFlags_None : ImGuiSelectableFlags_Disabled))
+                    {
+                        rc::SetGIMethod(cone, candidate);
+                        rc::SetGITracing(cone, tier);
+                        changes.configuration = true;
+                    }
+                    if (!runs && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip("%s", reason != nullptr ? reason : "Not supported by this GPU");
+                    }
+                }
+            }
+            ImGui::EndTable();
+        }
+        Hint("Select a cell to use that method and tracing tier.");
+        ImGui::TreePop();
+    }
+}
+
+void DrawDenoiser(rc::VoxelGISettings& cone, GIChanges& changes)
+{
+    const GIMethod method   = rc::GetGIMethod(cone);
+    int            denoiser = static_cast<int>(rc::GetGIDenoiser(cone));
+    ImGui::SeparatorText("Denoiser");
+    if (ImGui::Combo("Denoiser", &denoiser, kDenoiserLabels, static_cast<int>(GIDenoiser::Count)))
+    {
+        rc::SetGIDenoiser(cone, static_cast<GIDenoiser>(denoiser));
+        changes.configuration = true;
+    }
+    Hint(IsPixelMethod(method)
+             ? "Pixel denoiser: temporal accumulation, history repair, three a-trous passes and an output stabilizer."
+             : "Probe filter: world-anchored temporal accumulation and two spatial passes across probes.");
+    if (static_cast<GIDenoiser>(denoiser) != GIDenoiser::Spatiotemporal)
+    {
+        Hint("Noisier than spatiotemporal; for comparisons.");
+    }
+    if (IsPixelMethod(method) && cone.temporal && ImGui::TreeNode("Denoiser details"))
+    {
+        changes.configuration |= ImGui::Checkbox("Bicubic history", &cone.bicubicHistory);
+        changes.configuration |= ImGui::Checkbox("Data-driven anti-lag", &cone.dataDrivenAntiLag);
+        changes.configuration |= ImGui::Checkbox("Anti-firefly", &cone.antiFirefly);
+        changes.configuration |= ImGui::Checkbox("Extra samples for young receivers", &cone.youngReceiverSamples);
+        if (cone.pixelResolutionDivisor != 1)
+        {
+            changes.configuration |= ImGui::Checkbox("Footprint receivers", &cone.footprintReceivers);
+        }
+        if (method == GIMethod::PixelCache || method == GIMethod::PixelReSTIRCache)
+        {
+            changes.configuration |= ImGui::Checkbox("Seed new pixels from the world cache", &cone.worldCacheSeed);
+            ImGui::SetItemTooltip("Experimental: disoccluded pixels start from their cache cell's indirect light.");
+        }
+        ImGui::TreePop();
+    }
+}
+
+void DrawIndirect(rc::VoxelGISettings& cone, GIChanges& changes)
+{
+    ImGui::SeparatorText("Indirect lighting");
+    changes.content |= ImGui::Checkbox("Diffuse GI", &cone.indirectDiffuse);
+    if (cone.indirectDiffuse)
+    {
+        changes.content |= ImGui::SliderFloat("Indirect intensity", &cone.indirectIntensity, 0.0f, 10.0f);
+        if (ImGui::TreeNode("Diffuse light sources"))
+        {
+            changes.content |= ImGui::Checkbox("Analytic lights", &cone.analyticLighting);
+            changes.content |= ImGui::Checkbox("Environment", &cone.environmentLighting);
+            changes.content |= ImGui::Checkbox("Emissive surfaces", &cone.emissiveLighting);
+            ImGui::TreePop();
+        }
+    }
+    changes.content |= ImGui::Checkbox("Specular GI", &cone.specularOcclusion);
+    if (cone.specularOcclusion)
+    {
+        bool reflections = cone.reflections != rc::VoxelGISettings::Reflections::Off;
+        if (ImGui::Checkbox("Trace reflections", &reflections))
+        {
+            cone.reflections = reflections ? rc::VoxelGISettings::Reflections::On : rc::VoxelGISettings::Reflections::Off;
+            changes.content  = true;
+        }
+    }
+    if (!cone.indirectDiffuse || !cone.specularOcclusion)
+    {
+        ImGui::TextWrapped("Disabled terms use the unoccluded environment.");
+    }
+}
+
+void DrawShadows(rc::VoxelGISettings& cone, GITracing active, GIChanges& changes)
+{
+    ImGui::SeparatorText("Direct shadows");
+    changes.content |= ImGui::Checkbox("Cast shadows", &cone.shadows);
+    if (cone.shadows)
+    {
+        const GIShadows shadows = rc::GetGIShadows(cone);
+        if (ImGui::BeginCombo("Shadow method", GetGIShadowsLabel(shadows)))
+        {
+            for (uint32_t index = 0; index < static_cast<uint32_t>(GIShadows::Count); ++index)
+            {
+                const GIShadows candidate = static_cast<GIShadows>(index);
+                const char*     reason    = candidate == GIShadows::ShadowMaps ? nullptr
+                                          : active == GITracing::Compute       ? "Compute uses shadow maps"
+                                          : candidate == GIShadows::RayTracedReuse && active == GITracing::RayQueries
+                                              ? "Reuse needs the RT pipeline; every receiver is traced"
+                                              : nullptr;
+                if (ImGui::Selectable(GetGIShadowsLabel(candidate), candidate == shadows))
+                {
+                    rc::SetGIShadows(cone, candidate);
+                    changes.configuration = true;
+                }
+                if (reason != nullptr && ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("%s", reason);
                 }
             }
             ImGui::EndCombo();
         }
-        ImGui::TextWrapped(
-            "Compute traces a GPU-built distance field for GI and uses shadow maps for direct shadows. HW RT uses the GPU's ray-tracing hardware. Per-pass choices below can override this.");
-        // The scene view reports Compute GI preparation (GetGILightingStatus); its
-        // provider reason says nothing about HW RT availability.
-        if (!compute && std::strcmp(reason, "field_preparing") != 0)
+        if (shadows != GIShadows::ShadowMaps && active == GITracing::Compute)
         {
-            if (hardwareReady)
-            {
-                ImGui::TextDisabled("HW RT is active.");
-            }
-            else
-            {
-                ImGui::TextWrapped(
-                    "HW RT is unavailable (%s). Passes selected as HW RT do not switch to Compute automatically.", reason);
-            }
+            ImGui::TextDisabled("Compute uses shadow maps.");
         }
-
-        const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
-        if (ImGui::BeginTable("GIPasses", 2, flags))
-        {
-            ImGui::TableSetupColumn("Pass");
-            ImGui::TableSetupColumn("Tracer");
-            ImGui::TableHeadersRow();
-            for (uint32_t index = 0; index < static_cast<uint32_t>(GIPass::Count); ++index)
-            {
-                const GIPass   pass    = static_cast<GIPass>(index);
-                const GITracer current = tracers[index];
-                ImGui::PushID(static_cast<int>(index));
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted(kGIPassRows[index].name);
-                ImGui::TextDisabled("%s", kGIPassRows[index].rays);
-                ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                const char* preview =
-                    current == GITracer::HardwareRT && !hardwareReady ? "HW RT (unavailable)" : TracerName(current);
-                if (ImGui::BeginCombo("##tracer", preview))
-                {
-                    for (uint32_t option = 0; option <= static_cast<uint32_t>(GITracer::Off); ++option)
-                    {
-                        const GITracer tracer = static_cast<GITracer>(option);
-                        if (Offers(pass, tracer) && ImGui::Selectable(TracerName(tracer), tracer == current))
-                        {
-                            SetGIPassTracer(settings, pass, tracer);
-                            changed = true;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-                ImGui::PopID();
-            }
-            ImGui::EndTable();
-        }
-
-        changed |= DrawGIGatherControls(settings);
-
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextDisabled("The distance field is approximate: surfaces lie within about half a sample spacing.");
-        ImGui::TextDisabled("Probe placement and reconstruction, filtering and denoising run on Compute.");
-        ImGui::TextDisabled("Direct shadows use shadow maps without HW RT.");
-        if (tracers[static_cast<size_t>(GIPass::Diffuse)] == GITracer::Off
-            || tracers[static_cast<size_t>(GIPass::Specular)] == GITracer::Off)
-        {
-            ImGui::TextDisabled(
-                "Off lights that term from the unoccluded environment, as without GI. Diffuse GI keeps tracing while off.");
-        }
-        ImGui::PopTextWrapPos();
-        if (field)
-        {
-            const char* resolutionChoices[] = {"32", "64"};
-            int         resolution          = settings.fieldResolution == 32 ? 0 : 1;
-            if (ImGui::Combo("Distance field cells per axis", &resolution, resolutionChoices, 2))
-            {
-                settings.fieldResolution = 32u << resolution;
-                changed                  = true;
-            }
-        }
-        ImGui::PopID();
     }
-    return changed;
 }
+} // namespace
 
-bool DrawGIGatherControls(rc::VoxelGISettings& settings)
+bool DrawGIControls(rc::VoxelGIRuntimeSettings& settings, const GIControlsContext& context)
 {
-    bool        changed   = false;
-    const char* gathers[] = {"Per-pixel rays", "Screen probes"};
-    int         gather    = static_cast<int>(settings.gather);
-    if (ImGui::Combo("Gather", &gather, gathers, 2))
+    const rc::VoxelGIRuntimeSettings& effective = context.effective != nullptr ? *context.effective : settings;
+    const GITracing                   active    = GetActiveTier(effective);
+    // The optimal configuration shows what it resolved to, with the latest content edits.
+    rc::VoxelGIRuntimeSettings shown = settings;
+    if (rc::IsOptimalVoxelGIConfiguration(settings))
     {
-        settings.gather = static_cast<rc::VoxelGISettings::Gather>(gather);
-        changed         = true;
+        shown = effective;
+        rc::CopyVoxelGIContent(settings, shown);
+        shown.optimal = true;
     }
-    if (settings.UsesScreenProbes())
+    bool changed = false;
+    DrawSelector(settings, shown, active, changed);
+    if (!changed)
     {
-        const char* spacingChoices[] = {"8 pixels", "16 pixels"};
-        int         spacing          = settings.probeSpacing == 8 ? 0 : 1;
-        if (ImGui::Combo("Probe spacing", &spacing, spacingChoices, 2))
+        GIChanges                  changes;
+        rc::VoxelGIRuntimeSettings working = shown;
+        DrawMethod(working, active, context, changes);
+        DrawCombinations(working.cone, active, context, changes);
+        DrawDenoiser(working.cone, changes);
+        DrawIndirect(working.cone, changes);
+        DrawShadows(working.cone, active, changes);
+        if (changes.configuration)
         {
-            settings.probeSpacing = spacing == 0 ? 8u : 16u;
-            changed               = true;
+            settings         = working;
+            settings.optimal = false;
         }
-        ImGui::TextWrapped(
-            "Each probe traces 64 rays and shares them with nearby pixels. 8 pixels keeps more surface detail. Reference accumulation and ray-count captures use per-pixel rays.");
+        else if (changes.content)
+        {
+            rc::CopyVoxelGIContent(working, settings);
+        }
+        changed = changes.configuration || changes.content;
     }
-    else
-    {
-        const char* resolutions[] = {"Native", "Half width and height", "Quarter width and height"};
-        int         resolution    = settings.pixelResolutionDivisor == 4 ? 2 : (settings.pixelResolutionDivisor == 2 ? 1 : 0);
-        if (ImGui::Combo("GI resolution", &resolution, resolutions, 3))
-        {
-            settings.pixelResolutionDivisor = 1u << resolution;
-            changed                         = true;
-        }
-        ImGui::TextWrapped(
-            "Reduced GI resolution saves memory and ray work with HW RT. Lighting is reconstructed at the output resolution; Compute and mixed GI retain native resolution.");
-        changed |= ImGui::Checkbox("ReSTIR GI", &settings.restirGI);
-        if (settings.restirGI)
-        {
-            changed |= ImGui::Checkbox("Spatial reuse", &settings.restirSpatial);
-            changed |= ImGui::Checkbox("Rough reflection reuse", &settings.restirSpecular);
-            ImGui::TextWrapped("Reuses indirect light paths with HW RT. Smooth reflections keep their own rays.");
-        }
-    }
-    ImGui::TextWrapped("Shared by diffuse and specular GI. Rays use each pass's selected tracer with either gather method.");
     return changed;
 }
 
-const char* GetGILightingStatus(GILightingState state, bool hardwareReady)
+const char* GetGIMethodLabel(GIMethod method)
+{
+    return kMethodLabels[std::min(static_cast<uint32_t>(method), static_cast<uint32_t>(GIMethod::Count) - 1)];
+}
+
+const char* GetGITracingLabel(GITracing tracing)
+{
+    return kTracingLabels[std::min(static_cast<uint32_t>(tracing), static_cast<uint32_t>(GITracing::Count) - 1)];
+}
+
+const char* GetGIDenoiserLabel(GIDenoiser denoiser)
+{
+    return kDenoiserLabels[std::min(static_cast<uint32_t>(denoiser), static_cast<uint32_t>(GIDenoiser::Count) - 1)];
+}
+
+const char* GetGIShadowsLabel(GIShadows shadows)
+{
+    return kShadowLabels[std::min(static_cast<uint32_t>(shadows), static_cast<uint32_t>(GIShadows::Count) - 1)];
+}
+
+const char* GetGILightingStatus(GILightingState state)
 {
     const char* text = nullptr;
     switch (state)
     {
-        case GILightingState::Preparing:
-            text = hardwareReady ? "HW RT passes active. Preparing Compute GI..." : "Preparing GI...";
-            break;
+        case GILightingState::Preparing: text = "Preparing GI..."; break;
         case GILightingState::Refining: text = "GI active. Refining lighting..."; break;
         case GILightingState::Ready: text = "GI ready"; break;
         case GILightingState::Unavailable: text = "GI unavailable. Check Rendering for details."; break;

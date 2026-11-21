@@ -285,6 +285,8 @@ public:
 
     RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& info) override;
 
+    RHIPipeline* CreatePipeline(const RHIRayTracingPipelineCreateInfo& info) override;
+
     RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& info) override;
 
     void DestroyPipeline(RHIPipeline* pipeline) override;

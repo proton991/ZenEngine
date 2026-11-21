@@ -1,0 +1,268 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "gi_denoise_common.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 6) uniform sampler2D rawSky;
+layout(set = 1, binding = 7) uniform sampler2D rawBounce;
+layout(set = 1, binding = 8) uniform sampler2D rawSpecular;
+layout(set = 1, binding = 9) uniform sampler2D rawReflection;
+layout(set = 1, binding = 10) uniform sampler2D rawDiffuseDistance;
+layout(set = 1, binding = 11) uniform sampler2D previousLength;
+layout(set = 1, binding = 12, rgba16f) uniform writeonly image2DArray signalMip0;
+layout(set = 1, binding = 13, rgba16f) uniform writeonly image2DArray signalMip1;
+layout(set = 1, binding = 14, rgba16f) uniform writeonly image2DArray signalMip2;
+layout(set = 1, binding = 15, rgba16f) uniform writeonly image2DArray signalMip3;
+layout(set = 1, binding = 17, rgba32ui) uniform writeonly uimage2DArray guideMip1;
+layout(set = 1, binding = 18, rgba32ui) uniform writeonly uimage2DArray guideMip2;
+layout(set = 1, binding = 19, rgba32ui) uniform writeonly uimage2DArray guideMip3;
+layout(set = 1, binding = 20) uniform sampler2D previousPosition;
+layout(set = 1, binding = 21) uniform sampler2D previousNormal;
+layout(set = 1, binding = 22) uniform usampler2D previousReceiver;
+layout(set = 1, binding = 23) uniform sampler2D previousReflection;
+
+shared vec4  signalSky[DENOISE_SKY_ENABLED ? 64 : 1];
+shared float skyObservation[DENOISE_SKY_ENABLED ? 1 : 64];
+shared vec4  signalBounce[64];
+shared vec4  signalSpecular[64];
+shared uvec4 guidePosition[64];
+shared uvec4 guideNormal[64];
+
+GIDenoiseSignals RawSignals(ivec2 p)
+{
+    vec4 sky = texelFetch(rawSky, p, 0);
+    // A disabled sky still carries the per-receiver traversal-availability flag used by temporal accumulation.
+    return GIDenoiseSignals(DENOISE_SKY_ENABLED ? sky : vec4(0, 0, 0, sky.a), texelFetch(rawBounce, p, 0),
+                            texelFetch(rawSpecular, p, 0));
+}
+
+GIDenoiseGuide SharedGuide(uint index)
+{
+    return DenoiseUnpackGuide(guidePosition[index], guideNormal[index]);
+}
+
+void StorePyramid(int level, ivec2 p, GIDenoiseSignals signals, GIDenoiseGuide guide)
+{
+    for (int layer = 0; layer < 3; ++layer)
+    {
+        vec4 value = layer == 0 ? signals.sky : layer == 1 ? signals.bounce : signals.specular;
+        if (level == 0)
+        {
+            imageStore(signalMip0, ivec3(p, layer), value);
+        }
+        else if (level == 1)
+        {
+            imageStore(signalMip1, ivec3(p, layer), value);
+        }
+        else if (level == 2)
+        {
+            imageStore(signalMip2, ivec3(p, layer), value);
+        }
+        else
+        {
+            imageStore(signalMip3, ivec3(p, layer), value);
+        }
+    }
+    // History repair only reads reduced guides. Level zero stays in shared memory
+    // for the reduction and does not need another full-resolution texture copy.
+    if (level > 0)
+    {
+        uvec4 position = uvec4(floatBitsToUint(guide.position), guide.identity);
+        uvec4 normal   = uvec4(floatBitsToUint(EncodeGBufferNormal(guide.normal)), floatBitsToUint(guide.roughness),
+                               packUnorm2x16(EncodeGBufferNormal(guide.geometric)));
+        for (int layer = 0; layer < 2; ++layer)
+        {
+            uvec4 value = layer == 0 ? position : normal;
+            if (level == 1)
+            {
+                imageStore(guideMip1, ivec3(p, layer), value);
+            }
+            else if (level == 2)
+            {
+                imageStore(guideMip2, ivec3(p, layer), value);
+            }
+            else
+            {
+                imageStore(guideMip3, ivec3(p, layer), value);
+            }
+        }
+    }
+}
+
+void StoreShared(uint lane, GIDenoiseSignals signals, GIDenoiseGuide guide)
+{
+    if (DENOISE_SKY_ENABLED)
+    {
+        signalSky[lane] = signals.sky;
+    }
+    else
+    {
+        skyObservation[lane] = signals.sky.a;
+    }
+    signalBounce[lane]   = signals.bounce;
+    signalSpecular[lane] = signals.specular;
+    guidePosition[lane]  = uvec4(floatBitsToUint(guide.position), guide.identity);
+    guideNormal[lane]    = uvec4(floatBitsToUint(EncodeGBufferNormal(guide.normal)), floatBitsToUint(guide.roughness),
+                                 packUnorm2x16(EncodeGBufferNormal(guide.geometric)));
+}
+
+#include "gi_previous_age.glsl"
+
+GIDenoiseSignals Preblur(ivec2 p, GIDenoiseGuide center)
+{
+    GIDenoiseSignals result       = RawSignals(p);
+    vec2             age          = PreviousAge(p, center);
+    float            hitDistance  = texelFetch(rawDiffuseDistance, p, 0).x;
+    float            viewDistance = max(length(center.position - sceneUbo.viewPosition.xyz), 0.01);
+    float            radius       = (1.0 + 8.0 * hitDistance / (hitDistance + 0.1 * viewDistance)) / sqrt(max(age.x, 1.0));
+    radius                        = clamp(radius, 1.0, 8.0);
+    const vec2 disk[12] =
+        vec2[12](vec2(.16, .18), vec2(-.24, .28), vec2(.38, -.18), vec2(-.18, -.49), vec2(.20, .61), vec2(-.64, .10),
+                 vec2(.65, .31), vec2(-.48, .62), vec2(.12, -.83), vec2(.79, -.43), vec2(-.75, -.50), vec2(.49, .83));
+    vec2  reflection     = hybrid.reflection.x != 0u ? texelFetch(rawReflection, p, 0).xy : vec2(0);
+    float specularRadius = (1.0 + 8.0 * reflection.x / (reflection.x + 0.1 * viewDistance)) * center.roughness
+                         * center.roughness / sqrt(max(age.y, 1.0));
+    specularRadius       = clamp(specularRadius, 0.5, 8.0);
+    vec4 weights   = vec4(result.sky.a >= 0.0 ? 1.0 : 0.0, result.bounce.a >= 0.0 ? 1.0 : 0.0, reflection.y >= 0.0 ? 1.0 : 0.0,
+                          result.specular.a >= 0.0 ? 1.0 : 0.0);
+    result.sky    *= weights.x;
+    result.bounce *= weights.y;
+    result.specular *= vec4(vec3(weights.z), weights.w);
+    for (int tap = 0; tap < 12; ++tap)
+    {
+        ivec2 q = p + ivec2(round(disk[tap] * radius));
+        // Each signal samples its own footprint. A wide diffuse disk can otherwise
+        // leave every reflection tap outside its narrower lobe. Keep a one-texel
+        // minimum footprint for subpixel kernels, whose weights still use their radius.
+        ivec2 specularQ      = p + ivec2(round(disk[tap] * max(1.0, specularRadius)));
+        bool  diffuseInView  = HybridInView(q);
+        bool  specularInView = HybridInView(specularQ);
+        if (diffuseInView || specularInView)
+        {
+            GIDenoiseGuide   guide         = center;
+            float            weight        = 0.0;
+            GIDenoiseSignals sampleSignals = GIDenoiseSignals(vec4(0), vec4(0), vec4(0));
+            float            tapWeight     = exp(-2.0 * dot(disk[tap], disk[tap]));
+            float            diffuseWeight = 0.0;
+            if (diffuseInView)
+            {
+                guide  = DenoiseGuide(q);
+                weight = DenoiseSurfaceWeight(center, guide);
+                // Reflection has an independent footprint; fetch its signal only at specularQ below.
+                sampleSignals.sky = texelFetch(rawSky, q, 0);
+                if (!DENOISE_SKY_ENABLED)
+                {
+                    sampleSignals.sky.rgb = vec3(0);
+                }
+                sampleSignals.bounce = texelFetch(rawBounce, q, 0);
+                diffuseWeight        = weight * tapWeight;
+            }
+            float specularWeight = 0.0;
+            bool  reflected      = false;
+            if (specularInView)
+            {
+                if (!diffuseInView || any(notEqual(specularQ, q)))
+                {
+                    guide  = DenoiseGuide(specularQ);
+                    weight = DenoiseSurfaceWeight(center, guide);
+                }
+                sampleSignals.specular = texelFetch(rawSpecular, specularQ, 0);
+                specularWeight = weight * tapWeight * DenoiseLobeWeight(center, guide)
+                               * exp(-dot(vec2(specularQ - p), vec2(specularQ - p)) / (specularRadius * specularRadius));
+                reflected      = hybrid.reflection.x == 0u || texelFetch(rawReflection, specularQ, 0).y >= 0.0;
+            }
+            vec4 accepted =
+                vec4(sampleSignals.sky.a >= 0.0 ? diffuseWeight : 0.0, sampleSignals.bounce.a >= 0.0 ? diffuseWeight : 0.0,
+                     reflected ? specularWeight : 0.0, sampleSignals.specular.a >= 0.0 ? specularWeight : 0.0);
+            if (DENOISE_SKY_ENABLED)
+            {
+                result.sky += sampleSignals.sky * accepted.x;
+            }
+            result.bounce   += sampleSignals.bounce * accepted.y;
+            result.specular += sampleSignals.specular * vec4(vec3(accepted.z), accepted.w);
+            weights         += accepted;
+        }
+    }
+    if (DENOISE_SKY_ENABLED)
+    {
+        result.sky /= max(weights.x, 1e-20);
+    }
+    result.bounce       /= max(weights.y, 1e-20);
+    result.specular     /= max(vec4(vec3(weights.z), weights.w), vec4(1e-20));
+    result.specular.rgb  = weights.z > 0.0 ? result.specular.rgb : vec3(-1);
+    result.specular.a    = weights.w > 0.0 ? result.specular.a : -1.0;
+    result.sky.a         = weights.x > 0.0 ? 1.0 : -1.0;
+    result.bounce.a      = weights.y > 0.0 ? 1.0 : -1.0;
+    return result;
+}
+
+void main()
+{
+    ivec2            p       = ivec2(gl_GlobalInvocationID.xy);
+    uint             lane    = gl_LocalInvocationIndex;
+    GIDenoiseSignals signals = GIDenoiseSignals(vec4(0), vec4(0), vec4(0));
+    GIDenoiseGuide   guide   = GIDenoiseGuide(vec3(0), vec3(0, 0, 1), vec3(0, 0, 1), 0u, 1.0);
+    if (HybridInView(p))
+    {
+        guide = DenoiseGuide(p);
+        if (guide.identity != 0u)
+        {
+            signals = Preblur(p, guide);
+        }
+    }
+    StorePyramid(0, p, signals, guide);
+    StoreShared(lane, signals, guide);
+    barrier();
+    // A group owns an aligned 8x8 tile, so its three lower mip levels need no global synchronization.
+    for (int level = 1; level < 4; ++level)
+    {
+        uint  width        = 8u >> uint(level);
+        bool  participates = lane < width * width;
+        ivec2 q            = ivec2(gl_WorkGroupID.xy) * int(width) + ivec2(lane % width, lane / width);
+        if (participates)
+        {
+            uint child = (lane / width) * width * 4u + (lane % width) * 2u;
+            guide      = SharedGuide(child);
+            for (uint i = 1u; i < 4u && guide.identity == 0u; ++i)
+            {
+                guide = SharedGuide(child + (i / 2u) * width * 2u + i % 2u);
+            }
+            signals      = GIDenoiseSignals(vec4(0), vec4(0), vec4(0));
+            vec4 weights = vec4(0);
+            for (uint i = 0u; i < 4u; ++i)
+            {
+                uint           index          = child + (i / 2u) * width * 2u + i % 2u;
+                GIDenoiseGuide sampleGuide    = SharedGuide(index);
+                float          weight         = DenoiseSurfaceWeight(guide, sampleGuide);
+                float          specularWeight = weight * DenoiseLobeWeight(guide, sampleGuide);
+                vec4           sky            = DENOISE_SKY_ENABLED ? signalSky[index] : vec4(0, 0, 0, skyObservation[index]);
+                vec4           accepted       = vec4(sky.a >= 0.0 ? weight : 0.0, signalBounce[index].a >= 0.0 ? weight : 0.0,
+                                                     signalSpecular[index].r >= 0.0 ? specularWeight : 0.0,
+                                                     signalSpecular[index].a >= 0.0 ? specularWeight : 0.0);
+                if (DENOISE_SKY_ENABLED)
+                {
+                    signals.sky += sky * accepted.x;
+                }
+                signals.bounce   += signalBounce[index] * accepted.y;
+                signals.specular += signalSpecular[index] * vec4(vec3(accepted.z), accepted.w);
+                weights          += accepted;
+            }
+            if (DENOISE_SKY_ENABLED)
+            {
+                signals.sky /= max(weights.x, 1e-20);
+            }
+            signals.bounce       /= max(weights.y, 1e-20);
+            signals.specular     /= max(vec4(vec3(weights.z), weights.w), vec4(1e-20));
+            signals.specular.rgb  = weights.z > 0.0 ? signals.specular.rgb : vec3(-1);
+            signals.sky.a         = weights.x > 0.0 ? 1.0 : -1.0;
+            signals.bounce.a      = weights.y > 0.0 ? 1.0 : -1.0;
+            signals.specular.a    = weights.w > 0.0 ? signals.specular.a : -1.0;
+        }
+        barrier();
+        if (participates)
+        {
+            StoreShared(lane, signals, guide);
+            StorePyramid(level, q, signals, guide);
+        }
+        barrier();
+    }
+}

@@ -132,32 +132,34 @@ static void ExpandExecutionStages(const RHIPipelineStageFlagBits (&pipeline)[N],
 int64_t ExecutionStages(int64_t stages, bool source)
 {
     // Logical stage order widens execution scopes only. Memory scopes always use ExpandStages.
-    using Stage            = RHIPipelineStageFlagBits;
+    using Stage              = RHIPipelineStageFlagBits;
 
-    stages                 = ExpandStages(stages);
+    stages                   = ExpandStages(stages);
 
-    int64_t result         = stages;
+    int64_t result           = stages;
 
-    const Stage graphics[] = {Stage::eTopOfPipe,
-                              Stage::eDrawIndirect,
-                              Stage::eVertexInput,
-                              Stage::eVertexShader,
-                              Stage::eTessellationControlShader,
-                              Stage::eTessellationEvaluationShader,
-                              Stage::eGeometryShader,
-                              Stage::eEarlyFragmentTests,
-                              Stage::eFragmentShader,
-                              Stage::eLateFragmentTests,
-                              Stage::eColorAttachmentOutput,
-                              Stage::eBottomOfPipe};
+    const Stage graphics[]   = {Stage::eTopOfPipe,
+                                Stage::eDrawIndirect,
+                                Stage::eVertexInput,
+                                Stage::eVertexShader,
+                                Stage::eTessellationControlShader,
+                                Stage::eTessellationEvaluationShader,
+                                Stage::eGeometryShader,
+                                Stage::eEarlyFragmentTests,
+                                Stage::eFragmentShader,
+                                Stage::eLateFragmentTests,
+                                Stage::eColorAttachmentOutput,
+                                Stage::eBottomOfPipe};
 
-    const Stage compute[]  = {Stage::eTopOfPipe, Stage::eDrawIndirect, Stage::eComputeShader, Stage::eBottomOfPipe};
+    const Stage compute[]    = {Stage::eTopOfPipe, Stage::eDrawIndirect, Stage::eComputeShader, Stage::eBottomOfPipe};
+    const Stage rayTracing[] = {Stage::eTopOfPipe, Stage::eDrawIndirect, Stage::eRayTracingShader, Stage::eBottomOfPipe};
 
-    const Stage transfer[] = {Stage::eTopOfPipe, Stage::eTransfer, Stage::eBottomOfPipe};
+    const Stage transfer[]   = {Stage::eTopOfPipe, Stage::eTransfer, Stage::eBottomOfPipe};
 
     ExpandExecutionStages(graphics, source, stages, result);
 
     ExpandExecutionStages(compute, source, stages, result);
+    ExpandExecutionStages(rayTracing, source, stages, result);
 
     ExpandExecutionStages(transfer, source, stages, result);
 
@@ -202,6 +204,7 @@ const char* NodeTypeName(RDGNodeType type)
     {
         case RDGNodeType::eGraphicsPass: result = "graphics"; break;
         case RDGNodeType::eComputePass: result = "compute"; break;
+        case RDGNodeType::eRayTracingPass: result = "ray_tracing"; break;
         case RDGNodeType::eTransferPass: result = "transfer"; break;
         default: result = "none"; break;
     }
@@ -635,7 +638,7 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
 
     if (m_options.logging.enabled)
     {
-        const bool transfer = graph.m_pendingGfxPassDescs.empty() && graph.m_pendingComputePassDescs.empty();
+        const bool transfer = graph.m_pendingGfxPassDescs.empty() && graph.m_pendingDispatchPassDescs.empty();
 
         const size_t stream = transfer ? 1 : 0;
 
@@ -1621,13 +1624,14 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
         "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
         "edges={},dependency_hazards={},reordered={}) "
         "barriers(calls={},memory={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
-        "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
+        "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={} ray_tracing_passes={}",
         Label(sample.graph), sample.transferOnly ? "transfer" : "frame", sample.execution, sample.windowExecutions,
         sample.windowNodes, sample.nodeCount, sample.passCounts[1], sample.passCounts[2], sample.passCounts[3],
         sample.resources, sample.importedResources, sample.transientResources, sample.dependencyEdges, sample.dependencyHazards,
         sample.reorderedNodes, t.barrierCalls, t.memoryTransitions, t.bufferTransitions, t.textureTransitions,
         t.initialResources, t.internalMemoryTransitions, t.internalTextureTransitions, t.reads, t.writes, sample.compileCPUUs,
-        sample.executeCPUUs, sample.precompiled, sample.validated, sample.preparationPasses);
+        sample.executeCPUUs, sample.precompiled, sample.validated, sample.preparationPasses,
+        sample.passCounts[ToUnderlying(RDGNodeType::eRayTracingPass)]);
 
     text += fmt::format(" liveness(culled={},reused_allocations={}) "
                         "pool_estimated_bytes(assigned={},available={},retiring={}) "

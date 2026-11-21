@@ -2,23 +2,7 @@
 #define ZEN_HYBRID_PROVIDER
 #include "gi_common.glsl"
 #include "hybrid_ray_counts.glsl"
-struct HybridRayResult
-{
-    bool  hit;
-    vec3  position;
-    vec3  normal;
-    ivec3 cell;
-    // A completed observation: a hit or a covered miss. Only a valid miss contributes unoccluded
-    // light; an invalid result has neither a surface nor a visibility contribution.
-    bool valid;
-    // Exact HW surface identity, retained through shared sky/bounce queries. Field hits have none.
-    uvec4 triangle;
-    vec2  barycentrics;
-};
-HybridRayResult MakeHybridRayResult(bool hit, vec3 position, vec3 normal, ivec3 cell, bool valid)
-{
-    return HybridRayResult(hit, position, normal, cell, valid, uvec4(0xffffffffu), vec2(0));
-}
+#include "hybrid_ray_result.glsl"
 #ifdef HYBRID_FIELD_TRAVERSAL
 // Compute features trace the GPU-built sparse distance field (DistanceFieldScene), with finer local
 // volumes around lights, whose lanterns let light out through openings the scene field closes.
@@ -46,6 +30,7 @@ HybridRayResult FieldTraceRay(vec3 origin, vec3 direction, float maximumDistance
 {
 #    ifdef HYBRID_COUNT_RAYS
     ++issuedComputeRays[issuedRayFeature];
+    ++traceBreakdown[issuedRayPurpose != 0u ? issuedRayPurpose : (issuedRayFeature == 3u ? 3u : 0u)];
 #    endif
     DistanceFieldTraceResult trace;
     bool                     retry = true;
@@ -86,7 +71,11 @@ float FieldLightVisibility(HybridRayResult hit, vec3 lightPosition)
 #    define HybridTraceRay(occupancy, origin, direction, maximumDistance) \
         VoxelTraceRay(occupancy, origin, direction, maximumDistance)
 #elif defined(HYBRID_HARDWARE_PROVIDER)
-#    include "hardware_ray_query.glsl"
+#    ifdef HYBRID_RAY_PIPELINE
+#        include "hardware_ray_pipeline.glsl"
+#    else
+#        include "hardware_ray_query.glsl"
+#    endif
 // Call sites share triangle visibility; only the traversal mechanism differs.
 #    define HybridTraceRay(occupancy, origin, direction, maximumDistance) \
         HardwareTraceRay(origin, direction, maximumDistance, false)
@@ -145,6 +134,7 @@ HybridRayResult VoxelTraceRay(sampler3D occupancy, vec3 origin, vec3 direction, 
     {
 #ifdef HYBRID_COUNT_RAYS
         ++issuedComputeRays[issuedRayFeature];
+        ++traceBreakdown[issuedRayPurpose != 0u ? issuedRayPurpose : (issuedRayFeature == 3u ? 3u : 0u)];
 #endif
         vec3  entry         = p + direction * enter;
         ivec3 cell          = ivec3(clamp(floor(entry), vec3(0), vec3(gi.volume.x - 1.0)));

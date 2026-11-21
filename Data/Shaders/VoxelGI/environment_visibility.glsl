@@ -57,15 +57,4 @@ float VoxelEnvironmentVisibility(sampler3D opacity, vec3 origin, vec3 direction,
     }
     return 0.0;
 }
-float VoxelEnvironmentConeVisibility(sampler3D opacity, vec3 origin, vec3 direction)
-{
-    // A blocker on the axis occludes only part of a wide environment cone.
-    // Keep exact occupancy per sample so closed geometry still blocks the sky.
-    float visibility = 0.0;
-    for (int i = 0; i < ENVIRONMENT_CONE_SAMPLES; ++i)
-    {
-        visibility += VoxelEnvironmentVisibility(opacity, origin, EnvironmentConeDirection(direction, i), 1e20);
-    }
-    return visibility / float(ENVIRONMENT_CONE_SAMPLES);
-}
 #endif

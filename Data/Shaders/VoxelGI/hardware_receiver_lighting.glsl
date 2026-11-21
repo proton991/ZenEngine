@@ -5,7 +5,6 @@
 #include "ray_hit_lighting.glsl"
 
 // Forward layers that cannot reuse an exact opaque receiver trace their own transport.
-// No screen-probe interpolation, voxel-cone fallback or cache radiance participates.
 void HardwareReceiverDiffuse(vec3 position, vec3 normal, vec3 geometric, uvec2 pixel, uint count, out vec3 sky, out vec3 bounce)
 {
     sky          = vec3(0);

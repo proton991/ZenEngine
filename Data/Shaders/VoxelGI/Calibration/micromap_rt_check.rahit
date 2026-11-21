@@ -1,0 +1,11 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+layout(location = 0) rayPayloadInEXT vec4 result;
+void main()
+{
+    result.y += 1.0;
+    if ((gl_LaunchIDEXT.x & 1u) != 0u)
+    {
+        ignoreIntersectionEXT;
+    }
+}

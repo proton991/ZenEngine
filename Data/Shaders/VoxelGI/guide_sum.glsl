@@ -8,7 +8,9 @@ const uint GUIDE_SUM_WORDS = 10u;
 #ifndef GUIDE_SUM_STORAGE_WORDS
 #    define GUIDE_SUM_STORAGE_WORDS GUIDE_SUM_WORDS
 #endif
+#ifndef GUIDE_SUM_EXTERNAL_STORAGE
 shared uint guideSumWords[GUIDE_SUM_BINS * GUIDE_SUM_STORAGE_WORDS];
+#endif
 
 void GuideSumClear(uint bin)
 {

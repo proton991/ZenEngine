@@ -1,0 +1,19 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0) uniform sampler2DArray source;
+layout(std430, set = 1, binding = 1) writeonly buffer Results
+{
+    vec4 values[];
+};
+void main()
+{
+    ivec2 p      = ivec2(gl_GlobalInvocationID.xy);
+    ivec3 extent = textureSize(source, 0);
+    if (all(lessThan(p, extent.xy)))
+    {
+        for (int layer = 0; layer < extent.z; ++layer)
+        {
+            values[(layer * extent.y + p.y) * extent.x + p.x] = texelFetch(source, ivec3(p, layer), 0);
+        }
+    }
+}

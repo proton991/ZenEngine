@@ -431,7 +431,7 @@ def main():
     again.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     if args.command in ('capture', 'accumulate'):
-        args.backend, args.gather, args.lights = 'setup', 'setup', 'all'
+        args.backend, args.lights = 'setup', 'all'
     if args.command == 'capture':
         if args.warmup < 2 or args.frames < 5 or not 0 < args.threshold < 255 or not np.isfinite(args.angle):
             parser.error('Need warmup >= 2, frames >= 5, threshold in (0, 255) and a finite angle')

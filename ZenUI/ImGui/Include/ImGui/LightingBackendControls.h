@@ -4,39 +4,27 @@
 
 namespace zen::ui
 {
-// The passes the GI tracing panel configures, each with one tracer.
-enum class GIPass : uint32_t
+// What the GI settings panel needs from the renderer and the device.
+struct GIControlsContext
 {
-    Diffuse,  // Sky light and diffuse bounce rays.
-    Specular, // Specular occlusion and glossy reflection rays.
-    SkyCache, // Sky visibility for the voxel irradiance cache.
-    Shadows,  // Direct-light shadows.
-    Count
+    // Settings in use, with the optimal configuration and automatic tracing resolved. Null uses the input.
+    const rc::VoxelGIRuntimeSettings* effective{nullptr};
+    bool                              hardwareReady{false};      // Hardware RT is active.
+    const char*                       reason{""};                // Why hardware RT is not active.
+    bool                              rayQueries{false};         // The device supports ray queries.
+    bool                              rayTracingPipeline{false}; // The device supports the RT pipeline.
 };
 
-enum class GITracer : uint32_t
-{
-    HardwareRT,
-    Field,      // Compute: GPU-built sparse distance field; GI rays and the sky cache.
-    ShadowMaps, // Direct shadows only; traces no rays.
-    // The pass's GI is replaced by the unoccluded environment, as without GI. Diffuse GI keeps
-    // tracing; specular GI, the sky cache and shadows trace no rays.
-    Off,
-    Mixed // The pass's ray features use different providers (set per feature in the config).
-};
+// The GI settings shared by the editor and the runtime UI. Each control edits one GIConfigOption, so
+// FormatGIConfig and ZenApp's --gi-* arguments reproduce what is shown. In the optimal configuration
+// the controls show the resolved choice; editing one of them switches to a custom configuration.
+// Returns true when settings changed.
+bool DrawGIControls(rc::VoxelGIRuntimeSettings& settings, const GIControlsContext& context);
 
-GITracer GetGIPassTracer(const rc::VoxelGISettings& settings, GIPass pass);
-// Selecting a ray tracer for a pass that is off turns it on; other choices keep the pass's enables.
-void SetGIPassTracer(rc::VoxelGISettings& settings, GIPass pass, GITracer tracer);
-// Sets GI to HW RT or its current Compute tracer; global Compute defaults direct shadows to maps.
-// Existing feature enables and explicit shadow-map choices are preserved.
-// HW RT defaults to per-pixel gather; the user can then explicitly select screen probes.
-void SetGIRayTracing(rc::VoxelGISettings& settings, bool hardware);
-
-// Shared by the editor and runtime panel so tracing selection has the same semantics.
-bool DrawLightingBackendControls(rc::VoxelGISettings& settings, bool hardwareReady, const char* reason);
-bool DrawGIGatherControls(rc::VoxelGISettings& settings);
-bool DrawGIPresetControls(rc::VoxelGIRuntimeSettings& settings, const char* selectionReason);
+const char* GetGIMethodLabel(rc::GIMethod method);
+const char* GetGITracingLabel(rc::GITracing tracing);
+const char* GetGIDenoiserLabel(rc::GIDenoiser denoiser);
+const char* GetGIShadowsLabel(rc::GIShadows shadows);
 
 enum class GILightingState
 {
@@ -47,5 +35,5 @@ enum class GILightingState
     Unavailable
 };
 // Inactive scenes have no status. Display in the scene toolbar, outside the rendered image.
-const char* GetGILightingStatus(GILightingState state, bool hardwareReady);
+const char* GetGILightingStatus(GILightingState state);
 } // namespace zen::ui

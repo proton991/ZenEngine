@@ -141,6 +141,33 @@ void RuntimeWindow::Update()
     }
 }
 
+bool RuntimeWindow::ResizeSceneTarget(const platform::WindowExtent& extent)
+{
+    const uint32_t width  = m_settings.followWindow ? extent.width : m_settings.renderWidth;
+    const uint32_t height = m_settings.followWindow ? extent.height : m_settings.renderHeight;
+    const bool     ready  = m_target.Resize(width, height);
+    if (ready)
+    {
+        m_camera.SetExtent(width, height);
+    }
+    return ready;
+}
+
+bool RuntimeWindow::PrepareFirstView()
+{
+    bool ready = m_window && m_present && m_state == runtime::RuntimeState::Starting;
+    if (ready)
+    {
+        const platform::WindowExtent extent = m_window->GetFramebufferExtent();
+        if (extent.width != 0 && extent.height != 0 && !m_window->IsMinimized())
+        {
+            rc::RendererServer& renderer = *m_device.GetRendererServer();
+            ready = ResizeSceneTarget(extent) && renderer.PrecacheSceneView(m_target.GetView(), this, m_present);
+        }
+    }
+    return ready;
+}
+
 void RuntimeWindow::Shutdown()
 {
     if (m_window)
@@ -226,12 +253,9 @@ bool RuntimeWindow::Render(rc::RenderOverlay* overlay, rc::RDGDebugSnapshot* cap
             const bool drawScene = m_state != runtime::RuntimeState::Paused;
             if (drawScene)
             {
-                const uint32_t width  = m_settings.followWindow ? extent.width : m_settings.renderWidth;
-                const uint32_t height = m_settings.followWindow ? extent.height : m_settings.renderHeight;
-                valid                 = m_target.Resize(width, height);
+                valid = ResizeSceneTarget(extent);
                 if (valid)
                 {
-                    m_camera.SetExtent(width, height);
                     const float seconds =
                         m_sceneFrames == 0 ? 0.0f : m_clock.Advance(std::chrono::steady_clock::now(), m_settings.fixedStep);
                     ApplyInput(seconds);

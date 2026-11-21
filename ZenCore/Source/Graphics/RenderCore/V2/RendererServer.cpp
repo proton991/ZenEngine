@@ -5,7 +5,6 @@
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
@@ -30,13 +29,19 @@ void RendererServer::Init(const RenderingSettings* initialSettings)
     {
         LOGW("Using GI defaults after rejected configuration");
 
-        ApplyVoxelGIPreset(VoxelGIPreset::Medium, settings);
-
-        settings.resolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
+        ApplyVoxelGIPreset(VoxelGIPreset::Optimal, settings);
     }
 
+    const bool automatic =
+        IsOptimalVoxelGIConfiguration(settings) || settings.cone.rayProvider == VoxelGISettings::RayProvider::Auto;
+    m_giRequested       = settings;
     m_giSelectionReason = ResolveVoxelGIAutomaticProvider(settings, m_pRenderDevice->GetGPUInfo());
-    LOGI("GI preset {}: {}", GetVoxelGIPresetName(GetVoxelGIPreset(settings)), m_giSelectionReason);
+    m_giAutomaticTier   = automatic;
+    LOGI("GI preset {}: {}; method={} tracing={} resolution_divisor={} denoiser={} shadows={}",
+         GetVoxelGIPresetName(GetVoxelGIPreset(settings)), m_giSelectionReason, GetGIMethodName(GetGIMethod(settings.cone)),
+         GetGITracingName(GetGITracing(settings.cone)),
+         settings.cone.pixelResolutionDivisor == 0 ? std::string("auto") : std::to_string(settings.cone.pixelResolutionDivisor),
+         GetGIDenoiserName(GetGIDenoiser(settings.cone)), GetGIShadowsName(GetGIShadows(settings.cone)));
     m_giSettings                = settings;
 
     m_giSettings.asyncCompute   = m_pRenderDevice->GetAsyncComputeMode();
@@ -55,19 +60,6 @@ void RendererServer::Init(const RenderingSettings* initialSettings)
     m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice);
 
     m_pSkyboxRenderer->Init();
-
-    const platform::VoxelizerMode requestedMode = m_giSettings.voxelizer;
-
-    const platform::VoxelizerMode selectedMode  = ResolveVoxelizerMode(requestedMode, m_pRenderDevice->GetGPUInfo());
-
-    if (requestedMode == platform::VoxelizerMode::eGeometry && selectedMode != platform::VoxelizerMode::eGeometry)
-    {
-        LOGW("Geometry voxelization is not supported by the GPU; using comp.");
-    }
-
-    LOGI("Selected voxelizer: {}", selectedMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp");
-
-    m_voxelizerMode = selectedMode;
 
     CreateVoxelGIResources();
 
@@ -109,11 +101,47 @@ void RendererServer::Destroy()
 
 void RendererServer::CreateVoxelGIResources()
 {
-    m_pVoxelizer = CreateVoxelizer();
+    m_pVoxelizer = ZEN_NEW() ComputeVoxelizer(m_pRenderDevice);
+    m_pVoxelizer->Init(m_giSettings.resolution);
+    m_pVoxelizer->Configure(m_giSettings.resolution, m_giSettings.averagedReflectance, m_giSettings.reflectanceBudgetBytes);
     m_pVoxelizer->SetRenderScene(m_pScene);
     m_pVoxelGI = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pVoxelizer, &m_giSettings.cone);
     m_pVoxelGI->SetSettings(m_giSettings.cone);
+    m_pVoxelGI->SetAutomaticTier(m_giAutomaticTier);
     m_pVoxelGI->SetRenderScene(m_pScene);
+}
+
+bool RendererServer::PrecacheSceneView(const RenderView& view, RenderOverlay* overlay, RHIViewport* presentation)
+{
+    bool ready = m_pScene != nullptr && m_pSkyboxRenderer->PrepareEnvironment(m_pScene->GetEnvTexture());
+    if (ready && m_renderOption == RenderOption::eVoxelGI && m_giSettings.cone.GetHardwareFeatureMask() != 0
+        && GetHardwareTierUnavailableReason(m_giSettings.cone, m_pRenderDevice->GetGPUInfo()) == nullptr && m_pVoxelGI->Init())
+    {
+        // Build static acceleration structures while loading. The first scene frame uses the
+        // same committed geometry generation, including any changes made after preparation.
+        RenderGraph& graph = *m_pRenderDevice->GetCurrentFrameRDG();
+        ready              = m_pScene->Update() && graph.Begin();
+        if (ready)
+        {
+            // A tier fallback can still record visibility preparation. The actual frame rechecks readiness.
+            m_pVoxelGI->BuildRayQueryGraph();
+            ready = graph.End() && m_pRenderDevice->ExecuteRenderGraph(graph);
+            m_pVoxelGI->OnVisibilityGraphExecuted(ready ? RenderFrameResult::eSubmitted : RenderFrameResult::eFailed);
+        }
+    }
+    if (ready)
+    {
+        // Compiling the view leaves temporal histories at their pre-frame generation.
+        const RenderFrameResult result = PrepareOrDispatchView(view, overlay, true, presentation, nullptr, true);
+        ready                          = result == RenderFrameResult::eDeclined || result == RenderFrameResult::eSuspended;
+    }
+    HybridGIRenderer* hybrid = m_pDeferredLightingRenderer->GetHybridGI();
+    if (ready && hybrid != nullptr && hybrid->GetScreenProbeCount() != 0)
+    {
+        ready = hybrid->InitializeScreenProbeHistories();
+    }
+    ready = ready && m_pRenderDevice->PrepareForResourceReconfiguration();
+    return ready;
 }
 
 RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requestedView,
@@ -121,6 +149,16 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                                                           bool              drawScene,
                                                           RHIViewport*      presentation,
                                                           RDGDebugSnapshot* capture)
+{
+    return PrepareOrDispatchView(requestedView, overlay, drawScene, presentation, capture, false);
+}
+
+RenderFrameResult RendererServer::PrepareOrDispatchView(const RenderView& requestedView,
+                                                        RenderOverlay*    overlay,
+                                                        bool              drawScene,
+                                                        RHIViewport*      presentation,
+                                                        RDGDebugSnapshot* capture,
+                                                        bool              precache)
 {
     presentation                = presentation != nullptr ? presentation : m_pPresentationViewport;
     RenderView view             = requestedView;
@@ -154,6 +192,11 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
     m_status.gpuCulling = {};
     if (renderScene)
     {
+        if (IsPreparingGI())
+        {
+            // Field construction continues on PBR frames; its temporary status is not a resource failure.
+            m_status.fallbackReason.clear();
+        }
         m_status.requested  = m_renderOption == RenderOption::eVoxelGI ? RenderAlgorithm::eVoxelGI : RenderAlgorithm::ePBR;
         m_frameRenderOption = m_status.fallbackReason.empty() ? m_renderOption : RenderOption::ePBR;
         m_debugDescription  = {};
@@ -179,7 +222,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
         if (succeeded && renderScene)
         {
-            const bool hybridDebug = m_debug.output >= DebugOutput::eGIRawSky && m_debug.output <= DebugOutput::eGIFallback;
+            const bool hybridDebug = m_debug.output >= DebugOutput::eGIRawSky && m_debug.output <= DebugOutput::eGICache;
             const bool diagnostic =
                 m_debug.output != DebugOutput::eFinal && m_debug.output != DebugOutput::eDepth && !hybridDebug;
 
@@ -193,12 +236,26 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
             if (m_frameRenderOption == RenderOption::eVoxelGI)
             {
                 const bool visibilityReady = m_pVoxelGI->BuildRayQueryGraph();
-                m_frameGI                  = (visibilityReady || m_pVoxelGI->IsPreparingField()) && !diagnostic;
+                m_frameGI                  = visibilityReady && !diagnostic;
                 m_frameVisibility          = true;
-                if (!visibilityReady && !m_pVoxelGI->IsPreparingField())
+                if (!visibilityReady)
                 {
-                    m_frameRenderOption     = RenderOption::ePBR;
-                    m_status.fallbackReason = "Scene visibility preparation failed.";
+                    m_frameRenderOption = RenderOption::ePBR;
+                    const char* tier    = m_pVoxelGI->GetTierFallbackReason();
+                    if (!m_pVoxelGI->IsPreparingField())
+                    {
+                        m_status.fallbackReason =
+                            std::string("Scene visibility preparation failed (") + m_pVoxelGI->GetProviderReason() + ").";
+                    }
+                    else if (tier != nullptr)
+                    {
+                        m_status.fallbackReason = std::string("HW RT unavailable (") + tier
+                                                + "); preparing Compute GI distance field; using PBR and environment lighting.";
+                    }
+                    else
+                    {
+                        m_status.fallbackReason = "Preparing Compute GI distance field; using PBR and environment lighting.";
+                    }
                 }
             }
 
@@ -222,10 +279,8 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
                 if (m_frameRenderOption == RenderOption::eVoxelGI)
                 {
-                    // The radiance voxels provide indirect light from the first frame. Ray/probe
-                    // gather starts when its visibility is ready, with fresh temporal history.
-                    const bool rayGather = m_pVoxelGI->UsesFieldTraversal() || m_pVoxelGI->UsesHardwareQueries();
-                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, rayGather);
+                    // Pixel GI starts only after visibility is ready.
+                    m_pDeferredLightingRenderer->BuildGBufferGraph(view, true);
                     m_status.gpuCulling = m_pDeferredLightingRenderer->GetGPUCullingStatus();
 
                     if (m_pVoxelGI->UsesVoxelLighting())
@@ -248,11 +303,13 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
                     m_pDeferredLightingRenderer->BuildCompositionGraph(
                         view, m_frameRenderOption == RenderOption::eVoxelGI ? m_pVoxelGI : nullptr, m_pSceneShadows);
 
-                    if (m_frameRenderOption == RenderOption::eVoxelGI && m_pDeferredLightingRenderer->GetHybridGI() != nullptr
-                        && !m_pDeferredLightingRenderer->GetHybridGI()->IsActive())
+                    const HybridGIRenderer* hybrid = m_pDeferredLightingRenderer->GetHybridGI();
+                    if (m_frameRenderOption == RenderOption::eVoxelGI && hybrid != nullptr && !hybrid->IsActive())
                     {
-                        m_frameRenderOption     = RenderOption::ePBR;
-                        m_status.fallbackReason = "Hybrid GI history allocation failed.";
+                        const char* reason  = hybrid->GetFailureReason();
+                        m_frameRenderOption = RenderOption::ePBR;
+                        m_status.fallbackReason =
+                            std::string("Hybrid GI unavailable (") + (reason != nullptr ? reason : "no GI was recorded") + ").";
                     }
                 }
                 else
@@ -305,7 +362,11 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
 
         succeeded = succeeded && pFrameRDG->End();
 
-        if (succeeded)
+        if (succeeded && precache)
+        {
+            result = m_pRenderDevice->PrecacheFrameGraph() ? RenderFrameResult::eDeclined : RenderFrameResult::eFailed;
+        }
+        else if (succeeded)
         {
             result = presentation != nullptr
                        ? m_pRenderDevice->ExecuteRenderGraph(presentation, renderScene ? capture : nullptr)
@@ -345,7 +406,7 @@ RenderFrameResult RendererServer::DispatchRenderWorkloads(const RenderView& requ
         m_pSceneShadows->OnRenderGraphExecuted(result);
     }
 
-    if (renderScene && result != RenderFrameResult::eSubmitted)
+    if (renderScene && !precache && result != RenderFrameResult::eSubmitted)
     {
         m_debugDescription.available = false;
 
@@ -425,6 +486,16 @@ void RendererServer::ResetRenderingFailure()
     m_status.fallbackReason.clear();
 }
 
+const char* RendererServer::GetGISelectionReason() const
+{
+    return GetGITierFallbackReason() != nullptr ? "hardware_failed_compute_fallback" : m_giSelectionReason;
+}
+
+const char* RendererServer::GetGITierFallbackReason() const
+{
+    return m_pVoxelGI != nullptr ? m_pVoxelGI->GetTierFallbackReason() : nullptr;
+}
+
 bool RendererServer::IsPreparingGI() const
 {
     return m_renderOption == RenderOption::eVoxelGI && m_pVoxelGI != nullptr && m_pVoxelGI->IsPreparingField();
@@ -457,26 +528,6 @@ void RendererServer::SetRenderScene(RenderScene* pScene)
     }
 
     m_pVoxelGI->SetRenderScene(pScene);
-}
-
-VoxelizerBase* RendererServer::CreateVoxelizer()
-{
-    VoxelizerBase* voxelizer = nullptr;
-
-    if (m_voxelizerMode == platform::VoxelizerMode::eGeometry)
-    {
-        voxelizer = ZEN_NEW() GeometryVoxelizer(m_pRenderDevice);
-    }
-    else
-    {
-        voxelizer = ZEN_NEW() ComputeVoxelizer(m_pRenderDevice);
-    }
-
-    voxelizer->Init(m_giSettings.resolution);
-
-    voxelizer->Configure(m_giSettings.resolution, m_giSettings.averagedReflectance, m_giSettings.reflectanceBudgetBytes);
-
-    return voxelizer;
 }
 
 } // namespace zen::rc

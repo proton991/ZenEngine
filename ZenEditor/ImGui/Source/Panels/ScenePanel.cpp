@@ -173,7 +173,7 @@ private:
                                                : snapshot.preparingGI ? ui::GILightingState::Preparing
                                                : snapshot.refiningGI  ? ui::GILightingState::Refining
                                                                       : ui::GILightingState::Ready;
-            giStatus                           = ui::GetGILightingStatus(lighting, snapshot.hardwareQueries);
+            giStatus                           = ui::GetGILightingStatus(lighting);
         }
         const std::string lighting = giStatus != nullptr ? fmt::format("  |  {}", giStatus) : "";
         const std::string profile =
@@ -189,8 +189,8 @@ private:
         {
             // Reserve the longest status so preparation/readiness cannot reflow the toolbar.
             profileWidth += ImGui::CalcTextSize("  |  ").x
-                          + std::max(ImGui::CalcTextSize(ui::GetGILightingStatus(ui::GILightingState::Preparing, true)).x,
-                                     ImGui::CalcTextSize(ui::GetGILightingStatus(ui::GILightingState::Unavailable, false)).x);
+                          + std::max(ImGui::CalcTextSize(ui::GetGILightingStatus(ui::GILightingState::Preparing)).x,
+                                     ImGui::CalcTextSize(ui::GetGILightingStatus(ui::GILightingState::Unavailable)).x);
         }
 
         const float profileX = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - profileWidth;

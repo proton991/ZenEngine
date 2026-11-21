@@ -16,7 +16,7 @@ layout(set = 1, binding = 5) uniform sampler2D depthMap;
 layout(set = 1, binding = 6) uniform samplerCube envIrradianceMap;
 layout(set = 1, binding = 7) uniform samplerCube envPrefilteredMap;
 layout(set = 1, binding = 8) uniform sampler2D lutBRDFMap;
-#if defined(HARDWARE_SHADOWS)
+#if defined(HARDWARE_SHADOWS) || defined(PIPELINE_SHADOWS)
 layout(set = 4, binding = 3) uniform sampler2D shadowReceiverPosition;
 #endif
 
@@ -44,7 +44,10 @@ capture;
 
 #include "../Common/scene_lighting.glsl"
 #ifdef VOXEL_GI
-#    include "../VoxelGI/cone_trace.glsl"
+#    include "../VoxelGI/gi_common.glsl"
+#    ifdef LIGHTING_CAPTURE
+vec3 captureDiffuseBounced = vec3(0), captureDiffuseEscaped = vec3(0);
+#    endif
 #    include "../ShadowMapping/scene_shadows.glsl"
 #    include "../VoxelGI/gi_ray_totals.glsl"
 #elif defined(SCENE_SHADOW_MAPS)
@@ -109,7 +112,7 @@ void main()
     vec3 relativePosition =
         ReconstructGBufferPosition(gl_FragCoord.xy, textureSize(depthMap, 0), depth, gbuffer.inverseViewProjection);
     vec3 worldPos = relativePosition + gbuffer.worldOrigin.xyz;
-#if defined(HARDWARE_SHADOWS)
+#if defined(HARDWARE_SHADOWS) || defined(PIPELINE_SHADOWS)
     worldPos = texelFetch(shadowReceiverPosition, ivec2(gl_FragCoord.xy), 0).xyz;
 #endif
     vec3 N = DecodeGBufferNormal(SURFACE_SAMPLE(normalMap).rg);
@@ -224,8 +227,7 @@ void main()
     if (gi.indirect.x > 0.5)
     {
         sky    = HybridSky(ivec2(gl_FragCoord.xy));
-        bounce = gi.lighting.w > 0.5 ? texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb
-                                     : DiffuseVoxelLighting(worldPos, N, false);
+        bounce = texelFetch(hybridBounce, ivec2(gl_FragCoord.xy), 0).rgb;
     }
     vec3 diffuseIBL  = (bounce + sky) * albedo;
     vec4 reflected   = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0);
@@ -235,7 +237,7 @@ void main()
     captureDiffuseBounced = bounce;
 #        endif
 #    else
-    vec3 diffuseIBL = (gi.indirect.x > 0.5 ? DiffuseVoxelLighting(worldPos, N) : irradiance) * albedo;
+    vec3 diffuseIBL = irradiance * albedo;
 #    endif
 #else
     vec3 diffuseIBL = irradiance * albedo;

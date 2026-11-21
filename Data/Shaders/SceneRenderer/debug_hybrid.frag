@@ -6,10 +6,11 @@ layout(set = 1, binding = 2) uniform sampler2D historyLength;
 layout(set = 1, binding = 3) uniform usampler2D missingReceiver;
 void main()
 {
-    ivec2 pixel   = clamp(ivec2(inUV * vec2(textureSize(sourceImage, 0))), ivec2(0), textureSize(sourceImage, 0) - 1);
-    vec4  value   = texelFetch(sourceImage, pixel, 0);
-    vec4  history = texelFetch(historyLength, pixel, 0);
-    vec3  color   = vec3(0);
+    ivec2 pixel        = clamp(ivec2(inUV * vec2(textureSize(sourceImage, 0))), ivec2(0), textureSize(sourceImage, 0) - 1);
+    vec4  value        = texelFetch(sourceImage, pixel, 0);
+    ivec2 historyPixel = clamp(ivec2(inUV * vec2(textureSize(historyLength, 0))), ivec2(0), textureSize(historyLength, 0) - 1);
+    vec4  history      = texelFetch(historyLength, historyPixel, 0);
+    vec3  color        = vec3(0);
     // selection.y selects the reflection history (face 1); selection.z marks a real fallback mask.
     bool reflection = debug.selection.y != 0u;
     if (debug.selection.x == 5u)
