@@ -3,16 +3,13 @@
 The sample projects and the remaining component test suites live in Git submodules, [ZenSample](https://github.com/proton991/ZenSample)
 and [ZenTest](https://github.com/proton991/ZenTest). Clone with `--recurse-submodules`,
 or run `git submodule update --init --recursive` in an existing checkout.
-Every configure fast-forwards these subprojects and ZenAssetProcessor to the latest GitHub `main`, so a recorded submodule
-commit only seeds a new clone. A failed fetch stops configuration. Local work that a
-fast-forward would replace stays in place with a warning, and
+By default, configuration fast-forwards each enabled submodule to the branch recorded in `.gitmodules`.
+A failed fetch stops configuration. Local work that a fast-forward would replace stays in place with a warning, and
 `-DZEN_UPDATE_SUBPROJECTS=OFF` skips the update when offline or building an older commit.
 `ZEN_BUILD_SAMPLES=OFF` disables examples; `BUILD_TESTING=OFF` disables tests.
 `ZEN_BUILD_APP` and `ZEN_BUILD_EDITOR` control the standalone ZenApp and editor targets.
-Submodule checkouts start on a detached HEAD, so run `git switch main` inside one before
-committing, then push it separately. ZenEngine uses the new `main` from its next
-configure. Until the recorded commit is updated, `git status` lists the submodule as
-changed, and committing that pointer is optional.
+Submodule checkouts start on a detached HEAD. Switch to the development branch inside the
+submodule, push its commits to its own repository, then commit the updated pointer in ZenEngine.
 
 Asset processor tests and validation tools are maintained in the independent
 [ZenAssetProcessor repository](https://github.com/proton991/ZenAssetProcessor). Its optional
@@ -263,8 +260,7 @@ cmake --build --preset x64-windows-msvc-release --target ZenApp zen_editor --par
 [ZenAssetProcessor](https://github.com/proton991/ZenAssetProcessor) is an independent
 library checked out as the root-level `ZenAssetProcessor` Git submodule, like
 `ZenSample` and `ZenTest`. Run `git submodule update --init --recursive` after cloning.
-Configuration fast-forwards it to GitHub `main`, using the same shared update
-policy as the other two subprojects. Set `ZEN_UPDATE_SUBPROJECTS=OFF` to retain
+Configuration follows its upstream branch in `.gitmodules`. Set `ZEN_UPDATE_SUBPROJECTS=OFF` to retain
 the checked-out revision for offline or pinned builds.
 Processor build files live in `<build-directory>/ZenAssetProcessor`.
 

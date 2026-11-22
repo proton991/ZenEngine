@@ -207,15 +207,6 @@ zenasset::Status BeforeCachePublication(void* user)
 
 // Canonical tool opens publish after loading. Runtime loads and explicit recooks
 // await only their own publication. Shutdown cancels pending writes.
-void TrackCacheResources(void* user, uint64_t completed, uint64_t total)
-{
-    SceneImportControl* control = static_cast<SceneImportControl*>(user);
-    if (control != nullptr)
-    {
-        control->SetCacheProgress({completed, total});
-    }
-}
-
 class CacheWriter
 {
 public:

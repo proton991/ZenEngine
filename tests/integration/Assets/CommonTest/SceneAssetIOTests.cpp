@@ -345,11 +345,15 @@ TEST(SceneAssetIO, FileProgressTracksSourceFilesAndCachedPackages)
     const asset::SceneAssetFileResult package = asset::ReadSceneAssetFile(cache, {}, &packageControl);
     ASSERT_TRUE(package.asset) << package.error;
     ExpectFileProgress(packageControl, 1, 1);
+    const asset::SceneImportCacheProgress resources = packageControl.GetCacheProgress();
+    EXPECT_GT(resources.totalResources, 1u);
+    EXPECT_EQ(resources.completedResources, resources.totalResources);
 
     request.control.Reset(new asset::SceneImportControl);
     const asset::SceneLoadResult cached = asset::LoadSourceScene(request);
     ASSERT_TRUE(cached.scene) << cached.error;
     EXPECT_TRUE(cached.cacheHit);
+    EXPECT_EQ(request.control->GetCacheProgress().completedResources, resources.totalResources);
     // Dependency freshness checks do not inflate the single package count.
     ExpectFileProgress(*request.control, 1, 1);
 }

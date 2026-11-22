@@ -11,6 +11,7 @@ namespace zen::asset
 SceneImportResult         AdaptProcessedSceneResources(const zenasset::Scene& source, const SceneImportControl* control);
 Vertex                    AdaptProcessedVertex(const zenasset::Vertex& source);
 SceneImportStatus         AdaptProcessedStatus(zenasset::StatusCode status);
+void                      TrackCacheResources(void* user, uint64_t completed, uint64_t total);
 bool                      ProcessedOperationCancelled(void* control);
 SceneImportDiagnostic     AdaptProcessedDiagnostic(const zenasset::Diagnostic& source);
 zenasset::SourceSettings  MakeProcessedSettings(const SceneImportSettings& source);

@@ -69,6 +69,7 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
                             case asset::SceneImportStage::BakingAnimations: label = "Processing animations..."; break;
                             case asset::SceneImportStage::BuildingScene: label = "Building scene data..."; break;
                             case asset::SceneImportStage::CookingAssets: label = "Cooking assets..."; break;
+                            case asset::SceneImportStage::ReadingCache: label = "Loading cached scene..."; break;
                             case asset::SceneImportStage::SavingCache: label = "Saving cooked cache..."; break;
                             default: break;
                         }
@@ -82,9 +83,11 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
 
                 ImGui::TextUnformatted(state.cancelRequested ? "Cancelling..." : label);
 
-                float progress    = 0;
-                char  overlay[96] = "Discovering files...";
-                if (state.stage == SceneLoadStage::Reading && state.importStage == asset::SceneImportStage::SavingCache)
+                float      progress     = 0;
+                char       overlay[96]  = "Discovering files...";
+                const bool readingCache = state.importStage == asset::SceneImportStage::ReadingCache;
+                if (state.stage == SceneLoadStage::Reading
+                    && (readingCache || state.importStage == asset::SceneImportStage::SavingCache))
                 {
                     const uint64_t total     = state.cacheProgress.totalResources;
                     const uint64_t completed = std::min(state.cacheProgress.completedResources, total);
@@ -92,19 +95,23 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
                                           : -static_cast<float>(ImGui::GetTime());
                     if (total == 0)
                     {
-                        std::snprintf(overlay, sizeof(overlay), "Preparing cache...");
+                        std::snprintf(overlay, sizeof(overlay), "%s",
+                                      readingCache ? "Opening package..." : "Preparing cache...");
                     }
                     else if (completed == total)
                     {
-                        std::snprintf(overlay, sizeof(overlay), "Finalizing cache...");
+                        std::snprintf(overlay, sizeof(overlay), "%s",
+                                      readingCache ? "Validating scene..." : "Finalizing cache...");
                     }
                     else
                     {
-                        std::snprintf(overlay, sizeof(overlay), "%llu / %llu resources saved",
-                                      static_cast<unsigned long long>(completed), static_cast<unsigned long long>(total));
+                        std::snprintf(overlay, sizeof(overlay), "%llu / %llu resources %s",
+                                      static_cast<unsigned long long>(completed), static_cast<unsigned long long>(total),
+                                      readingCache ? "loaded" : "saved");
                     }
                 }
                 else if (state.stage != SceneLoadStage::Reading || !state.fileProgress.totalKnown
+                         || state.fileProgress.totalFiles <= 1
                          || state.fileProgress.processedFiles == state.fileProgress.totalFiles)
                 {
                     progress = state.stage == SceneLoadStage::Complete ? 1.0f : -static_cast<float>(ImGui::GetTime());

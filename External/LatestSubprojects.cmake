@@ -1,5 +1,5 @@
 include_guard(GLOBAL)
-# Root subprojects follow GitHub main unless updates are disabled.
+# Root subprojects follow their .gitmodules branches unless updates are disabled.
 option(ZEN_UPDATE_SUBPROJECTS "Fetch the latest root subprojects during configuration" ON)
 
 function(zen_update_subproject NAME OPTION)
@@ -12,20 +12,23 @@ function(zen_update_subproject NAME OPTION)
         # Build trees share these checkouts, so one git update runs at a time.
         set(LOCK "${CMAKE_CURRENT_SOURCE_DIR}/External/.dependencies")
         file(LOCK "${LOCK}" DIRECTORY GUARD FUNCTION TIMEOUT 1800)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" config --file "${CMAKE_CURRENT_SOURCE_DIR}/.gitmodules"
+            --get "submodule.${NAME}.branch" OUTPUT_VARIABLE BRANCH OUTPUT_STRIP_TRAILING_WHITESPACE
+            COMMAND_ERROR_IS_FATAL ANY)
         execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${CHECKOUT}" fetch --quiet origin
-            "+refs/heads/main:refs/remotes/origin/main" COMMAND_ERROR_IS_FATAL ANY)
+            "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" COMMAND_ERROR_IS_FATAL ANY)
         # Developers work in these checkouts. A fast-forward keeps uncommitted edits and refuses
         # anything that would replace local work.
-        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${CHECKOUT}" merge --quiet --ff-only origin/main
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${CHECKOUT}" merge --quiet --ff-only "origin/${BRANCH}"
             RESULT_VARIABLE MERGE_RESULT ERROR_VARIABLE MERGE_ERROR)
         if(MERGE_RESULT)
-            message(WARNING "${NAME} stays behind GitHub main to keep local work: ${MERGE_ERROR}")
+            message(WARNING "${NAME} could not fast-forward to origin/${BRANCH} to keep local work: ${MERGE_ERROR}")
         endif()
         file(LOCK "${LOCK}" DIRECTORY RELEASE)
     endif()
 endfunction()
 
-# A source directory that is the root submodule follows GitHub main like the other subprojects.
+# A source directory that is the root submodule follows its configured branch.
 # Any other checkout is an explicit override and stays as it is.
 function(zen_update_subproject_checkout NAME SOURCE_DIR)
     get_filename_component(CHECKOUT "${SOURCE_DIR}" REALPATH)

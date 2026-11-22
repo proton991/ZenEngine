@@ -43,7 +43,8 @@ enum class SceneImportStage
     Failed,
     Cancelled,
     CookingAssets,
-    SavingCache
+    SavingCache,
+    ReadingCache
 };
 
 enum class SceneDiagnosticSeverity

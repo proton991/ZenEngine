@@ -162,7 +162,7 @@ TEST_F(SceneLoadingDialog, DiscoveryDoesNotPresentAPercentageFromAnIncompleteTot
         << renderedText;
 }
 
-TEST_F(SceneLoadingDialog, CacheSavingCountsPublishedResources)
+TEST_F(SceneLoadingDialog, CacheProgressTracksResources)
 {
     DrawFrame(SceneLoadStage::Reading);
     DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::SavingCache, false, {3, 3, true}, {0, 0});
@@ -171,6 +171,10 @@ TEST_F(SceneLoadingDialog, CacheSavingCountsPublishedResources)
     EXPECT_NE(renderedText.find("4 / 10 resources saved"), std::string::npos) << renderedText;
     DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::SavingCache, false, {3, 3, true}, {10, 10});
     EXPECT_NE(renderedText.find("Finalizing cache..."), std::string::npos) << renderedText;
+    DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::ReadingCache, false, {0, 1, true}, {4, 10});
+    EXPECT_NE(renderedText.find("4 / 10 resources loaded"), std::string::npos) << renderedText;
+    DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::ReadingCache, false, {0, 1, true}, {10, 10});
+    EXPECT_NE(renderedText.find("Validating scene..."), std::string::npos) << renderedText;
 }
 } // namespace
 } // namespace zen::editor

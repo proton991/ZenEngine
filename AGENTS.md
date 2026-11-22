@@ -19,14 +19,10 @@
 - Capture Nsight performance traces at 3840×2160. Verify the actual framebuffer and render extents in the capture metadata.
 - Use `tools/profile_hybrid_gi.py` for Nsight Graphics GPU Trace captures. Historical demo captures are demo measurements and must not be presented as ZenApp results.
 
-# ZenAssetProcessor submodule workflow
+# Submodule workflow
 
-- Make ZenAssetProcessor changes in the standalone repository at `E:\Dev\ZenAssetProcessor`, then commit and push from that repository.
-- ZenEngine's `ZenAssetProcessor/` directory consumes published commits only. Fetch and update its submodule revision; do not edit files or copy unpublished changes into it.
-
-# ZenFoundation and ZenRHI submodule workflow
-
-- Develop ZenFoundation and ZenRHI in place, in ZenEngine's `ZenFoundation/` and `ZenRHI/` submodule checkouts. Check out `main` before committing; `git submodule update` leaves a detached commit.
+- Develop each submodule in its checkout under the ZenEngine root. Switch to its development branch before committing and push the branch to the submodule's own remote.
+- Track the intended upstream branch in `.gitmodules`. Update ZenEngine's submodule pointers to the latest published commits on those branches.
 - All sessions build from these checkouts. Keep unfinished experiments in a worktree or a separate checkout selected with `ZEN_FOUNDATION_SOURCE_DIR` or `ZEN_RHI_SOURCE_DIR`.
 - Push in dependency order: ZenFoundation, then ZenRHI and ZenAssetProcessor, then ZenTest, then the ZenEngine commit that moves their submodule pointers.
 

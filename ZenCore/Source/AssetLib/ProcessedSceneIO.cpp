@@ -115,6 +115,15 @@ SceneImportStatus AdaptProcessedStatus(zenasset::StatusCode status)
     return result;
 }
 
+void TrackCacheResources(void* user, uint64_t completed, uint64_t total)
+{
+    SceneImportControl* control = static_cast<SceneImportControl*>(user);
+    if (control != nullptr)
+    {
+        control->SetCacheProgress({completed, total});
+    }
+}
+
 bool ProcessedOperationCancelled(void* control)
 {
     return control != nullptr && static_cast<SceneImportControl*>(control)->IsCancelled();
@@ -153,7 +162,11 @@ SceneAssetFileResult ReadProcessedSceneFile(const std::string&                  
     const zenasset::SceneReadLimits readLimits = ProcessedLimits(limits);
     if (control != nullptr)
     {
-        control->SetStage(SceneImportStage::Reading);
+        if (!metadataOnly)
+        {
+            control->SetCacheProgress({});
+        }
+        control->SetStage(metadataOnly ? SceneImportStage::Reading : SceneImportStage::ReadingCache);
     }
     zenasset::Status status;
     if (metadataOnly)
@@ -165,10 +178,15 @@ SceneAssetFileResult ReadProcessedSceneFile(const std::string&                  
     }
     else
     {
-        const zenasset::SceneReadResult loaded = zenasset::ReadSceneDeferredImages(path, readLimits, &cancellation);
-        status                                 = loaded.status;
+        const zenasset::SceneReadProgress progress{control, control != nullptr ? &TrackCacheResources : nullptr};
+        const zenasset::SceneReadResult   loaded = zenasset::ReadSceneDeferredImages(path, readLimits, &cancellation, progress);
+        status                                   = loaded.status;
         if (status.Succeeded() && loaded.scene)
         {
+            if (control != nullptr)
+            {
+                control->SetStage(SceneImportStage::BuildingScene);
+            }
             static_cast<SceneImportResult&>(result) =
                 AdaptProcessedScene(*loaded.scene, control, limits.maxRuntimeGeometryBytes, runtimeOwner);
             result.metadata = AdaptProcessedMetadata(loaded.metadata);
