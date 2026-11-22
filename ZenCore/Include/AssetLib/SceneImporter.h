@@ -1,8 +1,8 @@
 #pragma once
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include "AssetLib/SceneAsset.h"
-#include "Templates/VectorView.h"
-#include "Utils/SharedPtr.h"
+#include "ZenFoundation/Templates/VectorView.h"
+#include "ZenFoundation/Utils/SharedPtr.h"
 #include "ZenAsset/Format/Processing.h"
 #include <atomic>
 #include <cstdint>

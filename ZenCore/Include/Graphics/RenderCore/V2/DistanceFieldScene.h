@@ -7,8 +7,8 @@
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Math/Math.h"
 #include "Math/AABB.h"
-#include "Utils/SharedPtr.h"
-#include "Utils/UniquePtr.h"
+#include "ZenFoundation/Utils/SharedPtr.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include <chrono>
 
 namespace zen::rc

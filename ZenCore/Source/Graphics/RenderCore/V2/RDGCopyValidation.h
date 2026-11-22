@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include <algorithm>
@@ -12,7 +13,7 @@ inline bool IsDepthStencilCopyFormat(DataFormat format)
     return FormatIsDepthOnly(format) || FormatIsStencilOnly(format) || FormatIsDepthStencil(format);
 }
 
-inline uint32_t CopyTexelBytes(DataFormat format, BitField<RHITextureAspectFlagBits> aspect)
+inline uint32_t CopyTexelBytes(DataFormat format, RHIFlags<RHITextureAspectFlagBits> aspect)
 {
     uint32_t result = 1;
 
@@ -40,12 +41,12 @@ inline bool ValidateTextureCopyBox(RDGResult&                         result,
                                    const RHITextureCreateInfo&        info,
                                    NameID                             name,
                                    const RHITextureSubresourceLayers& layers,
-                                   const Vec3i&                       offset,
-                                   const Vec3i&                       size)
+                                   const RHIOffset3D&                 offset,
+                                   const RHIOffset3D&                 size)
 {
     bool valid = true;
 
-    const BitField<RHITextureAspectFlagBits> aspect =
+    const RHIFlags<RHITextureAspectFlagBits> aspect =
         FormatIsDepthStencil(info.format)  ? RHITextureSubResourceRange::DepthStencil().aspect
         : FormatIsDepthOnly(info.format)   ? RHITextureSubResourceRange::Depth().aspect
         : FormatIsStencilOnly(info.format) ? RHITextureSubResourceRange::Stencil().aspect
@@ -153,8 +154,8 @@ inline bool ValidateBufferTextureFootprint(RDGResult&                        res
 inline bool QueueSupportsCopyBox(const RHIQueueCopyCapabilities& queue,
                                  const RHITextureCreateInfo&     info,
                                  uint32_t                        mip,
-                                 const Vec3i&                    offset,
-                                 const Vec3i&                    size)
+                                 const RHIOffset3D&              offset,
+                                 const RHIOffset3D&              size)
 {
     bool valid = true;
 

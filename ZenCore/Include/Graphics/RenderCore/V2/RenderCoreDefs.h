@@ -1,5 +1,7 @@
 #pragma once
-#include "Graphics/RHI/DynamicRHI.h"
+#include "Math/Math.h"
+#include "Utils/Errors.h"
+#include "ZenRHI/DynamicRHI.h"
 
 #define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)           \
     {                                                                      \

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/Renderer/ForwardDepthSort.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"

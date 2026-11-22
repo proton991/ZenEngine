@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Editor/Model/EditorIds.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Material.h"

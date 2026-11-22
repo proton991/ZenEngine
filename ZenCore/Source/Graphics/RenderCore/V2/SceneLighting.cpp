@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/SceneLighting.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/ConfigLoader.h"

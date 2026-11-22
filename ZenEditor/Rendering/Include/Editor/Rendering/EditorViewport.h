@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Editor/Model/EditorSelection.h"
 #include "Editor/Model/EditorEnvironment.h"
 #include "Graphics/RenderCore/V2/SceneRendering.h"

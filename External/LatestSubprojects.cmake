@@ -25,6 +25,31 @@ function(zen_update_subproject NAME OPTION)
     endif()
 endfunction()
 
+# A source directory that is the root submodule follows GitHub main like the other subprojects.
+# Any other checkout is an explicit override and stays as it is.
+function(zen_update_subproject_checkout NAME SOURCE_DIR)
+    get_filename_component(CHECKOUT "${SOURCE_DIR}" REALPATH)
+    if(CHECKOUT STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/${NAME}")
+        zen_update_subproject(${NAME} ZEN_UPDATE_SUBPROJECTS)
+    endif()
+endfunction()
+
+# Zen components are released together under one version. A checkout from another release fails
+# here, before it can fail at compile or link time.
+function(zen_require_release_version NAME VERSION)
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+" RELEASE "${VERSION}")
+    if(NOT RELEASE STREQUAL "${ZenEngine_VERSION_MAJOR}.${ZenEngine_VERSION_MINOR}")
+        message(FATAL_ERROR "${NAME} ${VERSION} does not match ZenEngine ${ZenEngine_VERSION}. "
+                            "Check out the ${NAME} revision of this release.")
+    endif()
+endfunction()
+
+# Source checkouts report the version their own project() declares.
+function(zen_source_version OUTPUT SOURCE_DIR)
+    get_directory_property(VERSION DIRECTORY "${SOURCE_DIR}" DEFINITION PROJECT_VERSION)
+    set(${OUTPUT} "${VERSION}" PARENT_SCOPE)
+endfunction()
+
 function(zen_add_latest_subproject NAME OPTION)
     zen_update_subproject(${NAME} ${OPTION})
     add_subdirectory(${NAME})

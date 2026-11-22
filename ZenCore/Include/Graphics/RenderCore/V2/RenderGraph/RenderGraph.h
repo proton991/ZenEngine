@@ -1,16 +1,16 @@
 #pragma once
 #include <unordered_set>
-#include "Graphics/RHI/RHICommon.h"
+#include "ZenRHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Templates/BitField.h"
-#include "Templates/FlatHashMap.h"
-#include "Templates/HashMap.h"
-#include "Templates/NameID.h"
+#include "ZenFoundation/Templates/BitField.h"
+#include "ZenFoundation/Templates/FlatHashMap.h"
+#include "ZenFoundation/Templates/HashMap.h"
+#include "ZenFoundation/Templates/NameID.h"
 #include "Utils/Errors.h"
-#include "Templates/ArenaVector.h"
-#include "Templates/HeapVector.h"
-#include "Memory/PagedAllocator.h"
-#include "Memory/PoolAllocator.h"
+#include "ZenFoundation/Templates/ArenaVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Memory/PagedAllocator.h"
+#include "ZenFoundation/Memory/PoolAllocator.h"
 #include "../RenderCoreDefs.h"
 #include "RDGDefs.h"
 #include "RDGSchedule.h"
@@ -31,8 +31,8 @@ template <typename T> using RDGVector = ArenaVector<T, PoolAllocator<LinearAlloc
 struct RDGWriterVisibility
 {
     bool                               hasWriter{false};
-    BitField<RHIAccessFlagBits>        access;
-    BitField<RHIPipelineStageFlagBits> stages;
+    RHIFlags<RHIAccessFlagBits>        access;
+    RHIFlags<RHIPipelineStageFlagBits> stages;
 
     // Visibility is a set of (access, stage) pairs, not two independent mask unions.
     std::array<int64_t, kRHIAccessBitCount> visibleStages{};
@@ -42,22 +42,22 @@ struct RDGTextureResourceState
 {
     RHIAccessMode                      accessMode{RHIAccessMode::eNone};
     RHITextureUsage                    usage{RHITextureUsage::eNone};
-    BitField<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
+    RHIFlags<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
     RDGWriterVisibility                writer;
 };
 
 struct RDGBufferResourceState
 {
     RHIAccessMode                      accessMode{RHIAccessMode::eNone};
-    BitField<RHIBufferUsageFlagBits>   usage{};
-    BitField<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
+    RHIFlags<RHIBufferUsageFlagBits>   usage{};
+    RHIFlags<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
     RDGWriterVisibility                writer;
 };
 
 struct RDGAccelerationStructureResourceState
 {
     RHIAccessMode                      accessMode{RHIAccessMode::eNone};
-    BitField<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
+    RHIFlags<RHIPipelineStageFlagBits> pipelineStages{RHIPipelineStageFlagBits::eTopOfPipe};
     RDGWriterVisibility                writer;
 };
 
@@ -123,16 +123,16 @@ public:
     void UpdateTextureState(const RHITexture*                  pTexture,
                             RHIAccessMode                      accessMode,
                             RHITextureUsage                    usage,
-                            BitField<RHIPipelineStageFlagBits> pipelineStages);
+                            RHIFlags<RHIPipelineStageFlagBits> pipelineStages);
 
     void UpdateBufferState(const RHIBuffer*                   pBuffer,
                            RHIAccessMode                      accessMode,
-                           BitField<RHIBufferUsageFlagBits>   usage,
-                           BitField<RHIPipelineStageFlagBits> pipelineStages);
+                           RHIFlags<RHIBufferUsageFlagBits>   usage,
+                           RHIFlags<RHIPipelineStageFlagBits> pipelineStages);
 
     void UpdateAccelerationStructureState(const RHIAccelerationStructure*    structure,
                                           RHIAccessMode                      accessMode,
-                                          BitField<RHIPipelineStageFlagBits> pipelineStages);
+                                          RHIFlags<RHIPipelineStageFlagBits> pipelineStages);
 
     RDGResourceContent GetContents(const RHIResource* resource) const;
 
@@ -323,7 +323,7 @@ struct RDGNodeBase
     NameID                             tag;
     RDGNodeType                        type{RDGNodeType::eNone};
     RDGQueuePreference                 queuePreference{RDGQueuePreference::eDefault};
-    BitField<RHIPipelineStageFlagBits> selfStages;
+    RHIFlags<RHIPipelineStageFlagBits> selfStages;
     uint32_t                           accessOffset{0};
     uint32_t                           accessCount{0};
 };
@@ -350,8 +350,8 @@ struct RDGCompiledNode
     RDGAsyncComputeEligibility         asyncComputeEligibility{RDGAsyncComputeEligibility::eNotRequested};
     RHICommandContextType              plannedQueue{RHICommandContextType::eGraphics};
     uint32_t                           submissionGroup{UINT32_MAX};
-    BitField<RHIPipelineStageFlagBits> prologueSrcStages;
-    BitField<RHIPipelineStageFlagBits> prologueDstStages;
+    RHIFlags<RHIPipelineStageFlagBits> prologueSrcStages;
+    RHIFlags<RHIPipelineStageFlagBits> prologueDstStages;
     uint32_t                           initialBarrierCount{0};
     HeapVector<RDGAccess>              initialResourceAccesses;
     HeapVector<RHIMemoryTransition>    prologueMemoryTransitions;
@@ -505,14 +505,14 @@ private:
 
     bool ValidateTextureRange(const RDGResourceManager::Allocation* resource, const RHITextureSubResourceRange& range);
 
-    static void SetPipelineStatesForPassNode(RDGPassNode* pPassNode, BitField<RHIPipelineStageFlagBits> inStageFlags);
+    static void SetPipelineStatesForPassNode(RDGPassNode* pPassNode, RHIFlags<RHIPipelineStageFlagBits> inStageFlags);
 
     bool DeclareTextureAccessForPass(const RDGPassNode*                    pPassNode,
                                      const RDGResourceManager::Allocation* pResource,
                                      RHITextureUsage                       usage,
                                      const RHITextureSubResourceRange&     range,
                                      RHIAccessMode                         accessMode,
-                                     BitField<RHIPipelineStageFlagBits>    shaderStages = {},
+                                     RHIFlags<RHIPipelineStageFlagBits>    shaderStages = {},
                                      RDGContentEffect                      intent       = RDGContentEffect::eAutomatic,
                                      bool                                  fullCoverage = true,
                                      bool                                  discardAfter = false,
@@ -520,9 +520,9 @@ private:
 
     bool DeclareBufferAccessForPass(const RDGPassNode*                    pPassNode,
                                     const RDGResourceManager::Allocation* pResource,
-                                    BitField<RHIBufferUsageFlagBits>      usage,
+                                    RHIFlags<RHIBufferUsageFlagBits>      usage,
                                     RHIAccessMode                         accessMode,
-                                    BitField<RHIPipelineStageFlagBits>    shaderStages = {},
+                                    RHIFlags<RHIPipelineStageFlagBits>    shaderStages = {},
                                     RDGContentEffect                      intent       = RDGContentEffect::eAutomatic,
                                     bool                                  fullCoverage = true,
                                     bool                                  discardAfter = false,
@@ -531,7 +531,7 @@ private:
     bool DeclareAccelerationStructureAccessForPass(const RDGPassNode*                    node,
                                                    const RDGResourceManager::Allocation* resource,
                                                    RHIAccessMode                         accessMode,
-                                                   BitField<RHIPipelineStageFlagBits>    stages,
+                                                   RHIFlags<RHIPipelineStageFlagBits>    stages,
                                                    RDGContentEffect                      intent = RDGContentEffect::eAutomatic);
 
     bool DeclareResourceAccessForPass(const RDGPassNode*                    node,

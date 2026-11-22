@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/Renderer/ForwardDrawCache.h"
 #include <algorithm>
 #include <bit>

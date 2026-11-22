@@ -1,3 +1,4 @@
+#include "ZenFoundation/Memory/Memory.h"
 #include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
 #include "AssetLib/SceneLoader.h"
@@ -129,6 +130,7 @@ bool ParseOptions(int argc, char** argv, zen::editor::EditorOptions& options)
 
 int EditorMain(int argc, char** argv)
 {
+    zen::DefaultAllocator::EnableExitMemoryReport();
     zen::editor::EditorOptions options;
 
     int result = 1;

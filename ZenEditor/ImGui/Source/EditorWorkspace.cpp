@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "AssetTools/SceneTools.h"
 #include "Editor/ImGui/EditorWorkspace.h"
 #include "EditorShortcuts.h"

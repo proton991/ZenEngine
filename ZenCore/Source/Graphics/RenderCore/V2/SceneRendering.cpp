@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/SceneRendering.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"

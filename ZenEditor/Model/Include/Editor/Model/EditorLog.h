@@ -1,5 +1,5 @@
 #pragma once
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include "Runtime/RuntimeLogEntry.h"
 #include <mutex>
 #include <string>

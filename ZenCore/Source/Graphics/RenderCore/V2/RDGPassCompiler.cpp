@@ -1,7 +1,7 @@
-#include "Utils/MetricsLogger.h"
-#include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHIResource.h"
-#include "Graphics/RHI/RHIShaderParameters.h"
+#include "ZenFoundation/Utils/MetricsLogger.h"
+#include "ZenRHI/RHICommon.h"
+#include "ZenRHI/RHIResource.h"
+#include "ZenRHI/RHIShaderParameters.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
@@ -9,9 +9,9 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "RDGCopyValidation.h"
 #include "Math/Math.h"
-#include "Templates/BitField.h"
-#include "Templates/HeapVector.h"
-#include "Templates/NameID.h"
+#include "ZenFoundation/Templates/BitField.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Templates/NameID.h"
 #include "Utils/Errors.h"
 
 namespace zen::rc
@@ -45,8 +45,8 @@ static void FillRenderingLayout(RHIRenderingLayout* pLayout, const RDGGraphicsPa
 static bool ValidateTextureCopyBox(RDGResult&                         result,
                                    RHITexture*                        texture,
                                    const RHITextureSubresourceLayers& layers,
-                                   const Vec3i&                       offset,
-                                   const Vec3i&                       size)
+                                   const RHIOffset3D&                 offset,
+                                   const RHIOffset3D&                 size)
 {
     return result.Check(texture != nullptr, RDGErrorCode::eRange, "Null texture in copy")
         && ValidateTextureCopyBox(result, texture->GetBaseInfo(), texture->GetResourceTag(), layers, offset, size);
@@ -104,13 +104,13 @@ static RHITextureSubResourceRange CopyRange(const RHITextureSubresourceLayers& l
     return range;
 }
 
-static bool CoversMip(const RHITextureCreateInfo& texture, uint32_t mip, const Vec3i& offset, const Vec3i& size)
+static bool CoversMip(const RHITextureCreateInfo& texture, uint32_t mip, const RHIOffset3D& offset, const RHIOffset3D& size)
 {
     return offset.x == 0 && offset.y == 0 && offset.z == 0 && size.x == int32_t(std::max(1u, texture.width >> mip))
         && size.y == int32_t(std::max(1u, texture.height >> mip)) && size.z == int32_t(std::max(1u, texture.depth >> mip));
 }
 
-static bool CoversMip(RHITexture* texture, uint32_t mip, const Vec3i& offset, const Vec3i& size)
+static bool CoversMip(RHITexture* texture, uint32_t mip, const RHIOffset3D& offset, const RHIOffset3D& size)
 {
     return CoversMip(texture->GetBaseInfo(), mip, offset, size);
 }
@@ -120,10 +120,11 @@ static uint32_t MipExtent(uint32_t extent, uint32_t mipLevel)
     return std::max(1u, extent >> mipLevel);
 }
 
-static Vec3i MipExtent3D(const RHITextureCreateInfo& info, uint32_t mipLevel)
+static RHIOffset3D MipExtent3D(const RHITextureCreateInfo& info, uint32_t mipLevel)
 {
-    return Vec3i{static_cast<int32_t>(MipExtent(info.width, mipLevel)), static_cast<int32_t>(MipExtent(info.height, mipLevel)),
-                 static_cast<int32_t>(MipExtent(info.depth, mipLevel))};
+    return RHIOffset3D{static_cast<int32_t>(MipExtent(info.width, mipLevel)),
+                       static_cast<int32_t>(MipExtent(info.height, mipLevel)),
+                       static_cast<int32_t>(MipExtent(info.depth, mipLevel))};
 }
 
 bool RDGPassCompiler::Check(bool condition, RDGErrorCode code, std::string_view message)
@@ -332,8 +333,8 @@ RDGDispatchPass* RDGPassCompiler::CompileDispatchPass(const RDGDispatchPassDesc&
                     if (rayTracing)
                     {
                         RHIRayTracingPipelineCreateInfo info;
-                        info.pShader            = pSP->GetShader();
-                        info.groups             = desc.GetShaderGroups();
+                        info.pShader = pSP->GetShader();
+                        info.groups.assign(desc.GetShaderGroups().begin(), desc.GetShaderGroups().end());
                         info.maxRecursionDepth  = desc.GetMaxRecursionDepth();
                         pComputePass->pPipeline = m_pRenderDevice->GetOrCreateRayTracingPipeline(info, timings.enabled);
                     }
@@ -973,7 +974,7 @@ void RDGPassCmdEncoder::GenerateMipmaps(RHITexture* pTexture)
 
                 region.dstSubresources = RHITextureSubresourceLayers::MakeMipLayers(range, mipLevel);
 
-                m_pCmdList->BlitTexture(pTexture, pTexture, region, RHISamplerFilter::eLinear);
+                m_pCmdList->BlitTexture(pTexture, pTexture, std::span(&region, 1), RHISamplerFilter::eLinear);
 
                 EmitTextureTransition(pTexture, range.GetMipRange(mipLevel), RHIAccessMode::eReadWrite, RHIAccessMode::eRead,
                                       RHITextureUsage::eTransferDst, RHITextureUsage::eTransferSrc);
@@ -1021,7 +1022,7 @@ void RDGPassCmdEncoder::CopyBufferToTexture(RHIBuffer*                        pS
     if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyBufferToTexture")))
         && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
-        m_pCmdList->CopyBufferToTexture(pSrcBuffer, pDstTexture, region);
+        m_pCmdList->CopyBufferToTexture(pSrcBuffer, pDstTexture, std::span(&region, 1));
     }
 }
 
@@ -1055,9 +1056,9 @@ void RDGPassCmdEncoder::EmitTextureTransition(RHITexture*                       
 
     transition.subResourceRange = range;
 
-    BitField<RHIPipelineStageFlagBits> stage(RHIPipelineStageFlagBits::eTransfer);
+    RHIFlags<RHIPipelineStageFlagBits> stage(RHIPipelineStageFlagBits::eTransfer);
 
-    m_pCmdList->AddTransitions(stage, stage, {}, {}, transition);
+    m_pCmdList->AddTransitions(stage, stage, {}, {}, std::span(&transition, 1));
 
     if (m_pMetrics != nullptr)
     {
@@ -1153,7 +1154,7 @@ void RDGTransferPassCmdRecorder::ExecuteOperations(VectorView<const std::functio
 
             barrier.dstAccess = barrier.srcAccess;
 
-            const BitField<RHIPipelineStageFlagBits> stages(RHIPipelineStageFlagBits::eTransfer);
+            const RHIFlags<RHIPipelineStageFlagBits> stages(RHIPipelineStageFlagBits::eTransfer);
 
             encoder.m_pCmdList->AddTransitions(stages, stages, MakeVecView(&barrier, 1), {}, {});
 
@@ -1193,8 +1194,8 @@ bool RDGTransferPassCmdRecorder::DeclareBuildBuffer(RHIBuffer*             buffe
 {
     return Check(buffer != nullptr, RDGErrorCode::eBinding, "Null AS build buffer")
         && m_pRDG->DeclareBufferAccessForPass(
-            m_pNode, m_pRDG->m_resourceManager.ImportBufferAllocation(buffer), BitField<RHIBufferUsageFlagBits>(usage), mode,
-            BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild), contents);
+            m_pNode, m_pRDG->m_resourceManager.ImportBufferAllocation(buffer), RHIFlags<RHIBufferUsageFlagBits>(usage), mode,
+            RHIFlags<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild), contents);
 }
 
 RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructure(
@@ -1209,7 +1210,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
         resources.Retain(info.pDestination);
         resources.Retain(info.pSource);
         static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities = {false, false};
-        m_pNode->selfStages = BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
+        m_pNode->selfStages = RHIFlags<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild);
         // An in-place update reads the structure it rewrites, so its prior contents are live.
         const bool inPlace = info.pSource == info.pDestination;
         valid              = m_pRDG->DeclareAccelerationStructureAccessForPass(
@@ -1233,7 +1234,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
         }
         if (info.description.type == RHIAccelerationStructureType::eTopLevel)
         {
-            const HeapVector<RHIAccelerationStructure*>& references = info.pDestination->GetReferencedStructures();
+            const std::span<RHIAccelerationStructure* const> references = info.pDestination->GetReferencedStructures();
             for (const RHIAccelerationStructureInstance& instance : info.description.instances)
             {
                 valid = valid
@@ -1251,12 +1252,12 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::BuildAccelerationStructu
                                        RHIAccessMode::eRead);
             if (geometry.pOpacityMicromap != nullptr)
             {
-                const HeapVector<RHIAccelerationStructure*>& references = info.pDestination->GetReferencedStructures();
-                valid                                                   = valid
-                                                                       && Check(std::find(references.begin(), references.end(), geometry.pOpacityMicromap) != references.end(),
-                                                                                RDGErrorCode::eBinding, "Missing retained opacity micromap dependency")
-                                                                       && DeclareBuildBuffer(geometry.pOpacityIndexBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
-                                                                                             RHIAccessMode::eRead);
+                const std::span<RHIAccelerationStructure* const> references = info.pDestination->GetReferencedStructures();
+                valid                                                       = valid
+                                                                           && Check(std::find(references.begin(), references.end(), geometry.pOpacityMicromap) != references.end(),
+                                                                                    RDGErrorCode::eBinding, "Missing retained opacity micromap dependency")
+                                                                           && DeclareBuildBuffer(geometry.pOpacityIndexBuffer, RHIBufferUsageFlagBits::eAccelerationStructureInput,
+                                                                                                 RHIAccessMode::eRead);
             }
         }
         if (info.description.type == RHIAccelerationStructureType::eOpacityMicromap)
@@ -1473,9 +1474,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RHIBuffer*   
 
         const RDGResourceManager::Allocation* pDstResource = m_pRDG->GetResourceManager()->ImportBufferAllocation(pDstBuffer);
 
-        BitField<RHIBufferUsageFlagBits> srcUsage(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        RHIFlags<RHIBufferUsageFlagBits> srcUsage(RHIBufferUsageFlagBits::eTransferSrcBuffer);
 
-        BitField<RHIBufferUsageFlagBits> dstUsage(RHIBufferUsageFlagBits::eTransferDstBuffer);
+        RHIFlags<RHIBufferUsageFlagBits> dstUsage(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
         valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pSrcResource, srcUsage, RHIAccessMode::eRead);
 
@@ -1559,7 +1560,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(RHIB
             const RDGResourceManager::Allocation* pDstResource =
                 m_pRDG->GetResourceManager()->ImportTextureAllocation(pDstTexture);
 
-            BitField<RHIBufferUsageFlagBits> srcUsage(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+            RHIFlags<RHIBufferUsageFlagBits> srcUsage(RHIBufferUsageFlagBits::eTransferSrcBuffer);
 
             valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pSrcResource, srcUsage, RHIAccessMode::eRead);
 
@@ -1739,7 +1740,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(RDGB
 
             valid = valid
                  && (m_pRDG->DeclareBufferAccessForPass(
-                     m_pNode, src, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
+                     m_pNode, src, RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
                      RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
 
             if (valid)
@@ -1848,7 +1849,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RDGBuffer    
 
         valid                                     = valid
                                                  && (m_pRDG->DeclareBufferAccessForPass(
-                 m_pNode, src, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
+                 m_pNode, src, RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
                  RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
 
         if (valid)
@@ -1858,7 +1859,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RDGBuffer    
             m_pNode->contentAccesses.back().bufferSize   = region.size;
 
             valid                                        = m_pRDG->DeclareBufferAccessForPass(
-                m_pNode, dst, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
+                m_pNode, dst, RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
                 RHIAccessMode::eReadWrite, {},
                 region.dstOffset == 0 && region.size == dst->bufferSize ? RDGContentEffect::eFullWrite
                                                                         : RDGContentEffect::eWrite,
@@ -1937,9 +1938,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(RDGTexture  
 
                 if (valid)
                 {
-                    const Vec3i extent = MipExtent3D(dstInfo, region.dstSubresources.mipmap);
+                    const RHIOffset3D extent = MipExtent3D(dstInfo, region.dstSubresources.mipmap);
 
-                    const bool full    = region.dstOffset == Vec3i(0) && region.size == extent;
+                    const bool full          = region.dstOffset == RHIOffset3D(0) && region.size == extent;
 
                     valid = !((!m_pRDG->DeclareTextureAccessForPass(m_pNode, src, RHITextureUsage::eTransferSrc,
                                                                     CopyRange(region.srcSubresources), RHIAccessMode::eRead, {},

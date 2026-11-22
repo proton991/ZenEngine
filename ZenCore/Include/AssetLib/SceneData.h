@@ -2,9 +2,9 @@
 #include "Math/Math.h"
 #include "AssetLib/AnimationTarget.h"
 #include "AssetLib/Types.h"
-#include "Utils/SharedPtr.h"
-#include "Templates/HeapVector.h"
-#include "Templates/SmallVector.h"
+#include "ZenFoundation/Utils/SharedPtr.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Templates/SmallVector.h"
 #include <string>
 
 namespace zen::asset

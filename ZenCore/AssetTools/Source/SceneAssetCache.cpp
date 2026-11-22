@@ -8,10 +8,10 @@
 #include "AssetLib/AssetHash.h"
 #include "AssetLib/AssetPaths.h"
 #include "AssetLib/SceneImportFingerprint.h"
-#include "Utils/ConditionVariable.h"
+#include "ZenFoundation/Utils/ConditionVariable.h"
 #include "Utils/Errors.h"
-#include "Utils/Mutex.h"
-#include "Utils/ThreadPool.h"
+#include "ZenFoundation/Utils/Mutex.h"
+#include "ZenFoundation/Utils/ThreadPool.h"
 #include <algorithm>
 #include <chrono>
 #include <filesystem>

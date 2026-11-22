@@ -1,5 +1,5 @@
 #pragma once
-#include "Graphics/RHI/RHIResource.h"
+#include "ZenRHI/RHIResource.h"
 
 namespace zen::rc
 {

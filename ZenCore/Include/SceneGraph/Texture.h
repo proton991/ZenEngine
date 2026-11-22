@@ -3,7 +3,7 @@
 #include "AssetLib/Types.h"
 #include <vector>
 #include <algorithm>
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include "AssetLib/ImageAsset.h"
 
 namespace zen::sg

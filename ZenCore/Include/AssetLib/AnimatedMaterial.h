@@ -1,7 +1,7 @@
 #pragma once
 #include "AssetLib/AnimationTarget.h"
 #include "AssetLib/MaterialAsset.h"
-#include "Templates/VectorView.h"
+#include "ZenFoundation/Templates/VectorView.h"
 
 namespace zen::asset
 {

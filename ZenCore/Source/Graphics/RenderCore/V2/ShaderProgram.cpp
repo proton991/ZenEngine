@@ -1,5 +1,6 @@
-#include "Graphics/RHI/RHIShaderUtil.h"
-#include "Graphics/RHI/RHIOptions.h"
+#include "Math/Math.h"
+#include "ZenRHI/RHIShaderUtil.h"
+#include "ZenRHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
@@ -7,7 +8,7 @@
 #include "Graphics/RenderCore/V2/Renderer/ForwardDepthSort.h"
 #include "Graphics/RenderCore/V2/Renderer/ForwardGPUDraws.h"
 #include "ZenOpacityMicromapShaders.h"
-#include "Memory/Memory.h"
+#include "ZenFoundation/Memory/Memory.h"
 #include "Platform/FileSystem.h"
 #include "Utils/Errors.h"
 #include <algorithm>
@@ -221,11 +222,11 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
             }
         }
 
-        info.name                    = m_name;
+        info.name = m_name;
 
-        info.specializationConstants = specializationConstants;
+        info.specializationConstants.assign(specializationConstants.begin(), specializationConstants.end());
 
-        bool loaded                  = true;
+        bool loaded = true;
         if (!m_rayTracingSources.empty())
         {
             info.spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
@@ -247,17 +248,41 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
                     path.insert(path.size() - 4u, ".stream");
                 }
                 platform::FileLoadError error = platform::FileLoadError::eNone;
-                HeapVector<uint8_t>     code  = platform::FileSystem::LoadSpvFile(path, &error);
+                std::vector<uint8_t>    code  = platform::FileSystem::LoadSpvFile<uint8_t, std::vector<uint8_t>>(path, &error);
                 loaded                        = error == platform::FileLoadError::eNone;
                 if (!loaded)
                 {
                     LOGE("Shader '{}' cannot load ray-tracing module '{}'", m_name.CStr(), path);
                     break;
                 }
-                info.spirv->AppendStageSPIRV(source.stage, std::move(code));
+                info.spirv->AppendOwnedStageSPIRV(source.stage, std::move(code));
                 if (RHIOptions::GetInstance().PipelineStatistics())
                 {
                     LOGI("Shader module: shader='{}' source='{}'", m_name.CStr(), path);
+                }
+            }
+        }
+
+        else
+        {
+            info.spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+            for (uint32_t i = 0; loaded && i < ToUnderlying(RHIShaderStage::eMax); ++i)
+            {
+                const RHIShaderStage stage = static_cast<RHIShaderStage>(i);
+                if (info.stageFlags.HasFlag(RHIShaderStageToFlagBits(stage)))
+                {
+                    platform::FileLoadError error{};
+                    std::vector<uint8_t>    code =
+                        platform::FileSystem::LoadSpvFile<uint8_t, std::vector<uint8_t>>(info.spirvFileName[i], &error);
+                    loaded = error == platform::FileLoadError::eNone;
+                    if (loaded)
+                    {
+                        info.spirv->AppendOwnedStageSPIRV(stage, std::move(code));
+                    }
+                    else
+                    {
+                        LOGE("Shader '{}' cannot load '{}'", m_name.CStr(), info.spirvFileName[i]);
+                    }
                 }
             }
         }
@@ -317,7 +342,7 @@ void ShaderProgram::ResolveShaderResources()
 
         const RHIShaderResourceDescriptorTable* SRDTable = m_pShader->GetSRDTable();
 
-        for (SmallVector<RHIShaderResourceDescriptor> const& setSRD : *SRDTable)
+        for (std::vector<RHIShaderResourceDescriptor> const& setSRD : *SRDTable)
         {
             for (RHIShaderResourceDescriptor const& srd : setSRD)
             {

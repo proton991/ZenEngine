@@ -1,7 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderingSettings.h"
-#include "Graphics/RHI/RHIOptions.h"
-#include "Graphics/RHI/RHIThread.h"
+#include "ZenRHI/RHIOptions.h"
+#include "ZenRHI/RHIThread.h"
 #include "Runtime/NavigationCamera.h"
 #include <filesystem>
 #include <string_view>

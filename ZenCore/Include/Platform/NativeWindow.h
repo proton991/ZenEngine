@@ -1,5 +1,6 @@
 #pragma once
-#include "ObjectBase.h"
+#include "ZenRHI/RHIWindowHandle.h"
+#include "ZenFoundation/ObjectBase.h"
 #include "InputTypes.h"
 #include <cstdint>
 #include <functional>
@@ -84,7 +85,9 @@ public:
 
     ~NativeWindow();
 
-    void CheckThreadOwnership() const;
+    void            CheckThreadOwnership() const;
+    RHIWindowHandle GetRHIWindowHandle();
+    static void     RegisterSurfaceExtensions();
 
     // Polls the application event queue once and dispatches deferred resize callbacks.
     void Update(bool processInputShortcuts = true, const std::function<void()>& liveResize = {});

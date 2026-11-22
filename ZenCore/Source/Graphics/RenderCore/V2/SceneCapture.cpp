@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include <filesystem>
@@ -58,7 +59,7 @@ bool CaptureSceneFrame(rc::RenderDevice& device, RHITexture* source, const std::
 
         RHITextureCopyRegion region{};
 
-        region.size = Vec3i(width, height, 1);
+        region.size = RHIOffset3D(width, height, 1);
 
         region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
 

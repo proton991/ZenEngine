@@ -3,16 +3,16 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGSchedule.h"
 #include "Graphics/RenderCore/V2/PipelineCacheMetrics.h"
-#include "Graphics/RHI/RHIGPUTiming.h"
-#include "Templates/VectorView.h"
-#include "Templates/SmallVector.h"
-#include "Utils/MetricsLogger.h"
+#include "ZenRHI/RHIGPUTiming.h"
+#include "ZenFoundation/Templates/VectorView.h"
+#include "ZenFoundation/Templates/SmallVector.h"
+#include "ZenFoundation/Utils/MetricsLogger.h"
 #include <array>
 #include <span>
 #include <string>
 #include <unordered_map>
-#include "Templates/HeapVector.h"
-#include "Templates/HashMap.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HashMap.h"
 
 namespace zen::rc
 {

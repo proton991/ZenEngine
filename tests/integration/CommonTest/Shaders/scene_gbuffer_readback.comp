@@ -1,0 +1,31 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0) uniform sampler2D normalMap;
+layout(set = 1, binding = 1) uniform sampler2D albedoMap;
+layout(set = 1, binding = 2) uniform sampler2D materialMap;
+layout(set = 1, binding = 3) uniform sampler2D emissionMap;
+layout(set = 1, binding = 4) uniform usampler2D receiverMap;
+layout(set = 1, binding = 5) uniform sampler2D motionMap;
+layout(set = 1, binding = 6) uniform sampler2D positionMap;
+layout(set = 1, binding = 7) uniform sampler2D depthMap;
+layout(set = 1, binding = 8, std430) writeonly buffer GBufferPixels
+{
+    uvec4 values[];
+};
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size  = textureSize(albedoMap, 0);
+    if (all(lessThan(pixel, size)))
+    {
+        uint first        = 8u * uint(pixel.x + size.x * pixel.y);
+        values[first]     = floatBitsToUint(texelFetch(normalMap, pixel, 0));
+        values[first + 1] = floatBitsToUint(texelFetch(albedoMap, pixel, 0));
+        values[first + 2] = floatBitsToUint(texelFetch(materialMap, pixel, 0));
+        values[first + 3] = floatBitsToUint(texelFetch(emissionMap, pixel, 0));
+        values[first + 4] = texelFetch(receiverMap, pixel, 0);
+        values[first + 5] = floatBitsToUint(texelFetch(motionMap, pixel, 0));
+        values[first + 6] = floatBitsToUint(texelFetch(positionMap, pixel, 0));
+        values[first + 7] = floatBitsToUint(texelFetch(depthMap, pixel, 0));
+    }
+}

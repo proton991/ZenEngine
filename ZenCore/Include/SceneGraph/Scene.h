@@ -1,6 +1,7 @@
 #pragma once
-#include "Templates/HeapVector.h"
-#include "Utils/UniquePtr.h"
+#include "Math/Math.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include "Node.h"
 #include "Mesh.h"
 #include "Sampler.h"

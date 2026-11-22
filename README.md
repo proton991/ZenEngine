@@ -1,6 +1,6 @@
 # ZenEngine
 
-Samples and tests are independent Git submodules: [ZenSample](https://github.com/proton991/ZenSample)
+The sample projects and the remaining component test suites live in Git submodules, [ZenSample](https://github.com/proton991/ZenSample)
 and [ZenTest](https://github.com/proton991/ZenTest). Clone with `--recurse-submodules`,
 or run `git submodule update --init --recursive` in an existing checkout.
 Every configure fast-forwards these subprojects and ZenAssetProcessor to the latest GitHub `main`, so a recorded submodule
@@ -138,23 +138,22 @@ flowchart TB
     VK ~~~ F
 ```
 
-The shared renderer and engine foundation live in the `ZenCore` library
-(`ZenCore/Include`, `ZenCore/Source`).
+ZenCore contains the renderer, scene and platform code. It links ZenFoundation and ZenRHI.
 
 ### What each layer provides
 
 | Layer | Location | Capabilities |
 | --- | --- | --- |
-| **Core** | `Templates/`, `Memory/`, `Utils/` | `SmallVector`, `HeapVector`, `ArenaVector`, `FlatHashMap`, `LRUCache`, `ObjectPool`, `NameID` interning; linear, paged and pool allocators; intrusive `RefCountPtr`/`UniquePtr`/`SharedPtr`; thread pool, locks; `VERIFY_EXPR` invariants checked in Debug and Release. |
+| **ZenFoundation** | `ZenFoundation/include/ZenFoundation/` | `SmallVector`, `HeapVector`, `ArenaVector`, `FlatHashMap`, `LRUCache`, `ObjectPool`, `NameID` interning; linear, paged and pool allocators; intrusive `RefCountPtr`/`UniquePtr`/`SharedPtr`; thread pool, locks; `VERIFY_EXPR` invariants checked in Debug and Release. |
 | **Platform** | `Platform/` | GLFW window and input (keyboard/mouse with UI capture), transactional `key=value` `ConfigLoader`, file system helpers, timers. |
 | **SceneGraph & AssetLib** | `SceneGraph/`, `AssetLib/`, `Systems/` | Node/component scene (transform, mesh, material, light, camera, texture, sampler); fastgltf + simdjson glTF importer with transactional failure; Draco/meshopt decoding; skin, morph and `KHR_animation_pointer` animation; PNG/JPEG/WebP/BasisU textures; model catalog for the UI browser; scene centering and normalization. See [glTF scene import](Doc/GLTFSceneImport.md). |
-| **RHI** | `Graphics/RHI/` | Backend-agnostic buffers, textures, views, samplers and pipelines; deferred `RHICommandList` recording; an executor that runs inline or on a dedicated RHI thread; per-queue submission serials and explicit dependencies; global bindless handles; reflected, batched shader parameters; GPU pass timing, GPU memory statistics and device-loss diagnostics. See [RHI contracts](ZenCore/Include/Graphics/RHI/README.md). |
-| **VulkanRHI** | `Graphics/VulkanRHI/` | Vulkan 1.2 with `VK_KHR_dynamic_rendering`, volk loading, VMA allocation, graphics/compute/transfer queue selection with concurrent sharing, timeline semaphores (fence fallback), a lifetime tracker for deferred destruction, descriptor pools plus a set-0 bindless heap, a uniform ring allocator, a native pipeline cache, and swapchain recreation with `swapchain_maintenance1` support. |
+| **ZenRHI** | `ZenRHI/include/ZenRHI/` | Backend-agnostic buffers, textures, views, samplers and pipelines; deferred `RHICommandList` recording; an executor that runs inline or on a dedicated RHI thread; per-queue submission serials and explicit dependencies; global bindless handles; reflected, batched shader parameters; GPU pass timing, GPU memory statistics and device-loss diagnostics. See [RHI contracts](ZenRHI/include/ZenRHI/README.md). |
+| **VulkanRHI** | `ZenRHI/src/Vulkan/` | Vulkan 1.2 with `VK_KHR_dynamic_rendering`, volk loading, VMA allocation, graphics/compute/transfer queue selection with concurrent sharing, timeline semaphores (fence fallback), a lifetime tracker for deferred destruction, descriptor pools plus a set-0 bindless heap, a uniform ring allocator, a native pipeline cache, and swapchain recreation with `swapchain_maintenance1` support. |
 | **RenderGraph** | `RenderCore/V2/RenderGraph/` | Graphics/compute/transfer passes with name-reflected bindings; automatic resource versions, barriers and layout transitions; content guarantees; pass culling; transient pooling and allocation reuse; queue preferences compiled into submission groups with cross-queue waits; imports and deferred extractions; metrics and an independent barrier validator. See [RDG metrics](Doc/RDGMetrics.md). |
 | **RenderDevice** | `RenderCore/V2/` | Frames in flight and frame slots, the per-frame graph, a staging upload queue on async transfer, texture manager, scene resource ownership, GPU-safe resource retirement, and cross-graph submission history. |
 | **Renderers** | `RenderCore/V2/Renderer/` | `RendererServer` (view selection and runtime GI reconfiguration), `SkyboxRenderer` (irradiance, prefiltered environment, BRDF LUT, skybox), `DeferredLightingRenderer` (G-buffer, deferred lighting, forward HDR path with transmission/scattering, tone map, light markers), `SceneShadowRenderer` (point/spot/directional shadow maps shared by lighting and GI), `GeometryVoxelizer`/`ComputeVoxelizer`, `VoxelGIRenderer`. |
 | **ZenUI** | `ZenUI/` | Dear ImGui adapter, neutral RDG UI renderer, and ZenApp session diagnostics. The standalone overlay is optional via `ZEN_BUILD_RUNTIME_UI`. |
-| **Samples & tools** | `ZenTest/`, `tools/` | Unit, native-window, editor and Vulkan integration suites; ZenApp Nsight profiling and offline analysis of archived captures. |
+| **Samples & tools** | `ZenTest/`, `tests/integration/`, `tools/` | Unit, native-window, editor and Vulkan integration suites; ZenApp Nsight profiling and offline analysis of archived captures. |
 
 ### Anatomy of a Voxel GI frame
 
@@ -248,7 +247,7 @@ Background: [threading plan](Doc/RenderCoreRHIThreadingPlan.md),
 
 Production support currently targets Windows desktop Vulkan, and AMD is the validated
 hardware. macOS and Linux presets exist but are not supported until their platform
-acceptance matrix passes. Details are in the [RHI contracts](ZenCore/Include/Graphics/RHI/README.md#vulkan-device-and-presentation-requirements).
+acceptance matrix passes. Details are in the [RHI contracts](ZenRHI/include/ZenRHI/README.md#vulkan-device-and-presentation-requirements).
 
 ### Build
 
@@ -361,13 +360,14 @@ The standalone `span` dependency was replaced by C++20 `std::span` behind the ex
 
 ## Testing and verification
 
-| Suite | Cases | Covers |
-| --- | ---: | --- |
-| `RenderCoreTest` | 547 | Render graph compilation, scheduling, submission and failure paths, async compute/upload lifetimes, GI settings and resource planning |
-| `VulkanRHIIntegrationTest` | 336 | Real-device resources, descriptors, bindless retirement, queues, swapchain, recording, pipelines, GPU timing |
-| `CommonTest` | 108 | glTF import (compatibility, morphs, stress, physical units), animation, containers, allocators, configuration |
-| `VulkanRHITest` | 45 | Backend unit contracts: lifetime tracker, queue selection, synchronization |
-| `SmartPtrTest`, `ConfigLoaderTest`, `EditorRenderingTest`, `RuntimeLaunchTest`, `WindowPlatformTest`, `UIDrawPacketTest`, `InputControllerTest`, `ConeVoxelGIIntegrationTest`, … | 90+ | Smart pointers, configuration, UI integration, model switching, input, cone-traced GI end-to-end |
+| Owner | Suites and coverage |
+| --- | --- |
+| ZenFoundation | `ZenFoundationTests` covers containers, allocation, ownership, locking and thread-pool lifecycle. |
+| ZenRHI | `ZenRHICoreTests` covers recording, execution and completion. `ZenRHIVulkanTests` covers CPU-side Vulkan contracts. `ZenRHIVulkanIntegrationTests` exercises real GPU resources, pipelines, queue submission and swapchains. |
+| ZenEngine | `tests/integration` owns cross-component tests for RenderCore, engine shaders, windows, the editor and asset consumers. |
+| ZenTest and ZenAssetProcessor | Their own builds register the remaining component tests and processor-only checks, respectively. |
+
+The [local split verification record](Doc/LibrarySplitVerification.md) maps the original suites to their owners and records the runs.
 
 GPU suites expect a Vulkan device. `tools/check_pr.py` builds and runs registered
 Debug/Release CTest suites. `tools/verify_rhi_production.py --smoke --setup=scene.zenrender`
@@ -378,7 +378,7 @@ and direct ZenApp Nsight profiling. Historical image measurements remain in `Doc
 ## Code review skill
 
 The shared [C++ rendering review skill](.agents/skills/review-rendering-changes/SKILL.md)
-contains the review workflow and seven C++ coding rules used for ZenEngine changes.
+contains the review workflow and project C++ coding rules used for ZenEngine changes.
 Clone or pull this repository on another device and open it in Codex. The skill is
 discovered from `.agents/skills`; no separate installation is needed for this repository.
 If it does not appear, restart Codex ([skill discovery documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)).
@@ -403,7 +403,7 @@ Use $skill-installer to install https://github.com/proton991/ZenEngine/tree/main
 
 | Topic | Documents |
 | --- | --- |
-| RHI | [Binding and lifetime contracts](ZenCore/Include/Graphics/RHI/README.md) · [Error handling](Doc/RHIErrorHandlingPlan.md) · [Improvement plan](Doc/RHIImprovementPlan.md) |
+| RHI | [Binding and lifetime contracts](ZenRHI/include/ZenRHI/README.md) · [Error handling](Doc/RHIErrorHandlingPlan.md) · [Improvement plan](Doc/RHIImprovementPlan.md) |
 | RenderCore | [Render graph design](Doc/DevLogs/RenderGraphDesign.md) · [RDG/RenderCore analysis](Doc/RDGRenderCoreAnalysisAndPlan.md) · [RDG metrics](Doc/RDGMetrics.md) |
 | Threading and queues | [RenderCore/RHI threading](Doc/RenderCoreRHIThreadingPlan.md) · [Async compute](Doc/AsyncComputeImplementationPlan.md) · [Synchronization simplification](Doc/SynchronizationSimplificationPlan.md) |
 | Global illumination | [Voxel GI plan](Doc/VoxelGIImplementationPlan.md) · [Verification](Doc/VoxelGIVerification.md) · [Performance](Doc/VoxelGIPerformance.md) · [Voxelization calibration](Doc/VoxelizationCalibration.md) |

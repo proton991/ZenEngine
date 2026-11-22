@@ -1,6 +1,7 @@
 #pragma once
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/RenderView.h"
-#include "Utils/UniquePtr.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/Renderer/DebugVisualization.h"
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"

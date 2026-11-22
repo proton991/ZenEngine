@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetLib/SceneAssetIO.h"
 #include "AssetLib/SceneAssetIOInternal.h"
 #include "AssetLib/AssetHash.h"

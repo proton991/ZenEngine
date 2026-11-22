@@ -1,9 +1,11 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
-#include "Templates/SmallVector.h"
+#include "ZenFoundation/Templates/SmallVector.h"
 
 #define IRRADIANCE_DIM  64
 #define PREFILTERED_DIM 512

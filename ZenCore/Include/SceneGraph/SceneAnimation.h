@@ -2,7 +2,7 @@
 
 #include "AssetLib/Types.h"
 #include "SceneAsset.h"
-#include "Templates/VectorView.h"
+#include "ZenFoundation/Templates/VectorView.h"
 
 namespace zen::sg
 {

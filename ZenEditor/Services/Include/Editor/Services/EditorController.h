@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "AssetTools/SceneTools.h"
 #include "Editor/Services/AssetPreprocessor.h"
 #include "Editor/Model/EditorActions.h"

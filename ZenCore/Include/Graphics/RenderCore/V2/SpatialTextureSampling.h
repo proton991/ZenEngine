@@ -1,6 +1,6 @@
 #pragma once
 #include "Math/Math.h"
-#include "Templates/VectorView.h"
+#include "ZenFoundation/Templates/VectorView.h"
 
 namespace zen::rc
 {

@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/RenderSubmissionHistory.h"
 #include <algorithm>
 

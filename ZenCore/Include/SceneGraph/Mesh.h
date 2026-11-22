@@ -1,7 +1,8 @@
 #pragma once
+#include "Math/Math.h"
 #include "Component.h"
 #include "SubMesh.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <algorithm>
 
 namespace zen::sg

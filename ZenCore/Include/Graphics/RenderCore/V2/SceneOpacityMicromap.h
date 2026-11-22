@@ -1,8 +1,8 @@
 #pragma once
-#include "Graphics/RHI/RHIAccelerationStructure.h"
+#include "ZenRHI/RHIAccelerationStructure.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
-#include "Utils/SharedPtr.h"
+#include "ZenFoundation/Utils/SharedPtr.h"
 #include <string>
 
 namespace zen::rc

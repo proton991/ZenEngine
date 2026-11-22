@@ -4,8 +4,8 @@
 #include "AssetLib/SceneData.h"
 #include "AssetLib/SceneAsset.h"
 #include "Math/Math.h"
-#include "Templates/HeapVector.h"
-#include "Templates/SmallVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Templates/SmallVector.h"
 #include "AssetLib/Types.h"
 
 namespace zen::sg

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/RenderObject.h"

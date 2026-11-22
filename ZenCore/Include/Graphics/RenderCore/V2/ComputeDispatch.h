@@ -1,5 +1,6 @@
 #pragma once
-#include "Graphics/RHI/RHICommon.h"
+#include "Math/Math.h"
+#include "ZenRHI/RHICommon.h"
 #include <algorithm>
 #include <limits>
 

@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include <algorithm>

@@ -1,5 +1,6 @@
 #pragma once
-#include "Graphics/RHI/RHIAccelerationStructure.h"
+#include "Math/Math.h"
+#include "ZenRHI/RHIAccelerationStructure.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"

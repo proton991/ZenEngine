@@ -1,0 +1,33 @@
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0) uniform texture2D uTexture2DHeap[];
+layout(set = 0, binding = 2) uniform sampler uSamplerHeap[];
+layout(set = 1, binding = 0, std430) buffer Results
+{
+    vec4 values[];
+};
+void main()
+{
+    uint  index   = gl_GlobalInvocationID.x;
+    uint  binding = index / 18;
+    uint  query   = index % 18;
+    float uv      = 0.025 + float(query % 3) * 0.475;
+    float lod     = query < 3 ? 0.0 : (query < 6 ? 0.75 : 2.5);
+    // Dynamic indexing keeps both declarations as runtime descriptor arrays.
+    if (query < 9)
+    {
+        values[index] = textureLod(sampler2D(uTexture2DHeap[nonuniformEXT(binding)], uSamplerHeap[nonuniformEXT(binding % 2)]),
+                                   vec2(uv), lod);
+    }
+    else
+    {
+        float footprint = float((query - 9) / 3);
+        float angle     = footprint * 0.6;
+        float major     = 0.125 * exp2(footprint * 2.0);
+        vec2  dx        = vec2(cos(angle), sin(angle)) * major;
+        vec2  dy        = vec2(-sin(angle), cos(angle)) * (major / 16.0);
+        values[index] = textureGrad(sampler2D(uTexture2DHeap[nonuniformEXT(binding)], uSamplerHeap[nonuniformEXT(binding % 2)]),
+                                    vec2(uv), dx, dy);
+    }
+}

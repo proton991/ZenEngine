@@ -1,7 +1,8 @@
 #pragma once
+#include "Math/Math.h"
 #include "Component.h"
 #include "Utils/Errors.h"
-#include "Utils/UniquePtr.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include "Texture.h"
 #include "MaterialFeatures.h"
 #include <cmath>

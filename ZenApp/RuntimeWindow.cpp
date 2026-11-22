@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "ZenApp/RuntimeWindow.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
@@ -122,7 +124,7 @@ void RuntimeWindow::Update()
         {
             m_window->SetOnInput([this](const platform::InputEvent& event) { OnInput(event); });
             const platform::WindowExtent extent = m_window->GetFramebufferExtent();
-            m_present = m_device.CreateViewport(m_window.Get(), extent.width, extent.height, m_settings.vsync);
+            m_present = m_device.CreateViewport(m_window->GetRHIWindowHandle(), extent.width, extent.height, m_settings.vsync);
             ready     = m_present != nullptr && m_compositor.Init(m_device);
             LOGI("ZenApp presentation: fullscreen={}, framebuffer={}x{}", m_window->IsFullscreen(), extent.width,
                  extent.height);

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetLib/SceneRuntimeBuilderInternal.h"
 #include "SceneGraph/SceneAnimation.h"
 #include "SceneGraph/Transform.h"

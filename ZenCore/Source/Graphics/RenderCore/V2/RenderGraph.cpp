@@ -1,12 +1,12 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDebugSnapshot.h"
-#include "Graphics/RHI/RHICommon.h"
+#include "ZenRHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Graphics/RHI/RHICommandList.h"
-#include "Graphics/RHI/RHIOptions.h"
+#include "ZenRHI/RHICommandList.h"
+#include "ZenRHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
-#include "Templates/SmallVector.h"
+#include "ZenFoundation/Templates/SmallVector.h"
 #include "Utils/Errors.h"
 
 #include <algorithm>
@@ -227,9 +227,9 @@ RHIShaderResourceType LogicalBindingType(RDGBindingType type)
     return result;
 }
 
-BitField<RHIPipelineStageFlagBits> ShaderPipelineStages(BitField<RHIShaderStageFlagBits> flags)
+RHIFlags<RHIPipelineStageFlagBits> ShaderPipelineStages(RHIFlags<RHIShaderStageFlagBits> flags)
 {
-    BitField<RHIPipelineStageFlagBits> stages;
+    RHIFlags<RHIPipelineStageFlagBits> stages;
 
     const std::pair<RHIShaderStageFlagBits, RHIPipelineStageFlagBits> mapping[] = {
         {RHIShaderStageFlagBits::eVertex, RHIPipelineStageFlagBits::eVertexShader},
@@ -256,9 +256,9 @@ BitField<RHIPipelineStageFlagBits> ShaderPipelineStages(BitField<RHIShaderStageF
     return stages;
 }
 
-BitField<RHIPipelineStageFlagBits> ResourceStages(const RDGPassNode*                 node,
-                                                  BitField<RHIPipelineStageFlagBits> usageStages,
-                                                  BitField<RHIPipelineStageFlagBits> shaderStages)
+RHIFlags<RHIPipelineStageFlagBits> ResourceStages(const RDGPassNode*                 node,
+                                                  RHIFlags<RHIPipelineStageFlagBits> usageStages,
+                                                  RHIFlags<RHIPipelineStageFlagBits> shaderStages)
 {
     int64_t stages = usageStages;
 
@@ -274,7 +274,7 @@ BitField<RHIPipelineStageFlagBits> ResourceStages(const RDGPassNode*            
     {
         stages = (stages & ~int64_t(RHIPipelineStageFlagBits::eAccelerationStructureBuild)) | int64_t(shaderStages);
     }
-    return BitField<RHIPipelineStageFlagBits>(stages);
+    return RHIFlags<RHIPipelineStageFlagBits>(stages);
 }
 
 // Memory scopes do not inherit the logical execution order of graphics stages.
@@ -524,7 +524,7 @@ RDGTextureResourceState AdvanceState(RDGTextureResourceState previous, const RDG
     return previous;
 }
 
-bool TransferStages(BitField<RHIPipelineStageFlagBits> stages)
+bool TransferStages(RHIFlags<RHIPipelineStageFlagBits> stages)
 {
     constexpr int64_t allowed = int64_t(RHIPipelineStageFlagBits::eTopOfPipe) | int64_t(RHIPipelineStageFlagBits::eTransfer)
                               | int64_t(RHIPipelineStageFlagBits::eBottomOfPipe);
@@ -538,9 +538,9 @@ void AddBufferTransitions(HeapVector<RHIBufferTransition>& transitions,
                           RHIBuffer*                       buffer,
                           RHIAccessMode                    oldMode,
                           RHIAccessMode                    newMode,
-                          BitField<RHIBufferUsageFlagBits> oldUsage,
-                          BitField<RHIBufferUsageFlagBits> newUsage,
-                          BitField<RHIAccessFlagBits>      earlierWrites)
+                          RHIFlags<RHIBufferUsageFlagBits> oldUsage,
+                          RHIFlags<RHIBufferUsageFlagBits> newUsage,
+                          RHIFlags<RHIAccessFlagBits>      earlierWrites)
 {
     for (uint32_t source = 0; source < ToUnderlying(RHIBufferUsage::eMax); ++source)
     {
@@ -733,7 +733,7 @@ RDGAccelerationStructureResourceState ResourceStateTracker::GetAccelerationStruc
 void ResourceStateTracker::UpdateTextureState(const RHITexture*                  texture,
                                               RHIAccessMode                      mode,
                                               RHITextureUsage                    usage,
-                                              BitField<RHIPipelineStageFlagBits> stages)
+                                              RHIFlags<RHIPipelineStageFlagBits> stages)
 {
     if (texture != nullptr)
     {
@@ -759,8 +759,8 @@ void ResourceStateTracker::SetTextureState(const RHITexture* texture, const RDGT
 
 void ResourceStateTracker::UpdateBufferState(const RHIBuffer*                   buffer,
                                              RHIAccessMode                      mode,
-                                             BitField<RHIBufferUsageFlagBits>   usage,
-                                             BitField<RHIPipelineStageFlagBits> stages)
+                                             RHIFlags<RHIBufferUsageFlagBits>   usage,
+                                             RHIFlags<RHIPipelineStageFlagBits> stages)
 {
     if (buffer != nullptr)
     {
@@ -788,7 +788,7 @@ void ResourceStateTracker::SetBufferState(const RHIBuffer* buffer, const RDGBuff
 
 void ResourceStateTracker::UpdateAccelerationStructureState(const RHIAccelerationStructure*    structure,
                                                             RHIAccessMode                      mode,
-                                                            BitField<RHIPipelineStageFlagBits> stages)
+                                                            RHIFlags<RHIPipelineStageFlagBits> stages)
 {
     if (structure != nullptr)
     {
@@ -1702,7 +1702,7 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
                     valid                                                                               = graph.CheckFormat(
                         !priorAccess || resource->hasInitialState || producer != external.end(), RDGErrorCode::eLifecycle,
                         "Initial resource state requires queue provenance before group recording: {} (id {})",
-                        resource->GetPhysicalResource()->GetResourceTag().CStr(), id);
+                        resource->GetPhysicalResource()->GetResourceTag().data(), id);
 
                     if (producer != external.end())
                     {
@@ -1775,14 +1775,14 @@ bool RDGExecutor::BuildGroupBarriers(ExecutionPlan&                          pla
                         const RDGAccelerationStructureResourceState& initialStructure =
                             state.accelerationStructures[initialQueue];
 
-                        const BitField<RHIPipelineStageFlagBits> initialStages =
+                        const RHIFlags<RHIPipelineStageFlagBits> initialStages =
                             resource->type == RDGResourceType::eAccelerationStructure
-                                ? BitField<RHIPipelineStageFlagBits>(initialStructure.pipelineStages
+                                ? RHIFlags<RHIPipelineStageFlagBits>(initialStructure.pipelineStages
                                                                      | initialStructure.writer.stages)
                             : resource->type == RDGResourceType::eBuffer
-                                ? BitField<RHIPipelineStageFlagBits>(int64_t(initialBuffer.pipelineStages)
+                                ? RHIFlags<RHIPipelineStageFlagBits>(int64_t(initialBuffer.pipelineStages)
                                                                      | int64_t(initialBuffer.writer.stages))
-                                : BitField<RHIPipelineStageFlagBits>(int64_t(initialTexture.pipelineStages)
+                                : RHIFlags<RHIPipelineStageFlagBits>(int64_t(initialTexture.pipelineStages)
                                                                      | int64_t(initialTexture.writer.stages));
 
                         valid = graph.Check(RHIQueueSupportsStages(RenderDevice::GetQueueCopyCapabilities(
@@ -2474,7 +2474,7 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
 
     if (valid)
     {
-        const BitField<RHIShaderStageFlagBits> stages = program->GetShader()->GetCreateInfo().stageFlags;
+        const RHIFlags<RHIShaderStageFlagBits> stages = program->GetShader()->GetCreateInfo().stageFlags;
 
         constexpr int64_t rayStages = int64_t(RHIShaderStageFlagBits::eRayGeneration) | int64_t(RHIShaderStageFlagBits::eMiss)
                                     | int64_t(RHIShaderStageFlagBits::eClosestHit) | int64_t(RHIShaderStageFlagBits::eAnyHit)
@@ -2532,7 +2532,7 @@ bool RenderGraph::ValidateGraphicsVariants(RDGGraphicsPassDesc& desc, const Shad
                                          && other->writable == binding.writable;
                     valid                 = valid
                                          && CheckPass(compatible, RDGErrorCode::eBinding, desc.passTag,
-                                                      "Graphics variant changes binding or access for '{}'", binding.name.CStr());
+                                                      "Graphics variant changes binding or access for '{}'", binding.name.c_str());
                 }
             }
             if (valid)
@@ -2844,7 +2844,7 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
 
             node->selfStages.SetFlags(RHIPipelineStageFlagBits::eVertexShader, RHIPipelineStageFlagBits::eFragmentShader);
 
-            const BitField<RHIShaderStageFlagBits> shaderStages = shader->GetShader()->GetCreateInfo().stageFlags;
+            const RHIFlags<RHIShaderStageFlagBits> shaderStages = shader->GetShader()->GetCreateInfo().stageFlags;
 
             if (shaderStages.HasFlag(RHIShaderStageFlagBits::eTesselationControl))
             {
@@ -2972,7 +2972,7 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
                 for (RDGBuffer const buffer : desc.vertexBuffers)
                 {
                     valid = DeclareBufferAccessForPass(node, m_resourceManager.Resolve(buffer),
-                                                       BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eVertexBuffer),
+                                                       RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eVertexBuffer),
                                                        RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, buffer);
 
                     if (!valid)
@@ -2985,7 +2985,7 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
                      && (!(desc.indexBuffer
                            && !DeclareBufferAccessForPass(
                                node, m_resourceManager.Resolve(desc.indexBuffer),
-                               BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndexBuffer), RHIAccessMode::eRead, {},
+                               RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndexBuffer), RHIAccessMode::eRead, {},
                                RDGContentEffect::eRead, true, false, desc.indexBuffer)));
             }
 
@@ -2994,7 +2994,7 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
                 for (RHIBuffer* buffer : desc.geometryBuffer.vertexBuffers)
                 {
                     valid = DeclareBufferAccessForPass(node, m_resourceManager.ImportBufferAllocation(buffer),
-                                                       BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eVertexBuffer),
+                                                       RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eVertexBuffer),
                                                        RHIAccessMode::eRead);
 
                     if (!valid)
@@ -3010,7 +3010,7 @@ RDGShaderPassCmdRecorder RenderGraph::AddGraphicsPass(RDGGraphicsPassDesc desc)
                 {
                     valid = DeclareBufferAccessForPass(
                         node, m_resourceManager.ImportBufferAllocation(desc.geometryBuffer.pIndexBuffer),
-                        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndexBuffer), RHIAccessMode::eRead);
+                        RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndexBuffer), RHIAccessMode::eRead);
                 }
 
                 valid = valid && (DeclarePassBindingAccess(node, shader, &desc));
@@ -3114,13 +3114,13 @@ RDGTransferPassCmdRecorder RenderGraph::AddTransferPass(NameID passName)
     return {this, pNode};
 }
 
-void RenderGraph::SetPipelineStatesForPassNode(RDGPassNode* node, BitField<RHIPipelineStageFlagBits> stages)
+void RenderGraph::SetPipelineStatesForPassNode(RDGPassNode* node, RHIFlags<RHIPipelineStageFlagBits> stages)
 {
     if (node->type == RDGNodeType::eComputePass || node->type == RDGNodeType::eRayTracingPass)
     {
         if ((int64_t(stages) & kRHIShaderPipelineStageMask) != 0)
         {
-            stages = BitField<RHIPipelineStageFlagBits>(int64_t(stages) & ~kRHIShaderPipelineStageMask);
+            stages = RHIFlags<RHIPipelineStageFlagBits>(int64_t(stages) & ~kRHIShaderPipelineStageMask);
             stages.SetFlag(node->type == RDGNodeType::eRayTracingPass ? RHIPipelineStageFlagBits::eRayTracingShader
                                                                       : RHIPipelineStageFlagBits::eComputeShader);
         }
@@ -3139,7 +3139,7 @@ bool RenderGraph::DeclareTextureAccessForPass(const RDGPassNode*                
                                               RHITextureUsage                       usage,
                                               const RHITextureSubResourceRange&     range,
                                               RHIAccessMode                         mode,
-                                              BitField<RHIPipelineStageFlagBits>    shaderStages,
+                                              RHIFlags<RHIPipelineStageFlagBits>    shaderStages,
                                               RDGContentEffect                      intent,
                                               bool                                  fullCoverage,
                                               bool                                  discardAfter,
@@ -3202,9 +3202,9 @@ bool RenderGraph::DeclareTextureAccessForPass(const RDGPassNode*                
 
 bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                    node,
                                              const RDGResourceManager::Allocation* resource,
-                                             BitField<RHIBufferUsageFlagBits>      usage,
+                                             RHIFlags<RHIBufferUsageFlagBits>      usage,
                                              RHIAccessMode                         mode,
-                                             BitField<RHIPipelineStageFlagBits>    shaderStages,
+                                             RHIFlags<RHIPipelineStageFlagBits>    shaderStages,
                                              RDGContentEffect                      intent,
                                              bool                                  fullCoverage,
                                              bool                                  discardAfter,
@@ -3240,7 +3240,7 @@ bool RenderGraph::DeclareBufferAccessForPass(const RDGPassNode*                 
 bool RenderGraph::DeclareAccelerationStructureAccessForPass(const RDGPassNode*                    node,
                                                             const RDGResourceManager::Allocation* resource,
                                                             RHIAccessMode                         mode,
-                                                            BitField<RHIPipelineStageFlagBits>    stages,
+                                                            RHIFlags<RHIPipelineStageFlagBits>    stages,
                                                             RDGContentEffect                      intent)
 {
     bool result = false;
@@ -3251,7 +3251,7 @@ bool RenderGraph::DeclareAccelerationStructureAccessForPass(const RDGPassNode*  
         access.accessMode = mode;
         access.bufferUsage.SetFlag(RHIBufferUsageFlagBits::eAccelerationStructureStorage);
         access.pipelineStages = ResourceStages(
-            node, BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild), stages);
+            node, RHIFlags<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAccelerationStructureBuild), stages);
         access.accessFlags = RHIBufferUsageToAccessFlagBits(RHIBufferUsage::eAccelerationStructureStorage, mode);
         result             = DeclareResourceAccessForPass(node, resource, access, intent);
     }
@@ -3731,7 +3731,7 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
     for (RDGBuffer const buffer : desc->logicalIndirectBuffers)
     {
         valid = DeclareBufferAccessForPass(node, m_resourceManager.Resolve(buffer),
-                                           BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer),
+                                           RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer),
                                            RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, buffer);
 
         if (!valid)
@@ -3745,7 +3745,7 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
         for (RHIBuffer* buffer : desc->indirectBuffers)
         {
             valid = DeclareBufferAccessForPass(node, m_resourceManager.ImportBufferAllocation(buffer),
-                                               BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer),
+                                               RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer),
                                                RHIAccessMode::eRead);
 
             if (!valid)
@@ -3775,7 +3775,7 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
                         m_resourceManager.ImportBufferAllocation(desc->bufferStorage[binding.buffers.offset + i]);
 
                     valid = DeclareBufferAccessForPass(node, resource,
-                                                       BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
+                                                       RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
                                                        BindingMode(*descriptor), ShaderPipelineStages(descriptor->stageFlags),
                                                        BindingEffect(*descriptor, binding.contents));
 
@@ -3820,7 +3820,7 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
 
                     const RDGContentEffect effect                   = BindingEffect(*descriptor, binding.contents);
 
-                    const BitField<RHIPipelineStageFlagBits> stages = ShaderPipelineStages(descriptor->stageFlags);
+                    const RHIFlags<RHIPipelineStageFlagBits> stages = ShaderPipelineStages(descriptor->stageFlags);
 
                     for (uint32_t i = 0; i < binding.resources.count; ++i)
                     {
@@ -3854,7 +3854,7 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node, ShaderProgram* sha
                                                                            ? RHIBufferUsageFlagBits::eUniformBuffer
                                                                            : RHIBufferUsageFlagBits::eStorageBuffer;
 
-                                    valid = DeclareBufferAccessForPass(node, resource, BitField<RHIBufferUsageFlagBits>(usage),
+                                    valid = DeclareBufferAccessForPass(node, resource, RHIFlags<RHIBufferUsageFlagBits>(usage),
                                                                        BindingMode(*descriptor), stages, effect, true, false,
                                                                        element.resource);
                                 }
@@ -4608,7 +4608,7 @@ bool RenderGraph::RequirePresentationState(RHITexture* texture)
         resource->finalTextureState.accessMode = RHIAccessMode::eReadWrite;
         resource->finalTextureState.usage      = RHITextureUsage::eColorAttachment;
         resource->finalTextureState.stages =
-            BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput);
+            RHIFlags<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput);
     }
     return valid;
 }
@@ -5579,7 +5579,7 @@ bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& tracker)
                 {
                     const RDGResourceManager::Allocation* resource = m_resourceManager.FindResourceByIdx(access.resourceId);
 
-                    BitField<RHIPipelineStageFlagBits> stages =
+                    RHIFlags<RHIPipelineStageFlagBits> stages =
                         resource->type == RDGResourceType::eTexture ? tracker.GetTextureState(resource->pTexture).pipelineStages
                         : resource->type == RDGResourceType::eAccelerationStructure
                             ? tracker.GetAccelerationStructureState(resource->pAccelerationStructure).pipelineStages

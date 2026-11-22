@@ -18,7 +18,7 @@ GENERATED_DIRECTORIES = {"build", "out"}
 def main():
     failures = []
     count = 0
-    for directory in ("ZenCore", "ZenEditor", "ZenTest", "ZenSample", "ZenUI"):
+    for directory in ("ZenFoundation", "ZenRHI", "tests/integration", "ZenCore", "ZenEditor", "ZenTest", "ZenSample", "ZenUI"):
         for path in sorted((ROOT / directory).rglob("*")):
             if path.suffix not in {".h", ".hpp", ".cpp", ".inl", ".cc", ".cxx"}:
                 continue

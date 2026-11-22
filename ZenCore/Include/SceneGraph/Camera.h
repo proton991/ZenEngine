@@ -1,5 +1,6 @@
 #pragma once
-#include "Utils/UniquePtr.h"
+#include "Math/Math.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include "Graphics/Types/Frustum.h"
 #include "SceneGraph/AABB.h"
 #include "SceneGraph/SceneAsset.h"

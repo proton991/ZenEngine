@@ -5,19 +5,26 @@ changed C++ and GLSL files and the no-exceptions check. --native adds the Vulkan
 (about two more minutes). Nothing here proves image output; use check_pr.py before submitting.
 """
 import argparse
+import json
+from pathlib import Path
 import re
 import subprocess
 
-from check_common import CHECKS, ROOT, build, changed_files, check_format, python, stamp, verify_suites, write_summary
+from check_common import CHECKS, ROOT, build, changed_files, check_format, python, stamp, uses_installed_rhi, write_summary
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native', action='store_true', help='Also run VulkanRHIIntegrationTest and RayQueryIntegrationTest')
+    parser.add_argument('--rhi-build-dir', type=Path, help='Include the standalone native ZenRHI suite')
     parser.add_argument('--filter', default='*', help='gtest filter for RenderCoreTest')
     args = parser.parse_args()
     output = CHECKS / f'quick-{stamp()}'
-    targets = ['RenderCoreTest'] + (['VulkanRHIIntegrationTest', 'RayQueryIntegrationTest'] if args.native else [])
+    build_dir = ROOT / 'build/x64-windows-msvc-release'
+    suites = ['RayQueryIntegrationTest'] if args.native else []
+    if args.native and not uses_installed_rhi(build_dir):
+        suites.append('VulkanRHIIntegrationTest')
+    targets = ['RenderCoreTest', *suites]
     build('release', targets, log=output / 'build.log')
     log = output / 'RenderCoreTest.log'
     with log.open('w') as stream:
@@ -33,9 +40,13 @@ def main():
     python('tools/check_no_exceptions.py')
     native = {}
     if args.native:
-        python('build/run_production_fix_suites.py', 'release', '--output', output, '--only', 'VulkanRHIIntegrationTest',
-               'RayQueryIntegrationTest')
-        native = verify_suites(output / 'release', ['VulkanRHIIntegrationTest', 'RayQueryIntegrationTest'])
+        arguments = []
+        if args.rhi_build_dir:
+            suites.append('ZenRHIVulkanIntegrationTests')
+            arguments.extend(['--rhi-build-dir', args.rhi_build_dir])
+        python('tools/verify_rhi_production.py', '--build-dir', build_dir,
+               '--output', output, *arguments, '--only', *suites)
+        native = json.loads((output / 'results.json').read_text())
     write_summary(output, dict(tier='quick', render_core_tests=int(passed.group(1)) if passed else None,
                                native_tests=native, passed=True))
 

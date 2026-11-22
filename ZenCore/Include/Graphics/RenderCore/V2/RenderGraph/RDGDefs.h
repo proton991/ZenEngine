@@ -1,6 +1,6 @@
 #pragma once
-#include "Graphics/RHI/RHICommon.h"
-#include "Templates/BitField.h"
+#include "ZenRHI/RHICommon.h"
+#include "ZenFoundation/Templates/BitField.h"
 #include <string>
 #include <string_view>
 #include <optional>
@@ -423,12 +423,12 @@ struct RDGAccess
     bool                             explicitVersion{false};
     RDG_ID                           nodeId{-1};
     RDG_ID                           resourceId{-1};
-    BitField<RHIBufferUsageFlagBits> bufferUsage{};
+    RHIFlags<RHIBufferUsageFlagBits> bufferUsage{};
     RHITextureUsage                  textureUsage{RHITextureUsage::eMax};
-    BitField<RHIAccessFlagBits>      accessFlags;
+    RHIFlags<RHIAccessFlagBits>      accessFlags;
 
     // Resource-specific execution stages used by synchronization and diagnostics.
-    BitField<RHIPipelineStageFlagBits> pipelineStages;
+    RHIFlags<RHIPipelineStageFlagBits> pipelineStages;
     RHITextureSubResourceRange         textureSubResourceRange;
 };
 } // namespace zen::rc

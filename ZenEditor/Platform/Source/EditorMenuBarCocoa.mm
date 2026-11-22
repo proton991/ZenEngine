@@ -1,6 +1,6 @@
 // Cocoa menu integration, compiled as Objective-C++ without ARC.
 #include "Editor/Platform/EditorMenuBar.h"
-#include "Templates/Queue.h"
+#include "ZenFoundation/Templates/Queue.h"
 #import <AppKit/AppKit.h>
 #include <algorithm>
 #include <optional>

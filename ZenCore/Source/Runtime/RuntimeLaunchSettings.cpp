@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Runtime/RuntimeLaunchSettings.h"
 #include "AssetLib/SceneLoader.h"
 #include "Math/Finite.h"

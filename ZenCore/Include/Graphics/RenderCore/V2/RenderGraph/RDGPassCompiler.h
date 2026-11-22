@@ -1,15 +1,16 @@
 #pragma once
-#include "Graphics/RHI/RHICommon.h"
+#include "ZenFoundation/Templates/BitMask.h"
+#include "ZenRHI/RHICommon.h"
 #include "RDGDefs.h"
-#include "Graphics/RHI/RHIResource.h"
-#include "Graphics/RHI/RHIAccelerationStructure.h"
-#include "Templates/HeapVector.h"
-// #include "Graphics/RHI/RHIResource.h"
-// #include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHIShaderParameters.h"
+#include "ZenRHI/RHIResource.h"
+#include "ZenRHI/RHIAccelerationStructure.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+// #include "ZenRHI/RHIResource.h"
+// #include "ZenRHI/RHICommon.h"
+#include "ZenRHI/RHIShaderParameters.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Templates/NameID.h"
-#include "Templates/VectorView.h"
+#include "ZenFoundation/Templates/NameID.h"
+#include "ZenFoundation/Templates/VectorView.h"
 #include <cstring>
 
 // todo: do not use dynamic vector in structure/classes, use flat linked list

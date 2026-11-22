@@ -1,6 +1,7 @@
 #pragma once
 // Overlays drawn over the Scene view's image. Private to the ImGui frontend; the
 // orientation math lives in the model's ViewAxes.
+#include "Math/Math.h"
 #include "Editor/Model/EditorActions.h"
 #include "Editor/Model/EditorCamera.h"
 #include "imgui.h"

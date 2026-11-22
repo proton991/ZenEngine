@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Graphics/RHI/RHICommon.h"
+#include "ZenRHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 
 namespace zen::rc

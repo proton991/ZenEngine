@@ -1,7 +1,7 @@
 #pragma once
-#include "Graphics/RHI/RHICommandListExecutor.h"
+#include "ZenRHI/RHICommandListExecutor.h"
 #include "RenderGraph/RDGSchedule.h"
-#include "Templates/HashMap.h"
+#include "ZenFoundation/Templates/HashMap.h"
 #include <unordered_set>
 
 namespace zen::rc

@@ -1,6 +1,7 @@
-#include "Utils/Helpers.h"
+#include "Utils/Errors.h"
+#include "ZenFoundation/Utils/Helpers.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h"
-#include "Graphics/RHI/RHIResource.h"
+#include "ZenRHI/RHIResource.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include <bit>
 
@@ -544,7 +545,7 @@ RDGExtractionState::~RDGExtractionState()
 RefCountPtr<RDGExtractionState> RDGResourceManager::QueueExtraction(RDGResource                      value,
                                                                     RDGResourceType                  type,
                                                                     RHITextureUsage                  textureUsage,
-                                                                    BitField<RHIBufferUsageFlagBits> bufferUsage)
+                                                                    RHIFlags<RHIBufferUsageFlagBits> bufferUsage)
 {
     RefCountPtr<RDGExtractionState> result{};
 
@@ -597,7 +598,7 @@ RDGExtractedTexture RDGResourceManager::QueueTextureExtraction(RDGTexture textur
     return RDGExtractedTexture(QueueExtraction(texture, RDGResourceType::eTexture, usage, {}));
 }
 
-RDGExtractedBuffer RDGResourceManager::QueueBufferExtraction(RDGBuffer buffer, BitField<RHIBufferUsageFlagBits> usage)
+RDGExtractedBuffer RDGResourceManager::QueueBufferExtraction(RDGBuffer buffer, RHIFlags<RHIBufferUsageFlagBits> usage)
 {
     return RDGExtractedBuffer(QueueExtraction(buffer, RDGResourceType::eBuffer, RHITextureUsage::eNone, usage));
 }
@@ -626,8 +627,8 @@ bool RDGResourceManager::DeclareExtractions()
 
             node->requireDefinedContents        = true;
 
-            const BitField<RHIPipelineStageFlagBits> stages =
-                BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAllCommands);
+            const RHIFlags<RHIPipelineStageFlagBits> stages =
+                RHIFlags<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAllCommands);
 
             if (extraction.resource->type == RDGResourceType::eTexture)
             {

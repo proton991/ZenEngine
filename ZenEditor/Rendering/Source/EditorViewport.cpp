@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Editor/Rendering/EditorViewport.h"
 #include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "EditorShaders.h"

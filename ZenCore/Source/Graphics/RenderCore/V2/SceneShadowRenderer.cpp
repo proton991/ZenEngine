@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"

@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include <cstddef>
 #include "SceneGraph/Material.h"
 

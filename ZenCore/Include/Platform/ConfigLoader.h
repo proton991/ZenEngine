@@ -8,7 +8,7 @@
 #include <optional>
 #include "Math/Math.h"
 #include "Utils/Errors.h"
-#include "Templates/HashMap.h"
+#include "ZenFoundation/Templates/HashMap.h"
 
 namespace zen::platform
 {

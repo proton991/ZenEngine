@@ -147,6 +147,7 @@ SDL_Window* WindowBackend::Borrow(const NativeWindow& window)
 NativeWindow::NativeWindow(const WindowConfig& config) : m_resizable(config.resizable)
 {
     WindowBackend::Acquire();
+    RegisterSurfaceExtensions();
 
     SDL_WindowFlags flags = SDL_WINDOW_VULKAN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 

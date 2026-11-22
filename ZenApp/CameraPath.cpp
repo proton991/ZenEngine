@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "CameraPath.h"
 #include "RuntimeJson.h"
 

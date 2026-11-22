@@ -62,15 +62,34 @@ jobs:
           vulkaninfo --summary | Tee-Object -FilePath build/software-driver.txt
           if ($LASTEXITCODE -ne 0) { throw 'Software Vulkan driver unavailable' }
           if (!(Select-String -Path build/software-driver.txt -Pattern 'SwiftShader')) { throw 'Unexpected Vulkan driver' }
+      - name: Build and test standalone libraries
+        shell: pwsh
+        run: |
+          cmake -S ZenFoundation -B build/foundation-ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$pwd/build/library-prefix"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/foundation-ci -j 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ctest --test-dir build/foundation-ci --output-on-failure
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --install build/foundation-ci
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake -S ZenRHI -B build/rhi-ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$pwd/build/library-prefix" -DZENRHI_BUILD_EXAMPLES=OFF
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/rhi-ci --target ZenRHICoreTests ZenRHIVulkanTests -j 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tools/verify_rhi_production.py --rhi-build-dir build/rhi-ci --output build/software-results/rhi --unit-only
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Build and test hardware-independent suites
         shell: pwsh
         run: |
-          cmake --preset x64-windows-msvc-release -DZEN_BUILD_RUNTIME_UI=OFF
+          cmake --preset x64-windows-msvc-release -DZEN_BUILD_RUNTIME_UI=OFF -DZEN_BUILD_ASSET_TOOLS=ON -DZEN_BUILD_ASSET_INTEGRATION_TESTS=ON
           if ($LASTEXITCODE -ne 0) { throw 'Engine configure failed' }
-          cmake --build --preset x64-windows-msvc-release --target CommonTest RenderCoreTest VulkanRHITest -j 2
+          cmake --build --preset x64-windows-msvc-release --target CommonTest RenderCoreTest VulkanRHITest ZenAssetEngineTests -j 2
           if ($LASTEXITCODE -ne 0) { throw 'Engine build failed' }
-          python tools/verify_rhi_production.py --build-dir build/x64-windows-msvc-release --output build/software-results --unit-only
+          python tools/verify_rhi_production.py --build-dir build/x64-windows-msvc-release --output build/software-results/engine --unit-only
           if ($LASTEXITCODE -ne 0) { throw 'Engine tests failed' }
+          ctest --test-dir build/x64-windows-msvc-release --output-on-failure -R "^ZenAssetEngineTests$"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

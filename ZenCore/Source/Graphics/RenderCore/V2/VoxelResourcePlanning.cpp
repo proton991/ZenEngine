@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/VoxelGI.h"
 #include <algorithm>

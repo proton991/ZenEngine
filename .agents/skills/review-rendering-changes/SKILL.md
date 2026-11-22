@@ -39,9 +39,9 @@ Never treat an assumption as a fact. Base findings and refinements on inspected 
 For ZenEngine, use these as search starting points, and verify that they still describe the checkout:
 
 - `ZenCore/Include/Graphics/RenderCore/V2` and its source implementation: rendering policy, render-graph work, frame/resource management.
-- `ZenCore/Include/Graphics/RHI` and its source implementation: backend-facing interfaces and contracts; consult the local RHI `README.md` when relevant.
-- `ZenCore/Include/Graphics/VulkanRHI` and its source implementation: native Vulkan mechanisms.
-- `ZenCore/Include/Templates`: existing containers and utilities. `Doc`, `ZenTest`, and the CMake files: plans, verification, tests, and build configuration.
+- Consult `ZenRHI/include/ZenRHI` for the public API and its binding and lifetime contracts.
+- Inspect `ZenRHI/src/Vulkan` for Vulkan implementation details.
+- Find containers and utilities under `ZenFoundation/include/ZenFoundation`. Library tests live with each library. Cross-component tests live in `tests/integration`. The remaining single-component suites live in `ZenTest`.
 
 Do not assume V2 or a particular path is active merely because it exists. Do not copy today's implementation details into universal rules.
 
@@ -78,6 +78,7 @@ Apply these rules to all C++ written or modified under this skill, including tes
 5. Format C++ files using the project's `.clang-format` file. VSCode's format-on-save feature can be used to apply this formatting automatically.
 6. Reduce code duplication, including duplicated functions and duplicated logic. Reuse existing code or extract shared logic into suitable functions or methods.
 7. Do not throw exceptions for error handling. Use error codes or status results, log error messages, and use assertions for violated invariants as appropriate. Handle failures explicitly so execution does not continue with invalid data.
+8. Keep tests focused on observable behavior, important invariants, and concrete regressions. Extend an existing test when it covers the same behavior. Add a case or test at another layer only when it can catch a distinct failure. Skip trivial checks and assertions that merely restate the implementation.
 
 Do not copy a rule violation simply because adjacent legacy code uses it. Keep compliance work within the touched functions and necessary dependencies. For recoverable runtime failures, an assertion alone is insufficient when it disappears in release builds; propagate or handle status and keep later operations gated on success while preserving the single final return.
 

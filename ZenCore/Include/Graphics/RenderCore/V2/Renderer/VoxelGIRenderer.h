@@ -4,7 +4,7 @@
 #include "Math/Math.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
 #include "Graphics/RenderCore/V2/DistanceFieldScene.h"
-#include "Utils/UniquePtr.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
 
 namespace zen::platform

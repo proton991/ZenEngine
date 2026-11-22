@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Editor/Model/EditorCamera.h"
 #include "Graphics/RenderCore/V2/RenderingSettings.h"
 #include "imgui.h"

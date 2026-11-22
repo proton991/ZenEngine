@@ -1,11 +1,11 @@
 #pragma once
-#include "Memory/LinearAllocator.h"
-#include "Utils/RefCountPtr.h"
-#include "Memory/PoolAllocator.h"
-#include "Templates/FlatHashMap.h"
-#include "Templates/NameID.h"
-#include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHIAccelerationStructure.h"
+#include "ZenFoundation/Memory/LinearAllocator.h"
+#include "ZenFoundation/Utils/RefCountPtr.h"
+#include "ZenFoundation/Memory/PoolAllocator.h"
+#include "ZenFoundation/Templates/FlatHashMap.h"
+#include "ZenFoundation/Templates/NameID.h"
+#include "ZenRHI/RHICommon.h"
+#include "ZenRHI/RHIAccelerationStructure.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
@@ -35,14 +35,14 @@ struct RDGTextureDesc
 {
     NameID                            name;
     TextureFormat                     texFormat{};
-    BitField<RHITextureUsageFlagBits> usageFlags{0};
+    RHIFlags<RHITextureUsageFlagBits> usageFlags{0};
 };
 
 struct RDGBufferDesc
 {
     NameID                           name;
     uint64_t                         size{0};
-    BitField<RHIBufferUsageFlagBits> usageFlags{0};
+    RHIFlags<RHIBufferUsageFlagBits> usageFlags{0};
 };
 
 // Payload estimates, excluding native allocation alignment/metadata. The budget limits idle
@@ -88,14 +88,14 @@ struct RDGTextureImportState
     RDGImportContents                  contents{RDGImportContents::eUnknown};
     RHIAccessMode                      accessMode{RHIAccessMode::eNone};
     RHITextureUsage                    usage{RHITextureUsage::eNone};
-    BitField<RHIPipelineStageFlagBits> stages{RHIPipelineStageFlagBits::eTopOfPipe};
+    RHIFlags<RHIPipelineStageFlagBits> stages{RHIPipelineStageFlagBits::eTopOfPipe};
 };
 struct RDGBufferImportState
 {
     RDGImportContents                  contents{RDGImportContents::eUnknown};
     RHIAccessMode                      accessMode{RHIAccessMode::eNone};
-    BitField<RHIBufferUsageFlagBits>   usage;
-    BitField<RHIPipelineStageFlagBits> stages{RHIPipelineStageFlagBits::eTopOfPipe};
+    RHIFlags<RHIBufferUsageFlagBits>   usage;
+    RHIFlags<RHIPipelineStageFlagBits> stages{RHIPipelineStageFlagBits::eTopOfPipe};
 };
 
 // A copied description of the selected resource; never exposes manager-owned storage.
@@ -228,7 +228,7 @@ public:
 
     RDGExtractedBuffer QueueBufferExtraction(
         RDGBuffer                        buffer,
-        BitField<RHIBufferUsageFlagBits> finalUsage = BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer));
+        RHIFlags<RHIBufferUsageFlagBits> finalUsage = RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer));
 
     // Queries validate against this live manager and copy metadata. Values survive calls/replay
     // within one recorded build, never Reset/Begin. Failed queries leave the output unchanged.
@@ -356,7 +356,7 @@ private:
         Allocation*                      resource;
         RDGResource                      value;
         RHITextureUsage                  textureUsage{RHITextureUsage::eNone};
-        BitField<RHIBufferUsageFlagBits> bufferUsage;
+        RHIFlags<RHIBufferUsageFlagBits> bufferUsage;
         RefCountPtr<RDGExtractionState>  state;
     };
     HeapVector<Extraction> m_extractions;
@@ -386,7 +386,7 @@ private:
     RefCountPtr<RDGExtractionState> QueueExtraction(RDGResource                      resource,
                                                     RDGResourceType                  type,
                                                     RHITextureUsage                  textureUsage,
-                                                    BitField<RHIBufferUsageFlagBits> bufferUsage);
+                                                    RHIFlags<RHIBufferUsageFlagBits> bufferUsage);
 
     bool DeclareExtractions();
 

@@ -1,3 +1,4 @@
+#include "ZenFoundation/Memory/Memory.h"
 #include "RuntimeApplication.h"
 #include "Platform/ConfigLoader.h"
 #include "Platform/CommandLine.h"
@@ -426,6 +427,7 @@ bool ParseOptions(int              argc,
 
 int RuntimeMain(int argc, char** argv)
 {
+    zen::DefaultAllocator::EnableExitMemoryReport();
     using namespace zen::runtime;
     RuntimeExit result = RuntimeExit::Setup;
     if (argc == 2 && std::string_view(argv[1]) == "--help")

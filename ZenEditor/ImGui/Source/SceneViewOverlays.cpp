@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "SceneViewOverlays.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include "Editor/Model/ViewAxes.h"

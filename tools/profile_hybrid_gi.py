@@ -211,6 +211,8 @@ def main():
     queries = [extension for extension in QUERY_EXTENSIONS if f'Enabled Device Extension: {extension}' in log]
     assert queries == (list(QUERY_EXTENSIONS) if args.backend == 'hardware' else []), queries
     report = summarize(out, args.frames)
+    report['revisions'] = {name: dict(commit=commit, state=state) for name, commit, state in
+                           re.findall(r'ZenApp build: (\w+) (\S+) (clean|dirty|unknown)', log)}
     report.update(application='ZenApp', backend=args.backend, clocks=args.clocks, setup=str(source),
                   start_after_ms=args.start_after_ms, async_compute=args.async_compute, gpu_culling=args.gpu_culling,
                   fullscreen=args.fullscreen,

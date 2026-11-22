@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Editor/Model/MeshPreviewSettings.h"
 #include "Editor/Rendering/EditorViewport.h"
 

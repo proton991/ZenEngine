@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/Renderer/ForwardDrawCache.h"
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"

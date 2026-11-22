@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetLib/ProcessedSceneAdapter.h"
 #include "ProcessedAnimationAdapter.h"
 #include "ProcessedSceneIO.h"

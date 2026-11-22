@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetTools/SceneTools.h"
 #include "Editor/Model/EditorScene.h"
 #include "Editor/Model/EditorText.h"

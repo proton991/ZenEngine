@@ -6,8 +6,8 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("ZenCore", "ZenTest", "ZenSample", "ZenUI", "ZenApp", "ZenEditor", "Data/Shaders")
-SUBPROJECTS = ("ZenSample", "ZenTest")
+SOURCE_ROOTS = ("ZenFoundation", "ZenRHI", "tests/integration", "ZenCore", "ZenTest", "ZenSample", "ZenUI", "ZenApp", "ZenEditor", "Data/Shaders")
+SUBPROJECTS = ("ZenFoundation", "ZenRHI", "ZenSample", "ZenTest")
 # GLSL is formatted as C++: shared includes plus every glslang stage suffix.
 SOURCE_SUFFIXES = {".h", ".hpp", ".cpp", ".inl", ".glsl", ".vert", ".tesc", ".tese", ".geom", ".frag", ".comp",
                    ".mesh", ".task", ".rgen", ".rint", ".rahit", ".rchit", ".rmiss", ".rcall"}
@@ -18,7 +18,7 @@ def active_source(name):
     if path.suffix not in SOURCE_SUFFIXES or not name.startswith(tuple(f"{root}/" for root in SOURCE_ROOTS)):
         return False
     # This translation unit is a third-party implementation wrapper.
-    return name != "ZenCore/Source/vk_mem_alloc.cpp"
+    return name != "ZenRHI/src/Vulkan/vk_mem_alloc.cpp"
 
 
 def main():

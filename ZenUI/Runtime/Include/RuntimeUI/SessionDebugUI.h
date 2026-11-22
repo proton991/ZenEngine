@@ -1,7 +1,7 @@
 #pragma once
 #include "Runtime/RuntimeLogEntry.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGMetrics.h"
-#include "Graphics/RHI/RHIGPUMemoryStats.h"
+#include "ZenRHI/RHIGPUMemoryStats.h"
 
 namespace zen::ui
 {

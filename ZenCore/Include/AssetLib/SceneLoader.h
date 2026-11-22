@@ -1,8 +1,9 @@
 #pragma once
+#include "Math/Math.h"
 #include "AssetLib/Types.h"
 #include "AssetLib/SceneImporter.h"
 #include "SceneGraph/Scene.h"
-#include "Utils/ThreadPool.h"
+#include "ZenFoundation/Utils/ThreadPool.h"
 #include <future>
 #include <string>
 

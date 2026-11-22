@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetLib/SceneAsset.h"
 #include "AssetLib/AnimatedMaterial.h"
 #include "AssetLib/Kernels/AssetKernels.h"

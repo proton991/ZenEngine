@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "RenderGraphWindow.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
@@ -22,7 +23,8 @@ bool RenderGraphWindow::Open()
         m_window = MakeUnique<platform::NativeWindow>(platform::WindowConfig{"Render Graph", true, 1280, 800, 0, false});
         m_window->SetMinimumSize(720, 480);
         const platform::WindowExtent extent = m_window->GetFramebufferExtent();
-        m_present = m_device.CreateViewport(m_window.Get(), std::max(extent.width, 1u), std::max(extent.height, 1u), true);
+        m_present           = m_device.CreateViewport(m_window->GetRHIWindowHandle(), std::max(extent.width, 1u),
+                                                      std::max(extent.height, 1u), true);
         const float uiScale = m_requestedScale > 0 ? m_requestedScale : m_window->GetUIScale();
         valid               = m_present != nullptr && m_ui.Init(*m_window, {false, uiScale, m_requestedScale <= 0, 15});
         if (valid)

@@ -1,7 +1,8 @@
 #pragma once
-#include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHIThread.h"
-#include "Graphics/RHI/RHICommandList.h"
+#include "Math/Math.h"
+#include "ZenRHI/RHICommon.h"
+#include "ZenRHI/RHIThread.h"
+#include "ZenRHI/RHICommandList.h"
 #include "Graphics/Shared/VoxelGI.h"
 #include "Platform/ConfigLoader.h"
 #include <string_view>

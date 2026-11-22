@@ -1,3 +1,11 @@
+#include "ZenEngine/Version.h"
+#include "ZenFoundation/Version.h"
+#include "ZenRHI/Version.h"
+#include "ZenAssetProcessor/Version.h"
+#include "ZenTest/Version.h"
+#include "ZenSample/Version.h"
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "RuntimeApplication.h"
 #include "RuntimeLog.h"
 #include "AssetLib/SceneLoader.h"
@@ -495,6 +503,12 @@ private:
 
     RuntimeExit Initialize()
     {
+        LOGI("ZenApp build: ZenEngine {} {}", build::ZenEngine::Commit, build::ZenEngine::State);
+        LOGI("ZenApp build: ZenFoundation {} {}", build::ZenFoundation::Commit, build::ZenFoundation::State);
+        LOGI("ZenApp build: ZenRHI {} {}", build::ZenRHI::Commit, build::ZenRHI::State);
+        LOGI("ZenApp build: ZenAssetProcessor {} {}", build::ZenAssetProcessor::Commit, build::ZenAssetProcessor::State);
+        LOGI("ZenApp build: ZenTest {} {}", build::ZenTest::Commit, build::ZenTest::State);
+        LOGI("ZenApp build: ZenSample {} {}", build::ZenSample::Commit, build::ZenSample::State);
         if (m_options.rhiOverride)
         {
             LOGI("Command-line override: RHI mode {}",

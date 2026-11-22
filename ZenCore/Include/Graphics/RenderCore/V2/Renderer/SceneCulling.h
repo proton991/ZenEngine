@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/FrameBufferRing.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/Shared/SceneCulling.h"

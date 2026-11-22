@@ -1,10 +1,11 @@
 #pragma once
 
-#include "Graphics/RHI/RHIResource.h"
+#include "Utils/Errors.h"
+#include "ZenRHI/RHIResource.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/ResourceRetirement.h"
-#include "Templates/HeapVector.h"
-#include "Templates/VectorView.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Templates/VectorView.h"
 #include <algorithm>
 #include <cstdint>
 

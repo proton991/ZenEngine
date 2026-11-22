@@ -1,6 +1,6 @@
 #include "Graphics/RenderCore/V2/StagingUploadQueue.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Graphics/RHI/DynamicRHI.h"
+#include "ZenRHI/DynamicRHI.h"
 #include "RDGCopyValidation.h"
 #include "Utils/Errors.h"
 
@@ -402,7 +402,7 @@ bool StagingUploadQueue::EnqueueTexture(RHITexture*                            p
                               RDGErrorCode::eBinding, "Texture upload lacks required transfer creation usage")
                 || (generateMipmaps && !ValidateMipmapCapabilities(result, info)))
             {
-                LOGE("Texture upload '{}' [{}]: {}", pTexture->GetResourceTag().CStr(), uint32_t(result.code), result.message);
+                LOGE("Texture upload '{}' [{}]: {}", pTexture->GetResourceTag().data(), uint32_t(result.code), result.message);
             }
             else
             {
@@ -415,7 +415,7 @@ bool StagingUploadQueue::EnqueueTexture(RHITexture*                            p
                         || !ValidateBufferTextureFootprint(result, dataSize, info, region)
                         || !ValidateBufferTextureCopyCapabilities(result, info, region, queues))
                     {
-                        LOGE("Texture upload '{}' region {} [{}]: {} (payload bytes: {})", pTexture->GetResourceTag().CStr(), i,
+                        LOGE("Texture upload '{}' region {} [{}]: {} (payload bytes: {})", pTexture->GetResourceTag().data(), i,
                              uint32_t(result.code), result.message, dataSize);
 
                         break;

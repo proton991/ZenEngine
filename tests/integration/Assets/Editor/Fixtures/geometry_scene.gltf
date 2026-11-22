@@ -1,0 +1,342 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "ZenEngine original geometry parity fixture"
+  },
+  "buffers": [
+    {
+      "byteLength": 812,
+      "uri": "data:application/octet-stream;base64,AAAAAM3MTD8AAAAAMzMzP5qZGb8AAAAAzcxMvzMzM78AAAAAAAAAADMzMz8AAAAAzcxMPzMzM78AAAAAMzMzv5qZGb8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAP4/C9T2PwnU9mpkZP4/CdT3NzAw/AACAP5qZGT8AAIA/j8L1PY/CdT2amRk/j8J1Pc3MDD8AAIA/mpkZPwAAgD+PwvU9j8J1PZqZGT+PwnU9zcwMPwAAgD+amRk/AAAAPwAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAPwAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAPwAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAPwAAgD8AAAAAAAAAAAAAgD8AAAAAAAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAgD8AAAAAAAAAAM3MTD/NzEw+AAAAAAAAAADNzEw/zcxMPgAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAM3MTD/NzEw+AAAAAAAAAADNzEw/zcxMPgAAAAAAAAAAAAAAQAAAAMAAAIBAAACAwAAAAAAAAACAAACgQAAAoMAAAIA/AACAvwAAQEAAAEDAAgAEAAAABQABAAMAMzOzPgAAgD4AAAAAzcxMPs3MzL0AAAAAAACAvs3MzD0AAAAAMzOzPgAAgD4AAAAAzcxMPs3MzL0AAAAAAACAvs3MzD0AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAEAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAABxfKM+PZlyPwAAAAAAAAAAZ0kyvgoXfD8AAAAAAACAPwAAgD4="
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 72,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 144,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 240,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 288,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 336,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 384,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 480,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 528,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 540,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 612,
+      "byteLength": 128
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 740,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 752,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 800,
+      "byteLength": 12
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3",
+      "min": [
+        -0.8,
+        -0.7,
+        0
+      ],
+      "max": [
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5123,
+      "count": 6,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5123,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3",
+      "min": [
+        -0.25,
+        -0.1,
+        0
+      ],
+      "max": [
+        0.35,
+        0.25,
+        0
+      ]
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 2,
+      "type": "MAT4"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 3,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        2
+      ]
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 3,
+      "type": "SCALAR"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Transparent layers",
+      "alphaMode": "BLEND",
+      "doubleSided": true,
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0,
+        "roughnessFactor": 0.7
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Shuffled skin and morph",
+      "weights": [
+        0
+      ],
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "COLOR_0": 2,
+            "TEXCOORD_0": 3,
+            "TEXCOORD_1": 4,
+            "JOINTS_0": 5,
+            "WEIGHTS_0": 6,
+            "_FREQUENCY": 7
+          },
+          "indices": 8,
+          "material": 0,
+          "targets": [
+            {
+              "POSITION": 9
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Animated mesh",
+      "mesh": 0,
+      "skin": 0
+    },
+    {
+      "name": "Root joint",
+      "children": [
+        2
+      ]
+    },
+    {
+      "name": "Tip joint"
+    }
+  ],
+  "skins": [
+    {
+      "joints": [
+        1,
+        2
+      ],
+      "skeleton": 1,
+      "inverseBindMatrices": 10
+    }
+  ],
+  "animations": [
+    {
+      "name": "Skin",
+      "samplers": [
+        {
+          "input": 11,
+          "output": 12,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 2,
+            "path": "rotation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Morph",
+      "samplers": [
+        {
+          "input": 11,
+          "output": 13,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 0,
+            "path": "weights"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Combined",
+      "samplers": [
+        {
+          "input": 11,
+          "output": 12,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 11,
+          "output": 13,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 2,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 0,
+            "path": "weights"
+          }
+        }
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "scene": 0
+}

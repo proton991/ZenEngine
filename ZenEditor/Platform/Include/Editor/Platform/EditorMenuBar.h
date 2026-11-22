@@ -1,6 +1,6 @@
 #pragma once
 #include "Editor/Model/EditorActions.h"
-#include "Utils/UniquePtr.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 
 namespace zen::editor
 {

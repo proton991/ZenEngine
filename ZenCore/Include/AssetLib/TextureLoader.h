@@ -1,8 +1,9 @@
 #pragma once
+#include "Math/Math.h"
 #include <string>
 #include <vector>
 #include "Types.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 
 namespace zen::asset
 {

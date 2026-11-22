@@ -1,7 +1,8 @@
 #pragma once
-#include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHIGPUMemoryStats.h"
-#include "Templates/ArrayView.h"
+#include "Math/Math.h"
+#include "ZenRHI/RHICommon.h"
+#include "ZenRHI/RHIGPUMemoryStats.h"
+#include "ZenFoundation/Templates/ArrayView.h"
 
 namespace zen::rc
 {

@@ -2,7 +2,7 @@
 
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <algorithm>
 #include <string>
 

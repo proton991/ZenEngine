@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "AssetLib/ImageAsset.h"
 #include "AssetLib/MaterialAsset.h"
 #include "AssetLib/SceneData.h"

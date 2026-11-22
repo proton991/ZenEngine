@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 
 namespace zen::rc
@@ -62,7 +63,7 @@ private:
                            const uint8_t*                                pData);
 
     // void UpdateTexture(const RHITexture* textureHandle,
-    //                    const Vec3i& textureSize,
+    //                    const RHIOffset3D& textureSize,
     //                    uint32_t dataSize,
     //                    const uint8_t* pData);
     //

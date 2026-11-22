@@ -1,10 +1,10 @@
-#include "Utils/MetricsLogger.h"
+#include "ZenFoundation/Utils/MetricsLogger.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
-#include "Utils/Helpers.h"
+#include "ZenFoundation/Utils/Helpers.h"
 #include "Utils/Errors.h"
-#include "Graphics/RHI/RHIOptions.h"
+#include "ZenRHI/RHIOptions.h"
 
 #include <algorithm>
 #include <bit>
@@ -102,7 +102,14 @@ RenderDevice::RenderDevice(RHIAPIType       APIType,
 
     if (GDynamicRHI == nullptr)
     {
-        DynamicRHI::Create(m_APIType);
+        RHIDeviceDesc description   = RHIOptions::GetInstance();
+        description.messageCallback = [](RHIMessageSeverity severity, std::string_view message) noexcept {
+            const spdlog::level::level_enum level = severity == RHIMessageSeverity::eError   ? spdlog::level::err
+                                                  : severity == RHIMessageSeverity::eWarning ? spdlog::level::warn
+                                                                                             : spdlog::level::info;
+            spdlog::log(level, "{}", message);
+        };
+        GDynamicRHI = CreateRHI(description);
     }
 
     VERIFY_EXPR_MSG(GDynamicRHI != nullptr, "Failed to create the RHI");
@@ -362,7 +369,7 @@ RenderFrameResult RenderDevice::ExecuteRenderGraph(RHIViewport* viewport, RDGDeb
                 // through the ticket; the worker never touches the graph or its callbacks.
                 m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
                     viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite, RHITextureUsage::eColorAttachment,
-                    BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput));
+                    RHIFlags<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput));
 
                 if (handoff == nullptr)
                 {
@@ -1466,7 +1473,7 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(const RHIGfxPipelineStates&   
 
                     for (const HashMap<uint32_t, RHIShaderSpecializationValue>::value_type& constant : constants)
                     {
-                        shaderInfo.specializationConstants[constant.first] = constant.second;
+                        shaderInfo.SetSpecialization(constant.first, constant.second);
                     }
 
                     info.pShader = GDynamicRHI->CreateShader(shaderInfo);
@@ -1639,7 +1646,7 @@ void RenderDevice::RecordPipelineFailure(const PipelineKey& key)
     failure.retryFrame = ToValue(GRenderFrameState.GetFrameNumber()) + delay;
 }
 
-RHIViewport* RenderDevice::CreateViewport(void* window, uint32_t width, uint32_t height, bool vsync)
+RHIViewport* RenderDevice::CreateViewport(zen::RHIWindowHandle window, uint32_t width, uint32_t height, bool vsync)
 {
     RHIViewport* viewport = GDynamicRHI->CreateViewport(window, width, height, vsync);
 
@@ -2315,7 +2322,7 @@ RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader*              
 
         for (uint32_t i = 0; i < MAX_NUM_COLOR_ATTACHMENTS; ++i)
         {
-            const bool enabled = c.attachmentsMask.Test(i);
+            const bool enabled = c.attachmentsMask.test(i);
 
             key.Add(enabled);
 
@@ -2353,7 +2360,7 @@ RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader*              
 
         for (uint32_t i = 0; i < ToUnderlying(RHIDynamicState::eMax); ++i)
         {
-            key.Add(bool(states.dynamicStates.enabledStates.Test(i)));
+            key.Add(bool(states.dynamicStates.enabledStates.test(i)));
         }
 
         key.Add(layout->numColorRenderTargets);
@@ -2398,7 +2405,7 @@ RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader*              
 
 RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
-    BitField<RHIBufferUsageFlagBits> usages;
+    RHIFlags<RHIBufferUsageFlagBits> usages;
 
     usages.SetFlag(RHIBufferUsageFlagBits::eVertexBuffer);
 
@@ -2427,7 +2434,7 @@ RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pD
 
 RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
-    BitField<RHIBufferUsageFlagBits> usages;
+    RHIFlags<RHIBufferUsageFlagBits> usages;
 
     usages.SetFlag(RHIBufferUsageFlagBits::eIndexBuffer);
 
@@ -2456,7 +2463,7 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
 
 RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData, NameID bufferName)
 {
-    BitField<RHIBufferUsageFlagBits> usages;
+    RHIFlags<RHIBufferUsageFlagBits> usages;
 
     usages.SetFlag(RHIBufferUsageFlagBits::eUniformBuffer);
 
@@ -2479,7 +2486,7 @@ RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8_t* p
 
 RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData, NameID bufferName)
 {
-    BitField<RHIBufferUsageFlagBits> usages;
+    RHIFlags<RHIBufferUsageFlagBits> usages;
 
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
 
@@ -2502,7 +2509,7 @@ RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8_t* p
 
 RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData, NameID bufferName)
 {
-    BitField<RHIBufferUsageFlagBits> usages;
+    RHIFlags<RHIBufferUsageFlagBits> usages;
 
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
 

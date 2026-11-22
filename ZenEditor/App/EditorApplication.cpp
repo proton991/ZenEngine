@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/ScenePresentation.h"
 #include "AssetTools/SceneTools.h"
 #include "EditorApplication.h"
@@ -12,7 +14,7 @@
 #include "Platform/BuildInfo.h"
 #include "Platform/ConfigLoader.h"
 #include "Editor/Model/EditorText.h"
-#include "Graphics/RHI/RHIOptions.h"
+#include "ZenRHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "AssetLib/TextureLoader.h"
 #include <spdlog/sinks/base_sink.h>
@@ -166,7 +168,7 @@ public:
 
         framebufferHeight                        = int(framebuffer.height);
 
-        m_present = m_device->CreateViewport(m_window.Get(), uint32_t(std::max(framebufferWidth, 1)),
+        m_present = m_device->CreateViewport(m_window->GetRHIWindowHandle(), uint32_t(std::max(framebufferWidth, 1)),
                                              uint32_t(std::max(framebufferHeight, 1)), true);
 
         rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_device.Get());

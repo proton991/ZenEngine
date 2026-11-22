@@ -1344,12 +1344,12 @@ void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
             barrier.dstStages    = dstStages;
 
             barrier.srcAccess    = RHIBufferUsageToAccessFlagBits(buffer.oldUsage, buffer.oldAccessMode,
-                                                                  BitField<RHIPipelineStageFlagBits>(srcStages));
+                                                                  RHIFlags<RHIPipelineStageFlagBits>(srcStages));
 
             barrier.srcAccess   |= int64_t(buffer.additionalSrcAccess);
 
             barrier.dstAccess    = RHIBufferUsageToAccessFlagBits(buffer.newUsage, buffer.newAccessMode,
-                                                                  BitField<RHIPipelineStageFlagBits>(dstStages));
+                                                                  RHIFlags<RHIPipelineStageFlagBits>(dstStages));
 
             barrier.wholeBuffer  = buffer.offset == 0
                                 && (buffer.size == ZEN_BUFFER_WHOLE_SIZE || buffer.size >= buffer.pBuffer->GetRequiredSize());

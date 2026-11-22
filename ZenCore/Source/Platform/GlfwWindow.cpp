@@ -188,6 +188,7 @@ void WindowBackend::InstallCallbacks(NativeWindow& window)
 NativeWindow::NativeWindow(const WindowConfig& config) : m_resizable(config.resizable)
 {
     WindowBackend::Acquire();
+    RegisterSurfaceExtensions();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 

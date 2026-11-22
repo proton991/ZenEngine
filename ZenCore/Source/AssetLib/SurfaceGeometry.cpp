@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetLib/SurfaceGeometry.h"
 
 namespace zen::asset

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include <stb_image.h>
 #include "AssetLib/TextureLoader.h"
 #include <algorithm>

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "LightMoveWidget.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include <cmath>

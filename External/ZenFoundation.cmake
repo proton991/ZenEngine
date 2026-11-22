@@ -1,0 +1,12 @@
+include("${CMAKE_CURRENT_LIST_DIR}/LatestSubprojects.cmake")
+set(ZEN_FOUNDATION_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../ZenFoundation" CACHE PATH "ZenFoundation source checkout")
+option(ZEN_FOUNDATION_USE_INSTALLED "Use an installed ZenFoundation package" OFF)
+if(ZEN_FOUNDATION_USE_INSTALLED)
+    find_package(ZenFoundation ${ZenEngine_VERSION_MAJOR}.${ZenEngine_VERSION_MINOR} CONFIG REQUIRED)
+elseif(NOT TARGET ZenFoundation::Foundation)
+    zen_update_subproject_checkout(ZenFoundation "${ZEN_FOUNDATION_SOURCE_DIR}")
+    add_subdirectory("${ZEN_FOUNDATION_SOURCE_DIR}" "${PROJECT_BINARY_DIR}/ZenFoundation")
+endif()
+# The ABI property carries Foundation's major.minor in every mode, including a target added earlier.
+get_target_property(ZEN_FOUNDATION_ABI ZenFoundation::Foundation INTERFACE_ZenFoundation_ABI)
+zen_require_release_version(ZenFoundation "${ZEN_FOUNDATION_ABI}")

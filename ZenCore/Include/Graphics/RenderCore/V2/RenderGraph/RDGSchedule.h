@@ -1,7 +1,7 @@
 #pragma once
 #include "RDGDefs.h"
-#include "Graphics/RHI/RHICommandList.h"
-#include "Templates/HeapVector.h"
+#include "ZenRHI/RHICommandList.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 
 namespace zen::rc
 {

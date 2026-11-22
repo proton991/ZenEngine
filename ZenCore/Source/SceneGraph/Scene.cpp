@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include <map>
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Camera.h"

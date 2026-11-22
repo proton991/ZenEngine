@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Templates/FrameTimeline.h"
+#include "ZenFoundation/Templates/FrameTimeline.h"
 
 namespace zen::rc
 {
@@ -22,14 +22,13 @@ constexpr uint64_t ToValue(RenderFrameNumber frameNumber)
 {
     return static_cast<uint64_t>(frameNumber);
 }
-} // namespace zen::rc
 
-namespace zen
+namespace detail
 {
-template <> struct FrameTimelineTraits<FrameTimelineId::Render>
+struct RenderFrameTraits
 {
-    using Number                                     = rc::RenderFrameNumber;
-    using Slot                                       = rc::RenderFrameSlot;
+    using Number                                     = RenderFrameNumber;
+    using Slot                                       = RenderFrameSlot;
 
     static constexpr uint32_t kMaxFramesInFlight     = 4u;
 
@@ -37,11 +36,9 @@ template <> struct FrameTimelineTraits<FrameTimelineId::Render>
 
     static constexpr const char* kName               = "RenderFrameState";
 };
-} // namespace zen
+} // namespace detail
 
-namespace zen::rc
-{
-using RenderFrameState = TFrameTimeline<FrameTimelineId::Render>;
+using RenderFrameState = TFrameTimeline<detail::RenderFrameTraits>;
 } // namespace zen::rc
 
 extern zen::rc::RenderFrameState GRenderFrameState;

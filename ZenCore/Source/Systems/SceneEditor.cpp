@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Systems/SceneEditor.h"
 #include "SceneGraph/Scene.h"
 #include <cmath>

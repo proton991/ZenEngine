@@ -1,7 +1,7 @@
 #pragma once
 #include "Editor/Model/EditorCamera.h"
-#include "Templates/HashMap.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HashMap.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <filesystem>
 #include <string>
 

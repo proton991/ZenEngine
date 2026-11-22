@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "SceneGraph/Camera.h"
 
 namespace zen::runtime

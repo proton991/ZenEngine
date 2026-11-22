@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
@@ -291,7 +293,7 @@ bool VoxelGIRenderer::PrepareMipViews(RHITexture* texture, HeapVector<RHITexture
             format.baseMipLevel  = mip;
 
             RHITextureView* view = m_device->CreateTextureView(
-                texture, format, NameID(fmt::format("{}_mip_{}", texture->GetBaseInfo().tag.CStr(), mip)));
+                texture, format, NameID(fmt::format("{}_mip_{}", texture->GetBaseInfo().tag.c_str(), mip)));
 
             valid = view != nullptr;
 
@@ -465,7 +467,7 @@ void VoxelGIRenderer::PrepareRadianceHistory(bool update)
     if (update && m_previousRadiance != nullptr && m_radianceValid)
     {
         RHITextureCopyRegion region{};
-        region.size = Vec3i(static_cast<int>(resolution));
+        region.size = RHIOffset3D(static_cast<int>(resolution));
         region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
         region.srcSubresources.layerCount = 1;
         region.dstSubresources            = region.srcSubresources;

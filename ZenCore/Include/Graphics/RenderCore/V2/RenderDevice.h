@@ -1,25 +1,27 @@
 #pragma once
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/SpatialTextureSampling.h"
-#include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHIFrameState.h"
-#include "Graphics/RHI/RHIResource.h"
+#include "ZenRHI/RHICommon.h"
+#include "ZenRHI/RHIFrameState.h"
+#include "ZenRHI/RHIResource.h"
 #include "Graphics/RenderCore/V2/RenderFrameState.h"
 #include "Graphics/RenderCore/V2/PipelineCacheMetrics.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/StagingUploadQueue.h"
-#include "Templates/HashMap.h"
-#include "Templates/HeapVector.h"
-#include "Templates/LRUCache.h"
-#include "Templates/SmallVector.h"
-#include "Templates/ObjectPool.h"
-#include "Templates/Queue.h"
-#include "Templates/VectorView.h"
-#include "Graphics/RHI/RHICommandList.h"
-#include "Graphics/RHI/RHIDebug.h"
+#include "ZenFoundation/Templates/HashMap.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Templates/LRUCache.h"
+#include "ZenFoundation/Templates/SmallVector.h"
+#include "ZenFoundation/Templates/ObjectPool.h"
+#include "ZenFoundation/Templates/Queue.h"
+#include "ZenFoundation/Templates/VectorView.h"
+#include "ZenRHI/RHICommandList.h"
+#include "ZenRHI/RHIDebug.h"
 #include "RenderGraph/RenderGraph.h"
 #include "RenderCoreDefs.h"
-#include "Utils/UniquePtr.h"
-#include "Graphics/RHI/RHICommandListExecutor.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
+#include "ZenRHI/RHICommandListExecutor.h"
 #include "RenderConfig.h"
 #include "RenderSubmissionHistory.h"
 #include "ResourceRetirement.h"
@@ -285,7 +287,7 @@ public:
     // Nonblocking retirement sweep, also usable when no new frame is being started.
     void CollectCompletedResources();
 
-    RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync = true);
+    RHIViewport* CreateViewport(zen::RHIWindowHandle pWindow, uint32_t width, uint32_t height, bool enableVSync = true);
 
     void DestroyViewport(RHIViewport* pViewport);
 
@@ -444,12 +446,12 @@ private:
     bool UpdateBufferInternal(RHIBuffer* pBufferHandle, uint32_t offset, uint32_t dataSize, const uint8_t* pData);
 
     // void UpdateTextureOneTime(RHITexture* pTextureHandle,
-    //                           const Vec3i& textureSize,
+    //                           const RHIOffset3D& textureSize,
     //                           uint32_t dataSize,
     //                           const uint8_t* pData);
 
     // void UpdateTextureBatch(RHITexture* pTextureHandle,
-    //                         const Vec3i& textureSize,
+    //                         const RHIOffset3D& textureSize,
     //                         const uint8_t* pData);
 
     // Canonical field values, never raw struct padding or a hash used as identity.
@@ -534,7 +536,7 @@ private:
     HeapVector<PendingSubmission> m_pendingSubmissions;
     // Render-thread submission history; the graph never queries backend queue progress.
     RenderSubmissionHistory m_submissionHistory;
-    HeapVector<uint64_t>    m_destroyedResourceIds;
+    std::vector<uint64_t>   m_destroyedResourceIds;
     // Each viewport waits on its own surface; the others keep presenting.
     HeapVector<RHIViewport*> m_recreateViewports;
 

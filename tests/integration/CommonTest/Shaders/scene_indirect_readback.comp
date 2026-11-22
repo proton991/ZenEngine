@@ -1,0 +1,22 @@
+#version 450
+layout(local_size_x = 64) in;
+layout(set = 1, binding = 0, std430) readonly buffer IndirectCommands
+{
+    uint commands[];
+};
+layout(set = 1, binding = 1, std430) writeonly buffer CopiedCommands
+{
+    uint copied[];
+};
+layout(push_constant) uniform CopyCount
+{
+    uint count;
+};
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < copied.length())
+    {
+        copied[index] = index < count * 5u ? commands[index] : 0;
+    }
+}

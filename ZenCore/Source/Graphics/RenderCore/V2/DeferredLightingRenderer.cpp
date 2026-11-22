@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
@@ -1640,7 +1642,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView&    view,
             {
                 RHITextureCopyRegion region{};
 
-                region.size                       = Vec3i(width, height, 1);
+                region.size                       = RHIOffset3D(width, height, 1);
 
                 region.srcSubresources.layerCount = 1;
 

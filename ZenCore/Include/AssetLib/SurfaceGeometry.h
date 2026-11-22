@@ -1,7 +1,7 @@
 #pragma once
 #include "Math/Math.h"
 #include "AssetLib/Types.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <cmath>
 
 namespace zen::asset

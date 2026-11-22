@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/SpatialTextureSampling.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Panels/EditorPanels.h"
 #include "EditorWidgets.h"
 #include "ImGui/LightingBackendControls.h"

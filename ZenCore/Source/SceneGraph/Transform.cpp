@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "SceneGraph/Transform.h"
 #include "SceneGraph/Node.h"
 

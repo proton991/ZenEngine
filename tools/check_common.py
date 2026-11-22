@@ -2,6 +2,7 @@
 import datetime
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -13,6 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / 'build/checks'
 VENV_PYTHON = ROOT / 'build/venv/Scripts/python.exe'
 VS_DEV_CMD = Path('C:/Program Files/Microsoft Visual Studio/18/Professional/Common7/Tools/VsDevCmd.bat')
+
+
+def uses_installed_rhi(build_dir):
+    cache = build_dir / 'CMakeCache.txt'
+    return cache.is_file() and bool(re.search(r'^ZEN_RHI_USE_INSTALLED:BOOL=(ON|TRUE|YES|1|Y)$',
+                                              cache.read_text(encoding='utf-8'), re.M | re.I))
 
 
 def rtss_running():

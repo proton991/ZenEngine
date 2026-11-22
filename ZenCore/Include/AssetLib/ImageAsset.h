@@ -1,8 +1,8 @@
 #pragma once
 #include "AssetLib/AssetId.h"
 #include "AssetLib/Types.h"
-#include "Templates/HeapVector.h"
-#include "Utils/SharedPtr.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Utils/SharedPtr.h"
 #include <string>
 
 namespace zen::asset

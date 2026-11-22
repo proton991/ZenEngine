@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "SceneGraph/Camera.h"
 #include "Platform/InputController.h"
 #include "Utils/Errors.h"

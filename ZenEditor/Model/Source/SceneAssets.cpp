@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Editor/Model/SceneAssets.h"
 #include "Editor/Model/EditorText.h"
 #include "ZenAsset/Reader/Image.h"

@@ -1,6 +1,6 @@
 #pragma once
 #include "Runtime/RuntimeLogEntry.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <spdlog/sinks/base_sink.h>
 #include <mutex>
 #include <fstream>

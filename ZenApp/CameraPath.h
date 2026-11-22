@@ -1,6 +1,7 @@
 #pragma once
+#include "Math/Math.h"
 #include "Runtime/NavigationCamera.h"
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <string>
 
 namespace zen::runtime

@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "LightPath.h"
 #include "RuntimeJson.h"
 

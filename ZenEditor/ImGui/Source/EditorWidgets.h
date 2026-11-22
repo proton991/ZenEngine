@@ -1,5 +1,6 @@
 #pragma once
 // Drawing helpers shared by the ImGui panels. Private to the ImGui frontend.
+#include "Math/Math.h"
 #include "Editor/ImGui/EditorContext.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include "Editor/Model/EditorText.h"

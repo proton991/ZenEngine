@@ -1,6 +1,6 @@
 #pragma once
-#include "Templates/HeapVector.h"
-#include "Utils/UniquePtr.h"
+#include "ZenFoundation/Templates/HeapVector.h"
+#include "ZenFoundation/Utils/UniquePtr.h"
 #include <string>
 
 namespace zen::editor

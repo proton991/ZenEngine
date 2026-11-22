@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "MeshPreviewWidget.h"
 #include "Editor/ImGui/EditorTheme.h"
 #include "imgui.h"

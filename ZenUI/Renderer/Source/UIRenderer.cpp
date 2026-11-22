@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "UI/UIRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include <algorithm>

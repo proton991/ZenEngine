@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"

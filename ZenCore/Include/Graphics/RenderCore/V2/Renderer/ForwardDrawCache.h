@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 
 namespace zen::rc

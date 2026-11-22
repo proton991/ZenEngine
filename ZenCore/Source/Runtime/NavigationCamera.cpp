@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "Runtime/NavigationCamera.h"
 #include "Math/Finite.h"
 #include "Platform/InputController.h"

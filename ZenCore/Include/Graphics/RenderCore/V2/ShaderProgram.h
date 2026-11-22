@@ -1,7 +1,9 @@
 #pragma once
-#include "Graphics/RHI/RHIResource.h"
-#include "Templates/HashMap.h"
-#include "Templates/NameID.h"
+#include "Math/Math.h"
+#include "Utils/Errors.h"
+#include "ZenRHI/RHIResource.h"
+#include "ZenFoundation/Templates/HashMap.h"
+#include "ZenFoundation/Templates/NameID.h"
 
 namespace zen::rc
 {
@@ -122,7 +124,7 @@ private:
     RenderDevice*                    m_pRenderDevice{nullptr};
     NameID                           m_name;
     std::string                      m_stageSources[ToUnderlying(RHIShaderStage::eMax)];
-    BitField<RHIShaderStageFlagBits> m_stageFlags;
+    RHIFlags<RHIShaderStageFlagBits> m_stageFlags;
     HeapVector<StageFile>            m_rayTracingSources;
 
     RHIShader* m_pShader{nullptr};

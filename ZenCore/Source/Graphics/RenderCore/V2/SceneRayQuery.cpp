@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -5,7 +7,7 @@
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/Shared/RayHitShading.h"
-#include "Templates/SmallVector.h"
+#include "ZenFoundation/Templates/SmallVector.h"
 #include <bit>
 #include <cstring>
 
@@ -495,8 +497,8 @@ bool SceneRayQuery::Prepare(RenderScene& scene, uint64_t budgetBytes)
     bool reuseTLAS = m_pending.tlas != nullptr && m_pending.tlas->GetSize() >= tlasSizes.storageSize;
     if (reuseTLAS)
     {
-        const HeapVector<RHIAccelerationStructure*>& references = m_pending.tlas->GetReferencedStructures();
-        reuseTLAS                                               = references.size() == m_pending.meshes.size();
+        const std::span<RHIAccelerationStructure* const> references = m_pending.tlas->GetReferencedStructures();
+        reuseTLAS                                                   = references.size() == m_pending.meshes.size();
         for (size_t i = 0; reuseTLAS && i < references.size(); ++i)
         {
             reuseTLAS = references[i] == m_pending.meshes[i].structure;

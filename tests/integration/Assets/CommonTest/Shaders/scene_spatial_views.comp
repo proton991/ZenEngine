@@ -1,0 +1,46 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "Common/material.glsl"
+layout(local_size_x = 64) in;
+layout(set = 1, binding = 0, std430) buffer Results
+{
+    vec4 values[];
+};
+layout(set = 1, binding = 1, std140) readonly buffer MaterialBuffer
+{
+    Material materials[];
+};
+void main()
+{
+    uint       index = gl_GlobalInvocationID.x;
+    const uint side  = 129u;
+    const uint count = side * side;
+    if (index < 9u * 3u * count)
+    {
+        uint binding     = index / (3u * count);
+        uint operation   = (index / count) % 3u;
+        uint sampleIndex = index % count;
+        // Include clamp borders and non-dyadic coordinates. The third operation
+        // probes subtexel rounding boundaries after the same authored transform.
+        vec2 uv = (vec2(sampleIndex % side, sampleIndex / side) - 8.37) / 113.7;
+        if (operation == 2u)
+        {
+            uv = (vec2(sampleIndex % side, sampleIndex / side) + 0.5) / 128.0;
+        }
+        Material material = materials[binding];
+        if (operation == 0u)
+        {
+            values[index] = MaterialAlbedo(material, uv, vec2(1) - uv, vec4(1));
+        }
+        else if (operation == 1u)
+        {
+            values[index] = MaterialFeatureTexture(material, 6, vec2(1) - uv, uv);
+        }
+        else
+        {
+            vec2 transformed = MaterialTransformedUV(material, 0, material.bcTexSet, uv, vec2(1) - uv);
+            values[index]    = MaterialBindingTextureLod0(material.bcTexIndex, material.textureTransforms[0],
+                                                          material.textureSampling.xy, transformed);
+        }
+    }
+}

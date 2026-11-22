@@ -1,7 +1,7 @@
 #pragma once
-#include "Templates/HeapVector.h"
+#include "ZenFoundation/Templates/HeapVector.h"
 #include <string>
-#include "Templates/HashMap.h"
+#include "ZenFoundation/Templates/HashMap.h"
 #include "Math/Math.h"
 #include "Component.h"
 #include <cmath>

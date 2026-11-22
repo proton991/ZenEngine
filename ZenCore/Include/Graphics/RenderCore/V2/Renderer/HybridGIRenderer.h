@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderView.h"
 #include "Graphics/RenderCore/V2/SceneLighting.h"

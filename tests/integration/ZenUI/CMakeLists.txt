@@ -1,0 +1,16 @@
+add_executable(UIRenderingTest UIRenderingTests.cpp UIShaderReflectionTests.cpp)
+target_link_libraries(UIRenderingTest PRIVATE ZenUI ZenImGui ZenVulkanTestMain)
+add_test(NAME UIRenderingContractTest COMMAND UIRenderingTest --gtest_filter=UIRenderingContract.*)
+add_test(NAME UIRenderingNativeTest COMMAND UIRenderingTest --gtest_filter=*UIRenderingNative*)
+set_tests_properties(UIRenderingNativeTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+
+
+if (ZEN_WINDOW_BACKEND STREQUAL "SDL3")
+  add_executable(UIPlatformTest UIPlatformTests.cpp)
+  target_link_libraries(UIPlatformTest PRIVATE ZenImGui ZenWindowBackendInternal gtest_main)
+  if (WIN32)
+    target_link_libraries(UIPlatformTest PRIVATE dwmapi)
+  endif ()
+  add_test(NAME UIPlatformTest COMMAND UIPlatformTest)
+  set_tests_properties(UIPlatformTest PROPERTIES LABELS "native" TIMEOUT 60)
+endif ()

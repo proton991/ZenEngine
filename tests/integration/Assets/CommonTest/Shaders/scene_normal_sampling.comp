@@ -1,0 +1,51 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "Common/material.glsl"
+layout(local_size_x = 64) in;
+struct NormalQuery
+{
+    vec4  uvLodScale;
+    vec4  gradients;
+    uvec4 bindings;
+};
+layout(set = 1, binding = 0, std430) buffer Results
+{
+    vec4 values[];
+};
+layout(set = 1, binding = 1, std430) readonly buffer Queries
+{
+    NormalQuery queries[];
+};
+
+vec3 SampleNormal(uint imageIndex, NormalQuery query)
+{
+    vec3 sampled;
+    if (query.uvLodScale.z < 0.0)
+    {
+        sampled =
+            textureGrad(sampler2D(uTexture2DHeap[nonuniformEXT(imageIndex)], uSamplerHeap[nonuniformEXT(query.bindings.w)]),
+                        query.uvLodScale.xy, query.gradients.xy, query.gradients.zw)
+                .rgb;
+    }
+    else
+    {
+        sampled =
+            textureLod(sampler2D(uTexture2DHeap[nonuniformEXT(imageIndex)], uSamplerHeap[nonuniformEXT(query.bindings.w)]),
+                       query.uvLodScale.xy, query.uvLodScale.z)
+                .rgb;
+    }
+    return sampled;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index < uint(queries.length()))
+    {
+        NormalQuery query       = queries[index];
+        vec3        original    = SampleNormal(query.bindings.x, query);
+        vec3        cooked      = SampleNormal(query.bindings.y, query);
+        values[index * 2u]      = vec4(normalize(MaterialNormalVector(original, 0u, query.uvLodScale.w)), 0);
+        values[index * 2u + 1u] = vec4(normalize(MaterialNormalVector(cooked, query.bindings.z, query.uvLodScale.w)), 0);
+    }
+}

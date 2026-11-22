@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "SceneGraph/SceneAnimationTarget.h"
 #include "SceneGraph/SceneAnimation.h"
 #include "SceneGraph/Scene.h"

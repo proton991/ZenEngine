@@ -1,3 +1,4 @@
+#include "Math/Math.h"
 #include "AssetTools/SceneTools.h"
 #include "Editor/Services/EditorController.h"
 #include "Platform/ConfigLoader.h"

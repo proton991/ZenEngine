@@ -1,3 +1,5 @@
+#include "Math/Math.h"
+#include "Utils/Errors.h"
 #include "Graphics/RenderCore/V2/DistanceFieldScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
@@ -110,7 +112,7 @@ uint64_t FreeDeviceMemory(const RenderDevice& device)
 RHIBufferCreateInfo FieldBufferInfo(uint64_t                         bytes,
                                     NameID                           name,
                                     bool                             readback,
-                                    BitField<RHIBufferUsageFlagBits> additionalUsage)
+                                    RHIFlags<RHIBufferUsageFlagBits> additionalUsage)
 {
     RHIBufferCreateInfo info;
     info.usageFlags   = additionalUsage;
@@ -129,7 +131,7 @@ RHIBuffer* CreateFieldBuffer(RenderDevice&                    device,
                              uint64_t                         bytes,
                              NameID                           name,
                              bool                             readback        = false,
-                             BitField<RHIBufferUsageFlagBits> additionalUsage = {})
+                             RHIFlags<RHIBufferUsageFlagBits> additionalUsage = {})
 {
     return device.CreateBuffer(FieldBufferInfo(bytes, name, readback, additionalUsage));
 }
@@ -143,7 +145,7 @@ uint64_t FieldAllocationBytes(RenderDevice&                    device,
                               uint64_t                         bytes,
                               bool&                            valid,
                               bool                             readback        = false,
-                              BitField<RHIBufferUsageFlagBits> additionalUsage = {})
+                              RHIFlags<RHIBufferUsageFlagBits> additionalUsage = {})
 {
     uint64_t allocation = 0;
     if (valid)
@@ -535,9 +537,9 @@ bool DistanceFieldScene::CreateLocalPool(uint32_t slots)
         const uint64_t cellBytes      = uint64_t(count) * side * side * side * sizeof(uint32_t);
         const uint64_t hierarchyBytes = uint64_t(count) * HierarchyWords(side) * sizeof(uint32_t);
         m_poolCells     = CreateFieldBuffer(*m_device, cellBytes, "field_local_cells", false,
-                                            BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+                                            RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
         m_poolHierarchy = CreateFieldBuffer(*m_device, hierarchyBytes, "field_local_hierarchy", false,
-                                            BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+                                            RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
         RHITextureCreateInfo texture;
         texture.type   = RHITextureType::e3D;
         texture.width  = texels * m_poolColumns;
@@ -647,10 +649,10 @@ void DistanceFieldScene::RecordLocalCopy()
     const uint64_t       words  = HierarchyWords(side) * sizeof(uint32_t);
     const uint32_t       slot   = static_cast<uint32_t>(m_copySlot);
     RHITextureCopyRegion region;
-    region.srcOffset = Vec3i(0);
-    region.dstOffset =
-        Vec3i(static_cast<int32_t>(slot % m_poolColumns * texels), static_cast<int32_t>(slot / m_poolColumns * texels), 0);
-    region.size = Vec3i(static_cast<int32_t>(texels));
+    region.srcOffset = RHIOffset3D(0);
+    region.dstOffset = RHIOffset3D(static_cast<int32_t>(slot % m_poolColumns * texels),
+                                   static_cast<int32_t>(slot / m_poolColumns * texels), 0);
+    region.size      = RHIOffset3D(static_cast<int32_t>(texels));
     region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
     region.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
     m_device->GetCurrentFrameRDG()
@@ -1484,7 +1486,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
     const uint64_t rangeBytes           = std::max<uint64_t>(ranges.size(), 1) * sizeof(glm::uvec4);
     const uint64_t rangeEstimate =
         FieldAllocationBytes(*m_device, m_allocationSizes, rangeBytes, allocationSizesValid, false,
-                             BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+                             RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
     uint64_t cellWorkspaceBytes =
         3 * FieldAllocationBytes(*m_device, m_allocationSizes, cells * sizeof(uint32_t), allocationSizesValid)
         + 2 * FieldAllocationBytes(*m_device, m_allocationSizes, capacity * sizeof(uint32_t), allocationSizesValid)
@@ -1492,7 +1494,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
         + FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_COUNTER_WORDS * sizeof(uint32_t), allocationSizesValid)
         + FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_CONTROL_WORDS * sizeof(uint32_t), allocationSizesValid)
         + FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_INDIRECT_WORDS * sizeof(uint32_t), allocationSizesValid,
-                               false, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer))
+                               false, RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer))
         + kStatusSlots
               * FieldAllocationBytes(*m_device, m_allocationSizes, ZEN_FIELD_STATUS_WORDS * sizeof(uint32_t),
                                      allocationSizesValid, true);
@@ -1504,7 +1506,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
             geometryEstimate += FieldAllocationBytes(*m_device, m_allocationSizes, bytes, allocationSizesValid);
         }
         geometryEstimate += FieldAllocationBytes(*m_device, m_allocationSizes, samplerBytes, allocationSizesValid, false,
-                                                 BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+                                                 RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
     }
     // Per reference: its entry plus, per chunk of a dense cell, an emit entry and a split slot.
     const double referenceBytes =
@@ -1697,7 +1699,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
             ranges.push_back(glm::uvec4(0));
         }
         generation.ranges = CreateFieldBuffer(*m_device, rangeBytes, "field_instance_ranges", false,
-                                              BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+                                              RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
         valid             = valid && generation.ranges != nullptr
                          && m_device->UpdateBuffer(generation.ranges, static_cast<uint32_t>(rangeBytes),
                                                    reinterpret_cast<const uint8_t*>(ranges.data()));
@@ -1756,7 +1758,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
             // a teardown alias that instead requires removal through DestroyBuffer.
             generation.geometry->samplerInfo =
                 CreateFieldBuffer(*m_device, samplerBytes, "field_sampler_info", false,
-                                  BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
+                                  RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer));
             valid                      = valid && generation.geometry->samplerInfo != nullptr
                                       && m_device->UpdateBuffer(generation.geometry->samplerInfo, static_cast<uint32_t>(samplerBytes),
                                                                 reinterpret_cast<const uint8_t*>(samplerInfo.data()));
@@ -1779,7 +1781,7 @@ bool DistanceFieldScene::Start(RenderScene& scene, bool local)
                 CreateFieldBuffer(*m_device, uint64_t(coverageSlots) * sizeof(uint32_t), "field_coverage_queue");
             generation.workspace->indirect =
                 CreateFieldBuffer(*m_device, ZEN_FIELD_INDIRECT_WORDS * sizeof(uint32_t), "field_indirect", false,
-                                  BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer));
+                                  RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eIndirectBuffer));
             for (BuildWorkspace::StatusSlot& slot : generation.workspace->status)
             {
                 slot.buffer = CreateFieldBuffer(*m_device, ZEN_FIELD_STATUS_WORDS * sizeof(uint32_t), "field_status", true);
@@ -2007,7 +2009,7 @@ void DistanceFieldScene::RecordSnapshot(Generation& generation)
     if (generation.partial)
     {
         RHITextureCopyRegion region;
-        region.size = Vec3i(generation.uniform.atlasDimensions.x);
+        region.size = RHIOffset3D(generation.uniform.atlasDimensions.x);
         region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
         region.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
         graph.AddTransferPass("FieldRetainAtlas").CopyTexture(m_active->atlas, generation.atlas, MakeVecView(&region, 1));

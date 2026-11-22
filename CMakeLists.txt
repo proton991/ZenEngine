@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.23)
-project(ZenEngine VERSION 0.2)
+project(ZenEngine VERSION 0.2.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
@@ -41,7 +41,9 @@ endif ()
 #                    Add Sub Directories                   #
 ############################################################
 add_subdirectory(External)
+include(External/ZenFoundation.cmake)
 include(External/ZenAssetProcessor.cmake)
+include(External/ZenRHI.cmake)
 add_subdirectory(ZenCore)
 if(ZEN_BUILD_ASSET_TOOLS)
   add_subdirectory(ZenCore/AssetTools)
@@ -57,15 +59,8 @@ if (ZEN_BUILD_EDITOR)
   add_subdirectory(ZenEditor)
 endif ()
 
-# Platform Definitions
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-  message(STATUS "Detected Windows platform")
-  target_compile_definitions(ZenCore PUBLIC ZEN_WIN32)
-endif()
-
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-  message(STATUS "Detected MacOS platform")
-  target_compile_definitions(ZenCore PUBLIC ZEN_MACOS)
+if(BUILD_TESTING)
+  add_subdirectory(tests/integration)
 endif()
 
 if(NOT ZEN_EXTERNAL_SUBPROJECT)

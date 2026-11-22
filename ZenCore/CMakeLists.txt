@@ -1,7 +1,6 @@
 set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/DebugVisualization.h
     Include/Graphics/RenderCore/V2/RenderingSettings.h
-    Include/ObjectBase.h
 
     Include/AssetLib/TextureLoader.h
     Include/AssetLib/SceneAssetIO.h
@@ -23,43 +22,12 @@ set(ZEN_CORE_HEADERS
     Include/AssetLib/SceneModelCatalog.h
     Include/AssetLib/Types.h
 
-    Include/Templates/ArrayView.h
-    Include/Templates/BitField.h
-    Include/Templates/BitMask.h
-    Include/Templates/HashMap.h
-    Include/Templates/Queue.h
-    Include/Templates/SmallVector.h
-    Include/Templates/VectorView.h
-    Include/Templates/ArenaVector.h
-    Include/Templates/HeapVector.h
-    Include/Templates/NameID.h
-    Include/Templates/FlatHashMap.h
-    Include/Templates/ObjectPool.h
-    Include/Templates/FrameTimeline.h
-    Include/Templates/LRUCache.h
 
-    Include/Utils/ConditionVariable.h
-    Include/Utils/Counter.h
     Include/Utils/Errors.h
-    Include/Utils/MetricsLogger.h
-    Include/Utils/Helpers.h
-    Include/Utils/Intrusive.h
-    Include/Utils/Mutex.h
-    Include/Utils/RefCountPtr.h
-    Include/Utils/SharedPtr.h
-    Include/Utils/SpinLock.h
-    Include/Utils/ThreadPool.h
-    Include/Utils/UniquePtr.h
 
     Include/Math/Math.h
 
-    Include/Memory/Memory.h
-    Include/Memory/PagedAllocator.h
-    Include/Memory/LinearAllocator.h
-    Include/Memory/PoolAllocator.h
 
-    Include/Graphics/Common/Format.h
-    Include/Graphics/Common/Color.h
 
     Include/Graphics/Types/Frustum.h
 
@@ -113,47 +81,7 @@ set(ZEN_CORE_HEADERS
 
     Include/Systems/SceneEditor.h
 
-    Include/Graphics/RHI/DynamicRHI.h
-    Include/Graphics/RHI/RHICommandList.h
-    Include/Graphics/RHI/RHIGPUTiming.h
-    Include/Graphics/RHI/RHIGPUFrameTiming.h
-    Include/Graphics/RHI/RHICommandListExecutor.h
-    Include/Graphics/RHI/RHIExecutionCounters.h
-    Include/Graphics/RHI/RHIThread.h
-    Include/Graphics/RHI/RHICommon.h
-    Include/Graphics/RHI/RHIDebug.h
-    Include/Graphics/RHI/RHIResource.h
-    Include/Graphics/RHI/RHIShaderParameters.h
-    Include/Graphics/RHI/RHIFrameState.h
-    Include/Graphics/RHI/RHIOptions.h
-    Include/Graphics/RHI/RHIShaderUtil.h
 
-    Include/Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h
-    Include/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h
-    Include/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h
-    Include/Graphics/VulkanRHI/VulkanExtension.h
-    Include/Graphics/VulkanRHI/VulkanDevice.h
-    Include/Graphics/VulkanRHI/VulkanQueueSelection.h
-    Include/Graphics/VulkanRHI/VulkanHeaders.h
-    Include/Graphics/VulkanRHI/VulkanRHI.h
-    Include/Graphics/VulkanRHI/VulkanCommon.h
-    Include/Graphics/VulkanRHI/VulkanDebug.h
-    Include/Graphics/VulkanRHI/VulkanQueue.h
-    Include/Graphics/VulkanRHI/VulkanLifetimeTracker.h
-    Include/Graphics/VulkanRHI/VulkanSwapchain.h
-    Include/Graphics/VulkanRHI/VulkanViewport.h
-    Include/Graphics/VulkanRHI/VulkanCommandList.h
-    Include/Graphics/VulkanRHI/VulkanPlatformCommandList.h
-    Include/Graphics/VulkanRHI/VulkanResourceCast.h
-    Include/Graphics/VulkanRHI/VulkanTypes.h
-    Include/Graphics/VulkanRHI/VulkanPipeline.h
-    Include/Graphics/VulkanRHI/VulkanTexture.h
-    Include/Graphics/VulkanRHI/VulkanBuffer.h
-    Include/Graphics/VulkanRHI/VulkanMemory.h
-    Include/Graphics/VulkanRHI/VulkanSynchronization.h
-    Include/Graphics/VulkanRHI/VulkanResourceAllocator.h
-    Include/Graphics/VulkanRHI/VulkanDescriptorPool.h
-    Include/Graphics/VulkanRHI/VulkanDescriptorState.h
 
 
     Include/Platform/FileSystem.h
@@ -231,45 +159,15 @@ set(ZEN_CORE_SOURCES
 
     Source/Systems/SceneEditor.cpp
 
-    Source/Graphics/RHI/DynamicRHI.cpp
-    Source/Graphics/RHI/RHICommandList.cpp
-    Source/Graphics/RHI/RHIResource.cpp
-    Source/Graphics/RHI/RHIRayTracing.cpp
-    Source/Graphics/RHI/RHICommandListExecutor.cpp
-    Source/Graphics/RHI/RHIGPUFrameTiming.cpp
-    Source/Graphics/RHI/RHIThread.cpp
-    Source/Graphics/RHI/RHIFactory.cpp
-
-    Source/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.cpp
-    Source/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.cpp
-    Source/Graphics/VulkanRHI/VulkanExtension.cpp
-    Source/Graphics/VulkanRHI/VulkanDevice.cpp
-    Source/Graphics/VulkanRHI/VulkanContext.cpp
-    Source/Graphics/VulkanRHI/VulkanDebug.cpp
-    Source/Graphics/VulkanRHI/VulkanQueue.cpp
-    Source/Graphics/VulkanRHI/VulkanLifetimeTracker.cpp
-    Source/Graphics/VulkanRHI/VulkanSwapchain.cpp
-    Source/Graphics/VulkanRHI/VulkanViewport.cpp
-    Source/Graphics/VulkanRHI/VulkanCommandList.cpp
-    Source/Graphics/VulkanRHI/VulkanTypes.cpp
-    Source/Graphics/VulkanRHI/VulkanPipeline.cpp
-    Source/Graphics/VulkanRHI/VulkanTexture.cpp
-    Source/Graphics/VulkanRHI/VulkanBuffer.cpp
-    Source/Graphics/VulkanRHI/VulkanAccelerationStructure.cpp
-    Source/Graphics/VulkanRHI/VulkanMemory.cpp
-    Source/Graphics/VulkanRHI/VulkanSynchronization.cpp
-    Source/Graphics/VulkanRHI/VulkanDescriptorPool.cpp
-    Source/Graphics/VulkanRHI/VulkanDescriptorSetState.cpp
 
 
-    Source/Memory/Memory.cpp
+
 
     Source/Platform/FileSystem.cpp
+    Source/Platform/WindowSurface.cpp
     Source/Platform/NativeWindow.cpp
-    Source/Graphics/VulkanRHI/Platform/VulkanWindowBridge.cpp
     Source/Platform/InputController.cpp
 
-    Source/vk_mem_alloc.cpp
 )
 
 
@@ -297,20 +195,12 @@ target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
 # RenderCoreTest compiles this subset against its fake backend. The list stays here so that an
 # engine refactor can update it without a ZenTest change.
 add_library(ZenRenderCoreTestSources INTERFACE)
-target_link_libraries(ZenRenderCoreTestSources INTERFACE ZenAsset::Reader zen_asset_kernels)
+target_link_libraries(ZenRenderCoreTestSources INTERFACE ZenRHI::Core ZenFoundation::Foundation ZenAsset::Reader zen_asset_kernels)
 target_include_directories(ZenRenderCoreTestSources INTERFACE "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 target_sources(ZenRenderCoreTestSources INTERFACE
     Source/AssetLib/AssetHash.cpp
     Source/AssetLib/ImageAsset.cpp
     Source/Graphics/RenderCore/V2/DebugVisualization.cpp
-    Source/Memory/Memory.cpp
-    Source/Graphics/RHI/DynamicRHI.cpp
-    Source/Graphics/RHI/RHICommandList.cpp
-    Source/Graphics/RHI/RHIResource.cpp
-    Source/Graphics/RHI/RHIRayTracing.cpp
-    Source/Graphics/RHI/RHICommandListExecutor.cpp
-    Source/Graphics/RHI/RHIGPUFrameTiming.cpp
-    Source/Graphics/RHI/RHIThread.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
     Source/Graphics/RenderCore/V2/SpatialTextureSampling.cpp
     Source/Graphics/RenderCore/V2/RenderObject.cpp
@@ -346,7 +236,7 @@ target_sources(ZenRenderCoreTestSources INTERFACE
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
 )
-target_compile_definitions(ZenCore PUBLIC ZEN_DEBUG)
+target_link_libraries(ZenCore PUBLIC ZenRHI::ZenRHI ZenFoundation::Foundation)
 target_include_directories(ZenCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Include
     ${VULKAN_INCLUDE_DIR}
@@ -357,9 +247,6 @@ target_link_libraries(ZenCore PUBLIC
     spdlog
     gli
     glm
-    vma
-    spirv-reflect
-    volk
     stb
 )
 target_link_libraries(ZenCore PRIVATE ZenAsset::Reader)
@@ -445,7 +332,7 @@ foreach (GLSL ${ZEN_SHADER_FILES})
         add_custom_command(
             OUTPUT ${SPIRV}
             COMMAND ${GLSL_VALIDATOR} --target-env ${SPIRV_TARGET} -V ${VARIANT_DEFINITIONS} ${GLSL} -o ${SPIRV}
-                    -I${PROJECT_SOURCE_DIR}/ZenCore/Include --depfile ${SPIRV}.d
+                    -I${PROJECT_SOURCE_DIR}/ZenCore/Include -I${ZEN_RHI_INCLUDE_DIR} --depfile ${SPIRV}.d
             DEPENDS ${GLSL}
             DEPFILE ${SPIRV}.d
             VERBATIM)
@@ -455,7 +342,7 @@ foreach (GLSL ${ZEN_SHADER_FILES})
             add_custom_command(
                 OUTPUT ${MICROMAP_SPIRV}
                 COMMAND ${GLSL_VALIDATOR} --target-env spirv1.4 -V -DZEN_OPACITY_MICROMAP=1 ${VARIANT_DEFINITIONS} ${GLSL} -o ${MICROMAP_SPIRV}
-                        -I${PROJECT_SOURCE_DIR}/ZenCore/Include --depfile ${MICROMAP_SPIRV}.d
+                        -I${PROJECT_SOURCE_DIR}/ZenCore/Include -I${ZEN_RHI_INCLUDE_DIR} --depfile ${MICROMAP_SPIRV}.d
                 DEPENDS ${GLSL}
                 DEPFILE ${MICROMAP_SPIRV}.d
                 VERBATIM)

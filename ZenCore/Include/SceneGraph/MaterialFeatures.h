@@ -1,4 +1,5 @@
 #pragma once
+#include "Math/Math.h"
 #include "AssetLib/MaterialAsset.h"
 #include "Texture.h"
 #include <bit>
