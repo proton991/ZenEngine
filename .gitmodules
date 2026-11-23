@@ -9,7 +9,7 @@
 [submodule "ZenAssetProcessor"]
 	path = ZenAssetProcessor
 	url = https://github.com/proton991/ZenAssetProcessor.git
-	branch = codex/asset-loading
+	branch = main
 [submodule "ZenFoundation"]
 	path = ZenFoundation
 	url = https://github.com/proton991/ZenFoundation.git
