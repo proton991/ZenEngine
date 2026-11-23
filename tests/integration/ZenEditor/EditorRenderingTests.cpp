@@ -122,9 +122,6 @@ TEST_P(EditorRendering, PlayWindowReusesSceneAndRestoresAfterPauseResizeAndQuit)
     RHIViewport*              editorPresentation = device.CreateViewport(editorWindow.GetRHIWindowHandle(), 400, 300, false);
     ASSERT_NE(editorPresentation, nullptr);
     ASSERT_TRUE(editor.Init());
-    SceneProcessingSettings processing = editor.GetSourceProcessing().draft;
-    processing.directoryCache          = true;
-    ASSERT_TRUE(editor.StageSourceProcessing(processing));
     ASSERT_TRUE(editor.Load(Fixture("inspection.gltf"))) << editor.GetError();
     ASSERT_TRUE(editor.GetSourceProcessing().applied.directoryCache);
     ASSERT_TRUE(editor.ResizeViewport(96, 64));

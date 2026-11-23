@@ -10,6 +10,9 @@ class Package;
 
 namespace zen::asset
 {
+// Directory publication bounds simultaneous source decodes and independent image writes.
+inline constexpr uint32_t DirectoryImageWorkers = 8;
+
 struct ProcessedSourceResult
 {
     SceneImportResult                         imported;

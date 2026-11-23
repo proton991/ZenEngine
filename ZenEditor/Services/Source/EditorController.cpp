@@ -506,6 +506,7 @@ asset::SceneImportRequest EditorController::MakeLoadRequest(std::string path) co
     asset::SceneImportRequest request{std::move(path)};
     // Editor opens are runtime-only: the viewport consumes the geometry and leases images.
     request.retainCanonicalAsset = false;
+    request.readWorkers          = 8;
     ApplySceneProcessingSettings(m_sourceProcessing.draft, request);
     return request;
 }

@@ -9,7 +9,7 @@ struct SceneProcessingSettings
     // Keep the desktop draft when selecting Reference; its effective request
     // always uses untouched library defaults with all operations disabled.
     zenasset::ProcessingSettings settings;
-    bool                         directoryCache{false};
+    bool                         directoryCache{true};
 };
 
 struct SceneProcessingState

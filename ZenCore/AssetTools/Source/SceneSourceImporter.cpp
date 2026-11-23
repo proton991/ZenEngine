@@ -106,7 +106,7 @@ ProcessedSourceResult ImportProcessedSource(const SceneImportRequest&           
     {
         // Large source textures must not all become resident during a runtime open, so bound
         // concurrent validation decodes. Mesh processing keeps the whole worker pool.
-        sourceContext.maxConcurrentImageDecodes = 2;
+        sourceContext.maxConcurrentImageDecodes = request.useCache && request.directoryCache ? DirectoryImageWorkers : 2;
     }
     zenasset::SceneImportResult imported;
     zenasset::SceneCookResult   cooked;

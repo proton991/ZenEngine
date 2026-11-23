@@ -204,8 +204,10 @@ private:
         const std::chrono::steady_clock::time_point started  = std::chrono::steady_clock::now();
         SceneAssetFileMetadata                      metadata = publication.metadata;
         PublicationControl                          control{&m_shutdown, publication.control.Get()};
-        // Hash the revisions consumed by the importer before serialization.
-        const zenasset::Status freshness = CheckPublicationInputs(metadata, control, !publication.directoryLayout);
+        // Directory imports captured the consumed bytes. The package writer checks those
+        // hashes immediately before replacing the manifest. Flat imports still need hashes.
+        const zenasset::Status freshness =
+            publication.directoryLayout ? zenasset::Status{} : CheckPublicationInputs(metadata, control, true);
         const bool             current   = freshness.Succeeded();
         SceneImportReport      written;
         written.status = AdaptProcessedStatus(freshness.code);
@@ -221,6 +223,10 @@ private:
             options.limits.maxStringBytes = SceneAssetReadLimits{}.maxStringBytes;
             options.compression                = CacheCompression();
             options.directoryLayout            = publication.directoryLayout;
+            if (publication.directoryLayout)
+            {
+                options.maxImageWorkers = DirectoryImageWorkers;
+            }
             options.progressUser               = publication.control.Get();
             options.resourceProgress           = &TrackCacheResources;
             options.partProgress               = publication.control ? &TrackCacheTransfer : nullptr;
