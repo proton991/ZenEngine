@@ -349,6 +349,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
             lookup.processing       = request.processing;
             lookup.inputs.push_back({source});
             cachePath = PathToUtf8(directory / (CacheKey(lookup) + ".zenasset"));
+            std::shared_ptr<const zenasset::Package> package;
             if (request.directoryCache)
             {
                 const std::string      flatPath = cachePath;
@@ -361,21 +362,14 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
                 }
                 else
                 {
+                    const zenasset::SceneReadLimits packageLimits = ProcessedLimits(readLimits);
                     const zenasset::Cancellation  cancellation(&ProcessedOperationCancelled, request.control.Get());
-                    const zenasset::PackageResult current = zenasset::OpenPackage(cachePath, {}, &cancellation);
-                    if (current.status.Succeeded() && !zenasset::HasProcessingOperations(request.processing))
-                    {
-                        const zenasset::SceneMetadataResult old =
-                            zenasset::ReadSceneMetadata(*current.package, {}, &cancellation);
-                        if (old.status.Succeeded() && old.metadata.buildFingerprint == lookup.buildFingerprint
-                            && !zenasset::HasProcessingOperations(old.metadata.processing))
-                        {
-                            previous = current.package;
-                        }
-                    }
+                    const zenasset::PackageResult   current =
+                        zenasset::OpenPackage(cachePath, packageLimits.package, &cancellation);
+                    package = current.package;
                     if (!request.forceRecook && current.status.code == zenasset::StatusCode::SourceUnavailable)
                     {
-                        zenasset::PackageResult flat = zenasset::OpenPackage(flatPath, {}, &cancellation);
+                        zenasset::PackageResult flat = zenasset::OpenPackage(flatPath, packageLimits.package, &cancellation);
                         if (flat.status.Succeeded())
                         {
                             const zenasset::SceneMetadataResult old =
@@ -389,7 +383,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
                                 options.directoryLayout = true;
                                 options.metadata        = old.metadata;
                                 options.compression     = old.metadata.compression;
-                                options.limits          = ProcessedLimits(readLimits);
+                                options.limits          = packageLimits;
                                 const zenasset::Status migrated =
                                     zenasset::MigrateSceneDirectory(cachePath, flat.package, options, &cancellation);
                                 if (migrated.Succeeded())
@@ -401,6 +395,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
                                     {
                                         LOGW("{}", cleanup.message);
                                     }
+                                    package = zenasset::OpenPackage(cachePath, packageLimits.package, &cancellation).package;
                                 }
                                 else
                                 {
@@ -413,13 +408,24 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
             }
             // Metadata inspection avoids allocating stale bulk data. The full
             // reader validates checksum, budgets and semantics before a cache hit.
-            const SceneAssetFileResult header =
-                request.forceRecook ? SceneAssetFileResult{} : ReadSceneAssetMetadata(cachePath, request.control.Get());
-            if (header.status == SceneImportStatus::Success && SameLookup(header.metadata, lookup)
+            SceneAssetFileResult header;
+            const bool           canReuseImages = package && !zenasset::HasProcessingOperations(request.processing);
+            if ((!request.forceRecook || canReuseImages) && (package || !request.directoryCache))
+            {
+                header = ReadScenePackage(cachePath, readLimits, request.control.Get(), true, nullptr, package);
+                if (canReuseImages && header.status == SceneImportStatus::Success
+                    && header.metadata.buildFingerprint == lookup.buildFingerprint
+                    && !zenasset::HasProcessingOperations(header.metadata.processing))
+                {
+                    previous = package;
+                }
+            }
+            if (!request.forceRecook && header.status == SceneImportStatus::Success && SameLookup(header.metadata, lookup)
                 && header.metadata.cacheKey == CacheKey(header.metadata)
                 && InputsCurrent(header.metadata.inputs, request.control.Get(), context.processing))
             {
-                SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, readLimits, request.control.Get(), runtimeOwner);
+                SceneAssetFileResult cached =
+                    ReadScenePackage(cachePath, readLimits, request.control.Get(), false, runtimeOwner, package);
                 if (cached.asset && cached.metadata.cacheKey == header.metadata.cacheKey)
                 {
                     result                 = std::move(static_cast<SceneImportResult&>(cached));

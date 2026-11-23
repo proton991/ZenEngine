@@ -161,11 +161,12 @@ SceneAssetFileMetadata AdaptProcessedMetadata(const zenasset::BuildMetadata& sou
     return ConvertMetadata<SceneAssetFileMetadata>(source);
 }
 
-SceneAssetFileResult ReadProcessedSceneFile(const std::string&                         path,
-                                            const SceneAssetReadLimits&                limits,
-                                            SceneImportControl*                        control,
-                                            bool                                       metadataOnly,
-                                            SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
+SceneAssetFileResult ReadProcessedSceneFile(const std::string&                              path,
+                                            const SceneAssetReadLimits&                     limits,
+                                            SceneImportControl*                             control,
+                                            bool                                            metadataOnly,
+                                            SharedPtr<SceneAsset, MultiThreadCounter>*      runtimeOwner,
+                                            const std::shared_ptr<const zenasset::Package>& package)
 {
     SceneAssetFileResult            result;
     const zenasset::Cancellation    cancellation(&ProcessedOperationCancelled, control);
@@ -181,7 +182,9 @@ SceneAssetFileResult ReadProcessedSceneFile(const std::string&                  
     zenasset::Status status;
     if (metadataOnly)
     {
-        const zenasset::SceneMetadataResult metadata = zenasset::ReadSceneMetadata(path, readLimits, &cancellation);
+        const zenasset::SceneMetadataResult metadata = package
+                                                         ? zenasset::ReadSceneMetadata(*package, readLimits, &cancellation)
+                                                         : zenasset::ReadSceneMetadata(path, readLimits, &cancellation);
         status                                       = metadata.status;
         result.metadata                              = AdaptProcessedMetadata(metadata.metadata);
         result.status                                = AdaptProcessedStatus(status.code);
@@ -191,7 +194,9 @@ SceneAssetFileResult ReadProcessedSceneFile(const std::string&                  
         const zenasset::SceneReadProgress progress{control, control != nullptr ? &TrackCacheResources : nullptr,
                                                    control ? &TrackCacheTransfer : nullptr,
                                                    control ? &ValidateCacheStage : nullptr};
-        const zenasset::SceneReadResult   loaded = zenasset::ReadSceneDeferredImages(path, readLimits, &cancellation, progress);
+        const zenasset::SceneReadResult   loaded =
+            package ? zenasset::ReadSceneDeferredImages(package, readLimits, &cancellation, progress)
+                    : zenasset::ReadSceneDeferredImages(path, readLimits, &cancellation, progress);
         status                                   = loaded.status;
         if (status.Succeeded() && loaded.scene)
         {

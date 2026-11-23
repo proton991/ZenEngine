@@ -19,9 +19,16 @@ zenasset::SourceSettings  MakeProcessedSettings(const SceneImportSettings& sourc
 zenasset::BuildMetadata   MakeProcessedMetadata(const SceneAssetFileMetadata& source);
 SceneAssetFileMetadata    AdaptProcessedMetadata(const zenasset::BuildMetadata& source);
 zenasset::SceneReadLimits ProcessedLimits(const SceneAssetReadLimits& source);
-SceneAssetFileResult      ReadProcessedSceneFile(const std::string&                         path,
-                                                 const SceneAssetReadLimits&                limits,
-                                                 SceneImportControl*                        control,
-                                                 bool                                       metadataOnly,
-                                                 SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner = nullptr);
+SceneAssetFileResult      ReadProcessedSceneFile(const std::string&                              path,
+                                                 const SceneAssetReadLimits&                     limits,
+                                                 SceneImportControl*                             control,
+                                                 bool                                            metadataOnly,
+                                                 SharedPtr<SceneAsset, MultiThreadCounter>*      runtimeOwner,
+                                                 const std::shared_ptr<const zenasset::Package>& package);
+SceneAssetFileResult      ReadScenePackage(const std::string&                              path,
+                                           SceneAssetReadLimits                            limits,
+                                           SceneImportControl*                             control,
+                                           bool                                            metadataOnly,
+                                           SharedPtr<SceneAsset, MultiThreadCounter>*      runtimeOwner,
+                                           const std::shared_ptr<const zenasset::Package>& package);
 } // namespace zen::asset

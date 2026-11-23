@@ -688,6 +688,21 @@ TEST(SceneAssetCache, MigratesCurrentFlatGenerationAndPreservesDirectOpens)
     ASSERT_TRUE(recooked.scene) << recooked.error;
     request.forceRecook = false;
     EXPECT_TRUE(asset::LoadSourceScene(request).cacheHit);
+
+    // A republished path cannot change which generation is read after lookup.
+    const zenasset::PackageResult snapshot = zenasset::OpenPackage(manifest);
+    ASSERT_TRUE(snapshot.package) << snapshot.status.message;
+    asset::SceneImportControl         control;
+    const asset::SceneAssetFileResult header = asset::ReadScenePackage(manifest, {}, &control, true, nullptr, snapshot.package);
+    ASSERT_EQ(header.status, asset::SceneImportStatus::Success) << header.error;
+    std::error_code error;
+    std::filesystem::rename(std::filesystem::u8path(manifest), model / "previous.zenasset", error);
+    ASSERT_FALSE(error) << error.message();
+    const asset::SceneAssetFileResult retained =
+        asset::ReadScenePackage(manifest, {}, &control, false, nullptr, snapshot.package);
+    ASSERT_TRUE(retained.asset) << retained.error;
+    EXPECT_EQ(retained.metadata.cacheKey, header.metadata.cacheKey);
+    ExpectFileProgress(control, 1, 1);
 }
 
 TEST(SceneAssetCache, EvictsLeastRecentlyUsedFilesBeyondTheBudget)

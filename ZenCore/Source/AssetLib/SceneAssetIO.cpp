@@ -1120,12 +1120,27 @@ uint32_t PackageVersion(const std::string& path)
     return version;
 }
 
-SceneAssetFileResult ReadPackageFile(const std::string&                         path,
-                                     const SceneAssetReadLimits&                limits,
-                                     SceneImportControl*                        control,
-                                     bool                                       metadataOnly,
-                                     SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner = nullptr)
+} // namespace
+
+SceneAssetFileResult ReadScenePackage(const std::string&                              path,
+                                      SceneAssetReadLimits                            limits,
+                                      SceneImportControl*                             control,
+                                      bool                                            metadataOnly,
+                                      SharedPtr<SceneAsset, MultiThreadCounter>*      runtimeOwner,
+                                      const std::shared_ptr<const zenasset::Package>& package)
 {
+    if (runtimeOwner != nullptr)
+    {
+        runtimeOwner->Reset();
+    }
+    if (!metadataOnly && control != nullptr)
+    {
+        control->SetFileProgress({0, 1, true});
+    }
+    if (metadataOnly)
+    {
+        limits.maxAllocationBytes = std::min<uint64_t>(limits.maxAllocationBytes, 64ull * 1024 * 1024);
+    }
     SceneAssetFileResult result;
     if (control != nullptr && control->IsCancelled())
     {
@@ -1138,40 +1153,28 @@ SceneAssetFileResult ReadPackageFile(const std::string&                         
     }
     else
     {
-        result = PackageVersion(path) == zenasset::PackageSchemaVersion
-                   ? ReadProcessedSceneFile(path, limits, control, metadataOnly, runtimeOwner)
+        result = package || PackageVersion(path) == zenasset::PackageSchemaVersion
+                   ? ReadProcessedSceneFile(path, limits, control, metadataOnly, runtimeOwner, package)
                    : ReadAssetFile(path, limits, control, metadataOnly);
     }
-    return result;
-}
-} // namespace
-
-SceneAssetFileResult ReadSceneAssetFile(const std::string&                         path,
-                                        const SceneAssetReadLimits&                limits,
-                                        SceneImportControl*                        control,
-                                        SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
-{
-    if (runtimeOwner != nullptr)
-    {
-        runtimeOwner->Reset();
-    }
-    if (control != nullptr)
-    {
-        control->SetFileProgress({0, 1, true});
-    }
-    SceneAssetFileResult result = ReadPackageFile(path, limits, control, false, runtimeOwner);
-    if (control != nullptr && result.status == SceneImportStatus::Success && result.asset)
+    if (!metadataOnly && control != nullptr && result.status == SceneImportStatus::Success && result.asset)
     {
         control->SetFileProgress({1, 1, true});
     }
     return result;
 }
 
+SceneAssetFileResult ReadSceneAssetFile(const std::string&                         path,
+                                        const SceneAssetReadLimits&                limits,
+                                        SceneImportControl*                        control,
+                                        SharedPtr<SceneAsset, MultiThreadCounter>* runtimeOwner)
+{
+    return ReadScenePackage(path, limits, control, false, runtimeOwner, {});
+}
+
 SceneAssetFileResult ReadSceneAssetMetadata(const std::string& path, SceneImportControl* control)
 {
-    SceneAssetReadLimits limits;
-    limits.maxAllocationBytes = 64ull * 1024 * 1024;
-    return ReadPackageFile(path, limits, control, true);
+    return ReadScenePackage(path, {}, control, true, nullptr, {});
 }
 
 std::string SceneAssetCacheKey(const SceneAssetFileMetadata& metadata)
