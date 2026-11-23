@@ -606,7 +606,8 @@ void EditorController::CommitSourceProcessing(const asset::SceneImportRequest& r
     const bool source             = asset::FindSceneImportFormat(request.path) != nullptr;
     m_sourceProcessing.sourcePath = source ? request.path : std::string{};
     m_sourceProcessing.applied =
-        source ? SceneProcessingSettings{request.profile == "desktop", request.processing} : SceneProcessingSettings{};
+        source ? SceneProcessingSettings{request.profile == "desktop", request.processing, request.directoryCache}
+               : SceneProcessingSettings{};
     m_sourceProcessing.cacheHit = cacheHit;
     m_appliedLoadRequest        = source ? request : asset::SceneImportRequest{};
     m_appliedLoadRequest.control.Reset();

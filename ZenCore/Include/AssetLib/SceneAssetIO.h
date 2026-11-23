@@ -32,6 +32,7 @@ struct SceneAssetReadLimits
     // Source documents of embedded-buffer glTF files can be hundreds of megabytes.
     uint64_t maxStringBytes{2ull * 1024 * 1024 * 1024};
     uint64_t maxRuntimeGeometryBytes{16ull * 1024 * 1024 * 1024};
+    uint32_t readWorkers{4};
 };
 
 struct SceneAssetFileResult : SceneImportResult

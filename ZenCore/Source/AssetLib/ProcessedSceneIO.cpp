@@ -80,6 +80,7 @@ template <class Target, class Source> Target ConvertMetadata(const Source& sourc
 zenasset::SceneReadLimits ProcessedLimits(const SceneAssetReadLimits& source)
 {
     zenasset::SceneReadLimits limits;
+    limits.workerCount          = source.readWorkers;
     limits.package.maxFileBytes = source.maxFileBytes;
     // Directory validation may inspect a large package while only its small
     // metadata resource is decoded; actual allocations use the separate limit.
@@ -115,12 +116,21 @@ SceneImportStatus AdaptProcessedStatus(zenasset::StatusCode status)
     return result;
 }
 
+void TrackCacheTransfer(void* user, const zenasset::SceneTransferState& state)
+{
+    static_cast<SceneImportControl*>(user)->SetCacheTransfer(state.completedBytes, state.totalBytes, state.completedImages,
+                                                             state.totalImages, state.geometryComplete);
+}
+static void ValidateCacheStage(void* user)
+{
+    static_cast<SceneImportControl*>(user)->SetStage(SceneImportStage::ValidatingCache);
+}
 void TrackCacheResources(void* user, uint64_t completed, uint64_t total)
 {
     SceneImportControl* control = static_cast<SceneImportControl*>(user);
     if (control != nullptr)
     {
-        control->SetCacheProgress({completed, total});
+        control->SetCacheResources(completed, total);
     }
 }
 
@@ -178,7 +188,9 @@ SceneAssetFileResult ReadProcessedSceneFile(const std::string&                  
     }
     else
     {
-        const zenasset::SceneReadProgress progress{control, control != nullptr ? &TrackCacheResources : nullptr};
+        const zenasset::SceneReadProgress progress{control, control != nullptr ? &TrackCacheResources : nullptr,
+                                                   control ? &TrackCacheTransfer : nullptr,
+                                                   control ? &ValidateCacheStage : nullptr};
         const zenasset::SceneReadResult   loaded = zenasset::ReadSceneDeferredImages(path, readLimits, &cancellation, progress);
         status                                   = loaded.status;
         if (status.Succeeded() && loaded.scene)

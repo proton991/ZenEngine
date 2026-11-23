@@ -216,6 +216,10 @@ bool ParseOptions(int              argc,
         {
             path = argument.substr(8);
         }
+        else if (argument.starts_with("--read-workers="))
+        {
+            ParseUnsigned(argument, options.readWorkers, 64, error);
+        }
         else if (argument.starts_with("--frames="))
         {
             ParseUnsigned(argument, options.frames, std::numeric_limits<uint64_t>::max(), error);
@@ -433,7 +437,7 @@ int RuntimeMain(int argc, char** argv)
     if (argc == 2 && std::string_view(argv[1]) == "--help")
     {
         std::cout
-            << "ZenApp --setup=<file.zenrender> [--frames=N] [--capture=scene.ppm] [--profile=prefix]\n"
+            << "ZenApp --setup=<file.zenrender> [--frames=N] [--read-workers=1..64] [--capture=scene.ppm] [--profile=prefix]\n"
                "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
                "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
                "       [--backend=auto|compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"

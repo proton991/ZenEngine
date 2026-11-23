@@ -658,6 +658,38 @@ TEST(SceneAssetCache, DefaultRequestsPublishInTheBackgroundAndOptOutSkipsTheCach
     EXPECT_EQ(std::filesystem::last_write_time(std::filesystem::u8path(cache)), used);
 }
 
+TEST(SceneAssetCache, MigratesCurrentFlatGenerationAndPreservesDirectOpens)
+{
+    const AssetFiles          files;
+    asset::SceneImportRequest request{Fixture("complete_scene.glb")};
+    request.cacheDirectory = files.Path("cache");
+    request.forceRecook    = true;
+    ASSERT_TRUE(asset::LoadSourceScene(request).scene);
+    const std::string flat          = OnlyCache(files);
+    request.forceRecook             = false;
+    request.directoryCache          = true;
+    asset::SceneLoadResult migrated = asset::LoadSourceScene(request);
+    ASSERT_TRUE(migrated.scene) << migrated.error;
+    EXPECT_TRUE(migrated.cacheHit);
+    EXPECT_TRUE(asset::LoadScene(flat).scene);
+    const std::filesystem::path model = std::filesystem::u8path(request.cacheDirectory) / "complete_scene";
+    std::string                 manifest;
+    for (const std::filesystem::directory_entry& file : std::filesystem::directory_iterator(model))
+    {
+        if (file.path().extension() == ".zenasset")
+        {
+            manifest = file.path().string();
+        }
+    }
+    ASSERT_FALSE(manifest.empty());
+    EXPECT_TRUE(asset::LoadScene(manifest).scene);
+    request.forceRecook             = true;
+    asset::SceneLoadResult recooked = asset::LoadSourceScene(request);
+    ASSERT_TRUE(recooked.scene) << recooked.error;
+    request.forceRecook = false;
+    EXPECT_TRUE(asset::LoadSourceScene(request).cacheHit);
+}
+
 TEST(SceneAssetCache, EvictsLeastRecentlyUsedFilesBeyondTheBudget)
 {
     const AssetFiles  files;

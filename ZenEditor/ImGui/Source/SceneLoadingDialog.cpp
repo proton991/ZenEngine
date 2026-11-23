@@ -69,6 +69,7 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
                             case asset::SceneImportStage::BakingAnimations: label = "Processing animations..."; break;
                             case asset::SceneImportStage::BuildingScene: label = "Building scene data..."; break;
                             case asset::SceneImportStage::CookingAssets: label = "Cooking assets..."; break;
+                            case asset::SceneImportStage::ValidatingCache: label = "Validating scene..."; break;
                             case asset::SceneImportStage::ReadingCache: label = "Loading cached scene..."; break;
                             case asset::SceneImportStage::SavingCache: label = "Saving cooked cache..."; break;
                             default: break;
@@ -93,7 +94,25 @@ SceneLoadingAction DrawSceneLoadingDialog(const SceneLoadState& state, const std
                     const uint64_t completed = std::min(state.cacheProgress.completedResources, total);
                     progress = total != 0 ? static_cast<float>(static_cast<double>(completed) / static_cast<double>(total))
                                           : -static_cast<float>(ImGui::GetTime());
-                    if (total == 0)
+                    if (readingCache && state.cacheProgress.totalBytes != 0)
+                    {
+                        const asset::SceneImportCacheProgress& cache = state.cacheProgress;
+                        progress = static_cast<float>(static_cast<double>(cache.completedBytes) / cache.totalBytes);
+                        std::snprintf(overlay, sizeof(overlay), "%.1f / %.1f MiB, %llu / %llu images, geometry %s",
+                                      cache.completedBytes / 1048576.0, cache.totalBytes / 1048576.0,
+                                      static_cast<unsigned long long>(cache.completedImages),
+                                      static_cast<unsigned long long>(cache.totalImages),
+                                      cache.geometryComplete ? "ready" : "loading");
+                    }
+                    else if (!readingCache && (state.cacheProgress.completedBytes || state.cacheProgress.totalImages))
+                    {
+                        const asset::SceneImportCacheProgress& cache = state.cacheProgress;
+                        std::snprintf(overlay, sizeof(overlay), "%.1f MiB written, %llu / %llu images, geometry %s",
+                                      cache.completedBytes / 1048576.0, static_cast<unsigned long long>(cache.completedImages),
+                                      static_cast<unsigned long long>(cache.totalImages),
+                                      cache.geometryComplete ? "ready" : "saving");
+                    }
+                    else if (total == 0)
                     {
                         std::snprintf(overlay, sizeof(overlay), "%s",
                                       readingCache ? "Opening package..." : "Preparing cache...");

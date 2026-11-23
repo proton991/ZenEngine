@@ -523,6 +523,7 @@ private:
         if (valid)
         {
             asset::SceneImportRequest request{m_setup.packagePath};
+            request.readWorkers           = static_cast<uint32_t>(m_options.readWorkers);
             request.retainCanonicalAsset  = false;
             asset::SceneLoadResult loaded = asset::LoadScene(request);
             m_error                       = loaded.error;

@@ -24,6 +24,7 @@ struct RuntimeOptions
     std::string                  lightPath;
     LightPath                    lightKeys;
     uint64_t                     frames{0};
+    uint64_t                     readWorkers{4};
     uint64_t                     captureStart{0};
     HeapVector<uint64_t>         captureFrames; // Sorted and unique; writes <capture>.frame-N.ppm at only these frames.
     std::string                  capture;

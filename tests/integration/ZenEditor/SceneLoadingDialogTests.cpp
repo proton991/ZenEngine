@@ -175,6 +175,16 @@ TEST_F(SceneLoadingDialog, CacheProgressTracksResources)
     EXPECT_NE(renderedText.find("4 / 10 resources loaded"), std::string::npos) << renderedText;
     DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::ReadingCache, false, {0, 1, true}, {10, 10});
     EXPECT_NE(renderedText.find("Validating scene..."), std::string::npos) << renderedText;
+
+    const asset::SceneImportCacheProgress transfer{4, 10, 3u << 20, 8u << 20, 1, 2, true};
+    DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::ReadingCache, false, {}, transfer);
+    EXPECT_NE(renderedText.find("3.0 / 8.0 MiB, 1 / 2 images, geometry ready"), std::string::npos) << renderedText;
+    DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::SavingCache, false, {}, transfer);
+    EXPECT_NE(renderedText.find("3.0 MiB written, 1 / 2 images, geometry ready"), std::string::npos) << renderedText;
+    DrawFrame(SceneLoadStage::Reading, asset::SceneImportStage::ValidatingCache);
+    EXPECT_NE(renderedText.find("Validating scene..."), std::string::npos) << renderedText;
+    DrawFrame(SceneLoadStage::Preparing);
+    EXPECT_NE(renderedText.find("Preparing graphics resources..."), std::string::npos) << renderedText;
 }
 } // namespace
 } // namespace zen::editor

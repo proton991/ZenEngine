@@ -20,6 +20,10 @@ namespace zen::asset
 {
 namespace
 {
+zenasset::CompressionSettings CacheCompression()
+{
+    return {zenasset::TransportCodec::Zstandard, 3, true};
+}
 std::string CacheKey(const SceneAssetFileMetadata& metadata)
 {
     return SceneAssetCacheKeyForVersion(metadata, zenasset::PackageSchemaVersion);
@@ -79,52 +83,6 @@ bool SameLookup(const SceneAssetFileMetadata& metadata, const SceneAssetFileMeta
         && CacheKey(identity) == CacheKey(lookup);
 }
 
-// Removes least recently used caches beyond the budget, and temporary files that
-// a crashed writer left behind. The file just published is always kept.
-void EvictCaches(const std::filesystem::path& directory, uint64_t budget, const std::filesystem::path& keep)
-{
-    struct CacheFile
-    {
-        std::filesystem::path           path;
-        uint64_t                        size{0};
-        std::filesystem::file_time_type used;
-    };
-    HeapVector<CacheFile>                     files;
-    uint64_t                                  total = 0;
-    std::error_code                           error;
-    const std::filesystem::file_time_type     stale = std::filesystem::file_time_type::clock::now() - std::chrono::hours(1);
-    std::filesystem::directory_iterator       entry(directory, error);
-    const std::filesystem::directory_iterator end;
-    while (!error && entry != end)
-    {
-        std::error_code                       entryError;
-        const std::filesystem::path           path = entry->path();
-        const std::filesystem::file_time_type used = entry->last_write_time(entryError);
-        const uint64_t                        size = entryError ? 0 : static_cast<uint64_t>(entry->file_size(entryError));
-        const std::string                     name = PathToUtf8(path.filename());
-        if (!entryError && used < stale
-            && (name.find(".zenasset.tmp-") != std::string::npos || name.find(".zenasset.tmp.") != std::string::npos))
-        {
-            std::filesystem::remove(path, entryError);
-        }
-        else if (!entryError && path.extension() == ".zenasset")
-        {
-            files.push_back({path, size, used});
-            total += size;
-        }
-        entry.increment(error);
-    }
-    std::sort(files.begin(), files.end(), [](const CacheFile& left, const CacheFile& right) { return left.used < right.used; });
-    for (const CacheFile& file : files)
-    {
-        std::error_code removeError;
-        if (total > budget && file.path != keep && std::filesystem::remove(file.path, removeError))
-        {
-            total -= file.size;
-        }
-    }
-}
-
 struct CachePublication
 {
     std::string                                       path;
@@ -133,6 +91,7 @@ struct CachePublication
     uint64_t                                          budget{0};
     SharedPtr<SceneImportControl, MultiThreadCounter> control;
     bool                                              forceRecook{false};
+    bool                                              directoryLayout{false};
 };
 
 struct PublicationControl
@@ -246,7 +205,7 @@ private:
         SceneAssetFileMetadata                      metadata = publication.metadata;
         PublicationControl                          control{&m_shutdown, publication.control.Get()};
         // Hash the revisions consumed by the importer before serialization.
-        const zenasset::Status freshness = CheckPublicationInputs(metadata, control, true);
+        const zenasset::Status freshness = CheckPublicationInputs(metadata, control, !publication.directoryLayout);
         const bool             current   = freshness.Succeeded();
         SceneImportReport      written;
         written.status = AdaptProcessedStatus(freshness.code);
@@ -260,14 +219,13 @@ private:
             zenasset::SceneWriteOptions options;
             options.metadata              = MakeProcessedMetadata(metadata);
             options.limits.maxStringBytes = SceneAssetReadLimits{}.maxStringBytes;
-            options.compression.transport = zenasset::TransportCodec::Zstandard;
-            // Interactive caches prioritize first-open latency. Compression is lossless.
-            options.compression.zstandardLevel = 3;
-            options.compression.meshoptimizer  = true;
+            options.compression                = CacheCompression();
+            options.directoryLayout            = publication.directoryLayout;
             options.progressUser               = publication.control.Get();
             options.resourceProgress           = &TrackCacheResources;
+            options.partProgress               = publication.control ? &TrackCacheTransfer : nullptr;
             PublicationInputs publicationInputs{&metadata, &control};
-            if (publication.forceRecook)
+            if (publication.forceRecook && !publication.directoryLayout)
             {
                 // Explicit recooks also validate content after serialization,
                 // immediately before the writer replaces the previous package.
@@ -280,7 +238,14 @@ private:
             written.error                 = status.message;
             if (written.status == SceneImportStatus::Success)
             {
-                EvictCaches(path.parent_path(), publication.budget, path);
+                const std::filesystem::path root =
+                    publication.directoryLayout ? path.parent_path().parent_path() : path.parent_path();
+                const zenasset::Status cleanup =
+                    zenasset::TrimSceneDirectoryCache(PathToUtf8(root), publication.budget, publication.path);
+                if (!cleanup.Succeeded())
+                {
+                    LOGW("{}", cleanup.message);
+                }
                 LOGI("Scene cache published: {} ({:.3f} s)", publication.path,
                      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
             }
@@ -330,6 +295,9 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
     SceneAssetFileMetadata       lookup;
     std::string                  cachePath;
     AssetFileStamp               sourceStamp;
+    std::shared_ptr<const zenasset::Package> previous;
+    SceneAssetReadLimits                     readLimits;
+    readLimits.readWorkers                  = request.readWorkers;
     const zenasset::Status       validation = ValidateSourceProcessing(request);
     if (!validation.Succeeded())
     {
@@ -360,6 +328,68 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
             lookup.processing       = request.processing;
             lookup.inputs.push_back({source});
             cachePath = PathToUtf8(directory / (CacheKey(lookup) + ".zenasset"));
+            if (request.directoryCache)
+            {
+                const std::string      flatPath = cachePath;
+                const zenasset::Status resolved = zenasset::SceneDirectoryManifest(
+                    PathToUtf8(directory), source, MakeProcessedMetadata(lookup), CacheCompression(), cachePath);
+                if (!resolved.Succeeded())
+                {
+                    cachePath.clear();
+                    LOGW("Cannot claim scene cache directory: {}", resolved.message);
+                }
+                else
+                {
+                    const zenasset::Cancellation  cancellation(&ProcessedOperationCancelled, request.control.Get());
+                    const zenasset::PackageResult current = zenasset::OpenPackage(cachePath, {}, &cancellation);
+                    if (current.status.Succeeded() && !zenasset::HasProcessingOperations(request.processing))
+                    {
+                        const zenasset::SceneMetadataResult old =
+                            zenasset::ReadSceneMetadata(*current.package, {}, &cancellation);
+                        if (old.status.Succeeded() && old.metadata.buildFingerprint == lookup.buildFingerprint
+                            && !zenasset::HasProcessingOperations(old.metadata.processing))
+                        {
+                            previous = current.package;
+                        }
+                    }
+                    if (!request.forceRecook && current.status.code == zenasset::StatusCode::SourceUnavailable)
+                    {
+                        zenasset::PackageResult flat = zenasset::OpenPackage(flatPath, {}, &cancellation);
+                        if (flat.status.Succeeded())
+                        {
+                            const zenasset::SceneMetadataResult old =
+                                zenasset::ReadSceneMetadata(*flat.package, {}, &cancellation);
+                            const SceneAssetFileMetadata metadata = AdaptProcessedMetadata(old.metadata);
+                            if (old.status.Succeeded() && SameLookup(metadata, lookup)
+                                && metadata.cacheKey == CacheKey(metadata)
+                                && InputsCurrent(metadata.inputs, request.control.Get(), context.processing))
+                            {
+                                zenasset::SceneWriteOptions options;
+                                options.directoryLayout = true;
+                                options.metadata        = old.metadata;
+                                options.compression     = old.metadata.compression;
+                                options.limits          = ProcessedLimits(readLimits);
+                                const zenasset::Status migrated =
+                                    zenasset::MigrateSceneDirectory(cachePath, flat.package, options, &cancellation);
+                                if (migrated.Succeeded())
+                                {
+                                    flat.package.reset();
+                                    const zenasset::Status cleanup = zenasset::TrimSceneDirectoryCache(
+                                        PathToUtf8(directory), request.cacheBudgetBytes, cachePath);
+                                    if (!cleanup.Succeeded())
+                                    {
+                                        LOGW("{}", cleanup.message);
+                                    }
+                                }
+                                else
+                                {
+                                    LOGW("Scene cache migration failed: {}", migrated.message);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // Metadata inspection avoids allocating stale bulk data. The full
             // reader validates checksum, budgets and semantics before a cache hit.
             const SceneAssetFileResult header =
@@ -368,7 +398,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
                 && header.metadata.cacheKey == CacheKey(header.metadata)
                 && InputsCurrent(header.metadata.inputs, request.control.Get(), context.processing))
             {
-                SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, {}, request.control.Get(), runtimeOwner);
+                SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, readLimits, request.control.Get(), runtimeOwner);
                 if (cached.asset && cached.metadata.cacheKey == header.metadata.cacheKey)
                 {
                     result                 = std::move(static_cast<SceneImportResult&>(cached));
@@ -387,7 +417,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
     if (validation.Succeeded() && !cacheHit)
     {
         LOGI("Scene source import: {}", request.path);
-        ProcessedSourceResult imported = ImportProcessedSource(request, context);
+        ProcessedSourceResult imported = ImportProcessedSource(request, context, std::move(previous));
         result                         = std::move(imported.imported);
         if (runtimeOwner != nullptr)
         {
@@ -398,6 +428,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
             SceneAssetFileMetadata metadata  = lookup;
             metadata.inputs.front().size     = sourceStamp.size;
             metadata.inputs.front().modified = sourceStamp.modified;
+            metadata.inputs.front().contentHash = imported.processed->sourceContentHash;
             for (const SceneDependency& dependency : result.asset->dependencies)
             {
                 metadata.inputs.push_back(dependency);
@@ -408,9 +439,9 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
             {
                 request.control->SetStage(SceneImportStage::SavingCache);
             }
-            std::future<SceneImportReport> publication =
-                CacheWriter::Get().Publish({cachePath, std::move(metadata), std::move(imported.processed),
-                                            request.cacheBudgetBytes, request.control, request.forceRecook});
+            std::future<SceneImportReport> publication = CacheWriter::Get().Publish(
+                {cachePath, std::move(metadata), std::move(imported.processed), request.cacheBudgetBytes, request.control,
+                 request.forceRecook, request.directoryCache});
             if (request.forceRecook || runtimeLoad)
             {
                 const SceneImportReport written = publication.get();
@@ -421,7 +452,8 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
                     // texture set or the background writer's imported scene.
                     result = {};
                     runtimeOwner->Reset();
-                    SceneAssetFileResult cached = ReadSceneAssetFile(cachePath, {}, request.control.Get(), runtimeOwner);
+                    SceneAssetFileResult cached =
+                        ReadSceneAssetFile(cachePath, readLimits, request.control.Get(), runtimeOwner);
                     result                      = std::move(static_cast<SceneImportResult&>(cached));
                     result.format               = std::string(format->id);
                     result.importerVersion      = format->importerVersion;

@@ -8,6 +8,7 @@ bool DrawSceneProcessingSettings(SceneProcessingSettings& settings)
     int  profile     = settings.desktop ? 1 : 0;
     bool changed     = ImGui::Combo("Profile", &profile, "Reference\0Desktop (explicit options)\0");
     settings.desktop = profile == 1;
+    changed          |= ImGui::Checkbox("Store cache in a model directory", &settings.directoryCache);
     ImGui::TextWrapped("Applies to the next source open or explicit recook. Packages load as stored.");
     ImGui::BeginDisabled(!settings.desktop);
     zenasset::GeometrySettings& geometry  = settings.settings.geometry;

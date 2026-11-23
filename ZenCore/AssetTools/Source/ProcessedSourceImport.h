@@ -5,6 +5,7 @@
 namespace zenasset
 {
 struct Scene;
+class Package;
 }
 
 namespace zen::asset
@@ -19,5 +20,7 @@ struct ProcessedSourceResult
 zenasset::Status ValidateSourceProcessing(const SceneImportRequest& request);
 // Keeps the processor's immutable scene alive for package publication without
 // converting the engine representation back into the independent format.
-ProcessedSourceResult ImportProcessedSource(const SceneImportRequest& request, const SceneImportContext& context);
+ProcessedSourceResult ImportProcessedSource(const SceneImportRequest&                request,
+                                            const SceneImportContext&                context,
+                                            std::shared_ptr<const zenasset::Package> previous = {});
 } // namespace zen::asset

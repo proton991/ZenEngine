@@ -78,7 +78,9 @@ zenasset::Status ValidateSourceProcessing(const SceneImportRequest& request)
     return status;
 }
 
-ProcessedSourceResult ImportProcessedSource(const SceneImportRequest& request, const SceneImportContext& context)
+ProcessedSourceResult ImportProcessedSource(const SceneImportRequest&                request,
+                                            const SceneImportContext&                context,
+                                            std::shared_ptr<const zenasset::Package> previous)
 {
     ProcessedSourceResult        output;
     SceneImportResult&           result     = output.imported;
@@ -92,6 +94,8 @@ ProcessedSourceResult ImportProcessedSource(const SceneImportRequest& request, c
             request.control.Get(), &ProcessedOperationCancelled, &ImportStageChanged, &ImportFileProgressChanged});
     }
     zenasset::SceneImportContext sourceContext;
+    sourceContext.captureInputHashes = request.directoryCache;
+    sourceContext.previousReference  = std::move(previous);
     if (context.processing != nullptr)
     {
         sourceContext.workerCount = static_cast<uint32_t>(context.processing->GetSize());

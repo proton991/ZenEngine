@@ -77,8 +77,10 @@ SceneLoadResult LoadScene(const SceneImportRequest& request, ThreadPool<void, ui
     }
     else if (format != nullptr)
     {
-        imported = format->id == "zenscene" ? ReadSceneAssemblyAsset(request.path, {}, request.control.Get(), handoff)
-                                            : ReadSceneAssetFile(request.path, {}, request.control.Get(), handoff);
+        SceneAssetReadLimits limits;
+        limits.readWorkers = request.readWorkers;
+        imported = format->id == "zenscene" ? ReadSceneAssemblyAsset(request.path, limits, request.control.Get(), handoff)
+                                            : ReadSceneAssetFile(request.path, limits, request.control.Get(), handoff);
     }
     else
     {

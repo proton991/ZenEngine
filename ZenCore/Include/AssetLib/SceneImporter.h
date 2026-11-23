@@ -44,7 +44,8 @@ enum class SceneImportStage
     Cancelled,
     CookingAssets,
     SavingCache,
-    ReadingCache
+    ReadingCache,
+    ValidatingCache
 };
 
 enum class SceneDiagnosticSeverity
@@ -73,6 +74,11 @@ struct SceneImportCacheProgress
 {
     uint64_t completedResources{0};
     uint64_t totalResources{0};
+    uint64_t completedBytes{0};
+    uint64_t totalBytes{0};
+    uint64_t completedImages{0};
+    uint64_t totalImages{0};
+    bool     geometryComplete{false};
 };
 
 // One control per request. Cancellation is cooperative between stages and jobs;
@@ -118,6 +124,21 @@ public:
         return m_cacheProgress;
     }
 
+    void SetCacheResources(uint64_t completed, uint64_t total)
+    {
+        const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
+        m_cacheProgress.completedResources = completed;
+        m_cacheProgress.totalResources     = total;
+    }
+    void SetCacheTransfer(uint64_t bytes, uint64_t total, uint64_t images, uint64_t imageCount, bool geometry)
+    {
+        const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
+        m_cacheProgress.completedBytes   = bytes;
+        m_cacheProgress.totalBytes       = total;
+        m_cacheProgress.completedImages  = images;
+        m_cacheProgress.totalImages      = imageCount;
+        m_cacheProgress.geometryComplete = geometry;
+    }
     void SetCacheProgress(SceneImportCacheProgress progress)
     {
         const std::lock_guard<std::mutex> lock(m_fileProgressMutex);
@@ -170,6 +191,8 @@ struct SceneImportRequest
     // Native runtime hosts can transfer geometry instead of keeping a second
     // canonical asset. Tools retain the historical owning result by default.
     bool retainCanonicalAsset{true};
+    bool     directoryCache{false};
+    uint32_t readWorkers{4};
 };
 
 struct SceneImportContext
