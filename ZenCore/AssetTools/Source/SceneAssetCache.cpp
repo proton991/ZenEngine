@@ -1,3 +1,4 @@
+#include "ZenAsset/Processor/Import.h"
 #include "SceneAssetCache.h"
 #include "AssetLib/SceneAssetIOInternal.h"
 #include "AssetLib/ProcessedSceneIO.h"
@@ -23,6 +24,18 @@ namespace
 zenasset::CompressionSettings CacheCompression()
 {
     return {zenasset::TransportCodec::Zstandard, 3, true};
+}
+zenasset::SceneWriteOptions CacheWriteOptions(bool directory)
+{
+    zenasset::SceneWriteOptions options;
+    options.limits.maxStringBytes = SceneAssetReadLimits{}.maxStringBytes;
+    options.compression           = CacheCompression();
+    options.directoryLayout       = directory;
+    if (directory)
+    {
+        options.maxImageWorkers = DirectoryImageWorkers;
+    }
+    return options;
 }
 std::string CacheKey(const SceneAssetFileMetadata& metadata)
 {
@@ -92,6 +105,7 @@ struct CachePublication
     SharedPtr<SceneImportControl, MultiThreadCounter> control;
     bool                                              forceRecook{false};
     bool                                              directoryLayout{false};
+    bool                                              trimAfterReleasingImport{false};
 };
 
 struct PublicationControl
@@ -164,6 +178,17 @@ zenasset::Status BeforeCachePublication(void* user)
     return CheckPublicationInputs(*inputs.metadata, *inputs.control, false);
 }
 
+void TrimPublishedCache(const std::string& manifest, bool directory, uint64_t budget)
+{
+    const std::filesystem::path parent = std::filesystem::u8path(manifest).parent_path();
+    const zenasset::Status      cleanup =
+        zenasset::TrimSceneDirectoryCache(PathToUtf8(directory ? parent.parent_path() : parent), budget, manifest);
+    if (!cleanup.Succeeded())
+    {
+        LOGW("{}", cleanup.message);
+    }
+}
+
 // Canonical tool opens publish after loading. Runtime loads and explicit recooks
 // await only their own publication. Shutdown cancels pending writes.
 class CacheWriter
@@ -186,7 +211,7 @@ public:
             LockAuto lock(&m_mutex);
             ++m_pending;
         }
-        return m_worker.Push(&CacheWriter::Run, this, std::move(publication));
+        return m_worker.Push([this, publication = std::move(publication)](uint32_t) mutable { return Run(publication); });
     }
 
     HeapVector<SceneImportDiagnostic> Wait()
@@ -199,7 +224,7 @@ public:
     }
 
 private:
-    SceneImportReport Run(const CachePublication& publication)
+    SceneImportReport Run(CachePublication& publication)
     {
         const std::chrono::steady_clock::time_point started  = std::chrono::steady_clock::now();
         SceneAssetFileMetadata                      metadata = publication.metadata;
@@ -218,15 +243,8 @@ private:
             std::error_code             error;
             const std::filesystem::path path = std::filesystem::u8path(publication.path);
             std::filesystem::create_directories(path.parent_path(), error);
-            zenasset::SceneWriteOptions options;
-            options.metadata              = MakeProcessedMetadata(metadata);
-            options.limits.maxStringBytes = SceneAssetReadLimits{}.maxStringBytes;
-            options.compression                = CacheCompression();
-            options.directoryLayout            = publication.directoryLayout;
-            if (publication.directoryLayout)
-            {
-                options.maxImageWorkers = DirectoryImageWorkers;
-            }
+            zenasset::SceneWriteOptions options = CacheWriteOptions(publication.directoryLayout);
+            options.metadata                    = MakeProcessedMetadata(metadata);
             options.progressUser               = publication.control.Get();
             options.resourceProgress           = &TrackCacheResources;
             options.partProgress               = publication.control ? &TrackCacheTransfer : nullptr;
@@ -240,17 +258,14 @@ private:
             }
             const zenasset::Cancellation cancellation(&PublicationCancelled, &control);
             const zenasset::Status status = zenasset::WriteScene(publication.path, *publication.asset, options, &cancellation);
+            publication.asset.reset();
             written.status                = AdaptProcessedStatus(status.code);
             written.error                 = status.message;
             if (written.status == SceneImportStatus::Success)
             {
-                const std::filesystem::path root =
-                    publication.directoryLayout ? path.parent_path().parent_path() : path.parent_path();
-                const zenasset::Status cleanup =
-                    zenasset::TrimSceneDirectoryCache(PathToUtf8(root), publication.budget, publication.path);
-                if (!cleanup.Succeeded())
+                if (!publication.trimAfterReleasingImport)
                 {
-                    LOGW("{}", cleanup.message);
+                    TrimPublishedCache(publication.path, publication.directoryLayout, publication.budget);
                 }
                 LOGI("Scene cache published: {} ({:.3f} s)", publication.path,
                      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
@@ -423,7 +438,15 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
     if (validation.Succeeded() && !cacheHit)
     {
         LOGI("Scene source import: {}", request.path);
-        ProcessedSourceResult imported = ImportProcessedSource(request, context, std::move(previous));
+        zenasset::SceneWriteOptions options = CacheWriteOptions(request.directoryCache);
+        options.metadata                    = MakeProcessedMetadata(lookup);
+        options.progressUser                = request.control.Get();
+        options.partProgress                = request.control ? &TrackCacheTransfer : nullptr;
+        const zenasset::SceneImportImageCache target{cachePath, options};
+        const bool streamImages = runtimeOwner && request.directoryCache && !cachePath.empty() && format->id == "gltf"
+                               && !zenasset::HasProcessingOperations(request.processing);
+        ProcessedSourceResult imported =
+            ImportProcessedSource(request, context, std::move(previous), streamImages ? &target : nullptr);
         result                         = std::move(imported.imported);
         if (runtimeOwner != nullptr)
         {
@@ -447,7 +470,7 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
             }
             std::future<SceneImportReport> publication = CacheWriter::Get().Publish(
                 {cachePath, std::move(metadata), std::move(imported.processed), request.cacheBudgetBytes, request.control,
-                 request.forceRecook, request.directoryCache});
+                 request.forceRecook, request.directoryCache, streamImages});
             if (request.forceRecook || runtimeLoad)
             {
                 const SceneImportReport written = publication.get();
@@ -458,6 +481,10 @@ SceneImportResult ImportSceneWithCache(const SceneImportRequest&                
                     // texture set or the background writer's imported scene.
                     result = {};
                     runtimeOwner->Reset();
+                    if (streamImages)
+                    {
+                        TrimPublishedCache(cachePath, true, request.cacheBudgetBytes);
+                    }
                     SceneAssetFileResult cached =
                         ReadSceneAssetFile(cachePath, readLimits, request.control.Get(), runtimeOwner);
                     result                      = std::move(static_cast<SceneImportResult&>(cached));

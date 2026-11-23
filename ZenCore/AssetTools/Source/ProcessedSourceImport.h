@@ -5,6 +5,7 @@
 namespace zenasset
 {
 struct Scene;
+struct SceneImportImageCache;
 class Package;
 }
 
@@ -25,5 +26,6 @@ zenasset::Status ValidateSourceProcessing(const SceneImportRequest& request);
 // converting the engine representation back into the independent format.
 ProcessedSourceResult ImportProcessedSource(const SceneImportRequest&                request,
                                             const SceneImportContext&                context,
-                                            std::shared_ptr<const zenasset::Package> previous = {});
+                                            std::shared_ptr<const zenasset::Package> previous   = {},
+                                            const zenasset::SceneImportImageCache*   imageCache = nullptr);
 } // namespace zen::asset
