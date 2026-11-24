@@ -29,14 +29,15 @@ struct LaunchOverrides
     std::optional<rc::VoxelGISettings::RayProvider> backend;
 };
 
-bool ParseUnsigned(std::string_view argument, uint64_t& value, uint64_t maximum, std::string& error)
+bool ParseUnsigned(std::string_view argument, uint64_t& value, uint64_t maximum, std::string& error, uint64_t minimum = 1)
 {
     const size_t                 separator = argument.find('=');
     const std::string_view       text      = argument.substr(separator + 1);
     const std::from_chars_result parsed    = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || value == 0 || value > maximum)
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || value < minimum || value > maximum)
     {
-        error = std::string(argument.substr(0, separator)) + " requires an integer from 1 to " + std::to_string(maximum);
+        error = std::string(argument.substr(0, separator)) + " requires an integer from " + std::to_string(minimum) + " to "
+              + std::to_string(maximum);
     }
     return error.empty();
 }
@@ -198,6 +199,61 @@ bool ApplyOverrides(const LaunchOverrides& overrides, RuntimeLaunchSettings& set
     return error.empty();
 }
 
+void AddCacheProtectedInputs(HeapVector<std::filesystem::path>& inputs,
+                             const std::filesystem::path&       setupPath,
+                             const RuntimeLaunchSettings&       setup)
+{
+    namespace fs = std::filesystem;
+    inputs.push_back(setupPath);
+    inputs.push_back(fs::u8path(setup.packagePath));
+    inputs.push_back(fs::u8path(setup.sourcePath));
+    const std::string& environment =
+        setup.rendering.environment.texturePath.empty() ? setup.defaultEnvironment : setup.rendering.environment.texturePath;
+    inputs.push_back(fs::path(ZEN_TEXTURE_PATH) / fs::u8path(environment.empty() ? "papermill.ktx" : environment));
+}
+
+bool ValidatePipelineCacheDestination(const std::string&           setupPath,
+                                      const RuntimeLaunchSettings& setup,
+                                      const RuntimeOptions&        options,
+                                      const LaunchOverrides&       overrides,
+                                      std::string&                 error)
+{
+    namespace fs          = std::filesystem;
+    const fs::path  cache = fs::u8path(options.pipelineCache);
+    std::error_code code;
+    if (!cache.empty() && fs::exists(cache, code))
+    {
+        HeapVector<fs::path> inputs{fs::u8path(options.cameraPath), fs::u8path(options.lightPath),
+                                    fs::u8path(overrides.giConfigPath)};
+        AddCacheProtectedInputs(inputs, fs::u8path(setupPath), setup);
+        if (!options.batch.empty())
+        {
+            const fs::path root = fs::u8path(options.groundTruth);
+            inputs.push_back(root / "dataset.json");
+            for (const GroundTruthFrame& frame : options.batch)
+            {
+                AddCacheProtectedInputs(inputs, root / "frames" / fs::u8path(frame.id) / "scene.zenrender", frame.setup);
+            }
+        }
+        for (const fs::path& input : inputs)
+        {
+            if (!input.empty() && fs::exists(input, code) && fs::equivalent(cache, input, code))
+            {
+                error = "--pipeline-cache aliases a launch input: " + options.pipelineCache;
+            }
+            if (code || !error.empty())
+            {
+                break;
+            }
+        }
+    }
+    if (code)
+    {
+        error = "Cannot check --pipeline-cache against launch inputs: " + code.message();
+    }
+    return error.empty();
+}
+
 bool ParseOptions(int              argc,
                   char**           argv,
                   std::string&     path,
@@ -257,6 +313,10 @@ bool ParseOptions(int              argc,
                 dimension                          = static_cast<uint32_t>(value);
             }
         }
+        else if (argument.starts_with("--pipeline-cache=") && argument.size() > 17)
+        {
+            options.pipelineCache = argument.substr(17);
+        }
         else if (argument.starts_with("--capture="))
         {
             options.capture = argument.substr(10);
@@ -283,7 +343,15 @@ bool ParseOptions(int              argc,
         }
         else if (argument.starts_with("--validation="))
         {
-            ParseToggle(argument, overrides.validation, error);
+            options.requireValidation = argument == "--validation=required";
+            if (options.requireValidation)
+            {
+                overrides.validation = true;
+            }
+            else
+            {
+                ParseToggle(argument, overrides.validation, error);
+            }
         }
         else if (argument.starts_with("--async-compute="))
         {
@@ -292,6 +360,10 @@ bool ParseOptions(int              argc,
         else if (argument.starts_with("--gpu-culling="))
         {
             ParseToggle(argument, overrides.gpuCulling, error);
+        }
+        else if (argument.starts_with("--gi-entry-frame="))
+        {
+            ParseUnsigned(argument, options.giEntryFrame, std::numeric_limits<uint64_t>::max(), error);
         }
         else if (argument.starts_with("--gi-config=") && argument.size() > 12)
         {
@@ -314,6 +386,19 @@ bool ParseOptions(int              argc,
         else if (argument == "--gpu-markers")
         {
             options.gpuMarkers = true;
+        }
+        else if (argument == "--device-loss-diagnostics")
+        {
+            options.deviceLossDiagnostics = true;
+        }
+        else if (argument.starts_with("--rhi-stall-report-seconds=") || argument.starts_with("--rhi-stall-fatal-seconds="))
+        {
+            uint64_t seconds{};
+            if (ParseUnsigned(argument, seconds, UINT32_MAX, error, 0))
+            {
+                (argument.starts_with("--rhi-stall-report-seconds=") ? options.stallReportSeconds : options.stallFatalSeconds) =
+                    seconds;
+            }
         }
         else if (argument == "--pipeline-statistics")
         {
@@ -439,10 +524,13 @@ int RuntimeMain(int argc, char** argv)
         std::cout
             << "ZenApp --setup=<file.zenrender> [--frames=N] [--read-workers=1..64] [--capture=scene.ppm] [--profile=prefix]\n"
                "       [--fullscreen[=0|1] | --windowed] [--width=N] [--height=N]\n"
-               "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1]\n"
+               "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1|required]\n"
                "       [--backend=auto|compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
+               "       [--gi-entry-frame=N (start in PBR and request the configured GI at scene frame N)]\n"
+               "       [--device-loss-diagnostics] [--rhi-stall-report-seconds=N] [--rhi-stall-fatal-seconds=N]\n"
                "       [--gi-config=engine.cfg (read like Data/engine.cfg; --gi-* options below override it)]\n"
                "       [--device-memory-limit-mb=N (caps device-local heaps; 8192 emulates an 8 GB GPU)]\n"
+               "       [--pipeline-cache=file (load a compatible seed and save on clean shutdown)]\n"
                "       [--pipeline-statistics (compiler diagnostics; exclude from timing runs)]\n"
                "       [--hybrid-hit-stream (optional compact secondary-hit buffers)]\n"
                "       [--hybrid-ray-counts (logs HybridTrace ray and candidate counts of the last two frames)]\n"
@@ -465,13 +553,21 @@ int RuntimeMain(int argc, char** argv)
         RuntimeLaunchSettings setup;
         LaunchOverrides       overrides;
         bool                  valid = ParseOptions(argc, argv, path, options, overrides, error)
-                                   && ReadRuntimeLaunchSettings(std::filesystem::u8path(path), setup, error);
+                                   && ReadRuntimeLaunchSettings(std::filesystem::u8path(path), setup, error)
+                                   && ValidatePipelineCacheDestination(path, setup, options, overrides, error);
         if (valid)
         {
             valid               = ApplyOverrides(overrides, setup, error);
             options.rhiOverride = overrides.rhi.has_value();
             options.gpuCulling  = overrides.gpuCulling.value_or(true);
             valid               = valid && ValidateRuntimeLaunchSettings(setup, error);
+            if (valid && options.giEntryFrame
+                && (setup.rendering.algorithm != zen::rc::RenderAlgorithm::eVoxelGI || !options.groundTruth.empty()
+                    || (options.frames && options.giEntryFrame > options.frames)))
+            {
+                error = "--gi-entry-frame requires a GI setup and a scene frame within the run";
+                valid = false;
+            }
         }
         if (valid)
         {

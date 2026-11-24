@@ -228,6 +228,7 @@ void RenderScene::LoadSceneTextures()
     if (m_environmentOverride.empty() && data.imageBasedLight >= 0
         && static_cast<size_t>(data.imageBasedLight) < data.imageBasedLights.size())
     {
+        LOGI("Scene environment source: package");
         m_pRenderDevice->LoadSceneEnvironment(m_pScene, m_envTexture.Get());
 
         UpdateAuthoredEnvironment();

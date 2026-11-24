@@ -655,28 +655,32 @@ bool ReadRuntimeLaunchSettings(const std::filesystem::path& path, RuntimeLaunchS
     return valid;
 }
 
+bool WriteRuntimeFileAtomically(const std::filesystem::path& path, std::span<const char> data)
+{
+    static std::atomic<uint64_t> sequence{};
+    const int64_t                stamp      = std::chrono::steady_clock::now().time_since_epoch().count();
+    std::filesystem::path        temporary  = path;
+    temporary                              += ".tmp-" + std::to_string(stamp) + "-" + std::to_string(sequence.fetch_add(1));
+    std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+    file.write(data.data(), static_cast<std::streamsize>(data.size()));
+    file.close();
+    const bool valid = file.good() && ReplaceSetupFile(temporary, path);
+    if (!valid)
+    {
+        std::error_code cleanupError;
+        std::filesystem::remove(temporary, cleanupError);
+    }
+    return valid;
+}
+
 bool WriteRuntimeLaunchSettings(const std::filesystem::path& path, const RuntimeLaunchSettings& settings, std::string& error)
 {
     std::string json;
     bool        valid = EncodeRuntimeLaunchSettings(settings, json, error);
-    if (valid)
+    if (valid && !WriteRuntimeFileAtomically(path, json))
     {
-        static std::atomic<uint64_t> sequence{0};
-        const int64_t                stamp      = std::chrono::steady_clock::now().time_since_epoch().count();
-        std::filesystem::path        temporary  = path;
-        temporary                              += ".tmp-" + std::to_string(stamp) + "-" + std::to_string(sequence.fetch_add(1));
-        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-        file.write(json.data(), static_cast<std::streamsize>(json.size()));
-        file.flush();
-        valid = bool(file);
-        file.close();
-        valid = valid && !file.fail() && ReplaceSetupFile(temporary, path);
-        if (!valid)
-        {
-            std::error_code cleanupError;
-            std::filesystem::remove(temporary, cleanupError);
-            error = "Could not atomically publish the runtime setup.";
-        }
+        error = "Could not atomically publish the runtime setup.";
+        valid = false;
     }
     return valid;
 }

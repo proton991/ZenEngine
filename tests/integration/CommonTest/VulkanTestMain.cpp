@@ -4,6 +4,6 @@
 int main(int argc, char** argv)
 {
     testing::InitGoogleTest(&argc, argv);
-    zen::RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::RHIOptions::GetInstance().SetValidationMode(zen::RHIValidationMode::eRequired);
     return RUN_ALL_TESTS();
 }

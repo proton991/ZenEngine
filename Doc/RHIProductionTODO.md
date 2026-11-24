@@ -1,6 +1,10 @@
 # RHI production TODO
 
-Status: in progress, 2026-10-03. This is the single list of work before the RHI can ship in a product. It merges the open items from section 9.2 of [RHIImprovementPlan.md](RHIImprovementPlan.md) with the gaps found by a static review of `Graphics/RHI`, `Graphics/VulkanRHI` and their `RenderCore/V2` callers at `ee20bf99`. The review items (R17–R24 and the extensions to R10 and R13) originated from reading code; completed items link their implementation and verification records below. Problem descriptions and file references describe `ee20bf99` unless stated otherwise.
+The [standalone ZenRHI enhancement plan](ZenRHIEnhancementPlan.md) supersedes this backlog. Its sections 2–4 track R8 validation and hardware coverage, R24 stalls and R7 device loss. Section 5 tracks R10 pipeline cost and R11 translation. Section 6 tracks R13 consumer features, R14 presentation queues and 5.3 barriers. Section 1 records the trigger for 5.9 multi-device support. The historical paths below refer to the pre-split revisions.
+
+The [current verification record](ZenRHIEnhancementVerification.md) covers NVIDIA, AMD and SwiftShader acceptance, SDK relocation, watchdog tests and the measured performance decisions. Intel is outside the requested matrix. A real driver loss on a dedicated machine remains the R7 release gate.
+
+This backlog dates from 2026-10-03. It merges the open items from section 9.2 of [RHIImprovementPlan.md](RHIImprovementPlan.md) with the gaps found by a static review of `Graphics/RHI`, `Graphics/VulkanRHI` and their `RenderCore/V2` callers at `ee20bf99`. The review items (R17–R24 and the extensions to R10 and R13) originated from reading code; completed items link their implementation and verification records below. Problem descriptions and file references describe `ee20bf99` unless stated otherwise.
 
 Scope: Windows desktop Vulkan, the only platform the [RHI README](../ZenCore/Include/Graphics/RHI/README.md) supports. Item IDs continue section 8 of the improvement plan; carried items keep their original IDs so existing verification documents still match.
 

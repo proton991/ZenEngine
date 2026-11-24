@@ -44,6 +44,21 @@ def running_renderers():
             if len(row) >= 2 and row[0].casefold() in names]
 
 
+def environment_input(log, package):
+    """Use the source selected by the renderer, including embedded lighting and fallback."""
+    match = re.search(r"Scene environment source: (.+)$", log, re.MULTILINE)
+    if not match:
+        raise ValueError("ZenApp did not report the selected scene environment")
+    source = match[1].rstrip()
+    if source.startswith("file="):
+        return dict(source="file", **fingerprint(Path(source.removeprefix("file="))))
+    if source == "package":
+        return dict(source="package", **package)
+    if source.startswith("black ("):
+        return dict(source="black", detail=source)
+    raise ValueError(f"ZenApp could not load the scene environment: {source}")
+
+
 def actual_state(log):
     """Latest reported state, including GI activation after the cold PBR fallback."""
     renders = list(RENDER_STATE.finditer(log))
@@ -129,6 +144,8 @@ def main():
     parser.add_argument('--hybrid-hit-stream', action='store_true')
     parser.add_argument('--camera-path', type=Path,
                         help='ZenApp camera keys (fixed-step frames); must cover the capture, as the last key holds')
+    parser.add_argument("--worker-timing", action="store_true", help="Record per-frame RHI CPU categories in the ZenApp profile")
+    parser.add_argument("--gi-entry-frame", type=int, help="Request GI after profiling the initial PBR frames")
     args = parser.parse_args()
     executable = args.exe.resolve(strict=True)
     if executable.stem.casefold() != 'zenapp':
@@ -153,6 +170,12 @@ def main():
                    '--rhi=threaded', f'--async-compute={args.async_compute}', f'--gpu-culling={args.gpu_culling}',
                    '--vsync=0', '--validation=0',
                    '--fixed-step', '--no-ui', '--gpu-markers', f'--frames={target_frames}']
+    if args.gi_entry_frame is not None:
+        if not 1 <= args.gi_entry_frame <= target_frames:
+            parser.error("--gi-entry-frame must be within the run")
+        application.append(f"--gi-entry-frame={args.gi_entry_frame}")
+    if args.worker_timing:
+        application.append(f'--profile={out / "worker"}')
     if args.backend == 'compute':
         application.append('--disable-rt')
     if args.hybrid_hit_stream:
@@ -195,6 +218,8 @@ def main():
     assert process.returncode == 0 and not errors, (process.returncode, errors[:5])
     traces = list(out.glob('*.ngfx-gputrace'))
     assert len(traces) == 1, 'Nsight did not produce exactly one trace; inspect launch.log'
+    inputs['environment'] = environment_input(log, inputs['package'])
+    (out / 'inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')
     actual = actual_state(log)
     gi_settings = setup['rendering']['gi']['cone']
     divisor = (1 if gi_settings.get('referenceSamples', 0) or actual['gather'] == 'screen_probes'

@@ -30,6 +30,7 @@ if(NOT ZEN_RHI_USE_INSTALLED)
     target_include_directories(VulkanRHITest PRIVATE "${ZEN_RHI_SOURCE_DIR}/src")
     target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main ZenVulkanTestSupport)
     add_executable(VulkanRHIIntegrationTest
+        "${ZEN_RHI_SOURCE_DIR}/tests/VulkanValidationProbe.cpp"
         CommonTest/VulkanPresentationReviewTests.cpp
         CommonTest/RHIWindowThreadingTests.cpp
         CommonTest/VulkanPipelineIntegrationTests.cpp
@@ -122,4 +123,9 @@ if(TARGET ZenApp AND ZEN_BUILD_ASSET_TOOLS)
   target_link_libraries(MakeRuntimeFixture PRIVATE ZenEngineAssetTools)
   target_compile_definitions(MakeRuntimeFixture PRIVATE
     ZEN_RUNTIME_FIXTURE="${ZEN_ENGINE_SOURCE_DIR}/tests/integration/ZenEditor/Fixtures/inspection.gltf")
+  add_test(NAME ZenAppCacheInputAliases
+    COMMAND ${CMAKE_COMMAND} -DZEN_APP=$<TARGET_FILE:ZenApp> -DFIXTURE=$<TARGET_FILE:MakeRuntimeFixture>
+      -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/cache-input-aliases
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/ZenApp/CacheInputAliases.cmake)
+  set_tests_properties(ZenAppCacheInputAliases PROPERTIES LABELS "integration" TIMEOUT 45)
 endif()

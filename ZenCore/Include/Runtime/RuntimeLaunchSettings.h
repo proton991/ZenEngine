@@ -1,4 +1,5 @@
 #pragma once
+#include <span>
 #include "Graphics/RenderCore/V2/RenderingSettings.h"
 #include "ZenRHI/RHIOptions.h"
 #include "ZenRHI/RHIThread.h"
@@ -57,5 +58,6 @@ bool EncodeRuntimeLaunchSettings(const RuntimeLaunchSettings& settings, std::str
 bool DecodeRuntimeLaunchSettings(std::string_view json, RuntimeLaunchSettings& settings, std::string& error);
 // Transactional reads and atomic replacement. A failed write preserves the old file.
 bool ReadRuntimeLaunchSettings(const std::filesystem::path& path, RuntimeLaunchSettings& settings, std::string& error);
+bool WriteRuntimeFileAtomically(const std::filesystem::path& path, std::span<const char> data);
 bool WriteRuntimeLaunchSettings(const std::filesystem::path& path, const RuntimeLaunchSettings& settings, std::string& error);
 } // namespace zen::runtime

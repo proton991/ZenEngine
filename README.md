@@ -236,7 +236,7 @@ Background: [threading plan](Doc/RenderCoreRHIThreadingPlan.md),
 
 ### Requirements
 
-- Windows 10/11 x64, Visual Studio 2022 (MSVC), CMake ≥ 3.23, Ninja.
+- Windows 10/11 x64, Visual Studio 2022 (MSVC), CMake ≥ 3.24, Ninja.
 - Vulkan SDK (provides `glslangValidator`; shaders compile with the build).
 - A Vulkan 1.2 GPU with dynamic rendering, descriptor indexing and a graphics+compute queue.
 - glTF models, e.g. a checkout of

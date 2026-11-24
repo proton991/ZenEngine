@@ -25,16 +25,22 @@ struct RuntimeOptions
     LightPath                    lightKeys;
     uint64_t                     frames{0};
     uint64_t                     readWorkers{4};
+    uint64_t                     giEntryFrame{0};
     uint64_t                     captureStart{0};
     HeapVector<uint64_t>         captureFrames; // Sorted and unique; writes <capture>.frame-N.ppm at only these frames.
     std::string                  capture;
+    std::string                  pipelineCache;
     std::string                  profile;
     std::string                  logPath;
+    bool                         requireValidation{};
     bool                         fixedStep{false};
     bool                         startPaused{false};
     bool                         rhiOverride{false};
     bool                         noUI{false};
     bool                         gpuMarkers{false};
+    bool                         deviceLossDiagnostics{};
+    std::optional<uint64_t>      stallReportSeconds;
+    std::optional<uint64_t>      stallFatalSeconds;
     bool                         pipelineStatistics{false};
     bool                         hybridHitStream{false};
     bool                         hybridRayCounts{false};

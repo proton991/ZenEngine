@@ -1,0 +1,21 @@
+execute_process(COMMAND "${FIXTURE}" "${TEST_DIR}" COMMAND_ERROR_IS_FATAL ANY)
+set(setup "${TEST_DIR}/scene.zenrender")
+set(package "${TEST_DIR}/scene.zenasset")
+file(SHA256 "${setup}" original_setup)
+file(SHA256 "${package}" original_package)
+
+# Use a new hard link even when CTest reuses the fixture directory.
+file(REMOVE "${TEST_DIR}/cache.bin")
+file(CREATE_LINK "${package}" "${TEST_DIR}/cache.bin")
+foreach(destination IN ITEMS "./scene.zenrender" "scene.zenasset" "cache.bin")
+  execute_process(COMMAND "${ZEN_APP}" "--setup=${setup}" "--pipeline-cache=${destination}" --frames=1
+    WORKING_DIRECTORY "${TEST_DIR}" RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
+  if(NOT status EQUAL 2 OR NOT error MATCHES "--pipeline-cache aliases a launch input")
+    message(FATAL_ERROR "Expected ZenApp to reject ${destination}, got ${status}: ${error} ${output}")
+  endif()
+  file(SHA256 "${setup}" current_setup)
+  file(SHA256 "${package}" current_package)
+  if(NOT current_setup STREQUAL original_setup OR NOT current_package STREQUAL original_package)
+    message(FATAL_ERROR "ZenApp changed a launch input when checking ${destination}")
+  endif()
+endforeach()

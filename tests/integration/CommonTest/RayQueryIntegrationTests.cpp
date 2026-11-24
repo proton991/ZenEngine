@@ -42,7 +42,7 @@ protected:
     HeapVector<RHIAccelerationStructure*> structures;
     VkDebugUtilsMessengerEXT              messenger{VK_NULL_HANDLE};
     bool                                  countersEnabled{false};
-    bool                                  validationEnabled{true};
+    RHIValidationMode                     validationMode{RHIValidationMode::eRequested};
     bool                                  profilerMarkers{false};
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL Validation(VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -61,11 +61,11 @@ protected:
 
     void SetUpDevice(bool hardwareRayTracing, bool gpuProfile = false)
     {
-        countersEnabled   = RHIOptions::GetInstance().ExecutionCountersEnabled();
-        validationEnabled = RHIOptions::GetInstance().ValidationEnabled();
-        profilerMarkers   = RHIOptions::GetInstance().GPUProfilerMarkers();
+        countersEnabled = RHIOptions::GetInstance().ExecutionCountersEnabled();
+        validationMode  = RHIOptions::GetInstance().ValidationMode();
+        profilerMarkers = RHIOptions::GetInstance().GPUProfilerMarkers();
         RHIOptions::GetInstance().SetExecutionCountersEnabled(!gpuProfile);
-        RHIOptions::GetInstance().SetValidationEnabled(validationEnabled && !gpuProfile);
+        RHIOptions::GetInstance().SetValidationMode(gpuProfile ? RHIValidationMode::eOff : validationMode);
         RHIOptions::GetInstance().SetGPUProfilerMarkers(profilerMarkers || gpuProfile);
         RHIOptions::GetInstance().SetRayTracingDisabled(!hardwareRayTracing);
         device = ZEN_NEW()
@@ -125,7 +125,7 @@ protected:
         device->Destroy();
         ZEN_DELETE(device);
         RHIOptions::GetInstance().SetExecutionCountersEnabled(countersEnabled);
-        RHIOptions::GetInstance().SetValidationEnabled(validationEnabled);
+        RHIOptions::GetInstance().SetValidationMode(validationMode);
         RHIOptions::GetInstance().SetGPUProfilerMarkers(profilerMarkers);
         RHIOptions::GetInstance().SetRayTracingDisabled(false);
     }

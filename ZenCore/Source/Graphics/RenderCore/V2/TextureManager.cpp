@@ -699,9 +699,17 @@ bool TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
             }
         }
 
+        if (!texCube.empty())
+        {
+            LOGI("Scene environment source: file={}", file);
+        }
+        else if (!fallbackToBlack)
+        {
+            LOGW("Scene environment source: unavailable={}", file);
+        }
         if (texCube.empty() && fallbackToBlack)
         {
-            LOGW("Environment '{}' is missing or unsupported; using black", file);
+            LOGW("Scene environment source: black (missing or unsupported file: {})", file);
 
             texCube = gli::texture_cube(gli::FORMAT_RGBA16_SFLOAT_PACK16, gli::texture_cube::extent_type(1), 1);
 

@@ -144,6 +144,10 @@ public:
                 result  = RuntimeExit::Renderer;
             }
         }
+        if (result == RuntimeExit::Success && !m_options.pipelineCache.empty() && !m_device->AreSubmissionsBlocked())
+        {
+            SavePipelineCache();
+        }
         if (!m_error.empty())
         {
             LOGE("ZenApp: {}", m_error);
@@ -162,6 +166,43 @@ private:
             m_error = "Camera path pose at frame " + std::to_string(frame) + " is not a valid camera";
         }
         return valid;
+    }
+
+    static constexpr size_t PipelineCacheLimit = 64 * 1024 * 1024;
+
+    void ReadPipelineCache()
+    {
+        std::ifstream        input(std::filesystem::u8path(m_options.pipelineCache), std::ios::ate | std::ios::binary);
+        const std::streamoff size = input ? static_cast<std::streamoff>(input.tellg()) : 0;
+        std::vector<uint8_t> bytes;
+        if (size > 0 && size <= PipelineCacheLimit)
+        {
+            bytes.resize(static_cast<size_t>(size));
+            if (!input.seekg(0).read(reinterpret_cast<char*>(bytes.data()), size))
+            {
+                bytes.clear();
+            }
+        }
+        RHIOptions::GetInstance().SetPipelineCacheSeed(std::move(bytes));
+    }
+
+    void SavePipelineCache()
+    {
+        std::vector<uint8_t> bytes;
+        const RHIError       error = GDynamicRHI->SnapshotPipelineCache(PipelineCacheLimit, bytes);
+        if (error.IsFailure())
+        {
+            LOGW("Pipeline cache snapshot failed: {} ({})", error.operation, error.nativeCode);
+        }
+        else if (WriteRuntimeFileAtomically(std::filesystem::u8path(m_options.pipelineCache),
+                                            {reinterpret_cast<const char*>(bytes.data()), bytes.size()}))
+        {
+            LOGI("Saved pipeline cache ({} bytes)", bytes.size());
+        }
+        else
+        {
+            LOGW("Could not publish pipeline cache {}", m_options.pipelineCache);
+        }
     }
 
     bool KeepRunning() const
@@ -503,6 +544,12 @@ private:
 
     RuntimeExit Initialize()
     {
+        using Clock          = std::chrono::steady_clock;
+        const bool profiling = !m_options.profile.empty();
+        RHIOptions::GetInstance().SetWorkerTimingEnabled(profiling);
+        const Clock::time_point startup         = profiling ? Clock::now() : Clock::time_point{};
+        const RHIWorkerTimes    startupBaseline = profiling ? RHIWorkerTimer::Read() : RHIWorkerTimes{};
+        double                  packageMS{};
         LOGI("ZenApp build: ZenEngine {} {}", build::ZenEngine::Commit, build::ZenEngine::State);
         LOGI("ZenApp build: ZenFoundation {} {}", build::ZenFoundation::Commit, build::ZenFoundation::State);
         LOGI("ZenApp build: ZenRHI {} {}", build::ZenRHI::Commit, build::ZenRHI::State);
@@ -523,12 +570,17 @@ private:
         if (valid)
         {
             asset::SceneImportRequest request{m_setup.packagePath};
-            request.readWorkers           = static_cast<uint32_t>(m_options.readWorkers);
-            request.retainCanonicalAsset  = false;
-            asset::SceneLoadResult loaded = asset::LoadScene(request);
-            m_error                       = loaded.error;
-            m_loaded                      = std::move(loaded.scene);
-            valid                         = m_loaded && m_loaded->scene->GetRenderableCount() > 0;
+            request.readWorkers               = static_cast<uint32_t>(m_options.readWorkers);
+            request.retainCanonicalAsset      = false;
+            const Clock::time_point readStart = profiling ? Clock::now() : Clock::time_point{};
+            asset::SceneLoadResult  loaded    = asset::LoadScene(request);
+            if (profiling)
+            {
+                packageMS = std::chrono::duration<double, std::milli>(Clock::now() - readStart).count();
+            }
+            m_error  = loaded.error;
+            m_loaded = std::move(loaded.scene);
+            valid    = m_loaded && m_loaded->scene->GetRenderableCount() > 0;
             if (valid)
             {
                 LOGI("ZenApp scene: vertices={}, indices={}, renderable_nodes={}, submitted_lights={}",
@@ -543,9 +595,20 @@ private:
         if (valid)
         {
             result = RuntimeExit::Renderer;
-            RHIOptions::GetInstance().SetValidationEnabled(m_setup.run.validation);
+            RHIOptions::GetInstance().SetValidationMode(m_options.requireValidation ? RHIValidationMode::eRequired
+                                                        : m_setup.run.validation    ? RHIValidationMode::eRequested
+                                                                                    : RHIValidationMode::eOff);
             RHIOptions::GetInstance().SetGPUMemoryStats(true);
             RHIOptions::GetInstance().SetGPUProfilerMarkers(m_options.gpuMarkers);
+            RHIOptions::GetInstance().SetDeviceLossDiagnostics(m_options.deviceLossDiagnostics);
+            if (m_options.stallReportSeconds)
+            {
+                RHIOptions::GetInstance().SetStallReportThreshold(std::chrono::seconds(*m_options.stallReportSeconds));
+            }
+            if (m_options.stallFatalSeconds)
+            {
+                RHIOptions::GetInstance().SetStallFatalThreshold(std::chrono::seconds(*m_options.stallFatalSeconds));
+            }
             RHIOptions::GetInstance().SetPipelineStatistics(m_options.pipelineStatistics);
             RHIOptions::GetInstance().SetRayTracingDisabled(m_options.disableRT);
             RHIOptions::GetInstance().SetDeviceMemoryLimit(m_options.deviceMemoryLimitMB * 1024 * 1024);
@@ -566,17 +629,28 @@ private:
             settings.vsync                           = m_setup.run.vsync;
             settings.fixedStep                       = m_options.fixedStep;
             UniquePtr<platform::NativeWindow> window = RuntimeWindow::CreateNativeWindow(settings);
+            if (!m_options.pipelineCache.empty())
+            {
+                ReadPipelineCache();
+            }
             m_device = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, m_setup.run.framesInFlight, m_setup.run.rhiMode,
                                                     m_setup.rendering.gi.asyncCompute);
             rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_device.Get());
             m_device->Init(nullptr);
-            m_device->InitializeRendererServer(&m_setup.rendering);
+            rc::RenderingSettings startupSettings = m_setup.rendering;
+            if (m_options.giEntryFrame)
+            {
+                startupSettings.algorithm = rc::RenderAlgorithm::ePBR;
+            }
+            m_device->InitializeRendererServer(&startupSettings);
             m_device->GetRendererServer()->RequestDeferredLightingRenderer()->SetGPUCullingEnabled(m_options.gpuCulling);
-            m_rendering = MakeUnique<rc::SceneRendering>(*m_device);
+            const Clock::time_point sceneStart  = profiling ? Clock::now() : Clock::time_point{};
+            const RHIWorkerTimes    beforeScene = m_options.profile.empty() ? RHIWorkerTimes{} : RHIWorkerTimer::Read();
+            m_rendering                         = MakeUnique<rc::SceneRendering>(*m_device);
             m_rendering->InitializeEnvironment(m_setup.defaultEnvironment, m_setup.rendering.environment);
             valid = valid && m_camera.SetState(m_setup.camera)
                  && m_rendering->PrepareScene(*m_loaded, m_camera.GetCamera(), m_error) && m_rendering->CommitScene(m_error)
-                 && m_rendering->ApplyRenderingSettings(m_setup.rendering, true, m_error);
+                 && m_rendering->ApplyRenderingSettings(startupSettings, true, m_error);
             if (valid)
             {
                 const bool animated = !m_loaded->scene->GetAssetData().animations.empty();
@@ -589,7 +663,10 @@ private:
                 if (!m_options.profile.empty())
                 {
                     m_profile.open(std::filesystem::u8path(m_options.profile + ".rdg.log"), std::ios::out | std::ios::trunc);
-                    valid                       = valid && m_profile.good();
+                    valid = valid && m_profile.good();
+                    m_profile << "rhi_scene_upload=1 package_cpu_ms=" << packageMS << " upload_wall_ms="
+                              << std::chrono::duration<double, std::milli>(Clock::now() - sceneStart).count();
+                    WriteWorkerTimes(beforeScene, RHIWorkerTimer::Read());
                     metrics.logging.sampleEvery = 1;
                     metrics.logging.minInterval = std::chrono::milliseconds(0);
                     m_device->GetRDGMetrics().SetGPUSink(
@@ -618,6 +695,13 @@ private:
             }
             if (valid)
             {
+                if (profiling)
+                {
+                    m_previousWorkerTimes = RHIWorkerTimer::Read();
+                    m_profile << "rhi_startup=1 wall_ms="
+                              << std::chrono::duration<double, std::milli>(Clock::now() - startup).count();
+                    WriteWorkerTimes(startupBaseline, m_previousWorkerTimes);
+                }
                 LOGI("ZenApp loaded {}. Space: Pause/Resume; Escape: Quit; F1: diagnostics.", m_setup.packagePath);
                 result = RuntimeExit::Success;
             }
@@ -627,6 +711,21 @@ private:
             }
         }
         return result;
+    }
+
+    void WriteWorkerTimes(const RHIWorkerTimes& before, const RHIWorkerTimes& times)
+    {
+        constexpr const char* categories[] = {"translation", "pipeline", "resource",      "submission",
+                                              "wait",        "idle",     "caller_blocked"};
+
+        static_assert(std::size(categories) == std::tuple_size_v<RHIWorkerTimes>);
+
+        for (size_t i = 0; i < times.size(); ++i)
+        {
+            m_profile << ' ' << categories[i] << "_ns=" << times[i] - before[i];
+        }
+
+        m_profile << '\n';
     }
 
     bool Frame()
@@ -657,7 +756,9 @@ private:
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
         const bool countRays = m_options.hybridRayCounts && previousFrame + 2 >= m_options.frames;
-        bool valid           = (!countRays || m_rayCountBuffers[0] != nullptr || BeginRayCountCapture())
+        const bool giReady   = m_options.giEntryFrame != previousFrame + 1
+                            || m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);
+        bool valid           = giReady && (!countRays || m_rayCountBuffers[0] != nullptr || BeginRayCountCapture())
                             && (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1))
                             && (m_options.lightKeys.keys.empty() || ApplyLightPath(previousFrame + 1)) && m_session->Render(overlay);
         if (!m_options.batch.empty() && GetSceneFrame() - m_batchBegin > 4096)
@@ -685,27 +786,31 @@ private:
                      rc::SceneCullingStatusName(culling.status), rc::SceneCullingFallbackReason(culling.status));
                 m_cullingReported = true;
             }
-            m_lastSceneCulling = culling;
-            if (!m_options.profile.empty())
-            {
-                const rc::RendererServer& server = *m_device->GetRendererServer();
-                const RHIGPUMemoryStats   memory = m_device->GetGPUMemoryStats();
-                const double              frameMilliseconds =
-                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count();
-                m_profile << "scene_frame=" << GetSceneFrame() << " gpu_culling_requested=" << m_options.gpuCulling
-                          << " gpu_culling_path=" << rc::SceneCullingStatusName(culling.status)
-                          << " candidates=" << culling.candidateCount << " uploaded_bytes=" << culling.uploadedBytes
-                          << " fallback=" << std::quoted(rc::SceneCullingFallbackReason(culling.status))
-                          << " frame_cpu_ms=" << frameMilliseconds << " gi_preparing=" << server.IsPreparingGI()
-                          << " gi_refining=" << server.IsRefiningGI() << " gpu_allocated_bytes=" << memory.deviceLocalBytes
-                          << " gpu_peak_allocated_bytes=" << memory.peakDeviceLocalBytes << '\n';
-            }
+            m_lastSceneCulling                   = culling;
             const rc::RenderView        view     = m_target->GetView();
             const rc::RendererServer&   server   = *m_device->GetRendererServer();
             const rc::HybridGIRenderer* hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
             const bool                  activeGI = server.GetRenderOption() == rc::RenderOption::eVoxelGI && hybrid != nullptr;
             const glm::uvec2            giExtent = activeGI ? hybrid->GetGIExtent() : glm::uvec2(0);
-            const glm::uvec4            extents(giExtent, view.width, view.height);
+            if (!m_options.profile.empty())
+            {
+                const RHIGPUMemoryStats memory = m_device->GetGPUMemoryStats();
+                const double            frameMilliseconds =
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count();
+                const RHIWorkerTimes times = m_device->GetRHIThreadMetrics().workerTimeNS;
+                m_profile << "rhi_frame=" << GetSceneFrame();
+                WriteWorkerTimes(m_previousWorkerTimes, times);
+                m_previousWorkerTimes = times;
+                m_profile << "scene_frame=" << GetSceneFrame() << " gpu_culling_requested=" << m_options.gpuCulling
+                          << " gpu_culling_path=" << rc::SceneCullingStatusName(culling.status)
+                          << " candidates=" << culling.candidateCount << " uploaded_bytes=" << culling.uploadedBytes
+                          << " fallback=" << std::quoted(rc::SceneCullingFallbackReason(culling.status))
+                          << " frame_cpu_ms=" << frameMilliseconds << " gi_preparing=" << server.IsPreparingGI()
+                          << " gi_active=" << (giExtent.x > 0 && giExtent.y > 0) << " gi_refining=" << server.IsRefiningGI()
+                          << " gpu_allocated_bytes=" << memory.deviceLocalBytes
+                          << " gpu_peak_allocated_bytes=" << memory.peakDeviceLocalBytes << '\n';
+            }
+            const glm::uvec4 extents(giExtent, view.width, view.height);
             if (GetSceneFrame() == 1 || extents != m_reportedExtents)
             {
                 m_reportedExtents             = extents;
@@ -861,6 +966,7 @@ private:
     UniquePtr<RuntimeWindow>         m_session;
     NavigationCamera                 m_camera;
     std::string                      m_error;
+    RHIWorkerTimes                   m_previousWorkerTimes{};
     std::ofstream                    m_profile;
     std::shared_ptr<RuntimeLog>      m_log;
     bool                             m_logReady{false};
