@@ -31,13 +31,18 @@ import gi_quick_gates as gates
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SETUP = ROOT / 'build/checks/native-gi/sponza-turn-120/full/setup.zenrender'
 SKY = ROOT / 'Data/Textures/Environments/kloofendal_48d_partly_cloudy_puresky_1k.hdr'
-STEPS = 12
 SCORED = (1, 3, 6, 9, 12)
 AFTER = (1, 2, 4, 8, 16, 32, 64)
 # A quick mouse turn of 7.5 degrees per frame. Default navigation moves 1 scene unit per second and
 # ZenApp renders this view at 16-40 fps; the courtyard bounds the moves to about 0.1 scene units.
-MOTIONS = {'turn': ('yaw', 7.5), 'forward': ('forward', .008), 'strafe': ('right', .004)}
+MOTIONS = {'turn': ('yaw', 7.5), 'turn180': ('yaw', 30.0), 'cut180': ('yaw', 180.0),
+           'forward': ('forward', .008), 'strafe': ('right', .004)}
 EXTRA = ['--backend=hardware', '--async-compute=0']
+
+
+def scored_steps(motion):
+    # The six-frame flick preserves overlapping history. A one-frame cut also exercises history rejection.
+    return {'turn180': (1, 3, 6), 'cut180': (1,)}.get(motion, SCORED)
 
 
 def pose(setup, motion, step):
@@ -75,12 +80,14 @@ def moving_timeline(setup, motions, warmup, settle):
     keys = [gates.key(1, base)]
     layout, captures, frame = {}, [], warmup
     for motion in motions:
+        scored = scored_steps(motion)
+        steps = scored[-1]
         keys.append(gates.key(frame, base))
-        keys += [gates.key(frame + step, pose(setup, motion, step)) for step in range(1, STEPS + 1)]
-        end = frame + STEPS + max(AFTER)
-        keys.append(gates.key(end, pose(setup, motion, STEPS)))
-        rows = {f'move/{step}': frame + step for step in SCORED}
-        rows.update({f'stop/{after}': frame + STEPS + after for after in AFTER})
+        keys += [gates.key(frame + step, pose(setup, motion, step)) for step in range(1, steps + 1)]
+        end = frame + steps + max(AFTER)
+        keys.append(gates.key(end, pose(setup, motion, steps)))
+        rows = {f'move/{step}': frame + step for step in scored}
+        rows.update({f'stop/{after}': frame + steps + after for after in AFTER})
         layout[motion] = rows
         captures += rows.values()
         keys.append(gates.key(end + 1, base))
@@ -92,7 +99,7 @@ def reference_timeline(setup, motions, warmup, hold):
     keys, layout, captures, frame = [], {}, [], 1
     for motion in motions:
         layout[motion] = {}
-        for step in SCORED:
+        for step in scored_steps(motion):
             length = hold + (warmup if frame == 1 else 0)
             target = pose(setup, motion, step)
             keys += [gates.key(frame, target), gates.key(frame + length - 1, target)]
@@ -157,7 +164,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True, help='New directory')
     parser.add_argument('--setup', type=Path, default=DEFAULT_SETUP)
     parser.add_argument('--executable', type=Path, default=DEFAULT_EXE)
-    parser.add_argument('--motions', default='turn,forward,strafe')
+    parser.add_argument('--motions', default='turn,forward,strafe', help='Comma-separated choices: ' + ', '.join(MOTIONS))
     parser.add_argument('--set', action='append', default=[], metavar='KEY=JSON', help='Setup override')
     parser.add_argument('--warmup', type=int, default=1024)
     parser.add_argument('--settle', type=int, default=512, help='Frames at the base pose between motions')
@@ -212,7 +219,7 @@ def main():
         rows = {}
         for name, frame in layout[motion].items():
             phase, value = name.split('/')
-            step = int(value) if phase == 'move' else STEPS
+            step = int(value) if phase == 'move' else scored_steps(motion)[-1]
             settled_frame = reference_layout[motion][str(step)]
             moving = load(moving_folder, frame)
             settled = load(reference_folder, settled_frame)
@@ -220,7 +227,7 @@ def main():
             if name in wanted:
                 preview(delta, moving, settled, output / f'{motion}-{name.replace("/", "")}.png')
         results[motion] = rows
-        move = [rows[f'move/{s}'] for s in SCORED]
+        move = [rows[f'move/{s}'] for s in scored_steps(motion)]
         stop = [rows[f'stop/{a}'] for a in AFTER[:4]]
         print(f'{motion:8s} during: above16 {np.mean([r["above16"] for r in move]):.3f}%  '
               f'sparkle {np.mean([r["sparkle"] for r in move]):.4f}%  blotch {np.mean([r["blotch"] for r in move]):.3f}%  '
@@ -228,8 +235,13 @@ def main():
               f'{np.mean([r["above16"] for r in stop]):.3f}%  sparkle {np.mean([r["sparkle"] for r in stop]):.4f}%', flush=True)
     identity = provenance(SimpleNamespace(executable=args.executable, setup=args.setup.resolve()),
                           moving_folder / 'setup.zenrender', commands)
+    schedules = {motion: scored_steps(motion) for motion in motions}
+    # Keep the original report fields when every motion uses the same schedule.
+    common = schedules[motions[0]]
+    timing = (dict(scored=common, steps=common[-1]) if all(s == common for s in schedules.values())
+              else dict(scored_by_motion=schedules, steps_by_motion={m: s[-1] for m, s in schedules.items()}))
     write_json(output / 'report.json', dict(results=results, overrides=args.set, motions={m: MOTIONS[m] for m in motions},
-                                            scored=SCORED, after=AFTER, steps=STEPS, warmup=args.warmup,
+                                            after=AFTER, warmup=args.warmup, **timing,
                                             settle=args.settle, hold=args.hold,
                                             references=str(reference_folder), provenance=identity,
                                             path_sha256=digest(moving_folder / 'camera-path.json')))

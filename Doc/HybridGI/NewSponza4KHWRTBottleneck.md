@@ -1,5 +1,52 @@
 # New Sponza at native 4K with hardware ray tracing
 
+## Rapid camera turns and rough indirect reflections
+
+A fixed-eye turn through 180° in six frames exposed a noise burst in New Sponza. The repro warms the original view for 1,024 frames, rotates 30° per frame, then compares the arrival frame against the same pose after 1,024 more frames. The 90° midpoint has its own settled reference. The test uses the normal-mapped Optimal preset, HDR lighting, hardware rays, an 8-pixel screen-probe grid and the world cache at native 3840×2160 on the RTX 5080. The motion harness also supports `--motions=turn180`. [Motion harness](../../tools/native_gi_fast_motion.py) · [Matched camera path and input hashes](../../build/dark-indirect-20261124-195003/turn-and-reflection/turn180/provenance.json)
+
+New probes now spend eight of their existing sixteen directions per batch on the HDR environment for their first four frames. Three-batch updates stratify both sampling coordinates. The spatial filter retains nearby same-surface taps when its outer taps are widely spaced, rejects sky differences using measured variance and returns to its narrow sky filter as the probe accumulates samples. The scheduling ceiling and screen resolution stay the same. [Ray proposals](../../Data/Shaders/VoxelGI/screen_probe_trace.glsl) · [Spatial filter](../../Data/Shaders/VoxelGI/screen_probe_filter.glsl)
+
+| Six-frame turn | Before | After |
+| --- | ---: | ---: |
+| RGB RMS at 90° on the 0–255 display scale | 1.411 | 1.227 |
+| RGB RMS on arrival at 180° | 2.694 | 1.876 |
+| Arrival pixels differing by more than four levels in any channel | 11.88% | 4.39% |
+| Arrival pixels differing by more than sixteen levels | 0.215% | 0.126% |
+| RGB RMS one / eight / 32 frames after arrival | 1.850 / 1.079 / 0.946 | 1.575 / 1.100 / 0.901 |
+
+Most of the improvement occurs during the turn and immediately after it. At eight frames, 1.01% of pixels still differed by more than four levels, compared with 0.90% before. The side-by-side uses the application’s display output at the captured exposure. Only the labeled difference images are amplified. [Before](../../build/dark-indirect-20261124-195003/turn180-review/noise.json) · [After](../../build/dark-indirect-20261124-195003/turn-and-reflection/turn180/noise.json) · [Arrival, settled pose and difference images](../../build/dark-indirect-20261124-195003/turn-and-reflection/turn180-comparison.png)
+
+The old rough-reflection filter aligned the surface normal with the reflection axis and replaced the radiance of escaped rays with a visibility fraction times the unoccluded sky. Visibility and sky brightness can vary together across the lobe. The probe now evaluates GGX against its geometric normal and reconstructed view direction, using the radiance of each traced hit or miss and its sampling density. It normalizes by the matching split-sum BRDF response so the material can apply colored Fresnel once. The gather retains the sky visibility and stores the signed correction to the unoccluded environment approximation for composition. The normalized lobe still uses a scalar Fresnel shape for colored metals. [Probe integration](../../Data/Shaders/VoxelGI/screen_probe_prefilter.glsl) · [Gather and material composition](../../Data/Shaders/VoxelGI/screen_probe_gather.glsl)
+
+With the new GGX weights and the old sky approximation, the center view measured 9.05% too bright and its relative RGB RMS rose to 55.47%. Reusing the escaped rays’ actual HDR radiance reduced both errors. [GGX weights with the old sky approximation](../../build/dark-indirect-20261124-195003/ggx-view/truth.json)
+
+| Indirect specular against the path tracer | Mean luminance bias before → after | Relative RGB RMS before → after |
+| --- | ---: | ---: |
+| Center, 256 paths/pixel | −21.49% → +0.75% | 46.64% → 37.87% |
+| Rotated 20°, 32 paths/pixel | −19.82% → +1.23% | 50.48% → 38.37% |
+
+These comparisons use 3,072 frames per pose and vertex normals in both renderers. The path tracer’s estimated RGB noise is 10.24% at center and 20.75% in the rotated view. Final lighting bias improved from −2.61% to −1.34% at center and from −2.38% to −1.25% in the rotated view. The two camera views still show spatial error even though their mean specular energy is within 1.3% of reference. [Center results](../../build/dark-indirect-20261124-195003/turn-and-reflection/truth.json) · [Rotated results](../../build/dark-indirect-20261124-195003/turn-and-reflection/angle/report.json)
+
+At center, the 0.6–0.8 roughness band moved from −23.2% to +1.6% mean specular bias, and the 0.8–1.0 band from −25.9% to −2.7%. The dedicated smooth-reflection path still has a deficit. The 1,507 center regions below 0.25 roughness (0.29% of the matched image) measured −54.4%. [Per-roughness measurements](../../build/dark-indirect-20261124-195003/turn-and-reflection/roughness-bins.json)
+
+A separate one-frame 180° camera cut (`--motions=cut180`) left 5.93% of pixels more than four display levels from their settled color on arrival, 1.17% eight frames later and 0.47% after 32 frames. Only the revised renderer was measured on this path. [Cut and recovery measurements](../../build/dark-indirect-20261124-195003/turn-and-reflection/instant-turn/noise.json)
+
+| Normal-mapped display output, 0–255 RGB RMS | Before | After |
+| --- | ---: | ---: |
+| Stationary, frame to frame | 0.0377 | 0.0386 |
+| Slow pan, against the same settled poses | 0.826 | 0.867 |
+| 90° turn over twelve frames, against settled poses | 1.107 | 1.013 |
+| Forward movement, against settled poses | 0.765 | 0.805 |
+| Sideways movement, against settled poses | 0.667 | 0.749 |
+
+The larger turns improved. Ordinary translation and the slow pan had higher error, with the largest increase during sideways movement. The motion metric includes transient lighting bias as well as noise. [Before and after with capture provenance](../../build/dark-indirect-20261124-195003/turn-and-reflection/comparison.json)
+
+Three standalone fullscreen ZenApp launches per view gave median stationary throughput of **54.4 → 57.4 FPS** and panning throughput of **46.1 → 46.4 FPS**. The revised runs ranged from 57.2 to 58.5 FPS stationary and from 46.4 to 46.5 FPS panning. Panning still falls short of the earlier 47.7 FPS checkpoint and the 60 FPS target. [Per-run timing and framebuffer measurements](../../build/dark-indirect-20261124-195003/turn-and-reflection/comparison.json)
+
+All 660 RenderCore tests, 20 Vulkan ray and GI integration tests, and 16 material integration tests passed. The rough-metal fixture also checks that zero surface-bounce gain takes effect on the next frame while open sky directions retain visibility. The 359-frame motion run passed with synchronization validation enabled. [Regression test](../../tests/integration/CommonTest/GICacheTests.inl) · [RenderCore](../../build/dark-indirect-20261124-195003/turn-and-reflection/render-tests.log) · [Ray and GI integration](../../build/dark-indirect-20261124-195003/turn-and-reflection/ray-tests.log) · [Material integration](../../build/dark-indirect-20261124-195003/turn-and-reflection/material-tests.log) · [Validation](../../build/dark-indirect-20261124-195003/turn-and-reflection/validation.log)
+
+With reflections off, changing surface-bounce gain used to discard the accumulated sky samples as well. In the stationary fixture, switching gain from zero to one changed the sky irradiance by 5.76% between consecutive frames, measured as the sum of RGB difference lengths divided by the previous frame’s total RGB length. Preserving sky history reduced the change to 1.83–1.85% across four submission modes. The bounced signal still responds to the gain change on that frame. [Before](../../build/dark-indirect-20261124-195003/commit-review/sky-red.log) · [After](../../build/dark-indirect-20261124-195003/commit-review/ray-tests.xml)
+
 ## Indirect lighting from secondary metal hits
 
 These results cover hardware screen probes with world-cache feedback. Per-pixel hardware GI and receiver lighting use diffuse-only secondary-hit shading. Compute field traversal uses its own material evaluation.

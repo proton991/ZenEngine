@@ -77,7 +77,10 @@ bool ProbeSlotSample(uint slot, out uint index, out uint ray, out uint batch)
 // them a new probe finds the sun and bright sky only by chance: too dark until a rare hit, and
 // a sparkle when one arrives, for hundreds of frames after the view turns.
 const uint kProbeEnvironmentLanes = 4u;
-bool       ProbeEnvironmentSampling()
+// Until a newly exposed probe has four frames of history, spend half of each
+// existing batch on the HDR environment, then restore the local-light proposals.
+const float kProbeColdFrames = 4.0;
+bool        ProbeEnvironmentSampling()
 {
     return sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y > 0.0
         && environmentRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS] > 0.0;
@@ -89,20 +92,23 @@ float ProbeCDFBoundary(uint index, uint boundary)
     vec2 pair  = unpackUnorm2x16(probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + entry / 2u]);
     return boundary == 0u ? 0.0 : pair[entry & 1u];
 }
-vec4 ProbeSampleDirection(uint      index,
-                          uint      ray,
-                          vec3      normal,
-                          vec2      u,
-                          float     weightSum,
-                          vec3      axes[8],
-                          float     weights[8],
-                          float     lobes[8],
-                          ProbeLobe learned[3],
-                          bool      hasLearned)
+vec4 ProbeSampleDirection(uint        index,
+                          uint        ray,
+                          ScreenProbe probe,
+                          vec2        u,
+                          float       weightSum,
+                          vec3        axes[8],
+                          float       weights[8],
+                          float       lobes[8],
+                          ProbeLobe   learned[3],
+                          bool        hasLearned)
 {
+    vec3  normal = probe.normal.xyz;
     vec3  direction;
     float pdf;
-    uint  environmentCount  = ProbeEnvironmentSampling() ? kProbeEnvironmentLanes : 0u;
+    uint  environmentCount  = ProbeEnvironmentSampling()
+                                ? (probe.normal.w <= kProbeColdFrames ? 2u * kProbeEnvironmentLanes : kProbeEnvironmentLanes)
+                                : 0u;
     uint  localCount        = weightSum > 1e-20 ? uint(3 * ZEN_SCREEN_PROBE_RAYS / 4) - environmentCount : 0u;
     uint  uniformCount      = (uint(ZEN_SCREEN_PROBE_RAYS) - environmentCount) / 2u - localCount / 2u;
     uint  cdfCount          = uint(ZEN_SCREEN_PROBE_RAYS) - localCount - uniformCount - environmentCount;
@@ -112,7 +118,7 @@ vec4 ProbeSampleDirection(uint      index,
     cdfCount               -= learnedCount - fromLights;
     if (ray < uniformCount)
     {
-        // The stratification grid must tile every uniform lane (2, 6 or 8 of them).
+        // The stratification grid must tile every uniform lane.
         uint columns = uniformCount >= 4u ? uniformCount / 2u : uniformCount;
         u            = (vec2(ray % columns, ray / columns) + u) / vec2(columns, uniformCount / columns);
         float radius = sqrt(max(0.0, 1.0 - u.x * u.x));
@@ -251,7 +257,7 @@ uint ProbeAnchorSeed(ScreenProbe probe)
 }
 // Each 64-frame block has an independent scramble and a fixed proposal. Later batches take a
 // contiguous power-of-two Sobol interval, which covers each new receiver within this frame.
-vec2 ProbeBatchSample(uint seed, uint ray, uint batch, uint batches)
+vec2 ProbeBatchSample(ScreenProbe probe, uint seed, uint ray, uint batch, uint batches)
 {
     vec2 u;
     if (batch == 0u)
@@ -264,6 +270,14 @@ vec2 ProbeBatchSample(uint seed, uint ray, uint batch, uint batches)
         uint sampleIndex = (hybrid.sampling.x & 63u) * count + batch - 1u;
         u                = HybridSkySample(uvec2(seed, ray), sampleIndex,
                                            HybridHash((hybrid.sampling.x >> 6u) ^ 0x7c51a3u ^ HybridHash(count)));
+    }
+    // Stratify all three batches in both coordinates on a newly exposed surface. Shuffle
+    // the permutation each frame so every joint stratum remains represented over time.
+    if (probe.normal.w <= kProbeColdFrames && batches == 3u)
+    {
+        uint key = HybridHash(seed ^ HybridHash(ray) ^ HybridHash(hybrid.sampling.x));
+        uint row = (batch * (1u + (key >> 31u)) + (key & 0x7fffffffu) % 3u) % 3u;
+        u        = (vec2(batch, row) + u) / 3.0;
     }
     return u;
 }
@@ -293,10 +307,10 @@ void main()
             float     weightSum = ProbeLoadGuides(probe, index, axes, weights, lobes, learned, learnedWeight);
             for (uint batch = 0u; batch < batches; ++batch)
             {
-                vec2 u         = ProbeBatchSample(seed, ray, batch, batches);
-                vec4 sampleRay = ProbeSampleDirection(index, ray, probe.normal.xyz, u, weightSum, axes, weights, lobes, learned,
-                                                      learnedWeight > 0.0);
-                uint address   = ProbeRecordAddress(ProbeRecordSlot(index, ray, batch));
+                vec2 u = ProbeBatchSample(probe, seed, ray, batch, batches);
+                vec4 sampleRay =
+                    ProbeSampleDirection(index, ray, probe, u, weightSum, axes, weights, lobes, learned, learnedWeight > 0.0);
+                uint address            = ProbeRecordAddress(ProbeRecordSlot(index, ray, batch));
                 probeHits[address + 4u] = packUnorm2x16(EncodeGBufferNormal(sampleRay.xyz));
                 probeHits[address + 5u] = floatBitsToUint(sampleRay.w);
                 if (dot(probe.normal.xyz, sampleRay.xyz) > 0.0)
@@ -426,9 +440,9 @@ void main()
                 hit          = (flags & kHitSurface) != 0u;
                 valid        = (flags & kHitValid) != 0u;
 #    else
-                vec2 u    = ProbeBatchSample(seed, ray, batch, batches);
-                sampleRay = ProbeSampleDirection(index, ray, probe.normal.xyz, u, weightSum, axes, weights, lobes, learned,
-                                                 learnedWeight > 0.0);
+                vec2 u = ProbeBatchSample(probe, seed, ray, batch, batches);
+                sampleRay =
+                    ProbeSampleDirection(index, ray, probe, u, weightSum, axes, weights, lobes, learned, learnedWeight > 0.0);
                 if (dot(probe.normal.xyz, sampleRay.xyz) > 0.0)
                 {
                     incoming = NativePathRadiance(probe.position.xyz, probe.normal.xyz, sampleRay.xyz,

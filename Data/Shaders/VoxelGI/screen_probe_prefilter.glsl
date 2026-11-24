@@ -1,17 +1,18 @@
-#ifdef SCREEN_PROBE_PREFILTER_HITS
-#    define SCREEN_CDF_READ
-#else
+#define SCREEN_CDF_READ
+#ifndef SCREEN_PROBE_PREFILTER_HITS
 #    define SCREEN_RAYS_READ
 #endif
 #define SCREEN_SPECULAR_WRITE
 #define SCREEN_PROBE_COMPUTE
 #include "screen_probe.glsl"
+#include "gi_common.glsl"
 #ifdef SCREEN_PROBE_PREFILTER_HITS
 #    include "screen_probe_hits.glsl"
 #endif
 layout(local_size_x = 64) in;
 shared vec4 directions[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
 shared vec4 radiance[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+layout(set = 1, binding = 128) uniform sampler2D secondaryBRDFMap;
 // A non-negative value rounded to one of its two neighbouring halves, choosing the farther one with
 // probability proportional to its closeness. The stored value is exact on average: a long running
 // mean in round-to-nearest halves drops every update below about 1/2048 of the value, so it stops
@@ -32,45 +33,36 @@ uvec2 StochasticPackHalf(vec4 value, uint seed)
     return uvec2(StochasticHalf(value.r, random.x) | (StochasticHalf(value.g, random.y) << 16u),
                  StochasticHalf(value.b, random.z) | (StochasticHalf(value.a, random.w) << 16u));
 }
-// Integral over the reflection hemisphere of cos(theta) * alpha^2 /
-// (1 + (alpha^2 - 1) * (1 + cos(theta)) / 2)^2, including azimuth.
-// The diffuse ray proposal changes with the probe's direction and light history.
-// Dividing by its random GGX weight sum each frame biases narrow reflected peaks.
-float ProbeSpecularNormalization(float alphaSquared)
-{
-    float halfWidth = .5 * (1.0 - alphaSquared);
-    float integral  = halfWidth > .001
-                        ? (halfWidth + alphaSquared * log(alphaSquared / (1.0 - halfWidth))) / (halfWidth * halfWidth)
-                        : .5 + (2.0 / 3.0) * halfWidth;
-    return 2.0 * HYBRID_PI * integral;
-}
 void main()
 {
     uint index = ProbeGroupIndex(), lane = gl_LocalInvocationID.x;
     if (index < screenProbe.grid.w)
     {
-        ScreenProbe probe = probes[index];
-#ifdef SCREEN_PROBE_PREFILTER_HITS
-        uint sampleCount = probe.position.w != 0.0 ? ProbeScheduledBatches(index) * uint(ZEN_SCREEN_PROBE_RAYS) : 0u;
-#else
-        uint sampleCount = uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS);
-#endif
+        ScreenProbe probe       = probes[index];
+        uint        sampleCount = probe.position.w != 0.0 ? min(ProbeScheduledBatches(index) * uint(ZEN_SCREEN_PROBE_RAYS),
+                                                                uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS))
+                                                          : 0u;
+        // Accumulate the radiance of escaped paths and their visibility independently.
+        float hitGain = hybrid.reflection.x != 0u ? gi.volume.w : 0.0;
         for (uint sampleIndex = lane; sampleIndex < sampleCount; sampleIndex += 64u)
         {
 #ifdef SCREEN_PROBE_PREFILTER_HITS
             uint address = ProbeRecordAddress(
                 ProbeRecordSlot(index, sampleIndex % ZEN_SCREEN_PROBE_RAYS, sampleIndex / ZEN_SCREEN_PROBE_RAYS));
             // The trace has already resolved these samples for diffuse lighting.
-            bool sky                = (probeHits[address] & (kHitValid | kHitSurface)) == kHitValid;
-            directions[sampleIndex] = ProbeHitSample(address);
-            radiance[sampleIndex]   = sky ? vec4(0, 0, 0, 1) : vec4(ProbeHitRadiance(address), 0);
+            bool sky      = (probeHits[address] & (kHitValid | kHitSurface)) == kHitValid;
+            vec4 ray      = ProbeHitSample(address);
+            vec3 incoming = ProbeHitRadiance(address);
 #else
             uint address = ProbeSpecularRayAddress(index, sampleIndex);
             vec2 rg = screenRays[address], blueDensity = screenRays[address + 1u];
-            directions[sampleIndex] = vec4(DecodeGBufferNormal(screenRays[address + 2u]), abs(blueDensity.y));
-            float sky               = float(blueDensity.y < 0.0);
-            radiance[sampleIndex]   = vec4(vec3(rg, blueDensity.x) * (1.0 - sky), sky);
+            vec4 ray      = vec4(DecodeGBufferNormal(screenRays[address + 2u]), abs(blueDensity.y));
+            bool sky      = blueDensity.y < 0.0;
+            vec3 incoming = vec3(rg, blueDensity.x);
 #endif
+            float nl                = max(dot(probe.normal.xyz, ray.xyz), 0.0);
+            directions[sampleIndex] = vec4(ray.xyz, nl);
+            radiance[sampleIndex]   = vec4(incoming * (sky ? 1.0 : hitGain), float(sky)) * (nl / ray.w);
         }
         barrier();
         for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
@@ -81,20 +73,35 @@ void main()
             vec3  axis      = DecodeGBufferNormal((vec2((texel - offset) % side, (texel - offset) / side) + .5) / float(side));
             float roughness = .25 * float(level + 1u);
             float alpha = roughness * roughness, alphaSquared = alpha * alpha;
-            vec4  sum     = vec4(0);
-            uint  samples = 0u;
+            // An atlas direction represents reflect(-V,N). Extend lower-hemisphere texels
+            // along the horizon so bilinear filtering is defined for grazing receivers.
+            vec3  n       = probe.normal.xyz;
+            float nv      = dot(n, axis);
+            vec3  tangent = axis - n * nv;
+            nv            = clamp(nv, 0.01, 1.0);
+            vec3 v        = dot(tangent, tangent) > 1e-8 ? nv * n - normalize(tangent) * sqrt(1.0 - nv * nv) : n;
+            nv            = max(dot(n, v), .01);
+            float k       = alpha * .5;
+            // The compositor applies colored F0. Use the material's scalar Fresnel shape here
+            // and divide by the matching split-sum response to avoid applying it twice.
+            float f0   = mix(.04, 1.0, clamp(texelFetch(receiverRoughness, ivec2(probe.source.yz), 0).r, 0.0, 1.0));
+            vec2  brdf = textureLod(secondaryBRDFMap, vec2(nv, roughness), 0).rg;
+            float norm = 4.0 * HYBRID_PI * (nv * (1.0 - k) + k) * max(f0 * brdf.x + brdf.y, 1e-5);
+            vec4  sum  = vec4(0);
             for (uint sampleIndex = 0u; sampleIndex < sampleCount; ++sampleIndex)
             {
-                vec4  ray               = directions[sampleIndex];
-                float cosine            = max(dot(axis, ray.xyz), 0.0);
-                float halfCosineSquared = .5 * (cosine + 1.0);
-                float denominator       = 1.0 + (alphaSquared - 1.0) * halfCosineSquared;
-                // GGX prefilter at V=N=axis. The proposal density is shared with the diffuse estimator.
-                float weight  = ray.w > 0.0 ? cosine * alphaSquared / (denominator * denominator * ray.w) : 0.0;
-                sum          += radiance[sampleIndex] * weight;
-                samples      += uint(ray.w > 0.0);
+                vec4  ray          = directions[sampleIndex];
+                float nl           = ray.w;
+                float vh2          = max(.5 * (1.0 + dot(v, ray.xyz)), 1e-7);
+                float nh2          = min((nv + nl) * (nv + nl) * .25 / vh2, 1.0);
+                float denominator  = 1.0 + (alphaSquared - 1.0) * nh2;
+                float grazing      = max(1.0 - sqrt(vh2), 0.0);
+                float squared      = grazing * grazing;
+                float fresnel      = f0 + (1.0 - f0) * squared * squared * grazing;
+                float weight       = fresnel / ((nl * (1.0 - k) + k) * denominator * denominator);
+                sum               += radiance[sampleIndex] * weight;
             }
-            vec4 current = samples != 0u ? sum / (float(samples) * ProbeSpecularNormalization(alphaSquared)) : vec4(0);
+            vec4 current = sum * (alphaSquared / (float(max(sampleCount, 1u)) * norm));
             if (probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0)
             {
                 uvec2 packed  = PreviousProbeSpecular(probe.source.x, texel);

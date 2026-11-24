@@ -112,11 +112,12 @@ const vec3  hybridReflectedRadiance  = vec3(0);
 
 vec3 Prefiltered(vec3 direction, float roughness)
 {
-    return textureLod(envPrefilteredMap, EnvironmentDirection(direction),
-                      roughness * float(textureQueryLevels(envPrefilteredMap) - 1))
-                   .rgb
-             * sceneUbo.environment.x * sceneUbo.environment.z * hybridSpecularVisibility
-         + hybridReflectedRadiance;
+    return max(textureLod(envPrefilteredMap, EnvironmentDirection(direction),
+                          roughness * float(textureQueryLevels(envPrefilteredMap) - 1))
+                           .rgb
+                       * sceneUbo.environment.x * sceneUbo.environment.z * hybridSpecularVisibility
+                   + hybridReflectedRadiance,
+               vec3(0));
 }
 
 vec3 SheenEnvironment(MaterialSurface s, vec3 N, vec3 V)
@@ -140,9 +141,10 @@ vec3 SheenEnvironment(MaterialSurface s, vec3 N, vec3 V)
             float nl       = max(dot(N, L), 0.0);
             if (nl > 0.0 && vh > 0.0)
             {
-                result += (textureLod(envSourceMap, EnvironmentSourceDirection(L), 0.0).rgb * sceneUbo.environment.x
-                               * sceneUbo.environment.z * hybridSpecularVisibility
-                           + hybridReflectedRadiance)
+                result += max(textureLod(envSourceMap, EnvironmentSourceDirection(L), 0.0).rgb * sceneUbo.environment.x
+                                      * sceneUbo.environment.z * hybridSpecularVisibility
+                                  + hybridReflectedRadiance,
+                              vec3(0))
                         * V_Sheen(nl, nv, s.sheenRoughness) * nl * 4.0 * vh / max(cosTheta, 1e-5);
             }
         }

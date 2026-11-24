@@ -233,7 +233,7 @@ void main()
     }
     vec3 diffuseIBL  = (bounce + sky) * albedo;
     vec4 reflected   = texelFetch(hybridSpecular, ivec2(gl_FragCoord.xy), 0);
-    prefilteredColor = prefilteredColor * reflected.a + reflected.rgb;
+    prefilteredColor = max(prefilteredColor * reflected.a + reflected.rgb, vec3(0));
 #        ifdef LIGHTING_CAPTURE
     captureDiffuseEscaped = sky;
     captureDiffuseBounced = bounce;

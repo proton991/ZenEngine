@@ -67,12 +67,20 @@ void main()
             // Young probes need a wider footprint. Fade outer rings continuously as
             // samples accumulate instead of changing the image at an age threshold.
             float radiusPixels = clamp(512.0 * inversesqrt(max(min(sampleAge.x, sampleAge.y), 1.0)), 8.0, 192.0);
+            float cold         = 1.0 - smoothstep(1.5, 8.0, min(sampleAge.x, sampleAge.y));
             float radius       = radiusPixels / float(screenProbe.spacing);
             int   reach        = min(int(ceil(radius)), 12);
             float spread       = .5 * (radius + 1.0) * (radius + 1.0);
+            // A sparse uniform stride can skip every tile next to a new receiver. Put the
+            // first three taps one tile apart while cold, distributing the spare width outside.
+            float extra      = max(radius - float(reach), 0.0);
+            float stride     = 1.0 + (1.0 - cold) * extra / float(reach);
+            float outer      = cold * extra / max(float(reach - 3), 1.0);
+            float skyFalloff = mix(.5, .10, cold);
             for (int tap = -reach; tap <= reach; ++tap)
             {
-                int offset = int(round(float(tap) * max(radius / float(reach), 1.0)));
+                float distance = abs(float(tap));
+                int   offset   = int(sign(float(tap)) * round(distance * stride + max(distance - 3.0, 0.0) * outer));
 #ifdef PROBE_FILTER_VERTICAL
                 ivec2 neighbor = tile + ivec2(0, offset);
 #else
@@ -121,13 +129,17 @@ void main()
                                 float batches = probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + signal * 4u + 3u].w;
                                 float confidence =
                                     clamp((min(sampleAge[signal], ProbeSampleAge(b.z, batches)) - 32.0) / 96.0, 0.0, 1.0);
+                                if (signal == 0u)
+                                {
+                                    confidence = max(confidence, cold);
+                                }
                                 float edge   = mix(1.0, exp(-difference * difference / max(8.0 * variance, 1e-12)), confidence);
                                 float weight = spatial * max(batches, 1.0) * edge;
                                 // Environment-importance rays resolve local sky visibility even at
                                 // disocclusion. Keep their repair footprint close to the receiver.
                                 if (signal == 0u)
                                 {
-                                    weight *= exp(-.5 * float(offset * offset));
+                                    weight *= exp(-skyFalloff * float(offset * offset));
                                 }
                                 firstOffset[signal]      += float(offset) * weight;
                                 secondOffset[signal]     += float(offset * offset) * weight;

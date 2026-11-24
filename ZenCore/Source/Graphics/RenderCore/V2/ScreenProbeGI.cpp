@@ -348,7 +348,7 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     gather.SetShaderProgramName(m_useSpecular ? "ScreenProbeGatherSP" : "ScreenProbeGatherDiffuseSP");
     gather.SetPassTag("ScreenProbeGather");
     Bind(gather, receiver, sampler);
-    voxelGI.BindLightingInputs(gather);
+    voxelGI.BindLightingInputs(gather, m_useSpecular);
     gather.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
     gather.BindStorageBuffer("FilteredScreenProbeLighting", filtered);
     if (m_useSpecular)
@@ -357,11 +357,14 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         specular.SetShaderProgramName(recordedHits ? "ScreenProbeSpecularHitsSP" : "ScreenProbeSpecularSP");
         specular.SetPassTag("ScreenProbePrefilter");
         Bind(specular, receiver, sampler);
+        specular.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+        voxelGI.BindLightingInputs(specular);
+        voxelGI.BindSecondaryBRDF(specular);
+        specular.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
         BindHistory(specular, "ScreenProbeSpecular", "PreviousScreenProbeSpecular", m_specular);
         if (recordedHits)
         {
             specular.BindStorageBuffer("ScreenProbeHits", hits);
-            specular.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
         }
         else
         {

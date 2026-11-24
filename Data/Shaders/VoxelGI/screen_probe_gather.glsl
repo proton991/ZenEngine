@@ -2,6 +2,7 @@
 #include "gi_common.glsl"
 #ifndef SCREEN_PROBE_DIFFUSE_ONLY
 #    include "screen_probe_specular.glsl"
+layout(set = 1, binding = 7) uniform samplerCube coneEnvironmentMap;
 #    define GLOSSY_FILTER_READ
 #    include "glossy_reflection.glsl"
 #endif
@@ -188,6 +189,15 @@ void main()
                 reflected      = ProbeSpecular(strongest, reflectionDirection, roughness);
                 specularWeight = 1.0;
             }
+            // The material adds the unoccluded environment times the measured escape weight.
+            // Keep the signed difference from that approximation, so the base lobe reconstructs
+            // the traced sky while other material lobes can still use directional environment light.
+            if (specularWeight > 0.0 && gi.lighting.y != 0.0)
+            {
+                float lod          = roughness * float(textureQueryLevels(coneEnvironmentMap) - 1);
+                vec3  environment  = textureLod(coneEnvironmentMap, EnvironmentDirection(reflectionDirection), lod).rgb;
+                reflected.rgb     -= reflected.a * environment * (sceneUbo.environment.x * sceneUbo.environment.z);
+            }
 #endif
         }
         sky    /= max(total, 1e-20);
@@ -242,17 +252,17 @@ void main()
         }
         if (hasGlossy)
         {
-            vec4 glossySample = glossyValue / glossyWeight;
-            reflected         = hasProbe ? mix(glossySample, reflected, probeBlend) : glossySample;
+            vec4 glossySample  = glossyValue / glossyWeight;
+            glossySample.rgb  *= hybrid.reflection.x != 0u ? gi.volume.w : 0.0;
+            reflected          = hasProbe ? mix(glossySample, reflected, probeBlend) : glossySample;
         }
-        reflected.rgb *= float(hybrid.reflection.x != 0u);
         // A thin receiver can fall between both sampling grids. Mark it for a
         // reflection ray at this pixel. Only a traced miss can establish open sky.
         if (!hasProbe && !hasGlossy)
         {
             reflected.a = guide.identity != 0u && hybrid.rejection.y != 0.0 ? -1.0 : 1.0;
         }
-        imageStore(probeSpecular, pixel, vec4(reflected.rgb * gi.volume.w, reflected.a));
+        imageStore(probeSpecular, pixel, reflected);
 #endif
     }
 }

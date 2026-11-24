@@ -444,13 +444,85 @@ TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHin
         const Vec4* metallic = reinterpret_cast<const Vec4*>(readback->Map());
         ASSERT_NE(metallic, nullptr);
         double metallicBounce = 0.0;
+        double reflectedLight = 0.0;
         for (uint32_t pixel = 0; pixel < pixels; ++pixel)
         {
-            const Vec4 value  = metallic[pixel * ZEN_HYBRID_CAPTURE_COMPONENTS + 3];
-            metallicBounce   += value.x + value.y + value.z;
+            const uint32_t offset  = pixel * ZEN_HYBRID_CAPTURE_COMPONENTS;
+            const Vec4     value   = metallic[offset + 3];
+            metallicBounce        += value.x + value.y + value.z;
+            if (metallic[offset + 8].w > 0 && metallic[offset + 9].w > 0.6f)
+            {
+                reflectedLight += glm::length(Vec3(metallic[offset + 5]));
+            }
         }
         readback->Unmap();
         EXPECT_GT(metallicBounce, 0.1 * means[6] / 16.0);
+        EXPECT_GT(reflectedLight, 0.0);
+        // Zeroing the bounce gain must remove even a mature surface reflection immediately.
+        // The black environment still has open directions on the rough backdrop.
+        settings.cone.indirectIntensity = 0.0f;
+        ASSERT_TRUE(server.ApplyVoxelGISettings(settings));
+        ASSERT_EQ(server.DispatchRenderWorkloads(view), RenderFrameResult::eSubmitted);
+        device->WaitForPreviousFrames();
+        device->NextFrame();
+        const Vec4* zeroGain = reinterpret_cast<const Vec4*>(readback->Map());
+        ASSERT_NE(zeroGain, nullptr);
+        double zeroGainRadiance = 0.0;
+        double visibility       = 0.0;
+        for (uint32_t pixel = 0; pixel < pixels; ++pixel)
+        {
+            const uint32_t offset = pixel * ZEN_HYBRID_CAPTURE_COMPONENTS;
+            if (zeroGain[offset + 8].w > 0 && zeroGain[offset + 9].w > 0.6f)
+            {
+                const Vec4 sample  = zeroGain[offset + 5];
+                zeroGainRadiance  += glm::length(Vec3(sample));
+                visibility        += sample.w;
+            }
+        }
+        readback->Unmap();
+        EXPECT_EQ(zeroGainRadiance, 0.0);
+        EXPECT_GT(visibility, 0.0);
+        // In a static view, editing surface-bounce gain must leave the settled sky stable.
+        ASSERT_TRUE(fixture.scene->SetEnvironmentLighting(.5f, 0, true, false));
+        settings.cone.specularOcclusion = false;
+        ASSERT_TRUE(server.ApplyVoxelGISettings(settings));
+        HeapVector<Vec3> settledSky(pixels);
+        double           skyEnergy = 0.0;
+        double           skyChange = 0.0;
+        for (uint32_t frame = 0; frame <= 128; ++frame)
+        {
+            if (frame == 128)
+            {
+                settings.cone.indirectIntensity = 1.0f;
+                ASSERT_TRUE(server.ApplyVoxelGISettings(settings));
+            }
+            ASSERT_EQ(server.DispatchRenderWorkloads(view), RenderFrameResult::eSubmitted);
+            device->WaitForPreviousFrames();
+            device->NextFrame();
+            if (frame >= 127)
+            {
+                const Vec4* samples = reinterpret_cast<const Vec4*>(readback->Map());
+                ASSERT_NE(samples, nullptr);
+                for (uint32_t pixel = 0; pixel < pixels; ++pixel)
+                {
+                    const Vec3 sky(samples[pixel * ZEN_HYBRID_CAPTURE_COMPONENTS + 1]);
+                    if (frame == 127)
+                    {
+                        settledSky[pixel]  = sky;
+                        skyEnergy         += glm::length(sky);
+                    }
+                    else
+                    {
+                        skyChange += glm::length(sky - settledSky[pixel]);
+                    }
+                }
+                readback->Unmap();
+            }
+        }
+        ASSERT_GT(skyEnergy, 0.0);
+        const double relativeSkyChange = skyChange / skyEnergy;
+        RecordProperty("relative_sky_change", std::to_string(relativeSkyChange));
+        EXPECT_LT(relativeSkyChange, 0.05);
         renderer.SetHybridCapture(nullptr, nullptr);
     }
 }
