@@ -59,7 +59,7 @@ bool ScreenProbeGI::Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTr
     const uint64_t    hitBytes      = hardwareTracing ? HitBatchesPerProbe(useSpecular) * ZEN_SCREEN_PROBE_RAYS
                                                             * ZEN_SCREEN_PROBE_HIT_WORDS * sizeof(uint32_t)
                                                       : 0;
-    const uint64_t    bytesPerProbe = std::max(ProbeTraceBytesPerProbe(useSpecular), hitBytes);
+    const uint64_t    bytesPerProbe = std::max(ProbeTraceBytesPerProbe(useSpecular && !hardwareTracing), hitBytes);
     bool ready = count != 0 && count <= uint64_t(info.maxComputeWorkGroupCount[0]) * info.maxComputeWorkGroupCount[1]
               && count <= info.maxStorageBufferRange / bytesPerProbe;
     if (ready && (m_extent != extent || m_useSpecular != useSpecular))
@@ -242,8 +242,9 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     }
     RDGBufferDesc buffer;
     buffer.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    const bool recordedHits    = voxelGI.UsesRayTracingPipeline();
     buffer.name                = "screen_probe_rays";
-    buffer.size                = uint64_t(count) * ProbeTraceBytesPerProbe(m_useSpecular);
+    buffer.size                = uint64_t(count) * ProbeTraceBytesPerProbe(m_useSpecular && !recordedHits);
     const RDGBuffer rays       = resources.CreateBuffer(buffer);
     buffer.name                = "screen_probe_filtered";
     buffer.size                = uint64_t(count) * 8u * sizeof(Vec4);
@@ -274,14 +275,15 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     Dispatch(graph, std::move(proposal), count);
 
     const uint32_t bits = m_device->GetGPUInfo().supportBufferInt64Atomics ? 64 : 32;
-    if (voxelGI.UsesRayTracingPipeline())
+    RDGBuffer      hits;
+    if (recordedHits)
     {
         // Give each scheduled direction its own record from sampling through accumulation.
         const uint32_t slotBatches = HitBatchesPerProbe(m_useSpecular);
         const uint32_t slots       = count * ZEN_SCREEN_PROBE_RAYS * slotBatches;
         buffer.name                = "screen_probe_hits";
         buffer.size                = uint64_t(slots) * ZEN_SCREEN_PROBE_HIT_WORDS * sizeof(uint32_t);
-        const RDGBuffer    hits    = resources.CreateBuffer(buffer);
+        hits                       = resources.CreateBuffer(buffer);
         RDGComputePassDesc sampleHits;
         sampleHits.SetShaderProgramName(NameID(fmt::format("ScreenProbeSampleHits{}SP", bits)));
         sampleHits.SetPassTag("ScreenProbeSampleHits");
@@ -350,11 +352,19 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     if (m_useSpecular)
     {
         RDGComputePassDesc specular;
-        specular.SetShaderProgramName("ScreenProbeSpecularSP");
+        specular.SetShaderProgramName(recordedHits ? "ScreenProbeSpecularHitsSP" : "ScreenProbeSpecularSP");
         specular.SetPassTag("ScreenProbePrefilter");
         Bind(specular, receiver, sampler);
         BindHistory(specular, "ScreenProbeSpecular", "PreviousScreenProbeSpecular", m_specular);
-        specular.BindStorageBuffer("ScreenProbeRays", rays);
+        if (recordedHits)
+        {
+            specular.BindStorageBuffer("ScreenProbeHits", hits);
+            specular.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
+        }
+        else
+        {
+            specular.BindStorageBuffer("ScreenProbeRays", rays);
+        }
         Dispatch(graph, std::move(specular), count);
         buffer.name                         = "screen_probe_specular_filtered";
         buffer.size                         = uint64_t(count) * ZEN_SCREEN_PROBE_SPECULAR_TEXELS * 8u;

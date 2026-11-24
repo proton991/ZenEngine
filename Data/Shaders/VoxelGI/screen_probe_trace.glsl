@@ -51,37 +51,7 @@ uint ProbeComputeThread()
 #    endif
 #endif // SCREEN_PROBE_ACCUMULATE
 #if defined(SCREEN_PROBE_HIT_PASS) || defined(SCREEN_PROBE_ACCUMULATE)
-uint ProbeRecordSlot(uint index, uint ray, uint batch)
-{
-    return (batch * screenProbe.grid.w + index) * uint(ZEN_SCREEN_PROBE_RAYS) + ray;
-}
-// One six-word record per recorded sample: flags (with the geometry index in bits 8-31), then
-// instance, primitive and packed barycentrics of a recorded hit, or the radiance of a resolved
-// sample; then the sample direction and its probability density. Zero flags mark a sample still
-// to be traced. Slots without a sample this frame are never read.
-const uint kHitRecorded = 1u, kHitResolved = 2u, kHitSurface = 4u, kHitValid = 8u;
-#    if defined(SCREEN_PROBE_SAMPLE_HITS)
-#        define SCREEN_PROBE_HITS_ACCESS writeonly
-#    elif defined(SCREEN_PROBE_ACCUMULATE)
-#        define SCREEN_PROBE_HITS_ACCESS readonly
-#    else
-#        define SCREEN_PROBE_HITS_ACCESS
-#    endif
-layout(std430, set = 1, binding = 97) SCREEN_PROBE_HITS_ACCESS buffer ScreenProbeHits
-{
-    uint probeHits[];
-};
-uint ProbeRecordAddress(uint slot)
-{
-    return slot * uint(ZEN_SCREEN_PROBE_HIT_WORDS);
-}
-#    ifndef SCREEN_PROBE_SAMPLE_HITS
-// Direction and density of a recorded sample.
-vec4 ProbeHitSample(uint address)
-{
-    return vec4(DecodeGBufferNormal(unpackUnorm2x16(probeHits[address + 4u])), uintBitsToFloat(probeHits[address + 5u]));
-}
-#    endif
+#    include "screen_probe_hits.glsl"
 #    ifdef SCREEN_PROBE_HIT_PASS
 void ProbeWriteResolved(uint address, vec3 radiance, bool surface, bool valid)
 {
@@ -421,8 +391,9 @@ void main()
         ScreenProbe probe        = probes[index];
         mat4x3      moments[2]   = {mat4x3(0), mat4x3(0)};
         mat3        basis        = HybridBasis(probe.normal.xyz);
-        uint        specularRays = hybrid.rejection.y != 0.0 ? uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS) : 0u;
         uint        batches      = ProbeScheduledBatches(index);
+#    ifndef SCREEN_PROBE_ACCUMULATE
+        uint        specularRays = hybrid.rejection.y != 0.0 ? uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS) : 0u;
         // Only the untraced GGX lanes need clearing. The diffuse slots are fully overwritten below.
         uint firstUnused = probe.position.w != 0.0 ? batches * uint(ZEN_SCREEN_PROBE_RAYS) + ray : ray;
         for (uint sampleIndex = firstUnused; sampleIndex < specularRays; sampleIndex += uint(ZEN_SCREEN_PROBE_RAYS))
@@ -432,6 +403,7 @@ void main()
             screenRays[address + 1u] = vec2(0);
             screenRays[address + 2u] = vec2(0);
         }
+#    endif
         if (probe.position.w != 0.0)
         {
 #    ifdef HYBRID_FIELD_TRAVERSAL
@@ -450,7 +422,7 @@ void main()
                 uint address = ProbeRecordAddress(ProbeRecordSlot(index, ray, batch));
                 uint flags   = probeHits[address];
                 sampleRay    = ProbeHitSample(address);
-                incoming = uintBitsToFloat(uvec3(probeHits[address + 1u], probeHits[address + 2u], probeHits[address + 3u]));
+                incoming = ProbeHitRadiance(address);
                 hit      = (flags & kHitSurface) != 0u;
                 valid    = (flags & kHitValid) != 0u;
 #    else
@@ -470,6 +442,7 @@ void main()
                 moments[signal][1] += weighted * dot(sampleRay.xyz, basis[0]);
                 moments[signal][2] += weighted * dot(sampleRay.xyz, basis[1]);
                 moments[signal][3] += weighted * cosine;
+#    ifndef SCREEN_PROBE_ACCUMULATE
                 uint sampleIndex    = ray + batch * uint(ZEN_SCREEN_PROBE_RAYS);
                 if (sampleIndex < specularRays)
                 {
@@ -478,6 +451,7 @@ void main()
                     screenRays[address + 1u] = vec2(incoming.b, signal == 0u ? -sampleRay.w : sampleRay.w);
                     screenRays[address + 2u] = EncodeGBufferNormal(sampleRay.xyz);
                 }
+#    endif
             }
         }
         uint address = (index * uint(ZEN_SCREEN_PROBE_RAYS) + ray) * 4u;

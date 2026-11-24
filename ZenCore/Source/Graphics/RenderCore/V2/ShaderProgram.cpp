@@ -629,6 +629,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyClearSP", "VoxelGI/glossy_reflection_clear.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyTemporalSP", "VoxelGI/glossy_reflection_temporal.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyFilterSP", "VoxelGI/glossy_reflection_filter.comp.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "ScreenProbeSpecularHitsSP", "VoxelGI/screen_probe_specular_hits.comp.spv"));
     StoreProgram(
         ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeSpecularFilterSP", "VoxelGI/screen_probe_specular_filter.comp.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "WorldCacheDisplaySP", "SceneRenderer/deferred.vert.spv",

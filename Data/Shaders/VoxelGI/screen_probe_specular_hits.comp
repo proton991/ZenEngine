@@ -1,0 +1,4 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_PROBE_PREFILTER_HITS
+#include "screen_probe_prefilter.glsl"
