@@ -135,7 +135,7 @@ void main()
                         continue;
                     }
                     float normalOffset = dot(probe.normal.xyz, normal) - 1.0;
-                    vec3 irradiance[2];
+                    vec3  irradiance[2];
                     for (uint signal = 0u; signal < 2u; ++signal)
                     {
                         uint address       = chosen * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + signal * 4u;
@@ -146,18 +146,18 @@ void main()
                             irradiance[signal][channel] += max(dot(response.xyz, normal), 0.0) + response.w * normalOffset;
                         }
                     }
-                    vec2 delta             = displacement / float(screenProbe.spacing);
-                    first                 += weight * delta;
-                    second                += weight * vec3(delta.x * delta.x, delta.x * delta.y, delta.y * delta.y);
-                    lower                  = min(lower, delta);
-                    upper                  = max(upper, delta);
-                    vec3 skyTap            = weight * max(irradiance[0], vec3(0));
-                    vec3 bounceTap         = weight * max(irradiance[1], vec3(0));
-                    sky                   += skyTap;
-                    bounce                += bounceTap;
-                    skyMoment             += mat2x3(delta.x * skyTap, delta.y * skyTap);
-                    bounceMoment          += mat2x3(delta.x * bounceTap, delta.y * bounceTap);
-                    total                 += weight;
+                    vec2 delta      = displacement / float(screenProbe.spacing);
+                    first          += weight * delta;
+                    second         += weight * vec3(delta.x * delta.x, delta.x * delta.y, delta.y * delta.y);
+                    lower           = min(lower, delta);
+                    upper           = max(upper, delta);
+                    vec3 skyTap     = weight * max(irradiance[0], vec3(0));
+                    vec3 bounceTap  = weight * max(irradiance[1], vec3(0));
+                    sky            += skyTap;
+                    bounce         += bounceTap;
+                    skyMoment      += mat2x3(delta.x * skyTap, delta.y * skyTap);
+                    bounceMoment   += mat2x3(delta.x * bounceTap, delta.y * bounceTap);
+                    total          += weight;
                     vec2 luma =
                         vec2(HybridLuminance(max(irradiance[0], vec3(0))), HybridLuminance(max(irradiance[1], vec3(0))));
                     vec3 statistics =

@@ -388,12 +388,12 @@ void main()
     uint index = ProbeGroupIndex(), ray = gl_LocalInvocationID.x;
     if (index < screenProbe.grid.w)
     {
-        ScreenProbe probe        = probes[index];
-        mat4x3      moments[2]   = {mat4x3(0), mat4x3(0)};
-        mat3        basis        = HybridBasis(probe.normal.xyz);
-        uint        batches      = ProbeScheduledBatches(index);
+        ScreenProbe probe      = probes[index];
+        mat4x3      moments[2] = {mat4x3(0), mat4x3(0)};
+        mat3        basis      = HybridBasis(probe.normal.xyz);
+        uint        batches    = ProbeScheduledBatches(index);
 #    ifndef SCREEN_PROBE_ACCUMULATE
-        uint        specularRays = hybrid.rejection.y != 0.0 ? uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS) : 0u;
+        uint specularRays = hybrid.rejection.y != 0.0 ? uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS) : 0u;
         // Only the untraced GGX lanes need clearing. The diffuse slots are fully overwritten below.
         uint firstUnused = probe.position.w != 0.0 ? batches * uint(ZEN_SCREEN_PROBE_RAYS) + ray : ray;
         for (uint sampleIndex = firstUnused; sampleIndex < specularRays; sampleIndex += uint(ZEN_SCREEN_PROBE_RAYS))
@@ -422,9 +422,9 @@ void main()
                 uint address = ProbeRecordAddress(ProbeRecordSlot(index, ray, batch));
                 uint flags   = probeHits[address];
                 sampleRay    = ProbeHitSample(address);
-                incoming = ProbeHitRadiance(address);
-                hit      = (flags & kHitSurface) != 0u;
-                valid    = (flags & kHitValid) != 0u;
+                incoming     = ProbeHitRadiance(address);
+                hit          = (flags & kHitSurface) != 0u;
+                valid        = (flags & kHitValid) != 0u;
 #    else
                 vec2 u    = ProbeBatchSample(seed, ray, batch, batches);
                 sampleRay = ProbeSampleDirection(index, ray, probe.normal.xyz, u, weightSum, axes, weights, lobes, learned,
@@ -443,7 +443,7 @@ void main()
                 moments[signal][2] += weighted * dot(sampleRay.xyz, basis[1]);
                 moments[signal][3] += weighted * cosine;
 #    ifndef SCREEN_PROBE_ACCUMULATE
-                uint sampleIndex    = ray + batch * uint(ZEN_SCREEN_PROBE_RAYS);
+                uint sampleIndex = ray + batch * uint(ZEN_SCREEN_PROBE_RAYS);
                 if (sampleIndex < specularRays)
                 {
                     uint address             = ProbeSpecularRayAddress(index, sampleIndex);

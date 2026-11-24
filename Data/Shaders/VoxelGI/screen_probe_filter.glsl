@@ -30,17 +30,17 @@ void main()
 #ifdef PROBE_FILTER_VERTICAL
         vec2 gatherNoise;
 #endif
-        vec2        total;
-        vec2        groupLuma[3], groupWeight[3];
-        vec2        firstOffset = vec2(0), secondOffset = vec2(0);
-        vec3        offsetIrradiance[2] = {vec3(0), vec3(0)};
+        vec2 total;
+        vec2 groupLuma[3], groupWeight[3];
+        vec2 firstOffset = vec2(0), secondOffset = vec2(0);
+        vec3 offsetIrradiance[2] = {vec3(0), vec3(0)};
         for (int group = 0; group < 3; ++group)
         {
             groupLuma[group] = groupWeight[group] = vec2(0);
         }
         for (uint signal = 0u; signal < 2u; ++signal)
         {
-            statistics[signal]     = probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u + signal];
+            statistics[signal] = probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u + signal];
 #ifdef PROBE_FILTER_VERTICAL
             // Gather needs the temporal moments before the spatial filter replaces their mean.
             vec4 raw            = statistics[signal];
