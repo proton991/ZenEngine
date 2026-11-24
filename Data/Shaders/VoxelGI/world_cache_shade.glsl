@@ -11,6 +11,7 @@ layout(set = 1, binding = 7) uniform samplerCube coneEnvironmentMap;
 #    define HYBRID_RECORDED_HIT_SHADING
 #    include "hybrid_provider.glsl"
 #    include "ray_hit_lighting.glsl"
+#    include "ray_hit_bounce.glsl"
 #endif
 #include "environment_sampling.glsl"
 layout(push_constant) uniform WorldBounce
@@ -142,9 +143,9 @@ void main()
             extend = NativeFieldMaterial(hit, reflectance, emission) && extend;
 #else
             Material material = LoadRayHitMaterial(hit.triangle.z);
-            reflectance       = RayHitReflectance(hit, material, emission);
-            bool flipped;
+            bool     flipped;
             normal = RayHitVertexNormal(hit, vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics), flipped);
+            reflectance = RayHitBounceReflectance(hit, material, dot(normal, -path.ray.xyz), emission);
 #endif
             bool exact, usable;
             vec3 lighting = WorldLookup(hit.position, hit.normal, normal, true, WorldFeedbackSelection(seed), exact, usable);

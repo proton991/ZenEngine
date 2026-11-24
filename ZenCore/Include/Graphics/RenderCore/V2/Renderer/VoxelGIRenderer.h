@@ -173,6 +173,7 @@ public:
     }
 
     void BindLightingInputs(RDGPassDescBase& pass, bool environment = false) const;
+    void BindSecondaryBRDF(RDGPassDescBase& pass) const;
     void BindRayInputs(RDGPassDescBase& pass) const;
     void BindHitRadianceInputs(RDGPassDescBase& pass) const;
     void BindNativeFieldInputs(RDGPassDescBase& pass, bool environment = true) const;

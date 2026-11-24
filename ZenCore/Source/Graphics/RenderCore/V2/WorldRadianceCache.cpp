@@ -266,6 +266,7 @@ void WorldRadianceCache::Record(VoxelGIRenderer&           voxelGI,
         {
             voxelGI.BindHardwareRayInputs(shade, false);
             voxelGI.BindLightingInputs(shade, true);
+            voxelGI.BindSecondaryBRDF(shade);
         }
         else
         {

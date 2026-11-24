@@ -430,6 +430,27 @@ TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHin
         }
         readback->Unmap();
         EXPECT_GT(retainedCacheReceivers, 0u);
+        // The backdrop sees lit cards against a black environment. A rough conductor has
+        // no diffuse lobe, but its reflected light must still reach the diffuse backdrop.
+        material.metallicFactor  = 1.0f;
+        material.roughnessFactor = 0.8f;
+        ASSERT_TRUE(fixture.scene->UpdateMaterial(0, material));
+        for (uint32_t frame = 0; frame < 160; ++frame)
+        {
+            ASSERT_EQ(server.DispatchRenderWorkloads(view), RenderFrameResult::eSubmitted);
+            device->WaitForPreviousFrames();
+            device->NextFrame();
+        }
+        const Vec4* metallic = reinterpret_cast<const Vec4*>(readback->Map());
+        ASSERT_NE(metallic, nullptr);
+        double metallicBounce = 0.0;
+        for (uint32_t pixel = 0; pixel < pixels; ++pixel)
+        {
+            const Vec4 value  = metallic[pixel * ZEN_HYBRID_CAPTURE_COMPONENTS + 3];
+            metallicBounce   += value.x + value.y + value.z;
+        }
+        readback->Unmap();
+        EXPECT_GT(metallicBounce, 0.1 * means[6] / 16.0);
         renderer.SetHybridCapture(nullptr, nullptr);
     }
 }

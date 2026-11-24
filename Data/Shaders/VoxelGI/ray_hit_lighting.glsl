@@ -126,8 +126,8 @@ vec3 RayHitNormal(HybridRayResult hit, Material material, vec3 weights)
     return normal;
 }
 
-// Diffuse reflectance of the hit material; emission is returned separately.
-vec3 RayHitReflectance(HybridRayResult hit, Material material, out vec3 emission)
+// Decode both reflection lobes from the same material texture fetches.
+vec3 RayHitReflectance(HybridRayResult hit, Material material, out vec3 emission, out vec4 f0Roughness)
 {
     vec4 colorA = LoadRayHitVertex(indices[hit.triangle.x]).color;
     vec4 color  = colorA + (LoadRayHitVertex(indices[hit.triangle.x + 1u]).color - colorA) * hit.barycentrics.x
@@ -141,11 +141,11 @@ vec3 RayHitReflectance(HybridRayResult hit, Material material, out vec3 emission
                                    * RayHitTexture(hit, int(diffuse.properties.x), int(diffuse.properties.y), diffuse.transform,
                                                    material.textureSampling.xy)
                                          .rgb;
-        vec3                f0 = material.specularGlossiness.rgb
-                               * RayHitTexture(hit, int(specular.properties.x), int(specular.properties.y), specular.transform,
-                                               material.textureSampling.xy)
-                                     .rgb;
-        reflectance            = albedo * (1.0 - clamp(max(max(f0.r, f0.g), f0.b), 0.0, 1.0));
+        vec4 specGloss = RayHitTexture(hit, int(specular.properties.x), int(specular.properties.y), specular.transform,
+                                       material.textureSampling.xy);
+        vec3 f0        = clamp(material.specularGlossiness.rgb * specGloss.rgb, vec3(0), vec3(1));
+        f0Roughness    = vec4(f0, clamp(1.0 - material.specularGlossiness.w * specGloss.a, 0.04, 1.0));
+        reflectance    = albedo * (1.0 - max(max(f0.r, f0.g), f0.b));
     }
     else
     {
@@ -153,12 +153,13 @@ vec3 RayHitReflectance(HybridRayResult hit, Material material, out vec3 emission
                      * RayHitTexture(hit, material.bcTexIndex, material.bcTexSet, material.textureTransforms[0],
                                      material.textureSampling.xy)
                            .rgb;
-        float metal  = clamp(material.metallicFactor
-                                 * RayHitTexture(hit, material.mrTexIndex, material.mrTexSet, material.textureTransforms[1],
-                                                 material.textureSampling.xy)
-                                       .b,
-                             0.0, 1.0);
-        reflectance  = albedo * (0.96 * (1.0 - metal));
+        vec2  mr     = RayHitTexture(hit, material.mrTexIndex, material.mrTexSet, material.textureTransforms[1],
+                                     material.textureSampling.xy)
+                           .gb;
+        float metal  = clamp(material.metallicFactor * mr.y, 0.0, 1.0);
+        f0Roughness =
+            vec4(mix(vec3(0.04), clamp(albedo, vec3(0), vec3(1)), metal), clamp(material.roughnessFactor * mr.x, 0.04, 1.0));
+        reflectance = albedo * (0.96 * (1.0 - metal));
     }
     emission = vec3(0);
     if (gi.lighting.z != 0.0 && any(notEqual(material.emissiveFactor.rgb, vec3(0))))
@@ -178,7 +179,8 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
     Material material = LoadRayHitMaterial(hit.triangle.z);
     vec3     weights  = vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics);
     vec3     emission;
-    vec3     reflectance = RayHitReflectance(hit, material, emission);
+    vec4     f0Roughness;
+    vec3     reflectance = RayHitReflectance(hit, material, emission, f0Roughness);
     vec3     normal      = RayHitNormal(hit, material, weights);
 #        ifdef HYBRID_COUNT_RAYS
     uint previousPurpose = issuedRayPurpose;

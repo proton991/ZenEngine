@@ -971,6 +971,12 @@ void VoxelGIRenderer::BindLightingInputs(RDGPassDescBase& pass, bool environment
     }
 }
 
+void VoxelGIRenderer::BindSecondaryBRDF(RDGPassDescBase& pass) const
+{
+    const EnvTexture& env = m_scene->GetEnvTexture();
+    pass.BindSampledTexture("secondaryBRDFMap", env.pLutBRDFSampler, env.pLutBRDF->GetDefaultView());
+}
+
 bool VoxelGIRenderer::UsesRayTracingPipeline() const
 {
     return m_hardwareQueries && m_settings.rayTracingPipeline && SupportsHybridRayTracingPipeline(m_device->GetGPUInfo());

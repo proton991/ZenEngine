@@ -57,6 +57,7 @@ Material LoadRayHitMaterial(uint index)
     result.normalEncoding       = source.normalEncoding;
     result.textureSampling      = source.textureSampling;
     result.metallicFactor       = source.factors.x;
+    result.roughnessFactor      = source.factors.y;
     result.bcTexIndex           = int(source.textures[0].properties.x);
     result.bcTexSet             = int(source.textures[0].properties.y);
     result.mrTexIndex           = int(source.textures[1].properties.x);

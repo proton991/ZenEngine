@@ -301,6 +301,7 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         shadeHits.SetShaderProgramName(NameID(fmt::format("ScreenProbeShadeHits{}SP", bits)));
         shadeHits.SetPassTag("ScreenProbeShadeHits");
         BindTrace(shadeHits, voxelGI, scene, cache, receiver, sampler);
+        voxelGI.BindSecondaryBRDF(shadeHits);
         shadeHits.BindStorageBuffer("ScreenProbeHits", hits);
         Dispatch(graph, std::move(shadeHits), (slots + 63u) / 64u);
         RDGComputePassDesc accumulate;

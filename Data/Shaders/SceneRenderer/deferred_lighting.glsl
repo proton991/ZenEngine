@@ -216,9 +216,11 @@ void main()
     vec3 R          = reflect(-V, N);
     vec3 prefilteredColor = SamplePrefiltered(R, roughness);
     vec2 brdf             = texture(lutBRDFMap, vec2(NdotV, roughness)).rg;
-    vec3 F                = FresnelSchlick(NdotV, F0);
-    vec3 kS               = F;
-    vec3 kD               = (vec3(1.0) - kS) * (1.0 - metallic);
+    // Integrate the diffuse material's Schlick term over a cosine-weighted incident hemisphere.
+    // This cubic fits mean((1 - V.H)^5) to within 0.00011 for every N.V in [0, 1].
+    float grazing        = 1.0 - NdotV;
+    float diffuseFresnel = 0.000082 + grazing * (0.003928 + grazing * (-0.001502 + grazing * 0.025649));
+    vec3  kD             = (1.0 - F0) * ((1.0 - diffuseFresnel) * (1.0 - metallic));
 #if defined(VOXEL_GI)
 #    ifdef HYBRID_GI
     // Indirect diffuse off (GI tracing panel) keeps the unoccluded environment, as without GI.
@@ -242,7 +244,7 @@ void main()
 #else
     vec3 diffuseIBL = irradiance * albedo;
 #endif
-    vec3 specularIBL = prefilteredColor * (F * brdf.x + brdf.y);
+    vec3 specularIBL = prefilteredColor * (F0 * brdf.x + brdf.y);
     vec3 ambient     = (kD * diffuseIBL * ao) + (specularIBL * ao);
 
     bool unlit       = mr.b > 0.5;

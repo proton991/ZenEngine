@@ -345,8 +345,8 @@ void main()
     }
 }
 #elif defined(SCREEN_PROBE_SHADE_HITS)
-// Shade recorded first hits as the native closest-hit shader would: material, interpolated vertex
-// normal and the world cache. A cold hit receives one sampled direct-light evaluation.
+#    include "ray_hit_bounce.glsl"
+// Shade recorded first hits from the world cache. A cold hit receives one sampled direct-light evaluation.
 void main()
 {
     uint slot = ProbeComputeThread();
@@ -367,10 +367,10 @@ void main()
         }
         Material material = LoadRayHitMaterial(triangle.z);
         vec3     emission;
-        vec3     reflectance = RayHitReflectance(hit, material, emission);
         // Probe rays carry ray flag 1, so their hits shade with the interpolated vertex normal.
         bool flipped;
         vec3 normal = RayHitVertexNormal(hit, vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics), flipped);
+        vec3 reflectance = RayHitBounceReflectance(hit, material, dot(normal, -sampleRay.xyz), emission);
         bool found, usable;
         vec3 diffuse = WorldLookup(hit.position, hit.normal, normal, false, vec2(0), found, usable);
         uint seed    = ProbePathSeed(ProbeAnchorSeed(probes[index]), ray, batch);

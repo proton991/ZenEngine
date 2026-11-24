@@ -709,7 +709,7 @@ bool SceneRayQuery::PrepareHitShading(RenderScene& scene, uint64_t budgetBytes)
                 target.specularFactor            = source.specularGlossiness;
                 target.normalEncoding            = source.normalEncoding;
                 target.textureSampling           = source.textureSampling;
-                target.factors                   = Vec4(source.metallicFactor, 0, 0, 0);
+                target.factors                   = Vec4(source.metallicFactor, source.roughnessFactor, 0, 0);
                 target.textures[0] = specular ? source.featureTextures[2]
                                               : sg::MaterialTextureData{Vec4(source.bcTexIndex, source.bcTexSet, 0, 0),
                                                                         source.textureTransforms[0]};

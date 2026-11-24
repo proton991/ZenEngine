@@ -23,7 +23,7 @@ struct RayHitMaterial
     Vec4                    specularFactor;
     glm::uvec4              normalEncoding;
     Vec4                    textureSampling;
-    Vec4                    factors; // metallic factor in x
+    Vec4                    factors; // x: metallic, y: roughness
     sg::MaterialTextureData textures[4];
 };
 
