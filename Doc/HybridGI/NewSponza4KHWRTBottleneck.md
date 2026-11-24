@@ -1,5 +1,24 @@
 # New Sponza at native 4K with hardware ray tracing
 
+## Moving repeated gather work into the probe filter
+
+On the RTX 5080, repeated standalone ZenApp launches with the revised gather measured **55.6–56.0 FPS stationary and 47.7–47.9 FPS panning**. The local checkpoint `d3a6f7b5` measured **43.1 and 47.1 FPS** on the same New Sponza setup. Both used the Optimal preset, HDR environment lighting, hardware tracing, an 8-pixel probe grid, 1,048,576 steady-state world-cache cells, and native 3840×2160 GI and presentation. After restoring and rebuilding the release executable, the final runs measured 55.8 FPS stationary and 47.9 FPS panning. Those frame times leave 1.25 ms and 4.21 ms respectively to reach 60 FPS. [Standalone intervals, configuration and GPU measurements](../../build/probe-gather-20261124-174240/comparison.json)
+
+| Measurement | Stationary, checkpoint → revised | Panning, checkpoint → revised |
+| --- | ---: | ---: |
+| Standalone FPS over the same 720 frames | 43.18 → 55.66 | 47.06 → 47.72 |
+| Nsight median probe gather | 4.20 → 4.13 ms | 3.83 → 3.54 ms |
+| Nsight median GPU frame | 17.68 → 17.63 ms | 21.51 → 21.42 ms |
+| Nsight p95 GPU frame | 18.26 → 18.02 ms | 21.93 → 22.24 ms |
+
+The stationary comparison uses frames 1201–1921. The pan uses frames 961–1681 and covers nine complete camera cycles. Restoring the checkpoint shaders while retaining the larger filter buffer reproduced **43.3/47.1 FPS**. Nsight and the engine’s own GPU timestamps both measured a smaller stationary improvement than the standalone frame rate implies. The cause of that difference remains unresolved. All 160 captured frames exceeded 16.67 ms. [Stationary trace](../../build/probe-gather-20261124-174240/trace-static/trace/summary.json) · [Pan trace](../../build/probe-gather-20261124-174240/trace-pan/trace/summary.json) · [Stationary shader control](../../build/probe-gather-20261124-174240/buffer-only-static/rates.json)
+
+In separate launches, the engine’s GPU timestamp queries measured the gather over 240 warmed-up frames. The stationary median fell from 3.54 to 3.32 ms and the pan from 3.79 to 3.53 ms. The 3 ms gather target remains open. During the Nsight pan, sampling, tracing, shading and accumulating probe hits took 5.43 ms together. Hit shading accounted for 2.41 ms. [Stationary timestamps](../../build/probe-gather-20261124-174240/nodes-gather-static/node-summary.json) · [Pan timestamps](../../build/probe-gather-20261124-174240/nodes-gather-pan/node-summary.json)
+
+The vertical filter computes the sky and bounce variance per unit of history, the effective history age and the anchor-normal projection once per probe. Each receiver still evaluates the full gather with its own surface normal, footprint and motion sampling budget. The statistics use one extra 16-byte vector per probe, or 2.47 MiB across 162,000 slots. [Probe filter](../../Data/Shaders/VoxelGI/screen_probe_filter.glsl) · [Gather](../../Data/Shaders/VoxelGI/screen_probe_gather.glsl)
+
+Across 36 native-4K motion and recovery captures compared with the same settled images, the mean share of moving pixels differing by more than 16 display levels changed from **0.03181% to 0.03286%** on turns, **0.01550% to 0.01542%** moving forward and **0.01197% to 0.01149%** strafing. Turn RMS moved from 1.077 to 1.080 on the 8-bit scale. Separate 359-frame motion runs passed Vulkan validation with reflections enabled and in diffuse-only mode. All 660 RenderCore tests and 16 targeted Vulkan integration tests passed. [Motion scores](../../build/probe-gather-20261124-174240/motion/report.json) · [Vulkan validation](../../build/probe-gather-20261124-174240/validation.log) · [RenderCore tests](../../build/probe-gather-20261124-174240/render-tests.log) · [Vulkan integration tests](../../build/probe-gather-20261124-174240/ray-tests.log)
+
 ## Standalone performance after optimizing the full-density probe grid
 
 Two 3,000-frame release ZenApp runs per view on the RTX 5080 measured **43.0–43.3 FPS stationary and 46.7–47.1 FPS panning** after the cache warmed up. All runs used New Sponza, Kloofendal HDR lighting, hardware tracing, the Optimal preset and native 3840×2160 throughout. The framebuffer, renderer and GI extents agreed. Both views had 162,000 probe slots at 8-pixel spacing and a world cache of 1,048,576 cells during measurement. [Frame intervals, settings and input fingerprints](../../build/screen-probe-4k-20261124-152419/optimization-summary.json)

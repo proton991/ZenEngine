@@ -134,15 +134,16 @@ void main()
                     {
                         continue;
                     }
+                    float normalOffset = dot(probe.normal.xyz, normal) - 1.0;
                     vec3 irradiance[2];
                     for (uint signal = 0u; signal < 2u; ++signal)
                     {
-                        uint address       = chosen * 8u + signal * 4u;
+                        uint address       = chosen * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + signal * 4u;
                         irradiance[signal] = filteredProbeLighting[address + 3u].rgb;
                         for (uint channel = 0u; channel < 3u; ++channel)
                         {
-                            irradiance[signal][channel] +=
-                                ProbeNormalCorrection(filteredProbeLighting[address + channel], probe.normal.xyz, normal);
+                            vec4 response                = filteredProbeLighting[address + channel];
+                            irradiance[signal][channel] += max(dot(response.xyz, normal), 0.0) + response.w * normalOffset;
                         }
                     }
                     vec2 delta             = displacement / float(screenProbe.spacing);
@@ -157,17 +158,13 @@ void main()
                     skyMoment             += mat2x3(delta.x * skyTap, delta.y * skyTap);
                     bounceMoment          += mat2x3(delta.x * bounceTap, delta.y * bounceTap);
                     total                 += weight;
-                    vec4 skyStatistics     = probeLighting[chosen * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u];
-                    vec4 bounceStatistics  = probeLighting[chosen * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u];
                     vec2 luma =
                         vec2(HybridLuminance(max(irradiance[0], vec3(0))), HybridLuminance(max(irradiance[1], vec3(0))));
-                    vec2 variance =
-                        max(vec2(skyStatistics.w, bounceStatistics.w),
-                            vec2(skyStatistics.y, bounceStatistics.y)
-                                - vec2(skyStatistics.x, bounceStatistics.x) * vec2(skyStatistics.x, bounceStatistics.x));
+                    vec3 statistics =
+                        filteredProbeLighting[screenProbe.grid.w * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + chosen].xyz;
                     lumaSecond    += weight * luma * luma;
-                    measuredNoise += weight * variance / max(vec2(skyStatistics.z, bounceStatistics.z), vec2(1));
-                    age           += min(skyStatistics.z, bounceStatistics.z) * weight;
+                    measuredNoise += weight * statistics.xy;
+                    age           += weight * statistics.z;
 #ifndef SCREEN_PROBE_DIFFUSE_ONLY
                     // The cubic puts about 92% of a pixel's weight on the probes within one
                     // spacing. Rough reflections vary smoothly enough to take them from those

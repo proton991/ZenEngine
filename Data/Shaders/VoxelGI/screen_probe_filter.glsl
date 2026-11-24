@@ -13,7 +13,7 @@ layout(std430, set = 1, binding = 115) readonly buffer HorizontalScreenProbeLigh
 vec4 ProbeFilterInput(uint index, uint item)
 {
 #ifdef PROBE_FILTER_VERTICAL
-    return horizontalLighting[index * 8u + item];
+    return horizontalLighting[index * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + item];
 #else
     return probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + item];
 #endif
@@ -27,6 +27,9 @@ void main()
         ScreenProbe probe = probes[index];
         vec4        result[8];
         vec4        statistics[2];
+#ifdef PROBE_FILTER_VERTICAL
+        vec2 gatherNoise;
+#endif
         vec2        total;
         vec2        groupLuma[3], groupWeight[3];
         vec2        firstOffset = vec2(0), secondOffset = vec2(0);
@@ -38,12 +41,21 @@ void main()
         for (uint signal = 0u; signal < 2u; ++signal)
         {
             statistics[signal]     = probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u + signal];
+#ifdef PROBE_FILTER_VERTICAL
+            // Gather needs the temporal moments before the spatial filter replaces their mean.
+            vec4 raw            = statistics[signal];
+            gatherNoise[signal] = max(raw.w, raw.y - raw.x * raw.x) / max(raw.z, 1.0);
+#endif
             total[signal]          = max(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + signal * 4u + 3u].w, 1.0);
             float centerLuma       = HybridLuminance(ProbeFilterInput(index, signal * 4u + 3u).rgb);
             statistics[signal].x   = centerLuma;
             groupWeight[0][signal] = total[signal];
             groupLuma[0][signal]   = centerLuma * total[signal];
         }
+#ifdef PROBE_FILTER_VERTICAL
+        filteredProbeLighting[screenProbe.grid.w * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + index] =
+            vec4(gatherNoise, min(statistics[0].z, statistics[1].z), 0);
+#endif
         for (uint item = 0u; item < 8u; ++item)
         {
             result[item] = ProbeFilterInput(index, item) * total[item / 4u];
@@ -154,16 +166,22 @@ void main()
             scale[signal] =
                 ProbeSpatialOutlierScale(luma, w, total[signal], HybridLuminance(result[item].rgb) / total[signal], young);
         }
-        for (uint item = 0u; item < 8u; ++item)
+        for (uint signal = 0u; signal < 2u; ++signal)
         {
-            vec4 filtered = result[item] * (scale[item / 4u] / total[item / 4u]);
-#ifdef PROBE_FILTER_VERTICAL
-            if ((item & 3u) != 3u)
+            uint  base          = signal * 4u;
+            float normalization = scale[signal] / total[signal];
+            vec4  anchor        = result[base + 3u] * normalization;
+            for (uint channel = 0u; channel < 3u; ++channel)
             {
+                vec4 filtered = result[base + channel] * normalization;
+#ifdef PROBE_FILTER_VERTICAL
                 filtered = ProbeNormalResponse(filtered, probe.normal.xyz);
-            }
+                // The anchor projection is constant for all receivers of this probe.
+                anchor[channel] -= max(dot(filtered.xyz, probe.normal.xyz), 0.0);
 #endif
-            filteredProbeLighting[index * 8u + item] = filtered;
+                filteredProbeLighting[index * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + base + channel] = filtered;
+            }
+            filteredProbeLighting[index * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + base + 3u] = anchor;
         }
     }
 }

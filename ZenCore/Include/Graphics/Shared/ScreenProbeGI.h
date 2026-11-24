@@ -11,6 +11,8 @@
 // The broad GGX levels retain 4x4 directions: a single octahedral texel would
 // erase hemisphere visibility and directional response on rough surfaces.
 #define ZEN_SCREEN_PROBE_SPECULAR_TEXELS 112
+// The vertical filter appends one statistics vector per probe after the lighting coefficients.
+#define ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS 8u
 // Eight lighting vectors; per signal: luminance moments, history age and ray variance;
 // then the two source signatures and three incident direction distributions.
 #define ZEN_SCREEN_PROBE_LIGHTING_VECTORS 12

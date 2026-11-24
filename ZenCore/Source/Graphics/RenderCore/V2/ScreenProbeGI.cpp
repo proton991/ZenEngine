@@ -247,9 +247,10 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     buffer.size                = uint64_t(count) * ProbeTraceBytesPerProbe(m_useSpecular && !recordedHits);
     const RDGBuffer rays       = resources.CreateBuffer(buffer);
     buffer.name                = "screen_probe_filtered";
-    buffer.size                = uint64_t(count) * 8u * sizeof(Vec4);
+    buffer.size                = uint64_t(count) * (ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + 1u) * sizeof(Vec4);
     const RDGBuffer filtered   = resources.CreateBuffer(buffer);
     buffer.name                = "screen_probe_horizontal";
+    buffer.size                = uint64_t(count) * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS * sizeof(Vec4);
     const RDGBuffer horizontal = resources.CreateBuffer(buffer);
 
 
