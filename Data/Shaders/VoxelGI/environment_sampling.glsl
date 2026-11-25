@@ -26,6 +26,7 @@ layout(std430, set = ENVIRONMENT_SAMPLING_SET, binding = 17) readonly buffer Env
     uint  environmentSourceCount;
     uint  environmentSourceTiles[ZEN_ENVIRONMENT_MAX_SOURCES];
     float environmentResidualTiles[ZEN_ENVIRONMENT_TILES + 1u];
+    float environmentSourceEnergy[ZEN_ENVIRONMENT_MAX_SOURCES][3];
 };
 // The same row and column prefix sums with the source tiles removed: the residual environment is
 // drawn exactly like the full one, keeping the sampler's two-dimensional stratification.

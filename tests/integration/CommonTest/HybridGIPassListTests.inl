@@ -146,15 +146,20 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
         // The hardware probe trace allocates, samples, traces and shades its recorded samples in separate passes.
         nativePasses.replace(nativePasses.find("ScreenProbeTrace, "), std::string_view("ScreenProbeTrace, ").size(),
                              "ScreenProbeSampleHits, ScreenProbeTraceHits, ScreenProbeShadeHits, ScreenProbeAccumulate, ");
+        // Hardware probes leave the environment's source tiles to per-pixel shadow rays.
+        const std::string nativeWithoutSky = nativePasses;
+        nativePasses.insert(nativePasses.find("ScreenProbePrefilter"),
+                            "ScreenProbeSourceSetup, ScreenProbeSourcesCoarse, ScreenProbeSources, ");
         const std::string nativeComputePasses = "SkyboxDraw, GBufferFrustumCull, OffScreen, " + fillField + nativeGIPasses
                                               + computePasses.substr(computePasses.find("ForwardBackground"));
         const bool        budgetAvailable     = device->GetGPUMemoryStats().budgetAvailable;
-        for (uint32_t tier = 0; tier < 10; ++tier)
+        for (uint32_t tier = 0; tier < 11; ++tier)
         {
-            const bool hardware        = tier < 5 || tier == 9;
+            const bool noSky           = tier == 10;
+            const bool hardware        = tier < 5 || tier == 9 || noSky;
             const bool cache           = tier == 1;
             const bool probes          = tier == 2;
-            const bool native          = tier == 3 || tier == 4 || tier == 6 || tier == 7;
+            const bool native          = tier == 3 || tier == 4 || tier == 6 || tier == 7 || noSky;
             const bool pixelWorldCache = tier == 8 || tier == 9;
             const bool diffuseOnly     = tier == 3 || tier == 7;
             SCOPED_TRACE(hardware ? "HW RT tier" : "Compute tier");
@@ -167,6 +172,7 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
             settings.cone.worldRadianceCache     = native || pixelWorldCache;
             settings.cone.screenProbeGI          = native;
             settings.cone.specularOcclusion      = !diffuseOnly;
+            settings.cone.environmentLighting    = !noSky;
             settings.cone.restirGI               = hardware;
             settings.cone.pixelResolutionDivisor = 2;
             // Ray-traced shadows with reuse, as the optimal configuration: a coarse grid, then refinement.
@@ -219,7 +225,8 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
                 EXPECT_EQ(second.find("ScreenProbeGather"), std::string::npos);
                 continue;
             }
-            std::string expected = native                    ? (hardware ? nativePasses : nativeComputePasses)
+            std::string expected = noSky                     ? nativeWithoutSky
+                                 : native                    ? (hardware ? nativePasses : nativeComputePasses)
                                  : probes && budgetAvailable ? probePasses
                                  : cache && budgetAvailable  ? cachePasses
                                  : hardware                  ? hardwarePasses

@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_PROBE_DIFFUSE_ONLY
+#define SCREEN_PROBE_GATHER_SOURCES
+#include "screen_probe_gather.glsl"

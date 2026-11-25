@@ -13,6 +13,9 @@ layout(std140, set = 1, binding = 80) uniform uScreenProbeData
     vec4  control; // scene scale, valid history frames, temporal enabled, spatial enabled
     uint  spacing;
     uint  adaptiveTiles;
+    // Nonzero when per-pixel rays light the environment's source tiles (screen_probe_sources.comp).
+    // Probes then sample and integrate only the residual environment.
+    uint residualEnvironment;
 }
 screenProbe;
 struct ScreenProbe

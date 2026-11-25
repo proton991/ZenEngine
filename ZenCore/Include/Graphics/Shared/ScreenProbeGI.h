@@ -22,4 +22,6 @@
 #define ZEN_SCREEN_PROBE_MAX_BATCHES     3u
 #define ZEN_SCREEN_PROBE_DIFFUSE_BATCHES 5u
 #define ZEN_SCREEN_PROBE_HIT_WORDS       6u
+// Pixel stride of the coarse environment-source visibility; finer pixels trace only where it disagrees.
+#define ZEN_SCREEN_PROBE_SOURCE_STRIDE 8u
 #endif

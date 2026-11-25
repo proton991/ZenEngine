@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#include "Graphics/Shared/EnvironmentSampling.h"
+#include "environment_distribution.glsl"
+layout(set = 1, binding = 7) uniform samplerCube coneEnvironmentMap;
 // One invocation per tile of the importance map: the prefix sums of its row segments, then the
 // source tiles, and the residual distribution (rows and columns without the source tiles).
 layout(local_size_x = ZEN_ENVIRONMENT_TILES) in;
@@ -26,6 +27,7 @@ layout(std430, set = 1, binding = 4) writeonly buffer EnvironmentSources
     uint sourceTiles[ZEN_ENVIRONMENT_MAX_SOURCES];
     // Prefix sums of tile masses with the source tiles excluded.
     float residualTiles[ZEN_ENVIRONMENT_TILES + 1u];
+    float sourceEnergy[ZEN_ENVIRONMENT_MAX_SOURCES][3];
 };
 layout(std430, set = 1, binding = 5) writeonly buffer EnvironmentResidualColumns
 {
@@ -45,7 +47,50 @@ shared uint  chosenCount;
 const float SOURCE_SHARE         = 0.05;
 const float SOURCE_CONCENTRATION = 0.5;
 const float BRIGHT_RATIO         = 8.0;
-void        main()
+// Integrate only selected tiles. Eight lanes share each tile and keep workgroup storage below 16 KiB.
+const uint  kEnergySlices = 8u;
+shared vec3 energyParts[ZEN_ENVIRONMENT_MAX_SOURCES][kEnergySlices];
+void        StoreSourceEnergy(uint lane)
+{
+    uint source = lane / kEnergySlices, slice = lane % kEnergySlices;
+    if (source < chosenCount)
+    {
+        uint  tile   = chosen[source];
+        uint  side   = ZEN_ENVIRONMENT_TILES_PER_FACE;
+        uvec2 origin = uvec2(tile % side, tile / side % side) * ZEN_ENVIRONMENT_TILE_SIZE;
+        float stepUV = 1.0 / float(ZEN_ENVIRONMENT_IMPORTANCE_SIZE);
+        vec3  sum    = vec3(0);
+        // Four subtexels integrate the bilinear radiance on each side of a texel center,
+        // including source energy that crosses the tile boundary under filtering.
+        for (uint y = slice; y < 2u * ZEN_ENVIRONMENT_TILE_SIZE; y += kEnergySlices)
+        {
+            for (uint x = 0u; x < 2u * ZEN_ENVIRONMENT_TILE_SIZE; ++x)
+            {
+                vec2 uv         = (vec2(2u * origin + uvec2(x, y)) + .5) * stepUV - 1.0;
+                vec3 direction  = EnvironmentCubeDirection(tile / (side * side), uv);
+                sum            += textureLod(coneEnvironmentMap, direction, 0).rgb * EnvironmentCubeJacobian(uv);
+            }
+        }
+        energyParts[source][slice] = sum * (stepUV * stepUV);
+    }
+    barrier();
+    if (lane < ZEN_ENVIRONMENT_MAX_SOURCES)
+    {
+        vec3 sum = vec3(0);
+        if (lane < chosenCount)
+        {
+            for (uint i = 0u; i < kEnergySlices; ++i)
+            {
+                sum += energyParts[lane][i];
+            }
+        }
+        for (uint c = 0u; c < 3u; ++c)
+        {
+            sourceEnergy[lane][c] = sum[c];
+        }
+    }
+}
+void main()
 {
     uint tile = gl_LocalInvocationID.x;
     for (uint fine = tile; fine < ZEN_HYBRID_GUIDE_TILES; fine += ZEN_ENVIRONMENT_TILES)
@@ -106,7 +151,8 @@ void        main()
                 {
                     taken = taken || chosen[k] == t;
                 }
-                if (!taken && tileMass[t] >= SOURCE_SHARE * total && brightMass[t] >= SOURCE_CONCENTRATION * tileMass[t]
+                if (!taken && tileMass[t] > 0.0 && tileMass[t] >= SOURCE_SHARE * total
+                    && brightMass[t] >= SOURCE_CONCENTRATION * tileMass[t]
                     && (best == ZEN_ENVIRONMENT_TILES || tileMass[t] > tileMass[best]))
                 {
                     best = t;
@@ -138,6 +184,7 @@ void        main()
         }
     }
     barrier();
+    StoreSourceEnergy(tile);
     uint rowsPerInvocation = ZEN_ENVIRONMENT_IMPORTANCE_ROWS / ZEN_ENVIRONMENT_TILES;
     for (uint i = 0u; i < rowsPerInvocation; ++i)
     {

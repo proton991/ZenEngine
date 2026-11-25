@@ -27,7 +27,8 @@ public:
                       const HybridGIUniformData& receiver,
                       const Mat4&                projectionView,
                       RHISampler*                sampler,
-                      bool                       reset);
+                      bool                       reset,
+                      bool                       skyLight);
     void       OnRenderGraphExecuted(RenderFrameResult result);
     void       Destroy();
     RDGTexture GetSky() const
@@ -72,6 +73,11 @@ private:
                                 const HybridGIUniformData& receiver,
                                 RHISampler*                sampler) const;
     void              AddTracePass(RDGRayTracingPassDesc&& pass, uint32_t width, uint32_t height) const;
+    void              RecordSources(RDGComputePassDesc&        gather,
+                                    VoxelGIRenderer&           voxelGI,
+                                    RenderScene&               scene,
+                                    const HybridGIUniformData& receiver,
+                                    RHISampler*                sampler) const;
     RenderDevice*     m_device;
     GlossyReflections m_glossy;
     bool              m_useSpecular = false;
@@ -94,6 +100,7 @@ private:
         Vec4       control{0};
         alignas(16) uint32_t spacing{0};
         uint32_t adaptiveTiles{0};
+        uint32_t residualEnvironment{0};
     } m_uniforms;
     static_assert(sizeof(Uniforms) == 304);
 };

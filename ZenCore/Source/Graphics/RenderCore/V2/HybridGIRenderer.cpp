@@ -1158,7 +1158,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
             // Only enabled reflections store intensity-scaled hit radiance in the probe history.
             const bool probeReset = !m_valid || reflections != m_previousReflections
                                  || (reflections && settings.indirectIntensity != m_previousSettings.indirectIntensity);
-            m_screenProbes.Record(voxelGI, *m_scene, m_worldCache, m_uniforms, m_recordedProjectionView, m_sampler, probeReset);
+            m_screenProbes.Record(voxelGI, *m_scene, m_worldCache, m_uniforms, m_recordedProjectionView, m_sampler, probeReset,
+                                  skyLight);
             m_outputSky            = m_screenProbes.GetSky();
             m_outputBounce         = m_screenProbes.GetBounce();
             m_outputSpecular       = m_screenProbes.GetSpecular();

@@ -18,6 +18,8 @@ vec4 ProbeFilterInput(uint index, uint item)
     return probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + item];
 #endif
 }
+// A cold probe without coplanar support may exceed its brightest nearest probe by this factor.
+const float kIsolatedProbeSlack = 2.0;
 layout(local_size_x = 64) in;
 void main()
 {
@@ -34,6 +36,8 @@ void main()
         vec2 groupLuma[3], groupWeight[3];
         vec2 firstOffset = vec2(0), secondOffset = vec2(0);
         vec3 offsetIrradiance[2] = {vec3(0), vec3(0)};
+        // Brightest nearest probe on any surface, evaluated at this probe's normal (negative: none).
+        vec2 nearestPeak = vec2(-1.0);
         for (int group = 0; group < 3; ++group)
         {
             groupLuma[group] = groupWeight[group] = vec2(0);
@@ -96,6 +100,20 @@ void main()
                         if (kind == 1u && any(notEqual(ivec2(adjacent.source.yz / screenProbe.spacing), neighbor)))
                         {
                             continue;
+                        }
+                        if (min(statistics[0].z, statistics[1].z) < 192.0 && abs(offset) <= 2 && other != index
+                            && adjacent.position.w != 0.0)
+                        {
+                            vec3 delta = ProbeNormalOffset(adjacent.normal.xyz, probe.normal.xyz);
+                            for (uint signal = 0u; signal < 2u; ++signal)
+                            {
+                                vec3 level = ProbeFilterInput(other, signal * 4u + 3u).rgb;
+                                for (uint channel = 0u; channel < 3u; ++channel)
+                                {
+                                    level[channel] += dot(ProbeFilterInput(other, signal * 4u + channel).yzw, delta);
+                                }
+                                nearestPeak[signal] = max(nearestPeak[signal], HybridLuminance(max(level, vec3(0))));
+                            }
                         }
                         float spatial = exp(-float(offset * offset) / spread)
                                       * clamp(radius + 1.0 - float(abs(offset)), 0.0, 1.0)
@@ -177,6 +195,16 @@ void main()
             float young      = 1.0 - smoothstep(32.0, 192.0, statistics[signal].z);
             scale[signal] =
                 ProbeSpatialOutlierScale(luma, w, total[signal], HybridLuminance(result[item].rgb) / total[signal], young);
+            // The interleaved test needs coplanar support, which a probe on a narrow face or thin
+            // detail lacks: its one-frame estimate would otherwise reach the screen unfiltered.
+            // Bound it by its nearest probes on any surface instead, over the same young window: the
+            // history keeps the raw estimate, so a shorter bound would only delay the outlier.
+            if (young > 0.0 && nearestPeak[signal] >= 0.0 && min(min(w.x, w.y), w.z) <= .05 * total[signal])
+            {
+                float level   = HybridLuminance(result[item].rgb) / total[signal];
+                float limit   = kIsolatedProbeSlack * nearestPeak[signal];
+                scale[signal] = min(scale[signal], mix(1.0, clamp(limit / max(level, 1e-20), 0.0, 1.0), young));
+            }
         }
         for (uint signal = 0u; signal < 2u; ++signal)
         {

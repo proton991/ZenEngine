@@ -4,6 +4,7 @@
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Graphics/Shared/EnvironmentSampling.h"
 
 namespace zen::rc
 {
@@ -178,6 +179,75 @@ void ScreenProbeGI::AddTracePass(RDGRayTracingPassDesc&& pass, uint32_t width, u
         .RecordPassCommands([width, height](RDGPassCmdEncoder& encoder) { encoder.TraceRays(width, height, 1); });
 }
 
+// Resolve visibility once per pixel. The gather weights each visible source at the receiver.
+void ScreenProbeGI::RecordSources(RDGComputePassDesc&        gather,
+                                  VoxelGIRenderer&           voxelGI,
+                                  RenderScene&               scene,
+                                  const HybridGIUniformData& receiver,
+                                  RHISampler*                sampler) const
+{
+    RenderGraph&   graph = *m_device->GetCurrentFrameRDG();
+    RDGTextureDesc texture;
+    texture.name                = "screen_probe_source_visibility";
+    texture.texFormat.dimension = TextureDimension::e2D;
+    texture.texFormat.width     = m_extent.x;
+    texture.texFormat.height    = m_extent.y;
+    texture.texFormat.depth     = 1;
+    texture.texFormat.format    = DataFormat::eR32UInt;
+    texture.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
+    const RDGTexture sources = graph.GetResourceManager()->CreateTexture(texture);
+    // A compact sun seen through small openings dominates sparse probe estimates. Shadow rays
+    // resolve it per pixel instead: a coarse grid first, then only where coplanar samples disagree.
+    texture.name             = "screen_probe_coarse_sources";
+    texture.texFormat.width  = (m_extent.x + ZEN_SCREEN_PROBE_SOURCE_STRIDE - 1u) / ZEN_SCREEN_PROBE_SOURCE_STRIDE;
+    texture.texFormat.height = (m_extent.y + ZEN_SCREEN_PROBE_SOURCE_STRIDE - 1u) / ZEN_SCREEN_PROBE_SOURCE_STRIDE;
+    const RDGTexture coarse  = graph.GetResourceManager()->CreateTexture(texture);
+    RDGBufferDesc    buffer;
+    buffer.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    buffer.name            = "screen_probe_source_lights";
+    buffer.size            = 2u * ZEN_ENVIRONMENT_MAX_SOURCES * sizeof(Vec4);
+    const RDGBuffer lights = graph.GetResourceManager()->CreateBuffer(buffer);
+    // Resolve each source tile's direction and energy once, not in every pixel group.
+    RDGComputePassDesc setup;
+    setup.SetShaderProgramName("ScreenProbeSourceSetupSP");
+    setup.SetPassTag("ScreenProbeSourceSetup");
+    setup.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+    voxelGI.BindLightingInputs(setup);
+    voxelGI.BindEnvironmentSamplingInputs(setup);
+    setup.BindStorageBuffer("ScreenProbeSourceLights", lights, RDGContentGuarantee::eFullWrite);
+    graph.AddComputePass(std::move(setup)).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    for (uint32_t stage = 0; stage < 2; ++stage)
+    {
+        RDGComputePassDesc pass;
+        pass.SetShaderProgramName(stage == 0 ? "ScreenProbeSourcesCoarseSP" : "ScreenProbeSourcesSP");
+        pass.SetPassTag(stage == 0 ? "ScreenProbeSourcesCoarse" : "ScreenProbeSources");
+        BindHybridReceiverGuides(pass, sampler, receiver);
+        pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+        voxelGI.BindHardwareRayInputs(pass, false);
+        pass.BindStorageBuffer("ScreenProbeSourceLights", lights);
+        if (stage == 0)
+        {
+            pass.BindStorageImage("coarseSourceVisibility", coarse, RDGContentGuarantee::eFullWrite);
+        }
+        else
+        {
+            pass.BindSampledTexture("coarseSourceVisibility", sampler, coarse);
+            pass.BindStorageImage("probeSourceVisibility", sources, RDGContentGuarantee::eFullWrite);
+        }
+        const glm::uvec2 extent = stage == 0 ? glm::uvec2(texture.texFormat.width, texture.texFormat.height) : m_extent;
+        const glm::uvec2 groups = (extent + glm::uvec2(7u)) / 8u;
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch(groups.x, groups.y, 1);
+        });
+    }
+    gather.BindStorageBuffer("ScreenProbeSourceLights", lights);
+    gather.BindSampledTexture("probeSourceVisibility", sampler, sources);
+    if (m_useSpecular)
+    {
+        voxelGI.BindSecondaryBRDF(gather);
+    }
+}
+
 void ScreenProbeGI::RecordClear(RenderGraph& graph) const
 {
     RDGComputePassDesc clear;
@@ -221,7 +291,8 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
                            const HybridGIUniformData& receiver,
                            const Mat4&                projectionView,
                            RHISampler*                sampler,
-                           bool                       reset)
+                           bool                       reset,
+                           bool                       skyLight)
 {
     RenderGraph&           graph     = *m_device->GetCurrentFrameRDG();
     RDGResourceManager&    resources = *graph.GetResourceManager();
@@ -236,13 +307,15 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     }
     m_uniforms.control = Vec4(scene.GetVoxelSceneBounds().GetMaxExtent(), reset ? 0 : m_validHistory, settings.temporal ? 1 : 0,
                               settings.filter ? 1 : 0);
+    // Hardware probes leave the environment's compact sources to per-pixel rays (RecordSources).
+    const bool recordedHits        = voxelGI.UsesRayTracingPipeline();
+    m_uniforms.residualEnvironment = recordedHits && skyLight ? 1u : 0u;
     if (m_needsClear)
     {
         RecordClear(graph);
     }
     RDGBufferDesc buffer;
     buffer.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
-    const bool recordedHits    = voxelGI.UsesRayTracingPipeline();
     buffer.name                = "screen_probe_rays";
     buffer.size                = uint64_t(count) * ProbeTraceBytesPerProbe(m_useSpecular && !recordedHits);
     const RDGBuffer rays       = resources.CreateBuffer(buffer);
@@ -345,7 +418,15 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         Dispatch(graph, std::move(filter), (count + 63u) / 64u);
     }
     RDGComputePassDesc gather;
-    gather.SetShaderProgramName(m_useSpecular ? "ScreenProbeGatherSP" : "ScreenProbeGatherDiffuseSP");
+    if (m_uniforms.residualEnvironment != 0u)
+    {
+        gather.SetShaderProgramName(m_useSpecular ? "ScreenProbeGatherSourcesSP" : "ScreenProbeGatherDiffuseSourcesSP");
+        RecordSources(gather, voxelGI, scene, receiver, sampler);
+    }
+    else
+    {
+        gather.SetShaderProgramName(m_useSpecular ? "ScreenProbeGatherSP" : "ScreenProbeGatherDiffuseSP");
+    }
     gather.SetPassTag("ScreenProbeGather");
     Bind(gather, receiver, sampler);
     voxelGI.BindLightingInputs(gather, m_useSpecular);

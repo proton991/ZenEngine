@@ -83,7 +83,7 @@ const float kProbeColdFrames = 4.0;
 bool        ProbeEnvironmentSampling()
 {
     return sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y > 0.0
-        && environmentRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS] > 0.0;
+        && EnvironmentRow(screenProbe.residualEnvironment != 0u, ZEN_ENVIRONMENT_IMPORTANCE_ROWS) > 0.0;
 }
 // Sample and evaluate the same quantized CDF, including bins rounded to zero.
 float ProbeCDFBoundary(uint index, uint boundary)
@@ -154,7 +154,8 @@ vec4 ProbeSampleDirection(uint        index,
         // Stratify the environment's row selection across its lanes.
         float row = (float(ray - uniformCount - localCount - learnedCount) + u.y) / float(environmentCount);
         float environmentPdf;
-        direction = SampleEnvironment(vec2(u.x, min(row, 0.99999994)), environmentPdf);
+        direction = SampleEnvironmentDistribution(vec2(u.x, min(row, 0.99999994)), screenProbe.residualEnvironment != 0u,
+                                                  environmentPdf);
     }
     else
     {
@@ -192,7 +193,10 @@ vec4 ProbeSampleDirection(uint        index,
             learnedPdf += learned[i].weight * HybridHenyeyGreensteinPDF(.5 * dot(chord, chord), learned[i].concentration);
         }
     }
-    float environmentDensity = environmentCount != 0u ? EnvironmentPDF(direction) : 0.0;
+    bool  source;
+    float environmentDensity = environmentCount == 0u                ? 0.0
+                             : screenProbe.residualEnvironment != 0u ? EnvironmentResidualPDF(direction, source)
+                                                                     : EnvironmentPDF(direction);
     pdf = (float(uniformCount) * (.5 / HYBRID_PI) + float(localCount) * localPdf + float(environmentCount) * environmentDensity
            + float(cdfCount) * probability * ProbeOctDensity(direction) + float(learnedCount) * learnedPdf)
         / float(ZEN_SCREEN_PROBE_RAYS);
@@ -326,6 +330,20 @@ void main()
     }
 }
 #elif defined(SCREEN_PROBE_TRACE_HITS)
+// Probes integrate the residual environment when per-pixel rays light the source tiles.
+vec3 ProbeMissRadiance(vec3 direction, bool valid)
+{
+    bool source = false;
+    if (screenProbe.residualEnvironment != 0u)
+    {
+        uint  face;
+        vec2  uv, st;
+        uvec2 cell;
+        EnvironmentLocate(direction, face, uv, cell, st);
+        source = EnvironmentSourceTile(EnvironmentTileOf(face, cell));
+    }
+    return source ? vec3(0) : NativeMissRadiance(direction, valid);
+}
 // Trace the first segment of every sample still to be traced with the record-only hit shader.
 // Misses are resolved here; hits wait for the shading pass.
 void main()
@@ -353,7 +371,7 @@ void main()
             }
             else
             {
-                ProbeWriteResolved(address, NativeMissRadiance(direction, hit.valid), false, hit.valid);
+                ProbeWriteResolved(address, ProbeMissRadiance(direction, hit.valid), false, hit.valid);
             }
         }
     }

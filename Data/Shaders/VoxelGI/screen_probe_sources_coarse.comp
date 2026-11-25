@@ -1,0 +1,23 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#include "../Common/opacity_micromap.glsl"
+#define SCREEN_PROBE_SOURCES_COARSE
+#include "screen_probe_sources.glsl"
+// Geometric source visibility at the center of every eighth pixel in each direction.
+void main()
+{
+    ivec2 coarse = ivec2(gl_GlobalInvocationID.xy);
+    if (all(lessThan(coarse, imageSize(coarseSourceVisibility))))
+    {
+        ivec2 pixel   = min(coarse * int(ZEN_SCREEN_PROBE_SOURCE_STRIDE) + int(ZEN_SCREEN_PROBE_SOURCE_STRIDE / 2),
+                            textureSize(receiverDepth, 0) - 1);
+        uint  visible = 0u;
+        if (texelFetch(receiverDepth, pixel, 0).r < 1.0)
+        {
+            vec3 geometric = HybridGeometricNormal(pixel);
+            visible        = TraceSources(HybridPosition(pixel), geometric, SourceCandidates(geometric));
+        }
+        imageStore(coarseSourceVisibility, coarse, uvec4(visible));
+    }
+}

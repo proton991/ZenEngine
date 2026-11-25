@@ -374,8 +374,8 @@ bool VoxelGIRenderer::Init()
                                               nullptr, "environment_luminance");
             m_environmentTiles =
                 m_device->CreateStorageBuffer(ZEN_ENVIRONMENT_TILE_CDF_SIZE * sizeof(float), nullptr, "environment_tiles");
-            // Source count, source tiles and the residual tile prefix sums (environment_tiles.comp).
-            m_environmentSources = m_device->CreateStorageBuffer((1u + ZEN_ENVIRONMENT_MAX_SOURCES + ZEN_ENVIRONMENT_TILES + 1u)
+            // Count, tile indices, residual CDF and three scalar RGB energy components per source.
+            m_environmentSources = m_device->CreateStorageBuffer((2u + 4u * ZEN_ENVIRONMENT_MAX_SOURCES + ZEN_ENVIRONMENT_TILES)
                                                                      * sizeof(uint32_t),
                                                                  nullptr, "environment_sources");
             m_environmentResidualColumns = m_device->CreateStorageBuffer(
@@ -1256,6 +1256,7 @@ void VoxelGIRenderer::BuildEnvironmentDistribution()
     RDGComputePassDesc tiles;
     tiles.SetShaderProgramName("EnvironmentTilesSP");
     tiles.SetPassTag("EnvironmentTiles");
+    tiles.BindSampledTexture("coneEnvironmentMap", env.pPrefilteredSampler, env.pPrefiltered->GetDefaultView());
     tiles.BindStorageBuffer("EnvironmentColumns", m_environmentColumns);
     tiles.BindStorageBuffer("EnvironmentRows", m_environmentRows);
     tiles.BindStorageBuffer("EnvironmentLuminance", m_environmentLuminance);

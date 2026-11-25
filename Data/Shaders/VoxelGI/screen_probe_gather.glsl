@@ -13,6 +13,9 @@ layout(std430, set = 1, binding = 87) readonly buffer FilteredScreenProbeLightin
 layout(set = 1, binding = 88, rgba16f) writeonly uniform image2D probeSky;
 layout(set = 1, binding = 89, rgba16f) writeonly uniform image2D probeBounce;
 layout(set = 1, binding = 90, rgba16f) writeonly uniform image2D probeSpecular;
+#ifdef SCREEN_PROBE_GATHER_SOURCES
+#    include "screen_probe_source_gather.glsl"
+#endif
 layout(local_size_x = ZEN_SCREEN_PROBE_SPACING, local_size_y = ZEN_SCREEN_PROBE_SPACING) in;
 // The cubic B-spline has support over two grid spacings and a continuous
 // derivative at every cell boundary. All eligible probes use the same kernel.
@@ -239,6 +242,10 @@ void main()
             bounce          = max(bounce + confidence.y * (bounce * shift - (bounceMoment * slope) / total), vec3(0));
         }
 
+#ifdef SCREEN_PROBE_GATHER_SOURCES
+        vec3 sourceSpecular;
+        GatherProbeSources(pixel, sky, sourceSpecular);
+#endif
         imageStore(probeSky, pixel, vec4(sky, age / max(total, 1e-20)));
         imageStore(probeBounce, pixel, vec4(bounce * gi.volume.w, age / max(total, 1e-20)));
 #ifdef SCREEN_PROBE_DIFFUSE_ONLY
@@ -248,7 +255,11 @@ void main()
         bool hasGlossy = glossyWeight > .001;
         if (hasProbe)
         {
+            // The probe lobe misses the source tiles; the glossy path traces them itself.
             reflected /= specularWeight;
+#    ifdef SCREEN_PROBE_GATHER_SOURCES
+            reflected.rgb += sourceSpecular;
+#    endif
         }
         if (hasGlossy)
         {
