@@ -23,10 +23,12 @@ void main()
             float total        = max(min(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
                                          probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z),
                                      1.0);
-            float young        = 1.0 - smoothstep(1.0, 8.0, total);
+            float young        = 1.0 - smoothstep(32.0, 192.0, total);
             vec3  groupWeight  = vec3(total, 0, 0);
             vec3  groupLuma    = vec3(HybridLuminance(value.rgb) * total, 0, 0);
             value             *= total;
+            // Brightest adjacent probe on any surface (negative: none).
+            float nearestPeak = -1.0;
             if (screenProbe.control.w != 0.0 && probe.position.w != 0.0)
             {
                 for (int y = -1; y <= 1; ++y)
@@ -45,22 +47,36 @@ void main()
                                                                probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z),
                                                            1.0);
                             uvec2 sampleValue        = probeSpecularData[other * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel];
-                            vec4  contribution = vec4(unpackHalf2x16(sampleValue.x), unpackHalf2x16(sampleValue.y)) * weight;
+                            vec4  sampleRadiance     = vec4(unpackHalf2x16(sampleValue.x), unpackHalf2x16(sampleValue.y));
                             if (young > 0.0)
                             {
-                                uint group          = uint(3 + x + y) % 3u;
-                                groupLuma[group]   += HybridLuminance(contribution.rgb);
+                                float luma          = HybridLuminance(sampleRadiance.rgb);
+                                uint  group         = uint(3 + x + y) % 3u;
+                                groupLuma[group]   += luma * weight;
                                 groupWeight[group] += weight;
+                                if (other != index && sampleProbe.position.w != 0.0)
+                                {
+                                    nearestPeak = max(nearestPeak, luma);
+                                }
                             }
-                            value += contribution;
+                            value += sampleRadiance * weight;
                             total += weight;
                         }
                     }
                 }
             }
-            value     /= total;
-            value.rgb *= ProbeSpatialOutlierScale(groupLuma, groupWeight, total, HybridLuminance(value.rgb), young);
-            filteredProbeSpecularData[address] = uvec2(packHalf2x16(value.rg), packHalf2x16(value.ba));
+            value       /= total;
+            float level  = HybridLuminance(value.rgb);
+            float scale  = ProbeSpatialOutlierScale(groupLuma, groupWeight, total, level, young);
+            // Like the diffuse filter, bound a probe on a thin feature, which lacks coplanar support
+            // for that test, by its brightest adjacent probe on any surface. Both use the same young
+            // window: the history keeps the raw estimate, so a shorter bound only delays the outlier.
+            if (young > 0.0 && nearestPeak >= 0.0 && min(min(groupWeight.x, groupWeight.y), groupWeight.z) <= .05 * total)
+            {
+                scale = min(scale, mix(1.0, clamp(kIsolatedProbeSlack * nearestPeak / max(level, 1e-20), 0.0, 1.0), young));
+            }
+            value.rgb                          *= scale;
+            filteredProbeSpecularData[address]  = uvec2(packHalf2x16(value.rg), packHalf2x16(value.ba));
         }
     }
 }

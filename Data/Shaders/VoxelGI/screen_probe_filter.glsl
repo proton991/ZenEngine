@@ -18,8 +18,6 @@ vec4 ProbeFilterInput(uint index, uint item)
     return probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + item];
 #endif
 }
-// A cold probe without coplanar support may exceed its brightest nearest probe by this factor.
-const float kIsolatedProbeSlack = 2.0;
 layout(local_size_x = 64) in;
 void main()
 {

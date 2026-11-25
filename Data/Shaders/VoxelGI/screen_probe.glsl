@@ -155,6 +155,8 @@ float ProbeSampleAge(float age, float batches)
     float mature = float(ProbeMatureBatches());
     return max(age, batches / mature);
 }
+// A young probe without coplanar support may exceed its brightest adjacent probe by this factor.
+const float kIsolatedProbeSlack = 2.0;
 // Limit a young estimate only when three independently weighted groups of taps support the comparison.
 float ProbeSpatialOutlierScale(vec3 groupLuma, vec3 groupWeight, float total, float mean, float young)
 {

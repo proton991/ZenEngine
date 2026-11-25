@@ -10,8 +10,9 @@
 #    include "screen_probe_hits.glsl"
 #endif
 layout(local_size_x = 64) in;
-shared vec4 directions[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
-shared vec4 radiance[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+shared vec4  directions[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+shared vec4  radiance[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+shared float densities[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
 layout(set = 1, binding = 128) uniform sampler2D secondaryBRDFMap;
 // A non-negative value rounded to one of its two neighbouring halves, choosing the farther one with
 // probability proportional to its closeness. The stored value is exact on average: a long running
@@ -69,7 +70,8 @@ void main()
 #endif
             float nl                = max(dot(probe.normal.xyz, ray.xyz), 0.0);
             directions[sampleIndex] = vec4(ray.xyz, nl);
-            radiance[sampleIndex]   = vec4(incoming * (sky ? 1.0 : hitGain), float(sky)) * (nl / ray.w);
+            radiance[sampleIndex]   = vec4(incoming * (sky ? 1.0 : hitGain), float(sky));
+            densities[sampleIndex]  = nl / ray.w;
         }
         barrier();
         for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
@@ -95,6 +97,7 @@ void main()
             vec2  brdf = textureLod(secondaryBRDFMap, vec2(nv, roughness), 0).rg;
             float norm = 4.0 * HYBRID_PI * (nv * (1.0 - k) + k) * max(f0 * brdf.x + brdf.y, 1e-5);
             vec4  sum  = vec4(0);
+            float lobe = 0.0;
             for (uint sampleIndex = 0u; sampleIndex < sampleCount; ++sampleIndex)
             {
                 vec4  ray          = directions[sampleIndex];
@@ -105,19 +108,29 @@ void main()
                 float grazing      = max(1.0 - sqrt(vh2), 0.0);
                 float squared      = grazing * grazing;
                 float fresnel      = f0 + (1.0 - f0) * squared * squared * grazing;
-                float weight       = fresnel / ((nl * (1.0 - k) + k) * denominator * denominator);
+                float weight       = densities[sampleIndex] * fresnel / ((nl * (1.0 - k) + k) * denominator * denominator);
                 sum               += radiance[sampleIndex] * weight;
+                lobe              += weight;
             }
-            vec4 current = sum * (alphaSquared / (float(max(sampleCount, 1u)) * norm));
+            // Scaled, each sample's lobe weight has unit expectation. A ray near the peak of a
+            // narrow lobe can still carry tens of times that, which made a young probe's reflection
+            // tens of times its brightest sample. Normalize by the samples' actual total weight (the
+            // ratio estimator of stochastic screen-space reflections) and count history at its
+            // expected weight. One expected frame of weight reproduces the running mean.
+            float scale       = alphaSquared / norm;
+            vec4  current     = sum * scale;
+            float totalWeight = lobe * scale;
             if (probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0)
             {
-                uvec2 packed  = PreviousProbeSpecular(probe.source.x, texel);
-                vec4  history = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
-                float age     = min(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
-                                    probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z);
-                current       = mix(history, current, 1.0 / max(age, 1.0));
+                uvec2 packed   = PreviousProbeSpecular(probe.source.x, texel);
+                vec4  history  = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
+                float age      = min(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
+                                     probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z);
+                float prior    = (max(age, 1.0) - 1.0) * float(max(sampleCount, 1u));
+                current       += history * prior;
+                totalWeight   += prior;
             }
-            current                    = clamp(current, vec4(0), vec4(65504, 65504, 65504, 1));
+            current                    = clamp(current / max(totalWeight, 1e-20), vec4(0), vec4(65504, 65504, 65504, 1));
             uint address               = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
             probeSpecularData[address] = StochasticPackHalf(current, address ^ HybridHash(hybrid.sampling.x ^ 0x5f3a1u));
         }
