@@ -198,14 +198,16 @@ void main()
                 vec2        pixel           = ProbeProject(old.position.xyz, screenProbe.projectionView);
                 vec2        displacement    = pixel - (vec2(probe.source.yz) + .5);
                 float       distanceSquared = dot(displacement, displacement);
-                // Motion keeps a drifted world anchor and its history. Once the view is still
-                // relative to that anchor, return a compatible probe to its tile center:
-                // otherwise settled placement, and the settled image, depend on the camera path.
+                // When an anchor travels farther than one probe spacing, use the current
+                // receiver immediately. Keeping the drifted position until the first held
+                // frame switches the gather footprint on thin surfaces just after landing.
                 vec2 previousPixel = ProbeProject(old.position.xyz, screenProbe.previousProjectionViews[probe.source.x >> 30u]);
                 vec2 motion        = pixel - previousPixel;
-                bool recenter      = dot(motion, motion) < 1e-4 && distanceSquared >= 1.0
-                                  && ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) > .5;
-                if (distanceSquared < .5625 * float(screenProbe.spacing * screenProbe.spacing) && !recenter)
+                float motionSquared = dot(motion, motion);
+                bool  fast          = motionSquared > float(screenProbe.spacing * screenProbe.spacing);
+                bool  recenter      = (fast || (motionSquared < 1e-4 && distanceSquared >= 1.0))
+                                   && ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) > .5;
+                if (distanceSquared < .5625 * float(screenProbe.spacing * screenProbe.spacing) && !fast && !recenter)
                 {
                     probe.position = old.position;
                     probe.normal   = vec4(old.normal.xyz, min(old.normal.w + 1.0, 1152.0));
