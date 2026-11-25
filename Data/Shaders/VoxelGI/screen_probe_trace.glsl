@@ -106,14 +106,17 @@ vec4 ProbeSampleDirection(uint        index,
     vec3  normal = probe.normal.xyz;
     vec3  direction;
     float pdf;
-    uint  environmentCount  = ProbeEnvironmentSampling()
-                                ? (probe.normal.w <= kProbeColdFrames ? 2u * kProbeEnvironmentLanes : kProbeEnvironmentLanes)
-                                : 0u;
-    uint  localCount        = weightSum > 1e-20 ? uint(3 * ZEN_SCREEN_PROBE_RAYS / 4) - environmentCount : 0u;
-    uint  uniformCount      = (uint(ZEN_SCREEN_PROBE_RAYS) - environmentCount) / 2u - localCount / 2u;
-    uint  cdfCount          = uint(ZEN_SCREEN_PROBE_RAYS) - localCount - uniformCount - environmentCount;
-    uint  learnedCount      = hasLearned ? min(uint(ZEN_SCREEN_PROBE_RAYS / 4), localCount + cdfCount / 2u) : 0u;
-    uint  fromLights        = min(localCount, learnedCount);
+    uint  environmentCount = ProbeEnvironmentSampling()
+                               ? (probe.normal.w <= kProbeColdFrames ? 2u * kProbeEnvironmentLanes : kProbeEnvironmentLanes)
+                               : 0u;
+    uint  localCount       = weightSum > 1e-20 ? uint(3 * ZEN_SCREEN_PROBE_RAYS / 4) - environmentCount : 0u;
+    uint  uniformCount     = (uint(ZEN_SCREEN_PROBE_RAYS) - environmentCount) / 2u - localCount / 2u;
+    uint  cdfCount         = uint(ZEN_SCREEN_PROBE_RAYS) - localCount - uniformCount - environmentCount;
+    // A cold probe can inherit a learned guide before it has seen a nearby
+    // lamp. Keep half of the lamp lanes so its measured PDF covers both guides.
+    uint replaceableLights  = probe.normal.w <= kProbeColdFrames ? localCount / 2u : localCount;
+    uint learnedCount       = hasLearned ? min(uint(ZEN_SCREEN_PROBE_RAYS / 4), replaceableLights + cdfCount / 2u) : 0u;
+    uint fromLights         = min(replaceableLights, learnedCount);
     localCount             -= fromLights;
     cdfCount               -= learnedCount - fromLights;
     if (ray < uniformCount)
@@ -232,7 +235,7 @@ float ProbeLoadGuides(ScreenProbe   probe,
                 lobes[i]   = guide.w;
                 axes[i]    = guide.xyz;
                 weights[i] = HybridLuminance(light.colorIntensity.rgb) * light.colorIntensity.w
-                           * max(dot(probe.normal.xyz, axes[i]), .02) / dist2;
+                           * ProbeLightProjection(dot(probe.normal.xyz, axes[i])) / dist2;
             }
         }
         weightSum += weights[i];

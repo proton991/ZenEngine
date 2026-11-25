@@ -236,6 +236,14 @@ vec2 ProbeProject(vec3 position, mat4 matrix)
     vec4 clip = matrix * vec4(position, 1);
     return clip.w > 0.0 ? (clip.xy / clip.w * .5 + .5) * vec2(hybrid.resolution.xy) : vec2(-1e8);
 }
+// Average the projected cosine over a finite guide footprint. A lamp at the
+// horizon can illuminate a patch above it, even when its center has zero cosine.
+float ProbeLightProjection(float cosine)
+{
+    const float width = .35; // RMS chord length of the broad g = .94 proposal.
+    float       edge  = max(width - abs(cosine), 0.0);
+    return max(max(cosine, 0.0) + edge * edge / (4.0 * width), .001);
+}
 float ProbePlaneWeight(vec3 position, vec3 normal, ScreenProbe probe)
 {
     vec3  delta     = position - probe.position.xyz;

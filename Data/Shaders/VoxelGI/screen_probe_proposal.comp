@@ -126,7 +126,7 @@ void main()
                     float cosine     = max(dot(delta * inversesqrt(dist2), direction), 0.0);
                     float shape      = .04 / max(1.04 - cosine * cosine, .04);
                     float power      = HybridLuminance(light.colorIntensity.rgb) * light.colorIntensity.w / dist2;
-                    float importance = power * max(dot(probe.normal.xyz, delta * inversesqrt(dist2)), .02);
+                    float importance = power * ProbeLightProjection(dot(probe.normal.xyz, delta * inversesqrt(dist2)));
                     if (lane == 0u)
                     {
                         uint candidate = uint(i + 1);
