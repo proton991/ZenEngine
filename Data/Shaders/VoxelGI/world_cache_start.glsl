@@ -4,6 +4,8 @@
 #include "hybrid_guides.glsl"
 #include "world_cache.glsl"
 #include "world_cache_path.glsl"
+#include "gi_common.glsl"
+#include "world_cache_sampling.glsl"
 #include "world_cache_accumulate.glsl"
 layout(local_size_x = 8, local_size_y = 8) in;
 void WorldStart(uvec2 tile, out WorldPath path)
@@ -39,15 +41,22 @@ void WorldStart(uvec2 tile, out WorldPath path)
     // win atomics at the same cell. An 8x8 tile visits each pixel once per 64 frames.
     uint  pixelVisit = worldCache.schedule.x / (size * size);
     vec2  u          = HybridSkySample(uvec2(pixel), pixelVisit, 0xf177u);
-    float pdf        = 1.0;
-    vec3  direction  = glossy ? HybridGGXSample(normal, normalize(giCache.camera.xyz - position), clamp(surface.g, .04, 1.0), u)
-                              : HybridCosineSample(geometric, u, pdf);
-    bool  activeRay  = visible && dot(direction, geometric) > 0.0;
-    path.origin      = vec4(position, uintBitsToFloat(packUnorm2x16(EncodeGBufferNormal(geometric))));
-    path.ray         = vec4(direction, !glossy ? 1.0 / max(HYBRID_PI * pdf, 1e-8) : 0.0);
-    path.state       = uvec4(slot, packUnorm2x16(EncodeGBufferNormal(normal)), floatBitsToUint(1.0),
-                             activeRay ? (glossy ? kMaterial : kIncludesReceiver) : kDead);
-    path.hit         = uvec4(0xffffffffu);
+    float weight     = 0.0;
+    vec3  direction;
+    if (glossy)
+    {
+        direction = HybridGGXSample(normal, normalize(giCache.camera.xyz - position), clamp(surface.g, .04, 1.0), u);
+    }
+    else
+    {
+        direction = WorldSampleDirection(geometric, u, true, weight);
+    }
+    bool activeRay = visible && dot(direction, geometric) > 0.0;
+    path.origin    = vec4(position, uintBitsToFloat(packUnorm2x16(EncodeGBufferNormal(geometric))));
+    path.ray       = vec4(direction, weight);
+    path.state     = uvec4(slot, packUnorm2x16(EncodeGBufferNormal(normal)), floatBitsToUint(1.0),
+                           activeRay ? (glossy ? kMaterial : kIncludesReceiver) : kDead);
+    path.hit       = uvec4(0xffffffffu);
 }
 void main()
 {

@@ -38,10 +38,17 @@ void main()
     uint index = ProbeGroupIndex(), lane = gl_LocalInvocationID.x;
     if (index < screenProbe.grid.w)
     {
-        ScreenProbe probe       = probes[index];
-        uint        sampleCount = probe.position.w != 0.0 ? min(ProbeScheduledBatches(index) * uint(ZEN_SCREEN_PROBE_RAYS),
-                                                                uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS))
-                                                          : 0u;
+        ScreenProbe probe = probes[index];
+        if (probe.position.w == 0.0)
+        {
+            for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
+            {
+                probeSpecularData[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel] = uvec2(0);
+            }
+            return;
+        }
+        uint sampleCount =
+            min(ProbeScheduledBatches(index) * uint(ZEN_SCREEN_PROBE_RAYS), uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS));
         // Accumulate the radiance of escaped paths and their visibility independently.
         float hitGain = hybrid.reflection.x != 0u ? gi.volume.w : 0.0;
         for (uint sampleIndex = lane; sampleIndex < sampleCount; sampleIndex += 64u)

@@ -13,41 +13,13 @@ layout(set = 1, binding = 7) uniform samplerCube coneEnvironmentMap;
 #    include "ray_hit_lighting.glsl"
 #    include "ray_hit_bounce.glsl"
 #endif
-#include "environment_sampling.glsl"
+#include "world_cache_sampling.glsl"
 layout(push_constant) uniform WorldBounce
 {
     uint bounce;
 };
 layout(local_size_x = 8, local_size_y = 8) in;
 
-vec3 WorldSampleDirection(vec3 normal, vec2 u, out float weight)
-{
-    // Equal uniform/cosine mixture: its inverse CDF has z = sqrt(.25 + 2u) - .5.
-    // This spends more rays near the geometric normal while retaining bounded weights
-    // for the other five directional records. weight is 1/(pi*pdf).
-    bool  sky      = sceneUbo.environment.x * sceneUbo.environment.z * gi.lighting.y > 0.0
-                  && environmentRows[ZEN_ENVIRONMENT_IMPORTANCE_ROWS] > 0.0;
-    float skyShare = sky ? .25 : 0.0;
-    vec3  direction;
-    if (u.x < skyShare)
-    {
-        float pdf;
-        direction = SampleEnvironment(vec2(u.x / skyShare, u.y), pdf);
-    }
-    else
-    {
-        float z      = sqrt(.25 + 2.0 * (u.x - skyShare) / (1.0 - skyShare)) - .5;
-        float radius = sqrt(max(0.0, 1.0 - z * z));
-        direction    = HybridBasis(normal) * vec3(radius * cos(2.0 * HYBRID_PI * u.y), radius * sin(2.0 * HYBRID_PI * u.y), z);
-    }
-    float pdfPi = .25 * (1.0 + 2.0 * max(dot(normal, direction), 0.0));
-    if (sky)
-    {
-        pdfPi = mix(pdfPi, HYBRID_PI * EnvironmentPDF(direction), skyShare);
-    }
-    weight = 1.0 / max(pdfPi, 1e-20);
-    return direction;
-}
 // Importance across the six records depends on incident power. The cosine
 // projection for each signed axis is applied only after selecting the light.
 vec3 WorldSampleLight(vec3 position, vec3 geometric, uint seed, out vec3 direction)
@@ -106,6 +78,16 @@ void main()
     }
     uint      index = tile.x + tile.y * tiles.x;
     WorldPath path  = paths[index];
+    uint      seed  = HybridHash(index ^ HybridHash(worldCache.schedule.x) ^ HybridHash(bounce));
+    // A sky proposal below the receiver contributes zero transport but its direct-light
+    // observation still belongs to the cell. Both share the count taken in WorldStart.
+    if (bounce == 0u && (path.state.w == kIncludesReceiver || path.state.x != kNoWorldCell))
+    {
+        vec3 geometric = DecodeGBufferNormal(unpackUnorm2x16(floatBitsToUint(path.origin.w)));
+        vec3 axis;
+        vec3 power = WorldSampleLight(path.origin.xyz, geometric, seed ^ 0x77254u, axis);
+        WorldProject(path.state.x, axis, power);
+    }
     if (path.state.w != kDead)
     {
 #ifdef HYBRID_FIELD_TRAVERSAL
@@ -129,26 +111,21 @@ void main()
         uint ordinal  = 0u;
         uint nextSlot = kNoWorldCell;
         bool extend   = hit.hit && hit.valid && path.state.w != kTerminal;
-        uint seed     = HybridHash(index ^ HybridHash(worldCache.schedule.x) ^ HybridHash(bounce));
-        if (bounce == 0u && path.state.w == kIncludesReceiver)
-        {
-            vec3 geometric = DecodeGBufferNormal(unpackUnorm2x16(floatBitsToUint(path.origin.w)));
-            vec3 axis;
-            vec3 power = WorldSampleLight(path.origin.xyz, geometric, seed ^ 0x77254u, axis);
-            WorldProject(path.state.x, axis, power);
-        }
         if (hit.hit && hit.valid)
         {
+            vec4 cacheNormal = vec4(normal, 1.0);
 #ifdef HYBRID_FIELD_TRAVERSAL
             extend = NativeFieldMaterial(hit, reflectance, emission) && extend;
 #else
             Material material = LoadRayHitMaterial(hit.triangle.z);
             bool     flipped;
             normal = RayHitVertexNormal(hit, vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics), flipped);
-            reflectance = RayHitBounceReflectance(hit, material, dot(normal, -path.ray.xyz), emission);
+            reflectance = RayHitBounceReflectance(hit, material, normal, -path.ray.xyz, emission, cacheNormal);
 #endif
             bool exact, usable;
-            vec3 lighting = WorldLookup(hit.position, hit.normal, normal, true, WorldFeedbackSelection(seed), exact, usable);
+            vec3 lighting =
+                WorldLookup(hit.position, hit.normal, cacheNormal.xyz, true, WorldFeedbackSelection(seed), exact, usable)
+                * cacheNormal.w;
             if (extend)
             {
                 nextSlot = WorldBeginSample(hit.position, hit.normal, ordinal);
@@ -184,7 +161,7 @@ void main()
         {
             float weight;
             vec2  u          = WorldDirectionSample(nextSlot, ordinal, seed);
-            vec3  direction  = WorldSampleDirection(hit.normal, u, weight);
+            vec3  direction  = WorldSampleDirection(hit.normal, u, false, weight);
             path.origin      = vec4(hit.position, uintBitsToFloat(packUnorm2x16(EncodeGBufferNormal(hit.normal))));
             path.ray         = vec4(direction, weight);
             float throughput = uintBitsToFloat(path.state.z) * clamp(HybridLuminance(reflectance), 0.0, 1.0);

@@ -3,7 +3,6 @@ Run with a native-GI .zenrender template, an empty output directory, and the rel
 """
 import argparse
 import copy
-import struct
 import subprocess
 from pathlib import Path
 
@@ -11,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 from gi_stability import DEFAULT_EXE, ROOT, read_json, write_json, zenapp, provenance
-from voxelization_fixtures import Fixture
+from voxelization_fixtures import Fixture, write_half_float_cube
 
 SIDE = 192
 LUMA = np.array([.2126, .7152, .0722])
@@ -44,8 +43,7 @@ def write_cube(path, name):
     if name == 'mixed-white':
         for x in (67, 74):
             faces[3, 69:72, x:x + 3, :3] = 900 * LUMA[0]
-    header = struct.pack('<13I', 0x04030201, 0x140B, 2, 0x1908, 0x881A, 0x1908, side, side, 0, 0, 6, 1, 0)
-    path.write_bytes(bytes.fromhex('AB4B5458203131BB0D0A1A0A') + header + struct.pack('<I', faces[0].nbytes) + faces.tobytes())
+    write_half_float_cube(path, faces)
 
 
 def linear_radiance(display_rgb):

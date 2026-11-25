@@ -228,6 +228,9 @@ void WorldRadianceCache::Record(VoxelGIRenderer&           voxelGI,
     start.SetShaderProgramName(NameID(fmt::format("WorldCacheStart{}SP", bits)));
     start.SetPassTag("WorldCacheStart");
     Bind(start);
+    start.BindValue("uSceneData", lighting);
+    voxelGI.BindLightingInputs(start, false);
+    voxelGI.BindEnvironmentSamplingInputs(start);
     BindHybridReceiverGuides(start, sampler, receiver);
     start.BindStorageBuffer("WorldCachePaths", paths, RDGContentGuarantee::eFullWrite);
     graph.AddComputePass(std::move(start)).RecordPassCommands([tiles](RDGPassCmdEncoder& encoder) {

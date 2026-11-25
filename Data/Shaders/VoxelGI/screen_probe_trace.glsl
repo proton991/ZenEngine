@@ -402,9 +402,10 @@ void main()
         // Probe rays carry ray flag 1, so their hits shade with the interpolated vertex normal.
         bool flipped;
         vec3 normal = RayHitVertexNormal(hit, vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics), flipped);
-        vec3 reflectance = RayHitBounceReflectance(hit, material, dot(normal, -sampleRay.xyz), emission);
+        vec4 cacheNormal;
+        vec3 reflectance = RayHitBounceReflectance(hit, material, normal, -sampleRay.xyz, emission, cacheNormal);
         bool found, usable;
-        vec3 diffuse = WorldLookup(hit.position, hit.normal, normal, false, vec2(0), found, usable);
+        vec3 diffuse = WorldLookup(hit.position, hit.normal, cacheNormal.xyz, false, vec2(0), found, usable) * cacheNormal.w;
         uint seed    = ProbePathSeed(ProbeAnchorSeed(probes[index]), ray, batch);
         if (!usable)
         {

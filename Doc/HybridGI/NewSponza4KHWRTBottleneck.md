@@ -1,5 +1,25 @@
 # New Sponza at native 4K with hardware ray tracing
 
+## November 25 panning frame time and diffuse bounce
+
+On the RTX 5080, the normal-mapped Optimal preset reached **45.74 FPS** over the warmed pan, up from **44.62 FPS** on `c421b66f`. These are medians of three standalone ZenApp launches per build over the same 18 camera cycles. Original runs ranged from 44.51 to 44.75 FPS and revised runs from 44.57 to 46.98 FPS. In separate 80-frame Nsight captures, median GPU frame time fell from **23.27 to 21.49 ms** and p95 from **23.71 to 21.88 ms**. All 80 revised GPU frames exceeded the 16.67 ms budget. Both builds used native 3840 × 2160, an 8-pixel probe grid, HDR lighting and a 4,194,304-cell world cache. [Timing and launch records](../../build/gi-pan-bounce-20261125-131500/milestone.md) · [Original GPU trace](../../build/gi-pan-bounce-20261125-131500/baseline-trace/summary.json) · [Revised GPU trace](../../build/gi-pan-bounce-20261125-131500/final-trace/summary.json)
+
+Probe placement skips duplicate adaptive candidates and checks the projected surface only when a candidate can win. Empty probes clear their reflection atlas directly. During motion, probes that retain the same world anchor and sufficient lighting history trace fewer rays. Newly exposed and relocated probes retain their recovery budget. Hit shading fell from 2.76 to 2.29 ms, reflection prefiltering from 1.39 to 1.08 ms and adaptive placement from 1.30 to 1.08 ms. The full-resolution gather remains the largest pass at 3.59 ms. [Probe placement](../../Data/Shaders/VoxelGI/screen_probe_place.comp) · [Ray scheduling](../../Data/Shaders/VoxelGI/screen_probe_proposal.comp)
+
+World-cache paths starting on visible surfaces now reserve a quarter of their diffuse rays for importance sampling the active HDR environment. This reduces clipping when a cosine-sampled ray hits a small, bright sun. A proposal below the receiver still counts its analytic direct-light observation. At reflective secondary hits, the cache lookup tilts toward the mirror direction according to specular energy and roughness, using the same six directional records. The tilt is normalized for uniform hemispherical light. [Direction sampling](../../Data/Shaders/VoxelGI/world_cache_sampling.glsl) · [Secondary-hit shading](../../Data/Shaders/VoxelGI/ray_hit_bounce.glsl) · [HDR bounce regression](../../tools/check_world_cache_hdr_bounce.py)
+
+| Settled pose | Diffuse GI bias, before → after | Diffuse relative RGB RMS, before → after | Total lighting bias, before → after |
+|---|---:|---:|---:|
+| Center | −6.05% → −4.34% | 41.09% → 41.18% | −1.47% → −0.84% |
+| 20° yaw | −6.35% → −4.62% | 40.60% → 41.50% | −1.39% → −0.79% |
+| 180° yaw | −11.41% → −7.99% | 23.89% → 23.54% | −10.39% → −6.88% |
+
+Each pose settled for 3,072 frames with vertex normals matched to the path tracer. At center, the surface-bounced irradiance deficit fell from 9.03% to 6.31%. Glossy indirect lighting ended 2.44% bright at center and 2.97% bright at 20°. The reference used 256 paths per native pixel at center and 32 in both rotated views. [Per-term results and reference uncertainty](../../build/gi-pan-bounce-20261125-131500/milestone.md) · [Image comparison](../../build/gi-pan-bounce-20261125-131500/direction/comparison.png)
+
+In a two-surface diffuse corner, increasing a compact HDR source’s radiance 100× increased bounced irradiance on the wall by 40.45× in the original engine and 100.01× in the revised engine. The direct sky component scaled 99.96× in both. [Original fixture](../../build/gi-pan-bounce-20261125-131500/hdr-regression-original/results.json) · [Revised fixture](../../build/gi-pan-bounce-20261125-131500/hdr-regression/results.json)
+
+Repeated-pan temporal RMS rose from 0.711 to 0.721 on the 0–255 display scale. The share of pixels differing by more than four levels rose from 0.537% to 0.547%. In one matched rapid-turn trajectory per build, the six-frame 180° landing had 42 → 45 sparkle clusters and the instant cut had 27 → 19. Landing RMS was 1.410 → 1.392 and cut RMS was 1.524 → 1.522 against each build’s own settled image. [Motion measurements](../../build/gi-pan-bounce-20261125-131500/milestone.md)
+
 ## Rapid camera turns and rough indirect reflections
 
 A fixed-eye turn through 180° in six frames exposed a noise burst in New Sponza. The repro warms the original view for 1,024 frames, rotates 30° per frame, then compares the arrival frame against the same pose after 1,024 more frames. The 90° midpoint has its own settled reference. The test uses the normal-mapped Optimal preset, HDR lighting, hardware rays, an 8-pixel screen-probe grid and the world cache at native 3840×2160 on the RTX 5080. The motion harness also supports `--motions=turn180`. [Motion harness](../../tools/native_gi_fast_motion.py) · [Matched camera path and input hashes](../../build/dark-indirect-20261124-195003/turn-and-reflection/turn180/provenance.json)

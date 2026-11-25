@@ -7,6 +7,12 @@ import base64
 import zlib
 
 
+def write_half_float_cube(path, faces):
+    side = faces.shape[1]
+    header = struct.pack('<13I', 0x04030201, 0x140B, 2, 0x1908, 0x881A, 0x1908, side, side, 0, 0, 6, 1, 0)
+    path.write_bytes(bytes.fromhex('AB4B5458203131BB0D0A1A0A') + header + struct.pack('<I', faces[0].nbytes) + faces.tobytes())
+
+
 class Fixture:
     def __init__(self):
         self.data = bytearray()

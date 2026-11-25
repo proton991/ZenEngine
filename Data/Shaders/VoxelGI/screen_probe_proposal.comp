@@ -45,10 +45,15 @@ uint ProbeObservationBudget(ScreenProbe probe, uint lane)
     float age          = min(probe.normal.w, 1.0 + min(acceptedBatches[0], acceptedBatches[1]) / float(ProbeMatureBatches()));
     uint  stableFrames = min(sourceSignature.y, sourceSignature.z);
     bool  young        = stableFrames < 64u || age <= (stableFrames < 128u ? 128.0 : 32.0);
-    uint  batches      = hybrid.rejection.y != 0.0 && young ? ZEN_SCREEN_PROBE_MAX_BATCHES : ProbeMatureBatches();
-    // A stationary anchor with a stable light source keeps accumulating every frame.
-    // Restore the full budget as soon as the view moves or an anchor relocates.
-    if (hybrid.rejection.y != 0.0 && hybrid.resolution.w != 0u && history && !relocated && stableFrames >= 128u && age >= 256.0)
+    if (hybrid.resolution.w == 0u && history && !relocated && stableFrames >= 128u)
+    {
+        young = age <= 16.0;
+    }
+    uint batches = hybrid.rejection.y != 0.0 && young ? ZEN_SCREEN_PROBE_MAX_BATCHES : ProbeMatureBatches();
+    // A retained world anchor keeps sampling even while the camera moves.
+    // Relocated anchors keep their full recovery budget.
+    if (hybrid.rejection.y != 0.0 && history && !relocated && stableFrames >= 128u
+        && age >= (hybrid.resolution.w != 0u ? 256.0 : 128.0))
     {
         batches = 1u;
     }

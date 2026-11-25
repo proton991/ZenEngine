@@ -151,6 +151,11 @@ void main()
                             uint oldBase = uint(coordinate.x) + uint(coordinate.y) * screenProbe.grid.x;
                             for (uint kind = 0u; kind < 2u; ++kind)
                             {
+                                // Adjacent base tiles can refer to the same adaptive history.
+                                if (kind == 1u && x > -1 && coordinate.x > 0 && oldBase % screenProbe.adaptiveTiles != 0u)
+                                {
+                                    continue;
+                                }
                                 uint previousIndex =
                                     kind == 0u ? oldBase : screenProbe.grid.z + oldBase / screenProbe.adaptiveTiles;
                                 previousIndex               |= history << 30u;
@@ -159,28 +164,25 @@ void main()
                                 vec2        displacement     = pixel - (vec2(probe.source.yz) + .5);
                                 float       distanceSquared  = dot(displacement, displacement);
                                 float       alignment        = dot(old.normal.xyz, probe.normal.xyz);
-                                bool        stable = old.position.w != 0.0 && old.source.w == probe.source.w && alignment > .7
+                                bool        stable = old.position.w != 0.0 && old.source.w == probe.source.w && alignment > .98
                                                   && distanceSquared < 2.25 * float(screenProbe.spacing * screenProbe.spacing);
                                 ivec2       oldReceiver = ivec2(floor(pixel));
                                 if (stable && HybridInView(oldReceiver))
                                 {
-                                    ScreenProbe currentSurface = ProbeReceiver(oldReceiver);
-                                    stable                     = currentSurface.source.w == old.source.w
-                                                              && ProbePlaneWeight(currentSurface.position.xyz, currentSurface.normal.xyz, old) > .5;
-                                }
-                                else
-                                {
-                                    stable = false;
-                                }
-                                float weight =
-                                    stable && alignment > .98
-                                        ? ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) / (1.0 + distanceSquared)
-                                        : 0.0;
-                                weight *= 1.0 + min(old.normal.w, 64.0) / 64.0;
-                                if (weight > best && weight > .001)
-                                {
-                                    best           = weight;
-                                    probe.source.x = previousIndex;
+                                    float weight =
+                                        ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) / (1.0 + distanceSquared);
+                                    weight *= 1.0 + min(old.normal.w, 64.0) / 64.0;
+                                    if (weight > best && weight > .001)
+                                    {
+                                        // Only a better candidate needs a G-buffer read to validate its projected surface.
+                                        ScreenProbe surface = ProbeReceiver(oldReceiver);
+                                        if (surface.source.w == old.source.w
+                                            && ProbePlaneWeight(surface.position.xyz, surface.normal.xyz, old) > .5)
+                                        {
+                                            best           = weight;
+                                            probe.source.x = previousIndex;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -192,14 +194,15 @@ void main()
             // more than one frame of the young-probe ray allocation is noisy.
             if (probe.source.x != 0xffffffffu)
             {
-                ScreenProbe old    = PreviousProbe(probe.source.x);
-                vec2  displacement = ProbeProject(old.position.xyz, screenProbe.projectionView) - (vec2(probe.source.yz) + .5);
-                float distanceSquared = dot(displacement, displacement);
+                ScreenProbe old             = PreviousProbe(probe.source.x);
+                vec2        pixel           = ProbeProject(old.position.xyz, screenProbe.projectionView);
+                vec2        displacement    = pixel - (vec2(probe.source.yz) + .5);
+                float       distanceSquared = dot(displacement, displacement);
                 // Motion keeps a drifted world anchor and its history. Once the view is still
                 // relative to that anchor, return a compatible probe to its tile center:
                 // otherwise settled placement, and the settled image, depend on the camera path.
                 vec2 previousPixel = ProbeProject(old.position.xyz, screenProbe.previousProjectionViews[probe.source.x >> 30u]);
-                vec2 motion        = ProbeProject(old.position.xyz, screenProbe.projectionView) - previousPixel;
+                vec2 motion        = pixel - previousPixel;
                 bool recenter      = dot(motion, motion) < 1e-4 && distanceSquared >= 1.0
                                   && ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, old) > .5;
                 if (distanceSquared < .5625 * float(screenProbe.spacing * screenProbe.spacing) && !recenter)
