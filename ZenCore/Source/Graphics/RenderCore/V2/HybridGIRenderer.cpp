@@ -1074,7 +1074,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                  || (relax && reflections != m_previousReflections)
                  || settings.referenceSamples != m_previousSettings.referenceSamples
                  || settings.referenceTileStride != m_previousSettings.referenceTileStride
-                 || settings.samples != m_previousSettings.samples || settings.rayProvider != m_previousSettings.rayProvider
+                 || settings.samplingPhase != m_previousSettings.samplingPhase || settings.samples != m_previousSettings.samples
+                 || settings.rayProvider != m_previousSettings.rayProvider
                  || settings.normalBiasVoxels != m_previousSettings.normalBiasVoxels
                  || settings.temporal != m_previousSettings.temporal
                  || settings.historyFrames != m_previousSettings.historyFrames
@@ -1133,8 +1134,10 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const glm::uvec4 reuseData(0u, 0u, 0u, relax && settings.youngReceiverSamples && !countRequested ? 4u : 0u);
         m_recordedSettings   = settings;
         m_recordedVisibility = visibility;
-        m_uniforms.sampling  = glm::uvec4(m_frame, reference ? settings.referenceSamples : settings.samples,
-                                          settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
+        // Keep the tile and 64-frame proposal schedules aligned while changing the random scramble.
+        m_uniforms.sampling =
+            glm::uvec4(m_frame + 1024u * settings.samplingPhase, reference ? settings.referenceSamples : settings.samples,
+                       settings.referenceSamples != 0 ? 256u : settings.historyFrames, m_valid ? 1 : 0);
         // A guide from a successful frame can survive geometry, opacity and sampling-setting resets.
         // Provider changes use different visibility geometry and must relearn the proposal.
         // A reset reason alone cannot make a fresh or failed-frame guide safe to read.
@@ -1602,18 +1605,18 @@ DebugOutputDescription HybridGIRenderer::BuildDebugView(const RenderView& view, 
         {
             description.width          = m_outputExtent.x;
             description.height         = m_outputExtent.y;
-            description.faceCount      = 4;
+            description.faceCount      = 5;
             description.format         = DataFormat::eR16G16B16A16SFloat;
             description.interpretation = "Gathered probe irradiance/pi; faces sky, reflection and bounce; Reinhard display. "
-                                         "Face 3: gathered probe history age, black at 0 and white at 256 frames.";
+                                         "Face 3 shows probe age from 0 to 256 frames. Face 4 marks uncovered receivers white.";
             DebugVisualizationData data;
             // Face 3 shows the age the gather stores in its bounce output's alpha.
-            data.selection.x         = selection.face == 3 ? 1u : 0u;
+            data.selection.x         = selection.face >= 3 ? selection.face - 2u : 0u;
             RDGGraphicsPassDesc pass = MakeDebugVisualizationPass(view, "WorldCacheDisplaySP", data);
             pass.BindSampledTexture("worldIrradiance", m_sampler,
-                                    selection.face == 1                          ? m_outputSpecular
-                                    : selection.face == 2 || selection.face == 3 ? m_outputBounce
-                                                                                 : m_outputSky);
+                                    selection.face == 1   ? m_outputSpecular
+                                    : selection.face >= 2 ? m_outputBounce
+                                                          : m_outputSky);
             AddDebugVisualizationPass(*m_device->GetCurrentFrameRDG(), std::move(pass));
         }
     }

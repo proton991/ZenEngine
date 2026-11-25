@@ -98,6 +98,35 @@ def components(mask):
     return result
 
 
+def settled_turn_metrics(image, reference):
+    """Absolute RGB errors and bright 8-connected components against a same-pose settled mean."""
+    if image.shape != reference.shape or image.ndim != 3 or image.shape[2] != 3:
+        raise ValueError('Expected matching RGB captures')
+    delta = np.subtract(image, reference, dtype=np.float32)
+    excess = delta.max(axis=2)
+    y, x = np.nonzero(excess > 24)
+    brightness = image.max(axis=2)
+    padded = np.pad(brightness, 4, mode='edge')
+    ring = np.zeros(y.size, np.int32)
+    for dy in range(-4, 5):
+        for dx in range(-4, 5):
+            if max(abs(dx), abs(dy)) > 1:
+                ring += padded[y + 4 + dy, x + 4 + dx]
+    keep = 72 * brightness[y, x].astype(np.int32) - ring > 72 * 16
+    mask = np.zeros(excess.shape, bool)
+    mask[y[keep], x[keep]] = True
+    clusters = []
+    for group in components(mask):
+        cy, cx = group.T
+        clusters.append(dict(x=int(cx.mean()), y=int(cy.mean()), size=len(group),
+                             peak=float(excess[cy, cx].max()),
+                             bounds=[int(cx.min()), int(cy.min()), int(cx.max()), int(cy.max())]))
+    clusters.sort(key=lambda c: (-c['size'], -c['peak'], c['y'], c['x']))
+    return dict(clusters=len(clusters), pixels=int(keep.sum()), features=clusters,
+                dark4_pct=float(100 * (delta.min(axis=2) < -4).mean()),
+                rms=float(np.sqrt(np.mean(delta * delta, dtype=np.float64))))
+
+
 def load_frames(folder, first, count):
     paths = [folder/f'frame.frame-{first + i}.ppm' for i in range(count)]
     missing = [str(p) for p in paths if not p.exists()]

@@ -896,7 +896,16 @@ private:
         const glm::uvec2              giExtent = hybrid != nullptr ? hybrid->GetGIExtent() : glm::uvec2(0);
         const bool    probes = hybrid != nullptr && hybrid->GetScreenProbeCount() != 0u && hybrid->IsHistoryValid();
         std::ofstream summary(std::filesystem::u8path(path));
-        summary << "{\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
+        const Mat4    projectionView = m_camera.GetCamera().GetProjectionMatrix() * m_camera.GetCamera().GetViewMatrix();
+        summary << "{\"projectionViewBits\":[";
+        for (uint32_t column = 0; column < 4; ++column)
+        {
+            for (uint32_t row = 0; row < 4; ++row)
+            {
+                summary << (column == 0 && row == 0 ? "" : ",") << glm::floatBitsToUint(projectionView[column][row]);
+            }
+        }
+        summary << "],\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
                 << ",\"framebufferHeight\":" << framebuffer.height
                 << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false")
@@ -908,7 +917,7 @@ private:
                 << ",\"giWidth\":" << giExtent.x << ",\"giHeight\":" << giExtent.y
                 << ",\"referenceSamples\":" << (gi != nullptr ? gi->GetSettings().referenceSamples : 0u)
                 << ",\"referenceTileStride\":" << (gi != nullptr ? gi->GetSettings().referenceTileStride : 1u)
-                << ",\"giDenoiser\":"
+                << ",\"samplingPhase\":" << (gi != nullptr ? gi->GetSettings().samplingPhase : 0u) << ",\"giDenoiser\":"
                 << (!probes && gi != nullptr && gi->GetSettings().referenceSamples == 0 ? "true" : "false")
                 << ",\"glossyDenoiser\":" << (probes && gi != nullptr && gi->GetSettings().specularOcclusion ? "true" : "false")
                 << ",\"nativeShadowReuse\":"

@@ -108,8 +108,9 @@ void ApplyOptimalDefaults(VoxelGIRuntimeSettings& settings)
 {
     VoxelGIRuntimeSettings optimal;
     CopyVoxelGIContent(settings, optimal);
-    optimal.optimal    = true;
-    optimal.resolution = 128;
+    optimal.cone.samplingPhase = settings.cone.samplingPhase;
+    optimal.optimal            = true;
+    optimal.resolution         = 128;
     SetGITracing(optimal.cone, GITracing::Automatic);
     SetGIMethod(optimal.cone, kOptimalMethod);
     optimal.cone.pixelResolutionDivisor = 1;

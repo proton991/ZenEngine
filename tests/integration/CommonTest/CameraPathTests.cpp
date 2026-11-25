@@ -21,6 +21,17 @@ TEST(CameraPath, HoldsEndpointsAndInterpolatesBySceneFrame)
     EXPECT_EQ(CameraPathState(keys, 8, base).target, Vec3(2, 0, 0));
     EXPECT_EQ(CameraPathState(keys, 20, base).eye, keys.back().eye);
     EXPECT_EQ(CameraPathState(keys, 8, base).aspect, base.aspect);
+
+    // A subpixel change in a held view can flip raster coverage on a thin silhouette.
+    const Vec3                      eye(-0.051807632f, -0.199212402f, -0.068445134f);
+    const Vec3                      target(-1.015718412f, -0.004898672f, -0.250428904f);
+    const HeapVector<CameraPathKey> hold{{1030, eye, target}, {1094, eye, target}};
+    for (uint64_t frame = 1030; frame <= 1094; ++frame)
+    {
+        const NavigationCameraState pose = CameraPathState(hold, frame, base);
+        EXPECT_EQ(pose.eye, eye) << frame;
+        EXPECT_EQ(pose.target, target) << frame;
+    }
 }
 
 TEST(CameraPath, RejectsInvalidFilesWithoutPublishingPartialKeys)

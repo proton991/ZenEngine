@@ -39,6 +39,7 @@ struct VoxelGISettings
     uint32_t accelerationStructureBudgetMB{0}; // Explicit query allocation cap; zero leaves the P8 budget unset.
     uint32_t referenceSamples{0};              // Diagnostic: 0, 64, 256, 1024 or 4096; static mean, no spatial filter.
     uint32_t referenceTileStride{1};           // Reference diagnostic: 1 (dense), 8 (one 8x8 tile per 64x64 stratum).
+    uint32_t samplingPhase{0};                 // Independent GI sample sequence for matched-camera replays.
     uint32_t historyFrames{32};
     // Pixel GI history/trace resolution divisor; final lighting remains at the view resolution.
     // 1, 2 or 4, or 0 for automatic (ResolvePixelResolutionDivisor). Reference and ray-count diagnostics use 1.

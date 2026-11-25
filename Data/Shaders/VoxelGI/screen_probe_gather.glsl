@@ -72,6 +72,7 @@ void main()
         vec3   sky = vec3(0), bounce = vec3(0);
         vec4   reflected = vec4(0);
         float  total = 0.0, age = 0.0;
+        bool   receiver = false;
         vec2   first = vec2(0), lower = vec2(1e20), upper = vec2(-1e20);
         vec3   second     = vec3(0);
         vec2   lumaSecond = vec2(0), measuredNoise = vec2(0);
@@ -109,6 +110,7 @@ void main()
         {
             vec3 position = HybridPosition(pixel), normal = HybridNormal(pixel), geometric = HybridGeometricNormal(pixel);
             uint identity = texelFetch(receiverSurface, pixel, 0).g;
+            receiver      = identity != 0u;
 #ifndef SCREEN_PROBE_DIFFUSE_ONLY
             vec3 viewDirection =
                 normalize(sceneUbo.viewPosition.w < .5 ? sceneUbo.lightInfo.yzw : sceneUbo.viewPosition.xyz - position);
@@ -247,7 +249,9 @@ void main()
         GatherProbeSources(pixel, sky, sourceSpecular);
 #endif
         imageStore(probeSky, pixel, vec4(sky, age / max(total, 1e-20)));
-        imageStore(probeBounce, pixel, vec4(bounce * gi.volume.w, age / max(total, 1e-20)));
+        // Negative age marks a visible receiver with no compatible geometric support.
+        float bounceAge = receiver && total == 0.0 ? -1.0 : age / max(total, 1e-20);
+        imageStore(probeBounce, pixel, vec4(bounce * gi.volume.w, bounceAge));
 #ifdef SCREEN_PROBE_DIFFUSE_ONLY
         imageStore(probeSpecular, pixel, vec4(0, 0, 0, 1));
 #else

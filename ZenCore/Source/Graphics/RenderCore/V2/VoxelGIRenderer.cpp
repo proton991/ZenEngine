@@ -70,8 +70,8 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && (settings.referenceSamples == 0 || settings.referenceSamples == 64 || settings.referenceSamples == 256
             || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
         && (settings.referenceTileStride == 1 || (settings.referenceTileStride == 8 && settings.referenceSamples != 0))
-        && settings.restirSpatialSamples >= 1 && settings.restirSpatialSamples <= 4 && settings.historyFrames >= 1
-        && settings.historyFrames <= 256
+        && settings.samplingPhase <= 63u && settings.restirSpatialSamples >= 1 && settings.restirSpatialSamples <= 4
+        && settings.historyFrames >= 1 && settings.historyFrames <= 256
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
         && (settings.fieldResolution == 32 || settings.fieldResolution == 64)
         && (settings.pixelResolutionDivisor == 0 || settings.pixelResolutionDivisor == 1 || settings.pixelResolutionDivisor == 2
@@ -181,6 +181,7 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid &= config.ReadNumber("voxel_gi_acceleration_structure_budget_mb", settings.accelerationStructureBudgetMB);
     valid &= config.ReadNumber("voxel_gi_reference_samples", settings.referenceSamples);
     valid &= config.ReadNumber("voxel_gi_reference_tile_stride", settings.referenceTileStride);
+    valid &= config.ReadNumber("voxel_gi_sampling_phase", settings.samplingPhase);
     valid &= config.ReadNumber("voxel_gi_history_frames", settings.historyFrames);
     valid &= config.ReadBool("voxel_gi_temporal", settings.temporal);
     if (config.GetString("voxel_gi_pixel_resolution_divisor", "") == "auto")

@@ -1,6 +1,7 @@
 #include "Math/Math.h"
 #include "CameraPath.h"
 #include "RuntimeJson.h"
+#include <cmath>
 
 namespace zen::runtime
 {
@@ -66,8 +67,12 @@ NavigationCameraState CameraPathState(const HeapVector<CameraPathKey>& keys, uin
         const CameraPathKey& a = keys[next - 1];
         const CameraPathKey& b = keys[next];
         const float          t = float(double(frame - a.frame) / double(b.frame - a.frame));
-        base.eye               = glm::mix(a.eye, b.eye, t);
-        base.target            = glm::mix(a.target, b.target, t);
+        // Preserve each held coordinate exactly, including a fixed eye during yaw.
+        for (uint32_t axis = 0; axis < 3; ++axis)
+        {
+            base.eye[axis]    = std::lerp(a.eye[axis], b.eye[axis], t);
+            base.target[axis] = std::lerp(a.target[axis], b.target[axis], t);
+        }
     }
     return base;
 }

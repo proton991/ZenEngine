@@ -125,13 +125,13 @@ def reference_timeline(setup, lights, hold, poses=POSES):
     return dict(keys=keys), light_keys, captures, layout, layout['light']
 
 
-def launch(args, folder, setup, camera, light_keys, frames, last, extra=()):
+def launch(args, folder, setup, camera, light_keys, frames, last, extra=(), startup=COMMON):
     """One ZenApp run; returns the command. Captures land at folder/capture.frame-N.ppm."""
     folder.mkdir(parents=True, exist_ok=True)
     write_json(folder / 'setup.zenrender', setup)
     write_json(folder / 'camera-path.json', camera)
     command = [f'--setup={folder / "setup.zenrender"}', f'--frames={last}', f'--camera-path={folder / "camera-path.json"}',
-               f'--validation={int(args.validation)}', *COMMON, *extra]
+               f'--validation={int(args.validation)}', *startup, *extra]
     if light_keys is not None:
         write_json(folder / 'light-path.json', dict(lightId=args.light_id, keys=light_keys))
         command.append(f'--light-path={folder / "light-path.json"}')

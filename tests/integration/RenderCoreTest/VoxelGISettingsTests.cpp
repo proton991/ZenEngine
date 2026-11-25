@@ -493,6 +493,7 @@ TEST(VoxelGIRuntimeSettings, AutomaticTierRequiresTheConfiguredHardwarePipeline)
 TEST(VoxelGIRuntimeSettings, OptimalConfigurationFollowsCapabilityAndKeepsContent)
 {
     VoxelGIRuntimeSettings requested;
+    requested.cone.samplingPhase     = 3;
     requested.cone.indirectIntensity = 2.0f;
     requested.cone.reflections       = VoxelGISettings::Reflections::Off;
     requested.cone.shadows           = false;
@@ -528,6 +529,7 @@ TEST(VoxelGIRuntimeSettings, OptimalConfigurationFollowsCapabilityAndKeepsConten
         EXPECT_EQ(GetGIDenoiser(settings.cone), GIDenoiser::Spatiotemporal);
         EXPECT_EQ(GetGIShadows(settings.cone), GIShadows::RayTracedReuse);
         EXPECT_EQ(settings.cone.indirectIntensity, 2.0f);
+        EXPECT_EQ(settings.cone.samplingPhase, 3u);
         EXPECT_EQ(settings.cone.reflections, VoxelGISettings::Reflections::Off);
         EXPECT_FALSE(settings.cone.shadows);
         EXPECT_TRUE(ValidateVoxelGIRuntimeSettings(settings));

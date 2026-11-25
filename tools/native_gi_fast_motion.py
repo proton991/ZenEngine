@@ -174,7 +174,15 @@ def main():
     parser.add_argument('--smoke', action='store_true', help='Short validated moving launch, no scoring')
     parser.add_argument('--rescore', action='store_true', help='Score an existing run\'s moving captures again')
     parser.add_argument('--validation', type=int, default=0)
+    parser.add_argument('--production-turn', choices=('sweep', 'cut'),
+                        help='Replay the setup at native 4K, score every turn and recovery frame in both travel directions')
+    parser.add_argument('--degrees', type=int, choices=(-180, -120, -90, 90, 120, 180), default=180)
+    parser.add_argument('--phase', type=int, choices=range(64), default=0, metavar='0..63')
+    parser.add_argument('--cache-cells', type=int, default=4194304, help='Required production world-cache capacity')
     args = parser.parse_args()
+    if args.production_turn:
+        from gi_turn_replay import replay
+        return replay(args)
     if running_renderers() and not args.rescore:
         raise RuntimeError('Another renderer is running')
     motions = args.motions.split(',')

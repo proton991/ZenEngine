@@ -80,6 +80,7 @@ template <class Archive> void Fields(Archive& archive, rc::VoxelGISettings& valu
     archive.Field("accelerationStructureBudgetMB", value.accelerationStructureBudgetMB);
     archive.Field("referenceSamples", value.referenceSamples);
     archive.Field("referenceTileStride", value.referenceTileStride, false);
+    archive.Field("samplingPhase", value.samplingPhase, false);
     archive.Field("historyFrames", value.historyFrames);
     archive.Field("temporal", value.temporal);
     archive.Field("pixelResolutionDivisor", value.pixelResolutionDivisor, false);
