@@ -69,10 +69,14 @@ def actual_state(log):
     assert culling, 'ZenApp did not report its requested and actual GPU culling path'
     gi_extents = list(re.finditer(r"ZenApp GI extent: (\d+)x(\d+), output=(\d+)x(\d+)", log))
     gathers = re.findall(r"ZenApp GI: gather=(\w+)", log)
+    cache_allocations = [dict(time=time, cells=int(cells), bytes=int(size))
+                         for time, cells, size in re.findall(
+                             r'^\[([^\]]+)\].*?World radiance cache: (\d+) cells, (\d+) bytes', log, re.M)]
     gi_extent = gi_extents[-1] if gi_extents else None
     return dict(gather=gathers[-1] if gathers else None, gi_width=int(gi_extent[1]) if gi_extent else None, gi_height=int(gi_extent[2]) if gi_extent else None,
                 render_width=int(render[1]), render_height=int(render[2]), async_compute=render[3], rhi=render[4],
                 ray_provider=render[5], ray_query=render[6], diagnostics=render[7] == 'true',
+                world_cache_allocations=cache_allocations,
                 fullscreen=presentation[1] == 'true', framebuffer_width=int(presentation[2]),
                 framebuffer_height=int(presentation[3]), gpu_culling_requested=culling[0][1] == 'true',
                 gpu_culling_paths=[dict(path=entry[2], reason=entry[3]) for entry in culling])

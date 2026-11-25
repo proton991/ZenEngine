@@ -80,7 +80,11 @@ def camera_path(setup, camera, warmup, frames, angle):
 
 def components(mask):
     """8-connected components of a sparse mask as arrays of (y, x)."""
-    remaining = set(map(tuple, np.argwhere(mask)))
+    return pixel_components(map(tuple, np.argwhere(mask)))
+
+
+def pixel_components(points):
+    remaining = set(points)
     result = []
     while remaining:
         seed = remaining.pop()
@@ -104,26 +108,37 @@ def settled_turn_metrics(image, reference):
         raise ValueError('Expected matching RGB captures')
     delta = np.subtract(image, reference, dtype=np.float32)
     excess = delta.max(axis=2)
-    y, x = np.nonzero(excess > 24)
+    deficit = -delta.min(axis=2)
+    y, x = np.nonzero((excess > 24) | (deficit > 24))
     brightness = image.max(axis=2)
     padded = np.pad(brightness, 4, mode='edge')
-    ring = np.zeros(y.size, np.int32)
+    accumulation = np.int32 if image.dtype == np.uint8 else np.float64
+    ring = np.zeros(y.size, accumulation)
     for dy in range(-4, 5):
         for dx in range(-4, 5):
             if max(abs(dx), abs(dy)) > 1:
                 ring += padded[y + 4 + dy, x + 4 + dx]
-    keep = 72 * brightness[y, x].astype(np.int32) - ring > 72 * 16
-    mask = np.zeros(excess.shape, bool)
-    mask[y[keep], x[keep]] = True
+    contrast = 72 * brightness[y, x].astype(accumulation) - ring
+    keep = (excess[y, x] > 24) & (contrast > 72 * 16)
+    dark = (deficit[y, x] > 24) & (contrast < -72 * 16)
     clusters = []
-    for group in components(mask):
-        cy, cx = group.T
+    for group in pixel_components(zip(y[keep], x[keep])):
+        cy, cx = group[np.lexsort((group[:, 1], group[:, 0]))].T
+        peak = int(np.argmax(excess[cy, cx]))
+        starts = np.r_[0, np.flatnonzero((np.diff(cy) != 0) | (np.diff(cx) != 1)) + 1]
+        ends = np.r_[starts[1:] - 1, len(cx) - 1]
         clusters.append(dict(x=int(cx.mean()), y=int(cy.mean()), size=len(group),
-                             peak=float(excess[cy, cx].max()),
+                             peak=float(excess[cy[peak], cx[peak]]), peak_xy=[int(cx[peak]), int(cy[peak])],
+                             spans=[[int(cy[a]), int(cx[a]), int(cx[b])] for a, b in zip(starts, ends)],
                              bounds=[int(cx.min()), int(cy.min()), int(cx.max()), int(cy.max())]))
     clusters.sort(key=lambda c: (-c['size'], -c['peak'], c['y'], c['x']))
-    return dict(clusters=len(clusters), pixels=int(keep.sum()), features=clusters,
-                dark4_pct=float(100 * (delta.min(axis=2) < -4).mean()),
+    bright_pixels, dark_pixels = int(keep.sum()), int(dark.sum())
+    return dict(clusters=len(clusters), pixels=bright_pixels, features=clusters,
+                bright_sparkle_pct=100 * bright_pixels / brightness.size, dark_sparkle_pixels=dark_pixels,
+                isolated_noise_pct=100 * (bright_pixels + dark_pixels) / brightness.size,
+                high_error_pixels=int(y.size), high_error_pct=100 * y.size / brightness.size,
+                changed4_pct=float(100 * ((excess > 4) | (deficit > 4)).mean()),
+                dark4_pct=float(100 * (deficit > 4).mean()),
                 rms=float(np.sqrt(np.mean(delta * delta, dtype=np.float64))))
 
 
@@ -423,9 +438,27 @@ def analyse(args):
         write_json(args.save, dict(run=str(folder), masks=[str(p) for p in args.mask or []], **result))
 
 
+def settled(args):
+    if len(set(p.resolve() for p in args.reference)) != len(args.reference) or (
+            set(p.resolve() for p in args.reference) & set(p.resolve() for p in args.frames)):
+        raise ValueError('Use distinct settled reference frames disjoint from the scored captures')
+
+    def rgb(path):
+        with Image.open(path) as image:
+            return np.array(image.convert('RGB'))
+
+    reference = sum(rgb(p).astype(np.float32) for p in args.reference) / len(args.reference)
+    scores = {str(p.resolve()): settled_turn_metrics(rgb(p), reference) for p in args.frames}
+    write_json(args.output, dict(references={str(p.resolve()): digest(p) for p in args.reference}, frames=scores))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
+    held = commands.add_parser('settled', help='Score same-pose captures against the mean of five settled frames')
+    held.add_argument('frames', type=Path, nargs='+')
+    held.add_argument('--reference', type=Path, nargs=5, required=True)
+    held.add_argument('--output', type=Path, required=True)
     run = commands.add_parser('capture')
     run.add_argument('--setup', type=Path, required=True)
     run.add_argument('--output', type=Path, required=True, help='New directory')

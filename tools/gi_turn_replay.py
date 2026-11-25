@@ -47,11 +47,61 @@ def schedules(setup, kind, degrees, warmup, hold):
 
 def load_image(folder, frame):
     with Image.open(gates.frame_path(folder, frame)) as image:
+        if image.size != (3840, 2160):
+            raise ValueError(f'{folder}, frame {frame}: expected native 4K pixels, got {image.size}')
         return np.array(image.convert('RGB'))
 
 
 def projection_view(folder, frame):
     return read_json(str(gates.frame_path(folder, frame)) + '.json')['projectionViewBits']
+
+
+def reproject_pixels(ages, previous, current, extent):
+    """Fixed-eye rotation maps each old camera ray to a pixel without a depth estimate."""
+    if not ages:
+        return {}
+    height, width = extent
+    pixels = list(ages)
+    y, x = np.asarray(pixels).T
+    clip = np.array([2 * (x + .5) / width - 1, 2 * (y + .5) / height - 1,
+                     np.full(len(x), .5), np.ones(len(x))])
+    projected = current @ np.linalg.solve(previous, clip)
+    visible = (projected[3] > 0) & (np.abs(projected[:2]) < projected[3]).all(axis=0)
+    dest = np.floor((projected[:2, visible] / projected[3, visible] + 1) *
+                    np.array([[width / 2], [height / 2]])).astype(int)
+    result = {}
+    for source, (sx, sy) in zip(np.flatnonzero(visible), dest.T):
+        result[sy, sx] = max(result.get((sy, sx), 0), ages[pixels[source]])
+    return result
+
+
+def mark_lifetimes(rows, folder):
+    """Report held-pixel overlap and fixed-eye ray overlap across consecutive sweep frames."""
+    previous = {}
+    projected = {}
+    last_matrix = None
+    last = None
+    for row in rows:
+        pose = (row['visit'], row['angle'])
+        matrix = np.asarray(projection_view(folder, row['frame']), dtype=np.uint32).view(np.float32).reshape(4, 4).T
+        if last is None or last[0][0] != row['visit'] or last[1] + 1 != row['frame']:
+            projected = {}
+        elif last[0] != pose:
+            projected = reproject_pixels(projected, last_matrix, matrix, (2160, 3840))
+        if last != (pose, row['frame'] - 1):
+            previous = {}
+        current = {}
+        current_projected = {}
+        for feature in row['features']:
+            pixels = [(y, x) for y, x0, x1 in feature['spans'] for x in range(x0, x1 + 1)]
+            age = 1 + max(previous.get(p, 0) for p in pixels)
+            feature['observed_frames'] = age
+            motion_age = 1 + max(projected.get(p, 0) for p in pixels)
+            feature['projected_frames'] = motion_age
+            current.update(dict.fromkeys(pixels, age))
+            current_projected.update(dict.fromkeys(pixels, motion_age))
+        previous, projected, last_matrix = current, current_projected, matrix
+        last = (pose, row['frame'])
 
 
 def capture(args, name, setup, camera, frames):
@@ -71,19 +121,24 @@ def capture(args, name, setup, camera, frames):
                     ray_provider='hardware', gather='screen_probes')
     if any(state[k] != v for k, v in expected.items()):
         raise ValueError(f'{folder}: actual state {state}, expected {expected}')
+    capacity = args.cache_cells or read_json(str(gates.frame_path(folder, frames[0])) + '.json')['worldCacheCapacity']
+    if capacity <= 0:
+        raise ValueError(f'{folder}: world cache was unavailable')
     for frame in frames:
         metadata = read_json(str(gates.frame_path(folder, frame)) + '.json')
-        checks = dict(sceneFrames=frame, worldCacheCapacity=args.cache_cells, samplingPhase=args.phase,
+        checks = dict(sceneFrames=frame, worldCacheCapacity=capacity, samplingPhase=args.phase,
                       width=3840, height=2160, framebufferWidth=3840, framebufferHeight=2160,
                       giWidth=3840, giHeight=2160, fullscreen=run['fullscreen'], backend='hardware',
                       gather='screen_probes', tierFallback='', asyncCompute=state['async_compute'])
         for field, expected_value in checks.items():
             if metadata.get(field) != expected_value:
                 raise ValueError(f'{folder}, frame {frame}: expected {field}={expected_value}, got {metadata.get(field)}')
-    return dict(command=command, actual=state, camera_sha256=digest(folder / 'camera-path.json'))
+    return dict(command=command, actual=state, cache_cells=capacity, camera_sha256=digest(folder / 'camera-path.json'))
 
 
 def replay(args):
+    if not 0 < args.max_noise_pct <= 100:
+        raise ValueError('The per-frame noise limit must be in (0, 100] percent')
     if args.executable.resolve() != DEFAULT_EXE.resolve():
         raise ValueError(f'Production replay uses the canonical {DEFAULT_EXE}')
     if args.smoke or args.references or args.set or args.hold < 64 or args.warmup < 2:
@@ -106,6 +161,8 @@ def replay(args):
         identity = provenance(args, setup_path, [])
     runs = [capture(args, 'moving', setup, moving, captures),
             capture(args, 'reference', setup, reference, ref_frames)]
+    if runs[0]['cache_cells'] != runs[1]['cache_cells']:
+        raise ValueError(f"Moving and settled cache capacities differ: {[run['cache_cells'] for run in runs]}")
     if args.rescore:
         identity = read_json(args.output / 'identity.json')
         if identity['commands'] != [run['command'] for run in runs]:
@@ -132,7 +189,15 @@ def replay(args):
             if projection_view(args.output / 'moving', row['frame']) != target_matrix:
                 raise ValueError(f"Moving frame {row['frame']} has a different projection or view at {angle} degrees")
             row.update(settled_turn_metrics(load_image(args.output / 'moving', row['frame']), mean))
+    mark_lifetimes(rows, args.output / 'moving')
+    # Count large contiguous faults too, including interiors that have no contrast with their ring.
+    worst = max(rows, key=lambda r: r['high_error_pct'])
+    gate = dict(metric='high_error_pct', channel_difference_gt=24, limit_pct=args.max_noise_pct,
+                worst_pct=worst['high_error_pct'], pixels=worst['high_error_pixels'], frame=worst['frame'],
+                visit=worst['visit'], angle=worst['angle'], recovery=worst['recovery'],
+                passed=worst['high_error_pct'] < args.max_noise_pct)
     write_json(args.output / 'report.json', dict(kind=args.production_turn, degrees=args.degrees, phase=args.phase,
-                                                cache_cells=args.cache_cells, runs=runs, references=ref_rows,
-                                                moving=rows, floor=floor))
-    return 0
+                                                cache_cells=runs[0]['cache_cells'], runs=runs, references=ref_rows,
+                                                moving=rows, floor=floor, noise_gate=gate))
+    print(f"Worst high-error area {gate['worst_pct']:.5f}% at frame {gate['frame']} (limit {args.max_noise_pct:g}%)")
+    return 0 if gate['passed'] else 1

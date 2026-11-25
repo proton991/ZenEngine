@@ -178,7 +178,10 @@ def main():
                         help='Replay the setup at native 4K, score every turn and recovery frame in both travel directions')
     parser.add_argument('--degrees', type=int, choices=(-180, -120, -90, 90, 120, 180), default=180)
     parser.add_argument('--phase', type=int, choices=range(64), default=0, metavar='0..63')
-    parser.add_argument('--cache-cells', type=int, default=4194304, help='Required production world-cache capacity')
+    parser.add_argument('--cache-cells', type=int, default=4194304,
+                        help='Required world-cache capacity; 0 measures the capacity and requires it throughout both runs')
+    parser.add_argument('--max-noise-pct', type=float, default=.1,
+                        help='Strict per-frame limit for pixels exceeding 24 display levels in either direction, in percent')
     args = parser.parse_args()
     if args.production_turn:
         from gi_turn_replay import replay

@@ -340,31 +340,36 @@ class PathReference:
         dr.eval(terms)
         return terms
 
-    def primary(self, rows):
+    def primary(self, rows, columns=None, subpixels=1, y_origin=0):
         """Receiver-equivalent primary vertices for a band of render rows."""
         mi, dr = self.mi, self.dr
-        eye, directions, origins = camera_rays(self.setup)
-        width = self.setup['run']['renderWidth']
-        band = slice(rows[0] * width, rows[1] * width)
-        valid, points, ng, ns, _, hit = primary_hits(mi, dr, self.scene, eye, directions[band], origins=origins[band],
+        y = y_origin + (np.arange(*rows) + .5) / subpixels
+        eye, directions, origins = camera_rays(self.setup, columns, y)
+        valid, points, ng, ns, _, hit = primary_hits(mi, dr, self.scene, eye, directions, origins=origins,
                                                      return_interaction=True)
         active = mi.Bool(valid)
         albedo, metallic, roughness, emission = self.materials.evaluate(hit, active)
         vector = lambda kind, values: kind(*[mi.Float(values[:, i].astype(np.float32)) for i in range(3)])
         point, geometric, shading = vector(mi.Point3f, points), vector(mi.Normal3f, ng), vector(mi.Normal3f, ns)
-        view = vector(mi.Vector3f, -directions[band])
+        view = vector(mi.Vector3f, -directions)
         state = (point, geometric, shading, view, albedo, metallic, roughness, active)
         dr.eval(state, emission)
         return state, emission, valid
 
 
-def render(mi, setup, passes, seed, max_depth, bands, footprint, output, contract=False, lambert=False):
+def render(mi, setup, passes, seed, max_depth, bands, footprint, output, contract=False, lambert=False,
+           crop=None, subpixels=1):
     import drjit as dr
     started = time.perf_counter()
-    reference = PathReference(mi, setup, max_depth, contract, lambert)
     width, height = setup['run']['renderWidth'], setup['run']['renderHeight']
+    x0, y0, x1, y1 = crop or (0, 0, width, height)
+    if not (0 <= x0 < x1 <= width and 0 <= y0 < y1 <= height and subpixels >= 1):
+        raise ValueError('Invalid reference crop or subpixel grid')
+    width, height = (x1 - x0) * subpixels, (y1 - y0) * subpixels
+    columns = x0 + (np.arange(width) + .5) / subpixels
     if passes < 2 or passes % 2 or height % bands or (height // bands) % footprint or width % footprint:
         raise ValueError('Passes must be even; bands and the footprint must divide the render extent')
+    reference = PathReference(mi, setup, max_depth, contract, lambert)
     results = {name: np.zeros((height, width, 3), np.float32) for name in TERMS}
     halves = {name: np.zeros((2, height, width, 3), np.float32) for name in SAMPLED}
     valid_mask = np.zeros((height, width), bool)
@@ -372,7 +377,7 @@ def render(mi, setup, passes, seed, max_depth, bands, footprint, output, contrac
     step = height // bands
     for band in range(bands):
         rows = (band * step, (band + 1) * step)
-        primary, emission, valid = reference.primary(rows)
+        primary, emission, valid = reference.primary(rows, columns, subpixels, y0)
         point, geometric, shading, view, albedo, metallic, roughness, active = primary
         irradiance, outgoing = reference.all_lights(point, geometric, shading, view, albedo, metallic, roughness, active)
         lanes = dr.width(point)
@@ -420,6 +425,10 @@ def main():
     parser.add_argument('--bands', type=int, default=4, help='Row bands rendered one at a time to bound GPU memory')
     parser.add_argument('--footprint', type=int, default=4)
     parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--crop', type=int, nargs=4, metavar=('X0', 'Y0', 'X1', 'Y1'),
+                        help='Render an exclusive rectangle in the original camera view')
+    parser.add_argument('--subpixels', type=int, choices=(1, 2, 4, 8), default=1,
+                        help='Regular primary sample grid per axis; equal --footprint yields native-pixel box averages')
     parser.add_argument('--contract-one-bounce', action='store_true',
                         help='Validation only: the one-bounce Lambert contract of ground_truth_reference.py')
     parser.add_argument('--lambert-secondaries', action='store_true',
@@ -428,10 +437,10 @@ def main():
     mi = setup_mitsuba('cuda')
     setup = json.loads(args.setup.read_text(encoding='utf-8'))
     timing = render(mi, setup, args.passes, args.seed, args.max_depth, args.bands, args.footprint, args.output,
-                    args.contract_one_bounce, args.lambert_secondaries)
+                    args.contract_one_bounce, args.lambert_secondaries, args.crop, args.subpixels)
     meta = dict(setup=str(args.setup.resolve()), passes=args.passes, max_depth=args.max_depth, footprint=args.footprint,
                 contract_one_bounce=args.contract_one_bounce, lambert_secondaries=args.lambert_secondaries,
-                seed=args.seed, mitsuba=mi.__version__, variant=mi.variant(), timing=timing)
+                seed=args.seed, crop=args.crop, subpixels=args.subpixels, mitsuba=mi.__version__, variant=mi.variant(), timing=timing)
     args.output.with_suffix('.json').write_text(json.dumps(meta, indent=1), encoding='utf-8', newline='\n')
     print(json.dumps(meta, indent=1))
 

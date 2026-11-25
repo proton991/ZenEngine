@@ -18,7 +18,7 @@ from ground_truth_mitsuba import build_scene, load_gltf_primitives, primary_hits
 from ground_truth_bounce import closest, offset
 
 
-def camera_rays(setup):
+def camera_rays(setup, columns=None, rows=None):
     camera, run = setup['camera'], setup['run']
     if camera['orthographic']:
         raise ValueError('The ground-truth workflow requires perspective cameras')
@@ -29,7 +29,11 @@ def camera_rays(setup):
     forward = normalize(np.array(camera['target']) - eye)
     right = normalize(np.cross(forward, [0, 1, 0]))
     up = np.cross(right, forward)
-    x, y = np.meshgrid((np.arange(width)+.5)*2/width-1, 1-(np.arange(height)+.5)*2/height)
+    if columns is None:
+        columns = np.arange(width) + .5
+    if rows is None:
+        rows = np.arange(height) + .5
+    x, y = np.meshgrid(np.asarray(columns) * 2 / width - 1, 1 - np.asarray(rows) * 2 / height)
     tangent = np.tan(np.deg2rad(camera['verticalFovDegrees']) / 2)
     directions = normalize(forward + tangent * (x[..., None]*right*width/height + y[..., None]*up))
     directions = directions.reshape(-1, 3)
