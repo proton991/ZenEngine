@@ -10,18 +10,19 @@
 #    include "screen_probe_hits.glsl"
 #endif
 layout(local_size_x = 64) in;
-shared vec4 directions[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
-shared vec4 radiance[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+// Each sample's radiance atlas cell and its inverse PDF (zero below the probe's horizon).
+shared uint  sampleCells[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+shared float sampleWeights[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
+shared vec4  radiance[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
 #include "history_response.glsl"
 shared float response[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
 shared float acceptedAge;
 shared float densities[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
 #if defined(SCREEN_PROBE_PREFILTER_HITS) && !defined(PROBE_STATIC_HITS)
 #    define PROBE_ROUGH_PREDICTION
-// Each moving-light hit's change since the history frame, evaluated on the same surface.
+// Each moving-light hit's change since the history frame, evaluated on the same surface, and its direction.
 shared vec3 deltas[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
-// Nonzero when any sample of this probe carries a predicted change.
-shared uint movingDeltas;
+shared vec3 sampleDirections[ZEN_SCREEN_PROBE_SPECULAR_RAYS];
 shared vec2 laneShares[64];
 // Sum one value per lane across the 64-lane workgroup; every lane receives the total.
 vec2 ProbeReduceLanes(vec2 value, uint lane)
@@ -40,7 +41,6 @@ vec2 ProbeReduceLanes(vec2 value, uint lane)
     return laneShares[0];
 }
 #endif
-layout(set = 1, binding = 128) uniform sampler2D secondaryBRDFMap;
 // A non-negative value rounded to one of its two neighbouring halves, choosing the farther one with
 // probability proportional to its closeness. The stored value is exact on average: a long running
 // mean in round-to-nearest halves drops every update below about 1/2048 of the value, so it stops
@@ -62,18 +62,23 @@ uvec2 StochasticPackHalf(vec4 value, uint seed)
                  StochasticHalf(value.b, random.z) | (StochasticHalf(value.a, random.w) << 16u));
 }
 #ifdef PROBE_ROUGH_FOOTPRINT
-vec4 ProbeRelocatedRoughHistory(uint texel)
+// The footprint's mean of one atlas cell over the taps that observe it above their horizon. support is the
+// share of the footprint's weight those taps carry.
+vec4 ProbeRelocatedRoughHistory(uint cell, vec3 axis, out float support)
 {
-    vec4 history = vec4(0);
+    vec4  history = vec4(0);
+    float total   = 0.0;
     for (uint tap = 0u; tap < 18u; ++tap)
     {
-        if (pastWeights[tap] > 0.0)
+        if (pastWeights[tap] > 0.0 && dot(axis, PreviousProbe(pastIndices[tap]).normal.xyz) > 0.0)
         {
-            uvec2 packed  = PreviousProbeSpecular(pastIndices[tap], texel);
+            uvec2 packed  = PreviousProbeSpecular(pastIndices[tap], cell);
             history      += pastWeights[tap] * vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
+            total        += pastWeights[tap];
         }
     }
-    return history / max(pastWeightSum, 1e-20);
+    support = total / max(pastWeightSum, 1e-20);
+    return history / max(total, 1e-20);
 }
 #endif
 void main()
@@ -86,11 +91,11 @@ void main()
         {
             if (lane == 0u && screenProbe.localResponse != 0u)
             {
-                probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + index] = uvec2(0);
+                probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_ATLAS_CELLS + index] = uvec2(0);
             }
-            for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
+            for (uint texel = lane; texel < ZEN_SCREEN_PROBE_ATLAS_CELLS; texel += 64u)
             {
-                probeSpecularData[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel] = uvec2(0);
+                probeSpecularData[index * ZEN_SCREEN_PROBE_ATLAS_CELLS + texel] = uvec2(0);
             }
             return;
         }
@@ -98,13 +103,6 @@ void main()
             min(ProbeScheduledBatches(index) * uint(ZEN_SCREEN_PROBE_RAYS), uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS));
         // Accumulate the radiance of escaped paths and their visibility independently.
         float hitGain = hybrid.reflection.x != 0u ? gi.volume.w : 0.0;
-#ifdef PROBE_ROUGH_PREDICTION
-        if (lane == 0u)
-        {
-            movingDeltas = 0u;
-        }
-        barrier();
-#endif
         for (uint sampleIndex = lane; sampleIndex < sampleCount; sampleIndex += 64u)
         {
 #ifdef SCREEN_PROBE_PREFILTER_HITS
@@ -127,11 +125,8 @@ void main()
                 float cached = float(probeHits[address] >> 24u) / 255.0;
                 change = max(change, cached * min(1.0, HybridLuminance(abs(delta)) / max(HybridLuminance(incoming), 1e-6)));
             }
-            deltas[sampleIndex] = sky ? vec3(0) : delta * hitGain;
-            if (any(notEqual(deltas[sampleIndex], vec3(0))))
-            {
-                atomicOr(movingDeltas, 1u);
-            }
+            deltas[sampleIndex]           = sky ? vec3(0) : delta * hitGain;
+            sampleDirections[sampleIndex] = ray.xyz;
             if (sky)
             {
                 uint past = ProbePastEnvironment(probe);
@@ -155,10 +150,11 @@ void main()
             bool sky      = blueDensity.y < 0.0;
             vec3 incoming = vec3(rg, blueDensity.x);
 #endif
-            float nl                = max(dot(probe.normal.xyz, ray.xyz), 0.0);
-            directions[sampleIndex] = vec4(ray.xyz, nl);
-            radiance[sampleIndex]   = vec4(incoming * (sky ? 1.0 : hitGain), float(sky));
-            densities[sampleIndex]  = nl / ray.w;
+            float nl                   = max(dot(probe.normal.xyz, ray.xyz), 0.0);
+            sampleCells[sampleIndex]   = ProbeOctBin(ray.xyz);
+            sampleWeights[sampleIndex] = nl > 0.0 ? 1.0 / ray.w : 0.0;
+            radiance[sampleIndex]      = vec4(incoming * (sky ? 1.0 : hitGain), float(sky));
+            densities[sampleIndex]     = nl / ray.w;
         }
         barrier();
 #ifdef PROBE_ROUGH_FOOTPRINT
@@ -195,7 +191,7 @@ void main()
                 vec2 previous = vec2(0);
                 if (probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0 && hybrid.reflection.y != 0u)
                 {
-                    previous = uintBitsToFloat(PreviousProbeSpecular(probe.source.x, ZEN_SCREEN_PROBE_SPECULAR_TEXELS));
+                    previous = uintBitsToFloat(PreviousProbeSpecular(probe.source.x, ZEN_SCREEN_PROBE_ATLAS_CELLS));
                 }
 #    ifdef PROBE_ROUGH_FOOTPRINT
                 if (relocated && hybrid.reflection.y != 0u)
@@ -205,9 +201,8 @@ void main()
                     {
                         if (pastWeights[tap] > 0.0)
                         {
-                            previous +=
-                                pastWeights[tap]
-                                * uintBitsToFloat(PreviousProbeSpecular(pastIndices[tap], ZEN_SCREEN_PROBE_SPECULAR_TEXELS));
+                            previous += pastWeights[tap]
+                                      * uintBitsToFloat(PreviousProbeSpecular(pastIndices[tap], ZEN_SCREEN_PROBE_ATLAS_CELLS));
                         }
                     }
                     previous   /= max(pastWeightSum, 1e-20);
@@ -223,14 +218,14 @@ void main()
                     acceptedAge = min(acceptedAge, max(1.0, probeLighting[ProbeMovingBase(index) + 5u].z));
                 }
 #    endif
-                probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + index] =
+                probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_ATLAS_CELLS + index] =
                     floatBitsToUint(vec2(acceptedAge, change));
             }
             barrier();
         }
 #endif
         // The cosine-weighted mean radiance of this frame's samples, the probe's irradiance over pi. It stands
-        // in for the directions a sparsely sampled lobe did not receive (below).
+        // in for atlas cells that have no samples yet.
         vec4  meanRadiance = vec4(0);
         float meanWeight   = 0.0;
         for (uint sampleIndex = 0u; sampleIndex < sampleCount; ++sampleIndex)
@@ -239,95 +234,91 @@ void main()
             meanWeight   += densities[sampleIndex];
         }
         meanRadiance /= max(meanWeight, 1e-20);
-        for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
+        // The radiance atlas: the 64 cells of the octahedral direction map that the proposal CDF also bins
+        // (ProbeOctBin), one per lane. The cells above the probe's horizon keep their mean incoming radiance and
+        // sky share as history, in place of the sharpest reflection level. Probe rays are drawn for the
+        // hemisphere and the lights, not for any reflection lobe, so estimating a lobe from the rays gave a ray
+        // near a narrow lobe's peak tens of times its expected weight, and new probes on rims reflected lamps
+        // many times brighter than settled. A ray now informs only its own cell, at its inverse PDF against the
+        // cell's expected weight, which the uniform proposal lanes bound.
         {
-            uint  level     = texel < 64u ? 0u : 1u + (texel - 64u) / 16u;
-            uint  offset    = level == 0u ? 0u : 64u + (level - 1u) * 16u;
-            uint  side      = level == 0u ? 8u : 4u;
-            vec3  axis      = DecodeGBufferNormal((vec2((texel - offset) % side, (texel - offset) / side) + .5) / float(side));
-            float roughness = .25 * float(level + 1u);
-            float alpha = roughness * roughness, alphaSquared = alpha * alpha;
-            // An atlas direction represents reflect(-V,N). Extend lower-hemisphere texels
-            // along the horizon so bilinear filtering is defined for grazing receivers.
-            vec3  n       = probe.normal.xyz;
-            float nv      = dot(n, axis);
-            vec3  tangent = axis - n * nv;
-            nv            = clamp(nv, 0.01, 1.0);
-            vec3 v        = dot(tangent, tangent) > 1e-8 ? nv * n - normalize(tangent) * sqrt(1.0 - nv * nv) : n;
-            nv            = max(dot(n, v), .01);
-            float k       = alpha * .5;
-            // The compositor applies colored F0. Use the material's scalar Fresnel shape here
-            // and divide by the matching split-sum response to avoid applying it twice.
-            float f0   = mix(.04, 1.0, clamp(texelFetch(receiverRoughness, ivec2(probe.source.yz), 0).r, 0.0, 1.0));
-            vec2  brdf = textureLod(secondaryBRDFMap, vec2(nv, roughness), 0).rg;
-            float norm = 4.0 * HYBRID_PI * (nv * (1.0 - k) + k) * max(f0 * brdf.x + brdf.y, 1e-5);
-            vec4  sum  = vec4(0);
-            float lobe = 0.0;
+            uint  cell       = lane;
+            vec3  axis       = DecodeGBufferNormal((vec2(cell & 7u, cell >> 3u) + .5) / 8.0);
+            bool  upper      = dot(axis, probe.normal.xyz) > 0.0;
+            float solidAngle = 1.0 / ProbeOctDensity(axis);
+            vec4  sum        = vec4(0);
+            float weight     = 0.0;
 #ifdef PROBE_ROUGH_PREDICTION
             vec3 shift = vec3(0);
 #endif
             for (uint sampleIndex = 0u; sampleIndex < sampleCount; ++sampleIndex)
             {
-                vec4  ray          = directions[sampleIndex];
-                float nl           = ray.w;
-                float vh2          = max(.5 * (1.0 + dot(v, ray.xyz)), 1e-7);
-                float nh2          = min((nv + nl) * (nv + nl) * .25 / vh2, 1.0);
-                float denominator  = 1.0 + (alphaSquared - 1.0) * nh2;
-                float grazing      = max(1.0 - sqrt(vh2), 0.0);
-                float squared      = grazing * grazing;
-                float fresnel      = f0 + (1.0 - f0) * squared * squared * grazing;
-                float weight       = densities[sampleIndex] * fresnel / ((nl * (1.0 - k) + k) * denominator * denominator);
-                sum               += radiance[sampleIndex] * weight;
-                lobe              += weight;
-#ifdef PROBE_ROUGH_PREDICTION
-                if (movingDeltas != 0u)
+                if (sampleCells[sampleIndex] == cell)
                 {
-                    shift += deltas[sampleIndex] * weight;
-                }
+                    float inverse  = sampleWeights[sampleIndex];
+                    sum           += radiance[sampleIndex] * inverse;
+                    weight        += inverse;
+#ifdef PROBE_ROUGH_PREDICTION
+                    shift += deltas[sampleIndex] * inverse;
 #endif
+                }
             }
-            // Scaled, each sample's lobe weight has unit expectation. A ray near the peak of a
-            // narrow lobe can still carry tens of times that, which made a young probe's reflection
-            // tens of times its brightest sample. Normalize by the samples' actual total weight (the
-            // ratio estimator of stochastic screen-space reflections) and count history at its
-            // expected weight. One expected frame of weight reproduces the running mean.
-            float scale       = alphaSquared / norm;
-            vec4  current     = sum * scale;
-            float totalWeight = lobe * scale;
-            if (probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0)
+            // A cell's samples have unit expected weight per frame. One expected frame of weight reproduces
+            // the running mean, as for the probe's diffuse lighting.
+            float expected    = float(max(sampleCount, 1u)) * solidAngle;
+            vec4  current     = sum / expected;
+            float totalWeight = weight / expected;
+            if (upper && probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0)
             {
-                uvec2 packed  = PreviousProbeSpecular(probe.source.x, texel);
+                uvec2 packed  = PreviousProbeSpecular(probe.source.x, cell);
                 vec4  history = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
+                // The source holds radiance only for cells above its own horizon.
+                float supported = float(dot(axis, PreviousProbe(probe.source.x).normal.xyz) > 0.0);
 #ifdef PROBE_ROUGH_FOOTPRINT
                 if (relocated)
                 {
-                    history = ProbeRelocatedRoughHistory(texel);
+                    history = ProbeRelocatedRoughHistory(cell, axis, supported);
                 }
 #endif
 #ifdef PROBE_ROUGH_PREDICTION
-                // The ratio estimate of this lobe's change in mean radiance. The final clamp follows the blend.
-                history.rgb += lobe > 0.0 ? shift / lobe : vec3(0);
+                // The ratio estimate of this cell's change in mean radiance. A cell without samples this frame takes
+                // the change its nearby directions saw: each sample at its inverse PDF times cos^8 of its angle to
+                // the cell's axis. A moving light's reflection must not wait for a ray to land in every cell. The
+                // final clamp follows the blend.
+                vec3 predicted = weight > 0.0 ? shift / weight : vec3(0);
+                if (weight == 0.0)
+                {
+                    float near = 0.0;
+                    for (uint sampleIndex = 0u; sampleIndex < sampleCount; ++sampleIndex)
+                    {
+                        float cosine  = max(dot(axis, sampleDirections[sampleIndex]), 0.0);
+                        float fourth  = (cosine * cosine) * (cosine * cosine);
+                        float lobe    = sampleWeights[sampleIndex] * fourth * fourth;
+                        predicted    += deltas[sampleIndex] * lobe;
+                        near         += lobe;
+                    }
+                    predicted /= max(near, 1e-20);
+                }
+                history.rgb += predicted;
 #endif
                 float age    = min(probeLighting[index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 8u].z,
                                    probeLighting[index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 9u].z);
                 age          = screenProbe.localResponse != 0u ? acceptedAge : age;
-                float prior  = (max(age, 1.0) - 1.0) * float(max(sampleCount, 1u));
+                float prior  = (max(age, 1.0) - 1.0) * supported;
                 current     += history * prior;
                 totalWeight += prior;
             }
-            // Probe rays are drawn for the hemisphere and the lights, not for each lobe. A grazing or narrow
-            // lobe can hold only a few guided samples, and their ratio estimate is their own mean, not the
-            // lobe's: a new probe on a rim reflected a lamp many times brighter than its settled value.
-            // Filling the missing weight with zero instead loses the rare peak hits that carry a narrow lobe's
-            // mean, and new probes read dark. Until the estimate has one expected frame of weight, the missing
-            // weight takes the probe's mean radiance. A lobe sampled at or above its expected weight keeps its
-            // ratio, which cannot exceed the brightest sample, and a probe with history converges as before.
-            float missing               = max(float(max(sampleCount, 1u)) - totalWeight, 0.0);
-            current                    += meanRadiance * missing;
-            totalWeight                += missing;
-            current                     = clamp(current / max(totalWeight, 1e-20), vec4(0), vec4(65504, 65504, 65504, 1));
-            uint address                = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
-            probeSpecularData[address]  = StochasticPackHalf(current, address ^ HybridHash(hybrid.sampling.x ^ 0x5f3a1u));
+            // Until a cell has one expected frame of weight, the missing weight takes the probe's mean radiance.
+            // A cell sampled at or above its expected weight keeps its ratio, which cannot exceed its brightest
+            // sample.
+            float missing  = max(1.0 - totalWeight, 0.0);
+            current       += meanRadiance * missing;
+            totalWeight   += missing;
+            vec4 value     = clamp(current / max(totalWeight, 1e-20), vec4(0), vec4(65504, 65504, 65504, 1));
+            // Cells below the horizon receive few or no rays and are not read as radiance. The specular spatial
+            // filter integrates the reflection levels from the cells above it.
+            uint address               = index * ZEN_SCREEN_PROBE_ATLAS_CELLS + cell;
+            probeSpecularData[address] = StochasticPackHalf(value, address ^ HybridHash(hybrid.sampling.x ^ 0x5f3a1u));
         }
     }
 }

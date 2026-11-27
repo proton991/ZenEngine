@@ -126,7 +126,7 @@ bool ScreenProbeGI::Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTr
                 m_device->CreateStorageBuffer(uint32_t(count * lightingStride * sizeof(Vec4)), nullptr, "ScreenProbeLighting");
             if (useSpecular)
             {
-                m_specular[side] = m_device->CreateStorageBuffer(uint32_t(count * (ZEN_SCREEN_PROBE_SPECULAR_TEXELS + 1u) * 8u),
+                m_specular[side] = m_device->CreateStorageBuffer(uint32_t(count * (ZEN_SCREEN_PROBE_ATLAS_CELLS + 1u) * 8u),
                                                                  nullptr, "ScreenProbeSpecular");
             }
             m_cdf[side] = m_device->CreateStorageBuffer(uint32_t(count * ZEN_SCREEN_PROBE_PROPOSAL_WORDS * sizeof(uint32_t)),
@@ -638,7 +638,6 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         Bind(specular, receiver, sampler);
         specular.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
         voxelGI.BindLightingInputs(specular);
-        voxelGI.BindSecondaryBRDF(specular);
         specular.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
         BindHistory(specular, "ScreenProbeSpecular", "PreviousScreenProbeSpecular", m_specular);
         if (recordedHits)

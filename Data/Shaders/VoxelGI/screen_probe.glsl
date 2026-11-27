@@ -114,7 +114,7 @@ previousProbeLighting[ZEN_SCREEN_PROBE_HISTORY_FRAMES - 1];
 #    else
 #        define SPECULAR_ACCESS readonly
 #    endif
-// Four GGX roughness levels (8x8, then 4x4), packed RGBA16F.
+// Each probe's radiance atlas history (ZEN_SCREEN_PROBE_ATLAS_CELLS cells, RGBA16F), then one age word per probe.
 layout(std430, set = 1, binding = 91) SPECULAR_ACCESS buffer ScreenProbeSpecular
 {
     uvec2 probeSpecularData[];
@@ -179,8 +179,8 @@ vec4 PreviousProbeLighting(uint source, uint item)
 uvec2 PreviousProbeSpecular(uint source, uint texel)
 {
     uint probe = source & 0x3fffffffu;
-    uint index = texel == ZEN_SCREEN_PROBE_SPECULAR_TEXELS ? screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + probe
-                                                           : probe * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
+    uint index = texel == ZEN_SCREEN_PROBE_ATLAS_CELLS ? screenProbe.grid.w * ZEN_SCREEN_PROBE_ATLAS_CELLS + probe
+                                                       : probe * ZEN_SCREEN_PROBE_ATLAS_CELLS + texel;
     return source >> 30u == 0u ? previousProbeSpecularData[0].values[index]
          : source >> 30u == 1u ? previousProbeSpecularData[1].values[index]
                                : previousProbeSpecularData[2].values[index];

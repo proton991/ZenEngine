@@ -8,9 +8,12 @@
 #define ZEN_SCREEN_PROBE_HISTORY_FRAMES 4
 // 64 cumulative probabilities, eight six-bit light indices and the scheduled diffuse batch count. Six words store three learned direction distributions.
 #define ZEN_SCREEN_PROBE_PROPOSAL_WORDS 40u
-// The broad GGX levels retain 4x4 directions: a single octahedral texel would
-// erase hemisphere visibility and directional response on rough surfaces.
+// The filtered reflection levels per probe: the 8x8 octahedral radiance atlas, then three broad GGX levels
+// of 4x4 directions. A single octahedral texel would erase hemisphere visibility and directional response
+// on rough surfaces.
 #define ZEN_SCREEN_PROBE_SPECULAR_TEXELS 112
+// The radiance atlas each probe keeps as reflection history: one cell per 8x8 octahedral direction.
+#define ZEN_SCREEN_PROBE_ATLAS_CELLS 64u
 // The vertical filter appends one statistics vector per probe after the lighting coefficients.
 #define ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS 8u
 // Eight lighting vectors; per signal: luminance moments, history age and ray variance;

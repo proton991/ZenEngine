@@ -8,13 +8,58 @@ layout(std430, set = 1, binding = 93) writeonly buffer FilteredScreenProbeSpecul
     uvec2 filteredProbeSpecularData[];
 };
 layout(local_size_x = 64) in;
-float SpecularHistoryWeight(uint index)
+// The filtered radiance atlas: each cell's radiance and sky share, and its axis with its solid angle (zero below
+// the probe's horizon).
+shared vec4 cellValues[64];
+shared vec4 cellAxes[64];
+float       SpecularHistoryWeight(uint index)
 {
     float age = screenProbe.localResponse != 0u
-                  ? uintBitsToFloat(probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + index].x)
+                  ? uintBitsToFloat(probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_ATLAS_CELLS + index].x)
                   : min(probeLighting[index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 8u].z,
                         probeLighting[index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 9u].z);
     return max(age, 1.0);
+}
+// One reflection texel: the GGX lobe of its level around its reflect(-V,N) axis, integrated over the filtered
+// cells above the horizon. The weights are deterministic, so a lobe cannot hang on one sample.
+vec4 ProbeSpecularTexel(ScreenProbe probe, uint texel)
+{
+    uint  level     = texel < 64u ? 0u : 1u + (texel - 64u) / 16u;
+    uint  offset    = level == 0u ? 0u : 64u + (level - 1u) * 16u;
+    uint  side      = level == 0u ? 8u : 4u;
+    vec3  axis      = DecodeGBufferNormal((vec2((texel - offset) % side, (texel - offset) / side) + .5) / float(side));
+    float roughness = .25 * float(level + 1u);
+    float alpha = roughness * roughness, alphaSquared = alpha * alpha;
+    // Extend lower-hemisphere texels along the horizon so bilinear filtering is defined for grazing receivers.
+    vec3  n       = probe.normal.xyz;
+    float nv      = dot(n, axis);
+    vec3  tangent = axis - n * nv;
+    nv            = clamp(nv, 0.01, 1.0);
+    vec3 v        = dot(tangent, tangent) > 1e-8 ? nv * n - normalize(tangent) * sqrt(1.0 - nv * nv) : n;
+    nv            = max(dot(n, v), .01);
+    float k       = alpha * .5;
+    // The compositor applies colored F0; the lobe here uses the material's scalar Fresnel shape.
+    float f0   = mix(.04, 1.0, clamp(texelFetch(receiverRoughness, ivec2(probe.source.yz), 0).r, 0.0, 1.0));
+    vec4  sum  = vec4(0);
+    float lobe = 0.0;
+    for (uint cell = 0u; cell < 64u; ++cell)
+    {
+        vec4 cellAxis = cellAxes[cell];
+        if (cellAxis.w > 0.0)
+        {
+            float nl           = max(dot(n, cellAxis.xyz), 0.0);
+            float vh2          = max(.5 * (1.0 + dot(v, cellAxis.xyz)), 1e-7);
+            float nh2          = min((nv + nl) * (nv + nl) * .25 / vh2, 1.0);
+            float denominator  = 1.0 + (alphaSquared - 1.0) * nh2;
+            float grazing      = max(1.0 - sqrt(vh2), 0.0);
+            float squared      = grazing * grazing;
+            float fresnel      = f0 + (1.0 - f0) * squared * squared * grazing;
+            float weight       = cellAxis.w * nl * fresnel / ((nl * (1.0 - k) + k) * denominator * denominator);
+            sum               += cellValues[cell] * weight;
+            lobe              += weight;
+        }
+    }
+    return sum / max(lobe, 1e-20);
 }
 void main()
 {
@@ -23,48 +68,63 @@ void main()
     {
         ScreenProbe probe = probes[index];
         ivec2       tile  = ivec2(probe.source.yz / screenProbe.spacing);
-        for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
+        // One lane per atlas cell. The cells hold incoming radiance by world direction, so a cell means the
+        // same in every probe and neighbouring probes' cells can be averaged before any lobe is integrated.
+        uint  cell  = lane;
+        vec3  axis  = DecodeGBufferNormal((vec2(cell & 7u, cell >> 3u) + .5) / 8.0);
+        bool  upper = probe.position.w != 0.0 && dot(axis, probe.normal.xyz) > 0.0;
+        vec4  value = vec4(0);
+        float total = SpecularHistoryWeight(index);
+        float young = 1.0 - smoothstep(32.0, 192.0, total);
+        if (upper)
         {
-            uint  address      = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
-            uvec2 packed       = probeSpecularData[address];
-            vec4  value        = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
-            float total        = SpecularHistoryWeight(index);
-            float young        = 1.0 - smoothstep(32.0, 192.0, total);
-            vec3  groupWeight  = vec3(total, 0, 0);
-            vec3  groupLuma    = vec3(HybridLuminance(value.rgb) * total, 0, 0);
-            value             *= total;
+            uvec2 packed      = probeSpecularData[index * ZEN_SCREEN_PROBE_ATLAS_CELLS + cell];
+            value             = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
+            vec3 groupWeight  = vec3(total, 0, 0);
+            vec3 groupLuma    = vec3(HybridLuminance(value.rgb) * total, 0, 0);
+            value            *= total;
             // Brightest adjacent probe on any surface (negative: none).
             float nearestPeak = -1.0;
-            if (screenProbe.control.w != 0.0 && probe.position.w != 0.0)
+            if (screenProbe.control.w != 0.0)
             {
-                for (int y = -1; y <= 1; ++y)
+                // A new probe has one frame of a few rays per cell. Like the diffuse filter, widen its footprint
+                // while it is young: from 3 x 3 probes for a mature one to 7 x 7 for a new one.
+                int   reach  = young > 0.0 ? 3 : 1;
+                float spread = 1.0 + 1.5 * young;
+                for (int y = -reach; y <= reach; ++y)
                 {
-                    for (int x = -1; x <= 1; ++x)
+                    for (int x = -reach; x <= reach; ++x)
                     {
                         ivec2 q = tile + ivec2(x, y);
                         if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, ivec2(screenProbe.grid.xy))))
                         {
-                            uint        other        = uint(q.x) + uint(q.y) * screenProbe.grid.x;
-                            ScreenProbe sampleProbe  = probes[other];
-                            float       weight       = exp(-.5 * float(x * x + y * y))
-                                                     * ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, sampleProbe)
-                                                     * float(other != index && probe.source.w == sampleProbe.source.w);
-                            weight                  *= SpecularHistoryWeight(other);
-                            uvec2 sampleValue        = probeSpecularData[other * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel];
-                            vec4  sampleRadiance     = vec4(unpackHalf2x16(sampleValue.x), unpackHalf2x16(sampleValue.y));
-                            if (young > 0.0)
+                            uint        other       = uint(q.x) + uint(q.y) * screenProbe.grid.x;
+                            ScreenProbe sampleProbe = probes[other];
+                            bool        adjacent    = max(abs(x), abs(y)) <= 1;
+                            float       weight      = exp(-.5 * float(x * x + y * y) / (spread * spread))
+                                                    * ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, sampleProbe)
+                                                    * float(other != index && probe.source.w == sampleProbe.source.w)
+                                                    * float(dot(axis, sampleProbe.normal.xyz) > 0.0) * (adjacent ? 1.0 : young);
+                            if (weight > 0.0 || (adjacent && young > 0.0))
                             {
-                                float luma          = HybridLuminance(sampleRadiance.rgb);
-                                uint  group         = uint(3 + x + y) % 3u;
-                                groupLuma[group]   += luma * weight;
-                                groupWeight[group] += weight;
-                                if (other != index && sampleProbe.position.w != 0.0)
+                                weight               *= SpecularHistoryWeight(other);
+                                uvec2 sampleValue     = probeSpecularData[other * ZEN_SCREEN_PROBE_ATLAS_CELLS + cell];
+                                vec4  sampleRadiance  = vec4(unpackHalf2x16(sampleValue.x), unpackHalf2x16(sampleValue.y));
+                                if (young > 0.0)
                                 {
-                                    nearestPeak = max(nearestPeak, luma);
+                                    float luma          = HybridLuminance(sampleRadiance.rgb);
+                                    uint  group         = uint(9 + x + y) % 3u;
+                                    groupLuma[group]   += luma * weight;
+                                    groupWeight[group] += weight;
+                                    if (adjacent && other != index && sampleProbe.position.w != 0.0
+                                        && dot(axis, sampleProbe.normal.xyz) > 0.0)
+                                    {
+                                        nearestPeak = max(nearestPeak, luma);
+                                    }
                                 }
+                                value += sampleRadiance * weight;
+                                total += weight;
                             }
-                            value += sampleRadiance * weight;
-                            total += weight;
                         }
                     }
                 }
@@ -78,8 +138,19 @@ void main()
             {
                 scale = min(scale, mix(1.0, clamp(kIsolatedProbeSlack * nearestPeak / max(level, 1e-20), 0.0, 1.0), isolated));
             }
-            value.rgb                          *= scale;
-            filteredProbeSpecularData[address]  = uvec2(packHalf2x16(value.rg), packHalf2x16(value.ba));
+            value.rgb *= scale;
+        }
+        cellValues[cell] = value;
+        cellAxes[cell]   = vec4(axis, upper ? 1.0 / ProbeOctDensity(axis) : 0.0);
+        barrier();
+        // The cells above the horizon are the sharpest level; the rest of the texels integrate them.
+        for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
+        {
+            vec4 result = texel < 64u && cellAxes[texel].w > 0.0 ? cellValues[texel]
+                        : probe.position.w != 0.0                ? ProbeSpecularTexel(probe, texel)
+                                                                 : vec4(0);
+            filteredProbeSpecularData[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel] =
+                uvec2(packHalf2x16(result.rg), packHalf2x16(result.ba));
         }
     }
 }

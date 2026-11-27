@@ -38,18 +38,18 @@ void main()
 #ifndef SCREEN_PROBE_DIFFUSE_ONLY
         if (lane == 0u && screenProbe.localResponse != 0u)
         {
-            uint age                                 = screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + index;
+            uint age                                 = screenProbe.grid.w * ZEN_SCREEN_PROBE_ATLAS_CELLS + index;
             probeSpecularData[age]                   = uvec2(0);
             previousProbeSpecularData[0].values[age] = uvec2(0);
             previousProbeSpecularData[1].values[age] = uvec2(0);
             previousProbeSpecularData[2].values[age] = uvec2(0);
         }
-        for (uint item = lane; item < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; item += gl_WorkGroupSize.x)
+        for (uint item = lane; item < ZEN_SCREEN_PROBE_ATLAS_CELLS; item += gl_WorkGroupSize.x)
         {
-            probeSpecularData[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + item]                   = uvec2(0);
-            previousProbeSpecularData[0].values[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + item] = uvec2(0);
-            previousProbeSpecularData[1].values[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + item] = uvec2(0);
-            previousProbeSpecularData[2].values[index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + item] = uvec2(0);
+            probeSpecularData[index * ZEN_SCREEN_PROBE_ATLAS_CELLS + item]                   = uvec2(0);
+            previousProbeSpecularData[0].values[index * ZEN_SCREEN_PROBE_ATLAS_CELLS + item] = uvec2(0);
+            previousProbeSpecularData[1].values[index * ZEN_SCREEN_PROBE_ATLAS_CELLS + item] = uvec2(0);
+            previousProbeSpecularData[2].values[index * ZEN_SCREEN_PROBE_ATLAS_CELLS + item] = uvec2(0);
         }
 #endif
     }
