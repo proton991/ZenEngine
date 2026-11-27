@@ -132,3 +132,97 @@ Each launch is repeated at least once, since launches vary as much as some effec
   lamps, the glossy pass's roughness limit can rise to cover it, at the glossy pass's cost.
 - **R3 may not reach its gate.** If the young band stays above 0.15, the remaining pan noise is probe
   placement itself, and the next lever is placement that keeps anchors through motion.
+
+## R0–R2 results (2026-11-27)
+
+### What was built
+
+- **Layout.** The atlas uses the existing world-space 8 × 8 octahedral layout of the 0.25 roughness level and of
+  the learned CDF bins (`ProbeOctBin`), not a hemisphere layout per probe. Cells then line up across probes,
+  so relocation and the spatial filter work per cell. About 32 cells cover a probe's hemisphere (about 25°
+  each). R0 is met by construction: the atlas takes level 0's storage, and no pass or memory is added.
+- **Diffuse** keeps its current path. Only reflections read the atlas.
+- **Prefilter** (`screen_probe_prefilter.glsl`). Each ray updates only its own cell, at its inverse PDF against
+  the cell's expected weight (sample count × cell solid angle). Rays keep their current generation. The uniform
+  lanes bound every cell's weight, so no reflection lobe multiplies a ray's weight. Each cell blends with its
+  history at the probe's age, as the texels did. Missing weight in a young cell takes the probe's mean radiance.
+  Relocated probes average the footprint's cells over the taps that see the cell above their horizon.
+- **Specular spatial filter** (`screen_probe_specular_filter.comp`). It averages neighbouring probes' cells
+  (aligned, so a cell means the same in every probe), from 3 × 3 probes for a mature probe to 7 × 7 for a new
+  one, as the diffuse filter widens. It then integrates every reflection texel from the filtered cells with
+  its GGX lobe. The weights are deterministic.
+
+### Measurements
+
+Baseline is `main` (f397b8aa); large-angle cases are two launches each.
+
+| Measure | main | Atlas |
+|---|---|---|
+| Reflection-only view at frame 1164 (settled pose right after the sweep), pixels > 3× settled | 2,337 | 1,249 |
+| Same, error against settled (RMS) | 4.92 | 3.86 |
+| Settled reflection, ratio to main | — | 1.000 (80% of pixels within 0.94–1.07) |
+| Three-case still camera, RMS / pixels > 4 levels | 0.025 / 0.000% | 0.025 / 0.000% |
+| Three-case pixels > 10% off, moving camera / light ball | 1.256% / 0.928% | 1.224% / 0.887% |
+| 180° snap, bright pixels per frame, static | 9.0, 9.0 | 3.0, 2.5 |
+| 180° snap, bright pixels per frame, light ball | 23.5, 40.0 | 10.5, 7.5 |
+| 180° snap, speck clusters, static / light ball | 9, 10 / 27, 28 | 6, 5 / 13, 10 |
+| 30° sweep, speck clusters, static | 181, 186 | 184, 200 |
+| 30° sweep, bright pixels per frame, static / light ball | 46.0, 45.0 / 45.2, 49.2 | 69.2, 69.6 / 59.1, 63.7 |
+| 30° sweep, error against settled (RMS), static / light ball | 1.20 / 1.31 | 1.16 / 1.27 |
+
+The R2 gate (glint clusters down 80%) is not met. Snaps improved by half to two thirds; sweeps have the same
+cluster count, lower overall error, and more pixels above +24 levels. The wider young filter spreads a bright cell
+over more probes at lower contrast.
+
+### Tried and not kept
+
+- **Cells without the cell filter**, levels integrated per probe in the prefilter. Snaps improved, but sweeps did
+  not, and reflection glints at frame 1164 rose slightly (2,535). The glints were never the lobe estimator's heavy
+  tail: they are a new probe's one frame of a few rays per direction, which the reflection lookup's
+  per-pixel normal variation turns into specks.
+- **Directional fill.** Young cells' missing weight took nearby samples (cos^8 about the cell's axis) instead of
+  the probe's mean. Static sweeps came back to main's bright-pixel count, but light-ball sweeps got worse
+  (85–88), and the still camera was no longer clean (RMS 0.040, 0.001% > 4 levels): probes that stay young use
+  the fill every frame, and a local fill is noisier than the mean.
+
+### What this means for R3
+
+R3 rebuilds a probe without a predecessor from the previous frame's probes around it. The measurements above
+narrow what it can add:
+
+- The remaining young-surface noise is on surfaces revealed by the motion: the leading strip of a pan and
+  disocclusions. In both, the previous frame had no probes on that surface, so there is nothing to rebuild from.
+- Where previous probes on the same surface exist, probes are relocated and already take an 18-tap footprint
+  history. Since R2, reflections also average neighbouring probes' cells up to 7 × 7.
+- What R3 could still add is the footprint history for probes that have no predecessor but do have coplanar
+  previous probes nearby. That is a small change to the existing relocation path, not a new reconstruction.
+
+## R3 and R4 results (2026-11-27)
+
+**R3, tried and not kept.** Probe placement only gives a probe a predecessor when a previous probe within 1.5
+spacings has a normal within about 11° (cosine above 0.98). Otherwise the probe starts fresh. R3 let such a probe
+adopt the best coplanar previous probe at any orientation as a relocation source, never as an anchor, so the
+existing relocation path (normal-corrected diffuse, measured retention, world-direction reflection cells) set
+how much history it kept. `crawl.py` separated R2 from R3:
+
+| Build | Age 0–4, out / back | Age 4–8, out / back |
+|---|---|---|
+| main | 0.222 / 0.321 | 0.183 / 0.208 |
+| R2 (atlas) | 0.166 / 0.307 | 0.117 / 0.181 |
+| R2 + R3 | 0.165 / 0.304 | 0.119 / 0.180 |
+
+R3 adds nothing measurable, as expected from surfaces revealed by motion having no previous probes. It was
+reverted. Its gate (age 0–4 below 0.15 on both pans) is not met. The atlas, though, cut the youngest band's change
+on the outward pan by a quarter and the 4–8 band by a third: a large share of the shimmer on newly revealed
+surfaces was their reflections. A relocated probe now also takes a cell's history only if its source saw that cell
+above its own horizon.
+
+**R4.** The reflection history keeps only the atlas: `ZEN_SCREEN_PROBE_ATLAS_CELLS` (64) cells and the age word per
+probe, instead of 112 texels and the age word. The three broad levels are integrated each frame in the specular
+spatial filter and live only in its transient output. At 4K (162,000 probes, four history sides) this frees about
+250 MB. The world cache still gets 1,048,576 cells. The crawl matches R2 (0.165 / 0.306), start-up is unchanged,
+and a validation launch is clean.
+
+**Review fix, not yet measured.** The predicted moving-light change reached only cells that drew a ray in that
+frame, so parts of a moving light's reflection could trail by a frame. A cell without samples now takes the change
+its nearby directions saw (inverse PDF times cos^8 about the cell's axis). It is zero without moving lights.
