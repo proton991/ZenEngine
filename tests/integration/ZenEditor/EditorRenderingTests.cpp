@@ -145,6 +145,7 @@ TEST_P(EditorRendering, PlayWindowReusesSceneAndRestoresAfterPauseResizeAndQuit)
     run.renderHeight                           = 64;
     run.followWindow                           = false;
     run.vsync                                  = false;
+    run.warmupFrames                           = 2;
     settings.gi.shadowMapResolution            = 256;
     ASSERT_TRUE(editor.StageRenderingSettings(settings));
     ASSERT_TRUE(editor.GetRenderingState().NeedsResourceApply());
@@ -157,8 +158,18 @@ TEST_P(EditorRendering, PlayWindowReusesSceneAndRestoresAfterPauseResizeAndQuit)
     editor.UpdatePlaySession();
     runtime::RuntimeWindow& play = editor.GetPlaySession();
     ASSERT_NE(play.GetWindow(), nullptr);
+    // Warm-up frames are rendered but neither shown nor counted.
+    for (uint32_t index = 0; index < run.warmupFrames; ++index)
+    {
+        ASSERT_TRUE(play.Render()) << play.GetError();
+    }
+    EXPECT_EQ(play.GetState(), runtime::RuntimeState::Starting);
+    EXPECT_EQ(play.GetSceneFrame(), 0u);
+    EXPECT_DOUBLE_EQ(play.GetSceneSeconds(), 0.0);
     ASSERT_TRUE(play.Render()) << play.GetError();
     ASSERT_EQ(play.GetState(), runtime::RuntimeState::Running);
+    EXPECT_EQ(play.GetSceneFrame(), 1u);
+    run.warmupFrames = 0; // The restart below pauses on its first frame.
     EXPECT_EQ(editor.GetViewport().GetRenderScene(), scene);
     EXPECT_EQ(scene->GetVertexBuffer(), vertices);
     EXPECT_EQ(editor.GetViewport().GetRenderView().color, image);

@@ -21,6 +21,10 @@ struct RuntimeWindowSettings
     bool     vsync{true};
     bool     fixedStep{false};
     bool     animate{true};
+    // Scene frames rendered at the first frame's camera before the first one is shown. Temporal GI
+    // starts from empty caches and histories; the window keeps its clear colour until they settle.
+    // These frames advance neither the scene frame count nor scene time.
+    uint32_t warmupFrames{0};
 };
 
 // Borrows a loaded scene, camera and render target. Owns the ZenApp window only.
@@ -91,6 +95,7 @@ public:
 
 private:
     bool ResizeSceneTarget(const platform::WindowExtent& extent);
+    bool IsWarmingUp() const;
     friend struct RuntimeWindowTestAccess;
     void OnInput(const platform::InputEvent& event);
     void ApplyInput(float seconds);
@@ -110,6 +115,8 @@ private:
     runtime::RuntimeState                 m_state{runtime::RuntimeState::Idle};
     std::string                           m_error;
     uint64_t                              m_sceneFrames{0};
+    uint32_t                              m_warmupFrames{0};
+    std::chrono::steady_clock::time_point m_warmupStart;
     float                                 m_sceneMilliseconds{0};
     rc::RDGMetricsSnapshot                m_sceneMetrics;
     std::chrono::steady_clock::time_point m_lastSceneTime;
@@ -118,6 +125,7 @@ private:
     float                                 m_wheel{0};
     bool                                  m_captureMouse{false};
     bool                                  m_captureKeyboard{false};
+    bool                                  m_hideScene{false};
     bool                                  m_showDiagnostics{true};
 };
 } // namespace zen::runtime

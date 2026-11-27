@@ -369,6 +369,10 @@ bool ParseOptions(int              argc,
         {
             ParseUnsigned(argument, options.giEntryFrame, std::numeric_limits<uint64_t>::max(), error);
         }
+        else if (argument.starts_with("--warmup-frames="))
+        {
+            ParseUnsigned(argument, options.warmupFrames, 4096, error, 0);
+        }
         else if (argument.starts_with("--gi-config=") && argument.size() > 12)
         {
             overrides.giConfigPath = argument.substr(12);
@@ -539,6 +543,7 @@ int RuntimeMain(int argc, char** argv)
                "       [--rhi=inline|threaded] [--async-compute=0|1] [--vsync=0|1] [--validation=0|1|required]\n"
                "       [--backend=auto|compute|hardware] [--gpu-culling=0|1] [--disable-rt] [--gpu-markers] [--no-ui]\n"
                "       [--gi-entry-frame=N (start in PBR and request the configured GI at scene frame N)]\n"
+               "       [--warmup-frames=N (hidden scene frames at the first camera before frame 1; default 128)]\n"
                "       [--device-loss-diagnostics] [--rhi-stall-report-seconds=N] [--rhi-stall-fatal-seconds=N]\n"
                "       [--gi-config=engine.cfg (read like Data/engine.cfg; --gi-* options below override it)]\n"
                "       [--device-memory-limit-mb=N (caps device-local heaps; 8192 emulates an 8 GB GPU)]\n"

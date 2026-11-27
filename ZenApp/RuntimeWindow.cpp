@@ -52,6 +52,7 @@ bool RuntimeWindow::Start(const RuntimeWindowSettings& settings, float moveSpeed
         m_sceneMilliseconds = 0;
         m_sceneMetrics      = {};
         m_sceneFrames       = 0;
+        m_warmupFrames      = 0;
         m_declines          = 0;
         m_wheel             = 0;
         m_captureMouse      = false;
@@ -207,7 +208,8 @@ void RuntimeWindow::ApplyInput(float seconds)
 {
     // Consume motion while UI owns input so releasing a widget cannot jump the camera.
     const CameraInput input = ReadNavigationCameraInput(seconds, m_moveSpeed, m_wheel);
-    if (m_window->IsFocused() && !m_captureMouse && !m_captureKeyboard)
+    // Hidden warm-up frames converge the first frame's view, so they consume input without applying it.
+    if (m_window->IsFocused() && !m_captureMouse && !m_captureKeyboard && !IsWarmingUp())
     {
         m_camera.Apply(input);
     }
@@ -253,6 +255,7 @@ bool RuntimeWindow::Render(rc::RenderOverlay* overlay, rc::RDGDebugSnapshot* cap
         {
             m_device.ResizeViewport(m_present, extent.width, extent.height);
             const bool drawScene = m_state != runtime::RuntimeState::Paused;
+            const bool warmingUp = drawScene && IsWarmingUp();
             if (drawScene)
             {
                 valid = ResizeSceneTarget(extent);
@@ -274,13 +277,29 @@ bool RuntimeWindow::Render(rc::RenderOverlay* overlay, rc::RDGDebugSnapshot* cap
             }
             if (valid)
             {
+                if (warmingUp && m_warmupFrames == 0)
+                {
+                    m_warmupStart = std::chrono::steady_clock::now();
+                }
                 m_overlay                          = overlay;
+                m_hideScene                        = warmingUp;
                 const rc::RenderFrameResult result = m_device.GetRendererServer()->DispatchRenderWorkloads(
                     m_target.GetView(), this, drawScene, m_present, capture);
-                m_overlay = nullptr;
-                valid     = result != rc::RenderFrameResult::eBlocked && result != rc::RenderFrameResult::eFailed
-                         && rc::TrackDeclinedFrames(result, m_declines);
-                if (drawScene && result == rc::RenderFrameResult::eSubmitted)
+                m_overlay   = nullptr;
+                m_hideScene = false;
+                valid       = result != rc::RenderFrameResult::eBlocked && result != rc::RenderFrameResult::eFailed
+                           && rc::TrackDeclinedFrames(result, m_declines);
+                if (warmingUp && result == rc::RenderFrameResult::eSubmitted)
+                {
+                    ++m_warmupFrames;
+                    if (!IsWarmingUp())
+                    {
+                        LOGI("ZenApp warm-up: {} hidden scene frames in {:.0f} ms", m_warmupFrames,
+                             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_warmupStart)
+                                 .count());
+                    }
+                }
+                else if (drawScene && result == rc::RenderFrameResult::eSubmitted)
                 {
                     const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
                     if (m_sceneFrames > 0)
@@ -316,7 +335,14 @@ bool RuntimeWindow::Render(rc::RenderOverlay* overlay, rc::RDGDebugSnapshot* cap
 
 bool RuntimeWindow::BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewport)
 {
-    return m_compositor.BuildRenderGraph(graph, rc::RenderView::FromViewport(viewport), m_target.GetView())
+    // A warm-up frame renders the scene target but leaves the window on its clear colour. The first view's
+    // pipeline precache still records the compositor.
+    return (m_hideScene || m_compositor.BuildRenderGraph(graph, rc::RenderView::FromViewport(viewport), m_target.GetView()))
         && (m_overlay == nullptr || m_overlay->BuildRenderGraph(graph, viewport));
+}
+
+bool RuntimeWindow::IsWarmingUp() const
+{
+    return m_sceneFrames == 0 && m_warmupFrames < m_settings.warmupFrames;
 }
 } // namespace zen::runtime

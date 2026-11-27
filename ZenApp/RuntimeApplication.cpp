@@ -764,6 +764,7 @@ private:
             settings.followWindow                    = m_setup.run.followWindow;
             settings.vsync                           = m_setup.run.vsync;
             settings.fixedStep                       = m_options.fixedStep;
+            settings.warmupFrames                    = uint32_t(m_options.warmupFrames);
             UniquePtr<platform::NativeWindow> window = RuntimeWindow::CreateNativeWindow(settings);
             if (!m_options.pipelineCache.empty())
             {
