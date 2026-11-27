@@ -504,6 +504,109 @@ surfaces revealed in the last ~16 frames, about a third of the screen during thi
 settled-image error on mature surfaces is the difference between two stable probe patterns, not crawl.
 Items 1–3 therefore share one cause: a newly revealed surface starts with one frame of 48 rays per probe.
 
+### Relocated probes keep their history (2026-11-27)
+
+When the camera moves more than one probe spacing per frame, every anchor is placed again each frame and a
+relocated probe takes its history from an 18-tap footprint of previous probes. It kept the share
+`support × frameVariance / (frameVariance + age × footprintVariance)`. The footprint variance was the raw
+luminance variance across the taps, which also holds each tap's own sampling noise and the lighting
+gradient across the surface. Relocated probes therefore kept little history and stayed young.
+
+`ProbePastValue` (`screen_probe.glsl`) now counts only the disagreement that the history cannot explain:
+the residual of a plane fit of tap luminance against tap offset, plus the squared bias of evaluating the
+weighted mean away from the probe, minus the taps' own variance of the mean. Both spreads are corrected for
+the taps' effective count n (n / (n − 1) and n / (n − 3)), and the plane is fitted only from four effective
+taps. Moving-light items do not take this path.
+
+The first version had no degrees-of-freedom correction. A plane through three taps then fitted exactly and
+read as full agreement, and tent weights leave four to nine effective taps. The code review caught it.
+That version made probes older still (median 73 frames) and lowered the youngest crawl band to 0.214 / 0.312;
+the corrected version gives that back.
+
+| Measure | Stage 1 | Corrected fix |
+|---|---|---|
+| Probe age at the end of the outward pan (pixel history off, debug face 3), median | 14 frames | 57 frames |
+| Same, share of probes 64 frames or older | 17% | 48% |
+| Probe age at the end of the return pan, median | 6 frames | 15 frames |
+| Three-case, pixels > 10% off, moving camera / light ball | 1.297% / 0.977% | 1.256% / 0.928% |
+| Three-case, pixels > 16 levels, moving camera / light ball | 0.0123% / 0.0117% | 0.0123% / 0.0116% |
+| Three-case, RMS, moving camera / light ball | 0.805 / 0.762 | 0.793 / 0.740 |
+| `crawl.py`, history age 0–4, out / back | 0.221 / 0.315 | 0.222 / 0.321 |
+| `crawl.py`, whole frame, out / back | 0.215 / 0.232 | 0.215 / 0.232 |
+| Large-angle sweep clusters, static, two interleaved launches each | 175, 158 | 181, 186 |
+| Large-angle sweep clusters, light ball | 183, 187 | 161, 180 |
+
+Single large-angle launches of the same build differ by up to 20%, so the sweep counts were taken in
+interleaved pairs; they show no consistent difference. Probes now live four times longer through motion,
+but the visible measures moved by 0–5%: the probe history was not what kept young surfaces noisy. The fix is
+kept because a relocated probe no longer discards history for noise it already averaged.
+
+Pixel-scale smoothing of young pixels, NRD's history fix, was not built. Young-surface noise is at probe
+scale: 16 × 16 block means change by 0.2–0.3 levels per frame. Taps a few pixels apart average within a
+block and cannot change its mean. At probe scale the spatial filter (`screen_probe_filter.glsl`) already
+gives a probe of age 1 its widest footprint, a radius of 192 clamped to a 12-probe reach.
+
+### Start-up warm-up (2026-11-27)
+
+`build/gi-denoiser-final-fix/startup.py` launches the three-case scene with a still camera and compares
+early frames with the mean of frames 593–600. The block columns count 16 × 16 blocks whose mean is more
+than 5% or 10% away from settled.
+
+| Frame | > 4 levels | > 10% off | Mean signed | Blocks > 5% | Blocks > 10% |
+|---|---|---|---|---|---|
+| 1 | 15.89% | 34.66% | −1.95 | — | — |
+| 16 | 0.58% | 5.03% | −0.71 | 46.60% | 21.38% |
+| 32 | 0.13% | 1.24% | −0.44 | 31.31% | 8.90% |
+| 64 | 0.06% | 0.28% | −0.26 | 15.81% | 2.05% |
+| 128 | 0.01% | 0.04% | −0.09 | 1.93% | 0.14% |
+| 256 | 0.00% | 0.00% | −0.02 | 0.06% | 0.00% |
+
+The noise settles within about 32 frames. The longer tail is a dark bias in bounce light. Debug views
+separate it: by frame 64 the gathered sky's mean is within 0.09 levels of settled, with 7% of its blocks
+more than 5% off, while bounce light is still 0.78 levels dark, with 24% of its blocks more than 5% off. Bounce reads the world radiance cache,
+which starts empty. Its records are means of up to 128 samples, and early samples miss the bounces that
+the cache has not filled yet. The cache's own mean is 0.52 levels dark at frame 64 and 0.20 at frame 128.
+
+Fix: `RuntimeWindow` renders `warmupFrames` scene frames at the first frame's camera before the first
+shown frame. They are not composited (the window keeps its clear colour) and advance neither the scene
+frame count nor scene time, so camera keys, captures and `--frames` keep their meaning. ZenApp warms up for
+128 frames, set with `--warmup-frames=N` (0 turns it off); the editor's play window keeps 0. With the
+default, the first shown frame:
+
+| Frame | > 4 levels | > 10% off | Mean signed | Blocks > 5% | Blocks > 10% |
+|---|---|---|---|---|---|
+| 1 | 0.01% | 0.04% | −0.08 | 1.86% | 0.14% |
+| 32 | 0.01% | 0.01% | −0.05 | 0.76% | 0.03% |
+| 128 | 0.00% | 0.01% | −0.02 | 0.06% | 0.01% |
+
+The warm-up took 3.3 s at 4K, while the window showed its clear colour. 64 frames would halve that and leave
+2% of blocks more than 10% dark at the first frame, fading over the next two seconds. Field GI may still be
+preparing its distance field after the warm-up, since it only counts frames.
+
+### Rim glints: effective sample count (2026-11-27, not kept)
+
+Reflection glints are about 80% of the speck clusters left in the large-angle replay (`compare_specks.py`:
+110 of 142 in the static sweep, 120 of 148 with the light ball). Most sit on rims, where a new probe has no
+coplanar neighbours for the specular spatial filter and every nearby probe is new too.
+
+The experiment counted the probe's mean radiance as one more sample of a history-less lobe, with weight
+`sum(w^2) / sum(w)`, the frame's weight per effective sample. A lone ray near a narrow lobe's peak then keeps at
+most half the estimate.
+
+| Case | Bright pixels per frame, before → after | Clusters, before → after |
+|---|---|---|
+| Sweep, static | 36.8 → 41.9 | 142 → 172 |
+| Sweep, light ball | 40.8 → 47.6 | 148 → 166 |
+| Snap, static | 19.0 → 5.5 | 9 → 5 |
+| Snap, light ball | 42.0 → 27.5 | 28 → 22 |
+
+Sweeps got worse and the two-frame snaps better. Sun-edge clusters, which the change cannot affect, went from
+26 to 38 in the static sweep, so launch-to-launch variation is as large as any effect here. The change was
+reverted. A lobe sampled by hemisphere rays has heavy-tailed weights in every frame, and re-weighting one
+frame trades the glint for bias. Removing it needs radiance stored per direction cell, as in Lumen's and
+GI-1.0's octahedral probe radiance, so that every lobe has samples. That changes probe ray generation and
+light guiding; [ProbeRadianceAtlasPlan.md](ProbeRadianceAtlasPlan.md) plans it.
+
 ### Proposed no-visible-noise gate
 
 All on 4K New Sponza with the full world cache, from the two existing tools:
@@ -524,8 +627,9 @@ surfaces get a nonzero allowance because one frame of rays cannot be noise-free.
 Still open:
 
 - New probes start from one frame of rays: the first-frame noise of revealed surfaces, their ~16-frame
-  convergence during pans, and the remaining new-probe glints. [ProbeMemoryPlan.md](ProbeMemoryPlan.md) plans
-  the fix for surfaces seen before.
+  convergence during pans, and the remaining new-probe glints. A world-space table of probe lighting and
+  more first-frame rays each gained 6–10% ([ProbeMemoryPlan.md](ProbeMemoryPlan.md)) and were not kept.
+  [ProbeRadianceAtlasPlan.md](ProbeRadianceAtlasPlan.md) is the next step for this and the rim glints.
 - A single pixel at (114, 808) reads (164, 127, 71) at frames 772 and 1160, the same 120° pose, and is
   black when settled. It vanished with the expected-weight estimator and returned with the kept one, so it
   is a new-probe reflection like the other glints, deterministic because each frame's rays are.
@@ -563,3 +667,6 @@ Still open:
 - Large-angle specks: `screen_probe_history.glsl` (body moved from `screen_probe_history.comp`),
   `screen_probe_history.comp`, `screen_probe_history_sources.comp`, `screen_probe_sky_sources.comp`,
   `ScreenProbeGI.cpp/.h`, `ShaderProgram.cpp`, and the pass-list pins in `HybridGIPassListTests.inl`.
+- Relocated probe history: `screen_probe.glsl` (`ProbePastValue`).
+- Start-up warm-up: `ZenApp/Include/ZenApp/RuntimeWindow.h`, `ZenApp/RuntimeWindow.cpp`, `ZenApp/RuntimeApplication.h/.cpp`,
+  `ZenApp/Main.cpp`, and the play-window check in `tests/integration/ZenEditor/EditorRenderingTests.cpp`.

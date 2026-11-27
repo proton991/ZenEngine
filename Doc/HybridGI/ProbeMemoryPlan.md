@@ -103,3 +103,65 @@ texel's direction, instead of the probe's hemisphere mean.
 Gates: the young-band block change under 0.1 level per frame for surfaces seen before. No darkening in
 the large-angle −24 counts. Mature surfaces unchanged (0.085 levels per frame). The world cache keeps
 1,048,576 cells at 4K with the light ball.
+
+## W1 results (2026-11-27)
+
+W1 was built as planned, except that the read and the write both live in the temporal pass. A per-entry
+frame stamp guards them: one writer claims an entry, and a reader skips an entry that changed while it was
+read. No pass was added, and the world cache kept 1,048,576 cells in every launch. The pass-list test passes.
+Debug colouring confirmed that probes on surfaces revealed by a return pan adopt entries.
+
+Three-case check (1° per frame pan, pixels more than 10% off):
+
+| Variant | Moving camera | Light ball | Still camera |
+|---|---|---|---|
+| Stage 1 (no table) | 1.297% | 0.977% | clean (RMS 0.025) |
+| Entry trusted as 8 frames, 3-spacing cells | 1.172% | 0.853% | pops (RMS 0.039) |
+| Entry rejected beyond 3 standard errors of the probe's own frame | 1.276% | 0.946% | clean |
+| Entry weighted by inverse variance (cell spread against frame noise) | 1.280% | 0.945% | clean |
+| Same, 1-spacing cells | 1.280% | 0.956% | clean |
+
+Fixes found on the way, kept in every variant after they appeared:
+
+- Cells near local lights. The first variant leaked lantern light: inverse-square falloff varies across a
+  cell next to a lamp, and the large-angle static case went from 133 to 1,383 speck clusters. Probes within
+  eight cells of a local light now neither read nor write.
+- Normals. A cell's normal bin admits normals 55° apart, while an entry's irradiance holds at its writers'
+  normal. Entries now keep their writers' mean normal and are read only within about 25°.
+
+Outcome: trusting an entry as eight frames gains about 10% but makes a still camera pop. A new probe now and
+then adopts the mean of a cell whose spots differ, and the pixel jumps several-fold before its own rays take
+over. Weighting the entry by how much its cell's spots differ removes the pops and the gain. An entry then
+counts for about one frame, because neighbouring spots differ about as much as one frame's sampling noise.
+Smaller cells keep entries precise, but a new probe rarely lands in a cell an earlier probe wrote, since
+placement shifts with the camera.
+
+This matches why shipped engines keep world-space caches for distant lighting, which varies slowly across
+space, and trace near-field lighting fresh. W1 does not meet its gate, and W2 would read the same entries.
+
+## More first-frame rays (2026-11-27)
+
+As an experiment, brand-new probes (no predecessor) traced six batches instead of three. The world cache kept
+1,048,576 cells. Measured with `crawl.py` (1° per frame pan out to 30° and back), 16 × 16 block change per
+frame by pixel history age:
+
+| Pan | Build | Age 0–4 | Age 4–8 | Age 8–16 | Blocks > 1 level, age 0–4 |
+|---|---|---|---|---|---|
+| Out, first visit | 3 batches, stage 1 | 0.221 | 0.178 | 0.147 | 0.64% |
+| Out, first visit | 3 batches, W1 table (inverse-variance) | 0.231 | 0.186 | 0.157 | 0.75% |
+| Out, first visit | 6 batches, stage 1 | 0.208 | 0.188 | 0.156 | 0.60% |
+| Back, revisit | 3 batches, stage 1 | 0.315 | 0.203 | 0.160 | 1.73% |
+| Back, revisit | 3 batches, W1 table (inverse-variance) | 0.283 | 0.197 | 0.161 | 1.33% |
+| Back, revisit | 6 batches, stage 1 | 0.295 | 0.197 | 0.158 | 1.50% |
+
+The experiment was first compared with the W1 build, the last one measured on the return pan. The plain
+stage 1 rows were measured afterwards, with the 128-frame start-up warm-up of
+[GIDenoiserFinalFix.md](GIDenoiserFinalFix.md). A cold start is already settled by frame 256 (0.03% of blocks
+more than 5% off), so the warm-up does not change a pan that starts at frame 600. Against them,
+doubling the first frame's rays lowered the youngest band's change by about 6% on both pans. If first-frame
+sampling noise dominated, it would have fallen by about 30%. On revisits, the W1 table gained about 10% in
+this band, as on the three-case check. The change on
+young surfaces therefore comes mostly from elsewhere: probes keep being placed and relocated as the camera
+moves, and those pixels' history is still short. On mature surfaces the 32-frame pixel history hides the
+same re-placement (0.085 levels per frame). A pool of extra rays for new probes was not built, and the
+experiment was reverted.
