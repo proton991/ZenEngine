@@ -1021,7 +1021,8 @@ void DeferredLightingRenderer::BuildCompositionGraph(const RenderView&    view,
     {
         m_loggedGIFailure.clear();
     }
-    const bool forward         = UsesForwardMaterials();
+    // The HDR composition target also serves opaque-only scenes on linear capture frames.
+    const bool forward         = UsesForwardMaterials() || m_luminanceReadback != nullptr;
     const bool pipelineShadows = voxelGI != nullptr && voxelGI->UsesHardwareShadows() && voxelGI->UsesRayTracingPipeline()
                               && (!forward || ShadesOpaqueDeferred());
     RDGTexture visibility;
@@ -1903,6 +1904,31 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView&    view,
         }
     }
 
+    // Measure the linear HDR scene before the display transform and display-space alpha blend.
+    const uint64_t luminanceBytes = uint64_t(width) * height * 2u * sizeof(float);
+    if (m_luminanceReadback != nullptr && m_luminanceReadback->GetRequiredSize() >= luminanceBytes)
+    {
+        RDGBufferDesc luminance;
+        luminance.name = "capture_luminance";
+        luminance.size = luminanceBytes;
+        luminance.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+        const RDGBuffer    packed = resources->CreateBuffer(luminance);
+        RDGComputePassDesc measure;
+        measure.SetShaderProgramName("CaptureLuminanceSP");
+        measure.SetPassTag("CaptureLinearLuminance");
+        measure.BindSampledTexture("sourceColor", m_pColorSampler, color);
+        const uint32_t probeAge = uint32_t(hybrid && m_hybrid->GetScreenProbeCount() != 0u);
+        measure.BindSampledTexture("sourceAge", m_pColorSampler, probeAge != 0u ? m_hybrid->GetRawBounceOutput() : color);
+        measure.BindStorageBuffer("LinearLuminance", packed, RDGContentGuarantee::eFullWrite);
+        graph->AddComputePass(std::move(measure)).RecordPassCommands([width, height, probeAge](RDGPassCmdEncoder& encoder) {
+            encoder.SetPushConstants(probeAge);
+            encoder.Dispatch((width + 7u) / 8u, (height + 7u) / 8u, 1u);
+        });
+        graph->AddTransferPass("ReadLinearLuminance")
+            .CopyBuffer(packed, resources->ImportBuffer(m_luminanceReadback), {0, 0, luminanceBytes})
+            .NeverCull();
+        m_luminanceRecorded = true;
+    }
     RDGGraphicsPassDesc toneMap;
 
     toneMap.SetShaderProgramName("ForwardToneMapSP");

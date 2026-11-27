@@ -92,6 +92,16 @@ public:
         m_captureRecorded = false;
     }
 
+    void SetLuminanceCapture(RHIBuffer* readback)
+    {
+        m_luminanceReadback = readback;
+        m_luminanceRecorded = false;
+    }
+    bool WasLuminanceRecorded() const
+    {
+        return m_luminanceRecorded;
+    }
+
     bool WasLightingCaptureRecorded() const
     {
         return m_captureRecorded;
@@ -174,6 +184,8 @@ private:
     RHIBuffer*  m_captureOutput{nullptr};
     RHIBuffer*  m_captureReadback{nullptr};
     bool        m_captureRecorded{false};
+    RHIBuffer*  m_luminanceReadback{nullptr};
+    bool        m_luminanceRecorded{false};
     glm::uvec2  m_gbufferExtent{0, 0};
     // The blend triangles' indices in back-to-front order, so each run of triangles from one node
     // and material is a single draw (BuildForwardGraph); uploaded only when the order changes.

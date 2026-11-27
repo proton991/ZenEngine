@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define PROBE_FILTER_VERTICAL
+#define PROBE_MOVING_FILTER
+#include "screen_probe_filter.glsl"

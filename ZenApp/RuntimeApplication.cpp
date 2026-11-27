@@ -9,6 +9,7 @@
 #include "RuntimeApplication.h"
 #include "RuntimeLog.h"
 #include "AssetLib/SceneLoader.h"
+#include "SceneGraph/Material.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
@@ -71,6 +72,7 @@ public:
         if (m_device)
         {
             m_device->WaitForPreviousFrames();
+            m_device->DestroyBuffer(m_luminanceReadback);
             for (RHIBuffer* buffer : m_captureBuffers)
             {
                 m_device->DestroyBuffer(buffer);
@@ -212,23 +214,157 @@ private:
 
     bool ApplyLightPath(uint64_t frame)
     {
-        bool       found    = false;
-        bool       changed  = false;
-        const Vec3 position = LightPathPosition(m_options.lightKeys, frame);
-        for (rc::RenderingLight& entry : m_setup.rendering.lights)
+        const LightPath&    path  = m_options.lightKeys;
+        const LightPathKey& pose  = LightPathPose(path, frame);
+        bool                valid = true;
+        if (m_appliedPose != &pose)
         {
-            if (entry.id == m_options.lightKeys.id && entry.light.type != rc::SceneLightType::eDirectional)
+            rc::RenderScene& scene = *m_rendering->GetScene();
+            switch (path.target)
             {
-                found                = true;
-                changed              = entry.light.position != position;
-                entry.light.position = position;
+                case PathTarget::Environment:
+                {
+                    rc::EnvironmentSettings& environment = m_setup.rendering.environment;
+                    environment.rotationDegrees          = pose.rotationDegrees;
+                    environment.intensity                = pose.intensity;
+                    valid = m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);
+                    break;
+                }
+                case PathTarget::CameraLight:
+                    m_setup.rendering.cameraLight.position     = pose.position;
+                    m_setup.rendering.cameraLight.followCamera = false;
+                    m_setup.rendering.cameraLight.enabled      = pose.enabled;
+                    valid = m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);
+                    break;
+                case PathTarget::Instance:
+                    valid = path.index < scene.GetRenderableNodes().size();
+                    if (valid)
+                    {
+                        Mat4 transform = scene.GetInstanceTransform(path.index);
+                        transform[3]   = Vec4(pose.position, 1);
+                        valid          = scene.SetInstanceTransform(path.index, transform);
+                    }
+                    break;
+                case PathTarget::Material:
+                {
+                    const HeapVector<sg::Material*> materials = m_loaded->scene->GetComponents<sg::Material>();
+                    valid                                     = path.index < materials.size();
+                    if (valid)
+                    {
+                        // UpdateMaterial applies scene units and the current normal-map policy.
+                        sg::MaterialData data = materials[path.index]->data;
+                        data.baseColorFactor  = Vec4(pose.color, data.baseColorFactor.w);
+                        data.emissiveFactor   = Vec4(pose.emission, data.emissiveFactor.w);
+                        valid                 = scene.UpdateMaterial(path.index, data);
+                    }
+                    break;
+                }
+                case PathTarget::Animation:
+                    valid = scene.SetAnimation(m_setup.animationClip, m_setup.animationLoop)
+                         && scene.AdvanceAnimation(pose.seconds);
+                    break;
+                case PathTarget::Light:
+                case PathTarget::LightPosition:
+                    valid = false;
+                    for (rc::RenderingLight& entry : m_setup.rendering.lights)
+                    {
+                        if (entry.id == path.id
+                            && (path.target == PathTarget::Light || entry.light.type != rc::SceneLightType::eDirectional))
+                        {
+                            rc::SceneLight next = entry.light;
+                            next.position       = pose.position;
+                            if (path.target == PathTarget::Light)
+                            {
+                                next.intensity = pose.intensity;
+                                next.color     = pose.color;
+                                next.enabled   = pose.enabled;
+                            }
+                            const bool changed = !rc::EqualSceneLight(entry.light, next);
+                            entry.light        = next;
+                            valid = !changed || m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);
+                            break;
+                        }
+                    }
+                    break;
+            }
+            if (valid)
+            {
+                m_appliedPose = &pose;
+            }
+            else if (m_error.empty())
+            {
+                m_error = "Could not apply scene path key at frame " + std::to_string(frame);
             }
         }
-        if (!found)
+        return valid;
+    }
+
+    bool IsCaptureFrame(uint64_t frame) const
+    {
+        bool selected = frame == m_options.frames || (m_options.startPaused && frame == 1)
+                     || (m_options.captureStart != 0 && frame >= m_options.captureStart);
+        if (!m_options.captureFrames.empty())
         {
-            m_error = "Light path lightId must identify a point or spot light in the launch setup";
+            selected = std::binary_search(m_options.captureFrames.begin(), m_options.captureFrames.end(), frame);
         }
-        return found && (!changed || m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error));
+        return selected && !m_options.capture.empty();
+    }
+
+    bool PrepareLuminanceCapture(uint64_t frame)
+    {
+        const bool capture = m_options.captureLinear && IsCaptureFrame(frame);
+        bool       valid   = true;
+        if (capture)
+        {
+            const rc::RenderView view  = m_target->GetView();
+            const uint64_t       bytes = uint64_t(view.width) * view.height * 2u * sizeof(float);
+            if (m_luminanceReadback == nullptr || m_luminanceReadback->GetRequiredSize() < bytes)
+            {
+                m_device->DestroyBuffer(m_luminanceReadback);
+                RHIBufferCreateInfo info{};
+                info.size         = bytes;
+                info.allocateType = RHIBufferAllocateType::eCPURead;
+                info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+                m_luminanceReadback = m_device->CreateBuffer(info);
+            }
+            valid = m_luminanceReadback != nullptr;
+        }
+        if (m_options.captureLinear)
+        {
+            m_device->GetRendererServer()->RequestDeferredLightingRenderer()->SetLuminanceCapture(capture ? m_luminanceReadback
+                                                                                                          : nullptr);
+        }
+        return valid;
+    }
+
+    bool WriteLuminance(const std::string& path)
+    {
+        // CaptureSceneFrame has already waited for GPU completion.
+        bool valid = m_device->GetRendererServer()->RequestDeferredLightingRenderer()->WasLuminanceRecorded();
+        if (!valid)
+        {
+            m_error = "The renderer did not record pre-display luminance for " + path;
+        }
+        if (valid)
+        {
+            const uint8_t* data = m_luminanceReadback->Map();
+            valid               = data != nullptr;
+            if (valid)
+            {
+                const rc::RenderView  view  = m_target->GetView();
+                const std::streamsize bytes = static_cast<std::streamsize>(uint64_t(view.width) * view.height * sizeof(float));
+                for (const char* suffix : {".luma.f32", ".age.f32"})
+                {
+                    std::ofstream file(std::filesystem::u8path(path + suffix), std::ios::binary);
+                    file.write(reinterpret_cast<const char*>(data), bytes);
+                    file.close();
+                    valid  = valid && file.good();
+                    data  += bytes;
+                }
+                m_luminanceReadback->Unmap();
+            }
+        }
+        return valid;
     }
 
     bool CreateCaptureBuffers()
@@ -675,7 +811,7 @@ private:
                 m_device->GetRDGMetrics().Configure(metrics);
                 m_target         = MakeUnique<rc::SceneRenderTarget>(*m_device);
                 m_session        = MakeUnique<RuntimeWindow>(*m_device, *m_rendering, *m_target, m_camera, std::move(window));
-                settings.animate = m_setup.animationEnabled && animated;
+                settings.animate = m_setup.animationEnabled && animated && m_options.lightKeys.target != PathTarget::Animation;
                 valid            = valid && m_session->Start(settings, m_setup.run.cameraMoveSpeed);
                 if (valid)
                 {
@@ -758,7 +894,8 @@ private:
         const bool countRays = m_options.hybridRayCounts && previousFrame + 2 >= m_options.frames;
         const bool giReady   = m_options.giEntryFrame != previousFrame + 1
                             || m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);
-        bool valid           = giReady && (!countRays || m_rayCountBuffers[0] != nullptr || BeginRayCountCapture())
+        bool valid           = giReady && PrepareLuminanceCapture(previousFrame + 1)
+                            && (!countRays || m_rayCountBuffers[0] != nullptr || BeginRayCountCapture())
                             && (m_options.cameraKeys.empty() || ApplyCameraPath(previousFrame + 1))
                             && (m_options.lightKeys.keys.empty() || ApplyLightPath(previousFrame + 1)) && m_session->Render(overlay);
         if (!m_options.batch.empty() && GetSceneFrame() - m_batchBegin > 4096)
@@ -838,20 +975,12 @@ private:
             }
             const uint64_t frame    = GetSceneFrame();
             const bool     perFrame = m_options.captureStart != 0 || !m_options.captureFrames.empty();
-            bool           capture  = frame == m_options.frames || (m_options.startPaused && frame == 1)
-                                   || (m_options.captureStart != 0 && frame >= m_options.captureStart);
-            if (!m_options.captureFrames.empty())
-            {
-                // An explicit frame list replaces the last-frame capture.
-                capture = std::binary_search(m_options.captureFrames.begin(), m_options.captureFrames.end(), frame);
-            }
-            capture = capture && !m_options.capture.empty();
-            if (valid && capture)
+            if (valid && IsCaptureFrame(frame))
             {
                 const std::string path =
                     !perFrame ? m_options.capture : m_options.capture + ".frame-" + std::to_string(GetSceneFrame()) + ".ppm";
                 valid = rc::CaptureSceneFrame(*m_device, m_target->GetView().color, path);
-                valid = valid && WriteFrameSummary(path + ".json");
+                valid = valid && (!m_options.captureLinear || WriteLuminance(path)) && WriteFrameSummary(path + ".json");
             }
         }
         if (!valid)
@@ -894,9 +1023,12 @@ private:
         const rc::HybridGIRenderer*   hybrid   = server.RequestDeferredLightingRenderer()->GetHybridGI();
         const rc::VoxelGIRenderer*    gi       = server.RequestVoxelGI();
         const glm::uvec2              giExtent = hybrid != nullptr ? hybrid->GetGIExtent() : glm::uvec2(0);
-        const bool    probes = hybrid != nullptr && hybrid->GetScreenProbeCount() != 0u && hybrid->IsHistoryValid();
-        std::ofstream summary(std::filesystem::u8path(path));
-        const Mat4    projectionView = m_camera.GetCamera().GetProjectionMatrix() * m_camera.GetCamera().GetViewMatrix();
+        const bool       probes = hybrid != nullptr && hybrid->GetScreenProbeCount() != 0u && hybrid->IsHistoryValid();
+        const bool       local  = probes && gi->UsesRayTracingPipeline() && gi->GetSettings().localHistoryResponse;
+        const bool       seed   = local && gi->GetSettings().worldCacheSeed;
+        const glm::uvec4 seeds  = seed ? hybrid->ReadProbeSeedCounts() : glm::uvec4(0);
+        std::ofstream    summary(std::filesystem::u8path(path));
+        const Mat4       projectionView = m_camera.GetCamera().GetProjectionMatrix() * m_camera.GetCamera().GetViewMatrix();
         summary << "{\"projectionViewBits\":[";
         for (uint32_t column = 0; column < 4; ++column)
         {
@@ -905,7 +1037,8 @@ private:
                 summary << (column == 0 && row == 0 ? "" : ",") << glm::floatBitsToUint(projectionView[column][row]);
             }
         }
-        summary << "],\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
+        summary << "],\"scenePathKeyFrame\":" << (m_appliedPose ? m_appliedPose->frame : 0u)
+                << ",\"sceneFrames\":" << GetSceneFrame() << ",\"sceneSeconds\":" << GetSceneSeconds()
                 << ",\"width\":" << view.width << ",\"height\":" << view.height << ",\"framebufferWidth\":" << framebuffer.width
                 << ",\"framebufferHeight\":" << framebuffer.height
                 << ",\"fullscreen\":" << (window != nullptr && window->IsFullscreen() ? "true" : "false")
@@ -927,6 +1060,15 @@ private:
                 << ",\"rayTracingPipeline\":" << (gi != nullptr && gi->UsesRayTracingPipeline() ? "true" : "false")
                 << ",\"radianceCacheCapacity\":" << (hybrid != nullptr ? hybrid->GetRadianceCacheCapacity() : 0u)
                 << ",\"nativeProbeRaySlots\":" << (hybrid != nullptr ? hybrid->GetNativeProbeRaySlots() : 0u)
+                << ",\"newProbeCache\":[" << seeds.x << "," << seeds.y << "," << seeds.z << "]"
+                << ",\"localHistoryResponse\":" << (local ? "true" : "false")
+                << ",\"worldCacheSeed\":" << (seed ? "true" : "false")
+                << ",\"movingLightHistory\":" << (probes && hybrid->HasMovingLightHistory() ? "true" : "false")
+                << ",\"probeSamplingPattern\":" << (local ? gi->GetSettings().probeSamplingPattern : 0u)
+                << ",\"roughFootprintHistory\":" << (local && gi->GetSettings().roughFootprintHistory ? "true" : "false")
+                << ",\"glossySurfaceHistory\":" << (local && gi->GetSettings().glossySurfaceHistory ? "true" : "false")
+                << ",\"historyResetReason\":" << std::quoted(hybrid != nullptr ? hybrid->GetResetReason() : "inactive")
+                << ",\"radianceGeneration\":" << (gi != nullptr ? gi->GetRadianceGeneration() : 0u)
                 << ",\"worldCacheCapacity\":" << (hybrid != nullptr ? hybrid->GetWorldCacheCapacity() : 0u)
                 << ",\"screenProbeCount\":" << (hybrid != nullptr ? hybrid->GetScreenProbeCount() : 0u)
                 << ",\"nativeProbeBenchmark\":" << (gi != nullptr && gi->GetSettings().nativeProbeBenchmark ? "true" : "false")
@@ -966,6 +1108,8 @@ private:
             && WriteRuntimeLaunchSettings(std::filesystem::u8path(m_options.profile + ".setup.zenrender"), m_setup, m_error);
     }
 
+    RHIBuffer*                       m_luminanceReadback{nullptr};
+    const LightPathKey*              m_appliedPose{nullptr};
     RuntimeLaunchSettings            m_setup;
     const RuntimeOptions&            m_options;
     UniquePtr<rc::RenderDevice>      m_device;

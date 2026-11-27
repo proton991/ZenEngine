@@ -126,7 +126,7 @@ bool RenderScene::SetInstanceClass(uint32_t instance, uint32_t objectClass)
 
         m_instanceClasses[instance]       = objectClass;
 
-        m_dirtyShadowInstances[instance]  = 1;
+        m_dirtyShadowInstances[instance]  = ShadowVisibilityDirty;
 
         m_triangleRecordsDirty            = true;
     }
@@ -144,7 +144,7 @@ bool RenderScene::SetInstanceEnabled(uint32_t instance, bool enabled)
 
         m_instanceEnabled[instance]       = enabled ? 1 : 0;
 
-        m_dirtyShadowInstances[instance]  = 1;
+        m_dirtyShadowInstances[instance]  = ShadowVisibilityDirty;
 
         m_triangleRecordsDirty            = true;
     }
@@ -192,7 +192,7 @@ bool RenderScene::SetInstanceTransform(uint32_t instance, const Mat4& worldTrans
     {
         m_nodesData[instance]            = {worldTransform, normalMatrix};
 
-        m_dirtyShadowInstances[instance] = 1;
+        m_dirtyShadowInstances[instance] = ShadowVisibilityDirty;
 
         for (uint32_t axis = 0; axis < 3; ++axis)
         {
@@ -408,9 +408,10 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
 
                     // Raster shadow coverage also depends on transmission, tint, IOR,
                     // thickness and their textures, beyond the ray-query alpha contract.
-                    m_dirtyShadowInstances[node->GetRenderableIndex()]  = 1;
+                    m_dirtyShadowInstances[node->GetRenderableIndex()] |=
+                        coverageChanged ? ShadowVisibilityDirty : ShadowAppearanceDirty;
 
-                    m_dirtySurfaceClasses                              |= objectClass;
+                    m_dirtySurfaceClasses |= objectClass;
 
                     if (coverageChanged)
                     {
@@ -420,9 +421,10 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sour
             }
         }
 
-        m_materialsData[material] = data;
+        m_materialRevisions[material] = m_surfaceRevision + 1;
+        m_materialsData[material]     = data;
 
-        m_materialsDirty          = true;
+        m_materialsDirty              = true;
 
         m_materialBuffers.MarkDirty(material * sizeof(sg::MaterialData), sizeof(sg::MaterialData));
     }
@@ -531,7 +533,7 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB&                 bounds,
 
         ShadowCaster& caster    = shadowCasters[instance];
         caster.bounds           = sg::AABB();
-        bool shadowChanged      = m_dirtyShadowInstances[instance] != 0;
+        bool visibilityChanged  = (m_dirtyShadowInstances[instance] & ShadowVisibilityDirty) != 0;
 
         if (mask != 0)
         {
@@ -562,14 +564,22 @@ bool RenderScene::ComputeGeometryBounds(sg::AABB&                 bounds,
 
                     caster.bounds.SetMax(world);
 
-                    shadowChanged |= m_dirtyShadowVertices[vertex] != 0;
+                    visibilityChanged |= m_dirtyShadowVertices[vertex] != 0;
                 }
             }
         }
 
-        if (instance < m_shadowCasters.size() && (shadowChanged || caster.bounds != m_shadowCasters[instance].bounds))
+        if (instance < m_shadowCasters.size())
         {
-            ++caster.revision;
+            visibilityChanged |= caster.bounds != m_shadowCasters[instance].bounds;
+            if (visibilityChanged)
+            {
+                ++caster.rayVisibilityRevision;
+            }
+            if (visibilityChanged || m_dirtyShadowInstances[instance] != 0)
+            {
+                ++caster.revision;
+            }
         }
 
         const HeapVector<sg::SubMesh*>& subMeshes = node->GetComponent<sg::Mesh>()->GetSubMeshes();

@@ -174,6 +174,9 @@ def main():
     parser.add_argument('--smoke', action='store_true', help='Short validated moving launch, no scoring')
     parser.add_argument('--rescore', action='store_true', help='Score an existing run\'s moving captures again')
     parser.add_argument('--validation', type=int, default=0)
+    parser.add_argument('--linear', action='store_true', help='Capture linear HDR luminance and receiver age for a production turn')
+    parser.add_argument('--baseline-ages', type=Path, help='Use the same receiver-age masks for comparison with a captured production turn')
+    parser.add_argument('--animation-pose', type=float, help='Freeze the setup clip at this time in every turn and reference')
     parser.add_argument('--production-turn', choices=('sweep', 'cut'),
                         help='Replay the setup at native 4K, score every turn and recovery frame in both travel directions')
     parser.add_argument('--degrees', type=int, choices=(-180, -120, -90, 90, 120, 180), default=180)

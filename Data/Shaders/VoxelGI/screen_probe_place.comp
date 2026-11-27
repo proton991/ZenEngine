@@ -7,10 +7,12 @@ layout(local_size_x = 64) in;
 layout(constant_id = 0) const bool kAdaptive = false;
 ScreenProbe ProbeReceiver(ivec2 pixel)
 {
-    pixel         = clamp(pixel, ivec2(0), ivec2(hybrid.resolution.xy) - 1);
-    uint identity = texelFetch(receiverSurface, pixel, 0).g;
-    bool valid    = texelFetch(receiverDepth, pixel, 0).r < 1.0 && identity != 0u;
-    return ScreenProbe(vec4(valid ? HybridPosition(pixel) : vec3(0), float(valid)),
+    pixel          = clamp(pixel, ivec2(0), ivec2(hybrid.resolution.xy) - 1);
+    uint  identity = texelFetch(receiverSurface, pixel, 0).g;
+    bool  valid    = texelFetch(receiverDepth, pixel, 0).r < 1.0 && identity != 0u;
+    uvec2 tile     = uvec2(pixel) / screenProbe.spacing;
+    float birth    = screenProbe.layoutInfo.w == 2u ? 1.0 + float(tile.y * screenProbe.grid.x + tile.x) : 1.0;
+    return ScreenProbe(vec4(valid ? HybridPosition(pixel) : vec3(0), valid ? birth : 0.0),
                        vec4(valid ? HybridGeometricNormal(pixel) : vec3(0, 0, 1), 1),
                        uvec4(0xffffffffu, uvec2(pixel), identity));
 }

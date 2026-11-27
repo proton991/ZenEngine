@@ -1,0 +1,49 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define GLOSSY_CLAMP
+#include "glossy_reflection.glsl"
+layout(local_size_x = 8, local_size_y = 8) in;
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!GlossyInView(p))
+    {
+        return;
+    }
+    uint           i     = GlossyIndex(p);
+    GIDenoiseGuide guide = GlossyHistoryGuide(glossyCurrent[i]);
+    if (!GlossyReceiver(guide) || guide.roughness < glossy.control.w)
+    {
+        return;
+    }
+    vec4 lo = glossyCurrent[i].fast, hi = lo;
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            ivec2 q = p + ivec2(x, y);
+            if (GlossyInView(q))
+            {
+                uint           j        = GlossyIndex(q);
+                GIDenoiseGuide adjacent = GlossyHistoryGuide(glossyCurrent[j]);
+                if (DenoiseSurfaceWeight(guide, adjacent) * DenoiseLobeWeight(guide, adjacent) > .5)
+                {
+                    lo = min(lo, glossyCurrent[j].fast);
+                    hi = max(hi, glossyCurrent[j].fast);
+                }
+            }
+        }
+    }
+    // The completed fast field and guides are immutable in this dispatch.
+    vec4 moments = glossyCurrent[i].moments;
+    // The same tolerance as the retained lag test. A young pixel's moments understate its variance,
+    // and an absolute floor alone clamped bright pixels toward their four-frame history every frame.
+    float deviation =
+        max(max(.005, 3.0 * sqrt(max(0.0, moments.x - moments.w * moments.w))), .2 * GlossyLuma(glossyCurrent[i].fast.rgb));
+    vec4  tolerance            = vec4(vec3(deviation), .25);
+    vec4  slow                 = glossyCurrent[i].slow;
+    vec4  delta                = clamp(slow, lo - tolerance, hi + tolerance) - slow;
+    float confidence           = max(GlossyLuma(abs(delta.rgb)) / (deviation + GlossyLuma(abs(delta.rgb))), abs(delta.a));
+    glossyCurrent[i].slow      = slow + confidence * delta;
+    glossyCurrent[i].moments.z = mix(moments.z, min(moments.z, 4.0), confidence);
+}

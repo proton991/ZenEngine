@@ -303,6 +303,12 @@ void DrawDenoiser(rc::VoxelGISettings& cone, GIChanges& changes)
     {
         Hint("Noisier than spatiotemporal; for comparisons.");
     }
+    if (!IsPixelMethod(method))
+    {
+        changes.content |= ImGui::Checkbox("Local history response", &cone.localHistoryResponse);
+        ImGui::SetItemTooltip("Hardware RT probes keep history where lighting did not change and track movable lights and "
+                              "the light ball separately. Off: any light, material or sky edit restarts all history.");
+    }
     if (IsPixelMethod(method) && cone.temporal && ImGui::TreeNode("Denoiser details"))
     {
         changes.configuration |= ImGui::Checkbox("Bicubic history", &cone.bicubicHistory);

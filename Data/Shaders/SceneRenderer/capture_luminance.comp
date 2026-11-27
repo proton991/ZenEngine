@@ -1,0 +1,24 @@
+#version 460
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 1, binding = 0) uniform sampler2D sourceColor;
+layout(set = 1, binding = 1, std430) writeonly buffer LinearLuminance
+{
+    float pixels[];
+};
+layout(set = 1, binding = 2) uniform sampler2D sourceAge;
+layout(push_constant) uniform CaptureInfo
+{
+    uint probeAge;
+};
+void main()
+{
+    ivec2 p      = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = textureSize(sourceColor, 0);
+    if (all(lessThan(p, extent)))
+    {
+        int   index                         = p.y * extent.x + p.x;
+        float age                           = probeAge != 0u ? texelFetch(sourceAge, p, 0).a : -1.0;
+        pixels[extent.x * extent.y + index] = age > 0.0 ? max(0.0, age - 1.0) : -1.0;
+        pixels[index]                       = dot(texelFetch(sourceColor, p, 0).rgb, vec3(.2126, .7152, .0722));
+    }
+}

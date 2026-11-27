@@ -108,10 +108,15 @@ def quality_timeline(setup, lights, offset=0, static_end=STATIC_END, recovery=RE
     return dict(keys=keys), light_keys, captures, layout, last
 
 
-def reference_timeline(setup, lights, hold, poses=POSES):
+def reference_timeline(setup, lights, hold, poses=POSES, initial_hold=0):
     """One hold per motion pose and one for the moved light; the first hold also covers scene warm-up."""
     targets = [(kind, step, motion_pose(setup, kind, step)) for kind in MOTIONS for step in poses]
     keys, captures, layout, frame = [], [], {kind: {} for kind in MOTIONS}, 1
+    if initial_hold:
+        keys = [key(1, base_pose(setup))]
+        if initial_hold > 1:
+            keys.append(key(initial_hold, base_pose(setup)))
+        frame += initial_hold
     for index, (kind, step, pose) in enumerate(targets):
         length = hold + (64 if index == 0 else 0)
         keys += [key(frame, pose), key(frame + length - 1, pose)]

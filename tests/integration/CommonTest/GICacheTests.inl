@@ -87,16 +87,16 @@ TEST_P(RayQueryIntegrationTest, WorldCacheDirectionalSamplesInheritResolveAndExp
                 device, checkName, fmt::format("VoxelGI/Calibration/world_cache_check{}.comp.spv", bits).c_str()));
             RHIFlags<RHIBufferUsageFlagBits> storage;
             storage.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
-            const uint32_t       sizes[] = {16 * 8, 16 * 112, 16 * 112, 16 * 12, WorldCacheLightingBytes};
+            const uint32_t       sizes[] = {16 * 8, 16 * 128, 16 * 128, 16 * 20, WorldCacheLightingBytes};
             const char*          names[] = {"GICacheKeys", "GICacheAccumulation", "GICacheResolved", "WorldCacheCells",
                                             "WorldCacheLighting"};
-            HeapVector<uint32_t> zero(std::max(16u * 112u, WorldCacheLightingBytes) / sizeof(uint32_t), 0u);
+            HeapVector<uint32_t> zero(std::max(16u * 128u, WorldCacheLightingBytes) / sizeof(uint32_t), 0u);
             RHIBuffer*           cache[5]{};
             for (uint32_t index = 0; index < std::size(cache); ++index)
             {
                 cache[index] = Buffer(sizes[index], storage, zero.data());
             }
-            constexpr uint32_t bytes  = 5 * sizeof(Vec4);
+            constexpr uint32_t bytes  = 8 * sizeof(Vec4);
             RHIBuffer*         output = Buffer(bytes, storage, zero.data());
             RHIBuffer*         readback =
                 Buffer(2u * bytes, RHIFlags<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer), nullptr,
@@ -110,8 +110,11 @@ TEST_P(RayQueryIntegrationTest, WorldCacheDirectionalSamplesInheritResolveAndExp
             {
                 const bool          check = step % 2u == 0u;
                 WorldCacheFrameData world;
-                world.lightCount.y = 7u;
-                world.schedule.x   = step < 3 ? 1u : 241u;
+                world.lightCount.y = 8u;
+                world.lightCount.w = 1u;
+                world.surfaceEdits.Add({glm::uvec4(2, 0, 0, 0), Vec4(-1), Vec4(1)});
+                world.surfaceEdits.Add({glm::uvec4(2, 1, 11, 0), {}, {}});
+                world.schedule.x = step < 2 ? 1u : step == 2 ? 2u : 241u;
                 RDGComputePassDesc pass;
                 pass.SetShaderProgramName(check ? checkName : resolveName);
                 pass.BindValue("uGICacheData", uniform);
@@ -153,8 +156,15 @@ TEST_P(RayQueryIntegrationTest, WorldCacheDirectionalSamplesInheritResolveAndExp
             EXPECT_NEAR(captured[3].w, 1.0f, .002f);
             EXPECT_NEAR(captured[4].x, .0625f, .001f);
             EXPECT_EQ(Vec3(captured[4].y, captured[4].z, captured[4].w), Vec3(1, 0, 0));
-            EXPECT_EQ(captured[6], Vec4(0));
+            EXPECT_NEAR(captured[5].x, .5f, .001f); // The warm parent stores its chroma in FP16.
+            EXPECT_EQ(Vec3(captured[5].y, captured[5].z, captured[5].w), Vec3(1, 1, 0));
+            EXPECT_EQ(captured[6], Vec4(1, 0, 1, 0));
+            EXPECT_NEAR(captured[7].x, 3.0f, 4.0f / 127.0f); // Two parent updates, allowing RGBE parent-snapshot quantization.
+            EXPECT_EQ(captured[7].y, 0.0f);                  // A missing moving-light edit invalidates only that record.
+            EXPECT_NEAR(captured[7].z, captured[1].x, .002f);
+            EXPECT_EQ(captured[7].w, .03125f / 16.0f); // One changed path in a two-sample, 16-update mean.
             EXPECT_EQ(captured[9], Vec4(0));
+            EXPECT_EQ(captured[12], Vec4(0));
             readback->Unmap();
         }
     }
@@ -267,6 +277,16 @@ TEST_P(RayQueryIntegrationTest, RadianceCachePreservesCalibrationMeanAndResets)
 
 TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHint)
 {
+    CheckNativeProbeLightResponse(false);
+}
+
+TEST_P(RayQueryIntegrationTest, LocalNativeProbesRecoverLightingWithoutCPURevisionHint)
+{
+    CheckNativeProbeLightResponse(true);
+}
+
+void RayQueryIntegrationTest::CheckNativeProbeLightResponse(bool local)
+{
     if (SupportsHybridRayTracingPipeline(device->GetGPUInfo()))
     {
         ShaderProgramManager::GetInstance().BuildShaderPrograms(device);
@@ -310,13 +330,14 @@ TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHin
         DeferredLightingRenderer& renderer = *server.RequestDeferredLightingRenderer();
         renderer.SetHybridCapture(capture, readback);
         server.SetRenderOption(RenderOption::eVoxelGI);
-        VoxelGIRuntimeSettings settings  = server.GetVoxelGISettings();
-        settings.resolution              = 64;
-        settings.cone.rayProvider        = VoxelGISettings::RayProvider::Hardware;
-        settings.cone.rayTracingPipeline = true;
-        settings.cone.screenProbeGI      = true;
-        settings.cone.worldCacheFeedback = true;
-        settings.cone.nativeShadowReuse  = true;
+        VoxelGIRuntimeSettings settings    = server.GetVoxelGISettings();
+        settings.resolution                = 64;
+        settings.cone.rayProvider          = VoxelGISettings::RayProvider::Hardware;
+        settings.cone.rayTracingPipeline   = true;
+        settings.cone.screenProbeGI        = true;
+        settings.cone.worldCacheFeedback   = true;
+        settings.cone.nativeShadowReuse    = true;
+        settings.cone.localHistoryResponse = local;
         ASSERT_TRUE(server.ApplyVoxelGISettings(settings));
         const RenderView view{color, depth, side, side};
         double           means[7]{};
@@ -385,6 +406,8 @@ TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHin
             EXPECT_GT(renderer.GetHybridGI()->GetFrame(), phase * 160u);
         }
         EXPECT_GT(means[0], 0.0);
+        RecordProperty("relit_probe_energy_ratio", fmt::format("{:.5f}", means[2] / means[0]));
+        RecordProperty("relit_cache_energy_ratio", fmt::format("{:.5f}", cacheMeans[2] / cacheMeans[0]));
         EXPECT_LT(means[1], means[0] * .05);
         EXPECT_NEAR(means[2], means[0], means[0] * .15);
         // Phase 1 response is measured directly in the cache, before probe filtering.
@@ -412,9 +435,9 @@ TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHin
         device->WaitForPreviousFrames();
         device->NextFrame();
         EXPECT_STREQ(renderer.GetHybridGI()->GetResetReason(), "none");
-        // Returning after a camera cut resets screen history but must recover the
-        // world's accumulated lighting. A cleared cell has at most eight samples
-        // after this first frame; an older count proves that transport survived.
+        // After a camera cut, the diffuse output matches the current gather and the
+        // world cache retains its accumulated lighting. A cleared cell has at most
+        // eight samples after the first frame.
         fixture.camera.SetPose(Vec3(0, 0, -.1f), Vec3(.08f, 0, -1.1f));
         ASSERT_EQ(server.DispatchRenderWorkloads(view), RenderFrameResult::eSubmitted);
         device->WaitForPreviousFrames();
@@ -422,13 +445,17 @@ TEST_P(RayQueryIntegrationTest, NativeProbesRecoverLightingWithoutCPURevisionHin
         EXPECT_STREQ(renderer.GetHybridGI()->GetResetReason(), "camera_cut_or_projection");
         const Vec4* recovered = reinterpret_cast<const Vec4*>(readback->Map());
         ASSERT_NE(recovered, nullptr);
-        uint32_t retainedCacheReceivers = 0;
+        uint32_t retainedCacheReceivers    = 0;
+        uint32_t diffuseHistoryDifferences = 0;
         for (uint32_t pixel = 0; pixel < pixels; ++pixel)
         {
-            const uint32_t offset   = pixel * ZEN_HYBRID_CAPTURE_COMPONENTS;
-            retainedCacheReceivers += uint32_t(recovered[offset + 8u].w > 0.0f && recovered[offset + 16u].w > 16.0f);
+            const uint32_t offset      = pixel * ZEN_HYBRID_CAPTURE_COMPONENTS;
+            retainedCacheReceivers    += uint32_t(recovered[offset + 8u].w > 0.0f && recovered[offset + 16u].w > 16.0f);
+            diffuseHistoryDifferences += uint32_t(Vec3(recovered[offset]) != Vec3(recovered[offset + 1u])
+                                                  || Vec3(recovered[offset + 2u]) != Vec3(recovered[offset + 3u]));
         }
         readback->Unmap();
+        EXPECT_EQ(diffuseHistoryDifferences, 0u);
         EXPECT_GT(retainedCacheReceivers, 0u);
         // The backdrop sees lit cards against a black environment. A rough conductor has
         // no diffuse lobe, but its reflected light must still reach the diffuse backdrop.

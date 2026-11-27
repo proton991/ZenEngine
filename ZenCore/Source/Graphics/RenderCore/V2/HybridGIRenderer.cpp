@@ -983,15 +983,17 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
     const glm::uvec2 outputExtent(view.width, view.height);
     // World-space transport survives camera cuts and screen-history resets.
     // Reset it when its environment or traced representation changes.
-    const bool worldReset     = m_environment != m_scene->GetEnvironmentRevision()
-                             || settings.environmentLighting != m_previousSettings.environmentLighting
-                             || settings.worldCacheFeedback != m_previousSettings.worldCacheFeedback
-                             || settings.rayProvider != m_previousSettings.rayProvider
-                             || settings.rayTracingPipeline != m_previousSettings.rayTracingPipeline
-                             || settings.normalBiasVoxels != m_previousSettings.normalBiasVoxels
-                             || settings.fieldResolution != m_previousSettings.fieldResolution
-                             || m_previousHardwareMask != hardwareMask || m_previousVisibility != visibility;
-    const bool cacheRequested = !reference && (settings.worldRadianceCache || probeRequested);
+    const bool localEnvironment   = probeRequested && voxelGI.UsesRayTracingPipeline() && settings.localHistoryResponse;
+    const bool environmentChanged = localEnvironment ? m_environmentTexture != m_scene->GetEnvironmentTextureRevision()
+                                                     : m_environment != m_scene->GetEnvironmentRevision();
+    const bool worldReset         = environmentChanged || settings.environmentLighting != m_previousSettings.environmentLighting
+                                 || settings.worldCacheFeedback != m_previousSettings.worldCacheFeedback
+                                 || settings.rayProvider != m_previousSettings.rayProvider
+                                 || settings.rayTracingPipeline != m_previousSettings.rayTracingPipeline
+                                 || settings.normalBiasVoxels != m_previousSettings.normalBiasVoxels
+                                 || settings.fieldResolution != m_previousSettings.fieldResolution
+                                 || m_previousHardwareMask != hardwareMask || m_previousVisibility != visibility;
+    const bool cacheRequested     = !reference && (settings.worldRadianceCache || probeRequested);
     const bool cacheReady =
         countValid && m_prepared && cacheRequested && m_worldCache.Prepare(voxelGI, *m_scene, outputExtent, worldReset);
     if (!cacheReady)
@@ -999,7 +1001,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         m_worldCache.Destroy();
     }
     const bool probes = probeRequested && cacheReady
-                     && m_screenProbes.Prepare(outputExtent, settings.specularOcclusion, voxelGI.UsesRayTracingPipeline());
+                     && m_screenProbes.Prepare(outputExtent, settings.specularOcclusion, voxelGI.UsesRayTracingPipeline(),
+                                               m_worldCache.HasMovingLights(), settings.temporal);
     if (!probes && m_probePath)
     {
         m_screenProbes.Destroy();
@@ -1050,7 +1053,7 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         {
             InvalidateHistory("geometry_or_opacity");
         }
-        else if (m_environment != m_scene->GetEnvironmentRevision()
+        else if (environmentChanged || (!probes && m_environment != m_scene->GetEnvironmentRevision())
                  || settings.environmentLighting != m_previousSettings.environmentLighting)
         {
             InvalidateHistory("environment");
@@ -1062,7 +1065,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         {
             InvalidateHistory("camera_cut_or_projection");
         }
-        else if (settings.dataDrivenAntiLag != m_previousSettings.dataDrivenAntiLag
+        else if (settings.localHistoryResponse != m_previousSettings.localHistoryResponse
+                 || settings.dataDrivenAntiLag != m_previousSettings.dataDrivenAntiLag
                  || settings.bicubicHistory != m_previousSettings.bicubicHistory
                  || settings.footprintReceivers != m_previousSettings.footprintReceivers
                  || settings.youngReceiverSamples != m_previousSettings.youngReceiverSamples
@@ -1074,6 +1078,9 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                  || (relax && reflections != m_previousReflections)
                  || settings.referenceSamples != m_previousSettings.referenceSamples
                  || settings.referenceTileStride != m_previousSettings.referenceTileStride
+                 || settings.probeSamplingPattern != m_previousSettings.probeSamplingPattern
+                 || settings.glossySurfaceHistory != m_previousSettings.glossySurfaceHistory
+                 || settings.roughFootprintHistory != m_previousSettings.roughFootprintHistory
                  || settings.samplingPhase != m_previousSettings.samplingPhase || settings.samples != m_previousSettings.samples
                  || settings.rayProvider != m_previousSettings.rayProvider
                  || settings.normalBiasVoxels != m_previousSettings.normalBiasVoxels
@@ -1108,8 +1115,9 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         const bool hardwareReflection = (hardwareMask & 16u) != 0;
         // Traced hit lighting has no previous-frame cache to measure a correlated lighting delta.
         // Restart only those hit histories when lights or secondary-surface materials change.
-        const bool tracedLightingChanged = m_lighting != m_scene->GetLightingRevision()
-                                        || m_surface != m_scene->GetSurfaceRevision()
+        const bool localHistory          = probes && voxelGI.UsesRayTracingPipeline() && settings.localHistoryResponse;
+        const bool tracedLightingChanged = (!localHistory && m_lighting != m_scene->GetLightingRevision())
+                                        || (!localHistory && m_surface != m_scene->GetSurfaceRevision())
                                         || settings.analyticLighting != m_previousSettings.analyticLighting
                                         || settings.emissiveLighting != m_previousSettings.emissiveLighting
                                         || settings.shadows != m_previousSettings.shadows;
@@ -1125,10 +1133,15 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         m_uniforms.reflection =
             glm::uvec4(reflections ? 1u : 0u, m_valid && !reflectionReset ? 1u : 0u, m_bounceResponsiveFrames != 0 ? 1u : 0u,
                        !relax && radianceSteps == 1 && !missingPrevious && !hardwareReflection ? 1u : 0u);
+        if (localHistory)
+        {
+            m_uniforms.reflection.w = 2u;
+        }
         const bool hardwareTrace = voxelGI.UsesHardwareQueries();
         // Only geometry-dependent weights survive an unchanged receiver image.
         // Lighting and guide values are always read from this frame's inputs.
         const bool unchangedReceivers = m_valid && m_recordedProjectionView == m_uniforms.previousProjectionView
+                                     && m_geometry == m_scene->GetGeometryRevision()
                                      && m_surface == m_scene->GetSurfaceRevision();
         // w: accepted-frame threshold below which receivers take extra diffuse samples (0 disables).
         const glm::uvec4 reuseData(0u, 0u, 0u, relax && settings.youngReceiverSamples && !countRequested ? 4u : 0u);
@@ -1159,15 +1172,18 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
         if (probes)
         {
             // Only enabled reflections store intensity-scaled hit radiance in the probe history.
-            const bool probeReset = !m_valid || reflections != m_previousReflections
+            const bool probeReset = !m_valid || m_worldCache.MovingLayoutChanged() || reflections != m_previousReflections
                                  || (reflections && settings.indirectIntensity != m_previousSettings.indirectIntensity);
+            // Probes rescale or predict an environment edit; the pixel history has no such prediction.
+            const bool pixelReset = settings != m_previousSettings || (!localHistory && tracedLightingChanged)
+                                 || m_environment != m_scene->GetEnvironmentRevision();
             m_screenProbes.Record(voxelGI, *m_scene, m_worldCache, m_uniforms, m_recordedProjectionView, m_sampler, probeReset,
-                                  skyLight);
+                                  pixelReset, skyLight);
             m_outputSky            = m_screenProbes.GetSky();
             m_outputBounce         = m_screenProbes.GetBounce();
             m_outputSpecular       = m_screenProbes.GetSpecular();
-            m_rawSky               = m_outputSky;
-            m_rawBounce            = m_outputBounce;
+            m_rawSky               = m_screenProbes.GetRawSky();
+            m_rawBounce            = m_screenProbes.GetRawBounce();
             m_rawSpecular          = m_outputSpecular;
             m_recordedGuideWritten = false;
             m_recorded             = true;
@@ -1180,8 +1196,8 @@ bool HybridGIRenderer::BuildRenderGraph(const RenderView& view, VoxelGIRenderer&
                 capture.SetPassTag("HybridCapture");
                 m_worldCache.Bind(capture);
                 BindHybridReceiverGuides(capture, m_sampler, m_uniforms);
-                capture.BindSampledTexture("rawSky", m_sampler, m_outputSky);
-                capture.BindSampledTexture("rawBounce", m_sampler, m_outputBounce);
+                capture.BindSampledTexture("rawSky", m_sampler, m_rawSky);
+                capture.BindSampledTexture("rawBounce", m_sampler, m_rawBounce);
                 capture.BindSampledTexture("rawSpecular", m_sampler, m_outputSpecular);
                 capture.BindSampledTexture("reconstructedSky", m_sampler, m_outputSky);
                 capture.BindSampledTexture("reconstructedBounce", m_sampler, m_outputBounce);
@@ -1732,6 +1748,7 @@ void HybridGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_geometry                        = m_scene->GetGeometryRevision();
         m_surface                         = m_scene->GetSurfaceRevision();
         m_environment                     = m_scene->GetEnvironmentRevision();
+        m_environmentTexture              = m_scene->GetEnvironmentTextureRevision();
         m_lighting                        = m_scene->GetLightingRevision();
         m_radianceGeneration              = m_recordedRadianceGeneration;
         m_previousSettings                = m_recordedSettings;

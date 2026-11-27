@@ -440,6 +440,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     LOGI("Voxel volume workgroup: {}x{}x{} (device invocation limit {})", volumeGroupSize.x, volumeGroupSize.y,
          volumeGroupSize.z, pRenderDevice->GetGPUInfo().maxComputeWorkGroupInvocations);
 
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureLuminanceSP", "SceneRenderer/capture_luminance.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureFrameSP", "SceneRenderer/capture_frame.comp.spv"));
     if (SupportsForwardDepthSort(pRenderDevice->GetGPUInfo(), 1))
     {
@@ -613,6 +614,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"));
     StoreProgram(
         ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeFilterVerticalSP", "VoxelGI/screen_probe_filter_vertical.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeHistorySP", "VoxelGI/screen_probe_history.comp.spv"));
     const char* probeStages[] = {"Clear",  "Place",    "Proposal",     "Integrate",    "Filter",
                                  "Gather", "Specular", "ClearDiffuse", "GatherDiffuse"};
     const char* probeFiles[]  = {"clear",  "place",    "proposal",      "integrate",     "filter",
@@ -628,9 +630,25 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "WorldCacheLightingSP", "VoxelGI/world_cache_lighting.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyClearSP", "VoxelGI/glossy_reflection_clear.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyTemporalSP", "VoxelGI/glossy_reflection_temporal.comp.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "ScreenProbeMovingFilterSP", "VoxelGI/screen_probe_filter_moving.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeMovingFilterVerticalSP",
+                                         "VoxelGI/screen_probe_filter_moving_vertical.comp.spv"));
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeAccumulateSkySP", "VoxelGI/screen_probe_accumulate_sky.comp.spv"));
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeSpecularStaticSP", "VoxelGI/screen_probe_specular_static.comp.spv"));
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeIntegrateLocalSP", "VoxelGI/screen_probe_integrate_local.comp.spv"));
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "ScreenProbeIntegrateSkySP", "VoxelGI/screen_probe_integrate_sky.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeMovingSP", "VoxelGI/screen_probe_moving.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyClampSP", "VoxelGI/glossy_reflection_clamp.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "GlossyFilterSP", "VoxelGI/glossy_reflection_filter.comp.spv"));
     StoreProgram(ZEN_NEW()
                      ComputeFileSP(pRenderDevice, "ScreenProbeSpecularHitsSP", "VoxelGI/screen_probe_specular_hits.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeSpecularFootprintSP",
+                                         "VoxelGI/screen_probe_specular_footprint.comp.spv"));
     StoreProgram(
         ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeSpecularFilterSP", "VoxelGI/screen_probe_specular_filter.comp.spv"));
     StoreProgram(ZEN_NEW() HybridGraphicsSP(pRenderDevice, "WorldCacheDisplaySP", "SceneRenderer/deferred.vert.spv",
@@ -656,6 +674,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                         !noGuide);
                 }
             }
+            StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, NameID(fmt::format("ScreenProbePrior{}SP", bits)),
+                                                 fmt::format("VoxelGI/screen_probe_prior{}.comp.spv", bits).c_str()));
             const char* worldStages[] = {"Start", "Resolve", "Debug"};
             const char* worldFiles[]  = {"start", "resolve", "debug"};
             for (uint32_t stage = 0; stage < std::size(worldStages); ++stage)
@@ -716,8 +736,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                 screenModules[0].path                              = "VoxelGI/screen_probe_trace_hits.rgen.spv";
                 StoreProgram(ZEN_NEW() RayTracingFileSP(pRenderDevice, NameID(fmt::format("ScreenProbeTraceHits{}SP", bits)),
                                                         screenModules));
-                const char* splitStages[] = {"SampleHits", "ShadeHits"};
-                const char* splitFiles[]  = {"sample_hits", "shade_hits"};
+                const char* splitStages[] = {"SampleHits", "SampleTileHits", "ShadeHits"};
+                const char* splitFiles[]  = {"sample_hits", "sample_tile_hits", "shade_hits"};
                 for (uint32_t stage = 0; stage < std::size(splitStages); ++stage)
                 {
                     StoreProgram(ZEN_NEW() ComputeFileSP(

@@ -1,0 +1,193 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_PROBE_COMPUTE
+#define SCREEN_LIGHT_WRITE
+#define SCREEN_CDF_READ
+#define SCREEN_PROBE_ACCUMULATE
+#include "screen_probe.glsl"
+#include "screen_probe_hits.glsl"
+#include "world_cache_lighting.glsl"
+layout(local_size_x = ZEN_SCREEN_PROBE_RAYS) in;
+const uint  kMovingFirst   = uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS);
+const float kMovingHistory = 256.0;
+shared vec4 observed[ZEN_SCREEN_PROBE_RAYS][4], predicted[ZEN_SCREEN_PROBE_RAYS][4];
+// Per lane: luminance of the observed and predicted irradiance, absolute predicted change, cache part.
+shared vec4  laneSum[ZEN_SCREEN_PROBE_RAYS];
+shared vec2  laneSquare[ZEN_SCREEN_PROBE_RAYS];
+shared vec4  past[kProbeMovingVectors];
+shared float alpha;
+shared uint  movingHits;
+// The moving signal is the bounce light of movable lights and the light ball. Hits evaluate each
+// mover's change since the history frame on the same surface, so the prior is moved by the predicted
+// change. History length balances observation noise against the noise of that prediction. Only the
+// cache's moving record, which has no prediction, limits it as unexplained drift.
+// Most probes never see a mover's light. They keep an empty record that ages without the reductions.
+void main()
+{
+    uint i = ProbeGroupIndex(), ray = gl_LocalInvocationID.x;
+    if (i >= screenProbe.grid.w)
+    {
+        return;
+    }
+    ScreenProbe probe = probes[i];
+    uint        base  = ProbeMovingBase(i);
+    if (probe.position.w == 0.0)
+    {
+        if (ray < kProbeMovingVectors)
+        {
+            probeLighting[base + ray] = vec4(0);
+        }
+        return;
+    }
+    for (uint j = 0u; j < 4u; ++j)
+    {
+        observed[ray][j] = predicted[ray][j] = vec4(0);
+    }
+    if (ray == 0u)
+    {
+        movingHits = 0u;
+    }
+    barrier();
+    vec4 lane    = vec4(0);
+    uint batches = ProbeScheduledBatches(i);
+    for (uint batch = 0u; batch < batches; ++batch)
+    {
+        uint address = ProbeRecordAddress(ProbeRecordSlot(i, ray, batch));
+        uint flags   = probeHits[address];
+        if ((flags & kHitMoving) != 0u)
+        {
+            atomicOr(movingHits, 1u);
+            vec4  sampleRay = ProbeHitSample(address);
+            float weight    = 1.0 / (sampleRay.w * float(batches * uint(ZEN_SCREEN_PROBE_RAYS)));
+            vec3  current   = ProbeUnpackRGBE(probeHits[address + 2u]) * weight;
+            vec3  delta     = HybridUnpackSignedRGBE(probeHits[address + 3u]) * weight;
+            vec4  sh        = ProbeSH(sampleRay.xyz);
+            for (uint channel = 0u; channel < 3u; ++channel)
+            {
+                observed[ray][channel]  += current[channel] * sh;
+                predicted[ray][channel] += delta[channel] * sh;
+            }
+            float cosine           = max(dot(probe.normal.xyz, sampleRay.xyz), 0.0) / HYBRID_PI;
+            float cached           = float(flags >> 24u) / 255.0;
+            observed[ray][3].rgb  += current * cosine;
+            predicted[ray][3].rgb += delta * cosine;
+            lane                  += vec4(HybridLuminance(current), HybridLuminance(delta), HybridLuminance(abs(delta)),
+                                          cached * HybridLuminance(current))
+                                   * cosine;
+        }
+    }
+    laneSum[ray]    = lane;
+    laneSquare[ray] = lane.xy * lane.xy;
+    bool history    = probe.source.x != 0xffffffffu && screenProbe.control.z != 0.0
+                   && WorldMovingHistoryComplete(ProbePastEnvironment(probe));
+    // A re-placed anchor reads its matched predecessor, which placement chose as the best compatible
+    // probe nearby. The moving signal is smooth, so its history carries over in proportion to how well
+    // the two planes agree, without the settled signals' 18-probe footprint.
+    float carried = 1.0;
+    if (history)
+    {
+        ScreenProbe previous = PreviousProbe(probe.source.x);
+        if (any(notEqual(probe.position.xyz, previous.position.xyz)))
+        {
+            carried = ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, previous);
+            history = carried > .05;
+        }
+    }
+    if (ray < kProbeMovingVectors)
+    {
+        past[ray] = history ? PreviousProbeLighting(probe.source.x, kMovingFirst + ray) : vec4(0);
+    }
+    barrier();
+    if (movingHits == 0u && all(equal(past[3].rgb, vec3(0))) && past[4].x <= 0.0)
+    {
+        // No ray reached a mover's light and the history is dark: the full update would write zeros too.
+        if (ray < kProbeMovingVectors)
+        {
+            float frames = history ? past[4].z * carried : 0.0;
+            float age    = history ? max(WorldHistoryCap(past[5].x, .15, min(frames + 1.0, kMovingHistory)), 1.0) : 1.0;
+            vec4  value  = vec4(0);
+            if (ray == 3u)
+            {
+                value.w = age;
+            }
+            else if (ray == 4u)
+            {
+                value.z = age;
+            }
+            else if (ray == 5u)
+            {
+                value = vec4(history ? .70710678 * past[5].x : 0.0, 0, kMovingHistory, 0);
+            }
+            probeLighting[base + ray] = value;
+        }
+        return;
+    }
+    for (uint stride = uint(ZEN_SCREEN_PROBE_RAYS) / 2u; stride != 0u; stride /= 2u)
+    {
+        barrier();
+        if (ray < stride)
+        {
+            laneSum[ray]    += laneSum[ray + stride];
+            laneSquare[ray] += laneSquare[ray + stride];
+            for (uint j = 0u; j < 4u; ++j)
+            {
+                observed[ray][j]  += observed[ray + stride][j];
+                predicted[ray][j] += predicted[ray + stride][j];
+            }
+        }
+    }
+    barrier();
+    if (ray == 0u)
+    {
+        // Each lane sum is one independent sample of the probe estimate.
+        float lanes             = float(ZEN_SCREEN_PROBE_RAYS);
+        vec4  sums              = laneSum[0];
+        float observedVariance  = lanes / (lanes - 1.0) * max(laneSquare[0].x - sums.x * sums.x / lanes, 0.0);
+        float predictedVariance = lanes / (lanes - 1.0) * max(laneSquare[0].y - sums.y * sums.y / lanes, 0.0);
+        vec4  stats             = past[4];
+        vec4  state             = past[5];
+        float frames            = history ? stats.z * carried : 0.0;
+        float window            = 1.0 / min(frames + 1.0, 16.0);
+        float varianceO         = history ? mix(stats.w, observedVariance, window) : observedVariance;
+        float varianceD         = history ? mix(state.y, predictedVariance, window) : predictedVariance;
+        // Weight the predicted history and this observation by inverse variance. The history's variance is
+        // V_O / frames plus the prediction's V_D. Repeated each frame this settles at sqrt(V_O / V_D) frames;
+        // when the movers stop, V_D is zero and the history grows by one frame per frame.
+        float ratio         = varianceD / max(varianceO, 1e-30);
+        float predictionAge = varianceD > 0.0 ? sqrt(1.0 / max(ratio, 1e-12)) : kMovingHistory;
+        float reference     = max(max(sums.x, stats.x), max(sums.z, 1e-20));
+        float rate          = min(1.0, sums.z / reference);
+        float unexplained   = rate * clamp(sums.w / max(sums.x, 1e-20), 0.0, 1.0);
+        float sigma         = clamp(sqrt(varianceO) / max(max(sums.x, stats.x), 1e-20), .15, .75);
+        float limit         = frames > 0.0 ? min(1.0 + 1.0 / (1.0 / frames + ratio), kMovingHistory) : 1.0;
+        // The previous observation's unexplained change sets this weight, so a rare bright hit cannot
+        // shorten the history that receives it.
+        float age = history ? max(WorldHistoryCap(state.x, sigma, limit), 1.0) : 1.0;
+        alpha     = 1.0 / age;
+        // Keep the temporal moments about the predicted mean, so motion does not read as variance.
+        float shifted            = history ? stats.x + sums.y : sums.x;
+        float square             = history ? stats.y + shifted * shifted - stats.x * stats.x : sums.x * sums.x;
+        vec2  moments            = mix(vec2(shifted, square), vec2(sums.x, sums.x * sums.x), alpha);
+        probeLighting[base + 4u] = vec4(moments, age, varianceO);
+        probeLighting[base + 5u] =
+            vec4(max(unexplained, history ? .70710678 * state.x : 0.0), varianceD, min(predictionAge, kMovingHistory), 0);
+    }
+    barrier();
+    if (ray < 4u)
+    {
+        vec4 prior  = history ? past[ray] + predicted[0][ray] : vec4(0);
+        vec4 result = mix(prior, observed[0][ray], alpha);
+        // Clamp after blending: clamping each noisy prediction first would keep only its positive errors.
+        if (ray == 3u)
+        {
+            result.rgb = max(result.rgb, vec3(0));
+            result.w   = 1.0 / alpha; // One direct-light batch per observation.
+        }
+        else
+        {
+            result.x    = max(result.x, 0.0);
+            result.yzw *= min(1.0, 1.732051 * result.x / max(length(result.yzw), 1e-20));
+        }
+        probeLighting[base + ray] = result;
+    }
+}

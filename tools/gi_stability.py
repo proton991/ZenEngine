@@ -16,7 +16,9 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import struct
 import subprocess
+from urllib.parse import unquote, urlparse
 import sys
 import os
 
@@ -73,6 +75,34 @@ def zenapp(args, arguments, log):
     return command
 
 
+def measurement_inputs(setup):
+    scene = Path(setup['sourcePath']).resolve()
+    if scene.suffix.lower() == '.gltf':
+        return input_files(setup)
+    files = {scene, Path(setup['packagePath']).resolve()}
+    if scene.suffix.lower() == '.glb':
+        with scene.open('rb') as stream:
+            header = stream.read(20)
+            if len(header) != 20:
+                raise ValueError(f'Truncated GLB header at {scene}')
+            magic, version, size, length, kind = struct.unpack('<4sIIII', header)
+            if (magic, version, size, kind) != (b'glTF', 2, scene.stat().st_size, 0x4e4f534a) or length > size - 20:
+                raise ValueError(f'Invalid GLB JSON chunk at {scene}')
+            document = json.loads(stream.read(length))
+        for entry in document.get('buffers', []) + document.get('images', []):
+            uri = entry.get('uri')
+            if uri and not uri.startswith('data:'):
+                source = urlparse(uri)
+                if source.scheme == 'file':
+                    from urllib.request import url2pathname
+                    files.add(Path(url2pathname(source.path)).resolve())
+                elif source.scheme:
+                    raise ValueError(f'Cannot fingerprint external GLB resource {uri}')
+                else:
+                    files.add((scene.parent / unquote(uri)).resolve())
+    return files
+
+
 def provenance(args, setup_path, commands):
     shaders = sorted((ROOT/'Data/SpvShaders').rglob('*.spv'))
     combined = hashlib.sha256()
@@ -80,7 +110,7 @@ def provenance(args, setup_path, commands):
         combined.update(str(path.relative_to(ROOT)).encode())
         combined.update(digest(path).encode())
     setup = read_json(setup_path)
-    inputs = input_files(setup) | {args.setup.resolve()}
+    inputs = measurement_inputs(setup) | {args.setup.resolve()}
     inputs.update(Path(p) for p in (setup['defaultEnvironment'], setup['rendering']['environment']['texturePath']) if p)
     return dict(executable=str(args.executable.resolve()), executable_sha256=digest(args.executable),
                 shaders_sha256=combined.hexdigest(), shader_count=len(shaders), setup=str(setup_path),

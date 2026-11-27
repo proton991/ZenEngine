@@ -174,6 +174,10 @@ vec3 RayHitReflectance(HybridRayResult hit, Material material, out vec3 emission
 #    ifndef HYBRID_RECORDED_HIT_SHADING
 #        include "sampled_hit_diffuse.glsl"
 // Evaluate the hit material for cache lookup or endpoint shading.
+#        ifdef NATIVE_GLOSSY_CACHE
+#            include "moving_light.glsl"
+#            include "world_light_response.glsl"
+#        endif
 vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
 {
     Material material = LoadRayHitMaterial(hit.triangle.z);
@@ -187,14 +191,22 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
     issuedRayPurpose     = 1u;
 #        endif
     vec3 diffuse = vec3(0);
+#        ifdef NATIVE_GLOSSY_CACHE
+    float response = float(WorldSurfaceChanged(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, gl_HitTEXT, hit.triangle.z, 1u));
+#        endif
 #        if defined(NATIVE_WORLD_CACHE)
 #            if defined(NATIVE_GLOSSY_CACHE)
     if ((hitPayload.skipNormalMap & 4u) == 0u)
     {
 #            endif
-        bool worldFound, worldUsable;
+        bool  worldFound, worldUsable;
+        float residual;
+        uint  sampledSlot;
         diffuse = WorldLookup(hit.position, hit.normal, normal, (hitPayload.skipNormalMap & 16u) != 0u,
-                              WorldFeedbackSelection(seed), worldFound, worldUsable);
+                              WorldFeedbackSelection(seed), worldFound, worldUsable, residual, sampledSlot);
+#            ifdef NATIVE_GLOSSY_CACHE
+        response = max(response, residual);
+#            endif
 #            if defined(NATIVE_CACHE_MISS_TRANSPORT) || defined(NATIVE_WORLD_CACHE_PIXEL)
         if (!worldUsable)
         {
@@ -204,7 +216,15 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
     // Reflections use the same bounded endpoint as the probe gather.
     if (!worldUsable)
     {
-        diffuse = SampledHitDiffuse(hit, normal, seed, false, false);
+        diffuse = SampledHitDiffuse(hit, normal, seed, false, false, worldCache.lightCount.w != 0u);
+    }
+    if (worldCache.lightCount.w != 0u)
+    {
+        vec3 delta;
+        diffuse  += MovingLighting(hit.position, hit.normal, normal, 1u, delta)
+                  + WorldMovingIndirect(hit.position, hit.normal, sampledSlot, worldFound);
+        response  = max(response, min(1.0, dot(abs(delta), vec3(.2126, .7152, .0722))
+                                               / max(1e-6, dot(diffuse, vec3(.2126, .7152, .0722)))));
     }
 #            endif
         if ((hitPayload.skipNormalMap & 7u) == 3u)
@@ -226,11 +246,18 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
     if (!cacheHit)
     {
 #            endif
-        bool exactLights = false;
 #            ifdef NATIVE_GLOSSY_CACHE
-        exactLights = true;
+        bool movers = worldCache.lightCount.w != 0u;
+        diffuse     = SampledHitDiffuse(hit, normal, seed, true, true, movers);
+        if (movers)
+        {
+            vec3 delta;
+            diffuse  += MovingLighting(hit.position, hit.normal, normal, 1u, delta);
+            response  = max(response, min(1.0, HybridLuminance(abs(delta)) / max(1e-6, HybridLuminance(diffuse))));
+        }
+#            else
+    diffuse = SampledHitDiffuse(hit, normal, seed, true, false);
 #            endif
-        diffuse = SampledHitDiffuse(hit, normal, seed, true, exactLights);
 #            if defined(HYBRID_RADIANCE_CACHE) && !defined(GI_CACHE_WRITE)
     }
 #            elif defined(GI_CACHE_WRITE)
@@ -242,6 +269,19 @@ vec3 HardwareHitRadiance(HybridRayResult hit, uint seed)
 #        endif
 #        ifdef HYBRID_COUNT_RAYS
     issuedRayPurpose = previousPurpose;
+#        endif
+#        ifdef NATIVE_GLOSSY_CACHE
+    if ((hitPayload.skipNormalMap & 4u) != 0u && editLog.w != 0u)
+    {
+        vec3 delta;
+        response = max(response, WorldLightResponse(1u, hit.position, normal, diffuse, 0xffffffffu, delta));
+        if (!WorldMovingHistoryComplete(1u))
+        {
+            response = 1.0;
+        }
+        response = max(response, float(envLog.w == worldCache.schedule.x));
+    }
+    hitPayload.seed = floatBitsToUint(response);
 #        endif
 #        if defined(NATIVE_WORLD_CACHE) && !defined(NATIVE_WORLD_CACHE_PIXEL)
     return emission + reflectance * diffuse;

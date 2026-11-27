@@ -3,7 +3,78 @@
 #define GLOSSY_HISTORY_WRITE
 #define GLOSSY_RAW_READ
 #include "glossy_reflection.glsl"
+#include "history_response.glsl"
 layout(local_size_x = 8, local_size_y = 8) in;
+// Try a four-tap surface reprojection when the virtual footprint loses support.
+void GlossySurfaceCandidate(ivec2          pixel,
+                            GIDenoiseGuide guide,
+                            inout vec4     slow,
+                            inout vec4     fast,
+                            inout vec4     moments,
+                            inout float    weight,
+                            inout float    change)
+{
+    vec4 clip = hybrid.previousProjectionView * vec4(guide.position, 1);
+    if (clip.w <= 0.0)
+    {
+        return;
+    }
+    vec2  uv          = GlossyCoordinate((.5 * clip.xy / clip.w + .5) * vec2(hybrid.resolution.xy) - .5);
+    ivec2 base        = ivec2(floor(uv));
+    vec2  fraction    = fract(uv);
+    vec4  surfaceSlow = vec4(0), surfaceFast = vec4(0), surfaceMoments = vec4(0);
+    float support = 0.0, surfaceChange = 0.0;
+    for (int y = 0; y < 2; ++y)
+    {
+        for (int x = 0; x < 2; ++x)
+        {
+            ivec2 q = base + ivec2(x, y);
+            if (GlossyInView(q))
+            {
+                GlossyHistory old = glossyPrevious[GlossyIndex(q)];
+                if (old.moments.z > 0.0 && DenoiseHistoryRejection(guide, GlossyHistoryGuide(old), true) == 0.0)
+                {
+                    vec2  axes      = mix(1.0 - fraction, fraction, vec2(x, y));
+                    float tap       = axes.x * axes.y;
+                    surfaceSlow    += tap * old.slow;
+                    surfaceFast    += tap * old.fast;
+                    surfaceMoments += tap * old.moments;
+                    surfaceChange  += tap * unpackUnorm2x16(old.normal.z).y;
+                    support        += tap;
+                }
+            }
+        }
+    }
+    if (support >= .25 && support > weight)
+    {
+        vec4  reference = vec4(0);
+        float count     = 0.0;
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int x = -1; x <= 1; ++x)
+            {
+                ivec2 q = pixel + ivec2(x, y);
+                if (GlossyInView(q))
+                {
+                    GIDenoiseGuide other  = DenoiseGuide(GlossyPixel(q));
+                    float          tap    = DenoiseSurfaceWeight(guide, other) * DenoiseLobeWeight(guide, other);
+                    reference            += tap * glossyRaw[GlossyIndex(q) * 2u];
+                    count                += tap;
+                }
+            }
+        }
+        reference         /= max(count, 1e-6);
+        vec4 surfaceError = abs(surfaceFast / support - reference), virtualError = abs(fast / max(weight, 1e-6) - reference);
+        if (weight < .01 || GlossyLuma(surfaceError.rgb) + surfaceError.a < GlossyLuma(virtualError.rgb) + virtualError.a)
+        {
+            slow    = surfaceSlow;
+            fast    = surfaceFast;
+            moments = surfaceMoments;
+            weight  = support;
+            change  = surfaceChange;
+        }
+    }
+}
 void main()
 {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
@@ -25,19 +96,19 @@ void main()
             ivec2 base     = ivec2(floor(oldPixel));
             vec2  fraction = fract(oldPixel);
             vec4  slow = vec4(0), fast = vec4(0), moments = vec4(0);
-            float weight       = 0.0;
+            float weight = 0.0, previousChange = 0.0;
             bool  historyValid = !GlossyDeterministicMirror(guide) && glossy.extent.z != 0u && glossy.control.x != 0.0
                               && hybrid.reflection.y != 0u;
             if (historyValid && hybrid.resolution.w != 0u)
             {
                 GlossyHistory old = glossyPrevious[index];
-                if (old.moments.z > 0.0
-                    && DenoiseHistoryRejection(guide, DenoiseUnpackGuide(old.position, old.normal), true) == 0.0)
+                if (old.moments.z > 0.0 && DenoiseHistoryRejection(guide, GlossyHistoryGuide(old), true) == 0.0)
                 {
-                    slow    = old.slow;
-                    fast    = old.fast;
-                    moments = old.moments;
-                    weight  = 1.0;
+                    slow           = old.slow;
+                    fast           = old.fast;
+                    moments        = old.moments;
+                    previousChange = unpackUnorm2x16(old.normal.z).y;
+                    weight         = 1.0;
                 }
             }
             else if (historyValid && clip.w > 0.0)
@@ -58,7 +129,7 @@ void main()
                         if (GlossyInView(q))
                         {
                             GlossyHistory  old      = glossyPrevious[GlossyIndex(q)];
-                            GIDenoiseGuide oldGuide = DenoiseUnpackGuide(old.position, old.normal);
+                            GIDenoiseGuide oldGuide = GlossyHistoryGuide(old);
                             bool           valid = old.moments.z > 0.0 && DenoiseHistoryRejection(guide, oldGuide, true) == 0.0;
                             if (parallax && distance > 0.0)
                             {
@@ -76,6 +147,7 @@ void main()
                                 slow               += old.slow * contribution;
                                 fast               += old.fast * contribution;
                                 moments            += old.moments * contribution;
+                                previousChange     += unpackUnorm2x16(old.normal.z).y * contribution;
                                 weight             += contribution;
                             }
                             cubicValid   = cubicValid && valid;
@@ -102,27 +174,45 @@ void main()
                 vec2 interpolation  = fraction * (1.0 - fraction);
                 moments.z          *= 1.0 - .25 * max(interpolation.x, interpolation.y);
             }
+            if (glossy.control.x == 2.0 && historyValid && parallax && distance > 0.0 && guide.roughness >= glossy.control.w
+                && weight < .75)
+            {
+                GlossySurfaceCandidate(p, guide, slow, fast, moments, weight, previousChange);
+            }
             slow /= max(weight, 1e-20);
             fast /= max(weight, 1e-20);
             // A partially rejected footprint carries fewer observations. Renormalize the
             // signal, but keep the surviving sample count for the next update.
-            float survivingAge  = moments.z;
-            moments            /= max(weight, 1e-20);
-            float age           = weight >= .01 ? min(survivingAge + 1.0, 512.0) : 1.0;
-            float luminance     = GlossyLuma(current.rgb);
-            vec4  nextFast      = mix(fast, current, 1.0 / min(age, 4.0));
-            float variance      = max(moments.x - moments.w * moments.w, 0.0);
+            float survivingAge = moments.z;
+            if (hybrid.reflection.w == 2u && weight >= .01 && guide.roughness >= glossy.control.w)
+            {
+                // Interpolating an accepted mean preserves its observations. Retain partial
+                // support across a curved surface while still reducing one-sided history.
+                survivingAge /= sqrt(clamp(weight, .01, 1.0));
+            }
+            moments     /= max(weight, 1e-20);
+            float age    = weight >= .01 ? min(survivingAge + 1.0, 512.0) : 1.0;
+            bool  local  = hybrid.reflection.w == 2u;
+            if (local)
+            {
+                float relativeNoise = sqrt(max(0.0, moments.x - moments.w * moments.w)) / max(moments.w, .005);
+                age                 = WorldHistoryCap(previousChange / max(weight, 1e-20), clamp(relativeNoise, .15, .75), age);
+            }
+            float luminance = GlossyLuma(current.rgb);
+            vec4  nextFast  = mix(fast, current, 1.0 / min(age, 4.0));
+            float variance  = max(moments.x - moments.w * moments.w, 0.0);
             // Classify lag from completed history. Testing the new sample against the old
             // variance promotes a first bright Monte Carlo sample into a lighting change,
             // shortens its history and amplifies it into a visible spark.
             float deviation = max(3.0 * sqrt(variance), .2 * max(GlossyLuma(fast.rgb), .005));
-            if (abs(GlossyLuma(fast.rgb) - GlossyLuma(slow.rgb)) > deviation || abs(fast.a - slow.a) > .25)
+            if (!local && (abs(GlossyLuma(fast.rgb) - GlossyLuma(slow.rgb)) > deviation || abs(fast.a - slow.a) > .25))
             {
                 age  = min(age, 4.0);
                 slow = fast;
             }
             result.position = uvec4(floatBitsToUint(guide.position), guide.identity);
-            result.normal   = uvec4(floatBitsToUint(EncodeGBufferNormal(guide.normal)), floatBitsToUint(guide.roughness),
+            result.normal   = uvec4(floatBitsToUint(EncodeGBufferNormal(guide.normal)),
+                                    packUnorm2x16(vec2(guide.roughness, glossyRaw[index * 2u + 1u].y)),
                                     packUnorm2x16(EncodeGBufferNormal(guide.geometric)));
             result.slow     = mix(slow, current, 1.0 / age);
             result.fast     = nextFast;

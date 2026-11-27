@@ -52,6 +52,20 @@ def load_image(folder, frame):
         return np.array(image.convert('RGB'))
 
 
+def age_errors(image, mean, folder, frame):
+    ages = np.fromfile(str(gates.frame_path(folder, frame)) + '.age.f32', dtype='<f4').reshape(2160, 3840)
+    if not np.isfinite(ages).all():
+        raise ValueError(f'Invalid probe ages at {folder}, frame {frame}')
+    error = image.astype(np.float32) - mean
+    rows = {}
+    for low, high in [(0, 8), (8, 32), (32, 128), (128, 255), (255, np.inf)]:
+        values = error[(ages >= low) & (ages < high)]
+        if values.size:
+            rows[str(low)] = dict(pixels=len(values), rms=float(np.sqrt(np.mean(values ** 2))),
+                                  over4_pct=float(100 * np.mean(np.max(np.abs(values), axis=1) > 4)))
+    return rows
+
+
 def projection_view(folder, frame):
     return read_json(str(gates.frame_path(folder, frame)) + '.json')['projectionViewBits']
 
@@ -104,15 +118,27 @@ def mark_lifetimes(rows, folder):
         last = (pose, row['frame'])
 
 
-def capture(args, name, setup, camera, frames):
+def capture(args, name, setup, camera, frames, scene=None):
     folder = args.output / name
+    scene_file = folder / 'scene-path.json'
+    extra = ()
+    if scene is not None:
+        if args.rescore:
+            if read_json(scene_file) != scene:
+                raise ValueError(f'Stored scene path differs at {folder}')
+        else:
+            folder.mkdir(parents=True, exist_ok=True)
+            write_json(scene_file, scene)
+        extra = (f'--scene-path={scene_file}',)
+    if getattr(args, 'linear', False):
+        extra += ('--capture-linear',)
     if args.rescore:
         if read_json(folder / 'camera-path.json') != camera or read_json(folder / 'setup.zenrender') != setup:
             raise ValueError(f'Stored camera or setup differs at {folder}')
         command = read_json(folder / 'zenapp.log.command.json')
     else:
         command = gates.launch(args, folder, setup, camera, None, frames, frames[-1],
-                               startup=('--fixed-step', '--no-ui', '--backend=hardware', '--gpu-culling=1',
+                               extra=extra, startup=('--fixed-step', '--no-ui', '--backend=hardware', '--gpu-culling=1',
                                         '--gpu-markers'))
     state = actual_state((folder / 'setup.log').read_text(errors='replace'))
     run = setup['run']
@@ -130,10 +156,14 @@ def capture(args, name, setup, camera, frames):
                       width=3840, height=2160, framebufferWidth=3840, framebufferHeight=2160,
                       giWidth=3840, giHeight=2160, fullscreen=run['fullscreen'], backend='hardware',
                       gather='screen_probes', tierFallback='', asyncCompute=state['async_compute'])
+        if scene is not None:
+            checks['scenePathKeyFrame'] = next((key['frame'] for key in reversed(scene['keys']) if key['frame'] <= frame),
+                                               scene['keys'][0]['frame'])
         for field, expected_value in checks.items():
             if metadata.get(field) != expected_value:
                 raise ValueError(f'{folder}, frame {frame}: expected {field}={expected_value}, got {metadata.get(field)}')
-    return dict(command=command, actual=state, cache_cells=capacity, camera_sha256=digest(folder / 'camera-path.json'))
+    return dict(command=command, actual=state, cache_cells=capacity, camera_sha256=digest(folder / 'camera-path.json'),
+                scene_sha256=digest(scene_file) if scene is not None else None)
 
 
 def replay(args):
@@ -148,8 +178,13 @@ def replay(args):
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=args.rescore)
     setup = read_json(args.setup)
-    if setup['animationEnabled']:
-        raise ValueError('Settled turn references require a static scene')
+    scene = None
+    if args.animation_pose is not None:
+        if not np.isfinite(args.animation_pose) or args.animation_pose < 0:
+            raise ValueError('Animation pose must be a finite, nonnegative clip time')
+        scene = dict(target='animation', keys=[dict(frame=1, seconds=args.animation_pose)])
+    elif setup['animationEnabled']:
+        raise ValueError('Supply --animation-pose to freeze the animated setup for the replay and references')
     setup['rendering']['gi']['cone']['samplingPhase'] = args.phase
     moving, rows, reference, ref_rows = schedules(setup, args.production_turn, args.degrees, args.warmup, args.hold)
     captures = [row['frame'] for row in rows]
@@ -159,8 +194,8 @@ def replay(args):
         setup_path.parent.mkdir()
         write_json(setup_path, setup)
         identity = provenance(args, setup_path, [])
-    runs = [capture(args, 'moving', setup, moving, captures),
-            capture(args, 'reference', setup, reference, ref_frames)]
+    runs = [capture(args, 'moving', setup, moving, captures, scene),
+            capture(args, 'reference', setup, reference, ref_frames, scene)]
     if runs[0]['cache_cells'] != runs[1]['cache_cells']:
         raise ValueError(f"Moving and settled cache capacities differ: {[run['cache_cells'] for run in runs]}")
     if args.rescore:
@@ -188,7 +223,13 @@ def replay(args):
         for row in by_angle[angle]:
             if projection_view(args.output / 'moving', row['frame']) != target_matrix:
                 raise ValueError(f"Moving frame {row['frame']} has a different projection or view at {angle} degrees")
-            row.update(settled_turn_metrics(load_image(args.output / 'moving', row['frame']), mean))
+            image = load_image(args.output / 'moving', row['frame'])
+            row.update(settled_turn_metrics(image, mean))
+            if args.linear:
+                age_folder = (args.baseline_ages or args.output) / 'moving'
+                if projection_view(age_folder, row['frame']) != target_matrix:
+                    raise ValueError('Age-map camera differs from the scored pose')
+                row['age_bands'] = age_errors(image, mean, age_folder, row['frame'])
     mark_lifetimes(rows, args.output / 'moving')
     # Count large contiguous faults too, including interiors that have no contrast with their ring.
     worst = max(rows, key=lambda r: r['high_error_pct'])

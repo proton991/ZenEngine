@@ -8,6 +8,14 @@ layout(std430, set = 1, binding = 93) writeonly buffer FilteredScreenProbeSpecul
     uvec2 filteredProbeSpecularData[];
 };
 layout(local_size_x = 64) in;
+float SpecularHistoryWeight(uint index)
+{
+    float age = screenProbe.localResponse != 0u
+                  ? uintBitsToFloat(probeSpecularData[screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + index].x)
+                  : min(probeLighting[index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 8u].z,
+                        probeLighting[index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 9u].z);
+    return max(age, 1.0);
+}
 void main()
 {
     uint index = ProbeGroupIndex(), lane = gl_LocalInvocationID.x;
@@ -20,9 +28,7 @@ void main()
             uint  address      = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
             uvec2 packed       = probeSpecularData[address];
             vec4  value        = vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
-            float total        = max(min(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
-                                         probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z),
-                                     1.0);
+            float total        = SpecularHistoryWeight(index);
             float young        = 1.0 - smoothstep(32.0, 192.0, total);
             vec3  groupWeight  = vec3(total, 0, 0);
             vec3  groupLuma    = vec3(HybridLuminance(value.rgb) * total, 0, 0);
@@ -43,9 +49,7 @@ void main()
                             float       weight       = exp(-.5 * float(x * x + y * y))
                                                      * ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, sampleProbe)
                                                      * float(other != index && probe.source.w == sampleProbe.source.w);
-                            weight                  *= max(min(probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u].z,
-                                                               probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 9u].z),
-                                                           1.0);
+                            weight                  *= SpecularHistoryWeight(other);
                             uvec2 sampleValue        = probeSpecularData[other * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel];
                             vec4  sampleRadiance     = vec4(unpackHalf2x16(sampleValue.x), unpackHalf2x16(sampleValue.y));
                             if (young > 0.0)
@@ -68,12 +72,11 @@ void main()
             value       /= total;
             float level  = HybridLuminance(value.rgb);
             float scale  = ProbeSpatialOutlierScale(groupLuma, groupWeight, total, level, young);
-            // Like the diffuse filter, bound a probe on a thin feature, which lacks coplanar support
-            // for that test, by its brightest adjacent probe on any surface. Both use the same young
-            // window: the history keeps the raw estimate, so a shorter bound only delays the outlier.
-            if (young > 0.0 && nearestPeak >= 0.0 && min(min(groupWeight.x, groupWeight.y), groupWeight.z) <= .05 * total)
+            // A new probe on a thin feature can lack coplanar taps for the three-group check.
+            float isolated = ProbeIsolatedWindow(probe, young);
+            if (isolated > 0.0 && nearestPeak >= 0.0 && min(min(groupWeight.x, groupWeight.y), groupWeight.z) <= .05 * total)
             {
-                scale = min(scale, mix(1.0, clamp(kIsolatedProbeSlack * nearestPeak / max(level, 1e-20), 0.0, 1.0), young));
+                scale = min(scale, mix(1.0, clamp(kIsolatedProbeSlack * nearestPeak / max(level, 1e-20), 0.0, 1.0), isolated));
             }
             value.rgb                          *= scale;
             filteredProbeSpecularData[address]  = uvec2(packHalf2x16(value.rg), packHalf2x16(value.ba));

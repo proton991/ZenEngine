@@ -146,6 +146,7 @@ def main():
     parser.add_argument('--metric-set-name', default='Top-Level Triage',
                         help='Metric set used with --shader-profiler (it requires an explicit architecture and set)')
     parser.add_argument('--hybrid-hit-stream', action='store_true')
+    parser.add_argument('--scene-path', type=Path, help='Held ZenApp scene poses during capture')
     parser.add_argument('--camera-path', type=Path,
                         help='ZenApp camera keys (fixed-step frames); must cover the capture, as the last key holds')
     parser.add_argument("--worker-timing", action="store_true", help="Record per-frame RHI CPU categories in the ZenApp profile")
@@ -188,6 +189,10 @@ def main():
         camera_path = out / 'camera-path.json'
         camera_path.write_bytes(args.camera_path.resolve(strict=True).read_bytes())
         application.append(f'--camera-path={camera_path}')
+    if args.scene_path:
+        scene_path = out / 'scene-path.json'
+        scene_path.write_bytes(args.scene_path.resolve(strict=True).read_bytes())
+        application.append(f'--scene-path={scene_path}')
     command = [str(args.nsight), '--activity', 'GPU Trace Profiler', '--exe', str(executable),
                '--dir', str(ROOT), '--args', subprocess.list2cmdline(application[1:]),
                '--env', 'DISABLE_RTSS_LAYER=1; VK_LOADER_LAYERS_DISABLE=VK_LAYER_RTSS;',
@@ -207,6 +212,13 @@ def main():
     inputs = dict(executable=fingerprint(executable), nsight=fingerprint(args.nsight),
                   setup=fingerprint(source), package=fingerprint(package),
                   shaders=[fingerprint(p) for p in sorted((ROOT / 'Data/SpvShaders').rglob('*.spv'))])
+    inputs['launch_setup'] = fingerprint(launch_setup)
+    environment_paths = (setup.get('defaultEnvironment'), setup.get('rendering', {}).get('environment', {}).get('texturePath'))
+    inputs['environment'] = [fingerprint(path) for path in sorted({Path(p).resolve() for p in environment_paths if p})
+                             if path.is_file()]
+    for key, path in [('camera', args.camera_path), ('scene', args.scene_path)]:
+        if path:
+            inputs[key + '_path'] = fingerprint(out / (key + '-path.json'))
     (out / 'inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')
     overlay = rtss_running()
     if overlay:
@@ -216,6 +228,11 @@ def main():
     renderers = running_renderers()
     (out / 'other-renderers-after.json').write_text(json.dumps(renderers, indent=2) + '\n')
     assert not renderers, f'Other Zen renderers were present after the capture: {renderers}'
+    locked_inputs = [inputs['executable'], inputs['launch_setup'], inputs['package'], *inputs['environment'], *inputs['shaders']]
+    locked_inputs.extend(inputs[k] for k in ('camera_path', 'scene_path') if k in inputs)
+    for captured in locked_inputs:
+        if fingerprint(captured['path'])['sha256'] != captured['sha256']:
+            raise ValueError(f'Measurement input changed during capture: {captured["path"]}')
     log = (out / 'launch.log').read_text(errors='replace')
     errors = [line for line in log.splitlines() if any(token in line for token in (
         '[error]', 'VUID-', 'SYNC-HAZARD', 'TARGET ERROR:', 'Using GI defaults after rejected configuration'))]
@@ -250,7 +267,9 @@ def main():
                   multi_pass_metrics=args.multi_pass_metrics, shader_profiler=args.shader_profiler,
                   trace=traces[0].name, configuration_sha256=hashlib.sha256(launch_setup.read_bytes()).hexdigest(),
                   camera_path_sha256=hashlib.sha256((out / 'camera-path.json').read_bytes()).hexdigest()
-                  if args.camera_path else None)
+                  if args.camera_path else None,
+                  scene_path_sha256=hashlib.sha256((out / 'scene-path.json').read_bytes()).hexdigest()
+                  if args.scene_path else None)
     (out / 'summary.json').write_text(json.dumps(report, indent=2) + '\n')
     print(f'{out.name}: ZenApp median {report["median_ms"]:.3f} ms, p95 {report["p95_ms"]:.3f} ms over {args.frames} frames',
           flush=True)

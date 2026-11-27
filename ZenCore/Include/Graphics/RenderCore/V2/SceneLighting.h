@@ -39,6 +39,7 @@ struct SceneLight
     float          outerAngleDegrees{35.0f};
     bool           enabled{true};
     bool           castsShadows{true};
+    bool           movable{false};
 };
 
 struct CameraLightSettings
@@ -72,17 +73,18 @@ struct GPULight
 
 struct SceneUniformData
 {
-    GPULight lights[MaxSceneLights]{};
-    Vec4     viewPos{};                                      // eye position; w is zero for orthographic
-    Vec4     lightInfo{};                                    // enabled count; world camera-backward direction
-    Vec4     environment{1.0f, 0.0f, 1.0f, 1.0f};            // intensity, rotation radians, enabled, visible
-    Vec4     environmentOrientation{0.0f, 0.0f, 0.0f, 1.0f}; // inverse authored quaternion
-    Vec4     environmentProperties{};                        // x: authored glTF cubemap coordinates
-    GPULight cameraLight{};                                  // movable GI test light; coneShadow.w is its sphere radius
+    GPULight   lights[MaxSceneLights]{};
+    Vec4       viewPos{};                                      // eye position; w is zero for orthographic
+    Vec4       lightInfo{};                                    // enabled count; world camera-backward direction
+    Vec4       environment{1.0f, 0.0f, 1.0f, 1.0f};            // intensity, rotation radians, enabled, visible
+    Vec4       environmentOrientation{0.0f, 0.0f, 0.0f, 1.0f}; // inverse authored quaternion
+    Vec4       environmentProperties{};                        // x: authored glTF cubemap coordinates
+    GPULight   cameraLight{};                                  // movable GI test light; coneShadow.w is its sphere radius
+    glm::uvec4 lightIds[(MaxSceneLights + 1) / 2]{};           // Two 64-bit runtime IDs per std140 vector.
 };
 static_assert(sizeof(GPULight) == 64);
 static_assert(offsetof(SceneUniformData, viewPos) == MaxSceneLights * 64);
-static_assert(sizeof(SceneUniformData) == MaxSceneLights * 64 + 144);
+static_assert(sizeof(SceneUniformData) == MaxSceneLights * 64 + 144 + MaxSceneLights * sizeof(LightId));
 
 struct LightEntry
 {

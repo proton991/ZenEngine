@@ -93,7 +93,7 @@ void main()
                 ivec2          q         = clamp(base + ivec2(tap & 1u, tap >> 1u), ivec2(0), ivec2(glossy.extent.xy) - 1);
                 uint           index     = GlossyIndex(q);
                 GlossyHistory  history   = glossyCurrent[index];
-                GIDenoiseGuide other     = DenoiseUnpackGuide(history.position, history.normal);
+                GIDenoiseGuide other     = GlossyHistoryGuide(history);
                 vec2           bilinear  = mix(vec2(1) - fraction, fraction, vec2(tap & 1u, tap >> 1u));
                 float          w         = bilinear.x * bilinear.y;
                 w                       *= DenoiseSurfaceWeight(guide, other) * DenoiseLobeWeight(guide, other);
@@ -131,11 +131,18 @@ void main()
                     {
                         continue;
                     }
-                    uint  chosen       = gatherIndices[tap];
-                    vec2  displacement = gatherPositions[tap] - (vec2(pixel) + .5);
-                    vec2  axisWeight   = ProbeCubicWeight(abs(displacement) / float(screenProbe.spacing));
-                    float spatial      = axisWeight.x * axisWeight.y;
-                    float weight       = spatial * ProbePlaneWeight(position, geometric, probe);
+                    uint chosen       = gatherIndices[tap];
+                    vec2 displacement = gatherPositions[tap] - (vec2(pixel) + .5);
+                    vec2 delta        = displacement / float(screenProbe.spacing);
+                    // The workgroup preloads footprints for the whole tile. This receiver can
+                    // reject the outer taps before evaluating their geometric compatibility.
+                    if (any(greaterThanEqual(abs(delta), vec2(2.0))))
+                    {
+                        continue;
+                    }
+                    vec2  axisWeight = ProbeCubicWeight(abs(delta));
+                    float spatial    = axisWeight.x * axisWeight.y;
+                    float weight     = spatial * ProbePlaneAgreement(position, geometric, probe.position.xyz, probe.normal.xyz);
                     if (weight <= 0.0)
                     {
                         continue;
@@ -152,7 +159,6 @@ void main()
                             irradiance[signal][channel] += max(dot(response.xyz, normal), 0.0) + response.w * normalOffset;
                         }
                     }
-                    vec2 delta      = displacement / float(screenProbe.spacing);
                     first          += weight * delta;
                     second         += weight * vec3(delta.x * delta.x, delta.x * delta.y, delta.y * delta.y);
                     lower           = min(lower, delta);
@@ -166,11 +172,10 @@ void main()
                     total          += weight;
                     vec2 luma =
                         vec2(HybridLuminance(max(irradiance[0], vec3(0))), HybridLuminance(max(irradiance[1], vec3(0))));
-                    vec3 statistics =
-                        filteredProbeLighting[screenProbe.grid.w * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + chosen].xyz;
-                    lumaSecond    += weight * luma * luma;
-                    measuredNoise += weight * statistics.xy;
-                    age           += weight * statistics.z;
+                    vec3 statistics  = filteredProbeLighting[ProbeGatherStatisticsAddress(chosen)].xyz;
+                    lumaSecond      += weight * luma * luma;
+                    measuredNoise   += weight * statistics.xy;
+                    age             += weight * statistics.z;
 #ifndef SCREEN_PROBE_DIFFUSE_ONLY
                     // The cubic puts about 92% of a pixel's weight on the probes within one
                     // spacing. Rough reflections vary smoothly enough to take them from those

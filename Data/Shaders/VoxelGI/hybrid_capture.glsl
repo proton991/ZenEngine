@@ -47,7 +47,7 @@ void main()
     diagnostics[index + 5] = texelFetch(reconstructedSpecular, p, 0);
 #ifdef SCREEN_PROBE_CAPTURE
     diagnostics[index + 6] = vec4(0);
-    diagnostics[index + 7] = vec4(texelFetch(reconstructedSky, p, 0).a, texelFetch(reconstructedBounce, p, 0).a, 0, 0);
+    diagnostics[index + 7] = vec4(texelFetch(rawSky, q, 0).a, texelFetch(rawBounce, q, 0).a, 0, 0);
 #else
     diagnostics[index + 6] = texelFetch(moments, q, 0);
     diagnostics[index + 7] = texelFetch(historyLength, q, 0);

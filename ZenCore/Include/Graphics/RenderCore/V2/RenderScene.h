@@ -45,6 +45,7 @@ public:
     {
         sg::AABB bounds;
         uint64_t revision{1};
+        uint64_t rayVisibilityRevision{1};
     };
 
     struct InstanceTriangleRange
@@ -170,6 +171,11 @@ public:
         return mask == GI_STATIC ? m_staticRevision : mask == GI_DYNAMIC ? m_dynamicRevision : m_geometryRevision;
     }
 
+    const HeapVector<uint64_t>& GetMaterialRevisions() const
+    {
+        return m_materialRevisions;
+    }
+
     uint64_t GetSurfaceRevision(uint32_t mask = GI_ALL) const
     {
         return mask == GI_STATIC ? m_staticSurfaceRevision : mask == GI_DYNAMIC ? m_dynamicSurfaceRevision : m_surfaceRevision;
@@ -196,6 +202,11 @@ public:
         return m_indices;
     }
 
+    uint64_t GetEnvironmentTextureRevision() const
+    {
+        return m_environmentTextureRevision;
+    }
+
     uint64_t GetEnvironmentRevision() const
     {
         return m_environmentRevision;
@@ -211,6 +222,10 @@ public:
 
     bool ReplaceLights(HeapVector<LightEntry>& entries);
 
+    const CameraLightSettings& GetCameraLight() const
+    {
+        return m_cameraLight;
+    }
     bool SetCameraLight(const CameraLightSettings& settings);
 
     uint64_t GetLightingRevision() const
@@ -388,6 +403,8 @@ private:
     HashMap<const sg::SubMesh*, SubMeshBoundsCheck> m_subMeshBoundsChecks;
     HeapVector<InstanceTriangleRange>               m_instanceTriangleRanges;
     HeapVector<uint32_t>                            m_materialTriangleCounts;
+    static constexpr uint8_t                        ShadowVisibilityDirty = 1u;
+    static constexpr uint8_t                        ShadowAppearanceDirty = 2u;
     HeapVector<uint8_t>                             m_dirtyShadowInstances;
     HeapVector<uint8_t>                             m_dirtyShadowVertices;
     uint32_t                                        m_dirtyClasses{0};
@@ -412,6 +429,7 @@ private:
 
     HeapVector<sg::NodeData> m_nodesData;
 
+    HeapVector<uint64_t>         m_materialRevisions;
     HeapVector<sg::MaterialData> m_materialsData;
 
     SceneUniformData    m_sceneUniformData{};
@@ -419,6 +437,7 @@ private:
     CameraLightSettings m_cameraLight;
     uint64_t            m_cameraLightRevision{0};
     uint64_t            m_environmentRevision{1};
+    uint64_t            m_environmentTextureRevision{1};
     float               m_authoredEnvironmentIntensity{1.0f};
     float               m_environmentIntensity{1.0f};
     float               m_sceneUnitScale{1.0f};

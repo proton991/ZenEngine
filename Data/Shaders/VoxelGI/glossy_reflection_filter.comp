@@ -11,7 +11,7 @@ void main()
     {
         uint           index      = GlossyIndex(p);
         GlossyHistory  center     = glossyCurrent[index];
-        GIDenoiseGuide guide      = DenoiseUnpackGuide(center.position, center.normal);
+        GIDenoiseGuide guide      = GlossyHistoryGuide(center);
         bool           repair     = glossy.extent.w == 1u;
         vec4           result     = repair ? center.slow : glossyFiltered[index];
         float          centerLuma = GlossyLuma(result.rgb);
@@ -30,7 +30,7 @@ void main()
                 {
                     uint           other         = GlossyIndex(q);
                     GlossyHistory  sampleHistory = glossyCurrent[other];
-                    GIDenoiseGuide sampleGuide   = DenoiseUnpackGuide(sampleHistory.position, sampleHistory.normal);
+                    GIDenoiseGuide sampleGuide   = GlossyHistoryGuide(sampleHistory);
                     vec4           value         = repair ? sampleHistory.slow : glossyFiltered[other];
                     float          weight = DenoiseSurfaceWeight(guide, sampleGuide) * DenoiseLobeWeight(guide, sampleGuide);
                     if (mirror)

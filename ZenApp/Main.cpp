@@ -300,8 +300,12 @@ bool ParseOptions(int              argc,
         {
             ParseFrameList(argument, options.captureFrames, error);
         }
-        else if (argument.starts_with("--light-path="))
+        else if (argument.starts_with("--light-path=") || argument.starts_with("--scene-path="))
         {
+            if (!options.lightPath.empty() || argument.size() == 13)
+            {
+                error = "Supply one nonempty scene path";
+            }
             options.lightPath = argument.substr(13);
         }
         else if (argument.starts_with("--width=") || argument.starts_with("--height="))
@@ -420,6 +424,10 @@ bool ParseOptions(int              argc,
         {
             ParseUnsigned(argument, options.deviceMemoryLimitMB, 1024ull * 1024, error);
         }
+        else if (argument == "--capture-linear")
+        {
+            options.captureLinear = true;
+        }
         else if (argument == "--fixed-step")
         {
             options.fixedStep = true;
@@ -479,6 +487,10 @@ bool ParseOptions(int              argc,
     {
         error = "--capture requires --frames or --start-paused";
     }
+    if (error.empty() && options.captureLinear && options.capture.empty())
+    {
+        error = "--capture-linear requires --capture";
+    }
     if (error.empty() && options.hybridRayCounts && (options.frames < 2 || !options.groundTruth.empty()))
     {
         error = "--hybrid-ray-counts requires --frames=2 or more and cannot be combined with --ground-truth";
@@ -487,7 +499,7 @@ bool ParseOptions(int              argc,
     {
         if (!options.fixedStep || !options.groundTruth.empty() || options.startPaused)
         {
-            error = "--light-path requires --fixed-step and cannot be combined with --ground-truth or --start-paused";
+            error = "A scene path requires --fixed-step and cannot be combined with --ground-truth or --start-paused";
         }
         else
         {
@@ -535,7 +547,7 @@ int RuntimeMain(int argc, char** argv)
                "       [--hybrid-hit-stream (optional compact secondary-hit buffers)]\n"
                "       [--hybrid-ray-counts (logs HybridTrace ray and candidate counts of the last two frames)]\n"
                "       [--fixed-step] [--start-paused] [--camera-path=<keys.json> (with --fixed-step)]\n"
-               "       [--light-path=<keys.json> (with --fixed-step)]\n"
+               "       [--scene-path=<keys.json> or --light-path=<keys.json> (with --fixed-step)]\n"
                "       [--capture-start=N (writes <capture>.frame-N.ppm each frame from N)]\n"
                "       [--capture-frames=a,b,c-d (writes <capture>.frame-N.ppm at only these frames)]\n"
                "GI options, the engine.cfg keys voxel_gi_<name> and the editor's GI settings (Copy as ZenApp arguments):\n"

@@ -278,6 +278,7 @@ private:
                     }
 
                     changed |= ImGui::Checkbox("Casts shadows (GI path)", &light.castsShadows);
+                    changed |= ImGui::Checkbox("Movable", &light.movable);
 
                     if (ImGui::Button("Remove"))
                     {

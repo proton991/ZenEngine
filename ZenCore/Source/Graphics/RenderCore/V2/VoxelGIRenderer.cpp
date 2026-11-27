@@ -70,8 +70,8 @@ bool ValidateVoxelGISettings(const VoxelGISettings& settings)
         && (settings.referenceSamples == 0 || settings.referenceSamples == 64 || settings.referenceSamples == 256
             || settings.referenceSamples == 1024 || settings.referenceSamples == 4096)
         && (settings.referenceTileStride == 1 || (settings.referenceTileStride == 8 && settings.referenceSamples != 0))
-        && settings.samplingPhase <= 63u && settings.restirSpatialSamples >= 1 && settings.restirSpatialSamples <= 4
-        && settings.historyFrames >= 1 && settings.historyFrames <= 256
+        && settings.probeSamplingPattern <= 2u && settings.samplingPhase <= 63u && settings.restirSpatialSamples >= 1
+        && settings.restirSpatialSamples <= 4 && settings.historyFrames >= 1 && settings.historyFrames <= 256
         && static_cast<uint32_t>(settings.reflections) <= static_cast<uint32_t>(VoxelGISettings::Reflections::On)
         && (settings.fieldResolution == 32 || settings.fieldResolution == 64)
         && (settings.pixelResolutionDivisor == 0 || settings.pixelResolutionDivisor == 1 || settings.pixelResolutionDivisor == 2
@@ -142,7 +142,8 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
         if (settings.normalBiasVoxels != m_settings.normalBiasVoxels
             || settings.environmentLighting != m_settings.environmentLighting || settings.rayProvider != m_settings.rayProvider)
         {
-            m_environmentRevision = 0;
+            m_distributionTextureRevision = 0;
+            m_environmentRevision         = 0;
         }
 
         if (settings.shadows != m_settings.shadows || settings.rtShadows != m_settings.rtShadows
@@ -206,17 +207,21 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid &= config.ReadBool("voxel_gi_native_probe_benchmark", settings.nativeProbeBenchmark);
     valid &= config.ReadBool("voxel_gi_world_radiance_cache", settings.worldRadianceCache);
     valid &= config.ReadBool("voxel_gi_world_cache_feedback", settings.worldCacheFeedback);
-    valid &= config.ReadBool("voxel_gi_world_cache_seed", settings.worldCacheSeed);
-    valid &= config.ReadNumber("voxel_gi_world_cache_tile_size", settings.worldCacheTileSize);
-    valid &= config.ReadNumber("voxel_gi_world_cache_history", settings.worldCacheHistory);
-    valid &= config.ReadNumber("voxel_gi_world_cache_unused_frames", settings.worldCacheUnusedFrames);
-    valid &= config.ReadBool("voxel_gi_screen_probes", settings.screenProbeGI);
-    valid &= config.ReadBool("voxel_gi_native_shadow_reuse", settings.nativeShadowReuse);
-    valid &= config.ReadBool("voxel_gi_shadow_reuse", settings.shadowReuse);
-    valid &= config.ReadBool("voxel_gi_bicubic_history", settings.bicubicHistory);
-    valid &= config.ReadBool("voxel_gi_anti_firefly", settings.antiFirefly);
-    valid &= config.ReadBool("voxel_gi_footprint_receivers", settings.footprintReceivers);
-    valid &= config.ReadBool("voxel_gi_denoiser_validation", settings.denoiserValidation);
+    const std::string response =
+        config.GetString("voxel_gi_history_response", settings.localHistoryResponse ? "local" : "global");
+    valid                         &= response == "local" || response == "global";
+    settings.localHistoryResponse  = response == "local";
+    valid                         &= config.ReadBool("voxel_gi_world_cache_seed", settings.worldCacheSeed);
+    valid                         &= config.ReadNumber("voxel_gi_world_cache_tile_size", settings.worldCacheTileSize);
+    valid                         &= config.ReadNumber("voxel_gi_world_cache_history", settings.worldCacheHistory);
+    valid                         &= config.ReadNumber("voxel_gi_world_cache_unused_frames", settings.worldCacheUnusedFrames);
+    valid                         &= config.ReadBool("voxel_gi_screen_probes", settings.screenProbeGI);
+    valid                         &= config.ReadBool("voxel_gi_native_shadow_reuse", settings.nativeShadowReuse);
+    valid                         &= config.ReadBool("voxel_gi_shadow_reuse", settings.shadowReuse);
+    valid                         &= config.ReadBool("voxel_gi_bicubic_history", settings.bicubicHistory);
+    valid                         &= config.ReadBool("voxel_gi_anti_firefly", settings.antiFirefly);
+    valid                         &= config.ReadBool("voxel_gi_footprint_receivers", settings.footprintReceivers);
+    valid                         &= config.ReadBool("voxel_gi_denoiser_validation", settings.denoiserValidation);
     if (!config.GetString("voxel_gi_relax_denoiser", "").empty())
     {
         LOGI("voxel_gi_relax_denoiser ignored; the GI denoiser no longer has an alternative");
@@ -422,20 +427,21 @@ void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
         m_field->Destroy();
     }
     ++m_fieldSerial;
-    m_fieldActive         = false;
-    m_preparingField      = false;
-    m_skyVisibility       = 0;
-    m_hardwareQueries     = false;
-    m_hardwareFeatureMask = 0;
-    m_scene               = scene;
+    m_fieldActive                 = false;
+    m_preparingField              = false;
+    m_skyVisibility               = 0;
+    m_hardwareQueries             = false;
+    m_hardwareFeatureMask         = 0;
+    m_scene                       = scene;
 
-    m_geometryRevision    = 0;
+    m_geometryRevision            = 0;
 
-    m_lightingRevision    = 0;
+    m_lightingRevision            = 0;
 
-    m_environmentRevision = 0;
+    m_distributionTextureRevision = 0;
+    m_environmentRevision         = 0;
 
-    m_radianceValid       = false;
+    m_radianceValid               = false;
 }
 
 void VoxelGIRenderer::PrepareRadianceHistory(bool update)
@@ -734,8 +740,9 @@ bool VoxelGIRenderer::BuildRayQueryGraph()
         }
         if (previousMask != m_hardwareFeatureMask)
         {
-            m_environmentRevision = 0;
-            m_lightingRevision    = 0;
+            m_distributionTextureRevision = 0;
+            m_environmentRevision         = 0;
+            m_lightingRevision            = 0;
         }
         if (previousHardware != m_hardwareQueries || previousReason != m_providerReason)
         {
@@ -826,7 +833,8 @@ void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
             BuildMipChain(m_albedoMips, "VoxelFilterAlbedoSP", "VoxelOpacityMip");
         }
 
-        if (m_environmentRevision != m_recordedEnvironment)
+        m_recordedTextureRevision = m_scene->GetEnvironmentTextureRevision();
+        if (m_distributionTextureRevision != m_recordedTextureRevision)
         {
             BuildEnvironmentDistribution();
             m_recordedEnvironmentDistribution = true;
@@ -1278,7 +1286,7 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
         m_emptyLightingInitialized |= m_recordedEmptyLighting;
         if (m_recordedEnvironmentDistribution)
         {
-            m_environmentRevision = m_recordedEnvironment;
+            m_distributionTextureRevision = m_recordedTextureRevision;
         }
     }
     m_recordedEmptyLighting           = false;
@@ -1307,12 +1315,13 @@ void VoxelGIRenderer::OnRenderGraphExecuted(RenderFrameResult result)
     }
     else if (result == RenderFrameResult::eFailed || result == RenderFrameResult::eBlocked)
     {
-        m_geometryRevision    = 0;
-        m_lightingRevision    = 0;
-        m_environmentRevision = 0;
-        m_skyVisibility       = UINT64_MAX;
+        m_geometryRevision            = 0;
+        m_lightingRevision            = 0;
+        m_distributionTextureRevision = 0;
+        m_environmentRevision         = 0;
+        m_skyVisibility               = UINT64_MAX;
 
-        m_radianceValid       = false;
+        m_radianceValid               = false;
     }
     // Query preparation may execute in a frame which falls back before injection.
     // Publish cache revisions only when their radiance was actually recorded.
@@ -1423,10 +1432,11 @@ void VoxelGIRenderer::Destroy()
 
     // These views belong to the voxelizer's surviving albedo texture. Reuse even a partial
     // list after failed GI initialization instead of accumulating owned views on each retry.
-    m_geometryRevision    = 0;
+    m_geometryRevision            = 0;
 
-    m_lightingRevision    = 0;
+    m_lightingRevision            = 0;
 
-    m_environmentRevision = 0;
+    m_distributionTextureRevision = 0;
+    m_environmentRevision         = 0;
 }
 } // namespace zen::rc

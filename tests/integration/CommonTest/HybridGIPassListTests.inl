@@ -5,28 +5,28 @@ bool CompareNodeIds(const RDGNodeMetrics& first, const RDGNodeMetrics& second)
     return first.id < second.id;
 }
 
-// A recorded cache can still be bypassed by the trace shader. Check that the trace actually consumes its output.
-bool TraceReadsResolvedWorldCache(RenderDevice& device)
+// A recorded pass can still be bypassed by its consumer. Count the outputs read through graph versions.
+uint32_t CountPassOutputReads(RenderDevice& device, NameID producerName, NameID consumerName)
 {
-    RDG_ID resolve, trace;
+    RDG_ID producer, consumer;
     for (const RDGNodeMetrics& node : device.GetRDGMetrics().GetLastSnapshot().nodes)
     {
-        if (node.name == "WorldCacheResolve")
+        if (node.name == producerName)
         {
-            resolve = node.id;
+            producer = node.id;
         }
-        if (node.name == "HybridTrace")
+        if (node.name == consumerName)
         {
-            trace = node.id;
+            consumer = node.id;
         }
     }
-    bool readsCache = false;
+    uint32_t outputReads = 0;
     for (const RDGDependency& edge : device.GetCurrentFrameRDG()->GetDependencies())
     {
-        readsCache |=
-            edge.source == resolve && edge.destination == trace && edge.reason == RDGDependencyReason::eVersionProducer;
+        outputReads += uint32_t(edge.source == producer && edge.destination == consumer
+                                && edge.reason == RDGDependencyReason::eVersionProducer);
     }
-    return readsCache;
+    return outputReads;
 }
 
 // Live scene-graph passes of one rendered frame in recording order, without uploads and readbacks, as
@@ -82,11 +82,12 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
         glossy.roughnessFactor  = .18f;
         ASSERT_TRUE(fixture.scene->UpdateMaterial(1, glossy));
         SceneLight light;
-        light.type         = SceneLightType::eDirectional;
-        light.direction    = Vec3(0, 0, -1);
-        light.intensity    = 1;
-        light.castsShadows = true;
-        ASSERT_NE(fixture.scene->GetLights().Add(light), 0u);
+        light.type            = SceneLightType::eDirectional;
+        light.direction       = Vec3(0, 0, -1);
+        light.intensity       = 1;
+        light.castsShadows    = true;
+        const LightId lightId = fixture.scene->GetLights().Add(light);
+        ASSERT_NE(lightId, 0u);
         constexpr uint32_t side = 96;
         rc::TextureFormat  format;
         format.width = format.height = side;
@@ -134,7 +135,8 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
         const std::string nativeGIPasses =
             "WorldCacheResolve, ScreenProbePlacement, ScreenProbeAdaptive, ScreenProbeProposal, "
             "ScreenProbeTrace, ScreenProbeTemporal, ScreenProbeSpatialHorizontal, ScreenProbeSpatial, ScreenProbePrefilter, "
-            "ScreenProbeSpecularSpatial, GlossyTrace, GlossyTemporal, GlossyHistoryFix, GlossySpatial, ScreenProbeGather, GlossyUncovered, ";
+            "ScreenProbeSpecularSpatial, GlossyTrace, GlossyTemporal, GlossyHistoryFix, GlossySpatial, ScreenProbeGather, "
+            "ScreenProbeHistory, GlossyUncovered, ";
         std::string fillHardware = "WorldCacheLighting, WorldCacheStart, ", fillField = fillHardware;
         for (uint32_t bounce = 0; bounce < 4; ++bounce)
         {
@@ -153,15 +155,23 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
         const std::string nativeComputePasses = "SkyboxDraw, GBufferFrustumCull, OffScreen, " + fillField + nativeGIPasses
                                               + computePasses.substr(computePasses.find("ForwardBackground"));
         const bool        budgetAvailable     = device->GetGPUMemoryStats().budgetAvailable;
-        for (uint32_t tier = 0; tier < 11; ++tier)
+        for (uint32_t tier = 0; tier < 13; ++tier)
         {
+            const bool local = tier == 12;
+            if (local)
+            {
+                light.movable = true;
+                ASSERT_TRUE(fixture.scene->GetLights().Update(lightId, light));
+            }
             const bool noSky           = tier == 10;
-            const bool hardware        = tier < 5 || tier == 9 || noSky;
+            const bool temporal        = tier != 11;
+            const bool hardware        = tier < 5 || tier >= 9;
             const bool cache           = tier == 1;
             const bool probes          = tier == 2;
-            const bool native          = tier == 3 || tier == 4 || tier == 6 || tier == 7 || noSky;
+            const bool native          = tier == 3 || tier == 4 || tier == 6 || tier == 7 || tier >= 10;
             const bool pixelWorldCache = tier == 8 || tier == 9;
             const bool diffuseOnly     = tier == 3 || tier == 7;
+            SCOPED_TRACE(tier);
             SCOPED_TRACE(hardware ? "HW RT tier" : "Compute tier");
             VoxelGIRuntimeSettings settings = server.GetVoxelGISettings();
             settings.resolution             = 64;
@@ -171,6 +181,10 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
             settings.cone.nativeProbeBenchmark   = probes;
             settings.cone.worldRadianceCache     = native || pixelWorldCache;
             settings.cone.screenProbeGI          = native;
+            settings.cone.temporal               = temporal;
+            settings.cone.localHistoryResponse   = local;
+            settings.cone.worldCacheSeed         = local;
+            settings.cone.glossySurfaceHistory   = local;
             settings.cone.specularOcclusion      = !diffuseOnly;
             settings.cone.environmentLighting    = !noSky;
             settings.cone.restirGI               = hardware;
@@ -200,7 +214,7 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
             ASSERT_TRUE(submitted);
             if (pixelWorldCache)
             {
-                EXPECT_EQ(TraceReadsResolvedWorldCache(*device), budgetAvailable);
+                EXPECT_EQ(CountPassOutputReads(*device, "WorldCacheResolve", "HybridTrace") != 0, budgetAvailable);
                 server.RequestDeferredLightingRenderer()->SetDeterministicGuideCapture(true);
             }
             device->WaitForPreviousFrames();
@@ -209,7 +223,20 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
             ASSERT_TRUE(submitted);
             if (pixelWorldCache)
             {
-                EXPECT_EQ(TraceReadsResolvedWorldCache(*device), budgetAvailable);
+                EXPECT_EQ(CountPassOutputReads(*device, "WorldCacheResolve", "HybridTrace") != 0, budgetAvailable);
+            }
+            if (native && budgetAvailable)
+            {
+                if (temporal)
+                {
+                    // Both diffuse signals must go through history before scene lighting samples them.
+                    EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeGather", "ScreenProbeHistory"), 2u);
+                    EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeHistory", "SceneLighting"), 2u);
+                }
+                else
+                {
+                    EXPECT_GE(CountPassOutputReads(*device, "ScreenProbeGather", "SceneLighting"), 2u);
+                }
             }
             device->WaitForPreviousFrames();
             device->NextFrame();
@@ -223,6 +250,7 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
                 EXPECT_EQ(hybrid->GetGIExtent(), glm::uvec2(side));
                 EXPECT_NE(second.find("HybridTrace"), std::string::npos);
                 EXPECT_EQ(second.find("ScreenProbeGather"), std::string::npos);
+                EXPECT_EQ(second.find("ScreenProbeHistory"), std::string::npos);
                 continue;
             }
             std::string expected = noSky                     ? nativeWithoutSky
@@ -240,6 +268,15 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
                 }
                 EXPECT_EQ(hybrid->GetWorldCacheCapacity() != 0u, budgetAvailable);
                 EXPECT_EQ(hybrid->GetScreenProbeCount(), 0u);
+            }
+            if (local)
+            {
+                expected.insert(expected.find("ScreenProbeSpatialHorizontal"), "ScreenProbeMoving, ScreenProbePrior, ");
+                expected.insert(expected.find("GlossyHistoryFix"), "GlossyClamp, ");
+            }
+            if (!temporal)
+            {
+                expected.erase(expected.find("ScreenProbeHistory, "), std::string_view("ScreenProbeHistory, ").size());
             }
             if (diffuseOnly)
             {

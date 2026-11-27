@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define PROBE_SKY_PREDICTION
+#define SCREEN_PROBE_ACCUMULATE
+#include "screen_probe_trace.glsl"

@@ -10,12 +10,50 @@ layout(std430, set = 1, binding = 115) readonly buffer HorizontalScreenProbeLigh
     vec4 horizontalLighting[];
 };
 #endif
+#ifdef PROBE_MOVING_FILTER
+#    define PROBE_SIGNALS 3u
+#    define SignalValues  vec3
+#else
+#    define PROBE_SIGNALS 2u
+#    define SignalValues  vec2
+#endif
+
+// Bit i selects a tile offset of magnitude i. At the minimum supported spacing
+// the 192-pixel footprint covers 24 tiles on each side.
+uint ProbeFilterSupport(float radius, float age)
+{
+    int reach = min(int(ceil(radius)), 12);
+    if (radius <= 12.0)
+    {
+        return (1u << (reach + 1)) - 1u;
+    }
+    float cold   = 1.0 - smoothstep(1.5, 8.0, age);
+    float extra  = radius - float(reach);
+    float stride = 1.0 + (1.0 - cold) * extra / float(reach);
+    float outer  = cold * extra / max(float(reach - 3), 1.0);
+    uint  mask   = 1u;
+    for (int tap = 1; tap <= reach; ++tap)
+    {
+        float t  = float(tap);
+        mask    |= 1u << uint(round(t * stride + max(t - 3.0, 0.0) * outer));
+    }
+    return mask;
+}
+uint SignalStatistics(uint signal)
+{
+    return signal < 2u ? 8u + signal : kProbeMovingStatistics;
+}
+uint RawCoefficient(uint item)
+{
+    return item < 8u ? item : item + 4u;
+}
+
 vec4 ProbeFilterInput(uint index, uint item)
 {
 #ifdef PROBE_FILTER_VERTICAL
-    return horizontalLighting[index * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + item];
+    return horizontalLighting[index * (4u * PROBE_SIGNALS) + item];
 #else
-    return probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + item];
+    return probeLighting[ProbeLightingAddress(index, RawCoefficient(item))];
 #endif
 }
 layout(local_size_x = 64) in;
@@ -25,64 +63,113 @@ void main()
     if (index < screenProbe.grid.w)
     {
         ScreenProbe probe = probes[index];
-        vec4        result[8];
-        vec4        statistics[2];
+        vec4        result[4u * PROBE_SIGNALS];
+        vec4        statistics[PROBE_SIGNALS];
 #ifdef PROBE_FILTER_VERTICAL
-        vec2 gatherNoise;
+        SignalValues gatherNoise;
 #endif
-        vec2 total;
-        vec2 groupLuma[3], groupWeight[3];
-        vec2 firstOffset = vec2(0), secondOffset = vec2(0);
-        vec3 offsetIrradiance[2] = {vec3(0), vec3(0)};
+        SignalValues total;
+        SignalValues groupLuma[3], groupWeight[3];
+        SignalValues firstOffset = SignalValues(0), secondOffset = SignalValues(0);
+        vec3         offsetIrradiance[PROBE_SIGNALS];
         // Brightest nearest probe on any surface, evaluated at this probe's normal (negative: none).
-        vec2 nearestPeak = vec2(-1.0);
+        SignalValues nearestPeak = SignalValues(-1.0);
         for (int group = 0; group < 3; ++group)
         {
-            groupLuma[group] = groupWeight[group] = vec2(0);
+            groupLuma[group] = groupWeight[group] = SignalValues(0);
         }
-        for (uint signal = 0u; signal < 2u; ++signal)
+        for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
         {
-            statistics[signal] = probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u + signal];
+            offsetIrradiance[signal] = vec3(0);
+            statistics[signal]       = probeLighting[ProbeLightingAddress(index, SignalStatistics(signal))];
 #ifdef PROBE_FILTER_VERTICAL
             // Gather needs the temporal moments before the spatial filter replaces their mean.
             vec4 raw            = statistics[signal];
             gatherNoise[signal] = max(raw.w, raw.y - raw.x * raw.x) / max(raw.z, 1.0);
 #endif
-            total[signal]          = max(probeLighting[index * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + signal * 4u + 3u].w, 1.0);
+            total[signal]          = max(probeLighting[ProbeLightingAddress(index, RawCoefficient(signal * 4u + 3u))].w, 1.0);
             float centerLuma       = HybridLuminance(ProbeFilterInput(index, signal * 4u + 3u).rgb);
             statistics[signal].x   = centerLuma;
             groupWeight[0][signal] = total[signal];
             groupLuma[0][signal]   = centerLuma * total[signal];
         }
 #ifdef PROBE_FILTER_VERTICAL
-        filteredProbeLighting[screenProbe.grid.w * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + index] =
-            vec4(gatherNoise, min(statistics[0].z, statistics[1].z), 0);
+        float age = min(statistics[0].z, statistics[1].z), change = 0.0;
+        if (screenProbe.localResponse != 0u)
+        {
+            float sky    = unpackHalf2x16(floatBitsToUint(probeLighting[ProbeLightingAddress(index, kProbeSource)].x)).x;
+            float bounce = unpackHalf2x16(floatBitsToUint(probeLighting[ProbeLightingAddress(index, kProbeSource + 1u)].x)).x;
+            change       = max(sky, bounce);
+        }
+#    ifdef PROBE_MOVING_FILTER
+        gatherNoise.y += gatherNoise.z;
+        if (gatherNoise.z > 0.0)
+        {
+            age = min(age, statistics[2].z);
+        }
+        change = max(change, probeLighting[ProbeLightingAddress(index, kProbeMovingResponse)].x);
+#    endif
+        filteredProbeLighting[ProbeGatherStatisticsAddress(index)] = vec4(gatherNoise.xy, age, change);
 #endif
-        for (uint item = 0u; item < 8u; ++item)
+        for (uint item = 0u; item < 4u * PROBE_SIGNALS; ++item)
         {
             result[item] = ProbeFilterInput(index, item) * total[item / 4u];
         }
         if (screenProbe.control.w != 0.0 && probe.position.w != 0.0)
         {
-            ivec2 tile      = ivec2(probe.source.yz / screenProbe.spacing);
-            vec2  sampleAge = vec2(ProbeSampleAge(statistics[0].z, total[0]), ProbeSampleAge(statistics[1].z, total[1]));
+            ivec2        tile = ivec2(probe.source.yz / screenProbe.spacing);
+            SignalValues sampleAge;
+            for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
+            {
+                sampleAge[signal] = ProbeSampleAge(statistics[signal].z, total[signal]);
+            }
             // Young probes need a wider footprint. Fade outer rings continuously as
             // samples accumulate instead of changing the image at an age threshold.
-            float radiusPixels = clamp(512.0 * inversesqrt(max(min(sampleAge.x, sampleAge.y), 1.0)), 8.0, 192.0);
-            float cold         = 1.0 - smoothstep(1.5, 8.0, min(sampleAge.x, sampleAge.y));
-            float radius       = radiusPixels / float(screenProbe.spacing);
-            int   reach        = min(int(ceil(radius)), 12);
-            float spread       = .5 * (radius + 1.0) * (radius + 1.0);
+            SignalValues radii = clamp(512.0 * inversesqrt(max(sampleAge, SignalValues(1))), SignalValues(8), SignalValues(192))
+                               / float(screenProbe.spacing);
+            float        radius = max(radii.x, radii.y);
+#ifdef PROBE_MOVING_FILTER
+            // A moving signal that stayed dark through a mature history needs no wider footprint. A young
+            // probe whose current rays missed a small lit patch still borrows from its lit neighbors.
+            vec4 movingHistory = probeLighting[ProbeLightingAddress(index, SignalStatistics(2u))];
+            if (movingHistory.x <= 0.0 && movingHistory.z >= 16.0)
+            {
+                radii.z = min(radii.z, 2.0);
+            }
+            radius = max(radius, radii.z);
+#endif
+            if (screenProbe.localResponse == 0u)
+            {
+                radii = SignalValues(radius);
+            }
+            float        cold   = 1.0 - smoothstep(1.5, 8.0, min(sampleAge.x, sampleAge.y));
+            int          reach  = min(int(ceil(radius)), 12);
+            SignalValues spread = .5 * (radii + 1.0) * (radii + 1.0);
             // A sparse uniform stride can skip every tile next to a new receiver. Put the
             // first three taps one tile apart while cold, distributing the spare width outside.
             float extra      = max(radius - float(reach), 0.0);
             float stride     = 1.0 + (1.0 - cold) * extra / float(reach);
             float outer      = cold * extra / max(float(reach - 3), 1.0);
-            float skyFalloff = mix(.5, .10, cold);
-            for (int tap = -reach; tap <= reach; ++tap)
+            float coldSky    = screenProbe.localResponse == 0u ? cold : 1.0 - smoothstep(1.5, 8.0, sampleAge.x);
+            float skyFalloff = mix(.5, .10, coldSky);
+            uint  support[PROBE_SIGNALS];
+            bool  local    = screenProbe.localResponse != 0u;
+            uint  combined = 0u;
+            for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
+            {
+                support[signal]  = local ? ProbeFilterSupport(radii[signal], sampleAge[signal]) : 0xffffffffu;
+                combined        |= support[signal];
+            }
+            int lastTap = local ? int(ceil(radius)) : reach;
+            for (int tap = -lastTap; tap <= lastTap; ++tap)
             {
                 float distance = abs(float(tap));
-                int   offset   = int(sign(float(tap)) * round(distance * stride + max(distance - 3.0, 0.0) * outer));
+                int  offset = local ? tap : int(sign(float(tap)) * round(distance * stride + max(distance - 3.0, 0.0) * outer));
+                uint bit    = 1u << uint(abs(offset));
+                if ((combined & bit) == 0u)
+                {
+                    continue;
+                }
 #ifdef PROBE_FILTER_VERTICAL
                 ivec2 neighbor = tile + ivec2(0, offset);
 #else
@@ -99,12 +186,16 @@ void main()
                         {
                             continue;
                         }
-                        if (min(statistics[0].z, statistics[1].z) < 192.0 && abs(offset) <= 2 && other != index
+                        if ((local || min(statistics[0].z, statistics[1].z) < 192.0) && abs(offset) <= 2 && other != index
                             && adjacent.position.w != 0.0)
                         {
                             vec3 delta = ProbeNormalOffset(adjacent.normal.xyz, probe.normal.xyz);
-                            for (uint signal = 0u; signal < 2u; ++signal)
+                            for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
                             {
+                                if (local && (statistics[signal].z >= 192.0 || (support[signal] & bit) == 0u))
+                                {
+                                    continue;
+                                }
                                 vec3 level = ProbeFilterInput(other, signal * 4u + 3u).rgb;
                                 for (uint channel = 0u; channel < 3u; ++channel)
                                 {
@@ -113,15 +204,17 @@ void main()
                                 nearestPeak[signal] = max(nearestPeak[signal], HybridLuminance(max(level, vec3(0))));
                             }
                         }
-                        float spatial = exp(-float(offset * offset) / spread)
-                                      * clamp(radius + 1.0 - float(abs(offset)), 0.0, 1.0)
-                                      * ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, adjacent)
+                        float spatial = ProbePlaneWeight(probe.position.xyz, probe.normal.xyz, adjacent)
                                       * float(other != index && probe.source.w == adjacent.source.w);
                         if (spatial > 0.0)
                         {
-                            for (uint signal = 0u; signal < 2u; ++signal)
+                            for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
                             {
 
+                                if ((support[signal] & bit) == 0u)
+                                {
+                                    continue;
+                                }
                                 vec4 value[4];
                                 for (uint item = 0u; item < 4u; ++item)
                                 {
@@ -133,7 +226,7 @@ void main()
                                     value[3][channel] += dot(value[channel].yzw, delta);
                                 }
                                 vec4  a = statistics[signal];
-                                vec4  b = probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + 8u + signal];
+                                vec4  b = probeLighting[ProbeLightingAddress(other, SignalStatistics(signal))];
                                 float variance =
                                     max(a.w, a.y - a.x * a.x) / max(a.z, 1.0) + max(b.w, b.y - b.x * b.x) / max(b.z, 1.0);
                                 float difference = dot(value[3].rgb, vec3(.2126, .7152, .0722)) - a.x;
@@ -142,15 +235,17 @@ void main()
                                 // mature history to repair uncertain newly exposed receivers.
                                 // Count samples, not frames: a young probe's sun and sky estimates
                                 // resolve within a few frames and must not spread across sun shadows.
-                                float batches = probeLighting[other * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + signal * 4u + 3u].w;
+                                float batches = probeLighting[ProbeLightingAddress(other, RawCoefficient(signal * 4u + 3u))].w;
                                 float confidence =
                                     clamp((min(sampleAge[signal], ProbeSampleAge(b.z, batches)) - 32.0) / 96.0, 0.0, 1.0);
                                 if (signal == 0u)
                                 {
-                                    confidence = max(confidence, cold);
+                                    confidence = max(confidence, coldSky);
                                 }
                                 float edge   = mix(1.0, exp(-difference * difference / max(8.0 * variance, 1e-12)), confidence);
-                                float weight = spatial * max(batches, 1.0) * edge;
+                                float kernel = exp(-float(offset * offset) / spread[signal])
+                                             * clamp(radii[signal] + 1.0 - float(abs(offset)), 0.0, 1.0);
+                                float weight = spatial * kernel * max(batches, 1.0) * edge;
                                 // Environment-importance rays resolve local sky visibility even at
                                 // disocclusion. Keep their repair footprint close to the receiver.
                                 if (signal == 0u)
@@ -164,7 +259,8 @@ void main()
                                 {
                                     result[signal * 4u + item] += value[item] * weight;
                                 }
-                                uint group                  = uint(tap + 24) % 3u;
+                                int  ordinal = local ? sign(offset) * bitCount(support[signal] & (bit - 1u)) : tap;
+                                uint group   = uint(ordinal + 24) % 3u;
                                 groupWeight[group][signal] += weight;
                                 groupLuma[group][signal]   += (difference + a.x) * weight;
                                 total[signal]              += weight;
@@ -176,8 +272,8 @@ void main()
         }
         // Test independent, interleaved estimates of the same surface patch.
         // Reduce an isolated high estimate only on young, well-supported probes.
-        vec2 scale = vec2(1);
-        for (uint signal = 0u; signal < 2u; ++signal)
+        SignalValues scale = SignalValues(1);
+        for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
         {
             // Unequally aged neighbors move the weighted mean away from the
             // receiver. Fit the local irradiance slope along this filter axis.
@@ -195,16 +291,16 @@ void main()
                 ProbeSpatialOutlierScale(luma, w, total[signal], HybridLuminance(result[item].rgb) / total[signal], young);
             // The interleaved test needs coplanar support, which a probe on a narrow face or thin
             // detail lacks: its one-frame estimate would otherwise reach the screen unfiltered.
-            // Bound it by its nearest probes on any surface instead, over the same young window: the
-            // history keeps the raw estimate, so a shorter bound would only delay the outlier.
-            if (young > 0.0 && nearestPeak[signal] >= 0.0 && min(min(w.x, w.y), w.z) <= .05 * total[signal])
+            // Use adjacent probes as a ceiling while the isolated receiver is new.
+            float isolated = ProbeIsolatedWindow(probe, young);
+            if (isolated > 0.0 && nearestPeak[signal] >= 0.0 && min(min(w.x, w.y), w.z) <= .05 * total[signal])
             {
                 float level   = HybridLuminance(result[item].rgb) / total[signal];
                 float limit   = kIsolatedProbeSlack * nearestPeak[signal];
-                scale[signal] = min(scale[signal], mix(1.0, clamp(limit / max(level, 1e-20), 0.0, 1.0), young));
+                scale[signal] = min(scale[signal], mix(1.0, clamp(limit / max(level, 1e-20), 0.0, 1.0), isolated));
             }
         }
-        for (uint signal = 0u; signal < 2u; ++signal)
+        for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
         {
             uint  base          = signal * 4u;
             float normalization = scale[signal] / total[signal];
@@ -213,13 +309,31 @@ void main()
             {
                 vec4 filtered = result[base + channel] * normalization;
 #ifdef PROBE_FILTER_VERTICAL
-                filtered = ProbeNormalResponse(filtered, probe.normal.xyz);
-                // The anchor projection is constant for all receivers of this probe.
+                filtered         = ProbeNormalResponse(filtered, probe.normal.xyz);
                 anchor[channel] -= max(dot(filtered.xyz, probe.normal.xyz), 0.0);
 #endif
-                filteredProbeLighting[index * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + base + channel] = filtered;
+                result[base + channel] = filtered;
             }
-            filteredProbeLighting[index * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + base + 3u] = anchor;
+            result[base + 3u] = anchor;
+        }
+#ifdef PROBE_FILTER_VERTICAL
+#    ifdef PROBE_MOVING_FILTER
+        for (uint item = 0u; item < 4u; ++item)
+        {
+            result[4u + item].rgb += result[8u + item].rgb;
+            if (item != 3u)
+            {
+                result[4u + item].w += result[8u + item].w;
+            }
+        }
+#    endif
+        const uint stride = ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS;
+#else
+        const uint stride = 4u * PROBE_SIGNALS;
+#endif
+        for (uint item = 0u; item < stride; ++item)
+        {
+            filteredProbeLighting[index * stride + item] = result[item];
         }
     }
 }

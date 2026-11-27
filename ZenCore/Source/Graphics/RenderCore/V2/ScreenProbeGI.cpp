@@ -4,10 +4,12 @@
 #include "Graphics/RenderCore/V2/Renderer/HybridGIRenderer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/EnvironmentSampling.h"
 
 namespace zen::rc
 {
+#include "ScreenProbeBlueNoise.inl"
 static uint64_t ProbeTraceBytesPerProbe(bool useSpecular)
 {
     return ZEN_SCREEN_PROBE_RAYS * 8u * sizeof(float)
@@ -25,9 +27,25 @@ ScreenProbeGI::~ScreenProbeGI()
     Destroy();
 }
 
+void ScreenProbeGI::DestroyPixelHistory()
+{
+    for (PixelHistorySide& side : m_pixelHistory)
+    {
+        for (RHITexture*& signal : side.diffuse)
+        {
+            m_device->DestroyTexture(signal);
+            signal = nullptr;
+        }
+        m_device->DestroyBuffer(side.guide);
+        side.guide = nullptr;
+    }
+}
+
 void ScreenProbeGI::Destroy()
 {
     m_glossy.Destroy();
+    DestroyPixelHistory();
+    m_pixelHistoryRequested = false;
     for (uint32_t side = 0; side < ZEN_SCREEN_PROBE_HISTORY_FRAMES; ++side)
     {
         m_device->DestroyBuffer(m_probes[side]);
@@ -48,8 +66,37 @@ void ScreenProbeGI::Destroy()
     m_recorded      = false;
 }
 
-bool ScreenProbeGI::Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTracing)
+bool ScreenProbeGI::AllocatePixelHistory(glm::uvec2 extent, uint32_t guideBytes)
 {
+    TextureFormat format;
+    format.dimension = TextureDimension::e2D;
+    format.width     = extent.x;
+    format.height    = extent.y;
+    format.depth     = 1;
+    format.format    = DataFormat::eR16G16B16A16SFloat;
+    RHIBufferCreateInfo guide{};
+    guide.size         = guideBytes;
+    guide.allocateType = RHIBufferAllocateType::eGPU;
+    guide.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    guide.tag  = "ScreenProbeHistoryGuide";
+    bool ready = true;
+    for (PixelHistorySide& side : m_pixelHistory)
+    {
+        if (ready)
+        {
+            side.diffuse[0] = m_device->CreateTextureStorage(format, {}, "ScreenProbeHistorySky");
+            side.diffuse[1] = m_device->CreateTextureStorage(format, {}, "ScreenProbeHistoryBounce");
+            side.guide      = m_device->CreateBuffer(guide);
+            ready           = side.diffuse[0] != nullptr && side.diffuse[1] != nullptr && side.guide != nullptr;
+        }
+    }
+    return ready;
+}
+
+bool ScreenProbeGI::Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTracing, bool movingLights, bool temporal)
+{
+    // Moving-light SH, irradiance, statistics and response state (screen_probe.glsl kProbeMovingVectors).
+    const uint32_t lightingStride = ZEN_SCREEN_PROBE_LIGHTING_VECTORS + (movingLights ? 6u : 0u);
     // Spend the diffuse-only memory headroom on uncovered surfaces within each base tile.
     const uint32_t    spacing       = ZEN_SCREEN_PROBE_SPACING;
     const uint32_t    adaptiveTiles = useSpecular ? ZEN_SCREEN_PROBE_ADAPTIVE_TILES : 1u;
@@ -61,19 +108,25 @@ bool ScreenProbeGI::Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTr
                                                             * ZEN_SCREEN_PROBE_HIT_WORDS * sizeof(uint32_t)
                                                       : 0;
     const uint64_t    bytesPerProbe = std::max(ProbeTraceBytesPerProbe(useSpecular && !hardwareTracing), hitBytes);
+    uint64_t          guideBytes    = 0;
+    const bool        pixelHistory  = temporal
+                                   && ValidateGIStorageBuffer(uint64_t(extent.x) * extent.y, kPixelGuideBytes, info, guideBytes)
+                                          == GIResourceStatus::eSuccess;
     bool ready = count != 0 && count <= uint64_t(info.maxComputeWorkGroupCount[0]) * info.maxComputeWorkGroupCount[1]
               && count <= info.maxStorageBufferRange / bytesPerProbe;
-    if (ready && (m_extent != extent || m_useSpecular != useSpecular))
+    if (ready
+        && (m_extent != extent || m_useSpecular != useSpecular || m_uniforms.layoutInfo.x != lightingStride
+            || pixelHistory != m_pixelHistoryRequested))
     {
         Destroy();
         for (uint32_t side = 0; side < ZEN_SCREEN_PROBE_HISTORY_FRAMES && ready; ++side)
         {
-            m_probes[side]   = m_device->CreateStorageBuffer(uint32_t(count * 48u), nullptr, "ScreenProbes");
-            m_lighting[side] = m_device->CreateStorageBuffer(uint32_t(count * ZEN_SCREEN_PROBE_LIGHTING_VECTORS * sizeof(Vec4)),
-                                                             nullptr, "ScreenProbeLighting");
+            m_probes[side] = m_device->CreateStorageBuffer(uint32_t(count * 48u), nullptr, "ScreenProbes");
+            m_lighting[side] =
+                m_device->CreateStorageBuffer(uint32_t(count * lightingStride * sizeof(Vec4)), nullptr, "ScreenProbeLighting");
             if (useSpecular)
             {
-                m_specular[side] = m_device->CreateStorageBuffer(uint32_t(count * ZEN_SCREEN_PROBE_SPECULAR_TEXELS * 8u),
+                m_specular[side] = m_device->CreateStorageBuffer(uint32_t(count * (ZEN_SCREEN_PROBE_SPECULAR_TEXELS + 1u) * 8u),
                                                                  nullptr, "ScreenProbeSpecular");
             }
             m_cdf[side] = m_device->CreateStorageBuffer(uint32_t(count * ZEN_SCREEN_PROBE_PROPOSAL_WORDS * sizeof(uint32_t)),
@@ -85,8 +138,16 @@ bool ScreenProbeGI::Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTr
         {
             ready = m_glossy.Prepare(extent);
         }
+        // The pixel history only reduces motion noise. Without memory for it, the probes still gather.
+        if (ready && pixelHistory && !AllocatePixelHistory(extent, uint32_t(guideBytes)))
+        {
+            DestroyPixelHistory();
+            LOGW("Screen-probe pixel history unavailable at {}x{}; gathering without it", extent.x, extent.y);
+        }
         if (ready)
         {
+            m_pixelHistoryRequested  = pixelHistory;
+            m_uniforms.layoutInfo    = glm::uvec4(lightingStride, uint32_t(movingLights), 0, 0);
             m_useSpecular            = useSpecular;
             m_extent                 = extent;
             m_uniforms.grid          = glm::uvec4(tiles, uint32_t(base), uint32_t(count));
@@ -248,6 +309,60 @@ void ScreenProbeGI::RecordSources(RDGComputePassDesc&        gather,
     }
 }
 
+void ScreenProbeGI::RecordPixelHistory(VoxelGIRenderer&           voxelGI,
+                                       RenderScene&               scene,
+                                       const WorldRadianceCache&  cache,
+                                       const HybridGIUniformData& receiver,
+                                       RHISampler*                sampler,
+                                       RDGBuffer                  filtered,
+                                       bool                       reset)
+{
+    RenderGraph&        graph     = *m_device->GetCurrentFrameRDG();
+    RDGResourceManager& resources = *graph.GetResourceManager();
+    // Both histories advance with submitted probe frames. The probe ring has an even number of sides.
+    const uint32_t          side     = m_current % 2u;
+    const PixelHistorySide& current  = m_pixelHistory[side];
+    const PixelHistorySide& previous = m_pixelHistory[1u - side];
+    HybridGIUniformData     uniforms = receiver;
+    uniforms.sampling.w              = !reset && m_validHistory != 0 ? 1u : 0u;
+
+    RDGComputePassDesc pass;
+    pass.SetShaderProgramName("ScreenProbeHistorySP");
+    pass.SetPassTag("ScreenProbeHistory");
+    Bind(pass, uniforms, sampler);
+    cache.BindLighting(pass);
+    voxelGI.BindLightingInputs(pass);
+    pass.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
+    pass.BindValue("uScreenProbeHistory", BuildGBufferUniformData(receiver.previousProjectionView));
+    pass.BindStorageBuffer("FilteredScreenProbeLighting", filtered);
+    // Use defined descriptors when no previous frame will be sampled.
+    if (uniforms.sampling.w != 0u)
+    {
+        pass.BindStorageBuffer("PreviousScreenProbeHistoryGuide", previous.guide);
+    }
+    else
+    {
+        pass.BindStorageBuffer("PreviousScreenProbeHistoryGuide", filtered);
+    }
+    pass.BindStorageBuffer("ScreenProbeHistoryGuide", current.guide, RDGContentGuarantee::eFullWrite);
+    const char* const inputNames[]    = {"inputSky", "inputBounce"};
+    const char* const previousNames[] = {"previousSky", "previousBounce"};
+    const char* const outputNames[]   = {"outputSky", "outputBounce"};
+    for (uint32_t signal = 0; signal < std::size(inputNames); ++signal)
+    {
+        const RDGTexture raw = m_gatheredDiffuse[signal];
+        pass.BindSampledTexture(inputNames[signal], sampler, raw);
+        pass.BindSampledTexture(previousNames[signal], sampler,
+                                uniforms.sampling.w != 0u ? resources.ImportTexture(previous.diffuse[signal]) : raw);
+        m_output[signal] = resources.ImportTexture(current.diffuse[signal]);
+        pass.BindStorageImage(outputNames[signal], m_output[signal], RDGContentGuarantee::eFullWrite);
+    }
+    const glm::uvec2 groups = (m_extent + glm::uvec2(ZEN_SCREEN_PROBE_SPACING - 1u)) / ZEN_SCREEN_PROBE_SPACING;
+    graph.AddComputePass(std::move(pass)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
+        encoder.Dispatch(groups.x, groups.y, 1);
+    });
+}
+
 void ScreenProbeGI::RecordClear(RenderGraph& graph) const
 {
     RDGComputePassDesc clear;
@@ -292,6 +407,7 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
                            const Mat4&                projectionView,
                            RHISampler*                sampler,
                            bool                       reset,
+                           bool                       pixelReset,
                            bool                       skyLight)
 {
     RenderGraph&           graph     = *m_device->GetCurrentFrameRDG();
@@ -308,22 +424,42 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     m_uniforms.control = Vec4(scene.GetVoxelSceneBounds().GetMaxExtent(), reset ? 0 : m_validHistory, settings.temporal ? 1 : 0,
                               settings.filter ? 1 : 0);
     // Hardware probes leave the environment's compact sources to per-pixel rays (RecordSources).
-    const bool recordedHits        = voxelGI.UsesRayTracingPipeline();
-    m_uniforms.residualEnvironment = recordedHits && skyLight ? 1u : 0u;
+    const bool recordedHits          = voxelGI.UsesRayTracingPipeline();
+    m_uniforms.localResponse         = recordedHits && settings.localHistoryResponse ? 1u : 0u;
+    m_uniforms.residualEnvironment   = recordedHits && skyLight ? 1u : 0u;
+    const SceneUniformData& lighting = *reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
+    m_environmentHistory[m_current] =
+        Vec4(lighting.environment.x * lighting.environment.z, lighting.environment.y, float(m_uniforms.residualEnvironment), 0);
+    m_orientationHistory[m_current] = lighting.environmentOrientation;
+    bool environmentChanged         = false;
+    for (uint32_t age = 0; age < ZEN_SCREEN_PROBE_HISTORY_FRAMES; ++age)
+    {
+        const uint32_t side          = (m_current + ZEN_SCREEN_PROBE_HISTORY_FRAMES - age) % ZEN_SCREEN_PROBE_HISTORY_FRAMES;
+        m_uniforms.environment[age]  = m_environmentHistory[side];
+        m_uniforms.orientation[age]  = m_orientationHistory[side];
+        environmentChanged          |= age <= m_validHistory
+                                    && (m_uniforms.environment[age] != m_uniforms.environment[0]
+                                        || m_uniforms.orientation[age] != m_uniforms.orientation[0]);
+    }
+    const bool predictEnvironment = m_uniforms.localResponse != 0u && !reset && environmentChanged;
+    m_uniforms.layoutInfo.z       = uint32_t(predictEnvironment);
+    m_uniforms.layoutInfo.w       = m_uniforms.localResponse != 0u ? settings.probeSamplingPattern : 0u;
     if (m_needsClear)
     {
         RecordClear(graph);
     }
     RDGBufferDesc buffer;
     buffer.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
-    buffer.name                = "screen_probe_rays";
-    buffer.size                = uint64_t(count) * ProbeTraceBytesPerProbe(m_useSpecular && !recordedHits);
-    const RDGBuffer rays       = resources.CreateBuffer(buffer);
-    buffer.name                = "screen_probe_filtered";
-    buffer.size                = uint64_t(count) * (ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + 1u) * sizeof(Vec4);
-    const RDGBuffer filtered   = resources.CreateBuffer(buffer);
-    buffer.name                = "screen_probe_horizontal";
-    buffer.size                = uint64_t(count) * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS * sizeof(Vec4);
+    buffer.name              = "screen_probe_rays";
+    buffer.size              = uint64_t(count)
+                             * (ProbeTraceBytesPerProbe(m_useSpecular && !recordedHits)
+                                + m_uniforms.localResponse * (predictEnvironment ? 10u : 1u) * sizeof(Vec2));
+    const RDGBuffer rays     = resources.CreateBuffer(buffer);
+    buffer.name              = "screen_probe_filtered";
+    buffer.size              = uint64_t(count) * (ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + 1u) * sizeof(Vec4);
+    const RDGBuffer filtered = resources.CreateBuffer(buffer);
+    buffer.name              = "screen_probe_horizontal";
+    buffer.size = uint64_t(count) * (ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + 4u * m_uniforms.layoutInfo.y) * sizeof(Vec4);
     const RDGBuffer horizontal = resources.CreateBuffer(buffer);
 
 
@@ -359,9 +495,14 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         buffer.size                = uint64_t(slots) * ZEN_SCREEN_PROBE_HIT_WORDS * sizeof(uint32_t);
         hits                       = resources.CreateBuffer(buffer);
         RDGComputePassDesc sampleHits;
-        sampleHits.SetShaderProgramName(NameID(fmt::format("ScreenProbeSampleHits{}SP", bits)));
+        const char*        sampleProgram = m_uniforms.layoutInfo.w == 0u ? "SampleHits" : "SampleTileHits";
+        sampleHits.SetShaderProgramName(NameID(fmt::format("ScreenProbe{}{}SP", sampleProgram, bits)));
         sampleHits.SetPassTag("ScreenProbeSampleHits");
         BindTrace(sampleHits, voxelGI, scene, cache, receiver, sampler);
+        if (m_uniforms.layoutInfo.w != 0u)
+        {
+            sampleHits.BindValue("uProbeBlueNoise", kProbeBlueNoise);
+        }
         sampleHits.BindStorageBuffer("ScreenProbeHits", hits, RDGContentGuarantee::eFullWrite);
         Dispatch(graph, std::move(sampleHits), (count * ZEN_SCREEN_PROBE_RAYS + 63u) / 64u);
         RDGRayTracingPassDesc findHits;
@@ -378,7 +519,7 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         shadeHits.BindStorageBuffer("ScreenProbeHits", hits);
         Dispatch(graph, std::move(shadeHits), (slots + 63u) / 64u);
         RDGComputePassDesc accumulate;
-        accumulate.SetShaderProgramName("ScreenProbeAccumulateSP");
+        accumulate.SetShaderProgramName(predictEnvironment ? "ScreenProbeAccumulateSkySP" : "ScreenProbeAccumulateSP");
         accumulate.SetPassTag("ScreenProbeAccumulate");
         Bind(accumulate, receiver, sampler);
         accumulate.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
@@ -396,17 +537,42 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         Dispatch(graph, std::move(trace), count);
     }
     RDGComputePassDesc integrate;
-    integrate.SetShaderProgramName("ScreenProbeIntegrateSP");
+    integrate.SetShaderProgramName(predictEnvironment               ? "ScreenProbeIntegrateSkySP"
+                                   : m_uniforms.localResponse != 0u ? "ScreenProbeIntegrateLocalSP"
+                                                                    : "ScreenProbeIntegrateSP");
     integrate.SetPassTag("ScreenProbeTemporal");
     Bind(integrate, receiver, sampler);
     cache.BindLighting(integrate);
     integrate.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
     integrate.BindStorageBuffer("ScreenProbeRays", rays);
     Dispatch(graph, std::move(integrate), count);
+    if (m_uniforms.layoutInfo.y != 0u)
+    {
+        RDGComputePassDesc moving;
+        moving.SetShaderProgramName("ScreenProbeMovingSP");
+        moving.SetPassTag("ScreenProbeMoving");
+        Bind(moving, receiver, sampler);
+        cache.BindLighting(moving);
+        moving.BindStorageBuffer("ScreenProbeCDF", m_cdf[m_current]);
+        moving.BindStorageBuffer("ScreenProbeHits", hits);
+        Dispatch(graph, std::move(moving), count);
+    }
+    if (m_uniforms.localResponse != 0u && settings.worldCacheSeed)
+    {
+        RDGComputePassDesc prior;
+        prior.SetShaderProgramName(NameID(fmt::format("ScreenProbePrior{}SP", bits)));
+        prior.SetPassTag("ScreenProbePrior");
+        Bind(prior, receiver, sampler);
+        cache.Bind(prior);
+        Dispatch(graph, std::move(prior), count);
+        cache.CopySeedCounts();
+    }
     for (uint32_t axis = 0; axis < 2; ++axis)
     {
         RDGComputePassDesc filter;
-        filter.SetShaderProgramName(axis == 0 ? "ScreenProbeFilterSP" : "ScreenProbeFilterVerticalSP");
+        filter.SetShaderProgramName(m_uniforms.layoutInfo.y != 0
+                                        ? (axis == 0 ? "ScreenProbeMovingFilterSP" : "ScreenProbeMovingFilterVerticalSP")
+                                        : (axis == 0 ? "ScreenProbeFilterSP" : "ScreenProbeFilterVerticalSP"));
         filter.SetPassTag(axis == 0 ? "ScreenProbeSpatialHorizontal" : "ScreenProbeSpatial");
         Bind(filter, receiver, sampler);
         if (axis != 0)
@@ -435,7 +601,12 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     if (m_useSpecular)
     {
         RDGComputePassDesc specular;
-        specular.SetShaderProgramName(recordedHits ? "ScreenProbeSpecularHitsSP" : "ScreenProbeSpecularSP");
+        const bool         footprint  = m_uniforms.localResponse != 0u && settings.roughFootprintHistory;
+        const bool         staticHits = recordedHits && !predictEnvironment && !cache.HasMovingLights() && !footprint;
+        specular.SetShaderProgramName(footprint      ? "ScreenProbeSpecularFootprintSP"
+                                      : staticHits   ? "ScreenProbeSpecularStaticSP"
+                                      : recordedHits ? "ScreenProbeSpecularHitsSP"
+                                                     : "ScreenProbeSpecularSP");
         specular.SetPassTag("ScreenProbePrefilter");
         Bind(specular, receiver, sampler);
         specular.BindValue("uSceneData", scene.GetSceneUniformData(), sizeof(SceneUniformData));
@@ -446,6 +617,10 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         if (recordedHits)
         {
             specular.BindStorageBuffer("ScreenProbeHits", hits);
+            if (staticHits)
+            {
+                specular.BindStorageBuffer("ScreenProbeRays", rays);
+            }
         }
         else
         {
@@ -485,6 +660,12 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
     graph.AddComputePass(std::move(gather)).RecordPassCommands([extent](RDGPassCmdEncoder& encoder) {
         encoder.Dispatch(extent.x, extent.y, 1);
     });
+    m_gatheredDiffuse[0] = m_output[0];
+    m_gatheredDiffuse[1] = m_output[1];
+    if (m_pixelHistory[0].guide != nullptr)
+    {
+        RecordPixelHistory(voxelGI, scene, cache, receiver, sampler, filtered, reset || pixelReset);
+    }
     if (m_useSpecular)
     {
         m_glossy.RecordTrace(voxelGI, scene, cache, receiver, sampler, {}, m_output[2]);

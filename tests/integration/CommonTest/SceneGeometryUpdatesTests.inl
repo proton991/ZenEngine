@@ -136,14 +136,23 @@ TEST_P(ConeVoxelGIIntegrationTest, SceneTriangleRecordsFollowMasksAndMaterialsAc
     EXPECT_EQ(scene.GetShadowCasters()[0].revision, casters[0].revision);
     EXPECT_EQ(scene.GetShadowCasters()[1].revision, casters[1].revision);
 
-    // A coverage change updates voxel geometry but keeps the same material assignment.
+    // An emission edit reaches GI through its material stamp. Paths passing through the
+    // mesh bounds keep their history until geometry or alpha coverage actually changes.
     sg::MaterialData material  = scene.GetMaterialsData()[0];
+    material.emissiveFactor.r += .125f;
+    EXPECT_TRUE(scene.UpdateMaterial(0, material));
+    EXPECT_TRUE(scene.CommitGeometryUpdates());
+    EXPECT_EQ(scene.GetShadowCasters()[0].rayVisibilityRevision, casters[0].rayVisibilityRevision);
+    EXPECT_EQ(scene.GetMaterialRevisions()[0], scene.GetSurfaceRevision());
+
+    // A coverage change updates voxel geometry but keeps the same material assignment.
     material.baseColorFactor.a = 0.5f;
     EXPECT_TRUE(scene.UpdateMaterial(0, material));
     EXPECT_TRUE(scene.CommitGeometryUpdates());
     EXPECT_EQ(scene.GetVoxelTriangleBuffer(), original);
     EXPECT_GT(scene.GetShadowCasters()[0].revision, casters[0].revision);
     EXPECT_GT(scene.GetShadowCasters()[1].revision, casters[1].revision);
+    EXPECT_GT(scene.GetShadowCasters()[0].rayVisibilityRevision, casters[0].rayVisibilityRevision);
 
     casters = scene.GetShadowCasters();
     EXPECT_TRUE(scene.SetInstanceClass(0, GI_DYNAMIC));
@@ -416,7 +425,9 @@ TEST_P(ConeVoxelGIIntegrationTest, BakedFbxMorphAndSkinPosesReachGpuGeometry)
             bool casterChanged = false;
             for (size_t instance = 0; instance < casters.size(); ++instance)
             {
-                casterChanged |= scene.GetShadowCasters()[instance].revision != casters[instance].revision;
+                const RenderScene::ShadowCaster& updated  = scene.GetShadowCasters()[instance];
+                casterChanged                            |= updated.revision != casters[instance].revision
+                                                         && updated.rayVisibilityRevision != casters[instance].rayVisibilityRevision;
             }
             EXPECT_TRUE(casterChanged);
         }

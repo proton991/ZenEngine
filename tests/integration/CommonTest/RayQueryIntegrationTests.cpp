@@ -54,6 +54,8 @@ protected:
         return VK_FALSE;
     }
 
+    void CheckNativeProbeLightResponse(bool local);
+
     void SetUp() override
     {
         SetUpDevice(true);

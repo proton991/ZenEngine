@@ -30,6 +30,7 @@ template <class Archive> void Fields(Archive& archive, rc::SceneLight& value)
     archive.Field("outerAngleDegrees", value.outerAngleDegrees);
     archive.Field("enabled", value.enabled);
     archive.Field("castsShadows", value.castsShadows);
+    archive.Field("movable", value.movable, false);
 }
 
 template <class Archive> void Fields(Archive& archive, rc::RenderingLight& value)
@@ -96,6 +97,10 @@ template <class Archive> void Fields(Archive& archive, rc::VoxelGISettings& valu
     archive.Field("nativeProbeBenchmark", value.nativeProbeBenchmark, false);
     archive.Field("worldRadianceCache", value.worldRadianceCache, false);
     archive.Field("worldCacheFeedback", value.worldCacheFeedback, false);
+    archive.Field("probeSamplingPattern", value.probeSamplingPattern, false);
+    archive.Field("glossySurfaceHistory", value.glossySurfaceHistory, false);
+    archive.Field("roughFootprintHistory", value.roughFootprintHistory, false);
+    archive.Field("localHistoryResponse", value.localHistoryResponse, false);
     archive.Field("worldCacheSeed", value.worldCacheSeed, false);
     archive.Field("worldCacheTileSize", value.worldCacheTileSize, false);
     archive.Field("worldCacheHistory", value.worldCacheHistory, false);

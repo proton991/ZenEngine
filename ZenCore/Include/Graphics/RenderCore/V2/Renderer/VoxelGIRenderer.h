@@ -58,8 +58,12 @@ struct VoxelGISettings
     bool nativeProbeBenchmark{false}; // Diagnostic: 64 cache-only rays per 16x16 tile, plus 25% extra probes.
     bool worldRadianceCache{false};   // Directional multi-bounce cache; retained pixel GI stays available for comparison.
     bool worldCacheFeedback{true};    // Disable only for matching the one-bounce reference contract.
-    // Experimental (GI refinement Phase 3 item 1): per-pixel methods with the world cache start a
-    // disoccluded receiver's diffuse history from its cell's indirect light. Adds one record per cell.
+    // HW RT probes shorten history only where measured lighting changed (global: every change resets all).
+    bool     localHistoryResponse{true};
+    uint32_t probeSamplingPattern{0}; // World anchor, current screen tile, or retained birth tile.
+    bool     glossySurfaceHistory{false};
+    bool     roughFootprintHistory{false};
+    // One additional indirect record per cell seeds new pixel or experimental probe histories.
     bool     worldCacheSeed{false};
     uint32_t worldCacheTileSize{8};
     uint32_t worldCacheHistory{128};
@@ -408,6 +412,7 @@ private:
     uint64_t                    m_recordedGeometry{0};
     uint64_t                    m_recordedLighting{0};
     uint64_t                    m_recordedEnvironment{0};
+    uint64_t                    m_distributionTextureRevision{0}, m_recordedTextureRevision{0};
     uint64_t                    m_radianceGeneration{0};
     bool                        m_recordedRadiance{false};
     RHIBuffer*                  m_rayTotals{nullptr};

@@ -166,9 +166,10 @@ RenderScene::RenderScene(RenderDevice* device, const SceneData& data) :
 
     if (!sceneInputs.materialsData.empty())
     {
-        m_vertices      = sceneInputs.cpuVertices;
-        m_indices       = sceneInputs.cpuIndices;
-        m_materialsData = sceneInputs.materialsData;
+        m_vertices          = sceneInputs.cpuVertices;
+        m_indices           = sceneInputs.cpuIndices;
+        m_materialsData     = sceneInputs.materialsData;
+        m_materialRevisions = HeapVector<uint64_t>(m_materialsData.size(), m_surfaceRevision);
         m_nodesData.resize(m_pScene->GetRenderableCount());
         for (const sg::Node* node : m_pScene->GetRenderableNodes())
         {

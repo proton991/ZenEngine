@@ -157,9 +157,9 @@ vec3 EnvironmentWorldDirection(uint face, vec2 uv)
 }
 
 // Face, face coordinates, importance-map texel and position within it of a world direction.
-void EnvironmentLocate(vec3 direction, out uint face, out vec2 uv, out uvec2 cell, out vec2 st)
+void EnvironmentLocateCube(vec3 d, out uint face, out vec2 uv, out uvec2 cell, out vec2 st)
 {
-    vec3 d = EnvironmentDirection(direction), a = abs(d);
+    vec3 a = abs(d);
     if (a.x >= a.y && a.x >= a.z)
     {
         face = d.x >= 0.0 ? 0u : 1u;
@@ -178,6 +178,11 @@ void EnvironmentLocate(vec3 direction, out uint face, out vec2 uv, out uvec2 cel
     vec2 position = (uv * 0.5 + 0.5) * float(ZEN_ENVIRONMENT_IMPORTANCE_SIZE);
     cell          = uvec2(clamp(position, vec2(0), vec2(ZEN_ENVIRONMENT_IMPORTANCE_SIZE - 1u)));
     st            = clamp(position - vec2(cell), 0.0, 1.0);
+}
+
+void EnvironmentLocate(vec3 direction, out uint face, out vec2 uv, out uvec2 cell, out vec2 st)
+{
+    EnvironmentLocateCube(EnvironmentDirection(direction), face, uv, cell, st);
 }
 
 float EnvironmentDistributionPDF(vec3 direction, bool residual)

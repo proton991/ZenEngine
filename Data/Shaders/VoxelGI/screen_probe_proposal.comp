@@ -9,6 +9,7 @@
 layout(local_size_x = 64) in;
 shared float weights[64];
 shared float acceptedBatches[2];
+shared float previousChange[2];
 // Schedule rays against the history that will actually enter the estimator.
 // Moving a world anchor across a lighting edge can invalidate most of its
 // radiance while its geometric match still reports dozens of frames of age.
@@ -22,7 +23,12 @@ uint ProbeObservationBudget(ScreenProbe probe, uint lane)
     }
     if (lane < 2u)
     {
-        float batches = 0.0;
+        float batches        = 0.0;
+        previousChange[lane] = 0.0;
+        if (history && screenProbe.localResponse != 0u)
+        {
+            previousChange[lane] = unpackHalf2x16(floatBitsToUint(PreviousProbeLighting(probe.source.x, 10u + lane).x)).x;
+        }
         if (relocated)
         {
             vec4  statistics = ProbePastValue(probe, 8u + lane);
@@ -37,13 +43,19 @@ uint ProbeObservationBudget(ScreenProbe probe, uint lane)
         // The integrator expresses bounce observations in units of the cache's
         // response to the current lighting. Convert the prior to units of one
         // observation today. More rays cannot make the cache respond sooner.
-        float confidence      = lane == 1u ? uintBitsToFloat(sourceSignature.w) : 1.0;
+        float confidence = lane == 1u && screenProbe.localResponse == 0u ? uintBitsToFloat(sourceSignature.w) : 1.0;
+        if (lane == 1u && screenProbe.localResponse != 0u && history)
+        {
+            confidence =
+                ProbeObservationConfidence(unpackHalf2x16(floatBitsToUint(PreviousProbeLighting(probe.source.x, 11u).x)));
+        }
         acceptedBatches[lane] = confidence > 0.0 ? batches / (confidence * confidence) : 0.0;
     }
     barrier();
     // A cold screen has the same per-probe ceiling as a newly exposed surface.
     float age          = min(probe.normal.w, 1.0 + min(acceptedBatches[0], acceptedBatches[1]) / float(ProbeMatureBatches()));
-    uint  stableFrames = min(sourceSignature.y, sourceSignature.z);
+    bool  affected     = max(previousChange[0], previousChange[1]) > .005;
+    uint  stableFrames = screenProbe.localResponse != 0u && !affected ? 128u : min(sourceSignature.y, sourceSignature.z);
     bool  young        = stableFrames < 64u || age <= (stableFrames < 128u ? 128.0 : 32.0);
     if (hybrid.resolution.w == 0u && history && !relocated && stableFrames >= 128u)
     {
@@ -57,16 +69,77 @@ uint ProbeObservationBudget(ScreenProbe probe, uint lane)
     {
         batches = 1u;
     }
-    return probe.position.w != 0.0 ? batches : 1u;
+    return batches;
+}
+void ProbeRankLight(inout uint selected[8], inout float strongest[8], float importance, uint candidate)
+{
+    for (uint slot = 0u; slot < 8u; ++slot)
+    {
+        if (importance > strongest[slot])
+        {
+            float displacedWeight = strongest[slot];
+            uint  displaced       = selected[slot];
+            strongest[slot]       = importance;
+            selected[slot]        = candidate;
+            importance            = displacedWeight;
+            candidate             = displaced;
+        }
+    }
+}
+
+void ProbeWriteLights(uint index, uint batches, uint selected[8])
+{
+    // Each of the final words carries four six-bit light indices.
+    for (uint word = 0u; word < 2u; ++word)
+    {
+        uint first = word * 4u;
+        uint indices =
+            selected[first] | (selected[first + 1u] << 6u) | (selected[first + 2u] << 12u) | (selected[first + 3u] << 18u);
+        probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + 32u + word] = indices | (word == 1u ? batches << 24u : 0u);
+    }
+}
+
+void ProbeRefreshLights(uint index, uint batches, ScreenProbe probe)
+{
+    float strongest[8];
+    uint  selected[8];
+    for (uint slot = 0; slot < 8u; ++slot)
+    {
+        strongest[slot] = 0.0;
+        selected[slot]  = 0u;
+    }
+
+    for (int i = 0; i <= int(sceneUbo.lightInfo.x); ++i)
+    {
+        SceneLight light = i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i];
+        if (light.directionType.w > .5 && light.colorIntensity.w > 0.0)
+        {
+            vec3  delta = light.positionRange.xyz - probe.position.xyz;
+            float dist2 = max(dot(delta, delta), 1e-12);
+            float power = HybridLuminance(light.colorIntensity.rgb) * light.colorIntensity.w / dist2;
+            ProbeRankLight(selected, strongest, power * ProbeLightProjection(dot(probe.normal.xyz, delta * inversesqrt(dist2))),
+                           uint(i + 1));
+        }
+    }
+    ProbeWriteLights(index, batches, selected);
 }
 void main()
 {
     uint index = ProbeGroupIndex(), lane = gl_LocalInvocationID.x;
     if (index < screenProbe.grid.w)
     {
-        ScreenProbe probe   = probes[index];
-        uint        batches = ProbeObservationBudget(probe, lane);
-        bool        reuse   = probe.source.x != 0xffffffffu && (hybrid.sampling.x & 63u) > (probe.source.x >> 30u);
+        ScreenProbe probe = probes[index];
+        if (probe.position.w == 0.0)
+        {
+            // Traversal skips an empty slot. Its accumulation still divides by the scheduled batch count.
+            if (lane == 33u)
+            {
+                probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + lane] = 1u << 24u;
+            }
+            return;
+        }
+        uint batches = ProbeObservationBudget(probe, lane);
+        bool reuse   = probe.source.x != 0xffffffffu && (hybrid.sampling.x & 63u) > (probe.source.x >> 30u);
         if (reuse)
         {
             reuse = all(equal(probe.position.xyz, PreviousProbe(probe.source.x).position.xyz));
@@ -74,7 +147,15 @@ void main()
 
         if (reuse)
         {
-            if (lane < ZEN_SCREEN_PROBE_PROPOSAL_WORDS)
+            // Re-rank the guiding lights after a settled edit or a moving light's motion since the source frame.
+            uint side    = probe.source.x >> 30u;
+            bool refresh = screenProbe.localResponse != 0u
+                        && (sourceSignature.y <= side || (movingLog.w != 0u && responseLog.y - movingLog.w <= side));
+            if (lane == 0u && refresh)
+            {
+                ProbeRefreshLights(index, batches, probe);
+            }
+            if (lane < ZEN_SCREEN_PROBE_PROPOSAL_WORDS && (!refresh || lane < 32u || lane > 33u))
             {
                 uint word = PreviousProbeCDF(probe.source.x, lane);
                 if (lane == 33u)
@@ -129,19 +210,7 @@ void main()
                     float importance = power * ProbeLightProjection(dot(probe.normal.xyz, delta * inversesqrt(dist2)));
                     if (lane == 0u)
                     {
-                        uint candidate = uint(i + 1);
-                        for (uint slot = 0u; slot < 8u; ++slot)
-                        {
-                            if (importance > strongest[slot])
-                            {
-                                float displacedWeight = strongest[slot];
-                                uint  displaced       = selected[slot];
-                                strongest[slot]       = importance;
-                                selected[slot]        = candidate;
-                                importance            = displacedWeight;
-                                candidate             = displaced;
-                            }
-                        }
+                        ProbeRankLight(selected, strongest, importance, uint(i + 1));
                     }
                     prior += power * shape;
                 }
@@ -155,7 +224,8 @@ void main()
                 // block as the CDF. Thus training never sees the sample it guides.
                 uvec2 words = uvec2(0);
                 if (probe.source.x != 0xffffffffu
-                    && floatBitsToUint(PreviousProbeLighting(probe.source.x, 11u).x) == sourceSignature.x)
+                    && (screenProbe.localResponse != 0u
+                        || floatBitsToUint(PreviousProbeLighting(probe.source.x, 11u).x) == sourceSignature.x))
                 {
                     words.x                       = floatBitsToUint(PreviousProbeLighting(probe.source.x, 10u)[lane + 1u]);
                     words.y                       = floatBitsToUint(PreviousProbeLighting(probe.source.x, 11u)[lane + 1u]);
@@ -193,15 +263,7 @@ void main()
             }
             if (lane == 0u)
             {
-                // Each of the final words carries four six-bit light indices.
-                for (uint word = 0u; word < 2u; ++word)
-                {
-                    uint first   = word * 4u;
-                    uint indices = selected[first] | (selected[first + 1u] << 6u) | (selected[first + 2u] << 12u)
-                                 | (selected[first + 3u] << 18u);
-                    probeCDF[index * ZEN_SCREEN_PROBE_PROPOSAL_WORDS + 32u + word] =
-                        indices | (word == 1u ? batches << 24u : 0u);
-                }
+                ProbeWriteLights(index, batches, selected);
             }
         }
     }

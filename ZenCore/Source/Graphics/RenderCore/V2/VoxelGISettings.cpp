@@ -36,6 +36,7 @@ constexpr GIConfigOption kOptions[]   = {
     {"voxel_gi_anti_firefly", "true|false", true},
     {"voxel_gi_young_receiver_samples", "true|false", true},
     {"voxel_gi_footprint_receivers", "true|false", true},
+    {"voxel_gi_history_response", "local|global", false},
     {"voxel_gi_world_cache_seed", "true|false", true},
     {"voxel_gi_world_cache_tile_size", "6..16", true},
     {"voxel_gi_world_cache_history", "1..128", true},
@@ -108,9 +109,18 @@ void ApplyOptimalDefaults(VoxelGIRuntimeSettings& settings)
 {
     VoxelGIRuntimeSettings optimal;
     CopyVoxelGIContent(settings, optimal);
-    optimal.cone.samplingPhase = settings.cone.samplingPhase;
-    optimal.optimal            = true;
-    optimal.resolution         = 128;
+    optimal.cone.samplingPhase        = settings.cone.samplingPhase;
+    optimal.cone.localHistoryResponse = settings.cone.localHistoryResponse;
+    // Setup-only local-response experiments survive the optimal configuration. The world-cache seed is a
+    // configuration key: enabling it makes the settings custom, so a saved engine.cfg keeps it.
+    if (settings.cone.localHistoryResponse)
+    {
+        optimal.cone.probeSamplingPattern  = settings.cone.probeSamplingPattern;
+        optimal.cone.glossySurfaceHistory  = settings.cone.glossySurfaceHistory;
+        optimal.cone.roughFootprintHistory = settings.cone.roughFootprintHistory;
+    }
+    optimal.optimal    = true;
+    optimal.resolution = 128;
     SetGITracing(optimal.cone, GITracing::Automatic);
     SetGIMethod(optimal.cone, kOptimalMethod);
     optimal.cone.pixelResolutionDivisor = 1;
@@ -200,6 +210,10 @@ std::string GetGIOptionValue(std::string_view key, const VoxelGIRuntimeSettings&
     else if (key == "voxel_gi_world_cache_unused_frames")
     {
         value = std::to_string(cone.worldCacheUnusedFrames);
+    }
+    else if (key == "voxel_gi_history_response")
+    {
+        value = cone.localHistoryResponse ? "local" : "global";
     }
     else if (key == "voxel_gi_world_cache_seed")
     {

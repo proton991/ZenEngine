@@ -175,7 +175,8 @@ void GlossyReflections::Record(VoxelGIRenderer&           voxelGI,
     RDGResourceManager&    resources = *graph.GetResourceManager();
     const VoxelGISettings& settings  = voxelGI.GetSettings();
     m_uniforms.extent                = glm::uvec4(m_extent, m_valid && !reset ? 1u : 0u, 0u);
-    m_uniforms.control               = Vec4(settings.temporal ? 1 : 0, settings.filter ? 1 : 0, .4f, .08f);
+    const bool dualHistory           = receiver.reflection.w == 2u && settings.glossySurfaceHistory;
+    m_uniforms.control               = Vec4(settings.temporal ? (dualHistory ? 2 : 1) : 0, settings.filter ? 1 : 0, .4f, .08f);
     RDGBufferDesc desc;
     desc.usageFlags.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
     desc.name                 = "glossy_raw";
@@ -193,6 +194,14 @@ void GlossyReflections::Record(VoxelGIRenderer&           voxelGI,
     Bind(temporal, receiver, sampler, scene);
     temporal.BindStorageBuffer("GlossyRaw", raw);
     Dispatch(std::move(temporal), m_extent);
+    if (receiver.reflection.w == 2u && settings.temporal)
+    {
+        RDGComputePassDesc clamp;
+        clamp.SetShaderProgramName("GlossyClampSP");
+        clamp.SetPassTag("GlossyClamp");
+        Bind(clamp, receiver, sampler, scene);
+        Dispatch(std::move(clamp), m_extent);
+    }
     for (uint32_t filterPass : {1u, 2u})
     {
         RDGComputePassDesc filter;

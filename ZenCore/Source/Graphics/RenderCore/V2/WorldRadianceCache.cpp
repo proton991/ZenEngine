@@ -8,15 +8,68 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstring>
 
 namespace zen::rc
 {
 namespace
 {
 constexpr uint32_t kWorldPathBytes = 64;
-constexpr uint32_t kCellStateBytes = 12;
+constexpr uint32_t kCellStateBytes = 20;
 const char* const kNames[] = {"GICacheKeys", "GICacheAccumulation", "GICacheResolved", "WorldCacheCells", "WorldCacheLighting"};
 } // namespace
+
+void WorldSurfaceEdits::Add(const WorldSurfaceEdit& edit)
+{
+    if (log.y == std::size(entries))
+    {
+        log.z = entries[log.x].stamp.x;
+    }
+    entries[log.x] = edit;
+    log.x          = (log.x + 1u) % std::size(entries);
+    log.y          = std::min<uint32_t>(log.y + 1u, std::size(entries));
+}
+
+void WorldRadianceCache::RecordSurfaceEdits(const RenderScene& scene)
+{
+    WorldSurfaceEdits& edits                             = m_frameData.surfaceEdits;
+    edits                                                = m_submittedEdits;
+    const HeapVector<RenderScene::ShadowCaster>& casters = scene.GetShadowCasters();
+    if (m_geometry != scene.GetGeometryRevision() || m_surface != scene.GetSurfaceRevision() || m_needsClear)
+    {
+        const bool comparable = !m_needsClear && m_casters.size() == casters.size();
+        if (!m_needsClear && m_casters.size() != casters.size())
+        {
+            // Topology changed and no stable instance correspondence is available for swept bounds.
+            m_needsClear = true;
+            edits        = {};
+        }
+        m_casters.resize(casters.size());
+        for (uint32_t i = 0; i < casters.size(); ++i)
+        {
+            const RenderScene::ShadowCaster& current  = casters[i];
+            CasterSnapshot&                  previous = m_casters[i];
+            if (comparable && current.rayVisibilityRevision != previous.revision)
+            {
+                const Vec3 lower = glm::min(current.bounds.GetMin(), previous.bounds.GetMin());
+                const Vec3 upper = glm::max(current.bounds.GetMax(), previous.bounds.GetMax());
+                if (glm::all(glm::lessThanEqual(lower, upper)))
+                {
+                    edits.Add({glm::uvec4(m_frame + 1u, 0, i, 0), Vec4(lower, 0), Vec4(upper, 0)});
+                }
+            }
+            previous = {current.bounds, current.rayVisibilityRevision};
+        }
+        const HeapVector<uint64_t>& revisions = scene.GetMaterialRevisions();
+        for (uint32_t i = 0; comparable && i < revisions.size(); ++i)
+        {
+            if (revisions[i] > m_surface)
+            {
+                edits.Add({glm::uvec4(m_frame + 1u, 1, i, 0), {}, {}});
+            }
+        }
+    }
+}
 
 WorldRadianceCache::WorldRadianceCache(RenderDevice* device) : m_device(device) {}
 WorldRadianceCache::~WorldRadianceCache()
@@ -36,6 +89,8 @@ void WorldRadianceCache::Destroy()
         m_device->DestroyBuffer(buffer);
         buffer = nullptr;
     }
+    m_device->DestroyBuffer(m_seedReadback);
+    m_seedReadback   = nullptr;
     m_capacity       = 0;
     m_needsClear     = true;
     m_recorded       = false;
@@ -43,6 +98,8 @@ void WorldRadianceCache::Destroy()
     m_surface        = 0;
     m_lightingPolicy = UINT32_MAX;
     m_lightingEpoch  = 0;
+    m_submittedEdits = {};
+    m_casters.clear();
 }
 
 bool WorldRadianceCache::Allocate(RenderScene& scene, bool reset, uint32_t records, uint64_t pathBytes, uint32_t unusedFrames)
@@ -87,8 +144,21 @@ bool WorldRadianceCache::Allocate(RenderScene& scene, bool reset, uint32_t recor
                 for (uint32_t index = 0; index < std::size(m_buffers) && allocated; ++index)
                 {
                     const uint32_t bytes = index < std::size(strides) ? desired * strides[index] : WorldCacheLightingBytes;
-                    m_buffers[index]     = m_device->CreateStorageBuffer(bytes, nullptr, kNames[index]);
-                    allocated            = m_buffers[index] != nullptr;
+                    if (index == 4u)
+                    {
+                        RHIBufferCreateInfo info{};
+                        info.size         = bytes;
+                        info.allocateType = RHIBufferAllocateType::eGPU;
+                        info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer,
+                                                 RHIBufferUsageFlagBits::eTransferSrcBuffer);
+                        info.tag         = kNames[index];
+                        m_buffers[index] = m_device->CreateBuffer(info);
+                    }
+                    else
+                    {
+                        m_buffers[index] = m_device->CreateStorageBuffer(bytes, nullptr, kNames[index]);
+                    }
+                    allocated = m_buffers[index] != nullptr;
                 }
                 if (!allocated)
                 {
@@ -115,6 +185,28 @@ void WorldRadianceCache::Bind(RDGPassDescBase& pass) const
     }
 }
 
+void WorldRadianceCache::CopySeedCounts() const
+{
+    m_device->GetCurrentFrameRDG()
+        ->AddTransferPass("ReadProbeSeedCounts")
+        .CopyBuffer(m_buffers[4], m_seedReadback, {WorldCacheLightingBytes - sizeof(glm::uvec4), 0, sizeof(glm::uvec4)});
+}
+glm::uvec4 WorldRadianceCache::ReadSeedCounts() const
+{
+    glm::uvec4 counts{};
+    if (m_seedReadback != nullptr)
+    {
+        m_device->WaitForIdle();
+        const uint8_t* data = m_seedReadback->Map();
+        if (data != nullptr)
+        {
+            std::memcpy(&counts, data, sizeof(counts));
+            m_seedReadback->Unmap();
+        }
+    }
+    return counts;
+}
+
 void WorldRadianceCache::BindLighting(RDGPassDescBase& pass) const
 {
     pass.BindStorageBuffer(kNames[4], m_buffers[4]);
@@ -124,13 +216,39 @@ bool WorldRadianceCache::Prepare(VoxelGIRenderer& voxelGI, RenderScene& scene, g
 {
     m_recorded                           = false;
     const VoxelGISettings& cacheSettings = voxelGI.GetSettings();
-    const uint32_t         records       = cacheSettings.worldCacheSeed && !cacheSettings.screenProbeGI ? 7u : 6u;
-    const uint32_t         tileSize      = cacheSettings.worldCacheTileSize;
-    const glm::uvec2       tiles         = (extent + (tileSize - 1u)) / tileSize;
-    const uint64_t         pathBytes     = uint64_t(tiles.x) * tiles.y * kWorldPathBytes;
-    const bool             ready         = (voxelGI.UsesRayTracingPipeline() || voxelGI.UsesFieldTraversal()) && pathBytes > 0
-                                        && pathBytes <= m_device->GetGPUInfo().maxStorageBufferRange
-                                        && Allocate(scene, reset, records, pathBytes, cacheSettings.worldCacheUnusedFrames);
+    bool                   movingLights  = false;
+    if (cacheSettings.localHistoryResponse && cacheSettings.screenProbeGI && voxelGI.UsesRayTracingPipeline()
+        && cacheSettings.analyticLighting)
+    {
+        movingLights = scene.GetCameraLight().enabled;
+        for (const LightEntry& entry : scene.GetLights().GetEntries())
+        {
+            movingLights |= entry.light.movable;
+        }
+    }
+    m_movingLayoutChanged  = movingLights != m_movingLights;
+    m_movingLights         = movingLights;
+    reset                 |= m_movingLayoutChanged;
+    const bool seed =
+        cacheSettings.worldCacheSeed
+        && (!cacheSettings.screenProbeGI || (cacheSettings.localHistoryResponse && voxelGI.UsesRayTracingPipeline()));
+    const uint32_t   records   = 6u + uint32_t(seed) + uint32_t(HasMovingLights());
+    const uint32_t   tileSize  = cacheSettings.worldCacheTileSize;
+    const glm::uvec2 tiles     = (extent + (tileSize - 1u)) / tileSize;
+    const uint64_t   pathBytes = uint64_t(tiles.x) * tiles.y * kWorldPathBytes;
+    bool             ready     = (voxelGI.UsesRayTracingPipeline() || voxelGI.UsesFieldTraversal()) && pathBytes > 0
+                              && pathBytes <= m_device->GetGPUInfo().maxStorageBufferRange
+                              && Allocate(scene, reset, records, pathBytes, cacheSettings.worldCacheUnusedFrames);
+    if (ready && seed && cacheSettings.screenProbeGI && m_seedReadback == nullptr)
+    {
+        RHIBufferCreateInfo info{};
+        info.size         = sizeof(glm::uvec4);
+        info.allocateType = RHIBufferAllocateType::eCPURead;
+        info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+        info.tag       = "ProbeSeedCounts";
+        m_seedReadback = m_device->CreateBuffer(info);
+        ready          = m_seedReadback != nullptr;
+    }
     if (ready)
     {
         m_tiles       = tiles;
@@ -158,16 +276,22 @@ void WorldRadianceCache::Record(VoxelGIRenderer&           voxelGI,
     // granted capacity so memory pressure does not saturate a fixed fine grid.
     // Surface coverage is also limited by independent path origins. Scale
     // the footprint for small render targets at the same paths per cell as 4K.
-    const float pathScale  = std::max(1.0f, std::sqrt(129600.0f / float(tiles.x * tiles.y)));
-    const float cellScale  = .001f * std::max(pathScale, std::sqrt(2097152.0f / float(m_capacity)));
-    const float cellSize   = std::max(scale * cellScale, 1e-7f);
-    m_needsClear          |= m_cache.grid.x != cellSize;
-    m_cache.grid           = Vec4(cellSize, std::max(scale * .05f, 1e-5f), 0, 0);
-    m_cache.grid.z         = settings.worldCacheFeedback ? 1.0f : 0.0f;
-    m_cache.limits         = glm::uvec4(m_capacity, settings.worldCacheHistory, settings.worldCacheUnusedFrames, 0u);
-    const uint32_t lightingPolicy =
-        uint32_t(settings.analyticLighting) | (uint32_t(settings.emissiveLighting) << 1u) | (uint32_t(settings.shadows) << 2u);
-    if (m_lightingPolicy != UINT32_MAX && (m_lightingPolicy != lightingPolicy || m_surface != scene.GetSurfaceRevision()))
+    const float pathScale          = std::max(1.0f, std::sqrt(129600.0f / float(tiles.x * tiles.y)));
+    const float cellScale          = .001f * std::max(pathScale, std::sqrt(2097152.0f / float(m_capacity)));
+    const float cellSize           = std::max(scale * cellScale, 1e-7f);
+    m_needsClear                  |= m_cache.grid.x != cellSize;
+    m_cache.grid                   = Vec4(cellSize, std::max(scale * .05f, 1e-5f), 0, 0);
+    m_cache.grid.z                 = settings.worldCacheFeedback ? 1.0f : 0.0f;
+    m_cache.limits                 = glm::uvec4(m_capacity, settings.worldCacheHistory, settings.worldCacheUnusedFrames, 0u);
+    const uint32_t lightingPolicy  = (uint32_t(settings.localHistoryResponse) << 3u) | uint32_t(settings.analyticLighting)
+                                   | (uint32_t(settings.emissiveLighting) << 1u) | (uint32_t(settings.shadows) << 2u);
+    const bool     localResponse = settings.localHistoryResponse && settings.screenProbeGI && voxelGI.UsesRayTracingPipeline();
+    if (localResponse)
+    {
+        RecordSurfaceEdits(scene);
+    }
+    if (m_lightingPolicy != UINT32_MAX
+        && (m_lightingPolicy != lightingPolicy || (!localResponse && m_surface != scene.GetSurfaceRevision())))
     {
         m_lightingEpoch = (m_lightingEpoch + 1u) & 0x3fffffffu;
     }
@@ -179,11 +303,19 @@ void WorldRadianceCache::Record(VoxelGIRenderer&           voxelGI,
     m_frameData.lightCount.x = 0;
     m_frameData.lightCount.y = m_records;
     m_frameData.lightCount.z = std::bit_cast<uint32_t>(settings.indirectIntensity);
+    m_frameData.lightCount.w = uint32_t(HasMovingLights());
+    uint32_t& movingCount    = m_frameData.surfaceEdits.log.w;
+    movingCount              = 0;
     const uint32_t count     = uint32_t(lighting.lightInfo.x);
     for (uint32_t index = 0; index <= count && settings.analyticLighting; ++index)
     {
         const GPULight& light = index == count ? lighting.cameraLight : lighting.lights[index];
-        if (light.directionType.w > .5f && light.colorIntensity.w > 0.0f)
+        if (HasMovingLights() && light.coneShadow.w != 0.0f && light.colorIntensity.w > 0.0f)
+        {
+            m_frameData.movingLightIndices[movingCount / 4u][movingCount % 4u] = index;
+            ++movingCount;
+        }
+        if (light.directionType.w > .5f && light.colorIntensity.w > 0.0f && (!HasMovingLights() || light.coneShadow.w == 0.0f))
         {
             m_frameData.localLights[m_frameData.lightCount.x++] = light.positionRange;
         }
@@ -209,8 +341,14 @@ void WorldRadianceCache::Record(VoxelGIRenderer&           voxelGI,
     lightingPass.SetPassTag("WorldCacheLighting");
     BindLighting(lightingPass);
     lightingPass.BindValue("uSceneData", lighting);
-    const std::array<uint32_t, 5> lightingUpdate{m_frameData.schedule.x, m_frameData.schedule.z, m_frameData.schedule.w,
-                                                 settings.worldCacheHistory, uint32_t(settings.worldCacheFeedback)};
+    lightingPass.BindValue("uWorldCacheData", m_frameData);
+    const std::array<uint32_t, 6> lightingUpdate{
+        m_frameData.schedule.x,
+        m_frameData.schedule.z,
+        m_frameData.schedule.w,
+        settings.worldCacheHistory,
+        uint32_t(settings.worldCacheFeedback),
+        uint32_t(settings.localHistoryResponse && settings.screenProbeGI && voxelGI.UsesRayTracingPipeline())};
     graph.AddComputePass(std::move(lightingPass)).RecordPassCommands([lightingUpdate](RDGPassCmdEncoder& encoder) {
         encoder.SetPushConstants(lightingUpdate);
         encoder.Dispatch(1, 1, 1);
@@ -321,9 +459,16 @@ void WorldRadianceCache::OnRenderGraphExecuted(RenderFrameResult result)
 {
     if (m_recorded && result == RenderFrameResult::eSubmitted)
     {
-        m_needsClear = false;
-        m_geometry   = m_recordedGeometry;
+        m_needsClear     = false;
+        m_geometry       = m_recordedGeometry;
+        m_submittedEdits = m_frameData.surfaceEdits;
         ++m_frame;
+    }
+    else if (m_recorded && result == RenderFrameResult::eDeclined)
+    {
+        // The CPU caster snapshots advanced during recording. Retry from a clean cache.
+        m_needsClear     = true;
+        m_submittedEdits = {};
     }
     else if (result != RenderFrameResult::eDeclined && result != RenderFrameResult::eSubmitted)
     {

@@ -19,7 +19,7 @@ class ScreenProbeGI
 public:
     explicit ScreenProbeGI(RenderDevice* device);
     ~ScreenProbeGI();
-    bool       Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTracing);
+    bool       Prepare(glm::uvec2 extent, bool useSpecular, bool hardwareTracing, bool movingLights, bool temporal);
     bool       InitializeHistories();
     void       Record(VoxelGIRenderer&           voxelGI,
                       RenderScene&               scene,
@@ -28,6 +28,7 @@ public:
                       const Mat4&                projectionView,
                       RHISampler*                sampler,
                       bool                       reset,
+                      bool                       pixelReset,
                       bool                       skyLight);
     void       OnRenderGraphExecuted(RenderFrameResult result);
     void       Destroy();
@@ -43,6 +44,14 @@ public:
     {
         return m_output[2];
     }
+    RDGTexture GetRawSky() const
+    {
+        return m_gatheredDiffuse[0];
+    }
+    RDGTexture GetRawBounce() const
+    {
+        return m_gatheredDiffuse[1];
+    }
     uint32_t GetProbeCount() const
     {
         return m_uniforms.grid.w;
@@ -50,14 +59,31 @@ public:
     uint64_t GetHistoryBytes() const
     {
         return uint64_t(GetProbeCount())
-                 * (48u + ZEN_SCREEN_PROBE_LIGHTING_VECTORS * sizeof(Vec4)
-                    + (m_useSpecular ? ZEN_SCREEN_PROBE_SPECULAR_TEXELS * 8u : 0u)
+                 * (48u + m_uniforms.layoutInfo.x * sizeof(Vec4)
+                    + (m_useSpecular ? (ZEN_SCREEN_PROBE_SPECULAR_TEXELS + 1u) * 8u : 0u)
                     + ZEN_SCREEN_PROBE_PROPOSAL_WORDS * sizeof(uint32_t))
                  * ZEN_SCREEN_PROBE_HISTORY_FRAMES
+             + (m_pixelHistory[0].guide != nullptr ? uint64_t(m_extent.x) * m_extent.y * 2u * (16u + kPixelGuideBytes) : 0u)
              + m_glossy.GetHistoryBytes();
     }
 
 private:
+    static constexpr uint32_t kPixelGuideBytes = 3u * sizeof(uint32_t);
+    static_assert(ZEN_SCREEN_PROBE_HISTORY_FRAMES % 2u == 0u);
+    struct PixelHistorySide
+    {
+        RHITexture* diffuse[2]{};
+        RHIBuffer*  guide{nullptr};
+    };
+    bool              AllocatePixelHistory(glm::uvec2 extent, uint32_t guideBytes);
+    void              DestroyPixelHistory();
+    void              RecordPixelHistory(VoxelGIRenderer&           voxelGI,
+                                         RenderScene&               scene,
+                                         const WorldRadianceCache&  cache,
+                                         const HybridGIUniformData& receiver,
+                                         RHISampler*                sampler,
+                                         RDGBuffer                  filtered,
+                                         bool                       reset);
     void              RecordClear(RenderGraph& graph) const;
     void              Bind(RDGPassDescBase& pass, const HybridGIUniformData& receiver, RHISampler* sampler) const;
     void              BindHistory(RDGPassDescBase& pass,
@@ -85,13 +111,18 @@ private:
     RHIBuffer*        m_lighting[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
     RHIBuffer*        m_specular[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
     RHIBuffer*        m_cdf[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
-    Mat4              m_projectionViews[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
-    RDGTexture        m_output[3];
-    glm::uvec2        m_extent{0};
-    uint32_t          m_current{0};
-    uint32_t          m_validHistory{0};
-    bool              m_needsClear{true};
-    bool              m_recorded{false};
+    Vec4 m_environmentHistory[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{}, m_orientationHistory[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
+    Mat4 m_projectionViews[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
+    PixelHistorySide m_pixelHistory[2];
+    RDGTexture       m_gatheredDiffuse[2];
+    RDGTexture       m_output[3];
+    glm::uvec2       m_extent{0};
+    uint32_t         m_current{0};
+    uint32_t         m_validHistory{0};
+    bool             m_needsClear{true};
+    bool             m_recorded{false};
+    // Whether the last allocation requested a pixel history. Its resources stay null if memory ran out.
+    bool m_pixelHistoryRequested{false};
     struct Uniforms
     {
         Mat4       projectionView{1};
@@ -99,9 +130,13 @@ private:
         glm::uvec4 grid{0};
         Vec4       control{0};
         alignas(16) uint32_t spacing{0};
-        uint32_t adaptiveTiles{0};
-        uint32_t residualEnvironment{0};
+        uint32_t   adaptiveTiles{0};
+        uint32_t   residualEnvironment{0};
+        uint32_t   localResponse{0};
+        glm::uvec4 layoutInfo{}; // lighting stride, split moving light signal
+        Vec4       environment[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
+        Vec4       orientation[ZEN_SCREEN_PROBE_HISTORY_FRAMES]{};
     } m_uniforms;
-    static_assert(sizeof(Uniforms) == 304);
+    static_assert(sizeof(Uniforms) == 320 + 32 * ZEN_SCREEN_PROBE_HISTORY_FRAMES);
 };
 } // namespace zen::rc

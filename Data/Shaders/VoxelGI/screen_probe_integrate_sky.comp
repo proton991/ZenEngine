@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define PROBE_LOCAL_RESPONSE
+#define PROBE_SKY_PREDICTION
+#include "screen_probe_integrate.glsl"

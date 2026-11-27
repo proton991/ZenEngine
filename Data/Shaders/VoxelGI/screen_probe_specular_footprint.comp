@@ -1,0 +1,6 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define PROBE_ROUGH_FOOTPRINT
+#define SCREEN_REPROJECT_LANES 64u
+#define SCREEN_PROBE_PREFILTER_HITS
+#include "screen_probe_prefilter.glsl"

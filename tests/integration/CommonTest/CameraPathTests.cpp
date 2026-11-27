@@ -79,10 +79,29 @@ TEST(LightPath, HoldsKeysAndRejectsInvalidInputWithoutPublishing)
         EXPECT_EQ(ReadLightPath(path.string(), result, error), index == 0);
         EXPECT_EQ(result.id, 12u);
         ASSERT_EQ(result.keys.size(), 2u);
-        EXPECT_EQ(LightPathPosition(result, 1), Vec3(0, 1, 2));
-        EXPECT_EQ(LightPathPosition(result, 3), Vec3(0, 1, 2));
-        EXPECT_EQ(LightPathPosition(result, 4), Vec3(3, 4, 5));
-        EXPECT_EQ(LightPathPosition(result, 10), Vec3(3, 4, 5));
+        EXPECT_EQ(LightPathPose(result, 1).position, Vec3(0, 1, 2));
+        EXPECT_EQ(LightPathPose(result, 3).position, Vec3(0, 1, 2));
+        EXPECT_EQ(LightPathPose(result, 4).position, Vec3(3, 4, 5));
+        EXPECT_EQ(LightPathPose(result, 10).position, Vec3(3, 4, 5));
+    }
+    const char* scenePaths[] = {
+        R"({"target":"environment","keys":[{"frame":3,"intensity":2,"rotationDegrees":90}]})",
+        R"({"target":"environment","keys":[{"frame":3,"intensity":2,"rotationDegrees":90},{"frame":4,"intensity":1}]})",
+        R"({"target":"material","index":4294967296,"keys":[{"frame":1,"color":[0,0,0],"emission":[1,2,3]}]})",
+        R"({"target":"material","index":0,"keys":[{"frame":1,"color":[2,0,0],"emission":[1,2,3]}]})",
+        R"({"target":"animation","keys":[{"frame":2,"seconds":-1}]})",
+        R"({"target":"light","lightId":12,"keys":[{"frame":1,"position":[0,0,0],"color":[1,1,1],"intensity":1,"enabled":1}]})"};
+    for (size_t index = 0; index < std::size(scenePaths); ++index)
+    {
+        SCOPED_TRACE(index);
+        std::ofstream file(path);
+        file << scenePaths[index];
+        file.close();
+        std::string message;
+        EXPECT_EQ(ReadLightPath(path.string(), result, message), index == 0);
+        EXPECT_EQ(result.target, PathTarget::Environment);
+        ASSERT_EQ(result.keys.size(), 1u);
+        EXPECT_FLOAT_EQ(LightPathPose(result, 1).rotationDegrees, 90);
     }
     std::error_code error;
     std::filesystem::remove(path, error);

@@ -1,7 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 #define WRC_LIGHTING_WRITE
-#include "world_cache_lighting.glsl"
+#include "world_surface_edits.glsl"
+#include "../Common/gbuffer.glsl"
 #include "hybrid_sampling.glsl"
 #include "../Common/scene_lighting.glsl"
 layout(push_constant) uniform LightingUpdate
@@ -11,26 +12,155 @@ layout(push_constant) uniform LightingUpdate
     uint changeFlags;
     uint history;
     uint feedback;
+    uint localResponse;
 }
 update;
 layout(local_size_x = 1) in;
+// Split movable lights and the light ball are estimated by the moving probe signal and cache record.
+bool WorldMovingClass(SceneLight light)
+{
+    return worldCache.lightCount.w != 0u && light.coneShadow.w != 0.0;
+}
+// A class change removes a light from one estimator and adds it to the other, so it enters both logs.
+void AppendLightEdit(SceneLight before, SceneLight after, uvec2 id)
+{
+    bool lit       = before.colorIntensity.w > 0.0 || after.colorIntensity.w > 0.0;
+    bool unchanged = before.positionRange == after.positionRange && before.directionType == after.directionType
+                  && before.colorIntensity == after.colorIntensity && before.coneShadow == after.coneShadow;
+    if (lit && !unchanged)
+    {
+        WorldLightEdit edit    = WorldLightEdit(before, after, uvec4(update.frame, id, 0u));
+        bool           settled = (!WorldMovingClass(before) && before.colorIntensity.w > 0.0)
+                              || (!WorldMovingClass(after) && after.colorIntensity.w > 0.0);
+        bool           moving  = (WorldMovingClass(before) && before.colorIntensity.w > 0.0)
+                              || (WorldMovingClass(after) && after.colorIntensity.w > 0.0);
+        if (settled)
+        {
+            responseLog.x = update.frame;
+            uint slot     = editLog.x;
+            if (editLog.y == kWorldEditCapacity)
+            {
+                editLog.z = lightEdits[slot].stamp.x;
+            }
+            lightEdits[slot] = edit;
+            editLog.x        = (slot + 1u) % kWorldEditCapacity;
+            editLog.y        = min(editLog.y + 1u, kWorldEditCapacity);
+        }
+        if (moving)
+        {
+            uint slot = movingLog.x;
+            if (movingLog.y == kWorldEditCapacity)
+            {
+                movingLog.z = movingEdits[slot].stamp.x;
+            }
+            movingEdits[slot] = edit;
+            movingLog.x       = (slot + 1u) % kWorldEditCapacity;
+            movingLog.y       = min(movingLog.y + 1u, kWorldEditCapacity);
+            movingLog.w       = update.frame;
+        }
+    }
+}
+
+uvec2 LightIdentity(uvec4 packed, uint index)
+{
+    return (index & 1u) == 0u ? packed.xy : packed.zw;
+}
+
+uint WorldRetainedFootprint(SceneLight before, SceneLight after, uint oldIndex)
+{
+    bool sameSource = before.colorIntensity.w > 0.0 && after.colorIntensity.w > 0.0
+                   && before.positionRange == after.positionRange && before.directionType == after.directionType
+                   && before.coneShadow == after.coneShadow;
+    return sameSource ? lightFootprint[oldIndex / 4u][oldIndex % 4u] : floatBitsToUint(1e30);
+}
+
+void RecordLightEdits(bool initialize, uint count, uint oldCount)
+{
+    if (!initialize)
+    {
+        // Enabled lights are densely packed. Match by identity across toggles and removals.
+        // Preserve unrelated guides when dense GPU indices shift after a remove or toggle.
+        for (uint word = 0u; word < 9u; ++word)
+        {
+            lightFootprint[word] = nextLightFootprint[word];
+        }
+        bool matched[32];
+        for (uint i = 0u; i < oldCount; ++i)
+        {
+            matched[i] = false;
+        }
+        SceneLight dark = SceneLight(vec4(0), vec4(0, 0, 1, 0), vec4(0), vec4(0));
+        for (uint i = 0u; i < count; ++i)
+        {
+            uvec2      id       = LightIdentity(sceneUbo.lightIds[i / 2u], i);
+            SceneLight before   = dark;
+            uint       oldIndex = i;
+            for (uint j = 0u; j < oldCount; ++j)
+            {
+                if (id == LightIdentity(lastLightIds[j / 2u], j))
+                {
+                    matched[j] = true;
+                    before     = lastLights[j];
+                    oldIndex   = j;
+                    break;
+                }
+            }
+            nextLightFootprint[i / 4u][i % 4u] = WorldRetainedFootprint(before, sceneUbo.lights[i], oldIndex);
+            AppendLightEdit(before, sceneUbo.lights[i], id);
+        }
+        for (uint j = 0u; j < oldCount; ++j)
+        {
+            if (!matched[j])
+            {
+                AppendLightEdit(lastLights[j], dark, LightIdentity(lastLightIds[j / 2u], j));
+            }
+        }
+        nextLightFootprint[count / 4u][count % 4u] = WorldRetainedFootprint(lastLights[32], sceneUbo.cameraLight, oldCount);
+        AppendLightEdit(lastLights[32], sceneUbo.cameraLight, uvec2(0));
+    }
+    for (uint i = 0u; i < count; ++i)
+    {
+        lastLightIds[i / 2u] = sceneUbo.lightIds[i / 2u];
+        lastLights[i]        = sceneUbo.lights[i];
+    }
+    lastLights[32] = sceneUbo.cameraLight;
+}
+
 void main()
 {
     bool initialize     = (update.changeFlags & 1u) != 0u;
     uint previousActive = initialize ? 0u : cacheStats.z;
     cacheStats          = uvec4(0u, 0u, previousActive, 0u);
     lookupCounts.xyz    = uvec3(0);
+    seedCounts.xyz      = uvec3(0);
+    if (initialize)
+    {
+        movingLog   = uvec4(0u);
+        responseLog = uvec4(0u, update.frame, 0u, 0u);
+    }
     // Observe the GPU's lighting inputs directly. No CPU revision or reset hint is
     // needed, and ordinary Monte Carlo noise cannot be mistaken for a light change.
+    // In local mode split moving lights are excluded: their poses are journaled every frame in the
+    // moving log, and their motion must not restart the settled stable-frame count or cache confidence.
     uint signature = HybridHash(uint(sceneUbo.lightInfo.x));
     uint policy    = signature;
     bool moved     = false;
+    bool split     = update.localResponse != 0u && worldCache.lightCount.w != 0u;
     vec3 lower = vec3(1e30), upper = vec3(-1e30);
     for (int index = 0; index <= int(sceneUbo.lightInfo.x); ++index)
     {
         SceneLight light = index == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[index];
-        policy           = HybridHash(policy ^ uint(light.colorIntensity.w > 0.0));
-        vec3 point       = light.positionRange.xyz;
+        if (split && light.coneShadow.w != 0.0)
+        {
+            continue;
+        }
+        if (update.localResponse != 0u && index < int(sceneUbo.lightInfo.x))
+        {
+            uvec2 id  = LightIdentity(sceneUbo.lightIds[index / 2], uint(index));
+            signature = HybridHash(signature ^ id.x ^ HybridHash(id.y));
+        }
+        policy     = HybridHash(policy ^ uint(light.colorIntensity.w > 0.0));
+        vec3 point = light.positionRange.xyz;
         if (!initialize && lightChange.y == uint(sceneUbo.lightInfo.x) && light.colorIntensity.w > 0.0
             && light.directionType.w > .5 && any(notEqual(point, previousLights[index].xyz)))
         {
@@ -61,11 +191,38 @@ void main()
         signature = HybridHash(signature ^ lightingEpoch);
         policy    = HybridHash(policy ^ lightingEpoch);
     }
-    signature |= 1u;
+    signature     |= 1u;
+    responseLog.y  = update.frame;
+    editLog.w      = update.localResponse;
+    if (update.localResponse != 0u)
+    {
+        vec4 environment = vec4(sceneUbo.environment.x * sceneUbo.environment.z, sceneUbo.environment.y, 0, 0);
+        if (!initialize && (lastEnvironment != environment || lastOrientation != sceneUbo.environmentOrientation))
+        {
+            uint slot = envLog.x;
+            if (envLog.y == 8u)
+            {
+                envLog.z = envFrames[slot / 4u][slot % 4u];
+            }
+            envBefore[slot]                 = lastEnvironment;
+            orientationBefore[slot]         = lastOrientation;
+            envFrames[slot / 4u][slot % 4u] = update.frame;
+            envLog.x                        = (slot + 1u) % 8u;
+            envLog.y                        = min(envLog.y + 1u, 8u);
+            envLog.w                        = update.frame;
+        }
+        lastEnvironment = environment;
+        lastOrientation = sceneUbo.environmentOrientation;
+    }
+    // Unchanged lights append nothing. Moving lights change without changing the settled signature.
+    if (update.localResponse != 0u)
+    {
+        RecordLightEdits(initialize, uint(sceneUbo.lightInfo.x), lightChange.y);
+    }
     if (initialize || sourceSignature.x != signature)
     {
         bool local = !initialize && moved && policy == lightChange.x;
-        if (!local)
+        if (!local && (update.localResponse == 0u || initialize || lightingEpoch != editSources.w))
         {
             lookupCounts.w = update.frame;
         }
@@ -80,13 +237,35 @@ void main()
         changedMaximum = vec4(local ? upper : vec3(0), 0);
         lightChange    = uvec4(policy, uint(sceneUbo.lightInfo.x), uint(local), 0u);
     }
+    if (update.localResponse != 0u)
+    {
+        editSources.w = lightingEpoch;
+        // Cells sampled before a discarded edit cannot reconstruct the intervening
+        // illumination. Newer cells remain usable on the same lookup path.
+        uint lostFrame = max(editLog.z, max(envLog.z, worldCache.surfaceLog.z));
+        if (lostFrame != 0u && update.frame - lostFrame < update.frame - lookupCounts.w)
+        {
+            lookupCounts.w = lostFrame;
+        }
+    }
     for (int index = 0; index <= int(sceneUbo.lightInfo.x); ++index)
     {
-        SceneLight light          = index == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[index];
-        bool       resetFootprint = initialize || (update.changeFlags & 2u) != 0u
-                                 || (sourceSignature.x != signature && lightChange.z == 0u)
-                                 || any(notEqual(previousLights[index].xyz, light.positionRange.xyz));
-        uint       radius         = resetFootprint ? floatBitsToUint(1e30) : nextLightFootprint[index / 4][index % 4];
+        SceneLight light           = index == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[index];
+        uint       oldFootprint    = nextLightFootprint[index / 4][index % 4];
+        bool       geometryChanged = (update.changeFlags & 2u) != 0u;
+        if (geometryChanged && update.localResponse != 0u && !initialize)
+        {
+            float distance  = uintBitsToFloat(oldFootprint & 0xffff0000u);
+            vec3  axis      = DecodeGBufferNormal(unpackUnorm4x8(oldFootprint).xy);
+            geometryChanged = distance < 1e20 && WorldSurfaceChanged(light.positionRange.xyz, axis, distance, 0xffffffffu, 1u);
+        }
+        bool resetFootprint = initialize || geometryChanged;
+        if (update.localResponse == 0u)
+        {
+            resetFootprint = resetFootprint || (sourceSignature.x != signature && lightChange.z == 0u)
+                          || any(notEqual(previousLights[index].xyz, light.positionRange.xyz));
+        }
+        uint radius = resetFootprint ? floatBitsToUint(1e30) : nextLightFootprint[index / 4][index % 4];
         lightFootprint[index / 4][index % 4]     = radius;
         nextLightFootprint[index / 4][index % 4] = radius;
         previousLights[index]                    = vec4(light.positionRange.xyz, 0);
@@ -97,8 +276,15 @@ void main()
     uint geometryFrames = initialize || (update.changeFlags & 2u) != 0u ? 0u : min(sourceSignature.z + 1u, 128u);
     // Estimate how much of the prior lighting distribution is still in the
     // cache. A sweep updates one observation per active cell on average.
-    float updates           = min(float(update.paths) / max(float(previousActive), 1.0), 8.0);
-    float retained          = pow(1.0 - 1.0 / max(float(update.history), 1.0), updates);
+    float updates  = min(float(update.paths) / max(float(previousActive), 1.0), 8.0);
+    float retained = pow(1.0 - 1.0 / max(float(update.history), 1.0), updates);
+    if (update.localResponse != 0u)
+    {
+        vec2 startup    = uintBitsToFloat(responseLog.zw);
+        startup.x      += (1.0 - startup.x) * (1.0 - retained);
+        startup.y      += (startup.x - startup.y) * (1.0 - retained);
+        responseLog.zw  = floatBitsToUint(startup);
+    }
     bool  resetResponse     = stableFrames == 0u || geometryFrames == 0u;
     float directConfidence  = resetResponse ? 0.0 : uintBitsToFloat(lightChange.w);
     float bounceConfidence  = resetResponse ? 0.0 : uintBitsToFloat(sourceSignature.w);

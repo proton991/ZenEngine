@@ -6,7 +6,7 @@ uint ProbeRecordSlot(uint index, uint ray, uint batch)
 // instance, primitive and packed barycentrics of a recorded hit, or the radiance of a resolved
 // sample; then the sample direction and its probability density. Zero flags mark a sample still
 // to be traced. Slots without a sample this frame are never read.
-const uint kHitRecorded = 1u, kHitResolved = 2u, kHitSurface = 4u, kHitValid = 8u;
+const uint kHitRecorded = 1u, kHitResolved = 2u, kHitSurface = 4u, kHitValid = 8u, kHitSkyDelta = 16u, kHitMoving = 32u;
 #if defined(SCREEN_PROBE_SAMPLE_HITS)
 #    define SCREEN_PROBE_HITS_ACCESS writeonly
 #elif defined(SCREEN_PROBE_ACCUMULATE) || defined(SCREEN_PROBE_PREFILTER_HITS)
@@ -30,6 +30,10 @@ vec4 ProbeHitSample(uint address)
 }
 vec3 ProbeHitRadiance(uint address)
 {
+    if ((probeHits[address] & (kHitSkyDelta | kHitMoving)) != 0u)
+    {
+        return ProbeUnpackRGBE(probeHits[address + 1u]);
+    }
     return uintBitsToFloat(uvec3(probeHits[address + 1u], probeHits[address + 2u], probeHits[address + 3u]));
 }
 #endif

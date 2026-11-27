@@ -40,7 +40,7 @@ bool EqualSceneLight(const SceneLight& left, const SceneLight& right)
     return left.type == right.type && left.position == right.position && left.direction == right.direction
         && left.color == right.color && left.intensity == right.intensity && left.range == right.range
         && left.innerAngleDegrees == right.innerAngleDegrees && left.outerAngleDegrees == right.outerAngleDegrees
-        && left.enabled == right.enabled && left.castsShadows == right.castsShadows;
+        && left.enabled == right.enabled && left.castsShadows == right.castsShadows && left.movable == right.movable;
 }
 
 bool RenderScene::SetEnvironmentLighting(float intensity, float rotationDegrees, bool enabled, bool visible)
@@ -187,17 +187,21 @@ void SceneLights::WriteUniforms(SceneUniformData& uniforms) const
 
         if (light.enabled)
         {
-            GPULight& gpu     = uniforms.lights[count++];
+            glm::uvec4& ids             = uniforms.lightIds[count / 2u];
+            ids[(count % 2u) * 2u]      = static_cast<uint32_t>(entry.id);
+            ids[(count % 2u) * 2u + 1u] = static_cast<uint32_t>(entry.id >> 32u);
+            GPULight& gpu               = uniforms.lights[count++];
 
-            gpu.positionRange = Vec4(light.position, light.range);
+            gpu.positionRange           = Vec4(light.position, light.range);
 
             // Square finite float components in double precision to avoid normalization overflow.
             gpu.directionType  = Vec4(Vec3(glm::normalize(glm::dvec3(light.direction))), static_cast<float>(light.type));
 
             gpu.colorIntensity = Vec4(light.color, light.intensity);
 
-            gpu.coneShadow     = Vec4(std::cos(glm::radians(light.innerAngleDegrees)),
-                                      std::cos(glm::radians(light.outerAngleDegrees)), light.castsShadows ? 1.0f : 0.0f, 0.0f);
+            gpu.coneShadow =
+                Vec4(std::cos(glm::radians(light.innerAngleDegrees)), std::cos(glm::radians(light.outerAngleDegrees)),
+                     light.castsShadows ? 1.0f : 0.0f, light.movable ? -1.0f : 0.0f);
         }
     }
 
@@ -469,6 +473,7 @@ HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config
             valid                  &= config.ReadBool(key + "enabled", light.enabled);
 
             valid                  &= config.ReadBool(key + "casts_shadows", light.castsShadows);
+            valid                  &= config.ReadBool(key + "movable", light.movable);
         }
         else
         {

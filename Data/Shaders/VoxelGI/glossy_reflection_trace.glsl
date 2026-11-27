@@ -9,11 +9,13 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 #else
 #    include "hybrid_provider.glsl"
+#    include "world_surface_edits.glsl"
 #endif
-vec4 GlossyTraceRay(GIDenoiseGuide guide, vec3 direction, uint seed, bool mirror, out float distance)
+vec4 GlossyTraceRay(GIDenoiseGuide guide, vec3 direction, uint seed, bool mirror, out float distance, out float change)
 {
     vec4 value = vec4(0);
     distance   = -1.0;
+    change     = 0.0;
     if (dot(direction, guide.geometric) > 0.0)
     {
 #ifdef GLOSSY_TRACE_UNCOVERED
@@ -31,6 +33,11 @@ vec4 GlossyTraceRay(GIDenoiseGuide guide, vec3 direction, uint seed, bool mirror
         HybridRayResult hit =
             HardwareTraceRay(HybridTraceOrigin(guide.position, guide.geometric, 0.0), direction, 1e20, closest);
         vec3 radiance = hitPayload.radiance;
+        if (hybrid.reflection.w == 2u)
+        {
+            change = closest && hit.hit ? uintBitsToFloat(hitPayload.seed)
+                                        : float(WorldSurfaceChanged(guide.position, direction, 1e20, 0xffffffffu, 1u));
+        }
 #endif
         value    = vec4(hit.hit && hybrid.reflection.x != 0u ? radiance : vec3(0), float(hit.valid && !hit.hit));
         distance = hit.hit ? length(hit.position - guide.position) : -1.0;
@@ -54,10 +61,10 @@ void main()
         // There is no filtered history for this receiver. Use its mirror direction
         // and a stable endpoint sample so a stationary edge stays stationary.
         vec3  direction = reflect(-DenoiseView(guide.position), guide.normal);
-        float distance;
-        vec4  value =
-            GlossyTraceRay(guide, direction, HybridHash(HybridMorton(uvec2(p))), guide.roughness < glossy.control.w, distance);
-        value.rgb *= gi.volume.w;
+        float distance, change;
+        vec4  value  = GlossyTraceRay(guide, direction, HybridHash(HybridMorton(uvec2(p))), guide.roughness < glossy.control.w,
+                                      distance, change);
+        value.rgb   *= gi.volume.w;
         imageStore(probeSpecular, p, value);
     }
 #else
@@ -66,6 +73,7 @@ void main()
         GIDenoiseGuide guide    = DenoiseGuide(GlossyPixel(p));
         vec4           value    = vec4(0, 0, 0, 1);
         float          distance = 0.0;
+        float          change   = 0.0;
         if (GlossyReceiver(guide))
         {
             vec3  view    = DenoiseView(guide.position);
@@ -80,17 +88,20 @@ void main()
                                    ? reflect(-view, guide.normal)
                                    : HybridSpecularDirection(guide.normal, view, guide.roughness, uvec2(p), sequence, 0x91ac7u);
                 uint seed      = HybridHash(HybridMorton(uvec2(p)) ^ HybridHash(sequence));
-                float hitDistance;
-                value    += GlossyTraceRay(guide, direction, seed, mirror, hitDistance);
+                float hitDistance, hitChange;
+                value    += GlossyTraceRay(guide, direction, seed, mirror, hitDistance, hitChange);
+                change   += hitChange;
                 distance += max(hitDistance, 0.0);
                 hits     += float(hitDistance >= 0.0);
             }
+            // Each GGX sample carries an equal share of the estimate, and of the change it observed.
             value    /= float(samples);
+            change   /= float(samples);
             distance /= max(hits, 1.0);
         }
         uint index                 = GlossyIndex(p);
         glossyRaw[index * 2u]      = value;
-        glossyRaw[index * 2u + 1u] = vec4(distance, 0, 0, 0);
+        glossyRaw[index * 2u + 1u] = vec4(distance, change, 0, 0);
     }
 #endif
 }

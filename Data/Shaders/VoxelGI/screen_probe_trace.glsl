@@ -16,6 +16,10 @@
 #endif
 #include "screen_probe.glsl"
 #ifdef SCREEN_PROBE_ACCUMULATE
+shared vec4 response[ZEN_SCREEN_PROBE_RAYS]; // sky and bounce change, sum of confidence deficits, hit count
+#    ifdef PROBE_SKY_PREDICTION
+shared vec4 skyDelta[ZEN_SCREEN_PROBE_RAYS][4];
+#    endif
 layout(local_size_x = ZEN_SCREEN_PROBE_RAYS) in;
 #else
 #    define NATIVE_CACHE_MISS_TRANSPORT
@@ -262,22 +266,49 @@ uint ProbeAnchorSeed(ScreenProbe probe)
     uvec3 anchor = floatBitsToUint(probe.position.xyz);
     return HybridHash(anchor.x ^ HybridHash(anchor.y) ^ HybridHash(anchor.z));
 }
+#    ifdef PROBE_TILE_SAMPLING
+layout(std140, set = 1, binding = 132) uniform uProbeBlueNoise
+{
+    uvec4 ranks[1024]; // 16 x 16 x 64 scalar temporal ranks, packed four per word.
+}
+probeBlueNoise;
+vec2 ProbeBlueNoiseSample(uvec2 tile, uint sampleIndex, uint key)
+{
+    uint  offset  = HybridHash(key ^ (sampleIndex >> 6u));
+    uvec2 point   = (tile + uvec2(offset, offset >> 8u)) & 15u;
+    uint  t       = (sampleIndex + (offset >> 16u)) & 63u;
+    uint  address = (t * 16u + point.y) * 16u + point.x;
+    uint  word    = probeBlueNoise.ranks[address >> 4u][(address >> 2u) & 3u];
+    uint  rank    = bitfieldExtract(word, int(8u * (address & 3u)), 8);
+    // Preserve the complete 64-point 2D Sobol net on a held tile. Rank orders its first
+    // coordinate in blue-noise order. Independent block jitters cover sub-bin positions.
+    uint index  = bitfieldReverse(rank) >> 26u;
+    uint jitter = HybridHash(offset ^ 0x231f57abu);
+    uint x      = ((rank << 26u) | (jitter & 0x03ffffffu)) ^ (0u - (jitter >> 31u));
+    return vec2(uvec2(x, HybridSobol1(index) ^ HybridHash(offset)) >> 8u) / 16777216.0;
+}
+#    endif
 // Each 64-frame block has an independent scramble and a fixed proposal. Later batches take a
 // contiguous power-of-two Sobol interval, which covers each new receiver within this frame.
 vec2 ProbeBatchSample(ScreenProbe probe, uint seed, uint ray, uint batch, uint batches)
 {
-    vec2 u;
-    if (batch == 0u)
+    uint count       = batches - 1u;
+    uint sampleIndex = hybrid.sampling.x & 63u;
+    uint dimension   = 0x83a91u;
+    if (batch != 0u)
     {
-        u = HybridSkySample(uvec2(seed, ray), hybrid.sampling.x & 63u, HybridHash((hybrid.sampling.x >> 6u) ^ 0x83a91u));
+        sampleIndex = sampleIndex * count + batch - 1u;
+        dimension   = 0x7c51a3u ^ HybridHash(count);
     }
-    else
-    {
-        uint count       = batches - 1u;
-        uint sampleIndex = (hybrid.sampling.x & 63u) * count + batch - 1u;
-        u                = HybridSkySample(uvec2(seed, ray), sampleIndex,
-                                           HybridHash((hybrid.sampling.x >> 6u) ^ 0x7c51a3u ^ HybridHash(count)));
-    }
+    uint key = HybridHash((hybrid.sampling.x >> 6u) ^ dimension);
+#    ifdef PROBE_TILE_SAMPLING
+    uint  birth = uint(probe.position.w) - 1u;
+    uvec2 tile  = screenProbe.layoutInfo.w == 2u ? uvec2(birth % screenProbe.grid.x, birth / screenProbe.grid.x)
+                                                 : probe.source.yz / screenProbe.spacing;
+    vec2  u     = ProbeBlueNoiseSample(tile, sampleIndex, key ^ HybridHash(ray));
+#    else
+    vec2 u = HybridSkySample(uvec2(seed, ray), sampleIndex, key);
+#    endif
     // Stratify all three batches in both coordinates on a newly exposed surface. Shuffle
     // the permutation each frame so every joint stratum remains represented over time.
     if (probe.normal.w <= kProbeColdFrames && batches == 3u)
@@ -334,18 +365,20 @@ void main()
 }
 #elif defined(SCREEN_PROBE_TRACE_HITS)
 // Probes integrate the residual environment when per-pixel rays light the source tiles.
-vec3 ProbeMissRadiance(vec3 direction, bool valid)
+vec3 ProbeMissRadiance(vec3 direction, bool valid, uint age)
 {
-    bool source = false;
-    if (screenProbe.residualEnvironment != 0u)
+    bool source        = false;
+    vec4 env           = screenProbe.environment[age];
+    vec3 cubeDirection = EnvironmentDirection(direction, env.y, screenProbe.orientation[age]);
+    if (env.z != 0.0)
     {
         uint  face;
         vec2  uv, st;
         uvec2 cell;
-        EnvironmentLocate(direction, face, uv, cell, st);
+        EnvironmentLocateCube(cubeDirection, face, uv, cell, st);
         source = EnvironmentSourceTile(EnvironmentTileOf(face, cell));
     }
-    return source ? vec3(0) : NativeMissRadiance(direction, valid);
+    return !valid || source ? vec3(0) : textureLod(coneEnvironmentMap, cubeDirection, 0).rgb * (env.x * gi.lighting.y);
 }
 // Trace the first segment of every sample still to be traced with the record-only hit shader.
 // Misses are resolved here; hits wait for the shading pass.
@@ -374,13 +407,28 @@ void main()
             }
             else
             {
-                ProbeWriteResolved(address, ProbeMissRadiance(direction, hit.valid), false, hit.valid);
+                vec3 current = ProbeMissRadiance(direction, hit.valid, 0u);
+                ProbeWriteResolved(address, current, false, hit.valid);
+                uint past = ProbePastEnvironment(probe);
+                if (WorldSurfaceChanged(probe.position.xyz, direction, 1e20, 0xffffffffu, max(1u, past)))
+                {
+                    probeHits[address] |= 255u << 8u;
+                }
+                if (ProbeNeedsSkyDelta(past))
+                {
+                    probeHits[address]      |= kHitSkyDelta;
+                    probeHits[address + 1u]  = ProbePackRGBE(current);
+                    probeHits[address + 2u] =
+                        HybridPackSignedRGBE(current - ProbeSkyScale(past) * ProbeMissRadiance(direction, hit.valid, past));
+                }
             }
         }
     }
 }
 #elif defined(SCREEN_PROBE_SHADE_HITS)
 #    include "ray_hit_bounce.glsl"
+#    include "moving_light.glsl"
+#    include "world_light_response.glsl"
 // Shade recorded first hits from the world cache. A cold hit receives one sampled direct-light evaluation.
 void main()
 {
@@ -403,19 +451,87 @@ void main()
         Material material = LoadRayHitMaterial(triangle.z);
         vec3     emission;
         // Probe rays carry ray flag 1, so their hits shade with the interpolated vertex normal.
-        bool flipped;
-        vec3 normal = RayHitVertexNormal(hit, vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics), flipped);
-        vec4 cacheNormal;
-        vec3 reflectance = RayHitBounceReflectance(hit, material, normal, -sampleRay.xyz, emission, cacheNormal);
-        bool found, usable;
-        vec3 diffuse = WorldLookup(hit.position, hit.normal, cacheNormal.xyz, false, vec2(0), found, usable) * cacheNormal.w;
-        uint seed    = ProbePathSeed(ProbeAnchorSeed(probes[index]), ray, batch);
+        bool  flipped;
+        vec3  normal = RayHitVertexNormal(hit, vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics), flipped);
+        vec4  cacheNormal;
+        vec3  reflectance = RayHitBounceReflectance(hit, material, normal, -sampleRay.xyz, emission, cacheNormal);
+        bool  found, usable;
+        float change;
+        uint  sampledSlot;
+        vec3  diffuse =
+            WorldLookup(hit.position, hit.normal, cacheNormal.xyz, false, vec2(0), found, usable, change, sampledSlot);
+        ScreenProbe probe            = probes[index];
+        uint        previousInterval = max(1u, ProbePastEnvironment(probe));
+        float       confidence       = 1.0;
+        if (screenProbe.localResponse != 0u)
+        {
+            if (usable)
+            {
+                vec3  delta;
+                float stale = WorldLightResponse(worldCache.schedule.x - worldCells[sampledSlot].lastSample, hit.position,
+                                                 hit.normal, diffuse, 0xffffffffu, delta);
+                // Staleness lowers trust in the current sample. Only newly observed changes
+                // can shorten this probe's history again; a sparse cell can be read for many frames.
+                float uncertainty = max(change, stale);
+                if (worldCache.schedule.x - worldCells[sampledSlot].lastSample >= previousInterval)
+                {
+                    change = 0.0;
+                }
+                if (worldCache.schedule.x - responseLog.x < previousInterval)
+                {
+                    change = max(change, stale);
+                }
+                diffuse = max(vec3(0), diffuse + delta);
+                if (uncertainty > .005)
+                {
+                    float updates = float(cacheResolved[sampledSlot * GI_CACHE_RECORDS].w);
+                    confidence    = max(.125, min(1.0, updates / 16.0) * (1.0 - .75 * stale));
+                }
+            }
+        }
+        diffuse   *= cacheNormal.w;
+        uint seed  = ProbePathSeed(ProbeAnchorSeed(probes[index]), ray, batch);
         if (!usable)
         {
-            diffuse = SampledHitDiffuse(hit, normal, seed, false, false);
+            diffuse = SampledHitDiffuse(hit, normal, seed, false, false, screenProbe.layoutInfo.y != 0u);
         }
         WorldCountProbe(seed, hit.position, hit.normal, found, usable);
         ProbeWriteResolved(address, emission + reflectance * diffuse, true, true);
+        if (WorldSurfaceChanged(probe.position.xyz, sampleRay.xyz, distance(probe.position.xyz, hit.position), triangle.z,
+                                previousInterval))
+        {
+            change = 1.0;
+        }
+        probeHits[address] |= (uint(round(change * 255.0)) << 8u) | (uint(round((1.0 - confidence) * 255.0)) << 16u);
+        if (screenProbe.layoutInfo.y != 0u)
+        {
+            vec3 cachedMoving = WorldMovingIndirect(hit.position, hit.normal, sampledSlot, found);
+            vec3 moving       = cachedMoving;
+            vec3 delta        = vec3(0);
+            uint batchCount   = ProbeScheduledBatches(index);
+            // Cold probe batches occupy disjoint strata. Select one uniformly so the single
+            // live shadow observation covers the whole hemisphere, including on a new probe.
+            uint movingBatch =
+                HybridHash(ProbeAnchorSeed(probe) ^ HybridHash(ray) ^ HybridHash(hybrid.sampling.x)) % batchCount;
+            if (batch == movingBatch)
+            {
+                float batches = float(batchCount);
+                moving +=
+                    batches * MovingLighting(hit.position, hit.normal, normal, max(1u, ProbePastEnvironment(probe)), delta);
+                delta *= batches;
+            }
+            vec3 movingRadiance = reflectance * moving;
+            vec3 movingChange   = reflectance * delta;
+            if (any(greaterThan(movingRadiance, vec3(0.0))) || any(notEqual(movingChange, vec3(0.0))))
+            {
+                // Bits 24-31 hold the share of the cache's moving record, which has no same-ray prediction.
+                float cached        = HybridLuminance(reflectance * cachedMoving) / max(HybridLuminance(movingRadiance), 1e-20);
+                probeHits[address] |= kHitMoving | (uint(round(clamp(cached, 0.0, 1.0) * 255.0)) << 24u);
+                probeHits[address + 1u] = ProbePackRGBE(emission + reflectance * diffuse);
+                probeHits[address + 2u] = ProbePackRGBE(movingRadiance);
+                probeHits[address + 3u] = HybridPackSignedRGBE(movingChange);
+            }
+        }
     }
 }
 #else
@@ -426,8 +542,21 @@ void main()
     {
         ScreenProbe probe      = probes[index];
         mat4x3      moments[2] = {mat4x3(0), mat4x3(0)};
-        mat3        basis      = HybridBasis(probe.normal.xyz);
-        uint        batches    = ProbeScheduledBatches(index);
+#    ifdef SCREEN_PROBE_ACCUMULATE
+        response[ray] = vec4(0);
+#        ifdef PROBE_SKY_PREDICTION
+        bool predictSky = ProbeNeedsSkyDelta(ProbePastEnvironment(probe));
+        if (predictSky)
+        {
+            for (uint item = 0u; item < 4u; ++item)
+            {
+                skyDelta[ray][item] = vec4(0);
+            }
+        }
+#        endif
+#    endif
+        mat3 basis   = HybridBasis(probe.normal.xyz);
+        uint batches = ProbeScheduledBatches(index);
 #    ifndef SCREEN_PROBE_ACCUMULATE
         uint specularRays = hybrid.rejection.y != 0.0 ? uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS) : 0u;
         // Only the untraced GGX lanes need clearing. The diffuse slots are fully overwritten below.
@@ -457,10 +586,40 @@ void main()
 #    ifdef SCREEN_PROBE_ACCUMULATE
                 uint address = ProbeRecordAddress(ProbeRecordSlot(index, ray, batch));
                 uint flags   = probeHits[address];
-                sampleRay    = ProbeHitSample(address);
-                incoming     = ProbeHitRadiance(address);
-                hit          = (flags & kHitSurface) != 0u;
-                valid        = (flags & kHitValid) != 0u;
+                if ((flags & kHitSurface) != 0u)
+                {
+                    response[ray].zw += vec2(float((flags >> 16u) & 255u) / 255.0, 1.0);
+                }
+                sampleRay     = ProbeHitSample(address);
+                incoming      = ProbeHitRadiance(address);
+                uint evidence = (flags >> 8u) & 255u;
+                if (evidence != 0u)
+                {
+                    uint  signal = (flags & (kHitValid | kHitSurface)) == kHitValid ? 0u : 1u;
+                    float prior  = probe.source.x == 0xffffffffu ? 0.0 : PreviousProbeLighting(probe.source.x, 8u + signal).x;
+                    // A changed hit stands for its estimator weight of the hemisphere, which keeps a prior
+                    // share on disappearance, raised to its energy share on a bright new path. A grazing or
+                    // densely sampled ray claims little. No single ray claims more than a quarter.
+                    float geometric = max(dot(probe.normal.xyz, sampleRay.xyz), 0.0) / max(HYBRID_PI * sampleRay.w, 1e-20);
+                    float share     = min(geometric * max(1.0, HybridLuminance(incoming) / max(prior, 1e-6)),
+                                          .25 * float(batches * uint(ZEN_SCREEN_PROBE_RAYS)));
+                    response[ray][signal] += float(evidence) * share / 255.0;
+                }
+#        ifdef PROBE_SKY_PREDICTION
+                if ((flags & kHitSkyDelta) != 0u)
+                {
+                    vec3 delta = HybridUnpackSignedRGBE(probeHits[address + 2u])
+                               / (sampleRay.w * float(batches * ZEN_SCREEN_PROBE_RAYS));
+                    vec4 sh    = ProbeSH(sampleRay.xyz);
+                    for (uint channel = 0u; channel < 3u; ++channel)
+                    {
+                        skyDelta[ray][channel] += delta[channel] * sh;
+                    }
+                    skyDelta[ray][3].rgb += delta * (max(dot(probe.normal.xyz, sampleRay.xyz), 0.0) / HYBRID_PI);
+                }
+#        endif
+                hit   = (flags & kHitSurface) != 0u;
+                valid = (flags & kHitValid) != 0u;
 #    else
                 vec2 u = ProbeBatchSample(probe, seed, ray, batch, batches);
                 sampleRay =
@@ -490,6 +649,49 @@ void main()
 #    endif
             }
         }
+#    ifdef SCREEN_PROBE_ACCUMULATE
+        if (screenProbe.localResponse != 0u)
+        {
+            barrier();
+            if (ray == 0u)
+            {
+                vec2 evidenceSum = vec2(0), deficit = vec2(0);
+                for (uint i = 0u; i < uint(ZEN_SCREEN_PROBE_RAYS); ++i)
+                {
+                    evidenceSum += response[i].xy;
+                    deficit     += response[i].zw;
+                }
+                uint base = ProbeChangeAddress(index);
+                screenRays[base] =
+                    vec2(uintBitsToFloat(packUnorm2x16(min(vec2(1), evidenceSum / float(batches * ZEN_SCREEN_PROBE_RAYS)))),
+                         1.0 - deficit.x / max(deficit.y, 1.0));
+#        ifdef PROBE_SKY_PREDICTION
+                if (predictSky)
+                {
+                    for (uint item = 0u; item < 4u; ++item)
+                    {
+                        vec4 delta = vec4(0);
+                        for (uint lane = 0u; lane < uint(ZEN_SCREEN_PROBE_RAYS); ++lane)
+                        {
+                            delta += skyDelta[lane][item];
+                        }
+                        screenRays[base + 1u + 2u * item] = delta.xy;
+                        screenRays[base + 2u + 2u * item] = delta.zw;
+                    }
+                    // Variance of the predicted sky change across independent lanes, for the history weight.
+                    float lanes = float(ZEN_SCREEN_PROBE_RAYS), first = 0.0, second = 0.0;
+                    for (uint lane = 0u; lane < uint(ZEN_SCREEN_PROBE_RAYS); ++lane)
+                    {
+                        float change  = HybridLuminance(skyDelta[lane][3].rgb);
+                        first        += change;
+                        second       += change * change;
+                    }
+                    screenRays[base + 9u] = vec2(lanes / (lanes - 1.0) * max(second - first * first / lanes, 0.0), 0.0);
+                }
+#        endif
+            }
+        }
+#    endif
         uint address = (index * uint(ZEN_SCREEN_PROBE_RAYS) + ray) * 4u;
         for (uint signal = 0u; signal < 2u; ++signal)
         {

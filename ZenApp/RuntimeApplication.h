@@ -34,6 +34,7 @@ struct RuntimeOptions
     std::string                  logPath;
     bool                         requireValidation{};
     bool                         fixedStep{false};
+    bool                         captureLinear{false};
     bool                         startPaused{false};
     bool                         rhiOverride{false};
     bool                         noUI{false};

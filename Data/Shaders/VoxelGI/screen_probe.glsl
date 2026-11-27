@@ -15,15 +15,60 @@ layout(std140, set = 1, binding = 80) uniform uScreenProbeData
     uint  adaptiveTiles;
     // Nonzero when per-pixel rays light the environment's source tiles (screen_probe_sources.comp).
     // Probes then sample and integrate only the residual environment.
-    uint residualEnvironment;
+    uint  residualEnvironment;
+    uint  localResponse;
+    uvec4 layoutInfo;
+    vec4  environment[ZEN_SCREEN_PROBE_HISTORY_FRAMES]; // effective intensity, rotation, source-tile mask enabled
+    vec4  orientation[ZEN_SCREEN_PROBE_HISTORY_FRAMES];
 }
 screenProbe;
+// Appending the optional moving-light records keeps the settled history stride constant. Each probe has
+// three SH channels, irradiance (w: age), statistics (mean, mean square, age, per-frame estimate variance)
+// and its response state (held unpredicted change, predicted-change variance, prediction-limited age).
+const uint kProbeMovingVectors    = 6u;
+const uint kProbeSource           = 10u;
+const uint kProbeMovingStatistics = uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 4u;
+const uint kProbeMovingResponse   = uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + 5u;
+uint       ProbeMovingBase(uint index)
+{
+    return screenProbe.grid.w * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + index * kProbeMovingVectors;
+}
+uint ProbeLightingAddress(uint index, uint item)
+{
+    return item < uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS)
+             ? index * uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS) + item
+             : ProbeMovingBase(index) + item - uint(ZEN_SCREEN_PROBE_LIGHTING_VECTORS);
+}
+uint ProbeGatherStatisticsAddress(uint index)
+{
+    return screenProbe.grid.w * ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + index;
+}
+uint ProbeChangeAddress(uint index)
+{
+    return screenProbe.grid.w * uint(ZEN_SCREEN_PROBE_RAYS) * 4u + (screenProbe.layoutInfo.z != 0u ? 10u : 1u) * index;
+}
+
 struct ScreenProbe
 {
     vec4  position;
     vec4  normal; // accepted history length in w
     uvec4 source; // previous probe (high two bits: frame offset), pixel x/y, surface identity
 };
+uint ProbePastEnvironment(ScreenProbe probe)
+{
+    return probe.source.x != 0xffffffffu ? 1u + (probe.source.x >> 30u) : 0u;
+}
+float ProbeSkyScale(uint past)
+{
+    return screenProbe.environment[past].x > 0.0 ? screenProbe.environment[0].x / screenProbe.environment[past].x : 1.0;
+}
+bool ProbeNeedsSkyDelta(uint past)
+{
+    return screenProbe.layoutInfo.z != 0u
+        && (screenProbe.orientation[0] != screenProbe.orientation[past]
+            || screenProbe.environment[0].yz != screenProbe.environment[past].yz
+            || (screenProbe.environment[past].x == 0.0 && screenProbe.environment[0].x != 0.0));
+}
 #if defined(SCREEN_PROBE_READ_WRITE)
 #    define PROBE_ACCESS
 #elif defined(SCREEN_PROBE_WRITE)
@@ -119,17 +164,23 @@ ScreenProbe PreviousProbe(uint source)
          : source >> 30u == 1u ? previousProbes[1].values[index]
                                : previousProbes[2].values[index];
 }
-vec4 PreviousProbeLighting(uint source, uint item)
+vec4 PreviousLightingAt(uint source, uint index)
 {
-    uint index = (source & 0x3fffffffu) * ZEN_SCREEN_PROBE_LIGHTING_VECTORS + item;
     return source >> 30u == 0u ? previousProbeLighting[0].values[index]
          : source >> 30u == 1u ? previousProbeLighting[1].values[index]
                                : previousProbeLighting[2].values[index];
 }
+// Items from ZEN_SCREEN_PROBE_LIGHTING_VECTORS on address the probe's moving-light records.
+vec4 PreviousProbeLighting(uint source, uint item)
+{
+    return PreviousLightingAt(source, ProbeLightingAddress(source & 0x3fffffffu, item));
+}
 #    ifdef SCREEN_SPECULAR_WRITE
 uvec2 PreviousProbeSpecular(uint source, uint texel)
 {
-    uint index = (source & 0x3fffffffu) * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
+    uint probe = source & 0x3fffffffu;
+    uint index = texel == ZEN_SCREEN_PROBE_SPECULAR_TEXELS ? screenProbe.grid.w * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + probe
+                                                           : probe * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
     return source >> 30u == 0u ? previousProbeSpecularData[0].values[index]
          : source >> 30u == 1u ? previousProbeSpecularData[1].values[index]
                                : previousProbeSpecularData[2].values[index];
@@ -157,6 +208,12 @@ float ProbeSampleAge(float age, float batches)
 }
 // A young probe without coplanar support may exceed its brightest adjacent probe by this factor.
 const float kIsolatedProbeSlack = 2.0;
+// A light edit can shorten radiance history on an already observed thin surface. Its
+// neighbors can be other materials and only provide a ceiling while that surface is new.
+float ProbeIsolatedWindow(ScreenProbe probe, float young)
+{
+    return screenProbe.localResponse != 0u ? min(young, 1.0 - smoothstep(32.0, 192.0, probe.normal.w)) : young;
+}
 // Limit a young estimate only when three independently weighted groups of taps support the comparison.
 float ProbeSpatialOutlierScale(vec3 groupLuma, vec3 groupWeight, float total, float mean, float young)
 {
@@ -188,6 +245,7 @@ uint ProbeSpecularRayAddress(uint index, uint sampleIndex)
     return 4u * screenProbe.grid.w * uint(ZEN_SCREEN_PROBE_RAYS)
          + 3u * (index * uint(ZEN_SCREEN_PROBE_SPECULAR_RAYS) + sampleIndex);
 }
+#    endif
 uint ProbePackRGBE(vec3 value)
 {
     float largest  = max(value.x, max(value.y, value.z));
@@ -199,7 +257,6 @@ vec3 ProbeUnpackRGBE(uint word)
     vec4 packed = unpackUnorm4x8(word);
     return packed.rgb * exp2(round(packed.a * 255.0) - 127.0);
 }
-#    endif
 vec4 ProbeSH(vec3 direction)
 {
     return vec4(.2820947918, .4886025119 * direction);
@@ -244,13 +301,20 @@ float ProbeLightProjection(float cosine)
     float       edge  = max(width - abs(cosine), 0.0);
     return max(max(cosine, 0.0) + edge * edge / (4.0 * width), .001);
 }
+float ProbePlaneAgreement(vec3 position, vec3 normal, vec3 anchor, vec3 anchorNormal)
+{
+    vec3  delta      = position - anchor;
+    float minimum    = screenProbe.control.x * .00002;
+    float tolerance2 = max(minimum * minimum, dot(delta, delta) * .0016);
+    float plane      = max(abs(dot(delta, normal)), abs(dot(delta, anchorNormal)));
+    float cosine     = max(dot(normal, anchorNormal), 0.0);
+    float fourth     = (cosine * cosine) * (cosine * cosine);
+    float eighth     = fourth * fourth;
+    return (eighth * eighth) * exp2(-plane * plane / tolerance2);
+}
 float ProbePlaneWeight(vec3 position, vec3 normal, ScreenProbe probe)
 {
-    vec3  delta     = position - probe.position.xyz;
-    float tolerance = max(screenProbe.control.x * .00002, length(delta) * .04);
-    float plane     = max(abs(dot(delta, normal)), abs(dot(delta, probe.normal.xyz)));
-    return probe.position.w * pow(max(dot(normal, probe.normal.xyz), 0.0), 16.0)
-         * exp2(-plane * plane / (tolerance * tolerance));
+    return float(probe.position.w != 0.0) * ProbePlaneAgreement(position, normal, probe.position.xyz, probe.normal.xyz);
 }
 uint ProbeBaseTile(uint index)
 {
@@ -345,7 +409,7 @@ vec4 ProbePastValue(ScreenProbe probe, uint item, out float radianceVariance)
                 vec3 anchor = PreviousProbe(index).normal.xyz;
                 for (uint channel = 0u; channel < 3u; ++channel)
                 {
-                    vec4 sh               = PreviousProbeLighting(index, (item & 4u) + channel);
+                    vec4 sh               = PreviousProbeLighting(index, item - 3u + channel);
                     sampleValue[channel] += ProbeNormalCorrection(ProbeNormalResponse(sh, anchor), anchor, probe.normal.xyz);
                 }
             }

@@ -18,7 +18,7 @@ float HitDiffuseVisibility(HybridRayResult hit, SceneLight light, int index)
     return visibility;
 }
 // Irradiance/pi from analytic lights and, at a path endpoint, visible sky.
-vec3 SampledHitDiffuse(HybridRayResult hit, vec3 normal, uint seed, bool includeSky, bool exactLights)
+vec3 SampledHitDiffuse(HybridRayResult hit, vec3 normal, uint seed, bool includeSky, bool exactLights, bool settledOnly)
 {
     vec3 diffuse = vec3(0);
     // Lights without a visibility query are summed exactly. Lights that need one share a single
@@ -36,10 +36,14 @@ vec3 SampledHitDiffuse(HybridRayResult hit, vec3 normal, uint seed, bool include
     for (int i = 0; i < lightCount; ++i)
     {
         SceneLight light = i == int(sceneUbo.lightInfo.x) ? sceneUbo.cameraLight : sceneUbo.lights[i];
-        vec3       direction;
-        float      distanceToLight;
-        vec3       incoming = EvaluateLight(light, hit.position, direction, distanceToLight);
-        float      cosine   = max(dot(normal, direction), 0.0);
+        if (settledOnly && light.coneShadow.w != 0.0)
+        {
+            continue;
+        }
+        vec3  direction;
+        float distanceToLight;
+        vec3  incoming = EvaluateLight(light, hit.position, direction, distanceToLight);
+        float cosine   = max(dot(normal, direction), 0.0);
         if (cosine > 0.0 && dot(hit.normal, direction) > 0.0 && any(greaterThan(incoming, vec3(0))))
         {
             vec3 radiance = incoming * cosine / HYBRID_PI;
@@ -110,5 +114,9 @@ vec3 SampledHitDiffuse(HybridRayResult hit, vec3 normal, uint seed, bool include
     }
 #endif
     return diffuse;
+}
+vec3 SampledHitDiffuse(HybridRayResult hit, vec3 normal, uint seed, bool includeSky, bool exactLights)
+{
+    return SampledHitDiffuse(hit, normal, seed, includeSky, exactLights, false);
 }
 #endif

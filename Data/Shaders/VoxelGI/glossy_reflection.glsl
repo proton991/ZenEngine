@@ -20,7 +20,9 @@ struct GlossyHistory
     vec4  fast;
     vec4  moments; // second luminance moment, hit distance, age, first moment
 };
-#ifdef GLOSSY_HISTORY_WRITE
+#if defined(GLOSSY_CLAMP)
+#    define GLOSSY_ACCESS
+#elif defined(GLOSSY_HISTORY_WRITE)
 #    define GLOSSY_ACCESS writeonly
 #else
 #    define GLOSSY_ACCESS readonly
@@ -66,6 +68,13 @@ GlossyHistory GlossyEmpty()
     return GlossyHistory(uvec4(0), uvec4(0), vec4(0, 0, 0, 1), vec4(0, 0, 0, 1), vec4(0));
 }
 #ifndef GLOSSY_CLEAR
+GIDenoiseGuide GlossyHistoryGuide(GlossyHistory history)
+{
+    // Every R8 UNORM receiver roughness is exactly representable in UNORM16.
+    uvec4 normal = history.normal;
+    normal.z     = floatBitsToUint(unpackUnorm2x16(normal.z).x);
+    return DenoiseUnpackGuide(history.position, normal);
+}
 bool GlossyInView(ivec2 p)
 {
     return all(greaterThanEqual(p, ivec2(0))) && all(lessThan(p, ivec2(glossy.extent.xy)));

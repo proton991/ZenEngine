@@ -1,0 +1,8 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#define GI_CACHE_KEY64
+#define HYBRID_HARDWARE_PROVIDER
+#define PROBE_TILE_SAMPLING
+#define SCREEN_PROBE_SAMPLE_HITS
+#include "screen_probe_trace.glsl"

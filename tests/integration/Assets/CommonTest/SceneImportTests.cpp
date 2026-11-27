@@ -241,7 +241,8 @@ TEST(SceneImport, UnlimitedSpotRangeAndNinetyDegreeConeAreAccepted)
 
     rc::SceneLights collection;
 
-    EXPECT_NE(collection.Add(lights[0]), 0u);
+    const rc::LightId first = collection.Add(lights[0]);
+    ASSERT_NE(first, 0u);
 
     rc::SceneUniformData uniforms;
 
@@ -250,6 +251,16 @@ TEST(SceneImport, UnlimitedSpotRangeAndNinetyDegreeConeAreAccepted)
     EXPECT_FLOAT_EQ(uniforms.lightInfo.x, 1.0f);
 
     EXPECT_FLOAT_EQ(uniforms.lights[0].positionRange.w, 0.0f);
+
+    rc::SceneLight movable   = lights[0];
+    movable.movable          = true;
+    const rc::LightId second = collection.Add(movable);
+    ASSERT_NE(second, 0u);
+    ASSERT_TRUE(collection.Remove(first));
+    collection.WriteUniforms(uniforms);
+    EXPECT_EQ(uniforms.lightIds[0].x, static_cast<uint32_t>(second));
+    EXPECT_EQ(uniforms.lightIds[0].y, static_cast<uint32_t>(second >> 32u));
+    EXPECT_LT(uniforms.lights[0].coneShadow.w, 0.0f);
 }
 
 TEST(SceneImport, RetainsRichMaterialBindingsTransformsAndColorSpaces)

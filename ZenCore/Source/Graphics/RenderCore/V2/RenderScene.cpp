@@ -178,6 +178,7 @@ void RenderScene::LoadSceneMaterials()
 
     m_materialsData.reserve(sgMaterials.size());
     m_normalMapBindings.resize(sgMaterials.size());
+    m_materialRevisions = HeapVector<uint64_t>(sgMaterials.size(), m_surfaceRevision);
 
     for (const sg::Material* pMat : sgMaterials)
     {
@@ -288,6 +289,7 @@ bool RenderScene::SetEnvironmentTexture(const std::string& path, std::string& er
 
         UpdateAuthoredEnvironment();
 
+        ++m_environmentTextureRevision;
         ++m_environmentRevision;
     }
     else
@@ -550,7 +552,7 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
                 {
                     m_authoredVisibility[index]    = visible;
 
-                    m_dirtyShadowInstances[index]  = 1;
+                    m_dirtyShadowInstances[index]  = ShadowVisibilityDirty;
 
                     m_triangleRecordsDirty         = true;
 
@@ -561,7 +563,7 @@ bool RenderScene::AdvanceAnimation(float elapsedSeconds)
                 {
                     m_nodesData[index]            = node->GetData();
 
-                    m_dirtyShadowInstances[index] = 1;
+                    m_dirtyShadowInstances[index] = ShadowVisibilityDirty;
 
                     m_nodeBuffers.MarkDirty(index * sizeof(sg::NodeData), sizeof(sg::NodeData));
 
@@ -657,11 +659,12 @@ bool RenderScene::SetMaterialVariant(int32_t variant)
     {
         m_dirtyClasses |= GI_ALL;
 
-        std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), uint8_t(1));
+        std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), ShadowVisibilityDirty);
 
         m_dirtySurfaceClasses |= GI_ALL;
 
-        m_materialsDirty       = true;
+        std::fill(m_materialRevisions.begin(), m_materialRevisions.end(), m_surfaceRevision + 1);
+        m_materialsDirty = true;
 
         m_materialBuffers.MarkDirty(0, static_cast<uint32_t>(m_materialsData.size() * sizeof(sg::MaterialData)));
 
@@ -690,7 +693,11 @@ void RenderScene::SetNormalMapsEnabled(bool enabled)
         m_normalMapsEnabled = enabled;
         for (size_t index = 0; index < m_materialsData.size(); ++index)
         {
-            ApplyNormalMapBindings(index, m_materialsData[index]);
+            if (m_normalMapBindings[index].base >= 0 || m_normalMapBindings[index].clearcoat >= 0)
+            {
+                ApplyNormalMapBindings(index, m_materialsData[index]);
+                m_materialRevisions[index] = m_surfaceRevision + 1;
+            }
         }
         m_materialsDirty = true;
         m_materialBuffers.MarkDirty(0, static_cast<uint32_t>(m_materialsData.size() * sizeof(sg::MaterialData)));

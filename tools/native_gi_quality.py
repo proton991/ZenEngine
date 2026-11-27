@@ -16,12 +16,28 @@ from profile_hybrid_gi import running_renderers
 import gi_quick_gates as gates
 
 
+def capture_states(folder, frames):
+    return {frame: read_json(str(gates.frame_path(folder, frame)) + '.json') for frame in frames}
+
+
+def check_measurement_states(moving, reference, pairs, uses_cache):
+    if uses_cache:
+        capacities = {state['worldCacheCapacity'] for launch in (moving, reference) for state in launch.values()}
+        if len(capacities) != 1 or 0 in capacities:
+            raise ValueError(f'Moving and held native measurements require one cache capacity, got {sorted(capacities)}')
+    for observed, held in pairs:
+        if moving[observed]['projectionViewBits'] != reference[held]['projectionViewBits']:
+            raise ValueError(f'Moving frame {observed} and held frame {held} have different camera poses')
+
+
 def measure(args, name, setup):
     folder = args.output / name
     folder.mkdir(parents=True, exist_ok=True)
     lights = gates.light_positions(setup, args.light_id, args.light_distance)
     poses = gates.GATE_POSES
-    camera, light_keys, captures, layout, last = gates.reference_timeline(setup, lights, args.hold, poses)
+    # A different starting view can select a different cache capacity before either launch is measured.
+    initial_hold = args.warmup if name != 'retained' else 0
+    camera, light_keys, captures, layout, last = gates.reference_timeline(setup, lights, args.hold, poses, initial_hold)
     # Restore the original light and pose for the static settled/noise pair.
     light_keys.append(dict(frame=last + 1, position=lights[0]))
     camera['keys'].append(gates.key(last + 1, gates.base_pose(setup)))
@@ -29,11 +45,18 @@ def measure(args, name, setup):
     captures += [center - 16, center]
     reference_folder = folder / 'reference'
     commands = [gates.launch(args, reference_folder, setup, camera, light_keys, captures, center)]
+    reference_states = capture_states(reference_folder, captures)
     recovery = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024) if name == 'cache' else (1, 2, 4, 8, 16, 32, 64, 128)
     camera, light_keys, captures, layout_motion, last = gates.quality_timeline(
         setup, lights, static_end=args.warmup, recovery=recovery, poses=poses)
     moving_folder = folder / 'moving'
     commands.append(gates.launch(args, moving_folder, setup, camera, light_keys, captures, last))
+    moving_states = capture_states(moving_folder, captures)
+    pairs = [(frame, layout[kind][step]) for kind, samples in layout_motion['motion'].items()
+             for step, frame in samples.items()]
+    pairs.extend((frame, layout['light']) for frame in layout_motion['light'].values())
+    pairs.extend((frame, center) for frame in layout_motion['flicker'])
+    check_measurement_states(moving_states, reference_states, pairs, name != 'retained')
     mean = np.zeros((2160, 3840), np.float64)
     m2 = np.zeros_like(mean)
     for count, frame in enumerate(layout_motion['flicker'], 1):
@@ -56,10 +79,11 @@ def measure(args, name, setup):
     reference = gates.load(reference_folder, setup, layout['light'])
     result['light'] = [dict(recovery_frame=delay, **metrics(gates.load(moving_folder, setup, frame), reference))
                        for delay, frame in layout_motion['light'].items()]
-    state = read_json(str(gates.frame_path(moving_folder, last)) + '.json')
+    state = moving_states[last]
     report = dict(result=result, state=state, commands=commands,
                   provenance=provenance(args, moving_folder/'setup.zenrender', commands),
-                  own_reference=True, warmup=args.warmup, hold=args.hold, recovery_frames=list(recovery))
+                  own_reference=True, warmup=args.warmup, hold=args.hold, reference_initial_hold=initial_hold,
+                  recovery_frames=list(recovery))
     write_json(folder/'report.json', report)
     return result
 

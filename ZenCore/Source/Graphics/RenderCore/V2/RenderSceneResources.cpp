@@ -138,9 +138,10 @@ void RenderScene::RefreshTransparency()
         {
             m_materialsData[index].textureSampling.z = cutoff;
             m_materialBuffers.MarkDirty(index * sizeof(sg::MaterialData), sizeof(sg::MaterialData));
-            m_materialsDirty       = true;
-            m_dirtySurfaceClasses |= GI_ALL;
-            std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), uint8_t(1));
+            m_materialRevisions[index]  = m_surfaceRevision + 1;
+            m_materialsDirty            = true;
+            m_dirtySurfaceClasses      |= GI_ALL;
+            std::fill(m_dirtyShadowInstances.begin(), m_dirtyShadowInstances.end(), ShadowVisibilityDirty);
         }
     }
     m_transparencyDirty = false;
