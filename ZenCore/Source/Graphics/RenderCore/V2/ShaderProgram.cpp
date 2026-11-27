@@ -719,6 +719,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                              "VoxelGI/screen_probe_gather_sources.comp.spv"));
         StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeGatherDiffuseSourcesSP",
                                              "VoxelGI/screen_probe_gather_diffuse_sources.comp.spv"));
+        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeHistorySourcesSP",
+                                             "VoxelGI/screen_probe_history_sources.comp.spv"));
+        StoreProgram(ZEN_NEW()
+                         ComputeFileSP(pRenderDevice, "ScreenProbeSkySourcesSP", "VoxelGI/screen_probe_sky_sources.comp.spv"));
         for (uint32_t bits : {32u, 64u})
         {
             if (bits == 32u || pRenderDevice->GetGPUInfo().supportBufferInt64Atomics)

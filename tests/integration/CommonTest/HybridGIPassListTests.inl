@@ -152,6 +152,8 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
         const std::string nativeWithoutSky = nativePasses;
         nativePasses.insert(nativePasses.find("ScreenProbePrefilter"),
                             "ScreenProbeSourceSetup, ScreenProbeSourcesCoarse, ScreenProbeSources, ");
+        // The pixel history then keeps the residual sky, and a pass adds the sources back.
+        nativePasses.insert(nativePasses.find("GlossyUncovered"), "ScreenProbeSkySources, ");
         const std::string nativeComputePasses = "SkyboxDraw, GBufferFrustumCull, OffScreen, " + fillField + nativeGIPasses
                                               + computePasses.substr(computePasses.find("ForwardBackground"));
         const bool        budgetAvailable     = device->GetGPUMemoryStats().budgetAvailable;
@@ -229,9 +231,13 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
             {
                 if (temporal)
                 {
-                    // Both diffuse signals must go through history before scene lighting samples them.
+                    // Both diffuse signals must go through history before scene lighting samples them. With
+                    // per-pixel sources, the sky reaches scene lighting after the pass that adds them back.
+                    const uint32_t composed = hardware && !noSky ? 1u : 0u;
                     EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeGather", "ScreenProbeHistory"), 2u);
-                    EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeHistory", "SceneLighting"), 2u);
+                    EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeHistory", "SceneLighting"), 2u - composed);
+                    EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeHistory", "ScreenProbeSkySources"), composed);
+                    EXPECT_EQ(CountPassOutputReads(*device, "ScreenProbeSkySources", "SceneLighting"), composed);
                 }
                 else
                 {
@@ -277,6 +283,11 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
             if (!temporal)
             {
                 expected.erase(expected.find("ScreenProbeHistory, "), std::string_view("ScreenProbeHistory, ").size());
+                if (expected.find("ScreenProbeSkySources, ") != std::string::npos)
+                {
+                    expected.erase(expected.find("ScreenProbeSkySources, "),
+                                   std::string_view("ScreenProbeSkySources, ").size());
+                }
             }
             if (diffuseOnly)
             {

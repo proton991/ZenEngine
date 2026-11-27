@@ -343,6 +343,79 @@ unchanged from the previous build. Frame time with the light ball was 38.92 ms i
 3. Update the pass-list pins.
 4. Run the three-case check and the native GPU tests, and record both here.
 
+## Large-angle specks (2026-11-27)
+
+`build/gi-denoiser-final-fix/replay-large-angle.py` turns the 4K New Sponza camera 30° per frame out to
+180° and back, then snaps 180° in one frame. Each turned frame is compared with settled frames at the same
+pose. About 40% of each sweep frame was outside the previous view. The five settled frames per pose
+differ from their mean in only 0–4 pixels by more than 24 levels, so every speck below comes from motion.
+The specks fell into two kinds:
+
+- **Sun shadow edges.** Shadowed pixels along hard sun edges turned nearly fully lit. The gather adds the
+  exact per-pixel sun (`GatherProbeSources`) to the sky before the pixel history. While the camera moves,
+  the history resamples the previous frame between pixels and blurs the edge. The 5×5 variance clamp
+  does not catch it, because the edge itself makes that variance large. This was added with the pixel
+  history in 4ee3dbf9.
+- **Warm glints on curved rims.** These are mostly on newly revealed pixels. A reflection-only capture
+  (screen-probe debug face 1, `glint-diagnostic`) at frame 1164 put them in the rough probe specular.
+  Glint pixels were 6–20× their settled value in linear light. The revealed area as a whole was close to
+  settled (median ratio 0.96, 0.24% of pixels above 3×). The same rims glowed at frames 1164 and 1933,
+  which points to a systematic error in new probes rather than noise. Scene roughness is above 0.4
+  almost everywhere, so the glossy pass is not involved.
+
+**Fix A (kept): the sun stays out of the pixel history.** `screen_probe_history_sources.comp` subtracts
+the sources from the gathered sky, blends only the residual, and stores it as the history. A new pass,
+`ScreenProbeSkySources` (`screen_probe_sky_sources.comp`), adds the current sources back. It writes the
+result into the history's previous-side sky texture, which nothing reads until the next frame's history
+pass overwrites it, and that texture becomes the sky output. The raw gathered sky keeps the sun for
+captures and debug views. A change between the two history kinds restarts the history.
+
+A first version wrote the lit sky to a new 4K RGBA16F frame texture instead (66 MB). With the light ball
+on, this scene leaves the world cache planner with about 1.1–1.5 GB of headroom. The planner grants a
+quarter of the headroom below 90% of the VRAM budget, so those 66 MB dropped the cache from 1,048,576
+to 524,288 cells in two of four ball launches. Earlier builds received 1,048,576 cells in every launch.
+Reusing the previous side costs no memory.
+
+**Fix B (tried, reverted): limit fresh probe specular.** For a probe's first three frames, each specular
+texel was limited to twice the median of its own and its adjacent probes' estimates on any surface
+(`screen_probe_specular_filter.comp`, at least seven estimates).
+
+Sweep columns average the 12 turned frames. "+24" and "−24" count pixels per frame more than 24 levels
+brighter or darker than the settled image. Every launch below had 1,048,576 world cache cells.
+
+| Case | Build | Sweep clusters (edge / new glint / seen glint) | Bright px | +24 | −24 | > 24 levels | RMS | Snap clusters |
+|---|---|---|---|---|---|---|---|---|
+| Static lights | 4ee3dbf9 | 316 (177 / 85 / 45) | 72.9 | 242 | 1182 | 0.017% | 1.23 | 19 |
+| Static lights | A | 148 (23 / 78 / 39) | 37.8 | 56 | 1142 | 0.015% | 1.20 | 29 |
+| Static lights | A + B | 71 (19 / 33 / 14) | 19.6 | 30 | 2317 | 0.028% | 1.36 | 3 |
+| Light ball | 4ee3dbf9 | 290 (105 / 114 / 69) | 77.3 | 181 | 986 | 0.014% | 1.32 | 48 |
+| Light ball | A | 203 (23 / 98 / 76) | 55.8 | 82 | 968 | 0.013% | 1.31 | 58 |
+| Light ball | A + B | 73 (17 / 34 / 17) | 23.8 | 46 | 2302 | 0.028% | 1.51 | 7 |
+
+Fix A removed 78–87% of the edge specks and halved the bright pixels with static lights, without making
+anything darker. RMS and the share of pixels more than 24 levels off fell slightly. The glints are
+unchanged, as expected. The snap reveals the whole frame, which has no history for fix A to act on;
+its differences are launch variation. Fix B cut the glints by about 60%, but it doubled the pixels more
+than 24 levels too dark, for example 1663 → 3581 at frame 769. Lamp-lit ledges and beams
+seen at a grazing angle turn dark in revealed areas. 89% of those pixels are in revealed areas, where the
+pixel history has nothing to blend, so fix A cannot cause them. A median over every surface is the wrong
+reference for a directional quantity: a neighbour facing elsewhere sees different light in that
+direction. Fix B was reverted.
+
+Still open:
+
+- The rim glints' cause. Because they repeat on the same rims, a probe-level look at why new rim probes
+  overestimate is the next step, rather than a tighter clamp.
+- A single pixel at (114, 808) reads (164, 127, 71) at frames 772 and 1160, the same 120° pose, in every
+  build including 4ee3dbf9. Settled it is black. The identical value across launches means it is not
+  sampling noise. It may be time-varying scene content, since the settled image comes from a later scene
+  time; this is not checked.
+
+[Before](../../build/gi-denoiser-final-fix/large-angle-sparkles/summary.json) ·
+[Fix A](../../build/gi-denoiser-final-fix/large-angle-fix-a/summary.json) ·
+[A + B](../../build/gi-denoiser-final-fix/large-angle-after-fix/summary.json) ·
+[Reflection diagnostic](../../build/gi-denoiser-final-fix/glint-diagnostic)
+
 ## What to measure
 
 1. Light ball on, still camera and walking: whole-screen noise against `global`.
@@ -367,3 +440,6 @@ unchanged from the previous build. Frame time with the light ball was 38.92 ms i
 - Reflections: `screen_probe_prefilter.glsl`, `glossy_reflection_trace.glsl`, `glossy_reflection_clamp.comp`.
 - Evidence, recovery and sky: `screen_probe_trace.glsl`, `screen_probe_integrate.glsl`, `world_cache_resolve.glsl`,
   `ScreenProbeGI.cpp` (ten sky-delta words per probe).
+- Large-angle specks: `screen_probe_history.glsl` (body moved from `screen_probe_history.comp`),
+  `screen_probe_history.comp`, `screen_probe_history_sources.comp`, `screen_probe_sky_sources.comp`,
+  `ScreenProbeGI.cpp/.h`, `ShaderProgram.cpp`, and the pass-list pins in `HybridGIPassListTests.inl`.

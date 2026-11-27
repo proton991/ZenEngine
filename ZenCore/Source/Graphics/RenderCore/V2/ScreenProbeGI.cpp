@@ -245,7 +245,7 @@ void ScreenProbeGI::RecordSources(RDGComputePassDesc&        gather,
                                   VoxelGIRenderer&           voxelGI,
                                   RenderScene&               scene,
                                   const HybridGIUniformData& receiver,
-                                  RHISampler*                sampler) const
+                                  RHISampler*                sampler)
 {
     RenderGraph&   graph = *m_device->GetCurrentFrameRDG();
     RDGTextureDesc texture;
@@ -303,6 +303,8 @@ void ScreenProbeGI::RecordSources(RDGComputePassDesc&        gather,
     }
     gather.BindStorageBuffer("ScreenProbeSourceLights", lights);
     gather.BindSampledTexture("probeSourceVisibility", sampler, sources);
+    m_sourceVisibility = sources;
+    m_sourceLights     = lights;
     if (m_useSpecular)
     {
         voxelGI.BindSecondaryBRDF(gather);
@@ -324,10 +326,12 @@ void ScreenProbeGI::RecordPixelHistory(VoxelGIRenderer&           voxelGI,
     const PixelHistorySide& current  = m_pixelHistory[side];
     const PixelHistorySide& previous = m_pixelHistory[1u - side];
     HybridGIUniformData     uniforms = receiver;
-    uniforms.sampling.w              = !reset && m_validHistory != 0 ? 1u : 0u;
+    // With per-pixel sources the history keeps the residual sky. A history of the other kind restarts.
+    m_recordedResidual  = m_uniforms.residualEnvironment != 0u;
+    uniforms.sampling.w = !reset && m_validHistory != 0 && m_recordedResidual == m_pixelHistoryResidual ? 1u : 0u;
 
     RDGComputePassDesc pass;
-    pass.SetShaderProgramName("ScreenProbeHistorySP");
+    pass.SetShaderProgramName(m_recordedResidual ? "ScreenProbeHistorySourcesSP" : "ScreenProbeHistorySP");
     pass.SetPassTag("ScreenProbeHistory");
     Bind(pass, uniforms, sampler);
     cache.BindLighting(pass);
@@ -348,19 +352,42 @@ void ScreenProbeGI::RecordPixelHistory(VoxelGIRenderer&           voxelGI,
     const char* const inputNames[]    = {"inputSky", "inputBounce"};
     const char* const previousNames[] = {"previousSky", "previousBounce"};
     const char* const outputNames[]   = {"outputSky", "outputBounce"};
+    const RDGTexture  older[] = {resources.ImportTexture(previous.diffuse[0]), resources.ImportTexture(previous.diffuse[1])};
     for (uint32_t signal = 0; signal < std::size(inputNames); ++signal)
     {
         const RDGTexture raw = m_gatheredDiffuse[signal];
         pass.BindSampledTexture(inputNames[signal], sampler, raw);
-        pass.BindSampledTexture(previousNames[signal], sampler,
-                                uniforms.sampling.w != 0u ? resources.ImportTexture(previous.diffuse[signal]) : raw);
+        pass.BindSampledTexture(previousNames[signal], sampler, uniforms.sampling.w != 0u ? older[signal] : raw);
         m_output[signal] = resources.ImportTexture(current.diffuse[signal]);
         pass.BindStorageImage(outputNames[signal], m_output[signal], RDGContentGuarantee::eFullWrite);
+    }
+    if (m_recordedResidual)
+    {
+        pass.BindStorageBuffer("ScreenProbeSourceLights", m_sourceLights);
+        pass.BindSampledTexture("probeSourceVisibility", sampler, m_sourceVisibility);
     }
     const glm::uvec2 groups = (m_extent + glm::uvec2(ZEN_SCREEN_PROBE_SPACING - 1u)) / ZEN_SCREEN_PROBE_SPACING;
     graph.AddComputePass(std::move(pass)).RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
         encoder.Dispatch(groups.x, groups.y, 1);
     });
+    if (m_recordedResidual)
+    {
+        // The exact sources return after the blend. The previous side is free until the next frame's history
+        // pass overwrites it, so the lit sky needs no texture of its own.
+        RDGComputePassDesc compose;
+        compose.SetShaderProgramName("ScreenProbeSkySourcesSP");
+        compose.SetPassTag("ScreenProbeSkySources");
+        BindHybridReceiverGuides(compose, sampler, receiver);
+        compose.BindStorageBuffer("ScreenProbeSourceLights", m_sourceLights);
+        compose.BindSampledTexture("probeSourceVisibility", sampler, m_sourceVisibility);
+        compose.BindSampledTexture("residualSky", sampler, m_output[0]);
+        compose.BindStorageImage("outputLitSky", older[0], RDGContentGuarantee::eFullWrite);
+        m_output[0]                    = older[0];
+        const glm::uvec2 composeGroups = (m_extent + glm::uvec2(7u)) / 8u;
+        graph.AddComputePass(std::move(compose)).RecordPassCommands([composeGroups](RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch(composeGroups.x, composeGroups.y, 1);
+        });
+    }
 }
 
 void ScreenProbeGI::RecordClear(RenderGraph& graph) const
@@ -681,9 +708,10 @@ void ScreenProbeGI::OnRenderGraphExecuted(RenderFrameResult result)
     }
     if (m_recorded && result == RenderFrameResult::eSubmitted)
     {
-        m_validHistory = std::min(uint32_t(m_uniforms.control.y) + 1u, uint32_t(ZEN_SCREEN_PROBE_HISTORY_FRAMES - 1));
-        m_needsClear   = false;
-        m_current      = (m_current + 1u) % ZEN_SCREEN_PROBE_HISTORY_FRAMES;
+        m_validHistory         = std::min(uint32_t(m_uniforms.control.y) + 1u, uint32_t(ZEN_SCREEN_PROBE_HISTORY_FRAMES - 1));
+        m_pixelHistoryResidual = m_recordedResidual;
+        m_needsClear           = false;
+        m_current              = (m_current + 1u) % ZEN_SCREEN_PROBE_HISTORY_FRAMES;
     }
     else if (result != RenderFrameResult::eDeclined && result != RenderFrameResult::eSubmitted)
     {

@@ -1,0 +1,23 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+// The pixel history keeps the residual sky without the exact per-pixel sources (screen_probe_history.glsl).
+// Add the current sources back for lighting. The output is the history's previous side, which is free until
+// the next frame's history pass overwrites it.
+#include "hybrid_guides.glsl"
+#include "hybrid_sampling.glsl"
+#define SCREEN_PROBE_DIFFUSE_ONLY
+#include "screen_probe_source_gather.glsl"
+layout(set = 1, binding = 134) uniform sampler2D residualSky;
+layout(set = 1, binding = 142, rgba16f) writeonly uniform image2D outputLitSky;
+layout(local_size_x = 8, local_size_y = 8) in;
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (all(lessThan(pixel, imageSize(outputLitSky))))
+    {
+        vec4 residual = texelFetch(residualSky, pixel, 0);
+        vec3 sources  = vec3(0), unused;
+        GatherProbeSources(pixel, sources, unused);
+        imageStore(outputLitSky, pixel, vec4(residual.rgb + sources, residual.w));
+    }
+}

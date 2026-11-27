@@ -103,7 +103,7 @@ private:
                                     VoxelGIRenderer&           voxelGI,
                                     RenderScene&               scene,
                                     const HybridGIUniformData& receiver,
-                                    RHISampler*                sampler) const;
+                                    RHISampler*                sampler);
     RenderDevice*     m_device;
     GlossyReflections m_glossy;
     bool              m_useSpecular = false;
@@ -121,8 +121,15 @@ private:
     uint32_t         m_validHistory{0};
     bool             m_needsClear{true};
     bool             m_recorded{false};
+    // This frame's per-pixel environment sources (RecordSources), when the gather lights them.
+    RDGTexture m_sourceVisibility;
+    RDGBuffer  m_sourceLights;
     // Whether the last allocation requested a pixel history. Its resources stay null if memory ran out.
     bool m_pixelHistoryRequested{false};
+    // Whether the pixel history holds the residual sky without the per-pixel sources, as submitted
+    // and as recorded this frame.
+    bool m_pixelHistoryResidual{false};
+    bool m_recordedResidual{false};
     struct Uniforms
     {
         Mat4       projectionView{1};
