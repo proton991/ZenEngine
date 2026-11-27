@@ -402,18 +402,138 @@ pixel history has nothing to blend, so fix A cannot cause them. A median over ev
 reference for a directional quantity: a neighbour facing elsewhere sees different light in that
 direction. Fix B was reverted.
 
+### Stage 1: new-probe reflection estimate (2026-11-27)
+
+The rough-specular prefilter divided each texel's samples by their actual lobe weight, the ratio
+estimator of stochastic screen-space reflections. That estimator assumes the samples were drawn for the
+lobe. Probe rays are drawn for the hemisphere and the lights, so a grazing rim lobe can hold only a few
+lamp-guided samples, and their mean became the lobe's value. Probes with history do not show this: history
+is counted at the expected weight, and the running value converges to the ratio of sums over many frames,
+which is consistent. A new probe had no history, so one frame's biased ratio was its whole estimate.
+
+Two corrections, measured with the reflection-only diagnostic at frame 1164:
+
+| Estimator for a new probe | Revealed-area mean / settled | Pixels > 3× settled | Glint pixels × settled |
+|---|---|---|---|
+| Ratio (4ee3dbf9) | 0.894 | 0.240% | 5.1–18.5 |
+| Divide by at least the expected weight | 0.736 | 0.055% | 2.5–5.2 |
+| Fill missing weight with the probe's mean radiance (kept) | 0.898 | 0.078% | 2.5–5.4 |
+
+The settled reflection is unchanged by both (ratio 0.999 to the baseline). Dividing by the expected weight
+alone caps the rare peak-hit frames that carry a narrow lobe's mean, so new probes read 18% dark. The kept
+version fills only the weight missing from one expected frame. It uses the probe's cosine-weighted mean
+radiance from the same samples, about its irradiance over π. A lobe sampled at or above its expected weight
+keeps its ratio, bounded by the brightest sample. A probe with at least one expected frame of weight,
+history included, is unchanged. No pass was added.
+
+| Case | Build | Sweep clusters (edge / new glint / seen glint) | Bright px | +24 | −24 | RMS | Snap clusters / bright px |
+|---|---|---|---|---|---|---|---|
+| Static lights | A | 148 (23 / 78 / 39) | 37.8 | 56 | 1142 | 1.20 | 29 / 42.0 |
+| Static lights | A + stage 1 | 133 (35 / 60 / 31) | 34.7 | 54 | 1123 | 1.19 | 9 / 18.0 |
+| Light ball | A | 203 (23 / 98 / 76) | 55.8 | 82 | 968 | 1.31 | 58 / 133.0 |
+| Light ball | A + stage 1 | 157 (31 / 64 / 58) | 43.8 | 73 | 981 | 1.30 | 31 / 73.5 |
+
+New-area glints fell by 23–35% on the sweeps, and snap clusters by 47–69%, with no added darkening. The edge
+counts moved within launch variation. The remaining glint pixels are 2.5–5× settled with either correction,
+so they come from frames where a lamp-guided sample lands near the lobe peak (weight above expected). One
+frame of guided rays cannot fix a narrow lobe's mean: the remaining error is too little information in a
+new probe, the same cause as the dark revealed areas (stage 2).
+
+### Stage 2: newly revealed areas (2026-11-27)
+
+Sky-only and bounce-only diagnostics (debug faces 0 and 2) at frame 1164 do not show revealed areas
+starting dark on average:
+
+| Signal | Revealed mean / settled | Median | 10th–90th percentile | < 0.5× | > 2× |
+|---|---|---|---|---|---|
+| Sky (with exact sun) | 0.999 | 1.000 | 0.75–1.22 | 3.50% | 0.23% |
+| Bounce | 0.977 | 0.984 | 0.85–1.10 | 0.76% | 0.18% |
+| Reflection (stage 1) | 0.910 | 0.978 | 0.67–1.32 | 3.32% | 0.79% |
+
+The distribution is skewed: most new pixels sit somewhat low and a few far high. This is the
+first-frame noise of 48 rays per new probe (`ZEN_SCREEN_PROBE_MAX_BATCHES` × 16). Re-weighting the same
+rays cannot remove it. Options that add information are more first-frame rays, whose cost grows with how
+much a turn reveals, or a world-space record that a revisited area starts from. The existing cache seed
+(`worldCacheSeed`, at most one batch of weight) lowered young-probe RMS by 3% in the earlier plan, so it was
+not rerun here.
+
+### Stage 3: normal camera motion (2026-11-27)
+
+The three-case check (`tools/gi_noise_fps.py`, 1° per frame pan) with fix A and stage 1:
+
+| Case | Build | Frame ms | RMS | > 4 levels | > 16 levels | > 10% off |
+|---|---|---|---|---|---|---|
+| Still | 4ee3dbf9 | 18.88 | 0.025 | 0.000% | 0.0000% | 0.000% |
+| Still | A + stage 1 | 19.08 | 0.025 | 0.000% | 0.0000% | 0.000% |
+| Moving camera | 4ee3dbf9 | 26.33 | 0.842 | 0.405% | 0.0154% | 1.297% |
+| Moving camera | A + stage 1 | 28.82 | 0.805 | 0.403% | 0.0123% | 1.297% |
+| Light ball | 4ee3dbf9 | 38.92 | 0.788 | 0.363% | 0.0132% | 0.971% |
+| Light ball | A + stage 1 | 38.58 | 0.762 | 0.375% | 0.0117% | 0.977% |
+
+Large errors fell 11–20% and RMS 3–4%. The share more than 10% off did not change. The moving-camera frame
+time rose 2.5 ms in this launch, while the light-ball and still cases, which run the same passes,
+changed by under 0.4 ms. That matches the known per-launch pass-speed variation rather than the added
+pass.
+
+Where the moving-camera error is:
+
+- Only 11–15% of the pixels more than 10% off lie in the 140-pixel strip at the leading edge, and about 10%
+  on luminance edges. The rest are on surfaces that stayed in view.
+- 82% of them are within 4 levels of the settled image, at a settled level near 12, with mixed sign.
+- The signed error's standard deviation is 0.73 levels per pixel and 0.40 levels for 16 × 16 block
+  means: much of it is at probe scale. The worst block, lantern glass, shows smooth 30–60 pixel blotches
+  in both the settled and the moving frame, in a different pattern.
+
+This error is against a settled image whose own probe pattern is fixed, so it cannot separate crawl
+from that pattern. `build/gi-denoiser-final-fix/crawl.py` measures crawl directly: consecutive frames of a
+1° per frame pan, the earlier reprojected exactly into the later view (the camera only rotates), with the
+16 × 16 block mean of the difference as the probe-scale change. Frames held still in the same launch
+measure 0.001. Binned by the pixel history's bounce age (debug face 3, same camera path):
+
+| History age | Share of frame | Block-mean change per frame |
+|---|---|---|
+| 0–4 frames | 4.6% | 0.228 levels |
+| 4–8 | 7.1% | 0.191 |
+| 8–16 | 11.4% | 0.159 |
+| 16–31 (mostly geometry edges) | 6.1% | 0.431 |
+| 32, the cap | 68.8% | 0.085 |
+
+On surfaces seen since the pan began, the history stays at its cap except along geometry edges, and the
+probe-scale change is under a tenth of a level per frame. The visible motion noise is the convergence of
+surfaces revealed in the last ~16 frames, about a third of the screen during this ±30° pan. The
+settled-image error on mature surfaces is the difference between two stable probe patterns, not crawl.
+Items 1–3 therefore share one cause: a newly revealed surface starts with one frame of 48 rays per probe.
+
+### Proposed no-visible-noise gate
+
+All on 4K New Sponza with the full world cache, from the two existing tools:
+
+| Test | Measure | Now (A + stage 1) | Gate |
+|---|---|---|---|
+| Three-case, still | Pixels > 4 levels | 0.000% | 0.000% |
+| Three-case, moving camera and light ball | Pixels > 10% off | 1.297% / 0.977% | ≤ 1.0% |
+| Three-case, moving camera and light ball | 16 × 16 block-mean error, std | 0.40 levels (moving) | ≤ 0.2 levels |
+| Three-case, moving camera and light ball | Pixels > 16 levels | 0.0123% / 0.0117% | ≤ 0.005% |
+| Large-angle sweep | Speck clusters on surfaces in view last frame (edge + seen glint) per frame | 5.5 / 7.4 | 0 |
+| Large-angle sweep and snap | Speck clusters on newly revealed surfaces per frame | 5.0 / 5.3 | ≤ 1 |
+| Editor, by eye | Light ball, slow pans and fast turns | — | No visible speckle or crawl |
+
+The block-mean row targets the probe-scale crawl that the per-pixel measures understate. Revealed
+surfaces get a nonzero allowance because one frame of rays cannot be noise-free.
+
 Still open:
 
-- The rim glints' cause. Because they repeat on the same rims, a probe-level look at why new rim probes
-  overestimate is the next step, rather than a tighter clamp.
-- A single pixel at (114, 808) reads (164, 127, 71) at frames 772 and 1160, the same 120° pose, in every
-  build including 4ee3dbf9. Settled it is black. The identical value across launches means it is not
-  sampling noise. It may be time-varying scene content, since the settled image comes from a later scene
-  time; this is not checked.
+- New probes start from one frame of rays: the first-frame noise of revealed surfaces, their ~16-frame
+  convergence during pans, and the remaining new-probe glints. [ProbeMemoryPlan.md](ProbeMemoryPlan.md) plans
+  the fix for surfaces seen before.
+- A single pixel at (114, 808) reads (164, 127, 71) at frames 772 and 1160, the same 120° pose, and is
+  black when settled. It vanished with the expected-weight estimator and returned with the kept one, so it
+  is a new-probe reflection like the other glints, deterministic because each frame's rays are.
 
 [Before](../../build/gi-denoiser-final-fix/large-angle-sparkles/summary.json) ·
 [Fix A](../../build/gi-denoiser-final-fix/large-angle-fix-a/summary.json) ·
 [A + B](../../build/gi-denoiser-final-fix/large-angle-after-fix/summary.json) ·
+[A + stage 1](../../build/gi-denoiser-final-fix/large-angle-stage1b/summary.json) ·
 [Reflection diagnostic](../../build/gi-denoiser-final-fix/glint-diagnostic)
 
 ## What to measure

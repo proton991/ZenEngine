@@ -229,6 +229,16 @@ void main()
             barrier();
         }
 #endif
+        // The cosine-weighted mean radiance of this frame's samples, the probe's irradiance over pi. It stands
+        // in for the directions a sparsely sampled lobe did not receive (below).
+        vec4  meanRadiance = vec4(0);
+        float meanWeight   = 0.0;
+        for (uint sampleIndex = 0u; sampleIndex < sampleCount; ++sampleIndex)
+        {
+            meanRadiance += radiance[sampleIndex] * densities[sampleIndex];
+            meanWeight   += densities[sampleIndex];
+        }
+        meanRadiance /= max(meanWeight, 1e-20);
         for (uint texel = lane; texel < ZEN_SCREEN_PROBE_SPECULAR_TEXELS; texel += 64u)
         {
             uint  level     = texel < 64u ? 0u : 1u + (texel - 64u) / 16u;
@@ -305,9 +315,19 @@ void main()
                 current     += history * prior;
                 totalWeight += prior;
             }
-            current                    = clamp(current / max(totalWeight, 1e-20), vec4(0), vec4(65504, 65504, 65504, 1));
-            uint address               = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
-            probeSpecularData[address] = StochasticPackHalf(current, address ^ HybridHash(hybrid.sampling.x ^ 0x5f3a1u));
+            // Probe rays are drawn for the hemisphere and the lights, not for each lobe. A grazing or narrow
+            // lobe can hold only a few guided samples, and their ratio estimate is their own mean, not the
+            // lobe's: a new probe on a rim reflected a lamp many times brighter than its settled value.
+            // Filling the missing weight with zero instead loses the rare peak hits that carry a narrow lobe's
+            // mean, and new probes read dark. Until the estimate has one expected frame of weight, the missing
+            // weight takes the probe's mean radiance. A lobe sampled at or above its expected weight keeps its
+            // ratio, which cannot exceed the brightest sample, and a probe with history converges as before.
+            float missing               = max(float(max(sampleCount, 1u)) - totalWeight, 0.0);
+            current                    += meanRadiance * missing;
+            totalWeight                += missing;
+            current                     = clamp(current / max(totalWeight, 1e-20), vec4(0), vec4(65504, 65504, 65504, 1));
+            uint address                = index * ZEN_SCREEN_PROBE_SPECULAR_TEXELS + texel;
+            probeSpecularData[address]  = StochasticPackHalf(current, address ^ HybridHash(hybrid.sampling.x ^ 0x5f3a1u));
         }
     }
 }
