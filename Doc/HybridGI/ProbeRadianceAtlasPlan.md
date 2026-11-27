@@ -223,6 +223,10 @@ spatial filter and live only in its transient output. At 4K (162,000 probes, fou
 250 MB. The world cache still gets 1,048,576 cells. The crawl matches R2 (0.165 / 0.306), start-up is unchanged,
 and a validation launch is clean.
 
-**Review fix, not yet measured.** The predicted moving-light change reached only cells that drew a ray in that
-frame, so parts of a moving light's reflection could trail by a frame. A cell without samples now takes the change
-its nearby directions saw (inverse PDF times cos^8 about the cell's axis). It is zero without moving lights.
+**Review fix.** The predicted moving-light change reached only cells that drew a ray in that frame, so parts of a
+moving light's reflection could trail by a frame. A cell without samples now takes the change its nearby directions
+saw (inverse PDF times cos^8 about the cell's axis). It is zero without moving lights. Measured on 2026-11-27: a
+validation launch is clean, and the three-case run gives still camera RMS 0.025 with 0.000% of pixels above
+4 levels, moving camera 1.203% and light ball 0.889% of pixels more than 10% off (R2: 1.224% / 0.887%). Both
+moving-case numbers are within launch variance, so the fix neither helps nor hurts the full-frame measure. The
+trailing cells it fixes cover too little of the frame to show there.
