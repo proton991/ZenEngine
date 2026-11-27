@@ -393,10 +393,22 @@ void         ProbeHistoryFootprint(ScreenProbe probe, uint lane)
     }
     barrier();
 }
+// radianceVariance is the error variance of the footprint's value as this probe's prior. The spread of the
+// taps around their mean also counts a smooth gradient, which the tent-weighted value follows, and each tap's
+// own sampling noise, which averaging the taps reduces. Count only what a plane through the taps leaves
+// unexplained beyond that noise, plus the plane's offset between the taps' centre and the probe. During motion
+// every anchor is re-placed each frame; counting young taps' noise as bias discounted every relocation and kept
+// probes young. Both spreads are corrected for the degrees of freedom of the taps' effective count n, by
+// n / (n - 1) and n / (n - 3), so a plane through few taps cannot read as agreement. Below four effective taps,
+// or where the fit would exceed the plain spread, keep the plain spread less the noise.
 vec4 ProbePastValue(ScreenProbe probe, uint item, out float radianceVariance)
 {
-    vec4  value  = vec4(0);
-    float second = 0.0;
+    vec4  value      = vec4(0);
+    float second     = 0.0;
+    vec2  offsetMean = vec2(0), lumaOffset = vec2(0);
+    vec3  offsetSecond = vec3(0);
+    float tapNoise     = 0.0;
+    float squares      = 0.0;
     for (uint tap = 0u; tap < 18u; ++tap)
     {
         float weight = pastWeights[tap];
@@ -415,15 +427,42 @@ vec4 ProbePastValue(ScreenProbe probe, uint item, out float radianceVariance)
             }
             if ((item & 3u) == 3u)
             {
-                float luma  = HybridLuminance(sampleValue.rgb);
-                second     += weight * luma * luma;
+                float luma    = HybridLuminance(sampleValue.rgb);
+                vec2  offset  = pastOffsets[tap] / weight;
+                second       += weight * luma * luma;
+                offsetMean   += weight * offset;
+                lumaOffset   += weight * luma * offset;
+                offsetSecond += weight * vec3(offset.x * offset.x, offset.x * offset.y, offset.y * offset.y);
+                squares      += weight * weight;
+                // A tap's estimate varies by its per-frame variance over its age.
+                vec4 statistics  = PreviousProbeLighting(index, 8u + (item >> 2u));
+                tapNoise        += weight * max(statistics.w, 0.0) / max(statistics.z, 1.0);
             }
             value += sampleValue * weight;
         }
     }
-    value            /= max(pastWeightSum, 1e-20);
+    float total       = max(pastWeightSum, 1e-20);
+    value            /= total;
     float mean        = HybridLuminance(value.rgb);
-    radianceVariance  = max(second / max(pastWeightSum, 1e-20) - mean * mean, 0.0);
+    float noise       = tapNoise / total;
+    float taps        = squares > 0.0 ? total * total / squares : 0.0;
+    float plain       = max(second / total - mean * mean, 0.0);
+    radianceVariance  = taps > 1.0 ? plain * taps / (taps - 1.0) : plain;
+    offsetMean       /= total;
+    vec2 covariance   = lumaOffset / total - mean * offsetMean;
+    vec3 spread =
+        offsetSecond / total - vec3(offsetMean.x * offsetMean.x, offsetMean.x * offsetMean.y, offsetMean.y * offsetMean.y);
+    float determinant = spread.x * spread.z - spread.y * spread.y;
+    if (taps >= 4.0 && determinant > 1e-4 * max(spread.x * spread.z, 1e-20))
+    {
+        vec2 gradient =
+            vec2(spread.z * covariance.x - spread.y * covariance.y, spread.x * covariance.y - spread.y * covariance.x)
+            / determinant;
+        float residual   = max(plain - dot(covariance, gradient), 0.0) * taps / (taps - 3.0);
+        float bias       = dot(gradient, offsetMean);
+        radianceVariance = min(radianceVariance, residual + bias * bias);
+    }
+    radianceVariance = max(radianceVariance - noise, 0.0);
     return value;
 }
 vec4 ProbePastValue(ScreenProbe probe, uint item)
