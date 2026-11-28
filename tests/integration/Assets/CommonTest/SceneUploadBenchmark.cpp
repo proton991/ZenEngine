@@ -434,7 +434,7 @@ bool Submit(VulkanCommandListContext& context, const RHIGPUTimingPtr& gpu, doubl
     const Clock::time_point submitted = Clock::now();
     if (valid)
     {
-        valid = context.GetQueue()->WaitForCompletion(context.GetLastSubmittedSerial(), UINT64_MAX);
+        valid = context.GetQueue()->WaitForCompletion(context.GetQueue()->GetLastSubmittedSerial(), UINT64_MAX);
     }
     const Clock::time_point completed = Clock::now();
     submitMs                          = Milliseconds(start, submitted);
@@ -671,8 +671,7 @@ int main(int argc, char** argv)
     if (valid)
     {
         zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(options.validation);
-        VulkanRHI rhi;
-        GDynamicRHI                       = &rhi;
+        VulkanRHI               rhi(zen::rc::RenderConfig::GetInstance().rhiDevice);
         const Clock::time_point start     = Clock::now();
         const RHIError          initError = rhi.InitChecked();
         ZEN_RHI_VERIFY_MSG_F(!initError.IsFailure(), "{} failed ({})", initError.operation, initError.nativeCode);
@@ -707,8 +706,7 @@ int main(int argc, char** argv)
             vkDestroyDebugUtilsMessengerEXT(rhi.GetInstance(), messenger, nullptr);
         }
         rhi.Destroy();
-        valid       = valid && validationErrors == 0;
-        GDynamicRHI = nullptr;
+        valid = valid && validationErrors == 0;
     }
     else
     {

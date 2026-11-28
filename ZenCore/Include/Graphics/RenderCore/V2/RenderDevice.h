@@ -407,7 +407,8 @@ private:
 
     void CollectDestroyedResourceHistory();
 
-    // Runs on the releasing thread; CollectDestroyedResourceHistory applies the IDs on the render thread.
+    // Runs where the release's cleanup runs (the RHI worker in threaded mode); CollectDestroyedResourceHistory applies
+    // the IDs on the render thread.
     void OnResourceDestroyed(uint64_t stableId) override;
 
     void ProcessDeferredViewportResize();

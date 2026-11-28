@@ -153,7 +153,7 @@ The order is 0 → 1 → 2 → 3 → 4 → 5 → 6.
 
 ### Phase 1 — Delete dead code (about −600 lines, no behaviour change)
 
-**Status: done on 2026-11-28, uncommitted.** Library lines fell by 433, from 31,655 to 31,222. All five ZenRHI CTest suites (658 cases) and the six engine suites that link ZenRHI pass with unchanged counts. D6's options and most of the context serial plumbing stayed, as noted below.
+**Status: done on 2026-11-28, in ZenRHI 82dfd97.** Library lines fell by 433, from 31,655 to 31,222. All five ZenRHI CTest suites (658 cases) and the six engine suites that link ZenRHI pass with unchanged counts. D6's options and most of the context serial plumbing stayed, as noted below.
 
 Every item has no caller in ZenRHI, its tests, examples, test-support or the engine. [Appendix A](#appendix-a-dead-code-for-phase-1) lists them with locations. In outline:
 
@@ -184,7 +184,7 @@ Every item has no caller in ZenRHI, its tests, examples, test-support or the eng
 
 ### Phase 2 — Collapse forwarding layers and duplicates (about −1.1k, internal)
 
-**Status: done on 2026-11-28, uncommitted.**
+**Status: done on 2026-11-28, in ZenRHI 82dfd97.**
 - **Size.** Library lines fell by a further 474, to 30,748; that is 907 below the 31,655 baseline.
 - **Suites.** The same five ZenRHI suites (658 cases) and six engine suites pass with unchanged counts.
 - **ZenApp smoke.** The `inspection.gltf` fixture passed in all four configurations (inline and threaded RHI, async compute off and on) with validation required and zero validation errors. Results are in `build/checks/zenrhi-phase2-smoke-20261128-140811`.
@@ -270,7 +270,7 @@ These items moved after reading the code:
 
 ### Phase 3 — Public API cleanup, released as 0.3.0
 
-**Status: done on 2026-11-28, uncommitted, except the interop item, which waits for U1.**
+**Status: done on 2026-11-28, in ZenRHI 82dfd97, except the interop item, which waits for U1.**
 - **Size.** Public headers fell from 6,990 to 6,215 lines. The library is at 30,666 lines, 989 below baseline.
 - **Suites and examples.** Every suite passes: ZenRHI has 659 cases, and RenderCoreTest has 659 tests after one moved to ZenRHI. All five examples run and verify their results, and the full engine release build passes.
 - **ZenApp smoke.** All four configurations passed with zero validation errors (`build/checks/zenrhi-phase3-smoke-20261128-150830`).
@@ -384,7 +384,7 @@ These items moved after reading the code:
 
 ### Phase 4 — Pass the device instead of globals (needs D2)
 
-**Status: done on 2026-11-28, uncommitted.** ZenRHI defines no process-wide device, thread, frame state or option object.
+**Status: done on 2026-11-28, in ZenRHI 82dfd97.** ZenRHI defines no process-wide device, thread, frame state or option object.
 - **Size.** The library is at 30,800 lines, 856 below baseline; the device plumbing added 134 lines back after Phase 3. Public headers are at 6,269 lines.
 - **Suites and examples.** Every suite passes. ZenRHI has 658 cases after the obsolete global-pointer test was deleted, and the six engine suites are unchanged. All five examples run and verify their results, and the full engine release build passes.
 - **ZenApp smoke.** All four configurations passed with zero validation errors (`build/checks/zenrhi-phase4-smoke-20261128-163610`).
@@ -440,7 +440,7 @@ Work from the leaf classes up. The size stays about the same.
 
 ### Phase 5 — Restructure the large subsystems
 
-**Status: done on 2026-11-28 within the owner's scope, uncommitted.** Slim 5a replaced full 5a. The `DynamicRHI` split and 5e moved after reading the code; see the deferral table.
+**Status: done on 2026-11-28 within the owner's scope, in ZenRHI 82dfd97.** Slim 5a replaced full 5a. The `DynamicRHI` split and 5e moved after reading the code; see the deferral table.
 - **So far.** The library is at 29,353 lines, 2,302 below baseline, and public headers are at 6,267 lines. Every suite passes, at ZenRHI 152/82/349 and engine 15/1/6/20/71/659. All five examples run without validation errors or leaks, the full engine release build passes, and the ZenApp smoke matrix passed with zero validation errors in all four configurations (`build/checks/zenrhi-phase5b-smoke-20261128-185040`).
 - **5c, submission: done.**
   - Timeline semaphores are a device requirement (D1). The fence submission path, `VulkanFence` and `VulkanFenceManager` are deleted, and so is Vulkan's CPU wait for cross-queue dependencies.
@@ -598,6 +598,21 @@ Deferred within Phase 5:
 - **Move a pure `ChooseSwapchainConfig(caps, formats, modes, desc)` out of the swapchain constructor** (229 lines). Also split `Destroy` (140) and `CreateSwapchain` (132).
 - **Drop the test-only synchronous present path.** Once only the checked APIs remain (Phase 3), it has no user.
 - **Fix semaphore recycling.** Production never recycles semaphores today. Either the swapchain uses `ReleaseSemaphore`, or delete it.
+
+### Review follow-up
+
+**Status: done on 2026-11-28, uncommitted.** [ZenRHIRefinementReview.md](ZenRHIRefinementReview.md) reviewed 82dfd97 and a7e1efb0. Every finding was checked against the code. These were introduced by the refactor and are fixed:
+
+- **One live backend per process (review 2.1, filed there as pre-existing).** The old factory refused a second backend while `GVulkanRHI` was set; removing the global removed the guard. `EnumerateRHIAdapters` during a live device then ran `volkFinalize()` and wiped the live device's entry points. `VulkanRHI` now claims the process-wide volk loader in its constructor; a second one fails `InitChecked` with `eInvalidArgument` and leaves the loader alone. Worker timing is applied only when a device is created.
+- **Destroy order (1.2).** The eight resource `Destroy()` methods read `m_pRHI` after running their own destructor. `DeleteVulkanResource` reads the allocator first.
+- **Blocked submission is fatal (1.3).** `SubmitCommandLists` and `SubmitRecordedWorkloads` return `eFatal` whenever submissions are blocked, not only for device loss.
+- **Standalone teardown (1.4).** `VulkanRHI::Destroy` closes cleanup admission (`RHIThread::CloseCleanupAdmission`), so a release after a backend torn down without an executor leaks with a report instead of reaching the deleted backend.
+- **SceneUploadBenchmark (1.1)** builds again: it passes its `RHIDeviceDesc`, waits on the queue's serial and drops the removed global.
+- **Stale documentation (1.9)** in the README, the programming guide and code comments, and the leftover dead helpers, duplicate includes and repeated device queries from the review's low list.
+
+The engine commit's line "The viewport recreation queries no longer go through the RHI thread" is inaccurate: the engine no longer calls `Invoke` itself, but `VulkanViewport::NeedsRecreation` and `CanRecreate` still run on the RHI thread through `Invoke` inside the viewport. The per-frame wait predates the refactor.
+
+The review's other findings predate the refactor and stay open; 2.2 (micromap alignment), 2.5 (a bindless slot claimed by a rejected parameter set) and 2.13 (creation validation gaps) matter most. 1.6 (shader creation errors collapse to `eBackendFailure`) was introduced but only loses the error code, and is left for the error-path work.
 
 ### Phase 6 — Tests and documentation
 
