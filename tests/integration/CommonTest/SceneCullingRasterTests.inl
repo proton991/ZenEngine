@@ -9,7 +9,7 @@ RDGGraphicsPassDesc SceneCullRasterPass(const RenderScene& scene,
     states.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
     const uint32_t colorCount          = hybrid ? 7 : 4;
     states.colorBlendState.AddAttachments(colorCount);
-    states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
     pass.SetPipelineStates(states);
     pass.SetRenderArea(0, 0, targets[0]->GetWidth(), targets[0]->GetHeight());
     for (uint32_t index = 0; index < colorCount; ++index)

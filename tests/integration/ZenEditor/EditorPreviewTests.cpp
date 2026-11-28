@@ -3,7 +3,7 @@
 #include "Editor/ImGui/EditorWorkspace.h"
 #include "Panels/EditorPanels.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "imgui_internal.h"
 #include "RenderGraphWindow.h"
 #include <gtest/gtest.h>
@@ -49,8 +49,8 @@ TEST_P(RenderGraphWindowCapture, DeclinedFinalFrameRetriesAndRepeatedDeclinesTer
         directory / (GetParam() == RHIExecutionMode::eInline ? "zen-graph-retry-inline.ppm" : "zen-graph-retry-threaded.ppm");
     std::filesystem::remove(path, error);
     ASSERT_FALSE(error);
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
-    RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(true);
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, GetParam());
     InitializePreviewDevice(device);
     {
@@ -155,9 +155,9 @@ TEST_P(EditorPreview, SceneSwitchRetiresPreviewsWithoutRequestingAnotherThumbnai
 
     EditorWindowChrome chrome(window);
 
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
-    RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
 
@@ -227,8 +227,8 @@ TEST_P(EditorPreview, SceneViewportStaysStableAcrossProfilingAndLightPresetChang
 {
     platform::NativeWindow window({"Scene layout test", false, 900, 700, 0, false});
     EditorWindowChrome     chrome(window);
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
-    RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(true);
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
     InitializePreviewDevice(device);
     EditorController editor(device);
@@ -316,9 +316,9 @@ TEST_P(EditorPreview, SelectionSwitchesRightDockWithoutOverridingManualTabChange
 
     EditorWindowChrome chrome(window);
 
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
-    RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
 
@@ -495,9 +495,9 @@ TEST_P(EditorPreview, OutputRowsCoverMultiLineEntriesAndFollowNewEntries)
 
     EditorWindowChrome chrome(window);
 
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
-    RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, std::get<0>(GetParam()));
 

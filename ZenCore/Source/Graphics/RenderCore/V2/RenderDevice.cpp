@@ -4,7 +4,6 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "ZenFoundation/Utils/Helpers.h"
 #include "Utils/Errors.h"
-#include "ZenRHI/RHIOptions.h"
 
 #include <algorithm>
 #include <bit>
@@ -15,6 +14,8 @@
 #include <cstring>
 
 zen::rc::RenderFrameState GRenderFrameState;
+
+zen::DynamicRHI* GDynamicRHI = nullptr;
 
 namespace zen::rc
 {
@@ -102,19 +103,18 @@ RenderDevice::RenderDevice(RHIAPIType       APIType,
 
     if (GDynamicRHI == nullptr)
     {
-        RHIDeviceDesc description   = RHIOptions::GetInstance();
-        description.messageCallback = [](RHIMessageSeverity severity, std::string_view message) noexcept {
-            const spdlog::level::level_enum level = severity == RHIMessageSeverity::eError   ? spdlog::level::err
-                                                  : severity == RHIMessageSeverity::eWarning ? spdlog::level::warn
-                                                                                             : spdlog::level::info;
-            spdlog::log(level, "{}", message);
-        };
-        GDynamicRHI = CreateRHI(description);
+        SetRHIMessageCallback([](const RHIMessage& message) noexcept {
+            const spdlog::level::level_enum level = message.severity == RHIMessageSeverity::eError   ? spdlog::level::err
+                                                  : message.severity == RHIMessageSeverity::eWarning ? spdlog::level::warn
+                                                                                                     : spdlog::level::info;
+            spdlog::log(level, "{}", message.text);
+        });
+        GDynamicRHI = CreateRHI(RenderConfig::GetInstance().rhiDevice);
     }
 
     VERIFY_EXPR_MSG(GDynamicRHI != nullptr, "Failed to create the RHI");
 
-    m_pRHIExecutor       = ZEN_NEW() RHICommandListExecutor(GDynamicRHI, executionMode);
+    m_pRHIExecutor       = ZEN_NEW() RHICommandListExecutor(GDynamicRHI, executionMode, m_numFrames);
 
     GDynamicRHI          = m_pRHIExecutor;
 
@@ -122,9 +122,7 @@ RenderDevice::RenderDevice(RHIAPIType       APIType,
 
     m_asyncComputeStatus = ResolveAsyncComputeStatus(m_asyncComputeMode, m_queueCapabilities);
 
-    GetRHIThread().Invoke(&RHIFrameState::Init, &GRHIFrameState, m_numFrames);
-
-    m_pRHIDebug = RHIDebug::Create();
+    m_pRHIExecutor->GetRuntime().destructionListener.store(this, std::memory_order_release);
 }
 
 void RenderDevice::Init(RHIViewport* viewport)
@@ -143,9 +141,10 @@ void RenderDevice::Init(RHIViewport* viewport)
          GetAsyncComputeStatusReason(m_asyncComputeStatus),
          m_asyncComputeStatus == AsyncComputeStatus::eAvailable ? "enabled for opted-in passes" : "graphics fallback");
 
-    const bool asyncDependencies = GDynamicRHI->SupportsAsyncSubmissionDependencies();
+    const bool asyncDependencies = GDynamicRHI->GetQueueCapabilities().asyncSubmissionDependencies;
 
-    const bool sharedTransfer    = GDynamicRHI->IsTransferQueueSharedWithGraphics();
+    const bool sharedTransfer =
+        GDynamicRHI->GetQueueCapabilities().AreQueuesShared(RHICommandContextType::eTransfer, RHICommandContextType::eGraphics);
 
     LOGI("Upload/transfer support: async GPU dependencies={}; transfer queue={}; async transfer={}",
          asyncDependencies ? "yes" : "no", sharedTransfer ? "shared with graphics" : "separate",
@@ -153,7 +152,7 @@ void RenderDevice::Init(RHIViewport* viewport)
          : asyncDependencies ? "enabled (awaiting first use)"
                              : "disabled (CPU completion wait fallback)");
 
-    m_pImmediateTransferCmdList = RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
+    m_pImmediateTransferCmdList = RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eTransfer));
 
     m_pUploadQueue              = ZEN_NEW() StagingUploadQueue(this, &m_stagingBufferManager);
 
@@ -287,13 +286,11 @@ void RenderDevice::Destroy()
             m_pImmediateTransferCmdList = nullptr;
         }
 
-        ZEN_DELETE(m_pRHIDebug);
-
-        m_pRHIDebug = nullptr;
-
         GDynamicRHI->Destroy();
 
         CollectDestroyedResourceHistory();
+
+        m_pRHIExecutor->GetRuntime().destructionListener.store(nullptr, std::memory_order_release);
 
         m_submissionHistory.Clear();
 
@@ -524,7 +521,11 @@ void RenderDevice::CollectDestroyedResourceHistory()
     // tracker/metrics copy. Defer draining until that copy commits or rolls back.
     if (m_pRHIExecutor != nullptr && !m_rdgExecutor.m_executing)
     {
-        m_pRHIExecutor->DrainDestroyedResourceIds(m_destroyedResourceIds);
+        {
+            const std::lock_guard<std::mutex> lock(m_pendingDestroyedMutex);
+
+            std::swap(m_destroyedResourceIds, m_pendingDestroyedResourceIds);
+        }
 
         for (uint64_t resourceId : m_destroyedResourceIds)
         {
@@ -535,6 +536,13 @@ void RenderDevice::CollectDestroyedResourceHistory()
 
         m_destroyedResourceIds.clear();
     }
+}
+
+void RenderDevice::OnResourceDestroyed(uint64_t stableId)
+{
+    const std::lock_guard<std::mutex> lock(m_pendingDestroyedMutex);
+
+    m_pendingDestroyedResourceIds.push_back(stableId);
 }
 
 void RenderDevice::FlushRHIThread()
@@ -889,7 +897,7 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph&             
 
         if (pPresented != nullptr)
         {
-            *pPresented = native.presented;
+            *pPresented = native.presentation.presented;
         }
 
         if (result == RHISubmissionResult::eSuccess && !m_queueCapabilities.asyncSubmissionDependencies
@@ -1064,9 +1072,10 @@ void RenderDevice::LogTransferSubmission(const RenderGraph& graph, RHICommandCon
     // Report actual accepted work once per route, rather than every upload or frame.
     if (queue == RHICommandContextType::eTransfer && !m_loggedTransferSubmission)
     {
-        const char* mode = GDynamicRHI->IsTransferQueueSharedWithGraphics()
+        const char* mode = GDynamicRHI->GetQueueCapabilities().AreQueuesShared(RHICommandContextType::eTransfer,
+                                                                               RHICommandContextType::eGraphics)
                              ? "shared graphics queue (no transfer/graphics overlap)"
-                         : GDynamicRHI->SupportsAsyncSubmissionDependencies()
+                         : GDynamicRHI->GetQueueCapabilities().asyncSubmissionDependencies
                              ? "async transfer (GPU timeline dependencies; no CPU completion wait)"
                              : "synchronous transfer (CPU completion wait)";
 
@@ -1691,8 +1700,8 @@ void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_
     // A surface with no extent cannot produce images, so polling it must not drain frames.
     if (viewport != nullptr && width != 0 && height != 0
         && (IsViewportRecreationPending(viewport) || viewport->GetWidth() != width || viewport->GetHeight() != height
-            || GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport))
-        && GetRHIThread().Invoke(&RHIViewport::CanRecreate, viewport))
+            || viewport->NeedsRecreation())
+        && viewport->CanRecreate())
     {
         if (m_pUploadQueue != nullptr)
         {
@@ -1711,7 +1720,7 @@ void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_
 
             viewport->Resize(width, height);
 
-            SetViewportRecreationPending(viewport, GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+            SetViewportRecreationPending(viewport, viewport->NeedsRecreation());
         }
     }
 }
@@ -1897,7 +1906,7 @@ bool RenderDevice::WaitForFrameSlot(RenderFrameSlot frameSlot)
 
         const uint64_t serial             = frame.retirement.requiredSerials.Get(queue);
 
-        if (ready && GDynamicRHI->QueryLastCompletedSerial(queue) < serial && !GDynamicRHI->WaitForCompletion(queue, serial))
+        if (ready && !GDynamicRHI->WaitForCompletion(queue, serial))
         {
             LOGE("RenderDevice: frame slot {} cannot reuse queue {} serial {}", ToIndex(frameSlot), uint32_t(queue), serial);
 

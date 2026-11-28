@@ -141,7 +141,7 @@ void SkyboxRenderer::RecordPendingEnvironment(RenderGraph& graph, const EnvTextu
 
         pso.colorBlendState.AddAttachment();
 
-        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
         for (uint32_t target = 0; !pTexture->authoredCubemaps && target <= PREFILTERED_MAP; ++target)
         {
@@ -248,7 +248,7 @@ void SkyboxRenderer::RecordPendingEnvironment(RenderGraph& graph, const EnvTextu
 
             pso.colorBlendState.AddAttachment();
 
-            pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+            pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
             RDGGraphicsPassDesc lut{};
 
@@ -289,7 +289,7 @@ void SkyboxRenderer::BuildRenderGraph(const RenderView& view)
 
     pso.colorBlendState.AddAttachment();
 
-    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
     RDGGraphicsPassDesc desc{};
 

@@ -1,5 +1,5 @@
 #include "UI/UIRenderer.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include <gtest/gtest.h>
 #include <cstring>
 
@@ -53,7 +53,7 @@ class UIRenderingNative : public testing::TestWithParam<RHIExecutionMode>
 
 TEST_P(UIRenderingNative, TextureGenerationsAndQueuedResourcesWithoutImGuiOrWindow)
 {
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, GetParam());
 
@@ -139,7 +139,7 @@ TEST_P(UIRenderingNative, TextureGenerationsAndQueuedResourcesWithoutImGuiOrWind
 // texture slots, instead of starting a pass for every change of image.
 TEST_P(UIRenderingNative, BatchesDrawsAcrossImagesWithinTextureSlots)
 {
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, GetParam());
 

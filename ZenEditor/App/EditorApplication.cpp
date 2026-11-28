@@ -14,7 +14,7 @@
 #include "Platform/BuildInfo.h"
 #include "Platform/ConfigLoader.h"
 #include "Editor/Model/EditorText.h"
-#include "ZenRHI/RHIOptions.h"
+#include "ZenRHI/RHIDeviceDesc.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "AssetLib/TextureLoader.h"
 #include <spdlog/sinks/base_sink.h>
@@ -127,10 +127,10 @@ public:
 
         if (m_options.validation.has_value())
         {
-            RHIOptions::GetInstance().SetValidationEnabled(m_options.validation.value());
+            rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(m_options.validation.value());
         }
 
-        RHIOptions::GetInstance().SetGPUMemoryStats(true);
+        rc::RenderConfig::GetInstance().rhiDevice.SetGPUMemoryStats(true);
 
         // Hidden until initialization completes; a pending maximize applies when shown.
         const platform::WindowConfig config{platform::BuildApplicationTitle("ZenEditor"), true, 1440, 900, 0, false};

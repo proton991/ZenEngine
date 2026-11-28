@@ -110,7 +110,7 @@ TEST_F(RenderCoreTest, RayQueryCommandCopiesDescriptionsAndRetainsIndirectResour
         EXPECT_FALSE(destroyed.contains(inputId));
         EXPECT_FALSE(destroyed.contains(blasId));
         EXPECT_FALSE(destroyed.contains(tlasId));
-        GetRHIThread().Invoke([&list] { list->Execute(); });
+        GDynamicRHI->GetRuntime().thread.Invoke([&list] { list->Execute(); });
         ASSERT_EQ(rhi->graphics.accelerationStructureBuildCounts.size(), 2u);
         EXPECT_EQ(rhi->graphics.accelerationStructureBuildCounts[0], 3u);
         EXPECT_EQ(rhi->graphics.accelerationStructureBuildCounts[1], 1u);
@@ -248,7 +248,7 @@ TEST_P(PortableAccelerationStructureGraphTest, BuildQueryAndRefitTrackNativeStru
     instance            = {};
     ASSERT_TRUE(graph.End()) << graph.GetResult().message;
     ASSERT_TRUE(device->ExecuteRenderGraph(graph));
-    GetRHIThread().Invoke([] {});
+    GDynamicRHI->GetRuntime().thread.Invoke([] {});
     ASSERT_EQ(rhi->graphics.accelerationStructureBuildCounts.size(), 2u);
     EXPECT_EQ(rhi->graphics.accelerationStructureBuildCounts[0], 3u);
     EXPECT_EQ(rhi->graphics.accelerationStructureBuildCounts[1], 1u);
@@ -294,7 +294,7 @@ TEST_P(PortableAccelerationStructureGraphTest, BuildQueryAndRefitTrackNativeStru
     Query(refit, tlas.Get(), output.Get());
     ASSERT_TRUE(refit.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(refit));
-    GetRHIThread().Invoke([] {});
+    GDynamicRHI->GetRuntime().thread.Invoke([] {});
     EXPECT_TRUE(refit.GetWarnings().empty());
     ASSERT_EQ(rhi->graphics.accelerationStructureBuildCounts.size(), 3u);
     EXPECT_EQ(rhi->graphics.accelerationStructureBuildCounts.back(), 3u);
@@ -374,7 +374,7 @@ TEST_P(PortableAccelerationStructureGraphTest, StructuresShareOneMemoryBarrierPe
     Query(graph, tlas.Get(), output.Get());
     ASSERT_TRUE(graph.End()) << graph.GetResult().message;
     ASSERT_TRUE(device->ExecuteRenderGraph(graph));
-    GetRHIThread().Invoke([] {});
+    GDynamicRHI->GetRuntime().thread.Invoke([] {});
     const RDGMetricsSnapshot& metrics = device->GetRDGMetrics().GetLastSnapshot();
     EXPECT_TRUE(metrics.validated);
     EXPECT_GE(metrics.totals.memoryTransitions, 1u);

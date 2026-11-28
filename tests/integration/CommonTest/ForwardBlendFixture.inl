@@ -1,14 +1,14 @@
 class ForwardBlendDrawCounters
 {
 public:
-    ForwardBlendDrawCounters() : m_previous(RHIOptions::GetInstance().ExecutionCountersEnabled())
+    ForwardBlendDrawCounters() : m_previous(zen::rc::RenderConfig::GetInstance().rhiDevice.ExecutionCountersEnabled())
     {
-        RHIOptions::GetInstance().SetExecutionCountersEnabled(true);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetExecutionCountersEnabled(true);
     }
 
     ~ForwardBlendDrawCounters()
     {
-        RHIOptions::GetInstance().SetExecutionCountersEnabled(m_previous);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetExecutionCountersEnabled(m_previous);
     }
 
 private:

@@ -1,6 +1,5 @@
 #include <spirv_reflect.h>
 #include "ZenRHI/RHIShaderUtil.h"
-#include "Vulkan/VulkanPipeline.h"
 #include <filesystem>
 #include <limits>
 #include "Platform/FileSystem.h"
@@ -663,7 +662,7 @@ TEST(ShaderReflectionTests, ShippedShaderLayoutsRespectGlobalHeapContract)
             RHIShaderGroupInfo info{};
             ASSERT_TRUE(RHIShaderUtil::ReflectShaderGroupInfo(spirv, kNoDeviceSetLimit, info));
             info.name = NameID(relative);
-            EXPECT_TRUE(ValidateShaderLayout(info, kNoDeviceSetLimit));
+            EXPECT_TRUE(RHIShaderUtil::ValidateShaderLayout(info, kNoDeviceSetLimit));
             ++checked;
         }
     }

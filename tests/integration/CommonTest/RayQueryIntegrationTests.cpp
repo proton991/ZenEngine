@@ -1,4 +1,5 @@
 #include <span>
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Math/Math.h"
 #include "AssetLib/SceneRuntimeBuilder.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -63,24 +64,24 @@ protected:
 
     void SetUpDevice(bool hardwareRayTracing, bool gpuProfile = false)
     {
-        countersEnabled = RHIOptions::GetInstance().ExecutionCountersEnabled();
-        validationMode  = RHIOptions::GetInstance().ValidationMode();
-        profilerMarkers = RHIOptions::GetInstance().GPUProfilerMarkers();
-        RHIOptions::GetInstance().SetExecutionCountersEnabled(!gpuProfile);
-        RHIOptions::GetInstance().SetValidationMode(gpuProfile ? RHIValidationMode::eOff : validationMode);
-        RHIOptions::GetInstance().SetGPUProfilerMarkers(profilerMarkers || gpuProfile);
-        RHIOptions::GetInstance().SetRayTracingDisabled(!hardwareRayTracing);
+        countersEnabled = zen::rc::RenderConfig::GetInstance().rhiDevice.ExecutionCountersEnabled();
+        validationMode  = zen::rc::RenderConfig::GetInstance().rhiDevice.ValidationMode();
+        profilerMarkers = zen::rc::RenderConfig::GetInstance().rhiDevice.GPUProfilerMarkers();
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetExecutionCountersEnabled(!gpuProfile);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationMode(gpuProfile ? RHIValidationMode::eOff : validationMode);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetGPUProfilerMarkers(profilerMarkers || gpuProfile);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(!hardwareRayTracing);
         device = ZEN_NEW()
             RenderDevice(RHIAPIType::eVulkan, 2, (GetParam() & 1) ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
                          (GetParam() & 2) ? AsyncComputeMode::eAuto : AsyncComputeMode::eDisabled);
         device->Init(nullptr);
-        if (RHIOptions::GetInstance().ValidationEnabled())
+        if (zen::rc::RenderConfig::GetInstance().rhiDevice.ValidationEnabled())
         {
             VkDebugUtilsMessengerCreateInfoEXT info{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
             info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
             info.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
             info.pfnUserCallback = Validation;
-            ASSERT_EQ(vkCreateDebugUtilsMessengerEXT(GetVulkanDeviceHandles().instance, &info, nullptr, &messenger),
+            ASSERT_EQ(vkCreateDebugUtilsMessengerEXT(GetVulkanDeviceHandles(*GDynamicRHI).instance, &info, nullptr, &messenger),
                       VK_SUCCESS);
         }
         if (device->GetGPUInfo().rayQuery.IsUsable())
@@ -122,14 +123,14 @@ protected:
         ShaderProgramManager::GetInstance().Destroy();
         if (messenger != VK_NULL_HANDLE)
         {
-            vkDestroyDebugUtilsMessengerEXT(GetVulkanDeviceHandles().instance, messenger, nullptr);
+            vkDestroyDebugUtilsMessengerEXT(GetVulkanDeviceHandles(*GDynamicRHI).instance, messenger, nullptr);
         }
         device->Destroy();
         ZEN_DELETE(device);
-        RHIOptions::GetInstance().SetExecutionCountersEnabled(countersEnabled);
-        RHIOptions::GetInstance().SetValidationMode(validationMode);
-        RHIOptions::GetInstance().SetGPUProfilerMarkers(profilerMarkers);
-        RHIOptions::GetInstance().SetRayTracingDisabled(false);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetExecutionCountersEnabled(countersEnabled);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationMode(validationMode);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetGPUProfilerMarkers(profilerMarkers);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(false);
     }
 
     RHIBuffer* Buffer(uint32_t                         size,

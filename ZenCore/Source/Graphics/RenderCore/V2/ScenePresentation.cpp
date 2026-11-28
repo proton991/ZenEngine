@@ -97,7 +97,7 @@ bool SceneCompositor::BuildRenderGraph(RenderGraph& graph, const RenderView& des
         states.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
         states.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eAlways);
         states.colorBlendState.AddAttachment();
-        states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+        states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
         pass.SetPipelineStates(states);
         pass.SetRenderArea(0, 0, destination.width, destination.height);
         pass.AddColorOutput(destination.color, RHIRenderTargetLoadOp::eClear);

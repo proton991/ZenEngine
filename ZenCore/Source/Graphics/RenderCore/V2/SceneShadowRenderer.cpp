@@ -326,7 +326,7 @@ void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, co
 
     pso.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
 
-    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
     RDGGraphicsPassDesc pass;
 

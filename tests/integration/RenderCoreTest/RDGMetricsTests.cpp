@@ -86,7 +86,7 @@ struct BarrierCheck
 
         writer.layout   = RHITextureLayout::eTransferDst;
 
-        writer.range    = RHITextureSubResourceRange::Color(0, 0, 4, 1);
+        writer.range    = RHITextureSubresourceRange::Color(0, 0, 4, 1);
 
         validator.Seed(writer);
 

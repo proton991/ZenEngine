@@ -21,6 +21,15 @@ class RHICommandList;
 
 namespace zen::rc
 {
+// Raw vertex and index buffers bound by a graphics pass.
+struct RDGGeometryBuffer
+{
+    std::vector<RHIBuffer*> vertexBuffers;
+    RHIBuffer*              pIndexBuffer{nullptr};
+    DataFormat              indexBufferFormat{DataFormat::eR32UInt};
+    uint64_t                indexBufferOffset{0};
+};
+
 class RenderGraph;
 class RenderDevice;
 struct RDGPassNode;
@@ -467,7 +476,7 @@ struct RDGGraphicsPipelineVariant
 
 struct RDGGraphicsPassDesc : RDGPassDescBase
 {
-    RHIGeometryBuffer                      geometryBuffer; // Transitional raw adapter.
+    RDGGeometryBuffer                      geometryBuffer; // Transitional raw adapter.
     HeapVector<RDGBuffer>                  vertexBuffers;
     RDGBuffer                              indexBuffer;
     DataFormat                             indexBufferFormat{DataFormat::eR32UInt};
@@ -804,7 +813,7 @@ struct RDGShaderPass : RDGCompiledPass
 struct RDGGraphicsPass : RDGShaderPass
 {
     RHIRenderingLayout*      pRenderingLayout{nullptr};
-    RHIGeometryBuffer        geometryBuffer;
+    RDGGeometryBuffer        geometryBuffer;
     HeapVector<RHIPipeline*> pipelineVariants;
 
     RDGGraphicsPass() : RDGShaderPass(RDGCompiledPassType::eGraphics) {}
@@ -949,11 +958,11 @@ public:
 
     void CopyBufferToTexture(RHIBuffer* pSrcBuffer, RHITexture* pDstTexure, const RHIBufferTextureCopyRegion& region);
 
-    void ClearTexture(RHITexture* pTexture, const Color& clearColor, const RHITextureSubResourceRange& range);
+    void ClearTexture(RHITexture* pTexture, const Color& clearColor, const RHITextureSubresourceRange& range);
 
 private:
     void EmitTextureTransition(RHITexture*                       pTexture,
-                               const RHITextureSubResourceRange& range,
+                               const RHITextureSubresourceRange& range,
                                RHIAccessMode                     oldAccess,
                                RHIAccessMode                     newAccess,
                                RHITextureUsage                   oldUsage,

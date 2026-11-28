@@ -395,9 +395,9 @@ bool RDGResourceManager::SetImportContents(const Allocation* resource, RDGImport
     return result;
 }
 
-RHITextureSubResourceRange RDGResourceManager::ViewRange(const Allocation& texture, const RDGTextureViewDesc& view)
+RHITextureSubresourceRange RDGResourceManager::ViewRange(const Allocation& texture, const RDGTextureViewDesc& view)
 {
-    RHITextureSubResourceRange result{};
+    RHITextureSubresourceRange result{};
 
     if (view.range)
     {
@@ -405,7 +405,7 @@ RHITextureSubResourceRange RDGResourceManager::ViewRange(const Allocation& textu
     }
     else
     {
-        RHITextureSubResourceRange range;
+        RHITextureSubresourceRange range;
 
         const DataFormat format = texture.texFormat.format;
 
@@ -433,9 +433,9 @@ const RDGResourceManager::Allocation* RDGResourceManager::ResolveView(RDGResourc
 
     if (resource != nullptr)
     {
-        const RHITextureSubResourceRange full  = ViewRange(*resource, {});
+        const RHITextureSubresourceRange full  = ViewRange(*resource, {});
 
-        const RHITextureSubResourceRange range = ViewRange(*resource, view);
+        const RHITextureSubresourceRange range = ViewRange(*resource, view);
 
         // Preserve current RHI view restrictions; aspect/base-layer expansion belongs to Phase 4.
         if (resource->type != RDGResourceType::eTexture || int64_t(range.aspect) != int64_t(full.aspect)
@@ -474,7 +474,7 @@ RHITextureView* RDGResourceManager::MaterializeView(RDGResource textureValue, co
         }
         else
         {
-            const RHITextureSubResourceRange range = ViewRange(*resource, viewDesc);
+            const RHITextureSubresourceRange range = ViewRange(*resource, viewDesc);
 
             for (CachedView const& cached : m_viewCache)
             {
@@ -634,12 +634,12 @@ bool RDGResourceManager::DeclareExtractions()
             {
                 const TextureFormat& format = extraction.resource->texFormat;
 
-                RHITextureSubResourceRange range{};
+                RHITextureSubresourceRange range{};
 
-                range            = FormatIsDepthStencil(format.format) ? RHITextureSubResourceRange::DepthStencil()
-                                 : FormatIsDepthOnly(format.format)    ? RHITextureSubResourceRange::Depth()
-                                 : FormatIsStencilOnly(format.format)  ? RHITextureSubResourceRange::Stencil()
-                                                                       : RHITextureSubResourceRange::Color();
+                range            = FormatIsDepthStencil(format.format) ? RHITextureSubresourceRange::DepthStencil()
+                                 : FormatIsDepthOnly(format.format)    ? RHITextureSubresourceRange::Depth()
+                                 : FormatIsStencilOnly(format.format)  ? RHITextureSubresourceRange::Stencil()
+                                                                       : RHITextureSubresourceRange::Color();
 
                 range.levelCount = format.mipmaps;
 

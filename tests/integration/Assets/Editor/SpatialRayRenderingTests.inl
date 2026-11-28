@@ -82,7 +82,7 @@ public:
             RHIGfxPipelineStates state;
             state.primitiveType = RHIDrawPrimitiveType::eTriangleList;
             state.colorBlendState.AddAttachments(1);
-            state.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+            state.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
             pass.SetPipelineStates(state);
             pass.AddColorOutput(DataFormat::eR8G8B8A8UNORM, kSpatialRayWidth, kSpatialRayHeight, "spatial_ray_coverage");
             pass.SetRenderArea(0, 0, kSpatialRayWidth, kSpatialRayHeight);

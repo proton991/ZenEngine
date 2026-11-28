@@ -579,7 +579,7 @@ TEST_P(RDGSubmissionHistoryTest, LaterUploadWaitsForBothGraphicsAndComputeReader
     ASSERT_TRUE(PrepareHistory(history, input, readers));
     const SmallVector<uint64_t, 2> serials{3, 7};
     AcceptHistory(history, readers, serials);
-    GetRHIThread().Invoke([this] {
+    GDynamicRHI->GetRuntime().thread.Invoke([this] {
         rhi->submitted[0] = 3;
         rhi->submitted[1] = 7;
     });

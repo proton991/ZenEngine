@@ -503,14 +503,14 @@ private:
 
     bool CheckRecorder(const RDGPassNode* node, uint64_t generation);
 
-    bool ValidateTextureRange(const RDGResourceManager::Allocation* resource, const RHITextureSubResourceRange& range);
+    bool ValidateTextureRange(const RDGResourceManager::Allocation* resource, const RHITextureSubresourceRange& range);
 
     static void SetPipelineStatesForPassNode(RDGPassNode* pPassNode, RHIFlags<RHIPipelineStageFlagBits> inStageFlags);
 
     bool DeclareTextureAccessForPass(const RDGPassNode*                    pPassNode,
                                      const RDGResourceManager::Allocation* pResource,
                                      RHITextureUsage                       usage,
-                                     const RHITextureSubResourceRange&     range,
+                                     const RHITextureSubresourceRange&     range,
                                      RHIAccessMode                         accessMode,
                                      RHIFlags<RHIPipelineStageFlagBits>    shaderStages = {},
                                      RDGContentEffect                      intent       = RDGContentEffect::eAutomatic,
@@ -545,7 +545,7 @@ private:
     bool DeclareContentAccess(const RDGPassNode*                    node,
                               const RDGResourceManager::Allocation* resource,
                               RDGContentEffect                      intent,
-                              const RHITextureSubResourceRange&     range        = {},
+                              const RHITextureSubresourceRange&     range        = {},
                               bool                                  fullCoverage = true,
                               bool                                  discardAfter = false);
 

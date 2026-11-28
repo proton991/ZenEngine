@@ -56,7 +56,7 @@ struct RDGMetricAccess
     int64_t                    access{0};
     bool                       texture{false};
     RHITextureLayout           layout{RHITextureLayout::eUndefined};
-    RHITextureSubResourceRange range;
+    RHITextureSubresourceRange range;
     bool                       imported{true};
     bool                       hostWritten{false};        // Initialized buffer reads are visible through queue submission.
     bool                       availableFromQueue{false}; // A validated semaphore supplies foreign contents.
@@ -72,7 +72,7 @@ struct RDGMetricBarrier
     int64_t                    dstAccess{0};
     RHITextureLayout           oldLayout{RHITextureLayout::eUndefined};
     RHITextureLayout           newLayout{RHITextureLayout::eUndefined};
-    RHITextureSubResourceRange range;
+    RHITextureSubresourceRange range;
     bool                       wholeBuffer{true};
 };
 

@@ -1,6 +1,5 @@
 #include "Math/Math.h"
 #include "ZenRHI/RHIShaderUtil.h"
-#include "ZenRHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
@@ -211,7 +210,7 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
 
         info.stageFlags = m_stageFlags;
 
-        if (RHIOptions::GetInstance().PipelineStatistics())
+        if (GDynamicRHI->GetDeviceDesc().PipelineStatistics())
         {
             for (const std::string& source : info.spirvFileName)
             {
@@ -256,7 +255,7 @@ bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& 
                     break;
                 }
                 info.spirv->AppendOwnedStageSPIRV(source.stage, std::move(code));
-                if (RHIOptions::GetInstance().PipelineStatistics())
+                if (GDynamicRHI->GetDeviceDesc().PipelineStatistics())
                 {
                     LOGI("Shader module: shader='{}' source='{}'", m_name.CStr(), path);
                 }

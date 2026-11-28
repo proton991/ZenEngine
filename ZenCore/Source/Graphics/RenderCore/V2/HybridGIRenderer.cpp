@@ -660,7 +660,7 @@ void HybridGIRenderer::RecordDenoiser(RDGTexture rawSky,
         for (uint32_t mip = 0; mip < pyramid.texFormat.mipmaps; ++mip)
         {
             RDGTextureViewDesc         view;
-            RHITextureSubResourceRange range;
+            RHITextureSubresourceRange range;
             range.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
             range.baseMipLevel = mip;
             range.layerCount   = pyramid.texFormat.arrayLayers;

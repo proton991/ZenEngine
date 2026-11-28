@@ -92,7 +92,7 @@ bool MeasureSpatialTextureSampling(RenderDevice& device, SpatialTextureRounding&
             // Qualification needs CPU-visible results before publishing material
             // parameters. Wait for this graphics submission, not device-wide idle.
             const uint64_t      serial = device.GetSubmittedSerials().Get(RHICommandContextType::eGraphics);
-            const RHIWaitResult waited = GDynamicRHI->WaitForCompletionChecked(RHICommandContextType::eGraphics, serial);
+            const RHIWaitResult waited = GDynamicRHI->WaitForCompletion(RHICommandContextType::eGraphics, serial);
             valid                      = serial != 0 && waited.outcome == RHIWaitOutcome::eCompleted;
         }
         if (valid)

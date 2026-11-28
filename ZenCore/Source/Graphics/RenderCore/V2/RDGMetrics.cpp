@@ -166,7 +166,7 @@ int64_t ExecutionStages(int64_t stages, bool source)
     return result;
 }
 
-bool Contains(const RHITextureSubResourceRange& outer, const RHITextureSubResourceRange& inner)
+bool Contains(const RHITextureSubresourceRange& outer, const RHITextureSubresourceRange& inner)
 {
     return Covers(outer.aspect, inner.aspect) && outer.baseMipLevel <= inner.baseMipLevel
         && uint64_t(outer.baseMipLevel) + outer.levelCount >= uint64_t(inner.baseMipLevel) + inner.levelCount

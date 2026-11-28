@@ -343,7 +343,7 @@ private:
 
     const Allocation* ResolveView(RDGResource texture, const RDGTextureViewDesc& view);
 
-    static RHITextureSubResourceRange ViewRange(const Allocation& texture, const RDGTextureViewDesc& view);
+    static RHITextureSubresourceRange ViewRange(const Allocation& texture, const RDGTextureViewDesc& view);
 
     const Allocation* FindResourceByIdx(int32_t id) const;
 
@@ -376,7 +376,7 @@ private:
     struct CachedView
     {
         uint64_t                   textureId;
-        RHITextureSubResourceRange range;
+        RHITextureSubresourceRange range;
         RHITextureView*            view;
     };
     HeapVector<CachedView> m_viewCache;

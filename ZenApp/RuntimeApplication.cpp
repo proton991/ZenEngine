@@ -1,4 +1,5 @@
 #include "ZenEngine/Version.h"
+#include "ZenRHI/RHIDeviceDesc.h"
 #include "ZenFoundation/Version.h"
 #include "ZenRHI/Version.h"
 #include "ZenAssetProcessor/Version.h"
@@ -185,7 +186,7 @@ private:
                 bytes.clear();
             }
         }
-        RHIOptions::GetInstance().SetPipelineCacheSeed(std::move(bytes));
+        rc::RenderConfig::GetInstance().rhiDevice.SetPipelineCacheSeed(std::move(bytes));
     }
 
     void SavePipelineCache()
@@ -693,7 +694,7 @@ private:
     {
         using Clock          = std::chrono::steady_clock;
         const bool profiling = !m_options.profile.empty();
-        RHIOptions::GetInstance().SetWorkerTimingEnabled(profiling);
+        rc::RenderConfig::GetInstance().rhiDevice.SetWorkerTimingEnabled(profiling);
         const Clock::time_point startup         = profiling ? Clock::now() : Clock::time_point{};
         const RHIWorkerTimes    startupBaseline = profiling ? RHIWorkerTimer::Read() : RHIWorkerTimes{};
         double                  packageMS{};
@@ -741,26 +742,27 @@ private:
         }
         if (valid)
         {
-            result = RuntimeExit::Renderer;
-            RHIOptions::GetInstance().SetValidationMode(m_options.requireValidation ? RHIValidationMode::eRequired
-                                                        : m_setup.run.validation    ? RHIValidationMode::eRequested
-                                                                                    : RHIValidationMode::eOff);
-            RHIOptions::GetInstance().SetGPUMemoryStats(true);
-            RHIOptions::GetInstance().SetGPUProfilerMarkers(m_options.gpuMarkers);
-            RHIOptions::GetInstance().SetDeviceLossDiagnostics(m_options.deviceLossDiagnostics);
+            result                    = RuntimeExit::Renderer;
+            rc::RenderConfig& config  = rc::RenderConfig::GetInstance();
+            RHIDeviceDesc&    rhiDesc = config.rhiDevice;
+            rhiDesc.SetValidationMode(m_options.requireValidation ? RHIValidationMode::eRequired
+                                      : m_setup.run.validation    ? RHIValidationMode::eRequested
+                                                                  : RHIValidationMode::eOff);
+            rhiDesc.SetGPUMemoryStats(true);
+            rhiDesc.SetGPUProfilerMarkers(m_options.gpuMarkers);
+            rhiDesc.SetDeviceLossDiagnostics(m_options.deviceLossDiagnostics);
             if (m_options.stallReportSeconds)
             {
-                RHIOptions::GetInstance().SetStallReportThreshold(std::chrono::seconds(*m_options.stallReportSeconds));
+                rhiDesc.SetStallReportThreshold(std::chrono::seconds(*m_options.stallReportSeconds));
             }
             if (m_options.stallFatalSeconds)
             {
-                RHIOptions::GetInstance().SetStallFatalThreshold(std::chrono::seconds(*m_options.stallFatalSeconds));
+                rhiDesc.SetStallFatalThreshold(std::chrono::seconds(*m_options.stallFatalSeconds));
             }
-            RHIOptions::GetInstance().SetPipelineStatistics(m_options.pipelineStatistics);
-            RHIOptions::GetInstance().SetRayTracingDisabled(m_options.disableRT);
-            RHIOptions::GetInstance().SetDeviceMemoryLimit(m_options.deviceMemoryLimitMB * 1024 * 1024);
-            RHIOptions::GetInstance().SetPresentMode(m_setup.run.presentMode);
-            rc::RenderConfig& config = rc::RenderConfig::GetInstance();
+            rhiDesc.SetPipelineStatistics(m_options.pipelineStatistics);
+            rhiDesc.SetRayTracingDisabled(m_options.disableRT);
+            rhiDesc.SetDeviceMemoryLimit(m_options.deviceMemoryLimitMB * 1024 * 1024);
+            rhiDesc.SetPresentMode(m_setup.run.presentMode);
             config.numFrames         = m_setup.run.framesInFlight;
             config.numThreads        = m_setup.run.workerThreads;
             config.hybridHitStream   = m_options.hybridHitStream;

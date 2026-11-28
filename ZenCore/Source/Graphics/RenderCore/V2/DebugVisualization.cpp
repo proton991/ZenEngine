@@ -18,7 +18,7 @@ RDGGraphicsPassDesc MakeDebugVisualizationPass(const RenderView& view, NameID sh
 
     states.colorBlendState.AddAttachment();
 
-    states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
     pass.SetPipelineStates(states);
 

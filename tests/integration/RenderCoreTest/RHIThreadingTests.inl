@@ -27,6 +27,7 @@ protected:
     void ArmGate()
     {
         device->FlushRHIThread();
+        gate.frameState       = &rhi->GetRuntime().frameState;
         rhi->beforeSubmission = std::bind_front(&RHISubmissionGate::OnSubmission, &gate);
     }
 
@@ -96,7 +97,7 @@ TEST_F(ThreadedRenderCoreTest, WindowsFrameTicketWaitServicesSentMessages)
     rhi->beforeSubmission = std::bind_front(&RHIMessageWindow::Send, &window);
     const bool queued     = device->ExecuteRenderGraph(&viewport) == RenderFrameResult::eSubmitted;
     const bool completed  = device->PollFrameSubmissions(true);
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     rhi->beforeSubmission = {};
     EXPECT_TRUE(queued);
     EXPECT_TRUE(completed);
@@ -216,14 +217,14 @@ TEST_F(ThreadedRenderCoreTest, FrameSlotReuseWaitsForItsGpuSerial)
     EXPECT_EQ(device->GetRHIThreadMetrics().completedBatches, 5u);
     EXPECT_FALSE(rhi->submissionWaits.empty());
     EXPECT_EQ(ToValue(GRenderFrameState.GetFrameNumber()), 5u);
-    EXPECT_EQ(ToValue(GRHIFrameState.GetFrameNumber()), 5u);
+    EXPECT_EQ(ToValue(GDynamicRHI->GetRuntime().frameState.GetFrameNumber()), 5u);
     device->WaitForPreviousFrames();
 }
 
 TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDifferentRhiTimeline)
 {
-    GetRHIThread().Invoke(&RHIFrameState::Init, &GRHIFrameState, 2);
-    GetRHIThread().Invoke(&RHIFrameState::Advance, &GRHIFrameState);
+    GDynamicRHI->GetRuntime().thread.Invoke(&RHIFrameState::Init, &GDynamicRHI->GetRuntime().frameState, 2);
+    GDynamicRHI->GetRuntime().thread.Invoke(&RHIFrameState::Advance, &GDynamicRHI->GetRuntime().frameState);
     RenderGraph* graph = device->GetCurrentFrameRDG();
     ASSERT_TRUE(graph->Begin());
     RDGTexture texture = graph->GetResourceManager()->CreateTexture(LogicalTexture());
@@ -256,9 +257,9 @@ TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDi
     EXPECT_EQ(rhi->submissionWaits[0].first, RHICommandContextType::eGraphics);
     EXPECT_EQ(rhi->submissionWaits[0].second, firstSerial);
     EXPECT_EQ(ToValue(GRenderFrameState.GetFrameNumber()), 3u);
-    EXPECT_EQ(ToValue(GRHIFrameState.GetFrameNumber()), 4u);
+    EXPECT_EQ(ToValue(GDynamicRHI->GetRuntime().frameState.GetFrameNumber()), 4u);
     EXPECT_EQ(ToIndex(GRenderFrameState.GetFrameSlot()), 0u);
-    EXPECT_EQ(ToIndex(GRHIFrameState.GetFrameSlot()), 0u);
+    EXPECT_EQ(ToIndex(GDynamicRHI->GetRuntime().frameState.GetFrameSlot()), 0u);
 }
 
 TEST_F(ThreadedRenderCoreTest, PooledResourcesWaitForPendingCPUAndGPUWork)
@@ -331,27 +332,27 @@ TEST_F(ThreadedRenderCoreTest, IdleCollectionRefreshesProgressAndRetiresBothKind
     const uint64_t          batchId     = batchOwned->GetStableId();
     const uint64_t          deviceId    = deviceOwned->GetStableId();
     RHICommandListPtr       commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
-    commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubResourceRange());
-    commands->ClearTexture(deviceOwned, Color(0.f), RHITextureSubResourceRange());
+    commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubresourceRange());
+    commands->ClearTexture(deviceOwned, Color(0.f), RHITextureSubresourceRange());
     const RHIBatchResult result = executor->SubmitFrame(*commands, nullptr).Wait();
     ASSERT_GT(result.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
     batchOwned->ReleaseReference();
     device->DeferReleaseResource(deviceOwned);
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_EQ(executor->QueryLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
     EXPECT_FALSE(destroyed.contains(batchId));
     EXPECT_FALSE(destroyed.contains(deviceId));
 
     // Complete after the last publication, without starting or submitting another frame.
-    GetRHIThread().Invoke([this] { rhi->completed = rhi->submitted; });
+    GDynamicRHI->GetRuntime().thread.Invoke([this] { rhi->completed = rhi->submitted; });
     device->CollectCompletedResources();
-    GetRHIThread().Flush(); // Only fence the worker; do not refresh through executor Flush.
+    GDynamicRHI->GetRuntime().thread.Flush(); // Only fence the worker; do not refresh through executor Flush.
     EXPECT_EQ(executor->QueryLastCompletedSerial(RHICommandContextType::eGraphics),
               result.requiredSerials.Get(RHICommandContextType::eGraphics));
     EXPECT_TRUE(destroyed.contains(batchId));
     device->CollectCompletedResources(); // Consume the published progress on RenderCore.
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(deviceId));
     EXPECT_TRUE(rhi->submissionWaits.empty());
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
@@ -380,19 +381,19 @@ TEST_F(ThreadedRenderCoreTest, FinalRhiReleaseRemovesBufferAndTextureHistory)
     device->DestroyTexture(texture);
     device->DestroyBuffer(buffer);
     gate.Open();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_FALSE(destroyed.contains(textureId));
     EXPECT_FALSE(destroyed.contains(bufferId));
     EXPECT_TRUE(RDGSubmissionTestAccess::HasHistory(*device, textureId));
     EXPECT_TRUE(RDGSubmissionTestAccess::HasHistory(*device, bufferId));
 
-    GetRHIThread().Invoke([this] { rhi->completed = rhi->submitted; });
+    GDynamicRHI->GetRuntime().thread.Invoke([this] { rhi->completed = rhi->submitted; });
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(textureId));
     EXPECT_TRUE(destroyed.contains(bufferId));
     EXPECT_FALSE(RDGSubmissionTestAccess::HasHistory(*device, textureId));
@@ -487,14 +488,14 @@ TEST_F(ThreadedRenderCoreTest, ProgressQueryFailureBlocksRetirementWithoutAPendi
     RHITexture*             texture = executor->CreateTexture(info);
     const uint64_t          id      = texture->GetStableId();
     device->DeferReleaseResource(texture);
-    GetRHIThread().Invoke([this] { rhi->failProgressQuery = true; });
+    GDynamicRHI->GetRuntime().thread.Invoke([this] { rhi->failProgressQuery = true; });
     executor->PollGPUProgress();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     // Restore queries for cleanup; the terminal block must still retain native owners.
-    GetRHIThread().Invoke([this] { rhi->failProgressQuery = false; });
+    GDynamicRHI->GetRuntime().thread.Invoke([this] { rhi->failProgressQuery = false; });
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_FALSE(destroyed.contains(id));
     viewport.ReleaseForTeardown();
     device->Destroy();
@@ -510,21 +511,21 @@ TEST_F(ThreadedRenderCoreTest, BackendFailureRetainsBatchAndDeferredOwnersUntilS
     const uint64_t          batchId    = batchOwned->GetStableId();
     const uint64_t          deferredId = deferred->GetStableId();
     RHICommandListPtr       commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
-    commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubResourceRange());
+    commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubresourceRange());
     EXPECT_EQ(executor->SubmitFrame(*commands, nullptr).Wait().submission, RHISubmissionResult::eSuccess);
     batchOwned->ReleaseReference();
     device->DeferReleaseResource(deferred);
-    GetRHIThread().Invoke([this] { rhi->submissionsBlocked = true; });
+    GDynamicRHI->GetRuntime().thread.Invoke([this] { rhi->submissionsBlocked = true; });
     executor->PollGPUProgress();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     // Later successful queries must not clear a published terminal failure.
-    GetRHIThread().Invoke([this] {
+    GDynamicRHI->GetRuntime().thread.Invoke([this] {
         rhi->submissionsBlocked = false;
         rhi->completed          = rhi->submitted;
     });
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     EXPECT_FALSE(destroyed.contains(batchId));
     EXPECT_FALSE(destroyed.contains(deferredId));
@@ -577,13 +578,13 @@ TEST_F(RenderCoreTest, MatchingPresentationStateAddsNoBarrier)
     device->Destroy();
 }
 
-TEST_F(RHIExecutorTest, PartialFailureKeepsResourcesUntilDeviceDrain)
+TEST_F(EngineExecutorTest, PartialFailureKeepsResourcesUntilDeviceDrain)
 {
     RHITextureCreateInfo info{};
     RHITexture*          texture = executor->CreateTexture(info);
     const uint64_t       id      = texture->GetStableId();
     RHICommandListPtr    commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
-    commands->ClearTexture(texture, Color(0.f), RHITextureSubResourceRange());
+    commands->ClearTexture(texture, Color(0.f), RHITextureSubresourceRange());
     rhi->failSubmissionAt       = 1;
     rhi->submitBeforeFailure    = true;
     rhi->submissionFailure      = RHISubmissionResult::eFatal;

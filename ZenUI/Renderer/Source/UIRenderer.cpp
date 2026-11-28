@@ -259,7 +259,7 @@ bool UIRenderer::BuildRenderGraph(rc::RenderGraph& graph, const UIRenderTarget& 
 
             states.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eAlways);
 
-            states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+            states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
             RHIGfxPipelineColorBlendState::Attachment blend;
 

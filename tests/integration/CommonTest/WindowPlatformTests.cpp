@@ -1,4 +1,5 @@
 #include "Platform/NativeWindow.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Platform/InputController.h"
 #include "Platform/WindowBackend.h"
 #include <gtest/gtest.h>
@@ -159,7 +160,7 @@ TEST(WindowPlatform, HeadlessRHIDoesNotInitializeVideo)
 {
     EXPECT_EQ(SDL_WasInit(SDL_INIT_VIDEO), 0u);
 
-    DynamicRHI* rhi = CreateRHI(RHIOptions::GetInstance());
+    DynamicRHI* rhi = CreateRHI(rc::RenderConfig::GetInstance().rhiDevice);
     ASSERT_NE(rhi, nullptr);
 
     EXPECT_EQ(SDL_WasInit(SDL_INIT_VIDEO), 0u);

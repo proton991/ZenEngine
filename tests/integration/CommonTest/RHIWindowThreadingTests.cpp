@@ -119,6 +119,7 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 #endif
 
 #include "ZenRHI/RHICommandListExecutor.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "ZenRHI/TestSupport/ScopedVulkanCall.h"
 #include "Vulkan/VulkanDevice.h"
 #include "Vulkan/VulkanRHI.h"
@@ -137,12 +138,13 @@ struct VulkanViewportTestAccess
     static void FailSurfaceRecreation(VulkanViewport* viewport, uint32_t width, uint32_t height, RHIError error)
     {
         VulkanSwapchainRecreateInfo info;
-        const bool rebuild = GetRHIThread().Invoke(&VulkanViewport::BeginResize, viewport, width, height, &info);
+        const bool                  rebuild =
+            viewport->GetRuntime()->thread.Invoke(&VulkanViewport::BeginResize, viewport, width, height, &info);
         ASSERT_TRUE(rebuild);
-        ASSERT_EQ(info.surface, VK_NULL_HANDLE);
+        ASSERT_EQ(info.surface.Get(), VK_NULL_HANDLE);
         ASSERT_EQ(info.swapchain, VK_NULL_HANDLE);
         // Model the window backend's checked failure at the window/RHI thread handoff.
-        GetRHIThread().Invoke(&VulkanViewport::FinishResize, viewport, &info, error);
+        viewport->GetRuntime()->thread.Invoke(&VulkanViewport::FinishResize, viewport, &info, error);
     }
 };
 } // namespace zen
@@ -155,12 +157,6 @@ void DelayRHIThread()
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
-
-struct SurfaceExecutionMode
-{
-    RHIExecutionMode execution;
-    bool             forceFences;
-};
 
 struct RecreationSurfaceLoss
 {
@@ -204,7 +200,7 @@ struct RecreationSurfaceLoss
     }
 };
 
-class RHIWindowSurfaceIntegrationTest : public testing::TestWithParam<SurfaceExecutionMode>
+class RHIWindowSurfaceIntegrationTest : public testing::TestWithParam<RHIExecutionMode>
 {
 protected:
     static VKAPI_ATTR VkResult VKAPI_CALL CreateSwapchain(VkDevice                        device,
@@ -287,30 +283,17 @@ protected:
 
         window           = std::make_unique<platform::NativeWindow>(config);
 
-        backend          = static_cast<VulkanRHI*>(DynamicRHI::Create(RHIAPIType::eVulkan));
+        backend          = static_cast<VulkanRHI*>(CreateRHI(rc::RenderConfig::GetInstance().rhiDevice));
 
-        // Switch while idle, before the executor snapshots capabilities or a viewport submits.
-        // The real queue and completion code now take the fence path on timeline-capable GPUs.
-        backend->WaitDeviceIdle();
+        executor         = ZEN_NEW() RHICommandListExecutor(backend, GetParam());
 
-        if (GetParam().forceFences)
-        {
-            backend->GetDevice()->GetExtensionFlags().hasTimelineSemaphore = 0;
-        }
+        originalCreate   = vkCreateSwapchainKHR;
 
-        executor    = ZEN_NEW() RHICommandListExecutor(backend, GetParam().execution);
+        originalAcquire  = vkAcquireNextImageKHR;
 
-        GDynamicRHI = executor;
+        originalSubmit   = vkQueueSubmit;
 
-        GetRHIThread().Invoke(&RHIFrameState::Init, &GRHIFrameState, 3);
-
-        originalCreate  = vkCreateSwapchainKHR;
-
-        originalAcquire = vkAcquireNextImageKHR;
-
-        originalSubmit  = vkQueueSubmit;
-
-        originalPresent = vkQueuePresentKHR;
+        originalPresent  = vkQueuePresentKHR;
 
         submitCalls = failSubmitAt = presentCalls = acquireCalls = 0;
 
@@ -320,7 +303,7 @@ protected:
 
         ownerThread                                              = std::this_thread::get_id();
 
-        rhiThread = GetRHIThread().Invoke([] { return std::this_thread::get_id(); });
+        rhiThread = executor->GetRuntime().thread.Invoke([] { return std::this_thread::get_id(); });
     }
 
     void TearDown() override
@@ -342,10 +325,6 @@ protected:
 
             ZEN_DELETE(executor);
         }
-
-        GDynamicRHI = nullptr;
-
-        GVulkanRHI  = nullptr;
 
         window.reset();
     }
@@ -392,7 +371,7 @@ protected:
 
 TEST_P(RHIWindowSurfaceIntegrationTest, CreatesSurfaceOnWindowThreadAndSwapchainOnRHI)
 {
-    if (GetParam().execution == RHIExecutionMode::eThreaded)
+    if (GetParam() == RHIExecutionMode::eThreaded)
     {
         EXPECT_NE(ownerThread, rhiThread);
     }
@@ -430,7 +409,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, DestroyViewportReleasesTheSurfaceBeforeR
 
     test::ScopedVulkanCall<PFN_vkDestroySurfaceKHR> counted(vkDestroySurfaceKHR, &CountSurfaceDestruction);
 
-    GetRHIThread().Dispatch(&DelayRHIThread);
+    executor->GetRuntime().thread.Dispatch(&DelayRHIThread);
 
     executor->DestroyViewport(viewport);
 
@@ -447,11 +426,11 @@ TEST_P(RHIWindowSurfaceIntegrationTest, SurfaceLossReturnsToWindowThreadBeforeRe
 
     vkAcquireNextImageKHR = &LoseSurface;
 
-    GetRHIThread().Invoke(&RHIViewport::PrepareForPresent, viewport, nullptr);
+    executor->GetRuntime().thread.Invoke(&RHIViewport::PrepareForPresent, viewport, nullptr);
 
     vkAcquireNextImageKHR = originalAcquire;
 
-    ASSERT_TRUE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    ASSERT_TRUE(executor->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
 
     executor->WaitDeviceIdle();
 
@@ -463,7 +442,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, SurfaceLossReturnsToWindowThreadBeforeRe
 
     EXPECT_EQ(oldSwapchain, VK_NULL_HANDLE);
 
-    EXPECT_FALSE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    EXPECT_FALSE(executor->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
 
     EXPECT_FALSE(executor->AreSubmissionsBlocked());
 }
@@ -486,12 +465,12 @@ TEST_P(RHIWindowSurfaceIntegrationTest, SurfaceLossDuringRecreationReplacesSurfa
         EXPECT_EQ(oldSwapchain, VK_NULL_HANDLE);
         EXPECT_EQ(creationThread, rhiThread);
         ASSERT_NE(viewport->GetColorBackBuffer(), nullptr);
-        EXPECT_FALSE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+        EXPECT_FALSE(executor->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
         EXPECT_FALSE(executor->AreSubmissionsBlocked());
         RHICommandListPtr    commands = RecordFrame();
         const RHIBatchResult result   = executor->SubmitFrame(*commands, viewport).Wait();
         EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
-        EXPECT_TRUE(result.presented);
+        EXPECT_TRUE(result.presentation.presented);
     }
 }
 
@@ -508,11 +487,11 @@ TEST_P(RHIWindowSurfaceIntegrationTest, RepeatedRecreationSurfaceLossRemainsPend
     }
     EXPECT_EQ(RecreationSurfaceLoss::failuresRemaining, 0u);
     EXPECT_EQ(viewport->GetColorBackBuffer(), nullptr);
-    EXPECT_TRUE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    EXPECT_TRUE(executor->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
     EXPECT_FALSE(executor->AreSubmissionsBlocked());
     viewport->Resize(96, 80);
     EXPECT_NE(viewport->GetColorBackBuffer(), nullptr);
-    EXPECT_FALSE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    EXPECT_FALSE(executor->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
     EXPECT_FALSE(executor->AreSubmissionsBlocked());
 }
 
@@ -547,19 +526,19 @@ TEST_P(RHIWindowSurfaceIntegrationTest, LostSurfaceCreationFailureBlocksWithoutC
     ASSERT_NE(viewport, nullptr);
     {
         test::ScopedVulkanCall hook(vkAcquireNextImageKHR, &LoseSurface);
-        GetRHIThread().Invoke(&RHIViewport::PrepareForPresent, viewport, nullptr);
+        executor->GetRuntime().thread.Invoke(&RHIViewport::PrepareForPresent, viewport, nullptr);
     }
-    ASSERT_TRUE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    ASSERT_TRUE(executor->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
     const RHIError failure{RHIErrorCode::eOutOfHostMemory, VK_ERROR_OUT_OF_HOST_MEMORY, "surface creation injection", __FILE__,
                            __LINE__};
     VulkanViewportTestAccess::FailSurfaceRecreation(static_cast<VulkanViewport*>(viewport), 96, 80, failure);
     EXPECT_EQ(creations, 1u);
     EXPECT_EQ(viewport->GetColorBackBuffer(), nullptr);
-    const RHIError terminal = GetRHIThread().Invoke(&VulkanRHI::GetTerminalError, backend);
+    const RHIError terminal = executor->GetRuntime().thread.Invoke(&VulkanRHI::GetTerminalError, backend);
     EXPECT_EQ(terminal.code, failure.code);
     EXPECT_EQ(terminal.nativeCode, failure.nativeCode);
     EXPECT_STREQ(terminal.operation, failure.operation);
-    EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
+    EXPECT_TRUE(executor->GetRuntime().thread.Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, InitialZeroExtentSurfaceCreationFailureRetainsCause)
@@ -570,12 +549,10 @@ TEST_P(RHIWindowSurfaceIntegrationTest, InitialZeroExtentSurfaceCreationFailureR
     VulkanViewportTestAccess::FailSurfaceRecreation(static_cast<VulkanViewport*>(viewport), 96, 80, failure);
     EXPECT_EQ(creations, 0u);
     EXPECT_EQ(viewport->GetColorBackBuffer(), nullptr);
-    const RHIError terminal = GetRHIThread().Invoke(&VulkanRHI::GetTerminalError, backend);
-    const RHIError creation = GetRHIThread().Invoke(&VulkanRHI::GetLastCreationError, backend);
+    const RHIError terminal = executor->GetRuntime().thread.Invoke(&VulkanRHI::GetTerminalError, backend);
     EXPECT_EQ(terminal.code, failure.code);
     EXPECT_STREQ(terminal.operation, failure.operation);
-    EXPECT_STREQ(creation.operation, failure.operation);
-    EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
+    EXPECT_TRUE(executor->GetRuntime().thread.Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewport)
@@ -590,8 +567,9 @@ TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewport)
 
     const uint32_t height = viewport->GetHeight();
 
-    GetRHIThread().Invoke(&VulkanRHI::BlockSubmissions, backend,
-                          MakeRHIError(RHIErrorCode::eBackendFailure, "injected window test failure", __FILE__, __LINE__));
+    executor->GetRuntime().thread.Invoke(
+        &VulkanRHI::BlockSubmissions, backend,
+        MakeRHIError(RHIErrorCode::eBackendFailure, "injected window test failure", __FILE__, __LINE__));
 
     viewport->Resize(112, 96);
 
@@ -605,7 +583,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewport)
 
     EXPECT_EQ(creations, 1u);
 
-    EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
+    EXPECT_TRUE(executor->GetRuntime().thread.Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, PresentationCopySharesTheLastGraphicsSubmission)
@@ -628,7 +606,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, PresentationCopySharesTheLastGraphicsSub
 
     EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
 
-    EXPECT_TRUE(result.presented);
+    EXPECT_TRUE(result.presentation.presented);
 
     ASSERT_EQ(result.groups.size(), 1u);
 
@@ -637,12 +615,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, PresentationCopySharesTheLastGraphicsSub
 
     EXPECT_EQ(result.requiredSerials.Get(graphics), result.groups[0].accepted.serial + 1);
 
-    // Without timeline semaphores, every workload is submitted with its own fence.
-    const bool timeline = backend->GetDevice()->SupportsTimelineSemaphore();
-
-    EXPECT_FALSE(GetParam().forceFences && timeline);
-
-    EXPECT_EQ(submitCalls, timeline ? 1u : 2u);
+    EXPECT_EQ(submitCalls, 1u);
 }
 
 TEST_P(RHIWindowSurfaceIntegrationTest, RejectedRequiredFrameStopsWithoutAnotherAcquisition)
@@ -675,7 +648,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, RejectedRequiredFrameStopsWithoutAnother
 
     EXPECT_EQ(executor->GetLastSubmittedSerial(graphics), before);
 
-    EXPECT_FALSE(rejected.presented);
+    EXPECT_FALSE(rejected.presentation.presented);
 
     EXPECT_TRUE(executor->AreSubmissionsBlocked());
 
@@ -730,7 +703,7 @@ TEST_P(RHIWindowSurfaceIntegrationTest, SynchronousFrameRejectionCanRetryWithout
 
     EXPECT_EQ(retry.submission, RHISubmissionResult::eSuccess);
 
-    EXPECT_TRUE(retry.presented);
+    EXPECT_TRUE(retry.presentation.presented);
 
     EXPECT_EQ(acquireCalls, 1u);
 
@@ -745,8 +718,6 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
 
     const RHICommandContextType graphics = RHICommandContextType::eGraphics;
 
-    const bool timeline                  = backend->GetDevice()->SupportsTimelineSemaphore();
-
     const uint64_t before                = executor->GetLastSubmittedSerial(graphics);
 
     RHITexture* color                    = viewport->GetColorBackBuffer();
@@ -757,9 +728,8 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
 
     test::ScopedVulkanCall<PFN_vkQueuePresentKHR> presented(vkQueuePresentKHR, &CountPresent);
 
-    // Timeline submission rejects both infos atomically. Fence submission accepts rendering,
-    // then rejects the copy. Preserve that accepted serial and block subsequent work.
-    failSubmitAt                          = timeline ? 1 : 2;
+    // Submission rejects both infos atomically, so the frame publishes no new serial.
+    failSubmitAt                          = 1;
 
     RHICommandListPtr commands            = RecordFrame();
 
@@ -769,9 +739,9 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
 
     const RHIBatchResult result           = executor->SubmitFrame(*commands, viewport, state).Wait();
 
-    EXPECT_EQ(result.submission, timeline ? RHISubmissionResult::eRejected : RHISubmissionResult::eFatal);
+    EXPECT_EQ(result.submission, RHISubmissionResult::eRejected);
 
-    EXPECT_FALSE(result.presented);
+    EXPECT_FALSE(result.presentation.presented);
 
     EXPECT_EQ(presentCalls, 0u);
 
@@ -779,12 +749,12 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
 
     ASSERT_EQ(result.groups.size(), 1u);
 
-    const uint64_t accepted = before + (timeline ? 0 : 1);
+    const uint64_t accepted = before;
 
     // A rejected group has no receipt, even if viewport initialization advanced the queue.
-    EXPECT_EQ(result.groups[0].accepted.serial, timeline ? 0u : accepted);
+    EXPECT_EQ(result.groups[0].accepted.serial, 0u);
 
-    EXPECT_EQ(result.requiredSerials.Get(graphics), timeline ? 0u : accepted);
+    EXPECT_EQ(result.requiredSerials.Get(graphics), 0u);
 
     EXPECT_EQ(executor->GetLastSubmittedSerial(graphics), accepted);
 
@@ -808,7 +778,4 @@ TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPre
 
 INSTANTIATE_TEST_SUITE_P(ExecutionModes,
                          RHIWindowSurfaceIntegrationTest,
-                         testing::Values(SurfaceExecutionMode{RHIExecutionMode::eInline, false},
-                                         SurfaceExecutionMode{RHIExecutionMode::eThreaded, false},
-                                         SurfaceExecutionMode{RHIExecutionMode::eInline, true},
-                                         SurfaceExecutionMode{RHIExecutionMode::eThreaded, true}));
+                         testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));

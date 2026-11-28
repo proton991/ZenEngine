@@ -21,7 +21,7 @@ struct RecordedGroupLists
     {
         for (RHICommandList* list : lists)
         {
-            GetRHIThread().Invoke(&RHICommandList::Execute, list);
+            GDynamicRHI->GetRuntime().thread.Invoke(&RHICommandList::Execute, list);
         }
     }
 };
@@ -276,10 +276,10 @@ TEST_P(RDGGroupRecordingTest, LaterCallbackFailureRollsBackEveryListAndPrivateSt
         const RDGExternalQueueState external[] = {{physical->GetStableId(), RHICommandContextType::eGraphics, 11}};
         GroupAccess::Plan           plan;
         ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
-        const uint64_t                                    revision = executor.GetResourceStateTracker().GetRevision();
-        RecordedGroupLists                                recorded(*device, plan.schedule);
-        TestBuffer*                                       prefix = Buffer();
-        HeapVector<RHICommandListBase::CommandCheckpoint> before;
+        const uint64_t                                revision = executor.GetResourceStateTracker().GetRevision();
+        RecordedGroupLists                            recorded(*device, plan.schedule);
+        TestBuffer*                                   prefix = Buffer();
+        HeapVector<RHICommandList::CommandCheckpoint> before;
         for (RHICommandList* list : recorded.lists)
         {
             list->ClearBuffer(prefix, 0, 4);
@@ -293,7 +293,7 @@ TEST_P(RDGGroupRecordingTest, LaterCallbackFailureRollsBackEveryListAndPrivateSt
         EXPECT_EQ(rhi->submissionAttempts, 0u);
         for (size_t i = 0; i < recorded.lists.size(); ++i)
         {
-            const RHICommandListBase::CommandCheckpoint after = recorded.lists[i]->GetCommandCheckpoint();
+            const RHICommandList::CommandCheckpoint after = recorded.lists[i]->GetCommandCheckpoint();
             EXPECT_EQ(after.count, before[i].count);
             EXPECT_EQ(after.resourceCount, before[i].resourceCount);
             EXPECT_EQ(after.dependencyCount, before[i].dependencyCount);

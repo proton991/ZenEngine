@@ -8,7 +8,7 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/SceneRayQuery.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "ZenRHI/RHIShaderUtil.h"
 #include <volk.h>
 #include "ZenRHI/Vulkan/VulkanInterop.h"

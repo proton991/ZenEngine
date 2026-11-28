@@ -157,7 +157,7 @@ TEST_P(AsyncUploadTest, RecordedDependenciesSurviveDetachAndRollback)
 {
     RHICommandListPtr commands(RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->AddSubmissionDependency({RHICommandContextType::eTransfer, 2});
-    const RHICommandListBase::CommandCheckpoint checkpoint = commands->GetCommandCheckpoint();
+    const RHICommandList::CommandCheckpoint checkpoint = commands->GetCommandCheckpoint();
     commands->AddSubmissionDependency({RHICommandContextType::eTransfer, 5});
     commands->RollbackCommands(checkpoint);
     RHICommandListPtr detached = commands->DetachCommands();

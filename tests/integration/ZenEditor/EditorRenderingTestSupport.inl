@@ -172,9 +172,9 @@ UniquePtr<rc::RenderDevice> CreateDevice(RHIExecutionMode             mode,
                                          bool                         rayTracing      = false,
                                          const rc::RenderingSettings* initialSettings = nullptr)
 {
-    RHIOptions::GetInstance().SetRayTracingDisabled(!rayTracing);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(!rayTracing);
 
-    RHIOptions::GetInstance().SetValidationEnabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(true);
 
     UniquePtr<rc::RenderDevice> device = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, 2, mode);
 
@@ -238,11 +238,12 @@ public:
         info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         info.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
         info.pfnUserCallback = Validation;
-        EXPECT_EQ(vkCreateDebugUtilsMessengerEXT(GetVulkanDeviceHandles().instance, &info, nullptr, &m_messenger), VK_SUCCESS);
+        EXPECT_EQ(vkCreateDebugUtilsMessengerEXT(GetVulkanDeviceHandles(*GDynamicRHI).instance, &info, nullptr, &m_messenger),
+                  VK_SUCCESS);
     }
     ~EditorRenderingValidation()
     {
-        vkDestroyDebugUtilsMessengerEXT(GetVulkanDeviceHandles().instance, m_messenger, nullptr);
+        vkDestroyDebugUtilsMessengerEXT(GetVulkanDeviceHandles(*GDynamicRHI).instance, m_messenger, nullptr);
     }
 
 private:

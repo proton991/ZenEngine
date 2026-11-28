@@ -233,7 +233,7 @@ TEST_F(ThreadedScheduledGraphTest, UnconfirmedHistoryCannotPublishSuccessfulNati
     RefCountPtr<RHISubmissionState> state = history->writer.point.state;
     ASSERT_TRUE(state);
     gate.Open();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     ASSERT_TRUE(state->IsSubmissionFinished());
     // Inject invalid confirmation after native success, before RenderCore publication.
     RHISubmissionStateTestAccess::Fail(*state);
@@ -289,7 +289,7 @@ TEST_F(ThreadedScheduledGraphTest, ReadyRecreationIsProcessedBeforeBuildingAnoth
 
     gate.Open();
 
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
 
     device->PrepareFrame();
 
@@ -344,7 +344,7 @@ TEST_F(ThreadedScheduledGraphTest, RecreationArrivingDuringRecordingDeclinesWith
         encoder.Dispatch(1, 1, 1);
         gate.Open();
         // Force the recreation result to arrive during recording, before the handoff poll.
-        GetRHIThread().Flush();
+        GDynamicRHI->GetRuntime().thread.Flush();
     });
 
     ASSERT_TRUE(graph.End());

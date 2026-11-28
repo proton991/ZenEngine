@@ -259,7 +259,7 @@ RDGGraphicsPassDesc SceneCullMaterialGraphPass(const RenderScene& scene, RHISamp
     states.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
     states.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
     states.colorBlendState.AddAttachments(4);
-    states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    states.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
     pass.SetPipelineStates(states);
     pass.SetRenderArea(0, 0, 8, 8);
     pass.AddColorOutput(DataFormat::eR16G16UNORM, 8, 8, "CullMaterialNormal");

@@ -1,4 +1,5 @@
 #include "ZenRHI/RHIResource.h"
+#include "ZenRHI/RHIDeviceRuntime.h"
 #include <gtest/gtest.h>
 #include <thread>
 
@@ -13,8 +14,6 @@ public:
     {}
 
 private:
-    void Init() override {}
-
     void Destroy() override
     {
         ++m_destructions;
@@ -38,11 +37,15 @@ TEST(RefCountPtr, ResourcePolicyReusesTheExistingCounterAndRhiDestruction)
 
     std::thread::id destructionThread;
 
-    GetRHIThread().Start(RHIExecutionMode::eThreaded);
+    RHIDeviceRuntimePtr runtime = MakeRefCountPtr<RHIDeviceRuntime>();
 
-    const std::thread::id worker = GetRHIThread().Invoke([] { return std::this_thread::get_id(); });
+    runtime->thread.Start(RHIExecutionMode::eThreaded);
+
+    const std::thread::id worker = runtime->thread.Invoke([] { return std::this_thread::get_id(); });
 
     PolicyResource* raw          = new PolicyResource(destructions, destructionThread);
+
+    raw->BindRuntime(runtime.Get());
 
     EXPECT_EQ(raw->GetRefCount(), 1u);
 
@@ -68,11 +71,11 @@ TEST(RefCountPtr, ResourcePolicyReusesTheExistingCounterAndRhiDestruction)
 
     moved.Reset();
 
-    GetRHIThread().Flush();
+    runtime->thread.Flush();
 
     EXPECT_EQ(destructions, 1u);
 
     EXPECT_EQ(destructionThread, worker);
 
-    GetRHIThread().Stop();
+    runtime->thread.Stop();
 }

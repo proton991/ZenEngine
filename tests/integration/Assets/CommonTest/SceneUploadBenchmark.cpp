@@ -1,6 +1,6 @@
 #include "AssetLib/ProcessedSceneAdapter.h"
 #include "AssetLib/SceneRuntimeBuilder.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Vulkan/VulkanBuffer.h"
 #include "Vulkan/VulkanCommandList.h"
 #include "Vulkan/VulkanDevice.h"
@@ -411,7 +411,7 @@ bool Stage(HeapVector<TextureUpload>& textures, HeapVector<BufferUpload>& buffer
     return valid;
 }
 
-void Transition(FVulkanCommandListContext& context, VulkanTexture& texture, bool initialize)
+void Transition(VulkanCommandListContext& context, VulkanTexture& texture, bool initialize)
 {
     VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.srcAccessMask       = initialize ? 0 : VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -427,7 +427,7 @@ void Transition(FVulkanCommandListContext& context, VulkanTexture& texture, bool
                          nullptr, 1, &barrier);
 }
 
-bool Submit(FVulkanCommandListContext& context, const RHIGPUTimingPtr& gpu, double& submitMs, double& waitMs, double& gpuUs)
+bool Submit(VulkanCommandListContext& context, const RHIGPUTimingPtr& gpu, double& submitMs, double& waitMs, double& gpuUs)
 {
     const Clock::time_point start = Clock::now();
     bool valid = !context.GetRecordingError().IsFailure() && context.SubmitRecordedWorkloads() == RHISubmissionResult::eSuccess;
@@ -458,9 +458,9 @@ bool Upload(VulkanRHI& rhi, HeapVector<TextureUpload>& textures, HeapVector<Buff
 {
     bool valid = true;
     {
-        FVulkanCommandListContext context(RHICommandContextType::eGraphics, rhi.GetDevice());
-        const RHIGPUTimingPtr     gpu   = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
-        const Clock::time_point   start = Clock::now();
+        VulkanCommandListContext context(RHICommandContextType::eGraphics, rhi.GetDevice());
+        const RHIGPUTimingPtr    gpu   = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+        const Clock::time_point  start = Clock::now();
         context.RHIBeginGPUTiming(gpu);
         for (TextureUpload& upload : textures)
         {
@@ -474,9 +474,9 @@ bool Upload(VulkanRHI& rhi, HeapVector<TextureUpload>& textures, HeapVector<Buff
     }
     if (valid)
     {
-        FVulkanCommandListContext context(RHICommandContextType::eGraphics, rhi.GetDevice());
-        const RHIGPUTimingPtr     gpu   = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
-        const Clock::time_point   start = Clock::now();
+        VulkanCommandListContext context(RHICommandContextType::eGraphics, rhi.GetDevice());
+        const RHIGPUTimingPtr    gpu   = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+        const Clock::time_point  start = Clock::now();
         context.RHIBeginGPUTiming(gpu);
         for (BufferUpload& upload : buffers)
         {
@@ -670,11 +670,12 @@ int main(int argc, char** argv)
     }
     if (valid)
     {
-        RHIOptions::GetInstance().SetValidationEnabled(options.validation);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetValidationEnabled(options.validation);
         VulkanRHI rhi;
-        GDynamicRHI                   = &rhi;
-        const Clock::time_point start = Clock::now();
-        rhi.Init();
+        GDynamicRHI                       = &rhi;
+        const Clock::time_point start     = Clock::now();
+        const RHIError          initError = rhi.InitChecked();
+        ZEN_RHI_VERIFY_MSG_F(!initError.IsFailure(), "{} failed ({})", initError.operation, initError.nativeCode);
         const double             deviceInit = Milliseconds(start, Clock::now());
         VkDebugUtilsMessengerEXT messenger  = VK_NULL_HANDLE;
         if (options.validation)
@@ -708,7 +709,6 @@ int main(int argc, char** argv)
         rhi.Destroy();
         valid       = valid && validationErrors == 0;
         GDynamicRHI = nullptr;
-        GVulkanRHI  = nullptr;
     }
     else
     {

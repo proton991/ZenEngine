@@ -18,7 +18,7 @@
 #include "SceneGraph/Camera.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include <volk.h>
 #include "ZenRHI/Vulkan/VulkanInterop.h"
 #include <gtest/gtest.h>
@@ -53,9 +53,9 @@ protected:
 
     void SetUp() override
     {
-        RHIOptions::GetInstance().SetRayTracingDisabled(true);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
-        RHIOptions::GetInstance().SetGPUProfilerMarkers(true);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetGPUProfilerMarkers(true);
 
         device = ZEN_NEW()
             RenderDevice(RHIAPIType::eVulkan, 2, (GetParam() & 1) ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
@@ -69,7 +69,7 @@ protected:
 
         EXPECT_FALSE(device->GetGPUInfo().rayTracing.pipeline);
 
-        instance = GetVulkanDeviceHandles().instance;
+        instance = GetVulkanDeviceHandles(*GDynamicRHI).instance;
 
         VkDebugUtilsMessengerCreateInfoEXT info{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
 
@@ -108,9 +108,9 @@ protected:
 
         ZEN_DELETE(device);
 
-        RHIOptions::GetInstance().SetRayTracingDisabled(false);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(false);
 
-        RHIOptions::GetInstance().SetGPUProfilerMarkers(false);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetGPUProfilerMarkers(false);
     }
 
     RHIBuffer* Buffer(uint32_t bytes, RHIBufferAllocateType type, const void* data = nullptr)

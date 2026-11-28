@@ -43,16 +43,9 @@ TEST_F(RenderCoreTest, StagingAllocationFailureDoesNotPublishAnInvalidBlock)
 
 TEST(RHIIndexOffsetTest, CommandsAndGraphDescriptorsPreserveOffsetsBeyondFourGiB)
 {
-    constexpr uint64_t           offset = (uint64_t(1) << 32) + 256;
-    RHICommandDrawIndexed::Param direct{};
-    direct.indexBufferOffset = offset;
-    RHICommandDrawIndexed directCommand(direct, 0);
-    EXPECT_EQ(directCommand.indexBufferOffset, offset);
-
-    RHICommandDrawIndexedIndirect::Param indirect{};
-    indirect.indexBufferOffset = offset;
-    RHICommandDrawIndexedIndirect indirectCommand(indirect, 0);
-    EXPECT_EQ(indirectCommand.indexBufferOffset, offset);
+    constexpr uint64_t offset = (uint64_t(1) << 32) + 256;
+    static_assert(std::is_same_v<decltype(RHIDrawIndexedArgs::indexBufferOffset), uint64_t>);
+    static_assert(std::is_same_v<decltype(RHIDrawIndexedIndirectArgs::indexBufferOffset), uint64_t>);
 
     RDGGraphicsPassDesc pass;
     pass.BindIndexBuffer(static_cast<RHIBuffer*>(nullptr), DataFormat::eR32UInt, offset);

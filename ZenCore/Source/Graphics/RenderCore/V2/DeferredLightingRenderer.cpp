@@ -877,7 +877,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(const RenderView& view, bool hy
 
         pso.colorBlendState.AddAttachments(hybrid ? 7 : 4);
 
-        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
         RDGGraphicsPassDesc offscreen{};
 
@@ -1156,7 +1156,7 @@ void DeferredLightingRenderer::AddLightingPass(const RenderView&    view,
 
     pso.multiSampleState   = {};
 
-    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
     pso.colorBlendState.AddAttachments(visibility ? 2 : 1);
 
@@ -1453,7 +1453,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView&    view,
 
     fullscreenState.colorBlendState.AddAttachment();
 
-    fullscreenState.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+    fullscreenState.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
     fullscreenState.depthStencilState = RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eAlways);
 
@@ -1574,7 +1574,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView&    view,
 
                 state.colorBlendState.AddAttachments(2);
 
-                state.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+                state.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
                 RDGGraphicsPassDesc source;
 
@@ -1769,7 +1769,7 @@ void DeferredLightingRenderer::BuildForwardGraph(const RenderView&    view,
 
             state.colorBlendState.AddAttachment();
 
-            state.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+            state.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
             if (stage == 3)
             {
@@ -1976,7 +1976,7 @@ void DeferredLightingRenderer::BuildLightMarkers(const RenderView& view)
 
         pso.colorBlendState.AddAttachment();
 
-        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
         RDGGraphicsPassDesc ball;
 
@@ -2011,7 +2011,7 @@ void DeferredLightingRenderer::BuildLightMarkers(const RenderView& view)
 
         pso.colorBlendState.AddAttachment();
 
-        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
         RDGGraphicsPassDesc markers;
 

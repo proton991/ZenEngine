@@ -3,7 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Texture.h"
 #include <gtest/gtest.h>
@@ -65,23 +65,23 @@ class BindlessSceneCapacityIntegrationTest : public testing::Test
 protected:
     void SetUp() override
     {
-        m_previous = RHIOptions::GetInstance().BindlessHeapCapacities();
+        m_previous = zen::rc::RenderConfig::GetInstance().rhiDevice.BindlessHeapCapacities();
 
-        RHIOptions::GetInstance().SetRayTracingDisabled(true);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
     }
 
     void TearDown() override
     {
         DestroyDevice();
 
-        RHIOptions::GetInstance().SetBindlessHeapCapacities(m_previous);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetBindlessHeapCapacities(m_previous);
 
-        RHIOptions::GetInstance().SetRayTracingDisabled(false);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(false);
     }
 
     void CreateDevice(const RHIBindlessHeapCapacities& capacities)
     {
-        ASSERT_TRUE(RHIOptions::GetInstance().SetBindlessHeapCapacities(capacities));
+        ASSERT_TRUE(zen::rc::RenderConfig::GetInstance().rhiDevice.SetBindlessHeapCapacities(capacities));
 
         m_device = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, 2, RHIExecutionMode::eThreaded, AsyncComputeMode::eDisabled);
 

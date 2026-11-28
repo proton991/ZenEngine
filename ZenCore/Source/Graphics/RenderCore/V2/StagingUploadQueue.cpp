@@ -204,7 +204,7 @@ bool StagingBufferManager::WaitForSubmittedAllocations()
 
         const uint64_t serial             = required.Get(queue);
 
-        if (GDynamicRHI->QueryLastCompletedSerial(queue) < serial && !GDynamicRHI->WaitForCompletion(queue, serial))
+        if (!GDynamicRHI->WaitForCompletion(queue, serial))
         {
             LOGE("Staging: cannot reclaim queue {} serial {}", uint32_t(queue), serial);
 

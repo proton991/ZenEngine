@@ -37,8 +37,8 @@ protected:
 TEST_P(AsyncComputeLifetimeTest, CachedProgressReadsNeverPollAndQueriesKeepTheirExecutionPolicy)
 {
     RHICommandListExecutor* executor = static_cast<RHICommandListExecutor*>(GDynamicRHI);
-    GetRHIThread().Flush();
-    GetRHIThread().Invoke([this] {
+    GDynamicRHI->GetRuntime().thread.Flush();
+    GDynamicRHI->GetRuntime().thread.Invoke([this] {
         rhi->submitted = {7, 5, 3};
         rhi->completed = {2, 4, 1};
     });
@@ -54,7 +54,7 @@ TEST_P(AsyncComputeLifetimeTest, CachedProgressReadsNeverPollAndQueriesKeepTheir
     EXPECT_EQ(rhi->progressQueries, queries + (inlineMode ? RHICompletionSet::kQueueCount : 0u));
 
     executor->PollGPUProgress();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_EQ(executor->GetCachedSubmittedSerials().Get(RHICommandContextType::eGraphics), 7u);
     EXPECT_EQ(device->GetCachedCompletedSerials().Get(RHICommandContextType::eGraphics), 2u);
     EXPECT_EQ(device->GetCachedCompletedSerials().Get(RHICommandContextType::eAsyncCompute), 4u);
@@ -91,7 +91,7 @@ TEST_P(AsyncComputeLifetimeTest, ComputeWithoutGraphicsConsumerProtectsPoolAndRe
     ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eAsyncCompute,
                                                compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_EQ(resources->GetPoolStats().retiringBytes, 0u);
 }
@@ -119,7 +119,7 @@ TEST_P(AsyncComputeLifetimeTest, FailedComputeWaitPreventsFrameSlotReuseAndOwner
     device->FlushRHIThread();
     EXPECT_EQ(GRenderFrameState.GetFrameSlot(), slot);
     EXPECT_EQ(rhi->frameBegins, begins + 2);
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
 }
@@ -237,9 +237,9 @@ TEST_P(AsyncComputeLifetimeTest, ColdAllocationUsesDeviceServiceAndPreservesDesc
     ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eAsyncCompute,
                                                compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     device->CollectCompletedResources();
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(bufferId));
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(textureId));
     device->DestroyBuffer(source);
 }
@@ -276,7 +276,7 @@ TEST_P(AsyncComputeLifetimeTest, AllocationFailureRollsBackWithoutPublishingStat
         EXPECT_EQ(resources->GetPoolStats().assignedCount, 0u);
         EXPECT_FALSE(RDGSubmissionTestAccess::HasHistory(*device, rhi->lastBufferId));
         device->CollectCompletedResources();
-        GetRHIThread().Flush();
+        GDynamicRHI->GetRuntime().thread.Flush();
         EXPECT_TRUE(destroyed.contains(rhi->lastBufferId));
         rhi->failBufferCreationAt  = 0;
         rhi->failTextureCreationAt = 0;
@@ -342,7 +342,7 @@ TEST_P(SingleFrameComputeLifetimeTest, ComputeCompletionIsRequiredBeforeReusingT
     device->NextFrame();
     device->FlushRHIThread();
     EXPECT_EQ(rhi->frameBegins, 2u);
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
 }
@@ -351,7 +351,7 @@ INSTANTIATE_TEST_SUITE_P(ExecutionModes,
                          SingleFrameComputeLifetimeTest,
                          testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
 
-TEST_F(RHIExecutorTest, PendingComputeTicketBecomesAComputeCompletionRequirement)
+TEST_F(EngineExecutorTest, PendingComputeTicketBecomesAComputeCompletionRequirement)
 {
     RHIBufferCreateInfo info;
     info.size                = 64;
@@ -382,7 +382,7 @@ TEST_F(RHIExecutorTest, PendingComputeTicketBecomesAComputeCompletionRequirement
                                             result.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     EXPECT_TRUE(retirement.IsCompleteAt(executor->QueryCompletedSerials()));
     EXPECT_EQ(destructions, 3u);
-    GetRHIThread().Flush();
+    GDynamicRHI->GetRuntime().thread.Flush();
     EXPECT_TRUE(destroyed.contains(id));
 }
 

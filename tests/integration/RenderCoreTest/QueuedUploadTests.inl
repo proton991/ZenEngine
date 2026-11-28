@@ -25,6 +25,8 @@ protected:
     {
         device->FlushRHIThread();
 
+        gate.frameState       = &rhi->GetRuntime().frameState;
+
         rhi->beforeSubmission = std::bind_front(&RHISubmissionGate::OnSubmission, &gate);
     }
 
@@ -295,7 +297,7 @@ TEST_F(ThreadedRenderCoreTest, RejectedUploadWithoutTimelineRetainsPayloadForSyn
     device->DestroyBuffer(buffer);
 }
 
-TEST_F(RHIExecutorTest, StagingBlockWaitsForEveryQueuedBatchAndUsesOnlyTheirOwnSerials)
+TEST_F(EngineExecutorTest, StagingBlockWaitsForEveryQueuedBatchAndUsesOnlyTheirOwnSerials)
 {
     StagingBufferManager staging(32, 32);
     StagingAllocation    first, second, reuse;
@@ -326,7 +328,7 @@ TEST_F(RHIExecutorTest, StagingBlockWaitsForEveryQueuedBatchAndUsesOnlyTheirOwnS
         EXPECT_EQ(transferRetirement.requiredSerials.Get(queue), queue == RHICommandContextType::eTransfer ? 1u : 0u);
         EXPECT_EQ(computeRetirement.requiredSerials.Get(queue), queue == RHICommandContextType::eAsyncCompute ? 1u : 0u);
     }
-    EXPECT_EQ(ToValue(GRHIFrameState.GetFrameNumber()), 0u);
+    EXPECT_EQ(ToValue(GDynamicRHI->GetRuntime().frameState.GetFrameNumber()), 0u);
 
     ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eAsyncCompute, 1));
     EXPECT_EQ(staging.Allocate(32, 4, &reuse), StagingFlushAction::eFlush);

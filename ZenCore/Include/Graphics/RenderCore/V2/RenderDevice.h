@@ -17,7 +17,6 @@
 #include "ZenFoundation/Templates/Queue.h"
 #include "ZenFoundation/Templates/VectorView.h"
 #include "ZenRHI/RHICommandList.h"
-#include "ZenRHI/RHIDebug.h"
 #include "RenderGraph/RenderGraph.h"
 #include "RenderCoreDefs.h"
 #include "ZenFoundation/Utils/UniquePtr.h"
@@ -25,6 +24,10 @@
 #include "RenderConfig.h"
 #include "RenderSubmissionHistory.h"
 #include "ResourceRetirement.h"
+#include <mutex>
+
+// The engine's RHI device: RenderDevice publishes its executor here. ZenRHI keeps no process-wide device.
+extern zen::DynamicRHI* GDynamicRHI;
 
 namespace zen::sg
 {
@@ -79,7 +82,7 @@ struct RenderDeviceFeatures
 // (including alignment padding), upload ranges and texture-view ranges are caller contracts.
 // Null/false/status results describe supported allocation/submission failures; they do not
 // make unchecked content valid. Keep content rejection in the loader or renderer boundary.
-class RenderDevice
+class RenderDevice : private RHIDestructionListener
 {
 public:
     explicit RenderDevice(RHIAPIType       APIType,
@@ -315,12 +318,7 @@ public:
 
     RHISampler* CreateSampler(const RHISamplerCreateInfo& samplerInfo);
 
-    // RHITextureSubResourceRange GetTextureSubResourceRange(RHITexture* handle);
-
-    RHIDebug* GetRHIDebug() const
-    {
-        return m_pRHIDebug;
-    }
+    // RHITextureSubresourceRange GetTextureSubResourceRange(RHITexture* handle);
 
     // RHICommandList* GetCurrentCmdList() const
     // {
@@ -408,6 +406,9 @@ private:
     void CompleteSubmission(PendingSubmission& pending, const RHIBatchResult& result);
 
     void CollectDestroyedResourceHistory();
+
+    // Runs on the releasing thread; CollectDestroyedResourceHistory applies the IDs on the render thread.
+    void OnResourceDestroyed(uint64_t stableId) override;
 
     void ProcessDeferredViewportResize();
 
@@ -537,6 +538,8 @@ private:
     // Render-thread submission history; the graph never queries backend queue progress.
     RenderSubmissionHistory m_submissionHistory;
     std::vector<uint64_t>   m_destroyedResourceIds;
+    std::mutex              m_pendingDestroyedMutex;
+    std::vector<uint64_t>   m_pendingDestroyedResourceIds;
     // Each viewport waits on its own surface; the others keep presenting.
     HeapVector<RHIViewport*> m_recreateViewports;
 
@@ -547,8 +550,6 @@ private:
 
     HeapVector<RenderFrame> m_frames;
 
-    // DynamicRHI* GDynamicRHI{nullptr};
-    RHIDebug* m_pRHIDebug{nullptr};
 
     ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eGraphics>>     m_graphicsCmdListPool;
     ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eAsyncCompute>> m_computeCmdListPool;

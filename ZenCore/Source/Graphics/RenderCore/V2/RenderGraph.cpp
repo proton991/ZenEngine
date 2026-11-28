@@ -3,7 +3,6 @@
 #include "ZenRHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "ZenRHI/RHICommandList.h"
-#include "ZenRHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "ZenFoundation/Templates/SmallVector.h"
@@ -592,9 +591,9 @@ void AddAccelerationStructureTransition(RDGCompiledNode&                        
     transition.dstAccess.SetFlag(access.accessFlags);
 }
 
-template <typename Allocation> RHITextureSubResourceRange FullRange(const Allocation* resource)
+template <typename Allocation> RHITextureSubresourceRange FullRange(const Allocation* resource)
 {
-    RHITextureSubResourceRange result{};
+    RHITextureSubresourceRange result{};
 
     if (resource->pTexture != nullptr)
     {
@@ -602,11 +601,11 @@ template <typename Allocation> RHITextureSubResourceRange FullRange(const Alloca
     }
     else
     {
-        RHITextureSubResourceRange range =
-            FormatIsDepthStencil(resource->texFormat.format)  ? RHITextureSubResourceRange::DepthStencil()
-            : FormatIsDepthOnly(resource->texFormat.format)   ? RHITextureSubResourceRange::Depth()
-            : FormatIsStencilOnly(resource->texFormat.format) ? RHITextureSubResourceRange::Stencil()
-                                                              : RHITextureSubResourceRange::Color();
+        RHITextureSubresourceRange range =
+            FormatIsDepthStencil(resource->texFormat.format)  ? RHITextureSubresourceRange::DepthStencil()
+            : FormatIsDepthOnly(resource->texFormat.format)   ? RHITextureSubresourceRange::Depth()
+            : FormatIsStencilOnly(resource->texFormat.format) ? RHITextureSubresourceRange::Stencil()
+                                                              : RHITextureSubresourceRange::Color();
 
         range.levelCount = resource->texFormat.mipmaps;
 
@@ -1146,7 +1145,7 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan&                             
             plan.prepareCPUUs +=
                 std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - validationStart).count();
 
-            HeapVector<RHICommandListBase::CommandCheckpoint> checkpoints;
+            HeapVector<RHICommandList::CommandCheckpoint> checkpoints;
 
             for (RHICommandList* list : lists)
             {
@@ -2092,7 +2091,7 @@ bool RenderGraph::CheckRecorder(const RDGPassNode* node, uint64_t generation)
     return result;
 }
 
-bool RenderGraph::ValidateTextureRange(const RDGResourceManager::Allocation* resource, const RHITextureSubResourceRange& range)
+bool RenderGraph::ValidateTextureRange(const RDGResourceManager::Allocation* resource, const RHITextureSubresourceRange& range)
 {
     bool result{};
 
@@ -2101,7 +2100,7 @@ bool RenderGraph::ValidateTextureRange(const RDGResourceManager::Allocation* res
     {
         const TextureFormat& format           = resource->texFormat;
 
-        const RHITextureSubResourceRange full = FullRange(resource);
+        const RHITextureSubresourceRange full = FullRange(resource);
 
         if (CheckFormat(!range.aspect.IsEmpty() && (int64_t(range.aspect) & ~int64_t(full.aspect)) == 0 && range.levelCount > 0
                             && range.baseMipLevel < format.mipmaps && range.levelCount <= format.mipmaps - range.baseMipLevel
@@ -2288,9 +2287,9 @@ struct RenderGraph::PassBindingValidator
 
                 if (compatible)
                 {
-                    const RHITextureSubResourceRange& range = view->GetSubResourceRange();
+                    const RHITextureSubresourceRange& range = view->GetSubResourceRange();
 
-                    const RHITextureSubResourceRange& full  = view->GetTexture()->GetSubResourceRange();
+                    const RHITextureSubresourceRange& full  = view->GetTexture()->GetSubResourceRange();
 
                     compatible = Check(!range.aspect.IsEmpty() && (int64_t(range.aspect) & ~int64_t(full.aspect)) == 0
                                            && range.levelCount > 0 && range.baseMipLevel < full.levelCount
@@ -2788,7 +2787,7 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
 
             if ((valid) && (desc.geometryBuffer.pIndexBuffer != nullptr))
             {
-                const RHIGeometryBuffer& geometry = desc.geometryBuffer;
+                const RDGGeometryBuffer& geometry = desc.geometryBuffer;
 
                 const uint32_t stride             = geometry.indexBufferFormat == DataFormat::eR16UInt ? 2 : 4;
 
@@ -3137,7 +3136,7 @@ void RenderGraph::SetPipelineStatesForPassNode(RDGPassNode* node, RHIFlags<RHIPi
 bool RenderGraph::DeclareTextureAccessForPass(const RDGPassNode*                    node,
                                               const RDGResourceManager::Allocation* resource,
                                               RHITextureUsage                       usage,
-                                              const RHITextureSubResourceRange&     range,
+                                              const RHITextureSubresourceRange&     range,
                                               RHIAccessMode                         mode,
                                               RHIFlags<RHIPipelineStageFlagBits>    shaderStages,
                                               RDGContentEffect                      intent,
@@ -3288,7 +3287,7 @@ bool RenderGraph::DeclareResourceAccessForPass(const RDGPassNode*               
 bool RenderGraph::DeclareContentAccess(const RDGPassNode*                    node,
                                        const RDGResourceManager::Allocation* resource,
                                        RDGContentEffect                      intent,
-                                       const RHITextureSubResourceRange&     range,
+                                       const RHITextureSubresourceRange&     range,
                                        bool                                  fullCoverage,
                                        bool                                  discardAfter)
 {
@@ -5668,9 +5667,13 @@ bool RenderGraph::Execute(VectorView<RHICommandList*>  lists,
 
     if (valid)
     {
-        m_executionState           = RDGExecutionState::eExecuting;
+        m_executionState             = RDGExecutionState::eExecuting;
 
-        m_recordedInitBarrierCount = 0;
+        m_recordedInitBarrierCount   = 0;
+
+        const RHIDeviceDesc& rhiDesc = GDynamicRHI->GetDeviceDesc();
+
+        const bool markers           = rhiDesc.GPUProfilerMarkers() || rhiDesc.DeviceLossDiagnostics();
 
         for (RDGCompiledNode& compiled : nodes)
         {
@@ -5680,9 +5683,6 @@ bool RenderGraph::Execute(VectorView<RHICommandList*>  lists,
             {
                 m_activeMetrics->BeginNode(*this, compiled);
             }
-
-            const bool markers =
-                RHIOptions::GetInstance().GPUProfilerMarkers() || RHIOptions::GetInstance().DeviceLossDiagnostics();
 
             const RHIGPUTimingPtr gpuTiming = m_activeMetrics != nullptr ? m_activeMetrics->m_nodeGPUTiming : RHIGPUTimingPtr{};
 
@@ -5773,7 +5773,7 @@ bool RenderGraph::ExecuteGraphicsPass(RDGGraphicsPass* pass, uint32_t lambdaInde
     {
         m_pCmdList->BeginRendering(pass->pRenderingLayout);
 
-        m_pCmdList->BindPipeline(RHIPipelineType::eGraphics, pass->pPipeline);
+        m_pCmdList->BindPipeline(pass->pPipeline);
 
         m_pCmdList->SetShaderParameters(pass->shaderParameters);
 
@@ -5823,7 +5823,7 @@ bool RenderGraph::ExecuteDispatchPass(RDGCompiledPass* compiled, uint32_t lambda
 
     RDGDispatchPass* pass = static_cast<RDGDispatchPass*>(compiled);
 
-    m_pCmdList->BindPipeline(pass->pPipeline->GetType(), pass->pPipeline);
+    m_pCmdList->BindPipeline(pass->pPipeline);
 
     m_pCmdList->SetShaderParameters(pass->shaderParameters);
 

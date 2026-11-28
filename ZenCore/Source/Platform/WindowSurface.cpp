@@ -1,5 +1,5 @@
 #include "Platform/WindowBackend.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "ZenRHI/Vulkan/VulkanSurface.h"
 #include "Utils/Errors.h"
 #if defined(ZEN_WINDOW_SDL3)
@@ -53,11 +53,12 @@ void CheckOwner(void* window)
 RHIWindowHandle NativeWindow::GetRHIWindowHandle()
 {
     static constexpr VulkanSurfaceProvider provider{CreateSurface, CheckOwner};
-    return {RHIWindowType::eCustom, this, nullptr, &provider};
+    return {this, &provider};
 }
 
 void NativeWindow::RegisterSurfaceExtensions()
 {
-    RHIOptions::GetInstance().surfaceExtensions = &SurfaceExtensions;
+    // The engine creates its RHI device from RenderConfig; a window means the device must be able to present.
+    rc::RenderConfig::GetInstance().rhiDevice.surfaceExtensions = &SurfaceExtensions;
 }
 } // namespace zen::platform

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
+#include "ZenRHI/RHIDeviceDesc.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "ZenFoundation/Templates/HeapVector.h"
 #include <algorithm>
@@ -120,13 +121,13 @@ inline std::string GetSceneBindlessCapacityError(const RHIBindlessHeapCapacities
     if (textureCount > textureSlots)
     {
         error = fmt::format("The scene has {} textures, but the bindless texture heap holds {}. "
-                            "Raise it with RHIOptions::SetBindlessHeapCapacities before initialization.",
+                            "Raise it with RHIDeviceDesc::SetBindlessHeapCapacities before initialization.",
                             textureCount, textureSlots);
     }
     else if (samplerCount >= samplerSlots)
     {
         error = fmt::format("The scene has {} samplers, but the bindless sampler heap holds {} besides the fallback "
-                            "sampler. Raise it with RHIOptions::SetBindlessHeapCapacities before initialization.",
+                            "sampler. Raise it with RHIDeviceDesc::SetBindlessHeapCapacities before initialization.",
                             samplerCount, std::max(samplerSlots, 1u) - 1);
     }
 

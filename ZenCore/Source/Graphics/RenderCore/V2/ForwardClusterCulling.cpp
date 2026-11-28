@@ -22,7 +22,7 @@ RDGTexture AddForwardOpaqueHiZ(RenderDevice& device, RenderGraph& graph, RHIText
     RHISampler*      sampler = device.CreateSampler({});
     for (uint32_t level = 0; level < description.texFormat.mipmaps; ++level)
     {
-        RHITextureSubResourceRange range;
+        RHITextureSubresourceRange range;
         range.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
         range.baseMipLevel = level;
         const RDGTextureViewDesc target{range};

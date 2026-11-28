@@ -107,11 +107,6 @@ DynamicRHI* CreateRHI(const RHIDeviceDesc&)
 {
     return GDynamicRHI;
 }
-
-RHIDebug* RHIDebug::Create()
-{
-    return nullptr;
-}
 } // namespace zen
 namespace zen::asset
 {
@@ -1128,7 +1123,7 @@ TEST_F(RenderCoreTest, LogicalViewsTrackMipInitializationAndRejectExpiredResourc
 
     RDGTexture texture               = resources->CreateTexture(LogicalTexture(3));
 
-    RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+    RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
     range.baseMipLevel               = 1;
 
@@ -5041,7 +5036,7 @@ TEST(RenderCoreUtilities, CommandRollbackDestroysOnlyAppendedCommands)
             ++destroyed;
         }
 
-        void Execute(RHICommandListBase&) override {}
+        void Execute(RHICommandList&) override {}
 
         uint32_t& destroyed;
     };
@@ -5054,7 +5049,7 @@ TEST(RenderCoreUtilities, CommandRollbackDestroysOnlyAppendedCommands)
 
     list.AllocateCmdTyped<TrackedCommand>(originalDestroyed);
 
-    const RHICommandListBase::CommandCheckpoint checkpoint = list.GetCommandCheckpoint();
+    const RHICommandList::CommandCheckpoint checkpoint = list.GetCommandCheckpoint();
 
     list.AllocateCmdTyped<TrackedCommand>(appendedDestroyed);
 
@@ -6310,13 +6305,13 @@ TEST_F(RenderCoreTest, BufferImageCopiesRejectMisalignmentCombinedAspectsAndInva
 
                 case 2:
                     info.format                       = DataFormat::eD24UNORMS8UInt;
-                    region.textureSubresources.aspect = RHITextureSubResourceRange::DepthStencil().aspect;
+                    region.textureSubresources.aspect = RHITextureSubresourceRange::DepthStencil().aspect;
                     break;
 
                 case 3:
                     info.format                       = DataFormat::eD16UNORM;
                     region.bufferOffset               = 2;
-                    region.textureSubresources.aspect = RHITextureSubResourceRange::Depth().aspect;
+                    region.textureSubresources.aspect = RHITextureSubresourceRange::Depth().aspect;
                     break;
 
                 case 4:
@@ -8225,7 +8220,7 @@ TEST(RenderCoreSceneInputTest, BindlessCapacityErrorPrecedesBufferErrors)
 
 TEST(RenderCoreBindlessCapacityTest, OptionsRejectEmptyHeapsAndKeepTheEarlierRequest)
 {
-    RHIOptions& options                      = RHIOptions::GetInstance();
+    RHIDeviceDesc options;
 
     const RHIBindlessHeapCapacities previous = options.BindlessHeapCapacities();
 
@@ -8245,8 +8240,6 @@ TEST(RenderCoreBindlessCapacityTest, OptionsRejectEmptyHeapsAndKeepTheEarlierReq
 
     EXPECT_EQ(options.BindlessHeapCapacities().Get(RHIBindlessHeapType::eTexture2D),
               previous.Get(RHIBindlessHeapType::eTexture2D) + 1);
-
-    EXPECT_TRUE(options.SetBindlessHeapCapacities(previous));
 }
 
 TEST_F(RenderCoreTest, MetricsCountActualTransitionsAndResetOnRebuild)
@@ -10010,7 +10003,7 @@ TEST_F(RenderCoreTest, VersionsConnectAttachmentsCopiesViewsAndLoadPredecessors)
 
     const RDGTexture copied       = resources->CreateTexture(LogicalTexture());
 
-    const RDGTextureViewDesc view{RHITextureSubResourceRange::Color()};
+    const RDGTextureViewDesc view{RHITextureSubresourceRange::Color()};
 
     RHITextureCopyRegion region{};
 
@@ -11206,7 +11199,7 @@ TEST_F(RenderCoreTest, LogicalShaderArraysPreserveVersionsViewsAndElementIndices
 
         buffers[i]                       = resources->CreateVersion(resources->CreateBuffer(LogicalBuffer()));
 
-        RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+        RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
         range.baseMipLevel               = i + 1;
 
@@ -11325,12 +11318,12 @@ TEST_F(RenderCoreTest, LogicalArraysAndViewDescriptorsRejectMalformedSelectionsB
 
             if (scenario == 3)
             {
-                views[1] = RDGTextureViewDesc{RHITextureSubResourceRange{}}; // Explicitly empty is not full.
+                views[1] = RDGTextureViewDesc{RHITextureSubresourceRange{}}; // Explicitly empty is not full.
             }
 
             if (scenario == 4 || scenario == 5)
             {
-                RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+                RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
                 if (scenario == 4)
                 {
@@ -11704,7 +11697,7 @@ TEST_F(RenderCoreTest, ViewDescriptorsPreserveVersionSchedulingAndReuseNativeVie
 
     const RDGTexture second          = resources->CreateVersion(first);
 
-    RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+    RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
     range.baseMipLevel               = 1;
 
@@ -11945,7 +11938,7 @@ TEST_F(RenderCoreTest, ImportedExtractionsSurviveOriginalGraphAndOwnerRelease)
 
     RDGComputePassDesc pass          = IntentPass();
 
-    RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+    RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
     range.baseMipLevel               = 1;
 
@@ -12432,7 +12425,7 @@ TEST_F(RenderCoreTest, TextureViewCacheStaysBoundedAcrossResizeAndKeepsPooledVie
 
         graph.AddTransferPass("clear_view_cache_texture").ClearTexture(texture, Color(0.f));
 
-        RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+        RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
         range.baseMipLevel               = 1;
 
@@ -12504,7 +12497,7 @@ TEST_F(RenderCoreTest, TextureViewCacheDropsImportsBeforeDeferredOwnerRelease)
 
         graph.AddTransferPass("clear_import").ClearTexture(texture, Color(0.f));
 
-        RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+        RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
         range.baseMipLevel               = 1;
 
@@ -12552,7 +12545,7 @@ TEST_F(RenderCoreTest, TextureViewCacheDropsExtractionWithoutReleasingItsOwner)
 
     graph.AddTransferPass("clear_extraction").ClearTexture(texture, Color(0.f));
 
-    RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+    RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
     range.baseMipLevel               = 1;
 
@@ -13211,7 +13204,7 @@ TEST_F(RenderCoreTest, TextureReusePreservesPhysicalBarriersViewsAndFailureRetir
         region.size                                                   = {int32_t(8 >> mip), int32_t(8 >> mip), 1};
     }
 
-    RHITextureSubResourceRange range = RHITextureSubResourceRange::Color();
+    RHITextureSubresourceRange range = RHITextureSubresourceRange::Color();
 
     range.baseMipLevel               = 1;
 
@@ -14853,129 +14846,6 @@ TEST_F(RenderCoreTest, PassSetupTimingsDistinguishDisabledRebuildAndReplay)
     EXPECT_EQ(RDGMetrics::Format(measured).find("pass_setup_cpu_us=disabled"), std::string::npos);
 }
 
-TEST_F(RenderCoreTest, ParameterSnapshotsPreserveOffsetsArrayMetadataAndBindlessResources)
-{
-    RHITexture* texture = Texture();
-
-    TestBuffer* buffer  = Buffer();
-
-    RHISampler* sampler = rhi->CreateSampler({});
-
-    RHIBatchedShaderParameters source;
-
-    RHIShaderResourceDescriptor value{};
-
-    value.set     = 2;
-
-    value.binding = 5;
-
-    source.AddValueParam(value, std::array<uint32_t, 2>{7, 11});
-
-    value.set     = 4;
-
-    value.binding = 9;
-
-    source.AddValueParam(value, uint8_t(0xEF));
-
-    RHIShaderResourceDescriptor resource{};
-
-    resource.set     = 3;
-
-    resource.binding = 6;
-
-    resource.type    = RHIShaderResourceType::eSamplerWithTexture;
-
-    source.AddResourceParam(resource, texture->GetDefaultView(), sampler, 17);
-
-    resource.bindless = true;
-
-    resource.type     = RHIShaderResourceType::eStorageBuffer;
-
-    source.AddResourceParam(resource, buffer, nullptr, 23);
-
-    RHICommandList storage;
-
-    RHICommandSetShaderParameters command(storage, source.GetView());
-
-    source.Reset();
-
-    source.AddValueParam(value, uint64_t(0)); // Reuse and overwrite the original byte storage.
-
-    const RHIShaderParameterView& snapshot          = command.parameters;
-
-    std::span<const RHIShaderValueParameter> values = snapshot.GetValueParams();
-
-    ASSERT_EQ(values.size(), 2u);
-
-    EXPECT_EQ(values[0].set, 2u);
-
-    EXPECT_EQ(values[0].binding, 5u);
-
-    EXPECT_EQ(values[0].byteOffset, 0u);
-
-    EXPECT_EQ(values[1].set, 4u);
-
-    EXPECT_EQ(values[1].binding, 9u);
-
-    EXPECT_EQ(values[1].byteOffset, 8u);
-
-    std::array<uint32_t, 2> result;
-
-    std::span<const uint8_t> bytes = snapshot.GetValueBytes(values[0]);
-
-    ASSERT_EQ(bytes.size(), sizeof(result));
-
-    std::memcpy(result.data(), bytes.data(), bytes.size());
-
-    EXPECT_EQ(result, (std::array<uint32_t, 2>{7, 11}));
-
-    ASSERT_EQ(snapshot.GetValueBytes(values[1]).size(), 1u);
-
-    EXPECT_EQ(snapshot.GetValueBytes(values[1])[0], 0xEF);
-
-    std::span<const RHIShaderResourceParameter> resources = snapshot.GetResourceParams();
-
-    ASSERT_EQ(resources.size(), 1u);
-
-    EXPECT_EQ(resources[0].set, 3u);
-
-    EXPECT_EQ(resources[0].binding, 6u);
-
-    EXPECT_EQ(resources[0].arrayIndex, 17u);
-
-    EXPECT_EQ(resources[0].resourceType, RHIShaderResourceType::eSamplerWithTexture);
-
-    EXPECT_EQ(resources[0].pResource, texture->GetDefaultView());
-
-    EXPECT_EQ(resources[0].pAuxResource, sampler);
-
-    std::span<const RHIShaderResourceParameter> bindless = snapshot.GetBindlessParams();
-
-    ASSERT_EQ(bindless.size(), 1u);
-
-    EXPECT_EQ(bindless[0].set, 3u);
-
-    EXPECT_EQ(bindless[0].binding, 6u);
-
-    EXPECT_EQ(bindless[0].arrayIndex, 23u);
-
-    EXPECT_EQ(bindless[0].resourceType, RHIShaderResourceType::eStorageBuffer);
-
-    EXPECT_EQ(bindless[0].pResource, buffer);
-
-    EXPECT_EQ(bindless[0].pAuxResource, nullptr);
-
-    source.Reset();
-
-    storage.Reset();
-
-    device->DestroyTexture(texture);
-
-    device->DestroyBuffer(buffer);
-
-    sampler->ReleaseReference();
-}
-
 namespace zen::rc
 {
 struct PipelineCacheTestAccess
@@ -15828,6 +15698,26 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
         device->DestroyTexture(texture);
     }
 }
+
+namespace
+{
+// The ZenRHI executor fixture, published as the engine's device for the engine code under test.
+class EngineExecutorTest : public RHIExecutorTest
+{
+protected:
+    void SetUp() override
+    {
+        RHIExecutorTest::SetUp();
+        GDynamicRHI = executor;
+    }
+
+    void TearDown() override
+    {
+        RHIExecutorTest::TearDown();
+        GDynamicRHI = nullptr;
+    }
+};
+} // namespace
 
 #include "RHIThreadingTests.inl"
 #include "AsyncUploadTests.inl"

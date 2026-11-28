@@ -1,7 +1,7 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include <volk.h>
 #include "ZenRHI/Vulkan/VulkanInterop.h"
 #include "SceneGraph/Scene.h"
@@ -176,15 +176,16 @@ protected:
 
     void SetUp() override
     {
-        RHIOptions::GetInstance().SetRayTracingDisabled(true);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
         device = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, 2, GetParam(), AsyncComputeMode::eDisabled);
         device->Init(nullptr);
-        vkGetPhysicalDeviceProperties(GetVulkanDeviceHandles().physicalDevice, &properties);
+        vkGetPhysicalDeviceProperties(GetVulkanDeviceHandles(*GDynamicRHI).physicalDevice, &properties);
         VkDebugUtilsMessengerCreateInfoEXT info{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
         info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         info.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
         info.pfnUserCallback = Validation;
-        ASSERT_EQ(vkCreateDebugUtilsMessengerEXT(GetVulkanDeviceHandles().instance, &info, nullptr, &messenger), VK_SUCCESS);
+        ASSERT_EQ(vkCreateDebugUtilsMessengerEXT(GetVulkanDeviceHandles(*GDynamicRHI).instance, &info, nullptr, &messenger),
+                  VK_SUCCESS);
         const std::string shader =
             std::filesystem::relative(std::filesystem::path(RDG_REFLECTION_TEST_PATH) / "scene_array_views.comp.spv",
                                       SPV_SHADER_PATH)
@@ -207,10 +208,10 @@ protected:
             device->DestroyBuffer(buffer);
         }
         ShaderProgramManager::GetInstance().Destroy();
-        vkDestroyDebugUtilsMessengerEXT(GetVulkanDeviceHandles().instance, messenger, nullptr);
+        vkDestroyDebugUtilsMessengerEXT(GetVulkanDeviceHandles(*GDynamicRHI).instance, messenger, nullptr);
         device->Destroy();
         ZEN_DELETE(device);
-        RHIOptions::GetInstance().SetRayTracingDisabled(false);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(false);
     }
 
     RHIBuffer* Buffer(bool readback, uint32_t count = 162)

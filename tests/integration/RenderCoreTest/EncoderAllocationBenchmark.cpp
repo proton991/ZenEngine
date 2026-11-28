@@ -1,7 +1,7 @@
 #include <span>
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "ZenRHI/RHICommandList.h"
-#include "ZenRHI/DynamicRHI.h"
+#include "Graphics/RenderCore/V2/RenderDevice.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -60,10 +60,6 @@ void FreeAligned(void* memory)
 class MockRHI final : public zen::DynamicRHI
 {
 public:
-    void Init() override
-    {
-        std::abort();
-    }
     void Destroy() override
     {
         std::abort();
@@ -73,10 +69,6 @@ public:
         std::abort();
     }
     zen::IRHICommandContext* GetCommandContext(zen::RHICommandContextType) override
-    {
-        std::abort();
-    }
-    zen::IRHICommandContext* GetTransferCommandContext() override
     {
         std::abort();
     }
@@ -104,10 +96,6 @@ public:
     {
         std::abort();
     }
-    void DestroyShader(zen::RHIShader*) override
-    {
-        std::abort();
-    }
     zen::RHIPipeline* CreatePipeline(const zen::RHIComputePipelineCreateInfo&) override
     {
         std::abort();
@@ -116,15 +104,7 @@ public:
     {
         std::abort();
     }
-    void DestroyPipeline(zen::RHIPipeline*) override
-    {
-        std::abort();
-    }
     zen::RHISampler* CreateSampler(const zen::RHISamplerCreateInfo&) override
-    {
-        std::abort();
-    }
-    void DestroySampler(zen::RHISampler*) override
     {
         std::abort();
     }
@@ -136,27 +116,11 @@ public:
     {
         std::abort();
     }
-    void DestroyTexture(zen::RHITexture*) override
-    {
-        std::abort();
-    }
     zen::RHIBuffer* CreateBuffer(const zen::RHIBufferCreateInfo&) override
     {
         std::abort();
     }
-    void DestroyBuffer(zen::RHIBuffer*) override
-    {
-        std::abort();
-    }
-    zen::RHIStatus FinalizeCommandLists(std::span<zen::RHICommandList*>, std::vector<zen::RHIPlatformCommandList*>&) override
-    {
-        std::abort();
-    }
-    void SubmitPlatformCommandLists(std::span<zen::RHIPlatformCommandList*>) override
-    {
-        std::abort();
-    }
-    zen::RHISubmissionResult FlushAllGPUCommands() override
+    zen::RHISubmissionResult SubmitCommandLists(std::span<zen::RHICommandList*>) override
     {
         std::abort();
     }
@@ -168,7 +132,7 @@ public:
     {
         std::abort();
     }
-    bool WaitForCompletion(zen::RHICommandContextType, uint64_t, uint64_t) override
+    zen::RHIWaitResult WaitForCompletion(zen::RHICommandContextType, uint64_t, uint64_t) override
     {
         std::abort();
     }
@@ -190,8 +154,21 @@ public:
         return m_info;
     }
 
+    const zen::RHIDeviceDesc& GetDeviceDesc() const override
+    {
+        return m_desc;
+    }
+
+    zen::RHIDeviceRuntime& GetRuntime() override
+    {
+        return *m_runtime;
+    }
+
 private:
-    zen::RHIGPUInfo m_info;
+    zen::RHIGPUInfo    m_info;
+    zen::RHIDeviceDesc m_desc;
+
+    zen::RefCountPtr<zen::RHIDeviceRuntime> m_runtime{zen::MakeRefCountPtr<zen::RHIDeviceRuntime>()};
 };
 
 class MockBuffer final : public zen::RHIBuffer
@@ -212,8 +189,6 @@ public:
     }
 
 private:
-    void Init() override {}
-
     // Stack-owned, with references released before scope exit.
     void Destroy() override {}
 };
@@ -224,8 +199,6 @@ public:
     MockShader() : RHIShader({}) {}
 
 private:
-    void Init() override {}
-
     void Destroy() override {}
 };
 
@@ -237,8 +210,6 @@ public:
     explicit MockPipeline(const zen::RHIComputePipelineCreateInfo& info) : RHIPipeline(info) {}
 
 private:
-    void Init() override {}
-
     void Destroy() override {}
 };
 
@@ -514,9 +485,9 @@ void operator delete[](void* memory, size_t, std::align_val_t) noexcept
 
 int main(int argc, char** argv)
 {
-    zen::GetRHIThread().Start(zen::RHIExecutionMode::eInline);
-
     MockRHI rhi;
+
+    rhi.GetRuntime().thread.Start(zen::RHIExecutionMode::eInline);
 
     GDynamicRHI                      = &rhi;
 
@@ -528,7 +499,7 @@ int main(int argc, char** argv)
 
     GDynamicRHI                      = nullptr;
 
-    zen::GetRHIThread().Stop();
+    rhi.GetRuntime().thread.Stop();
 
     return valid ? 0 : 1;
 }

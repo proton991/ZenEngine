@@ -255,7 +255,7 @@ private:
 // View selection carries no resource/version identity and can be reused for different resources.
 struct RDGTextureViewDesc
 {
-    std::optional<RHITextureSubResourceRange> range;
+    std::optional<RHITextureSubresourceRange> range;
 };
 
 // Optional content guarantees never override reflected shader reads or writes.
@@ -304,12 +304,12 @@ struct RDGContentAccess
 {
     RDG_ID                     resourceId;
     RDGContentEffect           intent{RDGContentEffect::eRead};
-    RHITextureSubResourceRange range;
+    RHITextureSubresourceRange range;
     bool                       fullCoverage{true};
     bool                       discardAfter{false};
     bool                       requiresPriorContents{false}; // Reflected reads survive full-write/discard guarantees.
     RDG_ID                     sourceResourceId{-1};
-    RHITextureSubResourceRange sourceRange;
+    RHITextureSubresourceRange sourceRange;
     uint64_t                   bufferOffset{0};
     uint64_t                   bufferSize{0}; // Zero means the full buffer.
     uint64_t                   sourceBufferOffset{0};
@@ -410,7 +410,7 @@ struct RDGDependency
     RDGDependencyReason reason{};
 
     // Whole allocation scope until range-aware dependencies land in Phase 4.
-    RHITextureSubResourceRange textureRange;
+    RHITextureSubresourceRange textureRange;
     uint64_t                   bufferSize{0};
 };
 
@@ -429,6 +429,6 @@ struct RDGAccess
 
     // Resource-specific execution stages used by synchronization and diagnostics.
     RHIFlags<RHIPipelineStageFlagBits> pipelineStages;
-    RHITextureSubResourceRange         textureSubResourceRange;
+    RHITextureSubresourceRange         textureSubResourceRange;
 };
 } // namespace zen::rc

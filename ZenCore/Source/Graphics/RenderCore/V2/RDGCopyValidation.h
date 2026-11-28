@@ -47,10 +47,10 @@ inline bool ValidateTextureCopyBox(RDGResult&                         result,
     bool valid = true;
 
     const RHIFlags<RHITextureAspectFlagBits> aspect =
-        FormatIsDepthStencil(info.format)  ? RHITextureSubResourceRange::DepthStencil().aspect
-        : FormatIsDepthOnly(info.format)   ? RHITextureSubResourceRange::Depth().aspect
-        : FormatIsStencilOnly(info.format) ? RHITextureSubResourceRange::Stencil().aspect
-                                           : RHITextureSubResourceRange::Color().aspect;
+        FormatIsDepthStencil(info.format)  ? RHITextureSubresourceRange::DepthStencil().aspect
+        : FormatIsDepthOnly(info.format)   ? RHITextureSubresourceRange::Depth().aspect
+        : FormatIsStencilOnly(info.format) ? RHITextureSubresourceRange::Stencil().aspect
+                                           : RHITextureSubresourceRange::Color().aspect;
     valid = result.Check(layers.mipmap < info.mipmaps && layers.mipmap < 32 && layers.layerCount > 0
                              && layers.baseArrayLayer < info.arrayLayers
                              && layers.layerCount <= info.arrayLayers - layers.baseArrayLayer && !layers.aspect.IsEmpty()

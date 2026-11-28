@@ -4,7 +4,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Platform/NativeWindow.h"
 #include <gtest/gtest.h>
 
@@ -45,7 +45,7 @@ TEST_P(VoxelReflectanceIntegrationTest, RejectsSmallBudgetThenAppliesAndRendersB
 
     window.Hide();
 
-    RHIOptions::GetInstance().SetRayTracingDisabled(true);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(true);
 
     rc::RenderDevice device(RHIAPIType::eVulkan, 2, (GetParam() & 1) ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
                             (GetParam() & 2) ? platform::AsyncComputeMode::eAuto : platform::AsyncComputeMode::eDisabled);
@@ -164,7 +164,7 @@ TEST_P(VoxelReflectanceIntegrationTest, RejectsSmallBudgetThenAppliesAndRendersB
 
     device.Destroy();
 
-    RHIOptions::GetInstance().SetRayTracingDisabled(false);
+    zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(false);
 }
 
 INSTANTIATE_TEST_SUITE_P(SubmissionModes, VoxelReflectanceIntegrationTest, testing::Values(0u, 1u, 2u, 3u));

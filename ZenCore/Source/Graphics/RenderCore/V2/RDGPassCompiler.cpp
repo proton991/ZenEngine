@@ -87,9 +87,9 @@ static bool ValidateBufferTextureFootprint(RDGResult&                        res
         && ValidateBufferTextureFootprint(result, buffer->GetRequiredSize(), texture->GetBaseInfo(), region, footprint);
 }
 
-static RHITextureSubResourceRange CopyRange(const RHITextureSubresourceLayers& layers)
+static RHITextureSubresourceRange CopyRange(const RHITextureSubresourceLayers& layers)
 {
-    RHITextureSubResourceRange range{};
+    RHITextureSubresourceRange range{};
 
     range.aspect         = layers.aspect;
 
@@ -233,7 +233,7 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
 
             if (valid)
             {
-                RHIGeometryBuffer& geometry = pGfxPass->geometryBuffer;
+                RDGGeometryBuffer& geometry = pGfxPass->geometryBuffer;
 
                 geometry.vertexBuffers.reserve(desc.geometryBuffer.vertexBuffers.size() + desc.vertexBuffers.size());
 
@@ -761,7 +761,7 @@ void RDGPassCmdEncoder::DrawIndexed(uint32_t indexCount,
     {
         RDGGraphicsPass* pGfxPass = static_cast<RDGGraphicsPass*>(m_pPass);
 
-        RHICommandDrawIndexed::Param params{};
+        RHIDrawIndexedArgs params{};
 
         params.pIndexBuffer      = pGfxPass->geometryBuffer.pIndexBuffer;
 
@@ -796,7 +796,7 @@ void RDGPassCmdEncoder::DrawIndexedIndirect(RHIBuffer* indirectBuffer, uint32_t 
     {
         RDGGraphicsPass* pGfxPass = static_cast<RDGGraphicsPass*>(m_pPass);
 
-        RHICommandDrawIndexedIndirect::Param params{};
+        RHIDrawIndexedIndirectArgs params{};
 
         params.pIndexBuffer      = pGfxPass->geometryBuffer.pIndexBuffer;
 
@@ -907,7 +907,7 @@ void RDGPassCmdEncoder::SetPipelineVariant(uint32_t index)
                 && pipeline != m_pPipeline)
             {
                 m_pPipeline = pipeline;
-                m_pCmdList->BindPipeline(RHIPipelineType::eGraphics, pipeline);
+                m_pCmdList->BindPipeline(pipeline);
                 m_pCmdList->SetShaderParameters(pass->shaderParameters);
             }
         }
@@ -953,7 +953,7 @@ void RDGPassCmdEncoder::GenerateMipmaps(RHITexture* pTexture)
         {
             const RHITextureCreateInfo& info        = pTexture->GetBaseInfo();
 
-            const RHITextureSubResourceRange& range = pTexture->GetSubResourceRange();
+            const RHITextureSubresourceRange& range = pTexture->GetSubResourceRange();
 
             EmitTextureTransition(pTexture, range.GetMipRange(0), RHIAccessMode::eReadWrite, RHIAccessMode::eRead,
                                   RHITextureUsage::eTransferDst, RHITextureUsage::eTransferSrc);
@@ -1026,7 +1026,7 @@ void RDGPassCmdEncoder::CopyBufferToTexture(RHIBuffer*                        pS
     }
 }
 
-void RDGPassCmdEncoder::ClearTexture(RHITexture* pTexture, const Color& clearColor, const RHITextureSubResourceRange& range)
+void RDGPassCmdEncoder::ClearTexture(RHITexture* pTexture, const Color& clearColor, const RHITextureSubresourceRange& range)
 {
     if (((RequirePass(RDGCompiledPassType::eTransfer, "ClearTexture")))
         && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
@@ -1036,7 +1036,7 @@ void RDGPassCmdEncoder::ClearTexture(RHITexture* pTexture, const Color& clearCol
 }
 
 void RDGPassCmdEncoder::EmitTextureTransition(RHITexture*                       pTexture,
-                                              const RHITextureSubResourceRange& range,
+                                              const RHITextureSubresourceRange& range,
                                               RHIAccessMode                     oldAccess,
                                               RHIAccessMode                     newAccess,
                                               RHITextureUsage                   oldUsage,
@@ -1321,7 +1321,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITextu
 
             const RDGResourceManager::Allocation* pResource = m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
 
-            RHITextureSubResourceRange baseRange            = pTexture->GetSubResourceRange();
+            RHITextureSubresourceRange baseRange            = pTexture->GetSubResourceRange();
 
             baseRange.levelCount                            = 1;
 
@@ -1611,7 +1611,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RHITexture*
         // vkCmdClearColorImage requires graphics or compute capability, not a transfer-only queue.
         RestrictTransferQueues(false);
 
-        const RHITextureSubResourceRange range          = pTexture->GetSubResourceRange();
+        const RHITextureSubresourceRange range          = pTexture->GetSubResourceRange();
 
         const RDGResourceManager::Allocation* pResource = m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
 
@@ -1671,9 +1671,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
                         const_cast<RDGResourceManager::Allocation*>(resource)->usageFlags.SetFlag(transferSrc);
                     }
 
-                    const RHITextureSubResourceRange range = m_pRDG->m_resourceManager.ViewRange(*resource, {});
+                    const RHITextureSubresourceRange range = m_pRDG->m_resourceManager.ViewRange(*resource, {});
 
-                    RHITextureSubResourceRange base        = range;
+                    RHITextureSubresourceRange base        = range;
 
                     base.levelCount                        = 1;
 
@@ -1797,7 +1797,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture 
 
         if (valid)
         {
-            RHITextureSubResourceRange range{};
+            RHITextureSubresourceRange range{};
 
             range.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
 

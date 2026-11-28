@@ -212,7 +212,7 @@ void ComputeVoxelizer::BuildVisualizationGraph(const RenderView& view)
 
         pso.colorBlendState.AddAttachment();
 
-        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewport);
 
         RDGGraphicsPassDesc draw{};
 

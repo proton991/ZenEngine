@@ -1,6 +1,6 @@
 #include "VulkanIntegrationFixture.h"
 #include "ZenRHI/TestSupport/ScopedVulkanCall.h"
-#include "ZenRHI/RHIOptions.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
@@ -56,8 +56,8 @@ class VulkanPresentationReviewTest : public testing::TestWithParam<std::tuple<bo
 protected:
     void SetUp() override
     {
-        previousRayTracingDisabled = RHIOptions::GetInstance().RayTracingDisabled();
-        RHIOptions::GetInstance().SetRayTracingDisabled(std::get<2>(GetParam()));
+        previousRayTracingDisabled = zen::rc::RenderConfig::GetInstance().rhiDevice.RayTracingDisabled();
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(std::get<2>(GetParam()));
         platform::WindowConfig config;
         config.visible = false;
         config.width = config.height = 256;
@@ -77,14 +77,15 @@ protected:
             ShaderProgramManager::GetInstance().Destroy();
             device->Destroy();
         }
-        RHIOptions::GetInstance().SetRayTracingDisabled(previousRayTracingDisabled);
+        zen::rc::RenderConfig::GetInstance().rhiDevice.SetRayTracingDisabled(previousRayTracingDisabled);
     }
 
 public:
     void ReadBack(RHIBuffer* destination)
     {
-        VulkanTexture*            source = static_cast<VulkanTexture*>(viewport->GetColorBackBuffer());
-        FVulkanCommandListContext context(RHICommandContextType::eGraphics, GVulkanRHI->GetDevice());
+        VulkanTexture*           source  = static_cast<VulkanTexture*>(viewport->GetColorBackBuffer());
+        VulkanRHI*               backend = source->GetRHI();
+        VulkanCommandListContext context(RHICommandContextType::eGraphics, backend->GetDevice());
         ASSERT_TRUE(context.EnsureRecording());
         const VkCommandBuffer commands = context.GetCommandBuffer()->GetVkHandle();
         VulkanPipelineBarrier before;
@@ -106,7 +107,7 @@ public:
         after.Execute(commands, VK_PIPELINE_STAGE_TRANSFER_BIT,
                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_HOST_BIT);
         ASSERT_EQ(context.SubmitRecordedWorkloads(), RHISubmissionResult::eSuccess);
-        GVulkanRHI->WaitDeviceIdle();
+        backend->WaitDeviceIdle();
     }
 
     void PrepareRenderer()
@@ -154,7 +155,7 @@ TEST_P(VulkanPresentationReviewTest, ClearOnlyGraphPresentsAndNextAttachmentFram
     info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
     RHIBuffer* readback = device->CreateBuffer(info);
     ASSERT_NE(readback, nullptr);
-    GetRHIThread().Invoke(&VulkanPresentationReviewTest::ReadBack, this, readback);
+    GDynamicRHI->GetRuntime().thread.Invoke(&VulkanPresentationReviewTest::ReadBack, this, readback);
     const uint8_t* pixels = readback->Map();
     ASSERT_NE(pixels, nullptr);
     for (uint64_t i = 0; i < info.size; ++i)
@@ -174,7 +175,7 @@ TEST_P(VulkanPresentationReviewTest, ClearOnlyGraphPresentsAndNextAttachmentFram
     commands->EndRendering();
     const RHIBatchResult result = executor->SubmitFrame(*commands, viewport).Wait();
     EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
-    EXPECT_TRUE(result.presented);
+    EXPECT_TRUE(result.presentation.presented);
     device->WaitForIdle();
 }
 
@@ -187,7 +188,7 @@ TEST_P(VulkanPresentationReviewTest, SameSizeRestoreRetriesDeferredNativeZeroExt
         ASSERT_EQ(viewport->GetWidth(), 257u);
         ASSERT_EQ(viewport->GetHeight(), 256u);
         ASSERT_EQ(viewport->GetColorBackBuffer(), nullptr);
-        ASSERT_TRUE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+        ASSERT_TRUE(GDynamicRHI->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
 
         // The wait outlasts the decline limit, and polling the surface does not drain frames.
         CountDeviceIdleWaits::original = vkDeviceWaitIdle;
@@ -209,7 +210,7 @@ TEST_P(VulkanPresentationReviewTest, SameSizeRestoreRetriesDeferredNativeZeroExt
     EXPECT_EQ(PresentFrame(viewport), RenderFrameResult::eSubmitted);
     ASSERT_NE(viewport->GetColorBackBuffer(), nullptr);
     ASSERT_NE(viewport->GetDepthStencilBackBuffer(), nullptr);
-    EXPECT_FALSE(GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport));
+    EXPECT_FALSE(GDynamicRHI->GetRuntime().thread.Invoke(&RHIViewport::NeedsRecreation, viewport));
     device->WaitForIdle();
     EXPECT_TRUE(device->PollFrameSubmissions(true));
 }

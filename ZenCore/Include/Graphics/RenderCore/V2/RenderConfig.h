@@ -3,8 +3,10 @@
 #include "ZenRHI/RHICommon.h"
 #include "ZenRHI/RHIThread.h"
 #include "ZenRHI/RHICommandList.h"
+#include "ZenRHI/RHIDeviceDesc.h"
 #include "Graphics/Shared/VoxelGI.h"
 #include "Platform/ConfigLoader.h"
+#include <cstdlib>
 #include <string_view>
 #include <string>
 
@@ -124,5 +126,19 @@ struct RenderConfig
     bool hybridHitStream{false};
 
     DataFormat shadowDepthFormat{DataFormat::eD16UNORM};
+
+    // RenderDevice creates the RHI device from this description; later changes do not reach a live device.
+    RHIDeviceDesc rhiDevice{DefaultRHIDeviceDesc()};
+
+    // ZEN_VULKAN_DEVICE picks the adapter by name for cross-vendor runs on multi-GPU machines.
+    static RHIDeviceDesc DefaultRHIDeviceDesc()
+    {
+        RHIDeviceDesc desc;
+        if (const char* device = std::getenv("ZEN_VULKAN_DEVICE"))
+        {
+            desc.SetPreferredDevice(device);
+        }
+        return desc;
+    }
 };
 } // namespace zen::rc

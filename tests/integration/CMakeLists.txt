@@ -39,7 +39,7 @@ if(NOT ZEN_RHI_USE_INSTALLED)
     target_include_directories(VulkanRHIIntegrationTest PRIVATE "${ZEN_RHI_SOURCE_DIR}/src" "${ZEN_RHI_SOURCE_DIR}/tests")
     target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenCore ZenVulkanTestMain ZenRHI::TestSupport)
     # The engine dispatch case uses the same shader output as ZenApp.
-    target_compile_definitions(VulkanRHIIntegrationTest PRIVATE RDG_REFLECTION_TEST_PATH="${ZEN_ENGINE_SOURCE_DIR}/Data/SpvShaders/")
+    target_compile_definitions(VulkanRHIIntegrationTest PRIVATE ZENRHI_TEST_SHADER_DIR="${ZEN_ENGINE_SOURCE_DIR}/Data/SpvShaders/")
     add_dependencies(VulkanRHIIntegrationTest SpvShaders)
     add_test(NAME VulkanRHITest COMMAND VulkanRHITest)
     set_tests_properties(VulkanRHITest PROPERTIES LABELS "unit" TIMEOUT 120)

@@ -140,8 +140,9 @@ TEST_P(DistanceFieldSceneIntegrationTest, DISABLED_DistanceFieldAssetConstructio
     RecordProperty("profile_maximum_frame_gpu_us", std::to_string(profile.maximumFrameUs));
     RecordProperty("profile_maximum_pass_gpu_us", std::to_string(profile.maximumPassUs));
     RecordProperty("asset_path", std::string(path));
-    RecordProperty("validation_enabled", RHIOptions::GetInstance().ValidationEnabled() ? "true" : "false");
-    RecordProperty("gpu_markers_enabled", RHIOptions::GetInstance().GPUProfilerMarkers() ? "true" : "false");
+    RecordProperty("validation_enabled", zen::rc::RenderConfig::GetInstance().rhiDevice.ValidationEnabled() ? "true" : "false");
+    RecordProperty("gpu_markers_enabled",
+                   zen::rc::RenderConfig::GetInstance().rhiDevice.GPUProfilerMarkers() ? "true" : "false");
     RecordProperty("vertices", std::to_string(data.numVertices));
     RecordProperty("triangles", std::to_string(scene.GetVoxelTriangleCount()));
     RecordProperty("atlas_texels_per_axis", std::to_string(settings.atlasTexelsPerAxis));
