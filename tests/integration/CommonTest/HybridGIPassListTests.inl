@@ -134,7 +134,8 @@ TEST_P(RayQueryIntegrationTest, HybridGIFramePassListsArePinned)
         probePasses.insert(probePasses.find("HybridGuidePrepare"), "NativeProbeBenchmark, ");
         const std::string nativeGIPasses =
             "WorldCacheResolve, ScreenProbePlacement, ScreenProbeAdaptive, ScreenProbeProposal, "
-            "ScreenProbeTrace, ScreenProbeTemporal, ScreenProbeSpatialHorizontal, ScreenProbeSpatial, ScreenProbePrefilter, "
+            "ScreenProbeTrace, ScreenProbeTemporal, ScreenProbeSpatialHorizontal, ScreenProbeSpatial, ScreenProbeSpread, "
+            "ScreenProbePrefilter, "
             "ScreenProbeSpecularSpatial, GlossyTrace, GlossyTemporal, GlossyHistoryFix, GlossySpatial, ScreenProbeGather, "
             "ScreenProbeHistory, GlossyUncovered, ";
         std::string fillHardware = "WorldCacheLighting, WorldCacheStart, ", fillField = fillHardware;

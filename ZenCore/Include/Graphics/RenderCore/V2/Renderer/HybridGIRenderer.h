@@ -125,6 +125,11 @@ public:
     {
         return m_nativeProbeRaySlots;
     }
+    // The next frame copies the new-probe seed counts, which ReadProbeSeedCounts returns once it is submitted.
+    void RequestProbeSeedCounts()
+    {
+        m_worldCache.RequestSeedCounts();
+    }
     glm::uvec4 ReadProbeSeedCounts() const
     {
         return m_worldCache.ReadSeedCounts();

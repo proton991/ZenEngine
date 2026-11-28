@@ -310,6 +310,17 @@ private:
         return selected && !m_options.capture.empty();
     }
 
+    // Frame summaries report new-probe seed counts. Only frames that write one copy them, because a copy on
+    // every frame makes each frame wait for the previous one.
+    void RequestProbeSeedCounts(bool summarized)
+    {
+        rc::HybridGIRenderer* hybrid = m_device->GetRendererServer()->RequestDeferredLightingRenderer()->GetHybridGI();
+        if (summarized && hybrid != nullptr)
+        {
+            hybrid->RequestProbeSeedCounts();
+        }
+    }
+
     bool PrepareLuminanceCapture(uint64_t frame)
     {
         const bool capture = m_options.captureLinear && IsCaptureFrame(frame);
@@ -892,6 +903,8 @@ private:
 #if defined(ZEN_RUNTIME_DIAGNOSTICS_UI)
         overlay = m_options.noUI ? nullptr : &m_overlay;
 #endif
+        RequestProbeSeedCounts(captureTerms || IsCaptureFrame(previousFrame + 1)
+                               || (!m_options.profile.empty() && previousFrame + 1 == m_options.frames));
         const bool countRays = m_options.hybridRayCounts && previousFrame + 2 >= m_options.frames;
         const bool giReady   = m_options.giEntryFrame != previousFrame + 1
                             || m_rendering->ApplyRenderingSettings(m_setup.rendering, false, m_error);

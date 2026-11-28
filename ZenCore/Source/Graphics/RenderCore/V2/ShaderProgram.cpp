@@ -614,6 +614,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "EnvironmentTilesSP", "VoxelGI/environment_tiles.comp.spv"));
     StoreProgram(
         ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeFilterVerticalSP", "VoxelGI/screen_probe_filter_vertical.comp.spv"));
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeSpreadSP", "VoxelGI/screen_probe_spread.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ScreenProbeHistorySP", "VoxelGI/screen_probe_history.comp.spv"));
     const char* probeStages[] = {"Clear",  "Place",    "Proposal",     "Integrate",    "Filter",
                                  "Gather", "Specular", "ClearDiffuse", "GatherDiffuse"};

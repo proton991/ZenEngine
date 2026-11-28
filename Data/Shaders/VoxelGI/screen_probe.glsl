@@ -320,6 +320,27 @@ uint ProbeBaseTile(uint index)
 {
     return index < screenProbe.grid.z ? index : (index - screenProbe.grid.z) * screenProbe.adaptiveTiles;
 }
+// Light a young-probe limit removes is handed to the coplanar base probes within this many tiles.
+const int kProbeSpreadReach = 2;
+// The least total receiving weight, about three adjacent coplanar probes, over which clipped light is
+// spread. Fewer receivers would each take a large share of a spike and turn into specks themselves.
+const float kProbeSpreadMinimumWeight = 1.5;
+// The base probe at a tile offset from a base probe, or ~0u outside the grid. Both sides of the spread
+// walk tiles by probe index, so they always agree on which probes are neighbours.
+uint ProbeSpreadNeighbor(uint index, ivec2 offset)
+{
+    ivec2 tile   = ivec2(uvec2(index % screenProbe.grid.x, index / screenProbe.grid.x)) + offset;
+    bool  inside = all(greaterThanEqual(tile, ivec2(0))) && all(lessThan(tile, ivec2(screenProbe.grid.xy)));
+    return inside ? uint(tile.x) + uint(tile.y) * screenProbe.grid.x : 0xffffffffu;
+}
+// The weight with which a base probe receives the light clipped from a neighbouring base probe at a
+// tile offset. The clipping probe sums the same weights over its receivers, so the light is handed
+// out exactly once (screen_probe_spread.comp).
+float ProbeSpreadWeight(ScreenProbe receiver, ScreenProbe source, ivec2 offset)
+{
+    return exp(-.5 * float(dot(offset, offset))) * float(receiver.position.w != 0.0 && receiver.source.w == source.source.w)
+         * ProbePlaneWeight(receiver.position.xyz, receiver.normal.xyz, source);
+}
 float ProbeOctDensity(vec3 direction)
 {
     float l1 = dot(abs(direction), vec3(1));

@@ -53,7 +53,13 @@ public:
     {
         return m_movingLayoutChanged;
     }
-    void       CopySeedCounts() const;
+    // The next recorded frame copies the new-probe seed counts for ReadSeedCounts after it is submitted.
+    void RequestSeedCounts()
+    {
+        m_seedRequested = true;
+    }
+    void CopySeedCounts();
+    // Zero unless the last submitted frame copied the counts.
     glm::uvec4 ReadSeedCounts() const;
     void       BindLighting(RDGPassDescBase& pass) const;
     void       OnRenderGraphExecuted(RenderFrameResult result);
@@ -82,6 +88,9 @@ private:
     uint64_t      m_geometry{0}, m_recordedGeometry{0}, m_surface{0};
     bool          m_needsClear{true};
     bool          m_recorded{false};
+    bool          m_seedRequested{false};
+    bool          m_seedCopied{false};
+    bool          m_seedReady{false};
     struct Uniforms
     {
         glm::uvec4 limits{0};

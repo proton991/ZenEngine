@@ -429,7 +429,7 @@ bool ScreenProbeGI::InitializeHistories()
 
 void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
                            RenderScene&               scene,
-                           const WorldRadianceCache&  cache,
+                           WorldRadianceCache&        cache,
                            const HybridGIUniformData& receiver,
                            const Mat4&                projectionView,
                            RHISampler*                sampler,
@@ -594,6 +594,10 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         Dispatch(graph, std::move(prior), count);
         cache.CopySeedCounts();
     }
+    // The light the vertical filter's young-probe limit removes, which the spread pass hands to neighbours.
+    buffer.name             = "screen_probe_clipped";
+    buffer.size             = uint64_t(count) * (ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS + 1u) * sizeof(Vec4);
+    const RDGBuffer clipped = resources.CreateBuffer(buffer);
     for (uint32_t axis = 0; axis < 2; ++axis)
     {
         RDGComputePassDesc filter;
@@ -605,11 +609,19 @@ void ScreenProbeGI::Record(VoxelGIRenderer&           voxelGI,
         if (axis != 0)
         {
             filter.BindStorageBuffer("HorizontalScreenProbeLighting", horizontal);
+            filter.BindStorageBuffer("ScreenProbeClipped", clipped, RDGContentGuarantee::eFullWrite);
         }
         filter.BindStorageBuffer("FilteredScreenProbeLighting", axis == 0 ? horizontal : filtered,
                                  RDGContentGuarantee::eFullWrite);
         Dispatch(graph, std::move(filter), (count + 63u) / 64u);
     }
+    RDGComputePassDesc spread;
+    spread.SetShaderProgramName("ScreenProbeSpreadSP");
+    spread.SetPassTag("ScreenProbeSpread");
+    Bind(spread, receiver, sampler);
+    spread.BindStorageBuffer("FilteredScreenProbeLighting", filtered);
+    spread.BindStorageBuffer("ScreenProbeClipped", clipped);
+    Dispatch(graph, std::move(spread), (count + 63u) / 64u);
     RDGComputePassDesc gather;
     if (m_uniforms.residualEnvironment != 0u)
     {

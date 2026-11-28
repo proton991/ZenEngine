@@ -9,6 +9,12 @@ layout(std430, set = 1, binding = 115) readonly buffer HorizontalScreenProbeLigh
 {
     vec4 horizontalLighting[];
 };
+// Per probe: the light the young-probe limit removed from each output coefficient, then the total
+// weight with which its coplanar neighbours receive it (screen_probe_spread.comp).
+layout(std430, set = 1, binding = 99) writeonly buffer ScreenProbeClipped
+{
+    vec4 clippedProbeLighting[];
+};
 #endif
 #ifdef PROBE_MOVING_FILTER
 #    define PROBE_SIGNALS 3u
@@ -54,6 +60,41 @@ vec4 ProbeFilterInput(uint index, uint item)
     return horizontalLighting[index * (4u * PROBE_SIGNALS) + item];
 #else
     return probeLighting[ProbeLightingAddress(index, RawCoefficient(item))];
+#endif
+}
+// The output coefficients for one scale per signal: normalized, and in the vertical pass with the normal
+// response separated from the anchor and the moving signal merged into the bounce.
+void ProbeFilterFinish(vec4         sums[4u * PROBE_SIGNALS],
+                       SignalValues scale,
+                       SignalValues total,
+                       vec3         normal,
+                       out vec4     finished[4u * PROBE_SIGNALS])
+{
+    for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
+    {
+        uint  base          = signal * 4u;
+        float normalization = scale[signal] / total[signal];
+        vec4  anchor        = sums[base + 3u] * normalization;
+        for (uint channel = 0u; channel < 3u; ++channel)
+        {
+            vec4 filtered = sums[base + channel] * normalization;
+#ifdef PROBE_FILTER_VERTICAL
+            filtered         = ProbeNormalResponse(filtered, normal);
+            anchor[channel] -= max(dot(filtered.xyz, normal), 0.0);
+#endif
+            finished[base + channel] = filtered;
+        }
+        finished[base + 3u] = anchor;
+    }
+#if defined(PROBE_FILTER_VERTICAL) && defined(PROBE_MOVING_FILTER)
+    for (uint item = 0u; item < 4u; ++item)
+    {
+        finished[4u + item].rgb += finished[8u + item].rgb;
+        if (item != 3u)
+        {
+            finished[4u + item].w += finished[8u + item].w;
+        }
+    }
 #endif
 }
 layout(local_size_x = 64) in;
@@ -235,9 +276,11 @@ void main()
                                 // mature history to repair uncertain newly exposed receivers.
                                 // Count samples, not frames: a young probe's sun and sky estimates
                                 // resolve within a few frames and must not spread across sun shadows.
+                                // Full edge stopping from 32 sample frames: a later ramp kept newly
+                                // exposed probes blurred across lighting edges for over two seconds.
                                 float batches = probeLighting[ProbeLightingAddress(other, RawCoefficient(signal * 4u + 3u))].w;
                                 float confidence =
-                                    clamp((min(sampleAge[signal], ProbeSampleAge(b.z, batches)) - 32.0) / 96.0, 0.0, 1.0);
+                                    clamp((min(sampleAge[signal], ProbeSampleAge(b.z, batches)) - 4.0) / 28.0, 0.0, 1.0);
                                 if (signal == 0u)
                                 {
                                     confidence = max(confidence, coldSky);
@@ -284,9 +327,15 @@ void main()
             vec3  covariance = offsetIrradiance[signal] / total[signal] - meanOffset * mean;
             vec3  correction = -meanOffset * covariance / (variance + 1.0 + meanOffset * meanOffset);
             result[item].rgb = total[signal] * max(mean + clamp(correction, -.5 * mean, .5 * mean), vec3(0));
-            vec3  w          = vec3(groupWeight[0][signal], groupWeight[1][signal], groupWeight[2][signal]);
-            vec3  luma       = vec3(groupLuma[0][signal], groupLuma[1][signal], groupLuma[2][signal]);
-            float young      = 1.0 - smoothstep(32.0, 192.0, statistics[signal].z);
+            vec3 w           = vec3(groupWeight[0][signal], groupWeight[1][signal], groupWeight[2][signal]);
+            vec3 luma        = vec3(groupLuma[0][signal], groupLuma[1][signal], groupLuma[2][signal]);
+#ifdef PROBE_FILTER_VERTICAL
+            float young = 1.0 - smoothstep(32.0, 192.0, statistics[signal].z);
+#else
+            // Only the vertical pass limits young estimates, so that one pass can hand the removed
+            // light to the neighbours. Limiting both passes also lost twice the light.
+            float young = 0.0;
+#endif
             scale[signal] =
                 ProbeSpatialOutlierScale(luma, w, total[signal], HybridLuminance(result[item].rgb) / total[signal], young);
             // The interleaved test needs coplanar support, which a probe on a narrow face or thin
@@ -300,40 +349,45 @@ void main()
                 scale[signal] = min(scale[signal], mix(1.0, clamp(limit / max(level, 1e-20), 0.0, 1.0), isolated));
             }
         }
-        for (uint signal = 0u; signal < PROBE_SIGNALS; ++signal)
-        {
-            uint  base          = signal * 4u;
-            float normalization = scale[signal] / total[signal];
-            vec4  anchor        = result[base + 3u] * normalization;
-            for (uint channel = 0u; channel < 3u; ++channel)
-            {
-                vec4 filtered = result[base + channel] * normalization;
+        vec4 kept[4u * PROBE_SIGNALS];
+        ProbeFilterFinish(result, scale, total, probe.normal.xyz, kept);
 #ifdef PROBE_FILTER_VERTICAL
-                filtered         = ProbeNormalResponse(filtered, probe.normal.xyz);
-                anchor[channel] -= max(dot(filtered.xyz, probe.normal.xyz), 0.0);
-#endif
-                result[base + channel] = filtered;
-            }
-            result[base + 3u] = anchor;
-        }
-#ifdef PROBE_FILTER_VERTICAL
-#    ifdef PROBE_MOVING_FILTER
-        for (uint item = 0u; item < 4u; ++item)
-        {
-            result[4u + item].rgb += result[8u + item].rgb;
-            if (item != 3u)
-            {
-                result[4u + item].w += result[8u + item].w;
-            }
-        }
-#    endif
         const uint stride = ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS;
+        // Record the light the limit removed, so that the coplanar base probes around this one receive it
+        // instead of it being lost. A probe without such neighbours keeps the old, lossy limit.
+        float outgoing = 0.0;
+        if (any(lessThan(scale, SignalValues(1))) && index < screenProbe.grid.z && probe.position.w != 0.0)
+        {
+            for (int y = -kProbeSpreadReach; y <= kProbeSpreadReach; ++y)
+            {
+                for (int x = -kProbeSpreadReach; x <= kProbeSpreadReach; ++x)
+                {
+                    uint other = x != 0 || y != 0 ? ProbeSpreadNeighbor(index, ivec2(x, y)) : 0xffffffffu;
+                    if (other != 0xffffffffu)
+                    {
+                        outgoing += ProbeSpreadWeight(probes[other], probe, ivec2(x, y));
+                    }
+                }
+            }
+        }
+        outgoing         = outgoing >= kProbeSpreadMinimumWeight ? outgoing : 0.0;
+        uint clippedBase = index * (stride + 1u);
+        vec4 full[4u * PROBE_SIGNALS];
+        if (outgoing > 0.0)
+        {
+            ProbeFilterFinish(result, SignalValues(1), total, probe.normal.xyz, full);
+        }
+        for (uint item = 0u; item < stride; ++item)
+        {
+            clippedProbeLighting[clippedBase + item] = outgoing > 0.0 ? full[item] - kept[item] : vec4(0);
+        }
+        clippedProbeLighting[clippedBase + stride] = vec4(outgoing, 0.0, 0.0, 0.0);
 #else
         const uint stride = 4u * PROBE_SIGNALS;
 #endif
         for (uint item = 0u; item < stride; ++item)
         {
-            filteredProbeLighting[index * stride + item] = result[item];
+            filteredProbeLighting[index * stride + item] = kept[item];
         }
     }
 }

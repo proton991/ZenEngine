@@ -1,0 +1,68 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#define SCREEN_PROBE_COMPUTE
+#include "screen_probe.glsl"
+// The diffuse filter's output, which this pass adds the handed-on light to.
+layout(std430, set = 1, binding = 87) buffer FilteredScreenProbeLighting
+{
+    vec4 filteredProbeLighting[];
+};
+// Per probe: the light the young-probe limit removed from each output coefficient, then the total weight
+// with which its neighbours receive it (screen_probe_filter.glsl, vertical pass).
+layout(std430, set = 1, binding = 99) readonly buffer ScreenProbeClipped
+{
+    vec4 clippedProbeLighting[];
+};
+layout(local_size_x = 64) in;
+// The young-probe limit suppresses bright specks on new probes by cutting estimates above their
+// neighbourhood, which removed the energy of rare bright paths and left newly exposed surfaces too dark
+// for seconds. Each base probe instead receives its share of the light cut from its coplanar
+// neighbours, so a spike reappears as a faint, wide contribution and the area keeps its energy.
+void main()
+{
+    uint index = ProbeInvocationIndex(64u);
+    if (index < screenProbe.grid.z)
+    {
+        ScreenProbe probe = probes[index];
+        if (probe.position.w != 0.0)
+        {
+            const uint stride = ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS;
+            vec4       received[ZEN_SCREEN_PROBE_FILTER_COEFFICIENTS];
+            bool       receiving = false;
+            for (uint item = 0u; item < stride; ++item)
+            {
+                received[item] = vec4(0);
+            }
+            for (int y = -kProbeSpreadReach; y <= kProbeSpreadReach; ++y)
+            {
+                for (int x = -kProbeSpreadReach; x <= kProbeSpreadReach; ++x)
+                {
+                    uint other = x != 0 || y != 0 ? ProbeSpreadNeighbor(index, ivec2(x, y)) : 0xffffffffu;
+                    if (other != 0xffffffffu)
+                    {
+                        float outgoing = clippedProbeLighting[other * (stride + 1u) + stride].x;
+                        if (outgoing > 0.0)
+                        {
+                            float share = ProbeSpreadWeight(probe, probes[other], ivec2(x, y)) / outgoing;
+                            if (share > 0.0)
+                            {
+                                receiving = true;
+                                for (uint item = 0u; item < stride; ++item)
+                                {
+                                    received[item] += clippedProbeLighting[other * (stride + 1u) + item] * share;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (receiving)
+            {
+                for (uint item = 0u; item < stride; ++item)
+                {
+                    filteredProbeLighting[index * stride + item] += received[item];
+                }
+            }
+        }
+    }
+}

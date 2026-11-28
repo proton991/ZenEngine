@@ -23,7 +23,7 @@ public:
     bool       InitializeHistories();
     void       Record(VoxelGIRenderer&           voxelGI,
                       RenderScene&               scene,
-                      const WorldRadianceCache&  cache,
+                      WorldRadianceCache&        cache,
                       const HybridGIUniformData& receiver,
                       const Mat4&                projectionView,
                       RHISampler*                sampler,

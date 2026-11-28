@@ -185,16 +185,22 @@ void WorldRadianceCache::Bind(RDGPassDescBase& pass) const
     }
 }
 
-void WorldRadianceCache::CopySeedCounts() const
+void WorldRadianceCache::CopySeedCounts()
 {
-    m_device->GetCurrentFrameRDG()
-        ->AddTransferPass("ReadProbeSeedCounts")
-        .CopyBuffer(m_buffers[4], m_seedReadback, {WorldCacheLightingBytes - sizeof(glm::uvec4), 0, sizeof(glm::uvec4)});
+    // One readback buffer serves every frame, so copying into it each frame makes each frame wait for the
+    // previous one. That nearly doubled the CPU frame time at 4K. Only frames whose summary reads it copy.
+    if (m_seedRequested && m_seedReadback != nullptr)
+    {
+        m_device->GetCurrentFrameRDG()
+            ->AddTransferPass("ReadProbeSeedCounts")
+            .CopyBuffer(m_buffers[4], m_seedReadback, {WorldCacheLightingBytes - sizeof(glm::uvec4), 0, sizeof(glm::uvec4)});
+        m_seedCopied = true;
+    }
 }
 glm::uvec4 WorldRadianceCache::ReadSeedCounts() const
 {
     glm::uvec4 counts{};
-    if (m_seedReadback != nullptr)
+    if (m_seedReadback != nullptr && m_seedReady)
     {
         m_device->WaitForIdle();
         const uint8_t* data = m_seedReadback->Map();
@@ -474,6 +480,9 @@ void WorldRadianceCache::OnRenderGraphExecuted(RenderFrameResult result)
     {
         Destroy();
     }
-    m_recorded = false;
+    m_seedReady     = m_seedCopied && result == RenderFrameResult::eSubmitted;
+    m_seedCopied    = false;
+    m_seedRequested = false;
+    m_recorded      = false;
 }
 } // namespace zen::rc
